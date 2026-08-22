@@ -352,6 +352,44 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON TABLE project_planning_collaborators TO "pt
 GRANT SELECT,INSERT ON TABLE project_planning_collaboration_audit_events TO "ptp_app";
 GRANT SELECT ON TABLE project_planning_095_permissions_created,project_planning_095_role_grants TO "ptp_app";
 
+
+-- Durable, idempotent server-owned FlowHive AI Planner operations. These rows
+-- contain orchestration state and generated Planner JSON only; source document
+-- text, extracted chunks, embeddings, credentials, and provider payloads are
+-- never copied into this table.
+CREATE TABLE IF NOT EXISTS project_flowhive_ai_planner_runs (
+    run_id UUID PRIMARY KEY,
+    project_id UUID NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+    status VARCHAR(60) NOT NULL CHECK (status IN (
+        'queued','processing','generating','completed',
+        'completed_with_schedule_overrun','needs_attention','failed'
+    )),
+    phase VARCHAR(100) NOT NULL,
+    progress_percent SMALLINT NOT NULL DEFAULT 0 CHECK (progress_percent BETWEEN 0 AND 100),
+    requested_plan JSONB NOT NULL,
+    requested_outcome TEXT NOT NULL DEFAULT '',
+    detail_level VARCHAR(80) NOT NULL DEFAULT 'comprehensive',
+    generated_plan JSONB NULL,
+    schedule_payload JSONB NULL,
+    validation_payload JSONB NULL,
+    blockers JSONB NOT NULL DEFAULT '[]'::jsonb,
+    warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+    operation_logs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    actual_actor_user_id UUID NOT NULL REFERENCES app_users(user_id) ON DELETE RESTRICT,
+    effective_actor_user_id UUID NOT NULL REFERENCES app_users(user_id) ON DELETE RESTRICT,
+    correlation_id VARCHAR(180) NOT NULL DEFAULT '',
+    row_version UUID NOT NULL DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_project_flowhive_ai_planner_runs_project
+    ON project_flowhive_ai_planner_runs(project_id,created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_project_flowhive_ai_planner_active_actor
+    ON project_flowhive_ai_planner_runs(project_id,actual_actor_user_id)
+    WHERE status IN ('queued','processing','generating');
+
 INSERT INTO schema_migrations(migration_id,description,applied_at)
 VALUES(
     '095_project_planning_collaboration_access',

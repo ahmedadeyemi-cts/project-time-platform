@@ -32,19 +32,21 @@ export function FlowHiveSaveBar({ dirty, workingCopy, canManage, busy, onSaveWor
 
 export function FlowHiveEvidenceReadiness({ enterprise, canManage, busy, onPrepare }) {
   const evidence = enterprise?.sowEvidence || [];
+  const terminalFailures = new Set(['failed', 'rejected', 'quarantined', 'cancelled', 'canceled', 'unsupported']);
   return <section className="flowhive-enterprise-card flowhive-evidence-card">
-    <header><div><span>AI Planner evidence</span><h3>SOW and GSD readiness</h3></div><strong className={enterprise?.sowEvidenceSummary?.approvedSowScopeReady ? 'ready' : 'blocked'}>{enterprise?.sowEvidenceSummary?.approvedSowScopeReady ? 'Ready' : 'Action required'}</strong></header>
+    <header><div><span>AI Planner evidence</span><h3>SOW and GSD readiness</h3></div><strong className={enterprise?.sowEvidenceSummary?.approvedSowScopeReady ? 'ready' : 'blocked'}>{enterprise?.sowEvidenceSummary?.approvedSowScopeReady ? 'Ready' : 'Automatic processing'}</strong></header>
     <p>{enterprise?.sowEvidenceSummary?.explanation || 'Select a project to inspect private planning evidence.'}</p>
-    {!evidence.length ? <div className="flowhive-empty-state">No SOW or GSD candidate is registered for this project. Upload the approved source through the project document workspace.</div> : null}
-    <div className="flowhive-evidence-list">{evidence.map((item) => <article key={item.documentId} className={item.readyForAiPlanner ? 'ready' : 'blocked'}>
-      <div><strong>{item.originalFileName}</strong><span>{label(item.documentCategory)} · {item.documentVersion || 'No active version'}</span></div>
-      <dl><div><dt>Private processing</dt><dd>{label(item.processingStatus)}</dd></div><div><dt>Authority</dt><dd>{label(item.authorityStatus || 'not approved')}</dd></div><div><dt>Index</dt><dd>{label(item.indexStatus || 'not indexed')}</dd></div><div><dt>Citations</dt><dd>{item.citationCount} total · {item.scopeCitationCount} scope</dd></div></dl>
-      {item.blockers?.length ? <ul>{item.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <p className="flowhive-ready-message">This source is approved and citation-ready for AI Planner.</p>}
-      {!item.readyForAiPlanner && canManage ? <div className="flowhive-evidence-actions">
-        <button type="button" disabled={busy} onClick={() => onPrepare(item, false)}>{busy === `evidence-${item.documentId}` ? 'Preparing…' : 'Prepare / queue processing'}</button>
-        {item.processingStatus === 'ready' && item.activeVersionId && !['approved', 'canonical'].includes(item.authorityStatus) ? <button type="button" className="primary" disabled={busy} onClick={() => onPrepare(item, true)}>Approve current processed version</button> : null}
-      </div> : null}
-    </article>)}</div>
+    {!evidence.length ? <div className="flowhive-empty-state">No current Work Register SOW or GSD is registered for this project. FlowHive uses the documents already stored in Module 055C; no duplicate upload is requested here.</div> : null}
+    <div className="flowhive-evidence-list">{evidence.map((item) => {
+      const terminalFailure = terminalFailures.has(String(item.processingStatus || '').toLowerCase());
+      return <article key={item.documentId} className={item.readyForAiPlanner ? 'ready' : 'blocked'}>
+        <div><strong>{item.originalFileName}</strong><span>{label(item.documentCategory)} · {item.documentVersion || 'No active version'}</span></div>
+        <dl><div><dt>Private processing</dt><dd>{label(item.processingStatus)}</dd></div><div><dt>Authority</dt><dd>{label(item.authorityStatus || 'not approved')}</dd></div><div><dt>Index</dt><dd>{label(item.indexStatus || 'not indexed')}</dd></div><div><dt>Citations</dt><dd>{item.citationCount} total · {item.scopeCitationCount} scope</dd></div></dl>
+        {item.blockers?.length ? <ul>{item.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <p className="flowhive-ready-message">This source is current, approved, and citation-ready for AI Planner.</p>}
+        {!item.readyForAiPlanner && !terminalFailure ? <p className="flowhive-ready-message">AI Planner will automatically start or resume private processing for this project document.</p> : null}
+        {terminalFailure && canManage ? <div className="flowhive-evidence-actions"><button type="button" disabled={busy} onClick={() => onPrepare(item, false)}>{busy === `evidence-${item.documentId}` ? 'Retrying…' : 'Retry automatic processing'}</button></div> : null}
+      </article>;
+    })}</div>
   </section>;
 }
 

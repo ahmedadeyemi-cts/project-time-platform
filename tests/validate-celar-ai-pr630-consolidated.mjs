@@ -15,7 +15,17 @@ const requiredPr630BaselinePaths = [
   'database/migrations/084_module_076_celar_ai_defect_operations.sql',
   'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
 ];
-const branchName = process.env.CELAR_PR630_VALIDATION_BRANCH || process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || '';
+const localBranchName = (() => {
+  try {
+    return String(originalExecFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' })).trim();
+  } catch {
+    return '';
+  }
+})();
+const branchName = process.env.CELAR_PR630_VALIDATION_BRANCH
+  || process.env.GITHUB_HEAD_REF
+  || process.env.GITHUB_REF_NAME
+  || localBranchName;
 const systemwideReliabilityMode =
   branchName.startsWith('fix/systemwide-enterprise-reliability-final-')
   || branchName.startsWith('fix/celar-ai-president-identity-extraction-');
@@ -23,9 +33,12 @@ const flowHiveDetailedPlannerCompatibilityMode =
   branchName.startsWith('fix/flowhive-sow-autoadmission-five-phase-');
 const projectPlanningCollaborationCompatibilityMode =
   branchName.startsWith('feature/project-planning-collaboration-access-');
+const sharedProjectDocumentPlanningCompatibilityMode =
+  branchName.startsWith('fix/shared-project-document-planning-');
 const scopedCompatibilityMode = systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
-  || projectPlanningCollaborationCompatibilityMode;
+  || projectPlanningCollaborationCompatibilityMode
+  || sharedProjectDocumentPlanningCompatibilityMode;
 const pr630AllowedPrefixes = [
   '.github/workflows/celar-ai-',
   'database/migrations/084_module_076_',
@@ -85,6 +98,8 @@ if (flowHiveDetailedPlannerCompatibilityMode)
   console.log('CELAR_PR630_FLOWHIVE_DETAILED_PLANNER_COMPATIBILITY=PASS');
 if (projectPlanningCollaborationCompatibilityMode)
   console.log('CELAR_PR630_PROJECT_PLANNING_COLLABORATION_COMPATIBILITY=PASS');
+if (sharedProjectDocumentPlanningCompatibilityMode)
+  console.log('CELAR_PR630_SHARED_PROJECT_DOCUMENT_PLANNING_COMPATIBILITY=PASS');
 
 try {
   await import('./validate-celar-ai-pr630-consolidated-legacy.mjs');

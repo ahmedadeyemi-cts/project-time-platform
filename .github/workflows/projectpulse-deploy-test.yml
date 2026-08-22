@@ -11,6 +11,17 @@ on:
       - 'database/migrations/086_module_066_flowhive_enterprise_pm.sql'
       - 'database/migrations/088_systemwide_enterprise_reliability.sql'
       - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'
+      - 'database/migrations/094_flowhive_canonical_sow_authority.sql'
+      - 'database/migrations/095_project_planning_collaboration_access.sql'
+      - 'database/migrations/096_project_planning_document_authority.sql'
+      - 'database/rollback/096_project_planning_document_authority_rollback.sql'
+      - 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'
+      - 'scripts/release-test/run-flowhive-authority-migration-094-job.sh'
+      - 'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'
+      - 'scripts/release-test/run-project-planning-collaboration-migration-job.sh'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+      - 'scripts/release-test/run-project-planning-document-authority-migration-job.sh'
+      - 'tests/test-project-planning-document-authority-migration-096.sh'
       - 'src/backend/ProjectTime.Api/**'
       - 'src/frontend/project-time-web/**'
       - 'tests/CelarAiAuthoritativePublicFactTests/**'
@@ -20,6 +31,16 @@ on:
       - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
   workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character candidate commit to deploy to Protected Test
+        required: true
+        type: string
+      release_branch:
+        description: Exact authorized candidate branch
+        required: true
+        default: fix/shared-project-document-planning-20260819
+        type: string
 
 permissions:
   id-token: write
@@ -33,20 +54,21 @@ concurrency:
 jobs:
   deploy:
     name: Validate, migrate, deploy, and verify protected Test
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
-      TARGET_RELEASE_COMMIT: ${{ github.sha }}
+      TARGET_RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}
+      TARGET_RELEASE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.release_branch || 'main' }}
       EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
       MIGRATION_SCOPE: systemwide-enterprise-reliability-test
 
     steps:
-      - name: Check out exact merged release
+      - name: Check out exact authorized release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}
           path: release
           fetch-depth: 0
           persist-credentials: false
@@ -84,8 +106,18 @@ jobs:
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
           RELEASE_COMMIT="$(git rev-parse HEAD)"
-          [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Only main may deploy protected Test.'
-          [[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]] || fail 'The checkout is not the exact merged release.'
+          [[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]] || fail 'The checkout is not the exact requested release.'
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
+            [[ "$TARGET_RELEASE_BRANCH" == 'fix/shared-project-document-planning-20260819' ]] \
+              || fail 'Only the authorized FlowHive V2 candidate branch may use pre-merge Protected-Test deployment.'
+            [[ "$TARGET_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'The candidate release SHA is invalid.'
+            git fetch --no-tags origin "$TARGET_RELEASE_BRANCH"
+            [[ "$(git rev-parse "origin/$TARGET_RELEASE_BRANCH")" == "$TARGET_RELEASE_COMMIT" ]] \
+              || fail 'The requested candidate SHA is not the current authorized branch head.'
+          else
+            [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Push deployment is restricted to main.'
+            [[ "$TARGET_RELEASE_BRANCH" == 'main' ]] || fail 'Push deployment must target main.'
+          fi
 
           for required in \
             .github/workflows/projectpulse-deploy-test.yml \
@@ -95,6 +127,23 @@ jobs:
             database/migrations/086_module_066_flowhive_enterprise_pm.sql \
             database/migrations/088_systemwide_enterprise_reliability.sql \
             database/migrations/093_assigned_work_canonical_visibility_repair.sql \
+            database/migrations/094_flowhive_canonical_sow_authority.sql \
+            database/migrations/095_project_planning_collaboration_access.sql \
+            database/migrations/096_project_planning_document_authority.sql \
+            database/rollback/096_project_planning_document_authority_rollback.sql \
+            scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh \
+            scripts/release-test/run-flowhive-authority-migration-094-job.sh \
+            scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh \
+            scripts/release-test/run-project-planning-collaboration-migration-job.sh \
+            scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh \
+            scripts/release-test/run-project-planning-document-authority-migration-job.sh \
+            tests/test-project-planning-document-authority-migration-096.sh \
+            src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs \
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs \
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs \
+            src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs \
+            src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs \
+            tests/validate-shared-project-document-planning.mjs \
             src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs \
             src/backend/ProjectTime.Api/Modules/AdminAuditTelemetryMiddleware.cs \
             src/frontend/project-time-web/src/enterprise-systemwide-reliability.css \
@@ -117,8 +166,19 @@ jobs:
           node tests/validate-systemwide-image-build-controller.mjs
           node tests/validate-systemwide-enterprise-reliability.mjs
           node tests/validate-celar-ai-flowhive-authoritative-release.mjs
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-module-066-project-flowhive.mjs
+            node scripts/validate-module-033-project-forge.mjs
+          )
           bash tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
           bash tests/test-systemwide-enterprise-reliability-migration-088.sh
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
           node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
           dotnet run --project tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj --configuration Release
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
@@ -139,10 +199,14 @@ jobs:
             '{
               environment:"test",
               applicationRelease:$releaseCommit,
-              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair"],
+              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority"],
               migrationScope:$migrationScope,
               utilizationRoleScopingUat:true,
               assignedWorkUat:true,
+              sharedProjectDocumentPlanning:true,
+              flowHiveAiPlannerUat:true,
+              projectForgeAiPlannerUat:true,
+              celarStabilityUat:true,
               applicationOnlyAfterMigration:true,
               productionMutation:false,
               privateRuntimeConfigurationMutation:false
@@ -423,7 +487,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           jq -n --arg api "$API_IMAGE" --arg web "$WEB_IMAGE" --arg migration "$MIGRATION_IMAGE" '{apiImage:$api,webImage:$web,migrationImage:$migration}' > "$EVIDENCE_DIR/immutable-images.json"
 
-      - name: Apply and verify Migrations 086, 088, and 093 inside Test private network
+      - name: Apply and verify Migrations 086, 088, 093, 094, 095, and 096 inside Test private network
         id: migration
         shell: bash
         working-directory: release
@@ -447,7 +511,7 @@ jobs:
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
-          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
+          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
         id: deploy_api
@@ -590,15 +654,18 @@ jobs:
             set -e
             printf '%s|%s\n' "$curl_exit" "${status:-000}"
           }
-          auth_post() {
-            local path="$1" input="$2" output="$3"
-            curl -sS --max-time 180 -o "$output" -w '%{http_code}' \
+          auth_post_as() {
+            local path="$1" input="$2" output="$3" session="$4" module_number="$5"
+            curl -sS --http1.1 --connect-timeout 30 --max-time 240 -o "$output" -w '%{http_code}' \
               -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' \
-              -H "Authorization: Bearer $COORDINATOR_SESSION" \
-              -H "X-ProjectPulse-Session: $COORDINATOR_SESSION" \
-              -H 'X-ProjectPulse-Module-Number: 011' \
+              -H "Authorization: Bearer $session" \
+              -H "X-ProjectPulse-Session: $session" \
+              -H "X-ProjectPulse-Module-Number: $module_number" \
               -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
               --data-binary @"$input" "$BASE$path" || true
+          }
+          auth_post() {
+            auth_post_as "$1" "$2" "$3" "$COORDINATOR_SESSION" '011'
           }
           require_get() {
             local name="$1" path="$2" output="$3"
@@ -663,12 +730,6 @@ jobs:
           jq -e '(.workItems | type == "array") and ((.workItems | length) > 0) and (.access.scope == "managed_projects" or .access.scope == "project_management_team")' "$EVIDENCE_DIR/project-manager-work-register.json" >/dev/null || fail 'Project Manager Work Register scope did not return an authorized project collection.'
           require_get 'Project Manager Approval access' '/api/approval-center/access' "$EVIDENCE_DIR/project-manager-approval-access.json" "$PROJECT_MANAGER_SESSION" '002'
           jq -e '.canViewTimeApprovals == true and ((.roleCodes // []) | any(. == "PROJECT_MANAGEMENT" or . == "PROJECT_MANAGER" or . == "PROJECT_MANAGEMENT_LEAD"))' "$EVIDENCE_DIR/project-manager-approval-access.json" >/dev/null || fail 'Project Manager Approval Inbox access was not available.'
-          PROJECT_MANAGER_LOGOUT_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/project-manager-logout.json" -w '%{http_code}' \
-            -X POST -H "Authorization: Bearer $PROJECT_MANAGER_SESSION" -H "X-ProjectPulse-Session: $PROJECT_MANAGER_SESSION" \
-            -H 'X-ProjectPulse-Module-Number: 002' \
-            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE/api/auth/session/logout" || true)"
-          [[ "$PROJECT_MANAGER_LOGOUT_STATUS" == 200 ]] || fail "Project Manager logout returned HTTP $PROJECT_MANAGER_LOGOUT_STATUS."
-          unset PROJECT_MANAGER_SESSION
           require_get 'Opportunity directory' '/api/opportunities?scope=all' "$EVIDENCE_DIR/opportunities.json" "$ENGINEER_SESSION" '063'
           ENGINEER_LOGOUT_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/engineer-logout.json" -w '%{http_code}' \
             -X POST -H "Authorization: Bearer $ENGINEER_SESSION" -H "X-ProjectPulse-Session: $ENGINEER_SESSION" \
@@ -676,13 +737,198 @@ jobs:
             -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE/api/auth/session/logout" || true)"
           [[ "$ENGINEER_LOGOUT_STATUS" == 200 ]] || fail "Engineer logout returned HTTP $ENGINEER_LOGOUT_STATUS."
           unset ENGINEER_SESSION
-          require_get 'FlowHive portfolio' '/api/project-flowhive/portfolio' "$EVIDENCE_DIR/flowhive-portfolio.json"
+          require_get 'Project Manager FlowHive portfolio' '/api/project-flowhive/portfolio' "$EVIDENCE_DIR/flowhive-portfolio.json" "$PROJECT_MANAGER_SESSION" '066'
 
-          PROJECT_ID="$(jq -r '.projects[0].projectId // empty' "$EVIDENCE_DIR/flowhive-portfolio.json")"
-          [[ "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'No authorized FlowHive project was available for enterprise UAT.'
-          require_get 'FlowHive enterprise workspace' "/api/project-flowhive/projects/$PROJECT_ID/enterprise" "$EVIDENCE_DIR/flowhive-enterprise.json"
-          jq -e '.status == "flowhive_enterprise_workspace_loaded" and .access.canView == true' "$EVIDENCE_DIR/flowhive-enterprise.json" >/dev/null || fail 'FlowHive enterprise workspace did not satisfy the readiness contract.'
+          PREFERRED_FLOWHIVE_PROJECT_ID='0ea25cb8-1a7f-4baf-ba7b-2dd76215be49'
+          mapfile -t FLOWHIVE_PROJECT_CANDIDATES < <(jq -r --arg preferred "$PREFERRED_FLOWHIVE_PROJECT_ID" '
+            ([.projects[]? | select(.projectId == $preferred)] + [.projects[]? | select(.projectId != $preferred)])
+            | .[] | .projectId
+          ' "$EVIDENCE_DIR/flowhive-portfolio.json" | head -25)
+          (( ${#FLOWHIVE_PROJECT_CANDIDATES[@]} > 0 )) || fail 'No editable Project Manager FlowHive project was available for AI Planner UAT.'
 
+          PROJECT_ID=''
+          for candidate_id in "${FLOWHIVE_PROJECT_CANDIDATES[@]}"; do
+            [[ "$candidate_id" =~ ^[0-9a-fA-F-]{36}$ ]] || continue
+            candidate_output="$EVIDENCE_DIR/flowhive-enterprise-$candidate_id.json"
+            candidate_headers="$(mktemp)"
+            candidate_stderr="$(mktemp)"
+            candidate_result="$(auth_get "/api/project-flowhive/projects/$candidate_id/enterprise" "$candidate_output" "$candidate_headers" "$candidate_stderr" "$PROJECT_MANAGER_SESSION" '066')"
+            IFS='|' read -r candidate_curl_exit candidate_status <<<"$candidate_result"
+            rm -f "$candidate_headers" "$candidate_stderr"
+            if [[ "$candidate_curl_exit" == 0 && "$candidate_status" == 200 ]] \
+              && jq -e '
+                .status == "flowhive_enterprise_workspace_loaded"
+                and .access.canEditPlanner == true
+                and ((.sowEvidence // []) | any(
+                  ((.documentCategory // "") | ascii_downcase) == "sow"
+                  or ((.documentCategory // "") | ascii_downcase) == "statement_of_work"
+                ))
+              ' "$candidate_output" >/dev/null 2>&1; then
+              PROJECT_ID="$candidate_id"
+              cp "$candidate_output" "$EVIDENCE_DIR/flowhive-enterprise.json"
+              break
+            fi
+          done
+          [[ "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'No Project Manager project exposed its existing Work Register SOW to FlowHive.'
+          jq -e '.status == "flowhive_enterprise_workspace_loaded" and .access.canEditPlanner == true' "$EVIDENCE_DIR/flowhive-enterprise.json" >/dev/null || fail 'FlowHive enterprise workspace did not satisfy the Planner edit contract.'
+          jq -e '(.sowEvidence // []) | any(((.documentCategory // "") | ascii_downcase) == "sow")' "$EVIDENCE_DIR/flowhive-enterprise.json" >/dev/null || fail 'FlowHive did not resolve the project Work Register SOW without a duplicate upload.'
+
+          PROJECT_ROW="$(jq -c --arg projectId "$PROJECT_ID" '.projects[] | select(.projectId == $projectId)' "$EVIDENCE_DIR/flowhive-portfolio.json" | head -1)"
+          [[ -n "$PROJECT_ROW" ]] || fail 'The selected FlowHive UAT project was not present in the PM portfolio.'
+          PROJECT_CODE="$(jq -r '.projectCode // "UAT-PROJECT"' <<<"$PROJECT_ROW")"
+          PROJECT_NAME="$(jq -r '.projectName // "Protected UAT project"' <<<"$PROJECT_ROW")"
+          CUSTOMER_NAME="$(jq -r '.customerName // "Protected UAT customer"' <<<"$PROJECT_ROW")"
+          PROJECT_START_DATE="$(jq -r '.startDate // empty' <<<"$PROJECT_ROW")"
+          PROJECT_END_DATE="$(jq -r '.endDate // empty' <<<"$PROJECT_ROW")"
+          [[ "$PROJECT_START_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || PROJECT_START_DATE="$(date -u +%F)"
+
+          FLOWHIVE_PAYLOAD="$(mktemp)"
+          jq -n \
+            --arg projectId "$PROJECT_ID" \
+            --arg projectCode "$PROJECT_CODE" \
+            --arg projectName "$PROJECT_NAME" \
+            --arg customerName "$CUSTOMER_NAME" \
+            --arg start "$PROJECT_START_DATE" \
+            --arg end "$PROJECT_END_DATE" \
+            '{
+              plan:{
+                projectId:$projectId,
+                projectCode:$projectCode,
+                projectName:$projectName,
+                customerName:$customerName,
+                planName:"Protected UAT AI working draft",
+                revisionLabel:"Protected UAT",
+                projectStartDate:$start,
+                projectEndDate:(if $end == "" then null else $end end),
+                tasks:[],dependencies:[],assignments:[],
+                notes:"Protected UAT verifies automatic project-document processing and source-grounded five-phase planning."
+              },
+              requestedOutcome:"Use the existing project Work Register SOW, current GSD, and supporting project documents to create a detailed Plan, Design, Implement, Validate, and Release working draft. Preserve estimates and expose any missing facts as open questions.",
+              detailLevel:"comprehensive"
+            }' > "$FLOWHIVE_PAYLOAD"
+          FLOWHIVE_START_STATUS="$(auth_post_as "/api/project-flowhive/projects/$PROJECT_ID/ai-planner/runs" "$FLOWHIVE_PAYLOAD" "$EVIDENCE_DIR/flowhive-ai-planner.json" "$PROJECT_MANAGER_SESSION" '066')"
+          rm -f "$FLOWHIVE_PAYLOAD"
+          [[ "$FLOWHIVE_START_STATUS" == 200 || "$FLOWHIVE_START_STATUS" == 202 ]] || fail "FlowHive AI Planner start returned HTTP $FLOWHIVE_START_STATUS; expected 200 or 202 and no 400/422/503."
+          jq -e . "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null || fail 'FlowHive AI Planner start did not return JSON.'
+          FLOWHIVE_RUN_ID="$(jq -r '.runId // empty' "$EVIDENCE_DIR/flowhive-ai-planner.json")"
+          [[ "$FLOWHIVE_RUN_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'FlowHive AI Planner did not return a durable run identifier.'
+
+          FLOWHIVE_READY=false
+          for attempt in $(seq 1 120); do
+            if jq -e '
+              (.status == "completed" or .status == "completed_with_schedule_overrun")
+              and .phase == "working_draft_ready"
+              and .workingDraft.persisted == true
+            ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null 2>&1; then
+              FLOWHIVE_READY=true
+              break
+            fi
+            if jq -e '.terminal == true' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null 2>&1; then
+              fail "FlowHive AI Planner reached terminal status $(jq -r '.status' "$EVIDENCE_DIR/flowhive-ai-planner.json") before a working draft was ready."
+            fi
+            sleep 10
+            flowhive_headers="$(mktemp)"
+            flowhive_stderr="$(mktemp)"
+            flowhive_result="$(auth_get "/api/project-flowhive/projects/$PROJECT_ID/ai-planner/runs/$FLOWHIVE_RUN_ID" "$EVIDENCE_DIR/flowhive-ai-planner.json" "$flowhive_headers" "$flowhive_stderr" "$PROJECT_MANAGER_SESSION" '066')"
+            IFS='|' read -r flowhive_curl_exit flowhive_status <<<"$flowhive_result"
+            rm -f "$flowhive_headers" "$flowhive_stderr"
+            [[ "$flowhive_curl_exit" == 0 && "$flowhive_status" == 200 ]] || fail "FlowHive AI Planner poll returned curl=$flowhive_curl_exit HTTP=$flowhive_status; no 400/422/503 is permitted."
+            jq -e . "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null || fail 'FlowHive AI Planner poll did not return JSON.'
+          done
+          [[ "$FLOWHIVE_READY" == true ]] || fail 'FlowHive AI Planner did not persist a working draft after automatic document processing.'
+          jq -e '
+            .workingDraft.persisted == true
+            and .workingDraft.immutableVersionCreated == false
+            and .workingDraft.baselineCreated == false
+            and .planningEvidence.sourceGrounded == true
+            and .schedule.valid == true
+            and .scheduleAssessment.estimatesCompressed == false
+            and ((.plan.dependencies // []) | length > 0)
+            and ((.plan.tasks // []) as $tasks
+              | ($tasks | map(select((.isSummary // false) == false and (.isMilestone // false) == false))) as $executable
+              | ($executable | length) > 0
+              and (($executable | map(.phase) | unique) | index("Plan") != null)
+              and (($executable | map(.phase) | unique) | index("Design") != null)
+              and (($executable | map(.phase) | unique) | index("Implement") != null)
+              and (($executable | map(.phase) | unique) | index("Validate") != null)
+              and (($executable | map(.phase) | unique) | index("Release") != null)
+              and all($executable[];
+                ((.description // "") | length) >= 20
+                and ((.detailedSteps // []) | length) > 0
+                and ((.citationIds // []) | length) > 0
+                and (.durationWorkingDays // 0) >= 1
+                and (.remainingEffortHours // -1) >= 0
+                and ((.estimatedStartDate // "") | length) == 10
+                and ((.estimatedFinishDate // "") | length) == 10
+              ))
+          ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null || fail 'FlowHive AI Planner did not satisfy the source-cited five-phase working-draft contract.'
+          echo 'FLOWHIVE_AI_PLANNER_UAT=PASSED'
+
+          FORGE_PAYLOAD="$(mktemp)"
+          jq -n '{
+            requestedOutcome:"Use the same current Work Register SOW, GSD, and supporting project documents as FlowHive to create a detailed five-phase Project Forge review draft.",
+            detailLevel:"comprehensive",
+            allowSanitizedExternalFallback:true
+          }' > "$FORGE_PAYLOAD"
+          FORGE_READY=false
+          FORGE_STATUS='000'
+          for attempt in $(seq 1 60); do
+            FORGE_STATUS="$(auth_post_as "/api/project-forge/projects/$PROJECT_ID/ai-drafts" "$FORGE_PAYLOAD" "$EVIDENCE_DIR/project-forge-ai-draft.json" "$PROJECT_MANAGER_SESSION" '033')"
+            [[ "$FORGE_STATUS" != 400 && "$FORGE_STATUS" != 422 && "$FORGE_STATUS" != 503 ]] || fail "Project Forge AI planning returned forbidden HTTP $FORGE_STATUS."
+            jq -e . "$EVIDENCE_DIR/project-forge-ai-draft.json" >/dev/null || fail 'Project Forge AI planning did not return JSON.'
+            if [[ "$FORGE_STATUS" == 201 ]] \
+              && jq -e '.status == "document_grounded_review_draft_created"' "$EVIDENCE_DIR/project-forge-ai-draft.json" >/dev/null 2>&1; then
+              FORGE_READY=true
+              break
+            fi
+            if [[ "$FORGE_STATUS" == 202 ]]; then
+              sleep 10
+              continue
+            fi
+            fail "Project Forge AI planning stopped at HTTP $FORGE_STATUS status $(jq -r '.status // "unknown"' "$EVIDENCE_DIR/project-forge-ai-draft.json")."
+          done
+          rm -f "$FORGE_PAYLOAD"
+          [[ "$FORGE_READY" == true ]] || fail 'Project Forge did not create its source-grounded review draft.'
+          PROJECT_FORGE_PLAN_ID="$(jq -r '.planId // empty' "$EVIDENCE_DIR/project-forge-ai-draft.json")"
+          [[ "$PROJECT_FORGE_PLAN_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'Project Forge did not return its review-plan identifier.'
+          jq -e '
+            .status == "document_grounded_review_draft_created"
+            and .controls.humanReviewRequired == true
+            and .controls.adopted == false
+            and .controls.canonicalTasksCreated == false
+            and .controls.assignmentsCreated == false
+            and .controls.automaticBaselineCreated == false
+            and ((.documentAuthority.sowDocumentId // "") | length) == 36
+            and ((.plan.dependencies // []) | length > 0)
+            and ((.plan.tasks // []) as $tasks
+              | ($tasks | map(select((.taskType // "") != "milestone"))) as $executable
+              | ($executable | length) > 0
+              and (($executable | map(.phase) | unique) | index("Plan") != null)
+              and (($executable | map(.phase) | unique) | index("Design") != null)
+              and (($executable | map(.phase) | unique) | index("Implement") != null)
+              and (($executable | map(.phase) | unique) | index("Validate") != null)
+              and (($executable | map(.phase) | unique) | index("Release") != null)
+              and all($executable[];
+                ((.description // "") | length) >= 20
+                and (.durationWorkingDays // 0) >= 1
+                and (.estimatedHours // -1) >= 0
+              ))
+          ' "$EVIDENCE_DIR/project-forge-ai-draft.json" >/dev/null || fail 'Project Forge did not preserve the shared five-phase review-only planning contract.'
+          require_get 'Project Forge persisted review workspace' "/api/project-forge/bootstrap?projectId=$PROJECT_ID&workspace=review_plan&planId=$PROJECT_FORGE_PLAN_ID" "$EVIDENCE_DIR/project-forge-review-workspace.json" "$PROJECT_MANAGER_SESSION" '033'
+          jq -e --arg planId "$PROJECT_FORGE_PLAN_ID" '
+            .status == "project_forge_loaded"
+            and .workspace == "review_plan"
+            and (.selectedPlanId | tostring) == $planId
+            and ((.tasks // []) | length) > 0
+          ' "$EVIDENCE_DIR/project-forge-review-workspace.json" >/dev/null || fail 'Project Forge review draft was not persisted in its governed review workspace.'
+          echo 'PROJECT_FORGE_AI_PLANNER_UAT=PASSED'
+
+          PROJECT_MANAGER_LOGOUT_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/project-manager-logout.json" -w '%{http_code}' \
+            -X POST -H "Authorization: Bearer $PROJECT_MANAGER_SESSION" -H "X-ProjectPulse-Session: $PROJECT_MANAGER_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 033' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE/api/auth/session/logout" || true)"
+          [[ "$PROJECT_MANAGER_LOGOUT_STATUS" == 200 ]] || fail "Project Manager logout returned HTTP $PROJECT_MANAGER_LOGOUT_STATUS."
+          unset PROJECT_MANAGER_SESSION
           LOGOUT_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/logout.json" -w '%{http_code}' \
             -X POST -H "Authorization: Bearer $COORDINATOR_SESSION" -H "X-ProjectPulse-Session: $COORDINATOR_SESSION" \
             -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE/api/auth/session/logout" || true)"
@@ -745,6 +991,12 @@ jobs:
           [[ "$CEO" == *Dan*Watts* ]] || fail "Celar AI did not return the officially verified US Signal CEO: $CEO"
           [[ "$CEO" != *Matt*Rosenberg* ]] || fail 'Celar AI returned the known incorrect US Signal CEO answer.'
           jq -e '.trust.authoritativeSourceCount >= 1' "$EVIDENCE_DIR/celar-us-signal-ceo.json" >/dev/null || fail 'US Signal CEO answer did not expose authoritative-source trust evidence.'
+
+          for stability_attempt in $(seq 1 5); do
+            ask_public_fact 'What is the purpose of Project FlowHive?' "$EVIDENCE_DIR/celar-stability-$stability_attempt.json"
+            jq -e '((.result.answer.directConclusion // "") | length) > 0' "$EVIDENCE_DIR/celar-stability-$stability_attempt.json" >/dev/null || fail "Celar AI stability attempt $stability_attempt returned no answer."
+          done
+          echo 'CELAR_AI_STABILITY_UAT=PASSED calls=5 forbiddenHttp=502,503,504'
 
           PORTAL_HTML="$RUNNER_TEMP/systemwide-reliability-test-portal.html"
           FRONTEND_BUNDLE="$RUNNER_TEMP/systemwide-reliability-test-assets.txt"
@@ -821,14 +1073,55 @@ jobs:
           ACTIVE_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_AFTER")"
           [[ "$ACTIVE_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]] || fail 'Active API image does not match the immutable release.'
           [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]] || fail 'Active web image does not match the immutable release.'
-          [[ "$ACTIVE_SOURCE" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Active source marker does not match the merged release.'
+          [[ "$ACTIVE_SOURCE" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Active source marker does not match the authorized release.'
 
           jq -n \
             --arg source "$ACTIVE_SOURCE" \
             --arg apiImage "$ACTIVE_API_IMAGE" \
             --arg webImage "$ACTIVE_WEB_IMAGE" \
             --arg projectId "$PROJECT_ID" \
-            '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",migration093:"applied_and_verified",projectManagementSummary:true,projectIntake:true,opportunityDirectory:true,opportunityDirectoryRole:"ENGINEERING",billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,projectManagerModules:true,projectManagerWorkRegister:true,projectManagerApprovalAccess:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
+            --arg flowHiveRunId "$FLOWHIVE_RUN_ID" \
+            --arg forgePlanId "$PROJECT_FORGE_PLAN_ID" \
+            '{
+              status:"passed",
+              sourceCommit:$source,
+              apiImage:$apiImage,
+              webImage:$webImage,
+              migration086:"applied_and_verified",
+              migration088:"applied_and_verified",
+              migration093:"applied_and_verified",
+              migration094:"applied_and_verified",
+              migration095:"applied_and_verified",
+              migration096:"applied_and_verified",
+              projectManagementSummary:true,
+              projectIntake:true,
+              opportunityDirectory:true,
+              opportunityDirectoryRole:"ENGINEERING",
+              billingSources:true,
+              costAlerts:true,
+              flowHiveEnterprise:true,
+              flowHiveProjectId:$projectId,
+              flowHiveAiPlanner:true,
+              flowHiveAiPlannerRunId:$flowHiveRunId,
+              flowHiveWorkingCopyOnly:true,
+              projectForgeAiPlanner:true,
+              projectForgeReviewPlanId:$forgePlanId,
+              projectForgeReviewOnly:true,
+              planDesignImplementValidateRelease:true,
+              estimatesCompressed:false,
+              celarStabilityCalls:5,
+              forbiddenHttpStatuses:[400,422,502,503,504],
+              auditAuthentication:true,
+              failedLoginAudited:true,
+              logoutAudited:true,
+              presidentOfficiallyVerified:true,
+              usSignalCeoOfficiallyVerified:true,
+              enterpriseResponsiveMarkers:true,
+              projectManagerModules:true,
+              projectManagerWorkRegister:true,
+              projectManagerApprovalAccess:true,
+              productionMutation:false
+            }' > "$EVIDENCE_DIR/uat-summary.json"
           unset COORDINATOR_SESSION TEST_LOGIN_PASSWORD
 
       - name: Run protected-Test assigned-work visibility UAT
@@ -894,8 +1187,8 @@ jobs:
             echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
             echo '- Environment: protected Test only'
             echo '- Target: https://phd-west-test.onenecklab.com'
-            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, and 093: applied and verified' || echo '- Migrations 086, 088, and 093: not completed'
-            [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- System-wide authenticated functional UAT: passed' || echo '- System-wide authenticated functional UAT: not completed'
+            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, 093, 094, 095, and 096: applied and verified' || echo '- Migrations 086, 088, 093, 094, 095, and 096: not completed'
+            [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: passed' || echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: not completed'
             [[ -f "$EVIDENCE_DIR/utilization-role-scoping-uat.json" ]] && echo '- Kevin utilization role-scoping UAT: passed' || echo '- Kevin utilization role-scoping UAT: not completed'
             [[ -f "$EVIDENCE_DIR/rollback.json" ]] && echo '- Application image rollback: completed'
             echo '- Production mutation: none'

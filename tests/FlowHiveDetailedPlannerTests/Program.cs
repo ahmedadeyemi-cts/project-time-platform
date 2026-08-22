@@ -164,6 +164,11 @@ Assert(executable.Single(task => task.WbsNumber == "3.1").DetailedSteps!.Any(val
     "source_backed_implementation_steps_preserved");
 Assert(generated.Notes?.Contains("Generated executable tasks: 10", StringComparison.Ordinal) == true,
     "plan_notes_explain_detailed_task_count");
+Assert((generated.Milestones?.Count ?? 0) >= 2, "work_package_release_milestones_created");
+Assert(generated.Milestones!.All(item => item.CitationIds.Count > 0), "milestone_citations_preserved");
+Assert(generated.Milestones!.All(item => item.PredecessorWbs.StartsWith("5.", StringComparison.Ordinal)), "milestones_follow_release_tasks");
+Assert((generated.Assignments?.Count ?? 0) == executable.Length, "role_resources_populated_for_every_executable_task");
+Assert(generated.Assignments!.All(item => !string.IsNullOrWhiteSpace(item.ResourceDisplayName)), "role_resource_names_populated");
 
 Assert(
     PulseAiPrivateDocumentPipelinePolicy.SupportedExtensions.Contains(".doc", StringComparer.OrdinalIgnoreCase),
@@ -192,5 +197,18 @@ Assert(boundedTask is not null, "legacy_word_bounded_reader_invoked");
 var boundedOutput = await boundedTask!;
 Assert(boundedOutput.Length == 1_024, "legacy_word_retained_output_is_bounded");
 Assert(oversizedReader.EndOfStream, "legacy_word_excess_output_is_fully_drained");
+
+
+var shortWindow = sourcePlan with { ProjectEndDate = sourcePlan.ProjectStartDate!.Value.AddDays(4) };
+var shortGenerated = ProjectFlowHiveDetailedPlanBuilder.Build(shortWindow, privatePlan);
+var shortSchedule = ProjectFlowHiveScheduleEngine.Calculate(shortGenerated);
+Assert(!shortSchedule.Valid, "short_selected_window_reports_overrun");
+Assert(shortSchedule.Issues.Any(issue => issue.Code == "project_end_exceeded"), "project_end_exceeded_is_explicit");
+Assert(shortSchedule.Tasks.Any(task => task.IsCritical && !task.IsSummary), "critical_path_is_identified");
+var normalDurations = generated.Tasks!.Where(task => !task.IsSummary).ToDictionary(task => task.WbsNumber!, task => task.DurationWorkingDays);
+var shortDurations = shortGenerated.Tasks!.Where(task => !task.IsSummary).ToDictionary(task => task.WbsNumber!, task => task.DurationWorkingDays);
+Assert(normalDurations.OrderBy(pair => pair.Key).SequenceEqual(shortDurations.OrderBy(pair => pair.Key)), "selected_window_does_not_compress_estimates");
+Assert(shortGenerated.Tasks!.Where(task => !task.IsSummary).All(task => task.RequiredRoles?.Count > 0), "required_roles_are_structured");
+Assert(shortGenerated.Tasks!.Where(task => !task.IsSummary).All(task => task.OpenQuestions?.Count > 0), "missing_technical_information_becomes_open_questions");
 
 Console.WriteLine("FLOWHIVE_DETAILED_PLANNER_TESTS=PASS");

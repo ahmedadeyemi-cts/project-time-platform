@@ -38,6 +38,98 @@ public static class ProjectPulseUploadStorage
     }
 
     /// <summary>
+    /// Resolves an existing project document against the current shared upload
+    /// mount. Database rows may contain an absolute path written by an older API
+    /// revision, so the durable work-register identity is used to relocate the
+    /// file without trusting an arbitrary path from the database.
+    /// </summary>
+    public static string? ResolveExistingStoredFile(
+        string? storedFilePath,
+        Guid projectId,
+        Guid documentId)
+    {
+        var root = ResolveRoot();
+        if (!Directory.Exists(root)) return null;
+
+        var candidates = new List<string>();
+        var projectFolder = Path.Combine(
+            root,
+            "work-register-documents",
+            projectId.ToString("N"));
+
+        if (!string.IsNullOrWhiteSpace(storedFilePath))
+        {
+            var stored = storedFilePath.Trim();
+            try
+            {
+                var absolute = Path.GetFullPath(stored);
+                if (IsSameOrChild(absolute, root)) candidates.Add(absolute);
+            }
+            catch
+            {
+                // A malformed legacy path is ignored; durable identity candidates
+                // below are still evaluated.
+            }
+
+            var normalized = stored.Replace('\\', '/');
+            const string marker = "/work-register-documents/";
+            var markerIndex = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex >= 0)
+            {
+                var relative = normalized[(markerIndex + 1)..]
+                    .Replace('/', Path.DirectorySeparatorChar);
+                try
+                {
+                    var relocated = Path.GetFullPath(Path.Combine(root, relative));
+                    if (IsSameOrChild(relocated, root)) candidates.Add(relocated);
+                }
+                catch
+                {
+                    // Ignore an invalid relative legacy path.
+                }
+            }
+
+            var fileName = Path.GetFileName(stored);
+            if (!string.IsNullOrWhiteSpace(fileName))
+                candidates.Add(Path.Combine(projectFolder, fileName));
+        }
+
+        if (Directory.Exists(projectFolder))
+        {
+            var prefix = documentId.ToString("N") + "_";
+            try
+            {
+                candidates.AddRange(Directory.EnumerateFiles(
+                    projectFolder,
+                    prefix + "*",
+                    SearchOption.TopDirectoryOnly));
+            }
+            catch
+            {
+                // The caller receives a durable-storage missing response.
+            }
+        }
+
+        foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var fullPath = Path.GetFullPath(candidate);
+                if (!IsSameOrChild(fullPath, root) || !File.Exists(fullPath)) continue;
+                var file = new FileInfo(fullPath);
+                if ((file.Attributes & FileAttributes.ReparsePoint) != 0 || file.Length <= 0) continue;
+                return fullPath;
+            }
+            catch
+            {
+                // Continue to the next identity-derived candidate.
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Evaluates the production storage contract without returning the configured
     /// path. A runtime cannot prove that a mount is shared across replicas, so an
     /// operator must explicitly attest that infrastructure has mounted shared,

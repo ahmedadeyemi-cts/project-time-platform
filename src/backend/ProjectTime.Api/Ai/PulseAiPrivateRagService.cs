@@ -294,9 +294,9 @@ public sealed class PulseAiPrivateRagService
         }
         var projectCode = Clean(request.ProjectCode, 120);
         var projectName = Clean(request.ProjectName, 300);
-        if (projectCode.Length == 0 && projectName.Length == 0)
+        if (!request.ProjectId.HasValue && projectCode.Length == 0 && projectName.Length == 0)
         {
-            return Blocked(feature, purpose, "project_context_required", "An authorized project code or name is required.");
+            return Blocked(feature, purpose, "project_context_required", "An exact authorized project identity, project code, or project name is required.");
         }
         var requestedOutcome = Clean(request.RequestedOutcome, 6_000);
         var question = $"""
@@ -313,9 +313,9 @@ public sealed class PulseAiPrivateRagService
             feature: feature,
             purpose: purpose,
             question: question,
-            projectId: null,
-            taskId: null,
-            assignmentId: null,
+            projectId: request.ProjectId,
+            taskId: request.TaskId,
+            assignmentId: request.AssignmentId,
             projectCode: projectCode,
             projectName: projectName,
             requireTimesheetFlag: false,
@@ -1273,7 +1273,22 @@ public sealed class PulseAiPrivateRagService
                 Risks = List(task.Risks, 40, 2_000),
                 OpenQuestions = List(task.OpenQuestions, 40, 2_000),
                 EstimatedHours = task.EstimatedHours is null ? null : Math.Clamp(task.EstimatedHours.Value, 0.1m, 4_000m),
-                Priority = PlanningPriority(task.Priority)
+                Priority = PlanningPriority(task.Priority),
+                Products = List(task.Products, 40, 1_500),
+                Platforms = List(task.Platforms, 40, 1_500),
+                Manufacturers = List(task.Manufacturers, 40, 1_500),
+                Models = List(task.Models, 40, 1_500),
+                SoftwareVersions = List(task.SoftwareVersions, 40, 1_500),
+                FirmwareVersions = List(task.FirmwareVersions, 40, 1_500),
+                LicensingRequirements = List(task.LicensingRequirements, 40, 2_000),
+                Quantities = List(task.Quantities, 40, 1_500),
+                Tools = List(task.Tools, 40, 1_500),
+                Systems = List(task.Systems, 40, 1_500),
+                Interfaces = List(task.Interfaces, 40, 1_500),
+                IntegrationPoints = List(task.IntegrationPoints, 40, 2_000),
+                AccessRequirements = List(task.AccessRequirements, 40, 2_000),
+                RollbackSteps = List(task.RollbackSteps, 40, 2_000),
+                Assumptions = List(task.Assumptions, 40, 2_000)
             })
             .ToArray();
 

@@ -63,6 +63,8 @@ jobs:
           RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
           ASSIGNED_WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
+          SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
           git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
@@ -152,8 +154,35 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files" -o "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"
 
-          git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
-          if cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
+          git fetch --no-tags origin main
+          CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
+          [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
+          git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
+          if [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
+            test -s "$SHARED_PLANNING_MANIFEST" || fail 'The shared project-document planning release manifest is missing.'
+            grep -Ev '^[[:space:]]*(#|$)' "$SHARED_PLANNING_MANIFEST" | LC_ALL=C sort -u > "$RUNNER_TEMP/shared-project-document-planning-files"
+            cmp -s "$SHARED_PLANNING_MANIFEST" "$RUNNER_TEMP/shared-project-document-planning-files"               || fail 'The shared project-document planning release manifest must be sorted, unique, and comment-free.'
+            while IFS= read -r required_file; do
+              test -f "$required_file" || fail "Governed shared-planning artifact is missing: $required_file"
+            done < "$RUNNER_TEMP/shared-project-document-planning-files"
+            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/shared-project-document-planning-files" || {
+              echo 'The clean FlowHive/Forge PR differs from its exact governed release manifest.' >&2
+              diff -u "$RUNNER_TEMP/shared-project-document-planning-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              exit 1
+            }
+            if grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64|one-time-flowhive-clean)' "$RUNNER_TEMP/actual-release-files"; then
+              fail 'Temporary recovery or publisher artifacts are forbidden from the clean release.'
+            fi
+            echo 'EXACT_SHARED_PROJECT_DOCUMENT_PLANNING_SCOPE=PASSED'
+          elif [[ "${{ github.event.pull_request.number }}" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
+            grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-pr734-governed-release-files.txt | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-pr734-files"
+            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/flowhive-pr734-files" || {
+              echo 'PR #734 governed release scope differs from its exact reviewed manifest.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-pr734-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              exit 1
+            }
+            echo 'FLOWHIVE_PR734_GOVERNED_RELEASE_SCOPE=PASSED'
+          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
             echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-assigned-work-repair-files"; then
             echo 'EXACT_ASSIGNED_WORK_REPAIR_SCOPE=PASSED'
@@ -180,20 +209,39 @@ jobs:
 
           grep -Fq 'name: Deploy System-wide Enterprise Reliability and Utilization to Protected Test' "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
-          grep -Fq "if: github.ref == 'refs/heads/main'" "$CONTROLLER"
+          grep -Fq "if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'" "$CONTROLLER"
+          grep -Fq 'release_sha:' "$CONTROLLER"
+          grep -Fq 'release_branch:' "$CONTROLLER"
+          grep -Fq "TARGET_RELEASE_BRANCH: \${{ github.event_name == 'workflow_dispatch' && inputs.release_branch || 'main' }}" "$CONTROLLER"
+          grep -Fq 'Only the authorized FlowHive V2 candidate branch may use pre-merge Protected-Test deployment.' "$CONTROLLER"
           grep -Fq 'environment: test' "$CONTROLLER"
           grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
           grep -Fq 'queue: max' "$CONTROLLER"
           grep -Fq 'cancel-in-progress: false' "$CONTROLLER"
-          TARGET_MARKER='TARGET_RELEASE_COMMIT: $'
-          TARGET_MARKER+='{{ github.sha }}'
+          TARGET_MARKER="TARGET_RELEASE_COMMIT: \${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}"
+          CHECKOUT_MARKER="ref: \${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}"
           grep -Fq "$TARGET_MARKER" "$CONTROLLER"
+          grep -Fq "$CHECKOUT_MARKER" "$CONTROLLER"
           grep -Fq 'https://phd-west-test.onenecklab.com' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_M087_PASSWORD' "$CONTROLLER"
           grep -Fq 'Build immutable API, web, and migration images' "$CONTROLLER"
-          grep -Fq 'Apply and verify Migrations 086, 088, and 093 inside Test private network' "$CONTROLLER"
+          grep -Fq 'Apply and verify Migrations 086, 088, 093, 094, 095, and 096 inside Test private network' "$CONTROLLER"
           grep -Fq 'database/migrations/093_assigned_work_canonical_visibility_repair.sql' "$CONTROLLER"
           grep -Fq 'MIGRATION_093=APPLIED_AND_VERIFIED' "$CONTROLLER"
+          grep -Fq 'MIGRATION_094=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_096=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq '096_project_planning_document_authority.sql' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs' "$CONTROLLER"
+          grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' "$CONTROLLER"
+          grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' "$CONTROLLER"
+          grep -Fq 'node tests/validate-shared-project-document-planning.mjs' "$CONTROLLER"
+          grep -Fq 'FLOWHIVE_AI_PLANNER_UAT=PASSED' "$CONTROLLER"
+          grep -Fq 'PROJECT_FORGE_AI_PLANNER_UAT=PASSED' "$CONTROLLER"
+          grep -Fq 'CELAR_AI_STABILITY_UAT=PASSED' "$CONTROLLER"
+          grep -Fq 'migration094:"applied_and_verified"' "$CONTROLLER"
+          grep -Fq 'migration095:"applied_and_verified"' "$CONTROLLER"
+          grep -Fq 'migration096:"applied_and_verified"' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
           grep -Fq 'Run protected-Test authenticated functional UAT' "$CONTROLLER"
@@ -228,6 +276,8 @@ jobs:
           echo 'UTILIZATION_ROLE_SCOPING_SOURCE=PASSED'
           echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASSED'
           echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=PASSED'
-          echo 'MIGRATIONS_086_088_093=AUTHORIZED_TEST_APPLY_AND_VERIFY'
+          echo 'MIGRATIONS_086_088_093_094_095_096=AUTHORIZED_TEST_APPLY_AND_VERIFY'
+          echo 'SHARED_PROJECT_DOCUMENT_PLANNING=AUTHORIZED_TEST_RELEASE'
+          echo 'FLOWHIVE_FORGE_CELAR_AUTHENTICATED_UAT=REQUIRED'
           echo 'PRODUCTION_MUTATION=NONE'
           echo 'ORACLE_RUNTIME_MUTATION=NONE'

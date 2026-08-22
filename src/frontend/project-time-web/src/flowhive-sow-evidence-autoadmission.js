@@ -288,55 +288,7 @@ async function readJsonBody(response) {
   return response.clone().json().catch(() => null);
 }
 
-if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
-  const nativeFetch = window.fetch.bind(window);
-
-  window.fetch = async (input, init = {}) => {
-    const url = urlOf(input);
-    const method = methodOf(input, init);
-    const sameOrigin = url?.origin === window.location.origin;
-    if (sameOrigin && method === 'POST' && PREPARE_PATH.test(url.pathname)) {
-      return sendPrepareRequest(nativeFetch, input, init);
-    }
-
-    const match = sameOrigin ? url.pathname.match(ENTERPRISE_PATH) : null;
-    if (!match || method !== 'GET') return nativeFetch(input, init);
-
-    let response = await nativeFetch(cloneInput(input), init);
-    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response;
-
-    let rawBody = await readJsonBody(response);
-    if (!rawBody || !Array.isArray(rawBody.sowEvidence)) return response;
-    let body = normalizeEvidenceBody(rawBody);
-    const mayPrepare = Boolean(body?.access?.canAdministerPlanner || body?.access?.canManage);
-    if (!mayPrepare) return responseWithJson(response, body);
-
-    // Admission is intentionally based on raw project-scoped evidence rather
-    // than the normalized display list. A replacement SOW that reuses an older
-    // filename therefore receives its own private processing request.
-    const projectId = match[1];
-    const candidates = queueCandidatesFromEvidence(rawBody.sowEvidence, 6);
-    if (candidates.length === 0) return responseWithJson(response, body);
-
-    const results = await Promise.all(candidates.map((item) => queueEvidence(nativeFetch, projectId, item)));
-    const queued = results.filter((result) => result.succeeded && result.body?.queued !== false).length;
-    if (queued === 0) return responseWithJson(response, body);
-
-    window.dispatchEvent(new CustomEvent('pulse:flowhive-sow-evidence-admitted', {
-      detail: {
-        projectId,
-        queuedDocumentCount: queued,
-        privateProcessingRequested: true,
-        rawDocumentSentExternally: false
-      }
-    }));
-
-    response = await nativeFetch(cloneInput(input), init);
-    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response;
-    rawBody = await readJsonBody(response);
-    body = normalizeEvidenceBody(rawBody);
-    return body ? responseWithJson(response, body) : response;
-  };
-
-  window[INSTALL_MARKER] = true;
-}
+// FlowHive private evidence admission is now owned by the server-side AI Planner
+// operation. This module retains pure normalization helpers for compatibility
+// and regression tests, but it no longer intercepts the browser's global fetch.
+export const serverOwnedAiPlannerAdmission = true;

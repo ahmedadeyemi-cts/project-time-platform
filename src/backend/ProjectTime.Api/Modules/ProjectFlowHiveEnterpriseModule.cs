@@ -64,11 +64,13 @@ internal static class ProjectFlowHiveEnterpriseModule
             (Func<Guid, Guid, ProjectFlowHiveCustomerShareRevokeRequest, HttpContext, CancellationToken, Task<IResult>>)RevokeCustomerShareAsync);
         app.MapPost(
             "/api/project-flowhive/projects/{projectId:guid}/sow-evidence/{documentId:guid}/prepare",
-            (Func<Guid, Guid, ProjectFlowHiveSowEvidencePrepareRequest, HttpContext, CancellationToken, Task<IResult>>)PrepareSowEvidenceAsync);
+            (Func<Guid, Guid, ProjectFlowHiveSowEvidencePrepareRequest?, HttpContext, CancellationToken, Task<IResult>>)PrepareSowEvidenceAsync);
         app.MapGet(
                 "/api/project-flowhive/share/{token}",
                 (Func<string, HttpContext, CancellationToken, Task<IResult>>)ViewCustomerShareAsync)
             .AllowAnonymous();
+
+        app.MapProjectFlowHiveAiPlannerOrchestrationEndpoints();
 
         return app;
     }
@@ -631,10 +633,11 @@ internal static class ProjectFlowHiveEnterpriseModule
     private static async Task<IResult> PrepareSowEvidenceAsync(
         Guid projectId,
         Guid documentId,
-        ProjectFlowHiveSowEvidencePrepareRequest request,
+        ProjectFlowHiveSowEvidencePrepareRequest? request,
         HttpContext context,
         CancellationToken cancellationToken)
     {
+        request ??= new ProjectFlowHiveSowEvidencePrepareRequest(false, null, null);
         var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.AdministerPlanner, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
@@ -642,16 +645,25 @@ internal static class ProjectFlowHiveEnterpriseModule
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         const string loadSql = """
-            SELECT COALESCE(document_category,''),COALESCE(pulse_ai_processing_status,''),
-                   pulse_ai_active_version_id,COALESCE(original_file_name,'')
-            FROM project_intake_documents
-            WHERE project_intake_document_id=@document_id AND project_id=@project_id AND is_active=TRUE
-            FOR UPDATE;
+            SELECT COALESCE(document.document_category,''),COALESCE(document.pulse_ai_processing_status,''),
+                   document.pulse_ai_active_version_id,COALESCE(document.original_file_name,''),
+                   COALESCE(source.document_type,''),COALESCE(source.upload_source,''),
+                   COALESCE(source.stored_file_path,'')
+            FROM project_intake_documents document
+            LEFT JOIN work_register_documents source
+              ON source.work_register_document_id=document.work_register_document_id
+            WHERE document.project_intake_document_id=@document_id
+              AND document.project_id=@project_id
+              AND document.is_active=TRUE
+            FOR UPDATE OF document;
             """;
         string category;
         string processing;
         Guid? activeVersion;
         string fileName;
+        string sourceDocumentType;
+        string sourceUploadSource;
+        string sourceStoredPath;
         await using (var load = new NpgsqlCommand(loadSql, connection, transaction))
         {
             load.Parameters.AddWithValue("document_id", documentId);
@@ -663,14 +675,27 @@ internal static class ProjectFlowHiveEnterpriseModule
             processing = reader.GetString(1);
             activeVersion = reader.IsDBNull(2) ? null : reader.GetGuid(2);
             fileName = reader.GetString(3);
+            sourceDocumentType = reader.GetString(4);
+            sourceUploadSource = reader.GetString(5);
+            sourceStoredPath = reader.GetString(6);
         }
 
-        var looksLikeSow = category.Equals("sow", StringComparison.OrdinalIgnoreCase)
+        var sourceType = sourceDocumentType.Trim().ToLowerInvariant();
+        var authoritativeWorkRegisterSow = sourceType is "sow" or "statement of work" or "statement_of_work"
+            && sourceUploadSource.Equals("local_file", StringComparison.OrdinalIgnoreCase)
+            && sourceStoredPath.Length > 0;
+        var looksLikeSow = authoritativeWorkRegisterSow
+            || category.Equals("sow", StringComparison.OrdinalIgnoreCase)
             || category.Equals("statement_of_work", StringComparison.OrdinalIgnoreCase)
             || fileName.Contains("statement of work", StringComparison.OrdinalIgnoreCase)
             || System.Text.RegularExpressions.Regex.IsMatch(fileName, @"(^|[^a-z])sow([^a-z]|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (!looksLikeSow)
-            return Validation("Only a document identified as a Statement of Work can be prepared as FlowHive SOW evidence.");
+            return Results.Conflict(new
+            {
+                status = "flowhive_authoritative_sow_not_resolved",
+                message = "The selected project document is not the active authoritative Work Register Statement of Work.",
+                stateChanged = false
+            });
 
         await using (var normalize = new NpgsqlCommand("""
             UPDATE project_intake_documents
@@ -1274,27 +1299,52 @@ internal static class ProjectFlowHiveEnterpriseModule
         {
             await using var command = new NpgsqlCommand("""
                 SELECT document.project_intake_document_id,COALESCE(document.original_file_name,''),
-                       COALESCE(document.document_category,''),COALESCE(document.pulse_ai_processing_status,''),
+                       CASE
+                           WHEN LOWER(COALESCE(work_register.document_type,'')) IN ('sow','statement of work','statement_of_work') THEN 'sow'
+                           WHEN LOWER(COALESCE(work_register.document_type,'')) IN ('gsd','general solution design','general_solution_design','global solution design','global_solution_design') THEN 'gsd'
+                           ELSE COALESCE(document.document_category,'')
+                       END AS effective_category,
+                       COALESCE(document.pulse_ai_processing_status,''),
                        COALESCE(document.engineering_visible,FALSE),document.pulse_ai_active_version_id,
                        COALESCE(version.authority_status,''),COALESCE(version.index_status,''),
                        COUNT(chunk.chunk_id) FILTER(WHERE chunk.is_active=TRUE AND chunk.index_status IN ('lexical_ready','embedding_ready','ready'))::int,
                        COUNT(chunk.chunk_id) FILTER(WHERE chunk.is_active=TRUE AND chunk.index_status IN ('lexical_ready','embedding_ready','ready')
                            AND (chunk.section_title ILIKE '%scope%' OR chunk.section_title ILIKE '%service%'
-                                OR chunk.citation_anchor ILIKE '%scope%' OR chunk.citation_anchor ILIKE '%service%'))::int,
+                                OR chunk.section_title ILIKE '%deliverable%'
+                                OR chunk.citation_anchor ILIKE '%scope%' OR chunk.citation_anchor ILIKE '%service%'
+                                OR chunk.citation_anchor ILIKE '%deliverable%'))::int,
                        COALESCE(version.document_version,'')
                 FROM project_intake_documents document
+                LEFT JOIN work_register_documents work_register
+                  ON work_register.work_register_document_id=document.work_register_document_id
                 LEFT JOIN pulse_ai_document_versions version
                   ON version.pulse_ai_document_version_id=document.pulse_ai_active_version_id
                 LEFT JOIN pulse_ai_document_chunks chunk
                   ON chunk.pulse_ai_document_version_id=version.pulse_ai_document_version_id
                 WHERE document.project_id=@project_id AND document.is_active=TRUE
-                  AND (LOWER(COALESCE(document.document_category,'')) IN ('sow','statement_of_work','gsd','global_solution_design')
-                       OR document.original_file_name ILIKE '%statement%of%work%'
-                       OR document.original_file_name ~* '(^|[^a-z])sow([^a-z]|$)')
+                  AND (
+                      LOWER(COALESCE(document.document_category,'')) IN ('sow','statement_of_work','gsd','general_solution_design','global_solution_design')
+                      OR LOWER(COALESCE(work_register.document_type,'')) IN (
+                          'sow','statement of work','statement_of_work',
+                          'gsd','general solution design','general_solution_design','global solution design','global_solution_design')
+                  )
+                  AND (
+                      work_register.work_register_document_id IS NULL
+                      OR (
+                          COALESCE(work_register.status,'active')='active'
+                          AND work_register.upload_source='local_file'
+                          AND COALESCE(work_register.stored_file_path,'')<>''
+                      )
+                  )
                 GROUP BY document.project_intake_document_id,document.original_file_name,document.document_category,
                          document.pulse_ai_processing_status,document.engineering_visible,
-                         document.pulse_ai_active_version_id,version.authority_status,version.index_status,version.document_version
-                ORDER BY CASE WHEN LOWER(COALESCE(document.document_category,'')) IN ('sow','statement_of_work') THEN 0 ELSE 1 END,
+                         document.pulse_ai_active_version_id,version.authority_status,version.index_status,version.document_version,
+                         work_register.document_type,work_register.work_register_document_id,work_register.status,
+                         work_register.upload_source,work_register.stored_file_path
+                ORDER BY CASE
+                             WHEN LOWER(COALESCE(work_register.document_type,document.document_category,'')) IN ('sow','statement of work','statement_of_work') THEN 0
+                             ELSE 1
+                         END,
                          document.original_file_name;
                 """, connection);
             command.Parameters.AddWithValue("project_id", projectId);

@@ -7,7 +7,7 @@ ROLLBACK="$ROOT/database/rollback/095_project_planning_collaboration_access_roll
 RESOLVER="$ROOT/src/backend/ProjectTime.Api/Modules/ProjectPlanningAccessResolver.cs"
 FLOWHIVE="$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs"
 FORGE="$ROOT/src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs"
-DEPLOYMENT="$ROOT/.github/workflows/project-planning-collaboration-deploy-test.yml"
+DEPLOYMENT="$ROOT/.github/workflows/projectpulse-deploy-test.yml"
 RUNNER="$ROOT/scripts/release-test/run-project-planning-collaboration-migration-job.sh"
 
 for file in "$MIGRATION" "$ROLLBACK" "$RESOLVER" "$FLOWHIVE" "$FORGE" "$DEPLOYMENT" "$RUNNER"; do
@@ -36,7 +36,7 @@ grep -Fq 'RestrictNewCollaboratorPlan' "$FORGE"
 grep -Fq 'FlowHiveAccessRequirement.EditPlanner' "$FLOWHIVE"
 grep -Fq 'FlowHiveAccessRequirement.CustomerShare' "$FLOWHIVE"
 grep -Fq '095_project_planning_collaboration_access.sql' "$DEPLOYMENT"
-grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' "$DEPLOYMENT"
+grep -Fq 'Apply and verify Migrations 086, 088, 093, 094, 095, and 096 inside Test private network' "$DEPLOYMENT"
 grep -Fq '095-project-planning-collaboration' "$RUNNER"
 grep -Fq 'Rollback 095 refused: project planning collaborator assignments exist.' "$ROLLBACK"
 grep -Fq 'immutable project planning collaboration audit evidence exists' "$ROLLBACK"

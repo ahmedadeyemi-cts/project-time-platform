@@ -28,6 +28,7 @@ const governedMigrationRunner = read('scripts/release-test/run-systemwide-enterp
 [
   'project_planning_collaborators',
   'project_planning_collaboration_audit_events',
+  'project_flowhive_ai_planner_runs',
   'EDIT_FLOWHIVE_PLANNER_066',
   'EDIT_PROJECT_FORGE_REVIEW_PLAN_033',
   'VIEW_ASSOCIATED_FLOWHIVE_PROJECT_066',

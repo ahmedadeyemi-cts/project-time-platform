@@ -15,12 +15,8 @@ DATABASE_NAME="${PROJECTPULSE_TEST_DATABASE_NAME:-}"
 DATABASE_USER="${PROJECTPULSE_TEST_DATABASE_USER:-}"
 CONTROL_SHA="${RELIABILITY_CONTROL_SHA:-}"
 RELEASE_COMMIT="${RELIABILITY_RELEASE_COMMIT:-}"
-MIGRATION_SCOPE="${RELIABILITY_MIGRATION_SCOPE:-systemwide-enterprise-reliability-test}"
+MIGRATION_SCOPE="${RELIABILITY_MIGRATION_SCOPE:-project-planning-document-authority-test}"
 RUN_SCOPE="${GITHUB_RUN_ID:-unknown}-${GITHUB_RUN_ATTEMPT:-unknown}"
-FLOWHIVE_AUTHORITY_MIGRATION_SQL="database/migrations/094_flowhive_canonical_sow_authority.sql"
-PROJECT_PLANNING_MIGRATION_SQL="database/migrations/095_project_planning_collaboration_access.sql"
-PROJECT_PLANNING_AUTHORITY_MIGRATION_SQL="database/migrations/096_project_planning_document_authority.sql"
-PROJECTPULSE_RELEASE_ROOT="${PROJECTPULSE_RELEASE_ROOT:-$(pwd -P)}"
 
 fail() {
   echo "ERROR: $*" >&2
@@ -34,9 +30,6 @@ normalize() {
   esac
 }
 
-[[ -s "$PROJECTPULSE_RELEASE_ROOT/$FLOWHIVE_AUTHORITY_MIGRATION_SQL" ]] || fail "Migration 094 SQL artifact is missing."
-[[ -s "$PROJECTPULSE_RELEASE_ROOT/$PROJECT_PLANNING_MIGRATION_SQL" ]] || fail "Migration 095 SQL artifact is missing."
-[[ -s "$PROJECTPULSE_RELEASE_ROOT/$PROJECT_PLANNING_AUTHORITY_MIGRATION_SQL" ]] || fail "Migration 096 SQL artifact is missing."
 [[ -n "$RESOURCE_GROUP" ]] || fail "AZURE_RESOURCE_GROUP is not configured."
 [[ -n "$API_APP" ]] || fail "AZURE_API_APP is not configured."
 [[ -n "$ACR_NAME" ]] || fail "AZURE_ACR_NAME is not configured."
@@ -147,7 +140,7 @@ validate_job_ownership() {
       (.tags["projectpulse-release"] == $release) and
       (.tags["projectpulse-control"] == $control) and
       (.tags["projectpulse-run"] == $runScope) and
-      (.tags["projectpulse-migration"] == "086-088-093-094-095-096") and
+      (.tags["projectpulse-migration"] == "096-project-planning-document-authority") and
       (.identity.type == "UserAssigned") and
       ((.identity.userAssignedIdentities | keys | length) == 1) and
       (((.identity.userAssignedIdentities | keys[0]) | ascii_downcase) == ($identity | ascii_downcase)) and
@@ -256,7 +249,7 @@ jq -n \
       "projectpulse-release": $release,
       "projectpulse-control": $control,
       "projectpulse-run": $runScope,
-      "projectpulse-migration": "086-088-093-094-095-096"
+      "projectpulse-migration": "096-project-planning-document-authority"
     },
     properties: {
       environmentId: $environmentId,
@@ -312,15 +305,13 @@ START_ATTEMPTED=1
 EXECUTION_NAME="$(az containerapp job start -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query name -o tsv --only-show-errors)"
 normalize "$EXECUTION_NAME" >/dev/null || fail "Azure did not return the migration execution name."
 
-CORE_MIGRATIONS_SUCCEEDED=0
 for _ in $(seq 1 180); do
   STATUS="$(az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
     --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" -o tsv --only-show-errors)"
   case "$STATUS" in
     Succeeded)
       echo "SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=SUCCEEDED"
-      CORE_MIGRATIONS_SUCCEEDED=1
-      break
+      exit 0
       ;;
     Failed|Stopped|Canceled|Cancelled|Degraded)
       echo "SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=$STATUS" >&2
@@ -330,20 +321,6 @@ for _ in $(seq 1 180); do
   sleep 5
 done
 
-if (( CORE_MIGRATIONS_SUCCEEDED != 1 )); then
-  az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
-    --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 250 --only-show-errors >&2 || true
-  fail "The protected Test system-wide reliability migration job did not succeed."
-fi
-
-PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \
-  bash scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
-echo 'MIGRATION_094=APPLIED_AND_VERIFIED'
-
-PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \
-  bash scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh
-echo 'MIGRATION_095=APPLIED_AND_VERIFIED'
-
-PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \
-  bash scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
-echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
+az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+  --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 250 --only-show-errors >&2 || true
+fail "The protected Test system-wide reliability migration job did not succeed."

@@ -112,7 +112,7 @@ rejectText(rollback, 'DROP COLUMN IF EXISTS account_executive_user_id', 'destruc
 
 for (const marker of [
   'SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=SUCCEEDED',
-  'projectpulse-migration"] == "086-088-093"',
+  'projectpulse-migration"] == "086-088-093-094-095-096"',
   'main-db-password',
   'PROJECTPULSE_ENVIRONMENT'
 ]) requireText(migrationRunner, marker, 'protected Test private-network migration runner');
@@ -120,7 +120,7 @@ for (const marker of [
   'environment: test',
   'group: projectpulse-deploy-test',
   'queue: max',
-  'Migrations 086, 088, and 093',
+  'Migrations 086, 088, 093, 094, 095, and 096',
   'PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true',
   'Project Management summary',
   'FlowHive enterprise workspace',
@@ -128,6 +128,12 @@ for (const marker of [
   'Run protected-Test utilization role-scoping UAT',
   'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSHOT_V1',
   'migration093:"applied_and_verified"',
+  'migration094:"applied_and_verified"',
+  'migration095:"applied_and_verified"',
+  'migration096:"applied_and_verified"',
+  'FLOWHIVE_AI_PLANNER_UAT=PASSED',
+  'PROJECT_FORGE_AI_PLANNER_UAT=PASSED',
+  'CELAR_AI_STABILITY_UAT=PASSED',
   'Who is the current President of the United States?',
   'Who is the CEO of US Signal?',
   'Production mutation: none'
@@ -189,11 +195,11 @@ if (!auditEvents.some((event) =>
 }
 
 const authGetStart = deployment.indexOf('          auth_get() {');
-const authPostStart = deployment.indexOf('          auth_post() {', authGetStart);
+const authPostStart = deployment.indexOf('          auth_post_as() {', authGetStart);
 const requireGetStart = deployment.indexOf('          require_get() {', authPostStart);
 const firstRequiredGet = deployment.indexOf("          require_get 'Project Management summary'", requireGetStart);
 if (authGetStart < 0 || authPostStart < 0 || requireGetStart < 0 || firstRequiredGet < 0) {
-  throw new Error('Protected-Test authenticated GET UAT helpers are incomplete.');
+  throw new Error('Protected-Test authenticated GET and scoped POST UAT helpers are incomplete.');
 }
 const authGet = deployment.slice(authGetStart, authPostStart);
 const requireGet = deployment.slice(requireGetStart, firstRequiredGet);

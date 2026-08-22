@@ -7,6 +7,9 @@ on:
       - 'database/migrations/095_project_planning_collaboration_access.sql'
       - 'database/rollback/095_project_planning_collaboration_access_rollback.sql'
       - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAccessResolver.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningCollaborationModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs'
@@ -20,6 +23,7 @@ on:
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'tests/test-project-planning-collaboration-migration-095.sh'
       - 'tests/validate-project-planning-collaboration-access.mjs'
+      - 'tests/validate-shared-project-document-planning.mjs'
       - '.github/workflows/project-planning-collaboration-ci.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
   workflow_dispatch:
@@ -57,6 +61,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-shared-project-document-planning.mjs
           bash tests/test-project-planning-collaboration-migration-095.sh
           (
             cd src/frontend/project-time-web

@@ -325,7 +325,10 @@ public sealed class CelarAiEnterprisePlatformService
                     ProjectName: projectName,
                     RequestedOutcome: request.RequestedOutcome,
                     DetailLevel: request.DetailLevel ?? "comprehensive",
-                    FeatureCode: CelarAiCapabilityCatalog.SowGsdPlanning),
+                    FeatureCode: CelarAiCapabilityCatalog.SowGsdPlanning,
+                    ProjectId: request.ProjectId,
+                    TaskId: request.TaskId,
+                    AssignmentId: request.AssignmentId),
                 cancellationToken);
         }
         var planningCapability = ResolveCapability(mode, request);
@@ -337,7 +340,10 @@ public sealed class CelarAiEnterprisePlatformService
                 ProjectName: projectName,
                 RequestedOutcome: request.RequestedOutcome,
                 DetailLevel: request.DetailLevel ?? "comprehensive",
-                FeatureCode: planningCapability),
+                FeatureCode: planningCapability,
+                ProjectId: request.ProjectId,
+                TaskId: request.TaskId,
+                AssignmentId: request.AssignmentId),
             cancellationToken);
     }
 

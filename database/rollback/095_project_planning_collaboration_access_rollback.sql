@@ -2,6 +2,15 @@
 -- Refuses to erase configured project collaborators or append-only evidence.
 
 BEGIN;
+DO $projectpulse095_flowhive_run_guard$
+BEGIN
+    IF to_regclass('public.project_flowhive_ai_planner_runs') IS NOT NULL
+       AND EXISTS(SELECT 1 FROM project_flowhive_ai_planner_runs) THEN
+        RAISE EXCEPTION 'Rollback 095 refused: durable FlowHive AI Planner operation evidence exists.';
+    END IF;
+END;
+$projectpulse095_flowhive_run_guard$;
+
 
 DO $projectpulse095_rollback_guard$
 BEGIN
@@ -43,6 +52,7 @@ DROP FUNCTION IF EXISTS projectpulse095_audit_planning_collaborator();
 DROP FUNCTION IF EXISTS projectpulse095_touch_planning_collaborator();
 
 DROP TABLE IF EXISTS project_planning_collaboration_audit_events;
+DROP TABLE IF EXISTS project_flowhive_ai_planner_runs;
 DROP TABLE IF EXISTS project_planning_collaborators;
 DROP TABLE IF EXISTS project_planning_095_role_grants;
 DROP TABLE IF EXISTS project_planning_095_permissions_created;

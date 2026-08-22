@@ -20,7 +20,6 @@ builder.Services
     .ConfigurePrimaryHttpMessageHandler(CrmErpIntegrationModule.CreateSecureHttpHandler);
 
 var app = builder.Build();
-
 // This must remain the first middleware. Candidate revisions are closed before
 // authentication, View-As, module middleware, or any application endpoint can run.
 app.UseProjectPulseAiCandidateRequestFence();
@@ -194,6 +193,7 @@ app.Use(async (context, next) =>
 app.UseAdminAuditTelemetry();
 app.UseProjectPulseSecurityHardening();
 app.UseWorkRegisterAuthorization();
+app.UseMiddleware<ProjectTime.Api.Modules.CelarAiTransientFailureMiddleware>();
 
 
 
@@ -6088,7 +6088,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         return "";
     }
 
-    
+
 
 
 
@@ -6702,7 +6702,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         return rows.Take(25).ToList();
     }
 
-    
+
     /* 055D_4D_STANDARD_SELL_SKU_PRICING_START */
     static List<object> ExtractStandardSellSkuPricingRows(
         Dictionary<string, Dictionary<(int Row, int Col), string>> workbook,
@@ -6937,7 +6937,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
         return tasks;
     }
 
-    
+
     /* 055D_4C_STANDARD_GSD_PHASE_TASK_REPAIR_START */
     static decimal FindNumberNearLabel(Dictionary<(int Row, int Col), string> sheet, int maxRows, params string[] labels)
     {
@@ -9096,12 +9096,14 @@ app.MapGet("/api/work-register/projects/documents/{documentId:guid}/download", a
     var storedFilePath = "";
     var originalFileName = "document";
     var contentType = "application/octet-stream";
+    var documentProjectId = Guid.Empty;
 
     await using (var command = new NpgsqlCommand("""
         SELECT
             COALESCE(stored_file_path, ''),
             COALESCE(original_file_name, document_name, 'document'),
-            COALESCE(content_type, 'application/octet-stream')
+            COALESCE(content_type, 'application/octet-stream'),
+            project_id
         FROM work_register_documents
         WHERE work_register_document_id = @document_id
           AND status = 'active'
@@ -9115,6 +9117,7 @@ app.MapGet("/api/work-register/projects/documents/{documentId:guid}/download", a
             storedFilePath = reader.GetString(0);
             originalFileName = reader.GetString(1);
             contentType = reader.GetString(2);
+            documentProjectId = reader.GetGuid(3);
         }
     }
 
@@ -9151,13 +9154,27 @@ app.MapGet("/api/work-register/projects/documents/{documentId:guid}/download", a
         return Results.NotFound(new { status = "document_not_found", message = "Document was not found or is archived." });
     }
 
-    if (string.IsNullOrWhiteSpace(storedFilePath) || !System.IO.File.Exists(storedFilePath))
+    var resolvedStoredFilePath = ProjectPulseUploadStorage.ResolveExistingStoredFile(
+        storedFilePath,
+        documentProjectId,
+        documentId);
+    if (string.IsNullOrWhiteSpace(resolvedStoredFilePath))
     {
-        return Results.NotFound(new { status = "stored_file_not_found", message = "The stored document file could not be found on the server." });
+        var storage = ProjectPulseUploadStorage.InspectProductionReadiness();
+        return Results.NotFound(new
+        {
+            status = "stored_file_not_found",
+            message = "The project document is registered, but its durable file is not available on the current shared upload mount.",
+            documentId,
+            projectId = documentProjectId == Guid.Empty ? null : documentProjectId,
+            storageRootFingerprint = storage.RootFingerprint,
+            storageReady = storage.ProductionReady,
+            blockers = storage.Blockers
+        });
     }
 
     return Results.File(
-        path: storedFilePath,
+        path: resolvedStoredFilePath,
         contentType: string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
         fileDownloadName: string.IsNullOrWhiteSpace(originalFileName) ? "document" : originalFileName,
         enableRangeProcessing: true
