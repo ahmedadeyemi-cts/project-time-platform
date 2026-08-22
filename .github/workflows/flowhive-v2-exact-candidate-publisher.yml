@@ -120,3 +120,5 @@ jobs:
           git push origin "$candidate_commit:refs/heads/$TARGET_BRANCH"
           printf 'CANDIDATE_COMMIT=%s\nCANDIDATE_TREE=%s\n' "$candidate_commit" "$actual_tree"
           echo 'PRODUCTION_MUTATION=NONE'
+
+# exact sealed transport trigger 2026-08-22
