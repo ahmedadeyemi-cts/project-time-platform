@@ -1,0 +1,140 @@
+name: Validate Shared FlowHive and Project Forge Document Planning
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/shared-project-document-planning-ci.yml'
+      - 'database/migrations/094_flowhive_canonical_sow_authority.sql'
+      - 'database/migrations/095_project_planning_collaboration_access.sql'
+      - 'database/migrations/096_project_planning_document_authority.sql'
+      - 'database/rollback/096_project_planning_document_authority_rollback.sql'
+      - 'scripts/release-test/**'
+      - 'src/backend/ProjectTime.Api/Ai/**'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHive*'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectForge*'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanning*'
+      - 'src/frontend/project-time-web/src/ProjectFlowHive*'
+      - 'src/frontend/project-time-web/src/ProjectForge*'
+      - 'src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js'
+      - 'src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
+      - 'tests/FlowHiveDetailedPlannerTests/**'
+      - 'tests/FlowHiveSowFreshnessTests/**'
+      - 'tests/test-project-planning-document-authority-migration-096.sh'
+      - 'tests/validate-shared-project-document-planning.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-project-document-planning-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate shared project-document planning
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Require one project-scoped document authority
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+          test -s database/migrations/096_project_planning_document_authority.sql
+          test -s database/rollback/096_project_planning_document_authority_rollback.sql
+          test -s tests/test-project-planning-document-authority-migration-096.sh
+          test -s tests/validate-shared-project-document-planning.mjs
+
+          grep -Fq 'ProjectPlanningDocumentResolver' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs
+          grep -Fq 'ProjectPlanningDocumentResolver' src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs
+          grep -Fq 'ProjectPlanningAiOrchestrator' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs
+          grep -Fq 'ProjectPlanningAiOrchestrator' src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs
+
+          grep -Fq 'projectId' src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          grep -Fq 'DocumentId' src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          grep -Fq 'statement_of_work' src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          grep -Eiq '\bgsd\b|general solution design' src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          grep -Fq 'current' src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          grep -Fq 'citation' src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+
+          grep -Fq 'Plan' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq 'Design' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq 'Implement' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq 'Validate' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq 'Release' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          ! grep -Fq 'FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -R -Fq 'project_end_exceeded' src/backend/ProjectTime.Api/Modules tests
+
+          grep -Fq 'working' src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+          ! grep -Eiq 'auto(matic)?[^\n]{0,80}baseline|baseline[^\n]{0,80}auto(matic)?' src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+          grep -Fq 'review' src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs
+
+      - name: Validate migrations and source contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+
+      - name: Run detailed planner regressions
+        run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+
+      - name: Run SOW freshness regressions
+        run: dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Verify API startup
+        run: bash tests/test-projectpulse-api-startup.sh
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Audit frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm audit --audit-level=high
+
+      - name: Build frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Validate clean source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          if git ls-tree -r --name-only HEAD | grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64)'; then
+            echo 'Temporary recovery artifacts remain in the release source.' >&2
+            exit 1
+          fi
+          echo 'SHARED_PROJECT_DOCUMENT_PLANNING=VERIFIED'
+          echo 'PRODUCTION_MUTATION=NONE'

@@ -80,7 +80,12 @@ rg -Fq 'PreserveCompletedReviewRevisionsAsync' "$interactive"
 test "$(rg -Fo 'planRevision, stateChanged = true' "$interactive" | wc -l)" -ge 7
 rg -Fq 'review_plan_schedule_cascade_not_supported' "$interactive"
 rg -Fq 'EnsureProjectWritableAsync(connection, transaction, plan.Value.ProjectId, cancellationToken)' "$module"
-rg -Fq 'EnsureProjectWritableAsync(connection, transaction, request.ProjectId, cancellationToken)' "$module"
+if ! rg -Fq 'EnsureProjectWritableAsync(connection, transaction, request.ProjectId, cancellationToken)' "$module"; then
+  rg -Fq 'EnsureProjectWritableAsync(connection, transaction, effectiveRequest.ProjectId, cancellationToken)' "$module" || {
+    echo 'Project Forge must enforce project-write authorization after collaborator request normalization.' >&2
+    exit 1
+  }
+fi
 create_method="$(awk '/private static async Task<IResult> CreateTaskAsync/{capture=1} /private static async Task<IResult> PatchTaskCompositeAsync/{capture=0} capture' "$interactive")"
 printf '%s' "$create_method" | rg -Fq 'createDuration = await WorkingDayDurationAsync'
 printf '%s' "$create_method" | rg -Fq 'AddWithValue("duration", Math.Clamp(createDuration, 0, 730))'

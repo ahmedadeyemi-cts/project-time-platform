@@ -21,7 +21,11 @@ const systemwideReliabilityMode =
   || branchName.startsWith('fix/celar-ai-president-identity-extraction-');
 const flowHiveDetailedPlannerCompatibilityMode =
   branchName.startsWith('fix/flowhive-sow-autoadmission-five-phase-');
-const scopedCompatibilityMode = systemwideReliabilityMode || flowHiveDetailedPlannerCompatibilityMode;
+const projectPlanningCollaborationCompatibilityMode =
+  branchName.startsWith('feature/project-planning-collaboration-access-');
+const scopedCompatibilityMode = systemwideReliabilityMode
+  || flowHiveDetailedPlannerCompatibilityMode
+  || projectPlanningCollaborationCompatibilityMode;
 const pr630AllowedPrefixes = [
   '.github/workflows/celar-ai-',
   'database/migrations/084_module_076_',
@@ -79,6 +83,8 @@ if (systemwideReliabilityMode)
   console.log('CELAR_PR630_SYSTEMWIDE_RELIABILITY_COMPATIBILITY=PASS');
 if (flowHiveDetailedPlannerCompatibilityMode)
   console.log('CELAR_PR630_FLOWHIVE_DETAILED_PLANNER_COMPATIBILITY=PASS');
+if (projectPlanningCollaborationCompatibilityMode)
+  console.log('CELAR_PR630_PROJECT_PLANNING_COLLABORATION_COMPATIBILITY=PASS');
 
 try {
   await import('./validate-celar-ai-pr630-consolidated-legacy.mjs');
