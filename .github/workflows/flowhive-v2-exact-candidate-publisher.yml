@@ -1,0 +1,122 @@
+name: FlowHive V2 Exact Candidate Publisher
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/flowhive-v2-exact-candidate-publisher.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flowhive-v2-exact-candidate-publisher-20260822
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish checksum- and tree-pinned permanent candidate
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      TARGET_HEAD: 8f5c238689b44175552c6cc5b1e3689282579acc
+      TARGET_BASE_TREE: 64a6580c151a1d57a893675047a387889f9182df
+      EXPECTED_TREE: abcaeec0b29e0f50ce56a633ce3f6b71c0c33251
+      PATCH_B64_SHA256: 1a9d2cc6787ea38b07fb0ca49cc69d6d0da113ad160009100c74c718e1f2f447
+      PATCH_XZ_SHA256: 3ff427217ff19af18786f49783f827896a79e9f37cd9d04c38cce27a341d9650
+      PATCH_SHA256: 228a42b682488b8fd172a0e7e136ff518c85590c6bdcd1037b9c15a60b8ef013
+    steps:
+      - name: Check out exact transport source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Reconstruct and publish exact permanent FlowHive V2 tree
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+          [[ "$GITHUB_REF" == 'refs/heads/tooling/one-time-flowhive-clean-publisher-20260819' ]] \
+            || fail 'Unexpected transport branch.'
+
+          work="$RUNNER_TEMP/flowhive-v2-exact"
+          mkdir -p "$work/chunks"
+
+          blob_shas=(
+            a8956e16a912db207c6617ca61fbf991d76c40ff
+            37bc33a9aedf742e1d32390ebe878ef364b5b721
+            c5e4bc5637e66a9b93eee6468d86f03a90f5057c
+            81721f6ed2709278972407018581ecc9010ed884
+            1674565fd5c0a03300c5ed07af78092ff2dbd9ee
+            8cf32cc8d7a8a6885d10edc0019cf680aa4a8276
+          )
+          chunk_hashes=(
+            eeb58d350f66aa3f267b7e6510ebacff80afb25f50e707707711483e44f168a4
+            a81a180894f10469afa30a6b499a34b202663987210e8b55d6395630bd428649
+            66b57a1718f944b8fc95598864a4e92e3421b6ec8b53e2c1fbdb1dbdf4478baf
+            e372a3c530148c94887d877f94ffa7862f046e1796910dc735a33bd1c390a4e7
+            cd0798ae739f06b6ce71b9e2ec6d528a9939c35dcc0be6d9cf5eddcadd407016
+            c28d29b594baee5dcb9fb5f79d39e83d905ff3945beb1bbe91ec73f1f9cadd8e
+          )
+
+          for index in "${!blob_shas[@]}"; do
+            output="$work/chunks/chunk$(printf '%02d' "$index")"
+            curl --fail --silent --show-error --location \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs/${blob_shas[$index]}" \
+              | jq -r '.content' \
+              | tr -d '\r\n' \
+              | base64 --decode > "$output"
+            actual="$(sha256sum "$output" | awk '{print $1}')"
+            [[ "$actual" == "${chunk_hashes[$index]}" ]] \
+              || fail "Transport chunk $index checksum mismatch."
+          done
+
+          cat "$work"/chunks/chunk* > "$work/flowhive.patch.xz.b64"
+          echo "$PATCH_B64_SHA256  $work/flowhive.patch.xz.b64" | sha256sum --check --strict
+          base64 --decode "$work/flowhive.patch.xz.b64" > "$work/flowhive.patch.xz"
+          echo "$PATCH_XZ_SHA256  $work/flowhive.patch.xz" | sha256sum --check --strict
+          xz --decompress --stdout "$work/flowhive.patch.xz" > "$work/flowhive.patch"
+          echo "$PATCH_SHA256  $work/flowhive.patch" | sha256sum --check --strict
+
+          git fetch --no-tags origin \
+            "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          [[ "$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")" == "$TARGET_HEAD" ]] \
+            || fail 'Target branch moved after the sealed candidate was reviewed.'
+          [[ "$(git show -s --format=%T "$TARGET_HEAD")" == "$TARGET_BASE_TREE" ]] \
+            || fail 'Target source tree no longer matches the sealed base tree.'
+
+          git checkout --detach "$TARGET_HEAD"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git apply --check --binary --whitespace=error-all "$work/flowhive.patch"
+          git apply --index --binary --whitespace=error-all "$work/flowhive.patch"
+          git diff --cached --check "$TARGET_HEAD"
+
+          actual_tree="$(git write-tree)"
+          [[ "$actual_tree" == "$EXPECTED_TREE" ]] \
+            || fail "Permanent candidate tree mismatch: $actual_tree"
+
+          if git ls-tree -r --name-only "$actual_tree" \
+            | grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64)'; then
+            fail 'Temporary recovery artifacts remain in the permanent candidate.'
+          fi
+
+          candidate_commit="$(printf '%s\n\n%s\n' \
+            'Complete FlowHive V2 permanent candidate' \
+            'Publish the checksum-pinned document-grounded FlowHive and Project Forge repair with exact project identity, shared evidence authority, server-owned planner runs, deterministic scheduling, durable storage diagnostics, migrations 094-096, permanent CI gates, and Protected-UAT release controls. Production mutation: NONE.' \
+            | git commit-tree "$actual_tree" -p "$TARGET_HEAD")"
+
+          git push origin "$candidate_commit:refs/heads/$TARGET_BRANCH"
+          printf 'CANDIDATE_COMMIT=%s\nCANDIDATE_TREE=%s\n' "$candidate_commit" "$actual_tree"
+          echo 'PRODUCTION_MUTATION=NONE'
