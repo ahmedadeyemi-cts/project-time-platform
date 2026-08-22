@@ -1,0 +1,171 @@
+name: Release FlowHive V2 candidate to Protected UAT
+
+on:
+  push:
+    branches:
+      - tooling/attach-flowhive-v2-candidate-20260821
+    paths:
+      - .github/workflows/deploy-flowhive-v2-protected-uat.yml
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+env:
+  TARGET_BRANCH: fix/shared-project-document-planning-20260819
+  EXPECTED_PARENT: c0a8beab4881a1f2a7c495c3f22f9c09872cecf4
+  EXPECTED_TREE: d84c3de0dee1022adac1af64303923636505ad10
+  EXPECTED_MESSAGE: Complete FlowHive V2 Protected UAT candidate
+  TARGET_PR: '737'
+  DEPLOY_WORKFLOW_PATH: .github/workflows/projectpulse-deploy-test.yml
+
+jobs:
+  release:
+    name: Gate and deploy exact FlowHive V2 candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Resolve and validate current candidate
+        id: candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          candidate_sha="$(gh api "/repos/${repo}/git/ref/heads/${TARGET_BRANCH}" --jq '.object.sha')"
+          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$candidate_sha" != "$EXPECTED_PARENT" ]] || {
+            echo 'The final candidate has not been attached to PR #737.' >&2
+            exit 1
+          }
+          commit="$(gh api "/repos/${repo}/git/commits/${candidate_sha}")"
+          actual_tree="$(jq -r '.tree.sha' <<<"$commit")"
+          actual_parent="$(jq -r '.parents[0].sha // empty' <<<"$commit")"
+          actual_message="$(jq -r '.message' <<<"$commit")"
+          [[ "$actual_tree" == "$EXPECTED_TREE" ]]
+          [[ "$actual_parent" == "$EXPECTED_PARENT" ]]
+          [[ "$actual_message" == "$EXPECTED_MESSAGE" ]]
+          pr_sha="$(gh api "/repos/${repo}/pulls/${TARGET_PR}" --jq '.head.sha')"
+          [[ "$pr_sha" == "$candidate_sha" ]]
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "FLOWHIVE_V2_CANDIDATE_SHA=$candidate_sha"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Wait for exact-head PR checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          deadline=$((SECONDS + 2700))
+          while true; do
+            pr_sha="$(gh api "/repos/${repo}/pulls/${TARGET_PR}" --jq '.head.sha')"
+            [[ "$pr_sha" == "$CANDIDATE_SHA" ]] || {
+              echo "PR head moved while waiting: $pr_sha" >&2
+              exit 1
+            }
+            set +e
+            checks="$(gh pr checks "$TARGET_PR" --repo "$repo" --json name,state,bucket,link,workflow 2>/dev/null)"
+            check_rc=$?
+            set -e
+            [[ -n "$checks" ]] || checks='[]'
+            count="$(jq 'length' <<<"$checks")"
+            failed="$(jq '[.[] | select((.bucket|ascii_downcase)=="fail" or (.bucket|ascii_downcase)=="cancel" or (.state|ascii_upcase)=="FAILURE" or (.state|ascii_upcase)=="ERROR" or (.state|ascii_upcase)=="TIMED_OUT" or (.state|ascii_upcase)=="CANCELLED" or (.state|ascii_upcase)=="ACTION_REQUIRED")] | length' <<<"$checks")"
+            pending="$(jq '[.[] | select((.bucket|ascii_downcase)=="pending" or (.state|ascii_upcase)=="PENDING" or (.state|ascii_upcase)=="QUEUED" or (.state|ascii_upcase)=="IN_PROGRESS" or (.state|ascii_upcase)=="EXPECTED")] | length' <<<"$checks")"
+            jq -r '.[] | "CHECK \(.name): state=\(.state) bucket=\(.bucket)"' <<<"$checks"
+            if (( failed > 0 )); then
+              echo 'One or more exact-head PR checks failed.' >&2
+              exit 1
+            fi
+            if (( count >= 8 && pending == 0 )); then
+              echo "EXACT_HEAD_PR_CHECKS=PASSED count=$count"
+              break
+            fi
+            (( SECONDS < deadline )) || {
+              echo "Timed out waiting for exact-head checks: count=$count pending=$pending" >&2
+              exit 1
+            }
+            sleep 20
+          done
+
+      - name: Dispatch or reuse permanent Protected-Test deployment
+        id: deploy
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          workflow_id="$(gh api "/repos/${repo}/actions/workflows?per_page=100" --jq ".workflows[] | select(.path == \"${DEPLOY_WORKFLOW_PATH}\") | .id" | head -n1)"
+          [[ "$workflow_id" =~ ^[0-9]+$ ]] || {
+            echo 'Permanent Protected-Test deployment workflow was not found.' >&2
+            exit 1
+          }
+          find_run() {
+            gh api "/repos/${repo}/actions/workflows/${workflow_id}/runs?branch=${TARGET_BRANCH}&per_page=50" \
+              --jq ".workflow_runs[] | select(.head_sha == \"${CANDIDATE_SHA}\") | .id" | head -n1
+          }
+          run_id="$(find_run || true)"
+          if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
+            set +e
+            gh api --method POST "/repos/${repo}/actions/workflows/${workflow_id}/dispatches" \
+              -f ref="$TARGET_BRANCH" -f 'inputs[confirm_test_only]=true' >/dev/null 2>&1
+            dispatch_rc=$?
+            set -e
+            if (( dispatch_rc != 0 )); then
+              gh api --method POST "/repos/${repo}/actions/workflows/${workflow_id}/dispatches" \
+                -f ref="$TARGET_BRANCH" >/dev/null
+            fi
+            for _ in $(seq 1 40); do
+              sleep 5
+              run_id="$(find_run || true)"
+              [[ "$run_id" =~ ^[0-9]+$ ]] && break
+            done
+          fi
+          [[ "$run_id" =~ ^[0-9]+$ ]] || {
+            echo 'Exact-SHA Protected-Test deployment run did not appear.' >&2
+            exit 1
+          }
+          echo "workflow_id=$workflow_id" >> "$GITHUB_OUTPUT"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_TEST_DEPLOYMENT_RUN_ID=$run_id"
+
+      - name: Wait for permanent Protected-Test deployment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          RUN_ID: ${{ steps.deploy.outputs.run_id }}
+        run: |
+          set -Eeuo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          deadline=$((SECONDS + 3600))
+          while true; do
+            run="$(gh api "/repos/${repo}/actions/runs/${RUN_ID}")"
+            run_sha="$(jq -r '.head_sha' <<<"$run")"
+            status="$(jq -r '.status' <<<"$run")"
+            conclusion="$(jq -r '.conclusion // empty' <<<"$run")"
+            [[ "$run_sha" == "$CANDIDATE_SHA" ]]
+            echo "DEPLOYMENT_STATUS=$status conclusion=${conclusion:-pending}"
+            if [[ "$status" == completed ]]; then
+              if [[ "$conclusion" != success ]]; then
+                gh run view "$RUN_ID" --repo "$repo" --log-failed || true
+                exit 1
+              fi
+              break
+            fi
+            (( SECONDS < deadline )) || {
+              echo 'Timed out waiting for Protected-Test deployment.' >&2
+              exit 1
+            }
+            sleep 20
+          done
+          echo "PROTECTED_UAT_DEPLOYED_SHA=$CANDIDATE_SHA"
+          echo "PROTECTED_UAT_DEPLOYMENT_RUN=$RUN_ID"
+          echo 'PRODUCTION_MUTATION=NONE'
