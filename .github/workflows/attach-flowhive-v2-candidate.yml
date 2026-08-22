@@ -1,0 +1,79 @@
+name: Attach FlowHive V2 candidate to PR branch
+
+on:
+  push:
+    branches:
+      - tooling/attach-flowhive-v2-candidate-20260821
+    paths:
+      - .github/workflows/attach-flowhive-v2-candidate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: fix/shared-project-document-planning-20260819
+  EXPECTED_PARENT: c0a8beab4881a1f2a7c495c3f22f9c09872cecf4
+  EXPECTED_TREE: d84c3de0dee1022adac1af64303923636505ad10
+  EXPECTED_MESSAGE: Complete FlowHive V2 Protected UAT candidate
+
+jobs:
+  attach:
+    name: Validate and attach exact candidate commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Resolve, validate, and fast-forward target ref
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          query="\"${EXPECTED_MESSAGE}\" repo:${repo}"
+          result="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            /search/commits \
+            -f q="$query" \
+            -f sort='committer-date' \
+            -f order='desc' \
+            -F per_page=50)"
+          candidate_sha="$(jq -r --arg message "$EXPECTED_MESSAGE" \
+            '.items[] | select(.commit.message == $message) | .sha' \
+            <<<"$result" | head -n1)"
+          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Exact candidate commit was not found.' >&2
+            exit 1
+          }
+
+          commit="$(gh api "/repos/${repo}/git/commits/${candidate_sha}")"
+          actual_tree="$(jq -r '.tree.sha' <<<"$commit")"
+          actual_parent="$(jq -r '.parents[0].sha // empty' <<<"$commit")"
+          [[ "$actual_tree" == "$EXPECTED_TREE" ]] || {
+            echo "Candidate tree mismatch: $actual_tree" >&2
+            exit 1
+          }
+          [[ "$actual_parent" == "$EXPECTED_PARENT" ]] || {
+            echo "Candidate parent mismatch: $actual_parent" >&2
+            exit 1
+          }
+
+          current_sha="$(gh api "/repos/${repo}/git/ref/heads/${TARGET_BRANCH}" --jq '.object.sha')"
+          if [[ "$current_sha" == "$candidate_sha" ]]; then
+            echo "TARGET_REF_ALREADY_ATTACHED=$candidate_sha"
+          elif [[ "$current_sha" == "$EXPECTED_PARENT" ]]; then
+            gh api --method PATCH \
+              "/repos/${repo}/git/refs/heads/${TARGET_BRANCH}" \
+              -f sha="$candidate_sha" \
+              -F force=false >/dev/null
+            echo "TARGET_REF_FAST_FORWARDED=$candidate_sha"
+          else
+            echo "Target branch moved unexpectedly: $current_sha" >&2
+            exit 1
+          fi
+
+          verified_sha="$(gh api "/repos/${repo}/git/ref/heads/${TARGET_BRANCH}" --jq '.object.sha')"
+          [[ "$verified_sha" == "$candidate_sha" ]]
+          echo "FLOWHIVE_V2_CANDIDATE_SHA=$verified_sha"
+          echo 'PRODUCTION_MUTATION=NONE'
