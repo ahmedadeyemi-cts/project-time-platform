@@ -1,6 +1,10 @@
 name: FlowHive V2 Exact Candidate Publisher
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/flowhive-v2-exact-candidate-publisher.yml'
   push:
     branches:
       - tooling/one-time-flowhive-clean-publisher-20260819
@@ -33,7 +37,7 @@ jobs:
       - name: Check out exact transport source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: true
 
@@ -43,8 +47,9 @@ jobs:
           set -Eeuo pipefail
           fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-          [[ "$GITHUB_REF" == 'refs/heads/tooling/one-time-flowhive-clean-publisher-20260819' ]] \
-            || fail 'Unexpected transport branch.'
+          [[ "$GITHUB_EVENT_NAME" == 'pull_request' \
+             || "$GITHUB_REF" == 'refs/heads/tooling/one-time-flowhive-clean-publisher-20260819' ]] \
+            || fail 'Unexpected transport event.'
 
           work="$RUNNER_TEMP/flowhive-v2-exact"
           mkdir -p "$work/chunks"
@@ -121,4 +126,4 @@ jobs:
           printf 'CANDIDATE_COMMIT=%s\nCANDIDATE_TREE=%s\n' "$candidate_commit" "$actual_tree"
           echo 'PRODUCTION_MUTATION=NONE'
 
-# exact sealed transport trigger 2026-08-22
+# pull-request transport trigger 2026-08-22
