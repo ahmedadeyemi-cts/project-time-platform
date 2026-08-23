@@ -312,15 +312,15 @@ check(
     && !routing.includes('PurposeBuiltExternalCapsule')
     && !routing.includes('PurposeBuiltExternalSystemPrompt')
     && containsAll(serverOwnedExternalCapsules, [
-    'SowScopeQuality',
-    'ProjectPlanQuality',
-    'ProjectTimelineSequencing',
-    'ProjectDiagramGovernance',
-    'expectedCategory.Length == 0',
-    'string.Equals(category?.Trim(), expectedCategory, StringComparison.Ordinal)',
-    'capsule = string.Empty;',
-    'return false;'
-  ])
+      'SowScopeQuality',
+      'ProjectPlanQuality',
+      'ProjectTimelineSequencing',
+      'ProjectDiagramGovernance',
+      'expectedCategory.Length == 0',
+      'string.Equals(category?.Trim(), expectedCategory, StringComparison.Ordinal)',
+      'capsule = string.Empty;',
+      'return false;'
+    ])
     && containsAll(enterpriseExternalExecution, [
       'TryBuildServerOwnedCapsule(',
       'if (!serverOwnedCapsuleReady)',
@@ -466,9 +466,9 @@ check(
     'if (routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi',
     'external = ToExternalAssistance(routed);',
     'routed.Outcome == ProjectPulseAiOutcomes.Refusal',
-    '"celar_ai_solution_draft_refused",
-     '"safety_refusal",
-     '"private_celar_rag_with_sanitized_generic_module064_assistance"',
+    '"celar_ai_solution_draft_refused"',
+    '"safety_refusal"',
+    '"private_celar_rag_with_sanitized_generic_module064_assistance"',
     '"private_evidence_composer_after_governed_local_route"',
     'SelectedTarget: routed.Provider',
     'TargetDecisions: routed.TargetDecisions ?? []'
