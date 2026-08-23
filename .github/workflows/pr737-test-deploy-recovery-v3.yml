@@ -1,0 +1,193 @@
+name: PR 737 exact-head Test deployment recovery v3
+
+on:
+  push:
+    branches:
+      - ops/pr737-check-monitor-20260823
+    paths:
+      - .github/workflows/pr737-test-deploy-recovery-v3.yml
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr737-test-deploy-recovery-v3
+  cancel-in-progress: true
+
+jobs:
+  recover-test-deployment:
+    if: github.event.head_commit.message == 'Recover PR 737 exact-head Test deployment'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ahmedadeyemi-cts/project-time-platform
+      PR_NUMBER: '737'
+      EXPECTED_HEAD_BRANCH: fix/shared-project-document-planning-20260819
+      EVIDENCE_BRANCH: ops/pr737-check-monitor-20260823
+      EVIDENCE_ROOT: docs/architecture/pr737-monitor
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+    steps:
+      - name: Check out isolated evidence branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Adopt or dispatch the exact-head Protected UAT/Test run
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          stage='initialization'
+          checked_sha=''
+          deployment_run_id=''
+          deployment_run_url=''
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          comment() {
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "$1" || true
+          }
+
+          publish_evidence() {
+            local filename="$1"
+            local title="$2"
+            local body="$3"
+            mkdir -p "$EVIDENCE_ROOT"
+            cat > "$EVIDENCE_ROOT/$filename" <<EOF
+          # $title
+
+          $body
+
+          Recovery run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Production mutation: **NONE**.
+          EOF
+            git add "$EVIDENCE_ROOT/$filename"
+            if ! git diff --cached --quiet; then
+              git commit -m "chore(pr737-monitor): ${filename%.md}"
+              git push origin "HEAD:${EVIDENCE_BRANCH}"
+            fi
+          }
+
+          terminal_failure() {
+            local rc=$?
+            set +e
+            publish_evidence \
+              'test-deploy-recovery-v3-failed.md' \
+              'PR #737 exact-head Test deployment recovery failed' \
+              "Stage: \`${stage}\`. Exit code: \`${rc}\`. Exact SHA: \`${checked_sha:-unavailable}\`. Deployment run ID: \`${deployment_run_id:-not-created}\`."
+            comment "PR #${PR_NUMBER} exact-head Test deployment recovery stopped at **${stage}** with exit code ${rc}. SHA: \`${checked_sha:-unavailable}\`; run: ${deployment_run_id:-not-created}. Production mutation: NONE. Recovery: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            exit "$rc"
+          }
+          trap terminal_failure ERR
+
+          stage='green-evidence-verification'
+          green_file="$EVIDENCE_ROOT/complete-suite-green-v2.md"
+          test -s "$green_file"
+          test ! -e "$EVIDENCE_ROOT/complete-suite-failed-v2.md"
+          checked_sha="$(grep -Eo '[0-9a-f]{40}' "$green_file" | head -1)"
+          test -n "$checked_sha"
+          current_pr_sha="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json headRefOid --jq '.headRefOid')"
+          test "$current_pr_sha" = "$checked_sha"
+          comment "PR #${PR_NUMBER} Test deployment recovery verified the complete-suite green SHA \`${checked_sha}\` is still the exact PR head. Looking for an existing deployment run before creating another."
+
+          stage='existing-run-discovery'
+          list_runs() {
+            gh run list \
+              --repo "$REPOSITORY" \
+              --workflow "$DEPLOY_WORKFLOW" \
+              --branch "$EXPECTED_HEAD_BRANCH" \
+              --event workflow_dispatch \
+              --limit 50 \
+              --json databaseId,headSha,status,conclusion,createdAt,url
+          }
+
+          runs="$(list_runs)"
+          existing="$(jq -c --arg sha "$checked_sha" '[.[]|select(.headSha==$sha)]|sort_by(.createdAt)|last//empty' <<<"$runs")"
+          existing_id="$(jq -r '.databaseId//empty' <<<"${existing:-{}}")"
+          existing_status="$(jq -r '.status//empty' <<<"${existing:-{}}")"
+          existing_conclusion="$(jq -r '.conclusion//empty' <<<"${existing:-{}}")"
+          existing_url="$(jq -r '.url//empty' <<<"${existing:-{}}")"
+
+          if [[ -n "$existing_id" && "$existing_status" == 'completed' && "$existing_conclusion" == 'success' ]]; then
+            deployment_run_id="$existing_id"
+            deployment_run_url="$existing_url"
+            publish_evidence \
+              'exact-head-test-passed-v3.md' \
+              'PR #737 exact green SHA already deployed successfully to Protected UAT/Test' \
+              "Exact checked and deployed SHA: \`${checked_sha}\`. Existing successful deployment run: ${deployment_run_url} (ID \`${deployment_run_id}\`)."
+            comment "PR #${PR_NUMBER} exact green SHA \`${checked_sha}\` already has a successful Protected UAT/Test run: ${deployment_run_url} (ID \`${deployment_run_id}\`). No duplicate deployment was created. Production mutation: NONE."
+            trap - ERR
+            exit 0
+          fi
+
+          if [[ -n "$existing_id" && "$existing_status" != 'completed' ]]; then
+            deployment_run_id="$existing_id"
+            deployment_run_url="$existing_url"
+            publish_evidence \
+              'exact-head-test-dispatched-v3.md' \
+              'PR #737 exact green SHA has an active Protected UAT/Test run' \
+              "Exact SHA: \`${checked_sha}\`. Existing active run: ${deployment_run_url} (ID \`${deployment_run_id}\`)."
+          else
+            stage='rest-dispatch'
+            prior_id="$existing_id"
+            dispatch_output="$(mktemp)"
+            if ! gh api \
+              --method POST \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/${REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/dispatches" \
+              -f ref="$EXPECTED_HEAD_BRANCH" \
+              >"$dispatch_output" 2>&1; then
+              dispatch_error="$(tr '\n' ' ' <"$dispatch_output" | cut -c1-1500)"
+              publish_evidence \
+                'test-deploy-rest-dispatch-rejected-v3.md' \
+                'PR #737 Protected UAT/Test REST dispatch was rejected' \
+                "Exact SHA: \`${checked_sha}\`. GitHub response: \`${dispatch_error}\`."
+              false
+            fi
+
+            for _ in $(seq 1 120); do
+              runs="$(list_runs)"
+              candidate="$(jq -c --arg sha "$checked_sha" --arg old "$prior_id" '[.[]|select(.headSha==$sha and (.databaseId|tostring)!=$old)]|sort_by(.createdAt)|last//empty' <<<"$runs")"
+              deployment_run_id="$(jq -r '.databaseId//empty' <<<"${candidate:-{}}")"
+              deployment_run_url="$(jq -r '.url//empty' <<<"${candidate:-{}}")"
+              [[ -n "$deployment_run_id" ]] && break
+              sleep 5
+            done
+            test -n "$deployment_run_id"
+            publish_evidence \
+              'exact-head-test-dispatched-v3.md' \
+              'PR #737 exact green SHA dispatched to Protected UAT/Test through REST recovery' \
+              "Exact SHA: \`${checked_sha}\`. New deployment run: ${deployment_run_url} (ID \`${deployment_run_id}\`)."
+            comment "PR #${PR_NUMBER} exact green SHA \`${checked_sha}\` dispatched to Protected UAT/Test through the recovered REST handoff. Run: ${deployment_run_url}; ID: \`${deployment_run_id}\`. Production mutation: NONE."
+          fi
+
+          stage='deployment-watch'
+          if ! gh run watch "$deployment_run_id" --repo "$REPOSITORY" --interval 15 --exit-status; then
+            gh run view "$deployment_run_id" --repo "$REPOSITORY" --log-failed || true
+            publish_evidence \
+              'exact-head-test-failed-v3.md' \
+              'PR #737 exact-head Protected UAT/Test deployment failed' \
+              "Exact SHA: \`${checked_sha}\`. Failed deployment run: ${deployment_run_url} (ID \`${deployment_run_id}\`)."
+            comment "PR #${PR_NUMBER} exact green SHA \`${checked_sha}\` failed during Protected UAT/Test run ${deployment_run_id}. Production mutation: NONE."
+            trap - ERR
+            exit 3
+          fi
+
+          publish_evidence \
+            'exact-head-test-passed-v3.md' \
+            'PR #737 exact green SHA deployed successfully to Protected UAT/Test' \
+            "Exact checked and deployed SHA: \`${checked_sha}\`. Successful deployment run: ${deployment_run_url} (ID \`${deployment_run_id}\`)."
+          comment "PR #${PR_NUMBER} exact green SHA \`${checked_sha}\` deployed successfully to Protected UAT/Test in run ${deployment_run_id}. Production mutation: NONE. Remaining gate: authenticated FlowHive/Project Forge UAT, migration verification, and runtime-SHA confirmation."
+
+          trap - ERR
+          echo "PR737_TEST_DEPLOY_RECOVERY_V3=PASSED"
+          echo "PR737_EXACT_HEAD_SHA=$checked_sha"
+          echo "PR737_PROTECTED_UAT_RUN_ID=$deployment_run_id"
+          echo "PRODUCTION_MUTATION=NONE"
