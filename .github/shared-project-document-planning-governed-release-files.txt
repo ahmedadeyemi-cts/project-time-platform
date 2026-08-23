@@ -2,6 +2,7 @@
 .github/workflows/celar-ai-enterprise-platform-ci.yml
 .github/workflows/flowhive-detailed-planner-ci.yml
 .github/workflows/module030-analytics-center-ci.yml
+.github/workflows/module030-analytics-enterprise-experience-ci.yml
 .github/workflows/project-planning-collaboration-ci.yml
 .github/workflows/projectpulse-deploy-test.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
@@ -13,6 +14,7 @@ database/rollback/096_project_planning_document_authority_rollback.sql
 docs/architecture/flowhive-project-forge-protected-uat-release.md
 docs/architecture/project-planning-collaboration-access.md
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh
 scripts/ci/validate-module030-compiled.sh
 scripts/ci/validate-module030-source-boundary.sh
 scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
