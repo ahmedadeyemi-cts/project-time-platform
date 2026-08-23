@@ -9,6 +9,7 @@ on:
     paths:
       - '.github/workflows/module030-analytics-center-ci.yml'
       - '.github/workflows/module030-analytics-enterprise-experience-ci.yml'
+      - 'tests/test-uat-functional-completion-contract.sh'
       - 'scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh'
       - 'database/migrations/060_analytics_center_enterprise_experience.sql'
       - 'database/rollback/060_analytics_center_enterprise_experience_rollback.sql'
@@ -50,7 +51,10 @@ jobs:
 
       - name: Verify Analytics enterprise source or regression scope
         shell: bash
-        run: bash scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh
+        run: |
+          set -Eeuo pipefail
+          grep -Fq 'ANALYTICS_ENTERPRISE_UAT_OWNED_SUBSET=PASSED' scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh
+          bash scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:

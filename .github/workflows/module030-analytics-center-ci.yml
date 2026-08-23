@@ -13,6 +13,7 @@ on:
       - '.github/workflows/module030-analytics-enterprise-experience-ci.yml'
       - '.github/workflows/group5-financial-operations-recovery-ci.yml'
       - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+      - 'tests/test-uat-functional-completion-contract.sh'
       - 'database/migrations/055_analytics_center.sql'
       - 'database/migrations/060_analytics_center_enterprise_experience.sql'
       - 'database/rollback/055_analytics_center_rollback.sql'
@@ -61,7 +62,10 @@ jobs:
 
       - name: Verify Module 030 ownership or run regression mode
         shell: bash
-        run: bash scripts/ci/validate-module030-source-boundary.sh
+        run: |
+          set -Eeuo pipefail
+          grep -Fq 'ANALYTICS_CENTER_UAT_OWNED_SUBSET=PASSED' scripts/ci/validate-module030-source-boundary.sh
+          bash scripts/ci/validate-module030-source-boundary.sh
 
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
