@@ -7,9 +7,12 @@ on:
   pull_request:
     paths:
       - '.github/workflows/celar-ai-enterprise-platform-ci.yml'
+      - 'tests/test-uat-functional-completion-contract.sh'
       - 'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh'
       - 'database/migrations/061_celar_ai_capability_routing.sql'
       - 'database/rollback/061_celar_ai_capability_routing_rollback.sql'
+      - 'database/migrations/066_immutable_project_numbers.sql'
+      - 'database/rollback/066_immutable_project_numbers_rollback.sql'
       - 'database/migrations/071_ai_runtime_production_hardening.sql'
       - 'database/rollback/071_ai_runtime_production_hardening_rollback.sql'
       - 'database/migrations/072_celar_ai_conversation_attachments.sql'
