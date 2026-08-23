@@ -134,7 +134,8 @@ for (const contract of [
   '/api/project-flowhive/plans/drafts',
   'Save immutable version',
   'Establish reviewed baseline',
-  'Configured order:'
+  'The exact stored Module 064 order is followed for this capability.',
+  'Private SOW, GSD, design, task, and assignment evidence stays inside the governed boundary.'
 ]) if (!flowHive.includes(contract)) fail(`flowhive_contract_missing_${contract}`);
 
 const cicdFrontend = text(join(frontendRoot, 'src/CiCdPipelineCenter.jsx'));
