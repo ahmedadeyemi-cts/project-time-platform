@@ -21,6 +21,7 @@ const brandModule = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'CelarA
 const routingModule = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'CelarAiCapabilityRoutingModule.cs');
 const flowHiveFactory = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'ProjectFlowHiveAiRequestFactory.cs');
 const projectForge = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'ProjectForgeModule.cs');
+const planningOrchestrator = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'ProjectPlanningAiOrchestrator.cs');
 const helpUi = read('src', 'frontend', 'project-time-web', 'src', 'HelpAssistant.jsx');
 const transforms = read('src', 'backend', 'ProjectTime.Api', 'Directory.Build.targets');
 const packageJson = fs.readFileSync(path.join(webRoot, 'package.json'), 'utf8');
@@ -465,9 +466,9 @@ check(
     'if (routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi',
     'external = ToExternalAssistance(routed);',
     'routed.Outcome == ProjectPulseAiOutcomes.Refusal',
-    '"celar_ai_solution_draft_refused"',
-    '"safety_refusal"',
-    '"private_celar_rag_with_sanitized_generic_module064_assistance"',
+    '"celar_ai_solution_draft_refused",
+     '"safety_refusal",
+     '"private_celar_rag_with_sanitized_generic_module064_assistance"',
     '"private_evidence_composer_after_governed_local_route"',
     'SelectedTarget: routed.Provider',
     'TargetDecisions: routed.TargetDecisions ?? []'
@@ -514,8 +515,15 @@ check(
       'Return a comprehensive draft with source citations and unresolved conflicts preserved.'
     ])
     && containsAll(projectForge, [
-      'Create a comprehensive, reviewable project plan with WBS tasks, dependencies, roles, durations, and engineering estimates',
-      'DetailLevel: Clean(request.DetailLevel, 40, "comprehensive")'
+      'ProjectPlanningDocumentResolver.ResolveAndPrepareAsync(',
+      'ProjectPlanningAiOrchestrator.GenerateAsync(',
+      "Create a comprehensive, reviewable project plan grounded in the project's current Work Register SOW, GSD, architecture, design, requirements, order, proposal, runbook, and other authorized project documents."
+    ])
+    && containsAll(planningOrchestrator, [
+      'Create a complete source-backed project planning draft.',
+      'DetailLevel: Clean(detailLevel, 80, "comprehensive")',
+      'ProjectFlowHiveDetailedPlanBuilder.Build(seed, privatePlan!)',
+      'ProjectFlowHiveScheduleEngine.Calculate(generated)'
     ])
     && containsAll(routingModule, [
       'Produce a comprehensive communication with a subject, concise executive opening, verified completion,',
