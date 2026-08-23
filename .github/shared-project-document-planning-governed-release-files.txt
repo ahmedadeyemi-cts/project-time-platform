@@ -39,8 +39,11 @@ src/backend/ProjectTime.Api/Modules/ProjectPlanningCollaborationModule.cs
 src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
 src/backend/ProjectTime.Api/Program.cs
 src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
+src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
 src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
 src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+src/frontend/project-time-web/scripts/validate-production-consistency.mjs
 src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
 src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx
 src/frontend/project-time-web/src/ProjectForgeCenter.jsx
