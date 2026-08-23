@@ -1,0 +1,180 @@
+name: PR 737 post-deployment evidence audit
+
+on:
+  push:
+    branches:
+      - ops/pr737-check-monitor-20260823
+    paths:
+      - .github/workflows/pr737-post-deployment-evidence-audit.yml
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr737-post-deployment-evidence-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    if: github.event.head_commit.message == 'Audit PR 737 Protected UAT deployment evidence'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ahmedadeyemi-cts/project-time-platform
+      PR_NUMBER: '737'
+      EVIDENCE_BRANCH: ops/pr737-check-monitor-20260823
+      EVIDENCE_ROOT: docs/architecture/pr737-monitor
+    steps:
+      - name: Check out isolated evidence branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Audit the successful exact-head deployment run
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          source_file="$EVIDENCE_ROOT/exact-head-test-passed-v3.md"
+          test -s "$source_file"
+          checked_sha="$(grep -Eo '[0-9a-f]{40}' "$source_file" | head -1)"
+          deployment_run_id="$(grep -Eo 'ID `?[0-9]+`?' "$source_file" | grep -Eo '[0-9]+' | head -1)"
+          test -n "$checked_sha"
+          test -n "$deployment_run_id"
+
+          publish() {
+            local filename="$1"
+            local title="$2"
+            local body="$3"
+            cat > "$EVIDENCE_ROOT/$filename" <<EOF
+          # $title
+
+          $body
+
+          Audit run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Production mutation: **NONE**.
+          EOF
+          }
+
+          run_json="$(gh run view "$deployment_run_id" --repo "$REPOSITORY" --json conclusion,headSha,url,jobs)"
+          run_conclusion="$(jq -r '.conclusion' <<<"$run_json")"
+          run_sha="$(jq -r '.headSha' <<<"$run_json")"
+          run_url="$(jq -r '.url' <<<"$run_json")"
+          test "$run_conclusion" = 'success'
+          test "$run_sha" = "$checked_sha"
+          publish \
+            'audit-run-identity-confirmed.md' \
+            'Protected UAT deployment run identity confirmed' \
+            "Run ${run_url} (ID \`${deployment_run_id}\`) completed successfully for exact checked SHA \`${checked_sha}\`."
+
+          log_file="$(mktemp)"
+          gh run view "$deployment_run_id" --repo "$REPOSITORY" --log >"$log_file" 2>&1
+          normalized="$(mktemp)"
+          tr '[:upper:]' '[:lower:]' <"$log_file" >"$normalized"
+
+          evidence_marker() {
+            local code="$1"
+            local pattern="$2"
+            local success_file="$3"
+            local missing_file="$4"
+            local label="$5"
+            if grep -Eqi "$pattern" "$log_file"; then
+              publish "$success_file" "$label evidenced" "Deployment run \`${deployment_run_id}\` contains evidence matching \`${code}\`."
+              printf '%s=EVIDENCED\n' "$code"
+            else
+              publish "$missing_file" "$label not evidenced in deployment log" "Deployment run \`${deployment_run_id}\` completed successfully, but its available log does not contain a recognizable \`${code}\` marker. This is an evidence gap, not proof the operation failed."
+              printf '%s=NOT_EVIDENCED\n' "$code"
+            fi
+          }
+
+          evidence_marker \
+            'MIGRATION_094' \
+            '(migration[^[:alnum:]]*094|094[_ -].*(migration|flowhive)|flowhive[^[:alnum:]]*authority[^[:alnum:]]*migration)' \
+            'audit-migration-094-evidenced.md' \
+            'audit-migration-094-not-evidenced.md' \
+            'Migration 094'
+          evidence_marker \
+            'MIGRATION_095' \
+            '(migration[^[:alnum:]]*095|095[_ -].*(migration|project.planning)|project.planning.collaboration.*migration)' \
+            'audit-migration-095-evidenced.md' \
+            'audit-migration-095-not-evidenced.md' \
+            'Migration 095'
+          evidence_marker \
+            'MIGRATION_096' \
+            '(migration[^[:alnum:]]*096|096[_ -].*(migration|document.authority)|project.planning.document.authority.*migration)' \
+            'audit-migration-096-evidenced.md' \
+            'audit-migration-096-not-evidenced.md' \
+            'Migration 096'
+
+          short_sha="${checked_sha:0:12}"
+          if grep -Fqi "$checked_sha" "$log_file" || grep -Fqi "$short_sha" "$log_file" || grep -Eqi '(runtime|deployed).*(sha|commit).*(verified|match|exact)' "$log_file"; then
+            publish \
+              'audit-runtime-sha-evidenced.md' \
+              'Runtime SHA verification evidenced' \
+              "Deployment log contains the exact/short candidate SHA or an explicit runtime commit-verification marker for \`${checked_sha}\`."
+            runtime_status='EVIDENCED'
+          else
+            publish \
+              'audit-runtime-sha-not-evidenced.md' \
+              'Runtime SHA verification not evidenced in deployment log' \
+              "The deployment succeeded for \`${checked_sha}\`, but the available log does not contain an explicit deployed-runtime SHA match marker."
+            runtime_status='NOT_EVIDENCED'
+          fi
+
+          if grep -Eqi '(authenticated.*uat|uat.*authenticated|flowhive.*(uat|smoke|verification)|project forge.*(uat|smoke|verification)|module 066.*(uat|smoke)|module 033.*(uat|smoke))' "$log_file"; then
+            publish \
+              'audit-authenticated-uat-evidenced.md' \
+              'Authenticated FlowHive/Project Forge UAT evidenced' \
+              "Deployment run \`${deployment_run_id}\` contains an authenticated UAT or module-specific smoke-verification marker."
+            uat_status='EVIDENCED'
+          else
+            publish \
+              'audit-authenticated-uat-not-evidenced.md' \
+              'Authenticated FlowHive/Project Forge UAT not evidenced' \
+              "The deployment succeeded, but its available log does not show authenticated FlowHive/Project Forge application UAT."
+            uat_status='NOT_EVIDENCED'
+          fi
+
+          error_lines="$(grep -Ei '(http[^[:alnum:]]*(400|422|502|503|504)|status[^[:alnum:]]*(400|422|502|503|504)|response[^[:alnum:]]*(400|422|502|503|504))' "$log_file" | tail -40 || true)"
+          if [[ -z "$error_lines" ]]; then
+            publish \
+              'audit-http-error-free.md' \
+              'No target HTTP error evidence found in deployment log' \
+              "No HTTP/status/response marker for 400, 422, 502, 503, or 504 was found in the successful deployment run log."
+            http_status='NO_TARGET_ERRORS_FOUND'
+          else
+            printf '%s\n' "$error_lines" > "$EVIDENCE_ROOT/audit-http-errors-observed.txt"
+            publish \
+              'audit-http-errors-observed.md' \
+              'Target HTTP error evidence observed in deployment log' \
+              "The deployment log contains one or more lines mentioning HTTP/status/response 400, 422, 502, 503, or 504. Review \`audit-http-errors-observed.txt\` before declaring UAT clean."
+            http_status='TARGET_ERRORS_OBSERVED'
+          fi
+
+          migration_094_status='NOT_EVIDENCED'
+          migration_095_status='NOT_EVIDENCED'
+          migration_096_status='NOT_EVIDENCED'
+          [[ -f "$EVIDENCE_ROOT/audit-migration-094-evidenced.md" ]] && migration_094_status='EVIDENCED'
+          [[ -f "$EVIDENCE_ROOT/audit-migration-095-evidenced.md" ]] && migration_095_status='EVIDENCED'
+          [[ -f "$EVIDENCE_ROOT/audit-migration-096-evidenced.md" ]] && migration_096_status='EVIDENCED'
+
+          publish \
+            'audit-summary.md' \
+            'PR #737 Protected UAT deployment evidence audit' \
+            "Exact SHA: \`${checked_sha}\`. Deployment run ID: \`${deployment_run_id}\`. Conclusion: \`${run_conclusion}\`. Migration 094: \`${migration_094_status}\`. Migration 095: \`${migration_095_status}\`. Migration 096: \`${migration_096_status}\`. Runtime SHA: \`${runtime_status}\`. Authenticated UAT: \`${uat_status}\`. Target HTTP errors: \`${http_status}\`."
+
+          git add "$EVIDENCE_ROOT"
+          git diff --cached --check
+          git commit -m 'Audit PR 737 Protected UAT deployment evidence'
+          git push origin "HEAD:${EVIDENCE_BRANCH}"
+
+          gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "PR #${PR_NUMBER} Protected UAT deployment evidence audit completed for exact SHA \`${checked_sha}\`, run \`${deployment_run_id}\`. Migration 094: ${migration_094_status}; 095: ${migration_095_status}; 096: ${migration_096_status}; runtime SHA: ${runtime_status}; authenticated UAT: ${uat_status}; target HTTP errors: ${http_status}. Production mutation: NONE. Evidence is on branch \`${EVIDENCE_BRANCH}\` under \`${EVIDENCE_ROOT}\`."
