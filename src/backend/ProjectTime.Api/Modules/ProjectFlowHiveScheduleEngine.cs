@@ -460,9 +460,17 @@ public static partial class ProjectFlowHiveScheduleEngine
             {
                 Error(issues, "summary_assignment_not_allowed", $"{path}.taskWbs", "Assignments belong to executable child tasks, not phase summary rows.");
             }
-            if (assignment.ResourceUserId is null || assignment.ResourceUserId == Guid.Empty)
+            var hasModule062Identity = assignment.ResourceUserId is { } resourceUserId
+                && resourceUserId != Guid.Empty;
+            var hasExplicitRolePlaceholder = assignment.ResourceUserId is null
+                && !string.IsNullOrWhiteSpace(assignment.ResourceDisplayName);
+            if (!hasModule062Identity && !hasExplicitRolePlaceholder)
             {
-                Error(issues, "assignment_identity_required", $"{path}.resourceUserId", "Assignments require a Module 062-backed ProjectPulse identity ID.");
+                Error(
+                    issues,
+                    "assignment_identity_required",
+                    $"{path}.resourceUserId",
+                    "Assignments require either a Module 062-backed ProjectPulse identity ID or an explicit PM-review role placeholder.");
             }
             if (assignment.AllocationPercent is <= 0m or > 100m)
             {
