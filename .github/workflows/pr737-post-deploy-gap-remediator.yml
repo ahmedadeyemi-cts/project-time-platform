@@ -1,0 +1,256 @@
+name: PR 737 post-deployment evidence-gap remediator
+
+on:
+  push:
+    branches:
+      - ops/pr737-check-monitor-20260823
+    paths:
+      - .github/workflows/pr737-post-deploy-gap-remediator.yml
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr737-post-deploy-gap-remediator
+  cancel-in-progress: true
+
+jobs:
+  remediate:
+    if: github.event.head_commit.message == 'Remediate PR 737 Protected UAT evidence gaps'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ahmedadeyemi-cts/project-time-platform
+      PR_NUMBER: '737'
+      EXPECTED_HEAD_BRANCH: fix/shared-project-document-planning-20260819
+      EVIDENCE_BRANCH: ops/pr737-check-monitor-20260823
+      EVIDENCE_ROOT: docs/architecture/pr737-monitor
+    steps:
+      - name: Check out isolated evidence branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Run Test-only verification workflows for unproven gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          checked_sha=''
+          gaps=()
+          remediated=()
+          already_evidenced=()
+          dispatched_runs=()
+
+          comment() {
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "$1" || true
+          }
+
+          publish() {
+            local filename="$1"
+            local title="$2"
+            local body="$3"
+            cat > "$EVIDENCE_ROOT/$filename" <<EOF
+          # $title
+
+          $body
+
+          Remediation run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Production mutation: **NONE**.
+          EOF
+          }
+
+          green_file="$EVIDENCE_ROOT/complete-suite-green-v2.md"
+          deployed_file="$EVIDENCE_ROOT/exact-head-test-passed-v3.md"
+          test -s "$green_file"
+          test -s "$deployed_file"
+          checked_sha="$(grep -Eo '[0-9a-f]{40}' "$green_file" | head -1)"
+          test -n "$checked_sha"
+          test "$(grep -Eo '[0-9a-f]{40}' "$deployed_file" | head -1)" = "$checked_sha"
+          test "$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json headRefOid --jq '.headRefOid')" = "$checked_sha"
+
+          if [[ -e "$EVIDENCE_ROOT/audit-http-errors-observed.md" ]]; then
+            gaps+=("Deployment audit observed target HTTP 400/422/502/503/504 evidence; automatic workflow dispatch cannot classify those application responses safely.")
+          elif [[ -e "$EVIDENCE_ROOT/audit-http-error-free.md" ]]; then
+            already_evidenced+=("No target HTTP error evidence was found in the successful deployment log.")
+          else
+            gaps+=("The deployment audit did not publish a target-HTTP-error classification marker.")
+          fi
+
+          workflow_is_production_named() {
+            local path="$1"
+            local base="$(basename "$path" | tr '[:upper:]' '[:lower:]')"
+            [[ "$base" =~ (^|[-_.])(prod|production)([-_.]|$) ]] && [[ ! "$base" =~ test|uat ]]
+          }
+
+          find_dispatchable_workflow() {
+            local pattern="$1"
+            local selected=''
+            while IFS= read -r candidate; do
+              [[ -z "$candidate" ]] && continue
+              workflow_is_production_named "$candidate" && continue
+              grep -Eq '^[[:space:]]*workflow_dispatch:' "$candidate" || continue
+              if grep -Eqi "$pattern" "$candidate"; then
+                selected="$candidate"
+                break
+              fi
+            done < <(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)
+            printf '%s' "$selected"
+          }
+
+          dispatch_and_watch() {
+            local workflow_path="$1"
+            local purpose="$2"
+            local before_file
+            before_file="$(mktemp)"
+            gh run list \
+              --repo "$REPOSITORY" \
+              --workflow "$workflow_path" \
+              --branch "$EXPECTED_HEAD_BRANCH" \
+              --event workflow_dispatch \
+              --limit 100 \
+              --json databaseId \
+              | jq -r '.[].databaseId' | sort -u > "$before_file" || true
+
+            gh workflow run "$workflow_path" --repo "$REPOSITORY" --ref "$EXPECTED_HEAD_BRANCH"
+
+            local run_id=''
+            local run_url=''
+            for _ in $(seq 1 120); do
+              local candidates
+              candidates="$(gh run list \
+                --repo "$REPOSITORY" \
+                --workflow "$workflow_path" \
+                --branch "$EXPECTED_HEAD_BRANCH" \
+                --event workflow_dispatch \
+                --limit 100 \
+                --json databaseId,headSha,url,createdAt)"
+              run_id="$(jq -r --arg sha "$checked_sha" --rawfile old "$before_file" '
+                [
+                  .[]
+                  | select(.headSha == $sha)
+                  | select(((.databaseId|tostring) as $id | ($old | split("\n") | index($id))) == null)
+                ]
+                | sort_by(.createdAt)
+                | last
+                | .databaseId // empty
+              ' <<<"$candidates")"
+              run_url="$(jq -r --argjson id "${run_id:-0}" '.[] | select(.databaseId == $id) | .url' <<<"$candidates" | head -1)"
+              [[ -n "$run_id" ]] && break
+              sleep 5
+            done
+            test -n "$run_id"
+            comment "PR #${PR_NUMBER} Test-only evidence remediation dispatched **${purpose}** using \`${workflow_path}\`: ${run_url} (run \`${run_id}\`) for exact SHA \`${checked_sha}\`."
+            if ! gh run watch "$run_id" --repo "$REPOSITORY" --interval 15 --exit-status; then
+              gh run view "$run_id" --repo "$REPOSITORY" --log-failed || true
+              gaps+=("${purpose} workflow ${workflow_path} failed in Test run ${run_id}.")
+              return 1
+            fi
+            remediated+=("${purpose} passed in Test run ${run_id} (${run_url}).")
+            dispatched_runs+=("${purpose}:${run_id}:${run_url}")
+            return 0
+          }
+
+          migration_gate() {
+            local number="$1"
+            local evidenced="$EVIDENCE_ROOT/audit-migration-${number}-evidenced.md"
+            local not_evidenced="$EVIDENCE_ROOT/audit-migration-${number}-not-evidenced.md"
+            if [[ -e "$evidenced" ]]; then
+              already_evidenced+=("Migration ${number} was evidenced in the successful exact-head deployment log.")
+              return 0
+            fi
+            if [[ ! -e "$not_evidenced" ]]; then
+              gaps+=("Migration ${number} has no audit classification marker.")
+              return 0
+            fi
+            local script_pattern
+            case "$number" in
+              094) script_pattern='(094|flowhive.authority|run-flowhive-authority-migration)' ;;
+              095) script_pattern='(095|project.planning.collaboration|run-project-planning-collaboration-migration)' ;;
+              096) script_pattern='(096|project.planning.document.authority|run-project-planning-document-authority-migration)' ;;
+              *) return 1 ;;
+            esac
+            local workflow
+            workflow="$(find_dispatchable_workflow "$script_pattern")"
+            if [[ -z "$workflow" ]]; then
+              gaps+=("Migration ${number} was not evidenced and no non-Production workflow_dispatch workflow referencing its migration was found.")
+              return 0
+            fi
+            dispatch_and_watch "$workflow" "Migration ${number} verification/application" || true
+          }
+
+          migration_gate '094'
+          migration_gate '095'
+          migration_gate '096'
+
+          if [[ -e "$EVIDENCE_ROOT/audit-runtime-sha-evidenced.md" ]]; then
+            already_evidenced+=("The deployment log evidenced runtime-SHA verification.")
+          elif [[ -e "$EVIDENCE_ROOT/audit-runtime-sha-not-evidenced.md" ]]; then
+            runtime_workflow="$(find_dispatchable_workflow '(verify-runtime\.mjs|runtime.*sha|sha.*runtime|verify.*deployed.*commit)')"
+            if [[ -n "$runtime_workflow" ]]; then
+              dispatch_and_watch "$runtime_workflow" 'Runtime SHA verification' || true
+            else
+              gaps+=("Runtime SHA was not evidenced and no non-Production dispatchable runtime-verification workflow was found.")
+            fi
+          else
+            gaps+=("Runtime SHA has no audit classification marker.")
+          fi
+
+          if [[ -e "$EVIDENCE_ROOT/audit-authenticated-uat-evidenced.md" ]]; then
+            already_evidenced+=("Authenticated FlowHive/Project Forge UAT was evidenced in the deployment log.")
+          elif [[ -e "$EVIDENCE_ROOT/audit-authenticated-uat-not-evidenced.md" ]]; then
+            uat_workflow="$(find_dispatchable_workflow '(authenticated.*(uat|smoke)|(uat|smoke).*authenticated|flowhive.*(uat|smoke)|project[ -]?forge.*(uat|smoke)|module[ -]?0?(33|66).*(uat|smoke))')"
+            if [[ -n "$uat_workflow" ]]; then
+              dispatch_and_watch "$uat_workflow" 'Authenticated FlowHive/Project Forge UAT' || true
+            else
+              gaps+=("Authenticated FlowHive/Project Forge UAT was not evidenced and no non-Production dispatchable authenticated-UAT workflow was found.")
+            fi
+          else
+            gaps+=("Authenticated UAT has no audit classification marker.")
+          fi
+
+          already_text='none'
+          remediated_text='none'
+          gap_text='none'
+          if [[ ${#already_evidenced[@]} -gt 0 ]]; then
+            already_text="$(printf '%s ' "${already_evidenced[@]}")"
+          fi
+          if [[ ${#remediated[@]} -gt 0 ]]; then
+            remediated_text="$(printf '%s ' "${remediated[@]}")"
+          fi
+          if [[ ${#gaps[@]} -gt 0 ]]; then
+            gap_text="$(printf '%s ' "${gaps[@]}")"
+          fi
+
+          if [[ ${#gaps[@]} -eq 0 ]]; then
+            publish \
+              'post-deploy-remediation-complete.md' \
+              'PR #737 Protected UAT evidence gaps are closed' \
+              "Exact SHA: \`${checked_sha}\`. Already evidenced: ${already_text}. Newly remediated: ${remediated_text}."
+            git add "$EVIDENCE_ROOT"
+            git diff --cached --check
+            git commit -m 'Close PR 737 Protected UAT evidence gaps'
+            git push origin "HEAD:${EVIDENCE_BRANCH}"
+            comment "PR #${PR_NUMBER} Protected UAT evidence-gap remediation completed for exact SHA \`${checked_sha}\`. Already evidenced: ${already_text}. Newly verified: ${remediated_text}. Production mutation: NONE."
+            exit 0
+          fi
+
+          publish \
+            'post-deploy-remediation-gaps.md' \
+            'PR #737 Protected UAT evidence gaps remain' \
+            "Exact SHA: \`${checked_sha}\`. Already evidenced: ${already_text}. Newly remediated: ${remediated_text}. Remaining gaps: ${gap_text}."
+          git add "$EVIDENCE_ROOT"
+          git diff --cached --check
+          git commit -m 'Record remaining PR 737 Protected UAT evidence gaps'
+          git push origin "HEAD:${EVIDENCE_BRANCH}"
+          comment "PR #${PR_NUMBER} exact SHA \`${checked_sha}\` remains green and deployed to Protected UAT/Test, but the following independent evidence gaps remain: ${gap_text}. Already evidenced: ${already_text}. Newly verified: ${remediated_text}. Production mutation: NONE."
+          exit 2
