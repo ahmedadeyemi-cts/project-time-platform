@@ -212,14 +212,18 @@ jobs:
           grep -Fq "if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'" "$CONTROLLER"
           grep -Fq 'release_sha:' "$CONTROLLER"
           grep -Fq 'release_branch:' "$CONTROLLER"
-          grep -Fq "TARGET_RELEASE_BRANCH: \${{ github.event_name == 'workflow_dispatch' && inputs.release_branch || 'main' }}" "$CONTROLLER"
+          TARGET_BRANCH_MARKER='TARGET_RELEASE_BRANCH: $'
+          TARGET_BRANCH_MARKER+="{{ github.event_name == 'workflow_dispatch' && inputs.release_branch || 'main' }}"
+          grep -Fq "$TARGET_BRANCH_MARKER" "$CONTROLLER"
           grep -Fq 'Only the authorized FlowHive V2 candidate branch may use pre-merge Protected-Test deployment.' "$CONTROLLER"
           grep -Fq 'environment: test' "$CONTROLLER"
           grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
           grep -Fq 'queue: max' "$CONTROLLER"
           grep -Fq 'cancel-in-progress: false' "$CONTROLLER"
-          TARGET_MARKER="TARGET_RELEASE_COMMIT: \${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}"
-          CHECKOUT_MARKER="ref: \${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}"
+          TARGET_MARKER='TARGET_RELEASE_COMMIT: $'
+          TARGET_MARKER+="{{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}"
+          CHECKOUT_MARKER='ref: $'
+          CHECKOUT_MARKER+="{{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}"
           grep -Fq "$TARGET_MARKER" "$CONTROLLER"
           grep -Fq "$CHECKOUT_MARKER" "$CONTROLLER"
           grep -Fq 'https://phd-west-test.onenecklab.com' "$CONTROLLER"

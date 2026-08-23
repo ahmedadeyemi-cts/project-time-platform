@@ -24,6 +24,7 @@ const privateRag = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService
 const deployment = read('.github/workflows/projectpulse-deploy-test.yml');
 const migrationRunner = read('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh');
 const program = read('src/backend/ProjectTime.Api/Program.cs');
+const apiProject = read('src/backend/ProjectTime.Api/ProjectTime.Api.csproj');
 const enterpriseService = read('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs');
 const uploadStorage = read('src/backend/ProjectTime.Api/Ai/ProjectPulseUploadStorage.cs');
 const flowHiveUi = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
@@ -93,6 +94,8 @@ for (const token of ['ResolveExistingStoredFile', 'work-register-documents', 'do
   requireText(uploadStorage, token, 'durable project document relocation');
 for (const token of ['ProjectPulseUploadStorage.ResolveExistingStoredFile', 'storageRootFingerprint', 'durable file is not available'])
   requireText(program, token, 'Module 055C durable download route');
+requireText(program, 'documentProjectId == Guid.Empty ? null : documentProjectId', 'Module 055C reviewed project identity response');
+requireText(apiProject, "s/documentProjectId == Guid.Empty ? null : documentProjectId/documentProjectId == Guid.Empty ? (Guid?)null : documentProjectId/", 'Module 055C compiled nullable project identity normalization');
 for (const token of ['DurableFileAvailable', 'durable file cannot be downloaded', 'Restore the Module 055C document file'])
   requireText(resolver, token, 'project evidence durable-file gate');
 
