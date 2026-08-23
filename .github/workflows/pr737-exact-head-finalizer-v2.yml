@@ -1,0 +1,278 @@
+name: PR 737 exact-head finalizer v2
+
+on:
+  push:
+    branches:
+      - ops/pr737-check-monitor-20260823
+    paths:
+      - .github/workflows/pr737-exact-head-finalizer-v2.yml
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: pr737-exact-head-finalizer-v2
+  cancel-in-progress: true
+
+jobs:
+  validate-and-deploy:
+    if: github.event.head_commit.message == 'Start PR 737 exact-head finalizer v2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ahmedadeyemi-cts/project-time-platform
+      PR_NUMBER: '737'
+      EXPECTED_HEAD_BRANCH: fix/shared-project-document-planning-20260819
+      EVIDENCE_BRANCH: ops/pr737-check-monitor-20260823
+      EVIDENCE_ROOT: docs/architecture/pr737-monitor
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+    steps:
+      - name: Check out isolated evidence branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Evaluate the exact PR head and deploy only when fully green
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          stage='initialization'
+          checked_sha=''
+          deployment_run_id=''
+          deployment_run_url=''
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          comment() {
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "$1" || true
+          }
+
+          publish_evidence() {
+            local filename="$1"
+            local title="$2"
+            local body="$3"
+            mkdir -p "$EVIDENCE_ROOT"
+            cat > "$EVIDENCE_ROOT/$filename" <<EOF
+          # $title
+
+          $body
+
+          Finalizer run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Production mutation: **NONE**.
+          EOF
+            git add "$EVIDENCE_ROOT/$filename"
+            if ! git diff --cached --quiet; then
+              git commit -m "chore(pr737-monitor): ${filename%.md}"
+              git push origin "HEAD:${EVIDENCE_BRANCH}"
+            fi
+          }
+
+          terminal_failure() {
+            local rc=$?
+            set +e
+            publish_evidence \
+              'finalizer-v2-failed.md' \
+              'PR #737 exact-head finalizer v2 failed' \
+              "Stage: \`${stage}\`. Exit code: \`${rc}\`. Checked SHA: \`${checked_sha:-unavailable}\`. Deployment run ID: \`${deployment_run_id:-not-created}\`."
+            comment "PR #${PR_NUMBER} exact-head finalizer v2 stopped at **${stage}** with exit code ${rc}. Checked SHA: \`${checked_sha:-unavailable}\`; deployment run: ${deployment_run_id:-not-created}. Production mutation: NONE. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            exit "$rc"
+          }
+          trap terminal_failure ERR
+
+          stage='cancel-obsolete-monitor'
+          gh run list \
+            --repo "$REPOSITORY" \
+            --workflow zz-one-time-pr737-exact-head-monitor.yml \
+            --branch "$EXPECTED_HEAD_BRANCH" \
+            --limit 20 \
+            --json databaseId,status 2>/dev/null \
+            | jq -r '.[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | .databaseId' \
+            | while read -r old_run_id; do
+                [[ -z "$old_run_id" ]] && continue
+                gh run cancel "$old_run_id" --repo "$REPOSITORY" || true
+              done
+
+          stage='exact-head-resolution'
+          pr_json="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json state,headRefName,headRefOid,url)"
+          test "$(jq -r '.state' <<<"$pr_json")" = 'OPEN'
+          test "$(jq -r '.headRefName' <<<"$pr_json")" = "$EXPECTED_HEAD_BRANCH"
+          checked_sha="$(jq -r '.headRefOid' <<<"$pr_json")"
+          test -n "$checked_sha"
+          publish_evidence \
+            'finalizer-v2-started.md' \
+            'PR #737 corrected exact-head finalizer started' \
+            "Evaluating exact PR head \`${checked_sha}\`. Legacy commit status is considered pending only when at least one legacy status context exists."
+          comment "PR #${PR_NUMBER} corrected exact-head finalizer v2 started on \`${checked_sha}\`. It supersedes the waiting monitor and does not mutate the PR branch. Production mutation: NONE."
+
+          actions_snapshot() {
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/${REPOSITORY}/actions/runs?head_sha=${checked_sha}&per_page=100" \
+              | jq '{latest: ([.workflow_runs[]] | sort_by(.workflow_id,.run_number,.run_attempt) | group_by(.workflow_id) | map(max_by(.run_number,.run_attempt)))}'
+          }
+
+          checks_snapshot() {
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/${REPOSITORY}/commits/${checked_sha}/check-runs?filter=latest&per_page=100" \
+              | jq '{checks:[.check_runs[]|{id,name,status,conclusion,details_url,started_at,completed_at}]}'
+          }
+
+          statuses_snapshot() {
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/${REPOSITORY}/commits/${checked_sha}/status" \
+              | jq '{state,total_count,statuses:[.statuses[]|{id,context,state,target_url}]}'
+          }
+
+          combined_snapshot() {
+            jq -n \
+              --argjson actions "$(actions_snapshot)" \
+              --argjson checks "$(checks_snapshot)" \
+              --argjson statuses "$(statuses_snapshot)" \
+              '{actions:$actions,checks:$checks,statuses:$statuses}'
+          }
+
+          wait_for_terminal_suite() {
+            local last_signature=''
+            local stable=0
+            local snapshot=''
+            local action_count=0
+            local check_count=0
+            local pending=0
+            local legacy_total=0
+            local legacy_state=''
+            for _ in $(seq 1 240); do
+              snapshot="$(combined_snapshot)"
+              action_count="$(jq '.actions.latest|length' <<<"$snapshot")"
+              check_count="$(jq '.checks.checks|length' <<<"$snapshot")"
+              pending="$(jq '[.actions.latest[]|select(.status!="completed")]|length' <<<"$snapshot")"
+              pending=$((pending + $(jq '[.checks.checks[]|select(.status!="completed")]|length' <<<"$snapshot")))
+              legacy_total="$(jq '.statuses.total_count' <<<"$snapshot")"
+              legacy_state="$(jq -r '.statuses.state' <<<"$snapshot")"
+              if [[ "$legacy_total" -gt 0 && "$legacy_state" == 'pending' ]]; then
+                pending=$((pending + 1))
+              fi
+              signature="$(jq -c '{a:[.actions.latest[]|{id,status,conclusion,run_attempt}],c:[.checks.checks[]|{id,status,conclusion}],s:{state:.statuses.state,total:.statuses.total_count}}' <<<"$snapshot")"
+              if [[ "$action_count" -gt 0 && "$check_count" -gt 0 && "$pending" -eq 0 && "$signature" == "$last_signature" ]]; then
+                stable=$((stable + 1))
+              else
+                stable=0
+              fi
+              if [[ "$action_count" -gt 0 && "$check_count" -gt 0 && "$pending" -eq 0 && "$stable" -ge 3 ]]; then
+                printf '%s' "$snapshot"
+                return 0
+              fi
+              last_signature="$signature"
+              sleep 15
+            done
+            return 1
+          }
+
+          evaluate_failures() {
+            local snapshot="$1"
+            jq -n \
+              --argjson actions "$(jq '[.actions.latest[]|select(.conclusion!="success" and .conclusion!="neutral" and .conclusion!="skipped")]' <<<"$snapshot")" \
+              --argjson checks "$(jq '[.checks.checks[]|select(.conclusion!="success" and .conclusion!="neutral" and .conclusion!="skipped")]' <<<"$snapshot")" \
+              --arg legacy_state "$(jq -r '.statuses.state' <<<"$snapshot")" \
+              --argjson legacy_total "$(jq '.statuses.total_count' <<<"$snapshot")" \
+              '{actions:$actions,checks:$checks,legacy_state:$legacy_state,legacy_total:$legacy_total}'
+          }
+
+          stage='complete-suite-validation'
+          suite="$(wait_for_terminal_suite)"
+          failures="$(evaluate_failures "$suite")"
+          action_failure_count="$(jq '.actions|length' <<<"$failures")"
+
+          if [[ "$action_failure_count" -gt 0 ]]; then
+            retry_names="$(jq -r '[.actions[]|(.name+" (run "+(.id|tostring)+")")]|join(", ")' <<<"$failures")"
+            comment "PR #${PR_NUMBER} exact-head suite found failed Actions runs on \`${checked_sha}\`: ${retry_names}. One failed-job rerun is being attempted."
+            jq -r '.actions[].id' <<<"$failures" | while read -r failed_run_id; do
+              [[ -z "$failed_run_id" ]] && continue
+              gh run rerun "$failed_run_id" --repo "$REPOSITORY" --failed || gh run rerun "$failed_run_id" --repo "$REPOSITORY" || true
+            done
+            sleep 10
+            suite="$(wait_for_terminal_suite)"
+            failures="$(evaluate_failures "$suite")"
+          fi
+
+          action_failure_count="$(jq '.actions|length' <<<"$failures")"
+          check_failure_count="$(jq '.checks|length' <<<"$failures")"
+          legacy_total="$(jq '.legacy_total' <<<"$failures")"
+          legacy_state="$(jq -r '.legacy_state' <<<"$failures")"
+          legacy_failed=0
+          if [[ "$legacy_total" -gt 0 && ( "$legacy_state" == 'failure' || "$legacy_state" == 'error' ) ]]; then
+            legacy_failed=1
+          fi
+
+          if [[ "$action_failure_count" -gt 0 || "$check_failure_count" -gt 0 || "$legacy_failed" -eq 1 ]]; then
+            action_names="$(jq -r '[.actions[]|(.name+" ["+(.conclusion//"unknown")+"] run "+(.id|tostring))]|join("; ")' <<<"$failures")"
+            check_names="$(jq -r '[.checks[]|(.name+" ["+(.conclusion//"unknown")+"]")]|unique|join("; ")' <<<"$failures")"
+            printf '%s\n' "$suite" > "$EVIDENCE_ROOT/finalizer-v2-suite.json"
+            publish_evidence \
+              'complete-suite-failed-v2.md' \
+              'PR #737 complete exact-head suite failed after corrected evaluation' \
+              "Exact SHA: \`${checked_sha}\`. Failed Actions: ${action_names:-none}. Failed checks: ${check_names:-none}. Legacy status: \`${legacy_state}\` across \`${legacy_total}\` context(s)."
+            comment "PR #${PR_NUMBER} exact-head suite is **not green** on \`${checked_sha}\` after one rerun. Failed Actions: ${action_names:-none}. Failed checks: ${check_names:-none}. Legacy status: ${legacy_state} (${legacy_total} context(s)). No deployment and no Production action occurred."
+            trap - ERR
+            exit 2
+          fi
+
+          test "$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json headRefOid --jq '.headRefOid')" = "$checked_sha"
+          action_count="$(jq '.actions.latest|length' <<<"$suite")"
+          check_count="$(jq '.checks.checks|length' <<<"$suite")"
+          publish_evidence \
+            'complete-suite-green-v2.md' \
+            'PR #737 complete exact-head suite passed under corrected evaluation' \
+            "Exact green SHA: \`${checked_sha}\`. Latest Actions workflows: \`${action_count}\`. Latest check runs: \`${check_count}\`. Legacy status contexts: \`${legacy_total}\` with state \`${legacy_state}\`."
+          comment "PR #${PR_NUMBER} complete exact-head suite is green on \`${checked_sha}\`: ${action_count} latest Actions workflows, ${check_count} latest check runs, ${legacy_total} legacy status context(s). Dispatching the exact SHA to Protected UAT/Test. Production mutation: NONE."
+
+          stage='exact-head-protected-uat-dispatch'
+          dispatch_time="$(date -u +%FT%TZ)"
+          gh workflow run "$DEPLOY_WORKFLOW" --repo "$REPOSITORY" --ref "$EXPECTED_HEAD_BRANCH"
+          for _ in $(seq 1 90); do
+            candidates="$(gh run list --repo "$REPOSITORY" --workflow "$DEPLOY_WORKFLOW" --branch "$EXPECTED_HEAD_BRANCH" --event workflow_dispatch --limit 30 --json databaseId,headSha,createdAt,url)"
+            deployment_run_id="$(jq -r --arg sha "$checked_sha" --arg after "$dispatch_time" '[.[]|select(.headSha==$sha and .createdAt>=$after)]|sort_by(.createdAt)|last|.databaseId//empty' <<<"$candidates")"
+            deployment_run_url="$(jq -r --arg sha "$checked_sha" --arg after "$dispatch_time" '[.[]|select(.headSha==$sha and .createdAt>=$after)]|sort_by(.createdAt)|last|.url//empty' <<<"$candidates")"
+            [[ -n "$deployment_run_id" ]] && break
+            sleep 5
+          done
+          test -n "$deployment_run_id"
+          publish_evidence \
+            'exact-head-test-dispatched-v2.md' \
+            'PR #737 exact green SHA dispatched to Protected UAT/Test' \
+            "Exact SHA: \`${checked_sha}\`. Deployment run: ${deployment_run_url} (ID \`${deployment_run_id}\`)."
+          comment "PR #${PR_NUMBER} exact green SHA \`${checked_sha}\` dispatched to Protected UAT/Test. Run: ${deployment_run_url}; ID: \`${deployment_run_id}\`. Production mutation: NONE."
+
+          stage='exact-head-protected-uat-deployment'
+          if ! gh run watch "$deployment_run_id" --repo "$REPOSITORY" --interval 15 --exit-status; then
+            gh run view "$deployment_run_id" --repo "$REPOSITORY" --log-failed || true
+            publish_evidence \
+              'exact-head-test-failed-v2.md' \
+              'PR #737 exact-head Protected UAT/Test deployment failed' \
+              "Exact SHA: \`${checked_sha}\`. Failed deployment run: ${deployment_run_url} (ID \`${deployment_run_id}\`)."
+            comment "PR #${PR_NUMBER} exact green SHA \`${checked_sha}\` failed during Protected UAT/Test deployment run ${deployment_run_id}. Production mutation: NONE."
+            trap - ERR
+            exit 3
+          fi
+
+          publish_evidence \
+            'exact-head-test-passed-v2.md' \
+            'PR #737 exact green SHA deployed successfully to Protected UAT/Test' \
+            "Exact checked and deployed SHA: \`${checked_sha}\`. Successful deployment run: ${deployment_run_url} (ID \`${deployment_run_id}\`)."
+          comment "PR #${PR_NUMBER} exact green SHA \`${checked_sha}\` deployed successfully to Protected UAT/Test in run ${deployment_run_id}. Production mutation: NONE. Remaining gate: authenticated FlowHive/Project Forge UAT, migration verification, and runtime-SHA confirmation."
+
+          trap - ERR
+          echo "PR737_EXACT_HEAD_FINALIZER_V2=PASSED"
+          echo "PR737_EXACT_HEAD_SHA=$checked_sha"
+          echo "PR737_PROTECTED_UAT_RUN_ID=$deployment_run_id"
+          echo "PRODUCTION_MUTATION=NONE"
