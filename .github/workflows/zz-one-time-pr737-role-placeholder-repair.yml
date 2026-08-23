@@ -1,0 +1,77 @@
+name: One-time PR 737 role-placeholder schedule repair
+
+on:
+  push:
+    branches:
+      - fix/shared-project-document-planning-20260819
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr737-role-placeholder-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact branch source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Verify one-time parent and apply bounded repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD^)" = "233a7601e47739c616e819443e9ddf41052deca3"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs')
+          text = source.read_text()
+          old = '''            if (assignment.ResourceUserId is null || assignment.ResourceUserId == Guid.Empty)
+                      {
+                          Error(issues, "assignment_identity_required", $"{path}.resourceUserId", "Assignments require a Module 062-backed ProjectPulse identity ID.");
+                      }
+          '''
+          new = '''            var hasModule062Identity = assignment.ResourceUserId is { } resourceUserId
+                          && resourceUserId != Guid.Empty;
+                      var hasExplicitRolePlaceholder = assignment.ResourceUserId is null
+                          && !string.IsNullOrWhiteSpace(assignment.ResourceDisplayName);
+                      if (!hasModule062Identity && !hasExplicitRolePlaceholder)
+                      {
+                          Error(
+                              issues,
+                              "assignment_identity_required",
+                              $"{path}.resourceUserId",
+                              "Assignments require either a Module 062-backed ProjectPulse identity ID or an explicit PM-review role placeholder.");
+                      }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit('Expected exactly one assignment identity validation block.')
+          source.write_text(text.replace(old, new))
+          Path('.github/workflows/zz-one-time-pr737-role-placeholder-repair.yml').unlink()
+          PY
+          git diff --check
+
+      - name: Run detailed FlowHive executable regression
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+
+      - name: Publish permanent source-only repair and remove controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs .github/workflows/zz-one-time-pr737-role-placeholder-repair.yml
+          git diff --cached --check
+          git commit -m 'Allow explicit role placeholders in draft schedule validation'
+          git push origin HEAD:fix/shared-project-document-planning-20260819
