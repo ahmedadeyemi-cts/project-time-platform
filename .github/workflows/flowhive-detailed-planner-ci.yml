@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/shared-project-document-planning-20260819
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -14,7 +17,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.repository == 'ahmedadeyemi-cts/project-time-platform'
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -29,8 +32,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(git rev-parse HEAD^)" = "9f3189d53db568a98be88f1f03820b781c9f0b5a"
-          git show HEAD^:.github/workflows/flowhive-detailed-planner-ci.yml > .github/workflows/flowhive-detailed-planner-ci.yml
+          test "$(git rev-parse HEAD^)" = "fcde243e3a2e9bea7c12a13c326f1a4fc77c1f27"
+          git show 9f3189d53db568a98be88f1f03820b781c9f0b5a:.github/workflows/flowhive-detailed-planner-ci.yml > .github/workflows/flowhive-detailed-planner-ci.yml
           python3 - <<'PY'
           from pathlib import Path
           import re
