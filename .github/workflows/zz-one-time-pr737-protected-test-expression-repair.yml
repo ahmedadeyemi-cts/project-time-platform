@@ -1,5 +1,6 @@
 name: One-time PR 737 protected-Test expression repair
 
+# Second push intentionally triggers this already-registered branch workflow.
 on:
   push:
     branches:
@@ -39,10 +40,14 @@ jobs:
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           git cat-file -e "$EXPECTED_HEAD^{commit}"
-          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_HEAD" ]] \
-            || fail 'The repair bootstrap is not based on the authorized PR head.'
+          git merge-base --is-ancestor "$EXPECTED_HEAD" HEAD \
+            || fail 'The repair bootstrap does not descend from the authorized PR head.'
           [[ -f "$TARGET_WORKFLOW" && -f "$SELF_WORKFLOW" ]] \
             || fail 'The repair inputs are incomplete.'
+
+          unexpected_bootstrap="$(git diff --name-only "$EXPECTED_HEAD"...HEAD | grep -Fvx "$SELF_WORKFLOW" || true)"
+          [[ -z "$unexpected_bootstrap" ]] \
+            || fail "The tooling branch changed an unexpected bootstrap path: $unexpected_bootstrap"
 
           python3 - <<'PY'
           from pathlib import Path
