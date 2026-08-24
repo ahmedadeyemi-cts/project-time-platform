@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   observe:
-    name: Locate exact Protected Test deployment run
+    name: Extract exact repaired-candidate deployment failure
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -28,41 +28,42 @@ jobs:
       OUTPUT_DIR: /tmp/pr737-protected-uat-observer
 
     steps:
-      - name: Locate exact workflow-dispatch run
+      - name: Download and extract exact deployment log
         shell: bash
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
-          install -d -m 0700 "$OUTPUT_DIR"
+          install -d -m 0700 "$OUTPUT_DIR" "$OUTPUT_DIR/logs"
 
-          run_id=''
-          for _ in $(seq 1 90); do
-            runs="$(
-              curl --fail-with-body --silent --show-error \
-                -H "Authorization: Bearer $GH_TOKEN" \
-                -H 'Accept: application/vnd.github+json' \
-                -H 'X-GitHub-Api-Version: 2022-11-28' \
-                "$API_ROOT/actions/workflows/projectpulse-deploy-test.yml/runs?event=workflow_dispatch&per_page=100"
-            )"
-            run_id="$(
-              jq -r --arg sha "$TARGET_SHA" --arg branch "$TARGET_BRANCH" '
-                [.workflow_runs[]
-                  | select(.head_sha == $sha)
-                  | select(.head_branch == $branch)
-                  | select(.event == "workflow_dispatch")]
-                | sort_by(.created_at)
-                | last
-                | .id // empty
-              ' <<<"$runs"
-            )"
-            if [[ -n "$run_id" ]]; then
-              jq --argjson id "$run_id" '.workflow_runs[] | select(.id == $id)' \
-                <<<"$runs" > "$OUTPUT_DIR/run.json"
-              break
-            fi
-            sleep 10
-          done
+          runs="$(
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$API_ROOT/actions/workflows/projectpulse-deploy-test.yml/runs?event=workflow_dispatch&per_page=100"
+          )"
+          run_id="$(
+            jq -r --arg sha "$TARGET_SHA" --arg branch "$TARGET_BRANCH" '
+              [.workflow_runs[]
+                | select(.head_sha == $sha)
+                | select(.head_branch == $branch)
+                | select(.event == "workflow_dispatch")]
+              | sort_by(.created_at)
+              | last
+              | .id // empty
+            ' <<<"$runs"
+          )"
           [[ -n "$run_id" ]] || fail 'The exact Protected Test deployment run was not found.'
+          jq --argjson id "$run_id" '.workflow_runs[] | select(.id == $id)' \
+            <<<"$runs" > "$OUTPUT_DIR/run.json"
+          jq -e --arg sha "$TARGET_SHA" --arg branch "$TARGET_BRANCH" '
+            .head_sha == $sha and
+            .head_branch == $branch and
+            .event == "workflow_dispatch" and
+            .status == "completed" and
+            .conclusion == "failure"
+          ' "$OUTPUT_DIR/run.json" >/dev/null \
+            || fail 'The located run is not the exact failed repaired candidate.'
 
           curl --fail-with-body --silent --show-error \
             -H "Authorization: Bearer $GH_TOKEN" \
@@ -71,26 +72,44 @@ jobs:
             "$API_ROOT/actions/runs/$run_id/jobs?per_page=100" \
             > "$OUTPUT_DIR/jobs.json"
 
-          jq -e --arg sha "$TARGET_SHA" --arg branch "$TARGET_BRANCH" '
-            .head_sha == $sha and
-            .head_branch == $branch and
-            .event == "workflow_dispatch"
-          ' "$OUTPUT_DIR/run.json" >/dev/null \
-            || fail 'The located deployment is not the exact governed candidate.'
+          curl --fail-with-body --silent --show-error --location \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API_ROOT/actions/runs/$run_id/logs" \
+            --output "$OUTPUT_DIR/logs.zip"
+          unzip -q "$OUTPUT_DIR/logs.zip" -d "$OUTPUT_DIR/logs"
+          rm -f "$OUTPUT_DIR/logs.zip"
 
-          status="$(jq -r '.status' "$OUTPUT_DIR/run.json")"
-          conclusion="$(jq -r '.conclusion // ""' "$OUTPUT_DIR/run.json")"
+          job_log="$(find "$OUTPUT_DIR/logs" -type f -name '*Validate, migrate, deploy, and verify protected Test*.txt' -print -quit)"
+          [[ -n "$job_log" && -s "$job_log" ]] || fail 'The deployment job log was not present.'
+          tail -n 3200 "$job_log" > "$OUTPUT_DIR/deployment-failure-tail.txt"
+          grep -nEi -C 30 \
+            'ERROR:|##\[error\]|MIGRATION_09[456]|SYSTEMWIDE_RELIABILITY_MIGRATIONS|Dockerfile|psql:|does not exist|permission denied|Container Apps Job|migration job|Failed|failure' \
+            "$job_log" > "$OUTPUT_DIR/deployment-failure-extract.txt" || true
+
+          for file in "$OUTPUT_DIR/deployment-failure-tail.txt" "$OUTPUT_DIR/deployment-failure-extract.txt"; do
+            sed -E -i \
+              -e 's/(Authorization: Bearer )[A-Za-z0-9._~+\/-]+/\1[REDACTED]/g' \
+              -e 's/(PGPASSWORD=)[^[:space:]]+/\1[REDACTED]/g' \
+              -e 's/(password[=:])[[:space:]]*[^[:space:]]+/\1[REDACTED]/Ig' \
+              "$file"
+          done
+
           printf 'PROTECTED_UAT_DEPLOYMENT_RUN_ID=%s\n' "$run_id"
-          printf 'PROTECTED_UAT_DEPLOYMENT_STATUS=%s\n' "$status"
-          printf 'PROTECTED_UAT_DEPLOYMENT_CONCLUSION=%s\n' "$conclusion"
           printf 'PROTECTED_UAT_DEPLOYMENT_SHA=%s\n' "$TARGET_SHA"
+          printf 'DEPLOYMENT_FAILURE_EXTRACT=CREATED\n'
           printf 'PRODUCTION_MUTATION=NONE\n'
 
-      - name: Upload observer evidence
+      - name: Upload exact failure evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: pr737-protected-uat-observer-${{ github.run_id }}
-          path: /tmp/pr737-protected-uat-observer
+          name: pr737-repaired-candidate-failure-${{ github.run_id }}
+          path: |
+            /tmp/pr737-protected-uat-observer/run.json
+            /tmp/pr737-protected-uat-observer/jobs.json
+            /tmp/pr737-protected-uat-observer/deployment-failure-tail.txt
+            /tmp/pr737-protected-uat-observer/deployment-failure-extract.txt
           if-no-files-found: error
           retention-days: 3
