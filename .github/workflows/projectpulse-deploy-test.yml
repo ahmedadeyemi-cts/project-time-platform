@@ -571,6 +571,11 @@ jobs:
         env:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
           BASE: ${{ steps.contract.outputs.base }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+          EXPECTED_API_IMAGE: ${{ steps.build.outputs.api_image }}
+          EXPECTED_WEB_IMAGE: ${{ steps.build.outputs.web_image }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -1066,13 +1071,13 @@ jobs:
             fail 'Protected Test frontend did not converge to the required served bundle after 36 attempts.'
           fi
 
-          API_AFTER="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
-          WEB_AFTER="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          API_AFTER="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" -o json --only-show-errors)"
+          WEB_AFTER="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" -o json --only-show-errors)"
           ACTIVE_API_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$API_AFTER")"
           ACTIVE_WEB_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$WEB_AFTER")"
           ACTIVE_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_AFTER")"
-          [[ "$ACTIVE_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]] || fail 'Active API image does not match the immutable release.'
-          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]] || fail 'Active web image does not match the immutable release.'
+          [[ "$ACTIVE_API_IMAGE" == "$EXPECTED_API_IMAGE" ]] || fail 'Active API image does not match the immutable release.'
+          [[ "$ACTIVE_WEB_IMAGE" == "$EXPECTED_WEB_IMAGE" ]] || fail 'Active web image does not match the immutable release.'
           [[ "$ACTIVE_SOURCE" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Active source marker does not match the authorized release.'
 
           jq -n \
