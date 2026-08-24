@@ -45,6 +45,40 @@ assert.doesNotMatch(
   'Migration 093 verification must not apply NOT to a text-cast EXISTS result'
 );
 
+const migrationImageBuilders = [
+  ['094', 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'],
+  ['095', 'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'],
+  ['096', 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh']
+];
+for (const [migration, builderPath] of migrationImageBuilders) {
+  const builder = fs.readFileSync(builderPath, 'utf8');
+  assert.match(
+    builder,
+    /DOCKERFILE="\$CONTEXT\/Dockerfile"/,
+    `Migration ${migration} must bind the Dockerfile to its generated ACR context`
+  );
+  assert.match(
+    builder,
+    /\[\[ -f "\$DOCKERFILE" \]\]/,
+    `Migration ${migration} must prove the generated Dockerfile exists before ACR build`
+  );
+  assert.match(
+    builder,
+    /--file "\$DOCKERFILE"/,
+    `Migration ${migration} must pass the absolute generated Dockerfile path to Azure ACR`
+  );
+  assert.doesNotMatch(
+    builder,
+    /--file Dockerfile(?:\s|\\)/,
+    `Migration ${migration} must not resolve Dockerfile from the caller working directory`
+  );
+  assert.match(
+    builder,
+    /"\$CONTEXT"; then/,
+    `Migration ${migration} must upload the same context that owns its Dockerfile`
+  );
+}
+
 const bashScript = [
   'set -Eeuo pipefail',
   "UNIQUE_TAG='validation-tag'",
@@ -60,4 +94,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-relative docker-fallback=full_image utilization-uat=registered');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image migration-builders=094,095,096 utilization-uat=registered');

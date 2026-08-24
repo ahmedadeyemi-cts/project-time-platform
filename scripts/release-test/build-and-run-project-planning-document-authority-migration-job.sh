@@ -31,7 +31,6 @@ trap cleanup EXIT INT TERM
 [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "RELIABILITY_RELEASE_COMMIT must be an exact commit."
 [[ -s "$MIGRATION_FILE" ]] || fail "Migration 096 source is missing."
 [[ -s "$MIGRATION_RUNNER" ]] || fail "Migration 096 private-network runner is missing."
-
 for command_name in az jq mktemp install chmod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required."
 done
@@ -53,47 +52,33 @@ ACTUAL="$(cat "$ROOT/.projectpulse-release-commit")"
   echo 'ERROR: Migration 096 image release identity mismatch.' >&2
   exit 1
 }
-
 MIGRATION="$ROOT/database/migrations/096_project_planning_document_authority.sql"
 [[ -f "$MIGRATION" ]] || {
   echo 'ERROR: Migration 096 source is missing from the immutable image.' >&2
   exit 1
 }
 psql -X -v ON_ERROR_STOP=1 --file "$MIGRATION"
-
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='096_project_planning_document_authority')::text || '|' ||
   (to_regclass('public.project_planning_document_authority') IS NOT NULL)::text || '|' ||
   (to_regclass('public.current_project_planning_document_authority') IS NOT NULL)::text || '|' ||
   (to_regprocedure('public.projectpulse_reconcile_project_planning_document_authority(uuid,uuid,uuid,text,text,uuid,text,text,text,text,text,text,jsonb)') IS NOT NULL)::text || '|' ||
-  EXISTS(
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='project_planning_document_authority'
-      AND column_name='source_sha256'
-  )::text || '|' ||
-  EXISTS(
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='project_planning_document_authority'
-      AND column_name='document_version_id'
-  )::text || '|' ||
-  EXISTS(
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='project_planning_document_authority'
-      AND column_name='is_current'
-  )::text;
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_planning_document_authority' AND column_name='source_sha256')::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_planning_document_authority' AND column_name='document_version_id')::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_planning_document_authority' AND column_name='is_current')::text;
 SQL
 )"
 [[ "$verification" == 'true|true|true|true|true|true|true' ]] || {
   echo "ERROR: Migration 096 verification failed: $verification" >&2
   exit 1
 }
-
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
 ENTRYPOINT
 chmod 0555 "$CONTEXT/entrypoint.sh"
 
-cat > "$CONTEXT/Dockerfile" <<'DOCKERFILE'
+DOCKERFILE="$CONTEXT/Dockerfile"
+cat > "$DOCKERFILE" <<'DOCKERFILE_CONTENT'
 FROM postgres:16-alpine
 RUN apk add --no-cache bash coreutils ca-certificates
 WORKDIR /opt/projectpulse/release
@@ -103,7 +88,8 @@ COPY entrypoint.sh /usr/local/bin/project-planning-document-authority-migrate
 RUN chmod 0555 /usr/local/bin/project-planning-document-authority-migrate \
     && chmod 0444 .projectpulse-release-commit database/migrations/*.sql
 ENTRYPOINT ["/usr/local/bin/project-planning-document-authority-migrate"]
-DOCKERFILE
+DOCKERFILE_CONTENT
+[[ -f "$DOCKERFILE" ]] || fail "Migration 096 Dockerfile was not created in its ACR build context."
 
 SHORT_RELEASE="${RELEASE_COMMIT:0:12}"
 REPOSITORY="project-health-dashboard-document-authority-migrator"
@@ -114,7 +100,7 @@ for attempt in 1 2; do
   if az acr build \
       --registry "$ACR_NAME" \
       --image "$IMAGE" \
-      --file Dockerfile \
+      --file "$DOCKERFILE" \
       --timeout 1800 \
       "$CONTEXT"; then
     BUILD_SUCCEEDED=1
@@ -132,7 +118,9 @@ for attempt in $(seq 1 12); do
     --query digest \
     -o tsv \
     --only-show-errors 2>/dev/null || true)"
-  if [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then break; fi
+  if [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    break
+  fi
   (( attempt < 12 )) && sleep 5
 done
 [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || fail "Migration 096 immutable digest could not be resolved."
@@ -140,7 +128,6 @@ done
 export RELIABILITY_MIGRATION_IMAGE="$ACR_NAME.azurecr.io/$REPOSITORY@$DIGEST"
 export RELIABILITY_MIGRATION_JOB_NAME="pp096-${RUN_ID}-${RUN_ATTEMPT}"
 export RELIABILITY_MIGRATION_SCOPE="project-planning-document-authority-test"
-
 bash "$MIGRATION_RUNNER"
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
 
@@ -149,13 +136,6 @@ if [[ -n "$EVIDENCE_ROOT" ]]; then
   jq -n \
     --arg releaseCommit "$RELEASE_COMMIT" \
     --arg image "$RELIABILITY_MIGRATION_IMAGE" \
-    '{
-      status:"applied_and_verified",
-      migration:"096_project_planning_document_authority",
-      releaseCommit:$releaseCommit,
-      image:$image,
-      environment:"protected-test",
-      privateNetworkJob:true,
-      productionMutation:false
-    }' > "$EVIDENCE_ROOT/migration-096.json"
+    '{status:"applied_and_verified",migration:"096_project_planning_document_authority",releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,productionMutation:false}' \
+    > "$EVIDENCE_ROOT/migration-096.json"
 fi
