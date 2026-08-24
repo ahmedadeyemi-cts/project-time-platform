@@ -348,9 +348,31 @@ INSERT INTO project_planning_095_role_grants(app_role_id,app_permission_id)
 SELECT app_role_id,app_permission_id FROM inserted
 ON CONFLICT DO NOTHING;
 
-GRANT SELECT,INSERT,UPDATE,DELETE ON TABLE project_planning_collaborators TO "ptp_app";
-GRANT SELECT,INSERT ON TABLE project_planning_collaboration_audit_events TO "ptp_app";
-GRANT SELECT ON TABLE project_planning_095_permissions_created,project_planning_095_role_grants TO "ptp_app";
+-- Runtime database roles differ across supported environments. Grant only to
+-- canonical roles that already exist; migrations must never create login roles.
+DO $projectpulse095_runtime_grants$
+DECLARE
+    role_name TEXT;
+BEGIN
+    FOREACH role_name IN ARRAY ARRAY['ptp_app', 'projectpulse_app']
+    LOOP
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+            EXECUTE format(
+                'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE project_planning_collaborators TO %I',
+                role_name
+            );
+            EXECUTE format(
+                'GRANT SELECT, INSERT ON TABLE project_planning_collaboration_audit_events TO %I',
+                role_name
+            );
+            EXECUTE format(
+                'GRANT SELECT ON TABLE project_planning_095_permissions_created, project_planning_095_role_grants TO %I',
+                role_name
+            );
+        END IF;
+    END LOOP;
+END;
+$projectpulse095_runtime_grants$;
 
 
 -- Durable, idempotent server-owned FlowHive AI Planner operations. These rows
