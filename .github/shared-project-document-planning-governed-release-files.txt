@@ -8,6 +8,7 @@
 .github/workflows/projectpulse-release-test-control-ci.yml
 .github/workflows/protected-uat-candidate-dispatch.yml
 .github/workflows/shared-project-document-planning-ci.yml
+database/migrations/094_flowhive_canonical_sow_authority.sql
 database/migrations/095_project_planning_collaboration_access.sql
 database/migrations/096_project_planning_document_authority.sql
 database/rollback/095_project_planning_collaboration_access_rollback.sql
@@ -59,6 +60,7 @@ src/frontend/project-time-web/src/ProjectForgeCenter.jsx
 src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
 src/frontend/project-time-web/src/project-flowhive-center.css
 tests/FlowHiveDetailedPlannerTests/Program.cs
+tests/test-flowhive-canonical-sow-authority-migration-094.sh
 tests/test-project-planning-collaboration-migration-095.sh
 tests/test-project-planning-document-authority-migration-096.sh
 tests/validate-celar-ai-pr630-consolidated.mjs
