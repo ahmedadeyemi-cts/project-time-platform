@@ -12,6 +12,8 @@
 BEGIN;
 
 DO $projectpulse094_prerequisites$
+DECLARE
+    missing_contracts TEXT;
 BEGIN
     IF to_regclass('public.schema_migrations') IS NULL
        OR to_regclass('public.project_intake_documents') IS NULL
@@ -20,20 +22,64 @@ BEGIN
         RAISE EXCEPTION 'Migration 094 requires schema_migrations, Work Register document bridging, and the private document-version runtime.';
     END IF;
 
+    -- Some long-lived Test databases contain the complete 079/081 physical
+    -- runtime contract but predate reliable schema_migrations registration.
+    -- Validate the exact structures used by this migration instead of treating
+    -- missing historical bookkeeping rows as proof that the runtime is absent.
+    SELECT string_agg(
+               required.table_name || '.' || required.column_name,
+               ', ' ORDER BY required.table_name, required.column_name
+           )
+      INTO missing_contracts
+      FROM (
+          VALUES
+              ('project_intake_documents', 'project_intake_document_id'),
+              ('project_intake_documents', 'project_id'),
+              ('project_intake_documents', 'work_register_document_id'),
+              ('project_intake_documents', 'upload_source'),
+              ('project_intake_documents', 'document_type'),
+              ('project_intake_documents', 'document_category'),
+              ('project_intake_documents', 'engineering_visible'),
+              ('project_intake_documents', 'pulse_ai_processing_status'),
+              ('project_intake_documents', 'pulse_ai_active_version_id'),
+              ('project_intake_documents', 'pulse_ai_effective_at'),
+              ('project_intake_documents', 'uploaded_at'),
+              ('project_intake_documents', 'is_active'),
+              ('work_register_documents', 'work_register_document_id'),
+              ('work_register_documents', 'document_type'),
+              ('work_register_documents', 'upload_source'),
+              ('work_register_documents', 'stored_file_path'),
+              ('work_register_documents', 'status'),
+              ('pulse_ai_document_versions', 'pulse_ai_document_version_id'),
+              ('pulse_ai_document_versions', 'project_intake_document_id'),
+              ('pulse_ai_document_versions', 'project_id'),
+              ('pulse_ai_document_versions', 'authority_status'),
+              ('pulse_ai_document_versions', 'document_version'),
+              ('pulse_ai_document_versions', 'source_sha256'),
+              ('pulse_ai_document_versions', 'index_status')
+      ) AS required(table_name, column_name)
+      LEFT JOIN information_schema.columns actual
+        ON actual.table_schema = 'public'
+       AND actual.table_name = required.table_name
+       AND actual.column_name = required.column_name
+     WHERE actual.column_name IS NULL;
+
+    IF missing_contracts IS NOT NULL THEN
+        RAISE EXCEPTION
+            'Migration 094 requires the physical 079/081 Work Register and private-runtime contract. Missing: %',
+            missing_contracts;
+    END IF;
+
+    -- Migration 086 is applied by this exact protected-Test release and remains
+    -- a hard sequencing gate. Historical 079/081 IDs are intentionally not
+    -- backfilled here because physical compatibility does not prove that every
+    -- historical data operation ran.
     IF NOT EXISTS (
-        SELECT 1
-        FROM schema_migrations
-        WHERE migration_id = '079_coordinated_runtime_ai_document_rbac_repair'
-    ) OR NOT EXISTS (
-        SELECT 1
-        FROM schema_migrations
-        WHERE migration_id = '081_celar_ai_private_runtime_activation'
-    ) OR NOT EXISTS (
         SELECT 1
         FROM schema_migrations
         WHERE migration_id = '086_module_066_flowhive_enterprise_pm'
     ) THEN
-        RAISE EXCEPTION 'Migration 094 requires migrations 079, 081, and 086.';
+        RAISE EXCEPTION 'Migration 094 requires migration 086.';
     END IF;
 END;
 $projectpulse094_prerequisites$;
