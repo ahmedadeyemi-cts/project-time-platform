@@ -1,0 +1,149 @@
+name: One-time PR 737 protected-Test expression repair
+
+on:
+  push:
+    branches:
+      - tooling/pr737-protected-test-expression-repair-20260823
+    paths:
+      - .github/workflows/zz-one-time-pr737-protected-test-expression-repair.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr737-protected-test-expression-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.event.head_commit.message == 'Bootstrap PR 737 protected-Test expression repair'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EXPECTED_HEAD: 4f60d8dbc32dcd2d204182b948af4423bac6eb59
+      TOOLING_BRANCH: tooling/pr737-protected-test-expression-repair-20260823
+      TARGET_WORKFLOW: .github/workflows/projectpulse-deploy-test.yml
+      SELF_WORKFLOW: .github/workflows/zz-one-time-pr737-protected-test-expression-repair.yml
+
+    steps:
+      - name: Check out exact repair bootstrap
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Publish one clean parser-limit repair commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          git cat-file -e "$EXPECTED_HEAD^{commit}"
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_HEAD" ]] \
+            || fail 'The repair bootstrap is not based on the authorized PR head.'
+          [[ -f "$TARGET_WORKFLOW" && -f "$SELF_WORKFLOW" ]] \
+            || fail 'The repair inputs are incomplete.'
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/projectpulse-deploy-test.yml')
+          source = path.read_text(encoding='utf-8')
+          open_expression = '$' + '{{'
+          close_expression = '}}'
+
+          def gh(expression: str) -> str:
+              return f'{open_expression} {expression} {close_expression}'
+
+          old_environment = (
+              '        env:\n'
+              f'          TEST_LOGIN_PASSWORD: {gh("secrets.PROJECTPULSE_M087_PASSWORD")}\n'
+              f'          BASE: {gh("steps.contract.outputs.base")}\n'
+              '        run: |\n'
+          )
+          new_environment = (
+              '        env:\n'
+              f'          TEST_LOGIN_PASSWORD: {gh("secrets.PROJECTPULSE_M087_PASSWORD")}\n'
+              f'          BASE: {gh("steps.contract.outputs.base")}\n'
+              f'          AZURE_RESOURCE_GROUP: {gh("vars.AZURE_RESOURCE_GROUP")}\n'
+              f'          AZURE_API_APP: {gh("vars.AZURE_API_APP")}\n'
+              f'          AZURE_WEB_APP: {gh("vars.AZURE_WEB_APP")}\n'
+              f'          EXPECTED_API_IMAGE: {gh("steps.build.outputs.api_image")}\n'
+              f'          EXPECTED_WEB_IMAGE: {gh("steps.build.outputs.web_image")}\n'
+              '        run: |\n'
+          )
+
+          if source.count(old_environment) != 1:
+              raise SystemExit('The authenticated UAT environment boundary was not found exactly once.')
+          source = source.replace(old_environment, new_environment, 1)
+
+          replacements = {
+              (
+                  '          API_AFTER="$(az containerapp show -g \'%s\' -n \'%s\' -o json --only-show-errors)"'
+                  % (gh('vars.AZURE_RESOURCE_GROUP'), gh('vars.AZURE_API_APP'))
+              ): '          API_AFTER="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" -o json --only-show-errors)"',
+              (
+                  '          WEB_AFTER="$(az containerapp show -g \'%s\' -n \'%s\' -o json --only-show-errors)"'
+                  % (gh('vars.AZURE_RESOURCE_GROUP'), gh('vars.AZURE_WEB_APP'))
+              ): '          WEB_AFTER="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" -o json --only-show-errors)"',
+              (
+                  '          [[ "$ACTIVE_API_IMAGE" == \'%s\' ]] || fail \'Active API image does not match the immutable release.\''
+                  % gh('steps.build.outputs.api_image')
+              ): '          [[ "$ACTIVE_API_IMAGE" == "$EXPECTED_API_IMAGE" ]] || fail \'Active API image does not match the immutable release.\'',
+              (
+                  '          [[ "$ACTIVE_WEB_IMAGE" == \'%s\' ]] || fail \'Active web image does not match the immutable release.\''
+                  % gh('steps.build.outputs.web_image')
+              ): '          [[ "$ACTIVE_WEB_IMAGE" == "$EXPECTED_WEB_IMAGE" ]] || fail \'Active web image does not match the immutable release.\'',
+          }
+
+          for old, new in replacements.items():
+              if source.count(old) != 1:
+                  raise SystemExit(f'Expected deployment expression was not found exactly once: {old}')
+              source = source.replace(old, new, 1)
+
+          step_start = source.index('      - name: Run protected-Test authenticated functional UAT')
+          run_start = source.index('        run: |\n', step_start) + len('        run: |\n')
+          step_end = source.index('      - name: Run protected-Test assigned-work visibility UAT', run_start)
+          run_body = source[run_start:step_end]
+          if open_expression in run_body:
+              raise SystemExit('The oversized authenticated UAT run scalar still contains a GitHub expression.')
+          if len(run_body) <= 21000:
+              raise SystemExit('The regression fixture no longer proves the oversized-scalar boundary.')
+
+          for marker in (
+              'FLOWHIVE_AI_PLANNER_UAT=PASSED',
+              'PROJECT_FORGE_AI_PLANNER_UAT=PASSED',
+              'CELAR_AI_STABILITY_UAT=PASSED',
+              'PROTECTED_TEST_FRONTEND_CONVERGED',
+              'productionMutation:false',
+          ):
+              if marker not in run_body:
+                  raise SystemExit(f'Authenticated UAT marker was lost: {marker}')
+
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          git rm -- "$SELF_WORKFLOW"
+          git add -- "$TARGET_WORKFLOW"
+          git diff --cached --check "$EXPECTED_HEAD"
+
+          changed="$(git diff --cached --name-only "$EXPECTED_HEAD")"
+          [[ "$changed" == "$TARGET_WORKFLOW" ]] \
+            || fail "The clean repair changed an unexpected path: $changed"
+
+          python3 scripts/security/validate-repository-security-posture.py
+          node scripts/validate-deployment-concurrency-governance.mjs \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --verify-repository
+
+          export GIT_AUTHOR_NAME='github-actions[bot]'
+          export GIT_AUTHOR_EMAIL='41898282+github-actions[bot]@users.noreply.github.com'
+          export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          tree_sha="$(git write-tree)"
+          clean_commit="$(printf '%s\n' 'Fix Protected UAT workflow expression length' | git commit-tree "$tree_sha" -p "$EXPECTED_HEAD")"
+          git push --force origin "$clean_commit:refs/heads/$TOOLING_BRANCH"
+
+          echo "CLEAN_REPAIR_COMMIT=$clean_commit"
+          echo 'CLEAN_REPAIR_PATH=.github/workflows/projectpulse-deploy-test.yml'
+          echo 'PRODUCTION_MUTATION=NONE'
