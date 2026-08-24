@@ -47,7 +47,7 @@ elif [[ "$HEAD_BRANCH" == feature/celar-ai-internal-data-intelligence-* ]]; then
   publish_mode PRIVATE_RUNTIME_INTERNAL_DATA
 elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
   FLOWHIVE_RELEASE_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
-  ALLOWED_DATABASE='^(database/(migrations/(095_project_planning_collaboration_access|096_project_planning_document_authority)\.sql|rollback/(095_project_planning_collaboration_access_rollback|096_project_planning_document_authority_rollback)\.sql))$'
+  ALLOWED_DATABASE='^(database/(migrations/(094_flowhive_canonical_sow_authority|095_project_planning_collaboration_access|096_project_planning_document_authority)\.sql|rollback/(095_project_planning_collaboration_access_rollback|096_project_planning_document_authority_rollback)\.sql))$'
   for required in \
     "$FLOWHIVE_RELEASE_MANIFEST" \
     '.github/workflows/celar-ai-enterprise-platform-ci.yml' \
@@ -55,10 +55,12 @@ elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
     '.github/workflows/projectpulse-deploy-test.yml' \
     '.github/workflows/projectpulse-release-test-control-ci.yml' \
     'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh' \
+    'database/migrations/094_flowhive_canonical_sow_authority.sql' \
     'database/migrations/095_project_planning_collaboration_access.sql' \
     'database/migrations/096_project_planning_document_authority.sql' \
     'database/rollback/095_project_planning_collaboration_access_rollback.sql' \
     'database/rollback/096_project_planning_document_authority_rollback.sql' \
+    'tests/test-flowhive-canonical-sow-authority-migration-094.sh' \
     'tests/test-project-planning-collaboration-migration-095.sh' \
     'tests/test-project-planning-document-authority-migration-096.sh'; do
     test -f "$required"
