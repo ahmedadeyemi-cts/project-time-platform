@@ -74,22 +74,32 @@ jobs:
           rm -f "$OUTPUT_DIR/logs.zip"
 
           find "$OUTPUT_DIR/logs" -type f -print | sort > "$OUTPUT_DIR/log-files.txt"
-          grep -RniE -C 18 \
-            'u\.is_active|column .* does not exist|MIGRATION_096|Migration 096|096_project_planning|psql:.*ERROR|ERROR:.*column|SQL state|CONTEXT:' \
-            "$OUTPUT_DIR/logs" \
+          job_log="$(find "$OUTPUT_DIR/logs" -type f \
+            -name '*Validate, migrate, deploy, and verify protected Test.txt' \
+            -print -quit)"
+          [[ -n "$job_log" && -s "$job_log" ]] \
+            || fail 'The protected Test deployment job log was not present in the archive.'
+
+          tail -n 2600 "$job_log" > "$OUTPUT_DIR/deployment-failure-tail.txt"
+          grep -niE -C 25 \
+            'u\.is_active|column .* does not exist|MIGRATION_096|Migration 096|096_project_planning|psql:.*ERROR|ERROR:|SQLSTATE|SQL state|DETAIL:|CONTEXT:|migration job did not succeed' \
+            "$job_log" \
             > "$OUTPUT_DIR/migration-failure-extract.txt" || true
 
-          sed -E \
-            -e 's/(Authorization: Bearer )[A-Za-z0-9._~+\/-]+/\1[REDACTED]/g' \
-            -e 's/(PGPASSWORD=)[^[:space:]]+/\1[REDACTED]/g' \
-            -e 's/(password[=:])[[:space:]]*[^[:space:]]+/\1[REDACTED]/Ig' \
-            "$OUTPUT_DIR/migration-failure-extract.txt" \
-            > "$OUTPUT_DIR/migration-failure-extract-redacted.txt"
-          mv "$OUTPUT_DIR/migration-failure-extract-redacted.txt" \
-            "$OUTPUT_DIR/migration-failure-extract.txt"
+          for evidence in \
+            "$OUTPUT_DIR/deployment-failure-tail.txt" \
+            "$OUTPUT_DIR/migration-failure-extract.txt"; do
+            sed -E \
+              -e 's/(Authorization: Bearer )[A-Za-z0-9._~+\/-]+/\1[REDACTED]/g' \
+              -e 's/(PGPASSWORD=)[^[:space:]]+/\1[REDACTED]/g' \
+              -e 's/(password[=:])[[:space:]]*[^[:space:]]+/\1[REDACTED]/Ig' \
+              -e 's/(accessToken["=: ]+)[A-Za-z0-9._~+\/-]+/\1[REDACTED]/Ig' \
+              "$evidence" > "$evidence.redacted"
+            mv "$evidence.redacted" "$evidence"
+          done
 
-          [[ -s "$OUTPUT_DIR/migration-failure-extract.txt" ]] \
-            || fail 'The complete Actions archive did not expose a Migration 096 failure line.'
+          [[ -s "$OUTPUT_DIR/deployment-failure-tail.txt" ]] \
+            || fail 'The deployment tail could not be captured.'
 
           jq -e --arg sha "$TARGET_SHA" --arg branch "$TARGET_BRANCH" '
             .head_sha == $sha and
@@ -102,7 +112,7 @@ jobs:
 
           printf 'PROTECTED_UAT_DEPLOYMENT_RUN_ID=%s\n' "$run_id"
           printf 'PROTECTED_UAT_DEPLOYMENT_SHA=%s\n' "$TARGET_SHA"
-          printf 'MIGRATION_FAILURE_EXTRACT=CREATED\n'
+          printf 'MIGRATION_FAILURE_TAIL=CREATED\n'
           printf 'PRODUCTION_MUTATION=NONE\n'
 
       - name: Upload exact failure evidence
@@ -115,5 +125,6 @@ jobs:
             /tmp/pr737-protected-uat-observer/jobs.json
             /tmp/pr737-protected-uat-observer/log-files.txt
             /tmp/pr737-protected-uat-observer/migration-failure-extract.txt
+            /tmp/pr737-protected-uat-observer/deployment-failure-tail.txt
           if-no-files-found: error
           retention-days: 3
