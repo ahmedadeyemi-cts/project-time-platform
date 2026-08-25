@@ -7,6 +7,7 @@
 .github/workflows/projectpulse-deploy-test.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
 .github/workflows/protected-uat-candidate-dispatch.yml
+.github/workflows/runtime-navigation-work-register-responsive-ci.yml
 .github/workflows/shared-project-document-planning-ci.yml
 database/migrations/094_flowhive_canonical_sow_authority.sql
 database/migrations/095_project_planning_collaboration_access.sql
@@ -72,6 +73,6 @@ tests/validate-flowhive-sow-evidence-autoadmission.mjs
 tests/validate-project-planning-collaboration-access.mjs
 tests/validate-project-planning-collaboration.mjs
 tests/validate-shared-project-document-planning.mjs
-tests/validate-work-register-document-continuity.mjs
 tests/validate-systemwide-enterprise-reliability.mjs
 tests/validate-systemwide-image-build-controller.mjs
+tests/validate-work-register-document-continuity.mjs
