@@ -21,6 +21,7 @@ const forgeUi = read('src/frontend/project-time-web/src/ProjectForgeCenter.jsx')
 const builder = read('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs');
 const categories = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs');
 const privateRag = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
+const privateDocumentWorker = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs');
 const deployment = read('.github/workflows/projectpulse-deploy-test.yml');
 const migrationRunner = read('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh');
 const program = read('src/backend/ProjectTime.Api/Program.cs');
@@ -112,6 +113,21 @@ for (const token of ['Retry automatic processing', 'AI Planner will automaticall
   requireText(flowHivePanels, token, 'automatic document processing UI');
 for (const forbidden of ['AI draft studio', 'Optional approved SOW excerpt', 'Optional approved GSD excerpt', 'Prepare / queue processing', 'Generate and auto-fill detailed plan'])
   rejectText(`${flowHiveUi}\n${flowHivePanels}`, forbidden, 'legacy duplicate AI planning interface');
+
+// Protected Test can process automatically without weakening the Production flag.
+for (const token of [
+  'TryActivateProtectedTestWorker',
+  'PROJECTPULSE_ENVIRONMENT',
+  'environment.Equals("test", StringComparison.OrdinalIgnoreCase)',
+  'ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable',
+  'PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED',
+  'options.MalwareScannerConfigured',
+  'options.OcrConfigured',
+  'options.EmbeddingConfigured',
+  'Environment.SetEnvironmentVariable(WorkerEnabledVariable, "true")'
+]) requireText(privateDocumentWorker, token, 'Protected Test private document worker activation');
+requireText(privateDocumentWorker, 'ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate', 'candidate private-document mutation fence');
+rejectText(privateDocumentWorker, 'environment.Equals("production"', 'Production worker auto-activation');
 
 // Exact Protected-UAT validation proves download durability and server-owned generation.
 for (const token of ['module055cSowDownload', 'requestBinary(', 'persistedAcrossApiRevision: true', 'body: { requestedOutcome:'])
