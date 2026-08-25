@@ -198,12 +198,12 @@ var boundedOutput = await boundedTask!;
 Assert(boundedOutput.Length == 1_024, "legacy_word_retained_output_is_bounded");
 Assert(oversizedReader.EndOfStream, "legacy_word_excess_output_is_fully_drained");
 
-
 var shortWindow = sourcePlan with { ProjectEndDate = sourcePlan.ProjectStartDate!.Value.AddDays(4) };
 var shortGenerated = ProjectFlowHiveDetailedPlanBuilder.Build(shortWindow, privatePlan);
 var shortSchedule = ProjectFlowHiveScheduleEngine.Calculate(shortGenerated);
-Assert(!shortSchedule.Valid, "short_selected_window_reports_overrun");
-Assert(shortSchedule.Issues.Any(issue => issue.Code == "project_end_exceeded"), "project_end_exceeded_is_explicit");
+Assert(shortSchedule.Valid, "short_selected_window_remains_saveable_working_draft");
+Assert(shortSchedule.Status == "calculated_preview_window_exceeded", "short_selected_window_reports_overrun_status");
+Assert(shortSchedule.Issues.Any(issue => issue.Code == "project_end_exceeded" && issue.Severity == "warning"), "project_end_exceeded_is_explicit_warning");
 Assert(shortSchedule.Tasks.Any(task => task.IsCritical && !task.IsSummary), "critical_path_is_identified");
 var normalDurations = generated.Tasks!.Where(task => !task.IsSummary).ToDictionary(task => task.WbsNumber!, task => task.DurationWorkingDays);
 var shortDurations = shortGenerated.Tasks!.Where(task => !task.IsSummary).ToDictionary(task => task.WbsNumber!, task => task.DurationWorkingDays);
