@@ -174,8 +174,10 @@ BEGIN
               AND table_name = 'schema_migrations'
               AND column_name = 'migration_id'
        ) THEN
-        EXECUTE 'INSERT INTO schema_migrations(migration_id) VALUES ($1) ON CONFLICT DO NOTHING'
-           USING '096_project_planning_document_authority';
+        EXECUTE 'INSERT INTO schema_migrations(migration_id, description) VALUES ($1, $2) ON CONFLICT DO NOTHING'
+           USING
+               '096_project_planning_document_authority',
+               'Durable project-document authority shared by Module 055C, FlowHive, and Project Forge.';
     END IF;
 END;
 $$;
