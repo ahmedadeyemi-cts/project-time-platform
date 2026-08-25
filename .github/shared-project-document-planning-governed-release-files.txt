@@ -30,6 +30,7 @@ scripts/release-test/verify-runtime.mjs
 scripts/validate-module-033-project-forge-interactive.sh
 src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseUploadStorage.cs
+src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
 src/backend/ProjectTime.Api/Modules/CelarAiTransientFailureMiddleware.cs
