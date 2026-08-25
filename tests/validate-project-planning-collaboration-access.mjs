@@ -13,6 +13,7 @@ const migration = read('database/migrations/095_project_planning_collaboration_a
 const rollback = read('database/rollback/095_project_planning_collaboration_access_rollback.sql');
 const resolver = read('src/backend/ProjectTime.Api/Modules/ProjectPlanningAccessResolver.cs');
 const collaborationModule = read('src/backend/ProjectTime.Api/Modules/ProjectPlanningCollaborationModule.cs');
+const workRegisterAuthorization = read('src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs');
 const flowhive = read('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs');
 const flowhivePortfolio = read('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs');
 const flowhiveRepository = read('src/backend/ProjectTime.Api/Modules/PostgresProjectFlowHivePlanRepository.cs');
@@ -39,6 +40,14 @@ const governedMigrationRunner = read('scripts/release-test/run-systemwide-enterp
 ].forEach((text) => requireText(migration, text, 'Migration 095'));
 requireText(rollback, 'Rollback 095 refused: project planning collaborator assignments exist.', 'guarded rollback');
 requireText(rollback, 'immutable project planning collaboration audit evidence exists', 'guarded rollback');
+requireText(rollback, 'CREATE TEMP TABLE project_planning_095_permissions_to_remove', 'rollback permission evidence');
+const dropRoleEvidence = rollback.indexOf('DROP TABLE IF EXISTS project_planning_095_role_grants;');
+const dropPermissionEvidence = rollback.indexOf('DROP TABLE IF EXISTS project_planning_095_permissions_created;');
+const deletePermissions = rollback.indexOf('DELETE FROM app_permissions permission');
+if (dropRoleEvidence < 0 || dropPermissionEvidence < 0 || deletePermissions < 0
+    || dropRoleEvidence > deletePermissions || dropPermissionEvidence > deletePermissions) {
+  failures.push('guarded rollback: Migration 095 evidence FK tables must be dropped before deleting recorded app_permissions');
+}
 
 [
   'PROJECT_PLANNING_COLLABORATION_V1',
@@ -65,6 +74,7 @@ rejectText(resolver, 'scoped_role_policy_modules', 'module owner metadata must n
 ].forEach((text) => requireText(collaborationModule, text, 'project planning collaboration API'));
 rejectText(collaborationModule, 'revision_number', 'Migration 095 collaboration API must not use legacy revision columns');
 rejectText(collaborationModule, 'collaboration_role', 'Migration 095 collaboration API must not use legacy collaboration-role columns');
+requireText(workRegisterAuthorization, 'app.MapProjectPlanningCollaborationEndpoints();', 'runtime collaboration endpoint registration');
 
 [
   'FlowHiveAccessRequirement.EditPlanner',
