@@ -41,6 +41,11 @@ public static class WorkRegisterAuthorization
 
     public static WebApplication UseWorkRegisterAuthorization(this WebApplication app)
     {
+        // Program.cs already calls this startup extension exactly once. Register the
+        // shared FlowHive/Project Forge collaboration routes here so the endpoint
+        // contract cannot exist in source without also entering the runtime route table.
+        app.MapProjectPlanningCollaborationEndpoints();
+
         app.Use(async (context, next) =>
         {
             var path = context.Request.Path.Value ?? string.Empty;
