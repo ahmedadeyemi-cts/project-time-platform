@@ -51,7 +51,11 @@ for (const token of [
   "method: 'DELETE'",
   'required audit reason',
   "['deleted', 'removed', 'purged']",
-  'MutationObserver'
+  'MutationObserver',
+  'remember055cRequestContext',
+  '__projectPulse055cRequestHeaders',
+  '__projectPulse055cCredentials',
+  "deleteHeaders.set('Content-Type', 'application/json')"
 ]) requireText(integritySource, token, 'Module 055C frontend continuity');
 
 for (const token of [
@@ -75,5 +79,6 @@ for (const entry of [modulePath, authorizationPath, integrityPath, 'tests/valida
 console.log('WORK_REGISTER_DOCUMENT_CONTINUITY=VERIFIED');
 console.log('MODULE_055C_CANONICAL_DOCUMENT_READ=VERIFIED');
 console.log('MODULE_055C_019_SHARED_DELETE=VERIFIED');
+console.log('MODULE_055C_DELETE_AUTH_CONTEXT=VERIFIED');
 console.log('FLOWHIVE_FORGE_DELETE_AUTHORITY=VERIFIED');
 console.log('PRODUCTION_MUTATION=NONE');
