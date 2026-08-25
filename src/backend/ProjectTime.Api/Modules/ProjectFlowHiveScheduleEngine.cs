@@ -229,17 +229,17 @@ public static partial class ProjectFlowHiveScheduleEngine
         var projectFinishDate = AddWorkingDays(request.ProjectStartDate.Value, projectFinishIndex);
         if (request.ProjectEndDate.HasValue && projectFinishDate > request.ProjectEndDate.Value)
         {
-            Error(
+            Warning(
                 issues,
                 "project_end_exceeded",
                 "projectEndDate",
-                $"The generated schedule finishes on {projectFinishDate:yyyy-MM-dd}, after the selected end date {request.ProjectEndDate.Value:yyyy-MM-dd}.");
+                $"The generated schedule finishes on {projectFinishDate:yyyy-MM-dd}, after the selected end date {request.ProjectEndDate.Value:yyyy-MM-dd}. The working draft remains saveable so the schedule can be reviewed and corrected.");
         }
         var valid = !issues.Any(issue => issue.Severity == "error");
 
         return new ProjectFlowHiveScheduleResult(
             valid,
-            valid ? "calculated_preview" : "selected_window_exceeded",
+            issues.Any(issue => issue.Code == "project_end_exceeded") ? "calculated_preview_window_exceeded" : "calculated_preview",
             request.ProjectStartDate,
             request.ProjectEndDate,
             projectFinishDate,
@@ -616,6 +616,15 @@ public static partial class ProjectFlowHiveScheduleEngine
 
     private static string? Clean(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static void Warning(
+        ICollection<ProjectFlowHiveValidationIssue> issues,
+        string code,
+        string path,
+        string message)
+    {
+        issues.Add(new ProjectFlowHiveValidationIssue(code, "warning", path, message));
+    }
 
     private static void Error(
         ICollection<ProjectFlowHiveValidationIssue> issues,
