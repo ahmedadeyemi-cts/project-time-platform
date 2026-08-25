@@ -12,7 +12,6 @@ on:
 permissions:
   actions: write
   contents: read
-  id-token: write
   pull-requests: read
 
 concurrency:
@@ -21,16 +20,15 @@ concurrency:
 
 jobs:
   dispatch:
-    name: Activate worker and dispatch exact green candidate to Protected Test
+    name: Dispatch exact green candidate to Protected Test
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.ref == 'main' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login == github.repository_owner &&
       startsWith(github.event.pull_request.head.ref, 'fix/shared-project-document-planning-')
-    environment: test
     runs-on: ubuntu-24.04
-    timeout-minutes: 105
+    timeout-minutes: 90
     env:
       API_ROOT: https://api.github.com/repos/${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
@@ -152,153 +150,6 @@ jobs:
 
           echo "PROTECTED_UAT_EXACT_SHA_GATES=PASSED"
           echo "PRODUCTION_MUTATION=NONE"
-
-      - name: Sign in to protected Test subscription
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Activate the private document worker in protected Test
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          fail() {
-            echo "ERROR: $*" >&2
-            exit 1
-          }
-
-          CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
-          [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] \
-            || fail 'Azure login is outside the protected Test subscription.'
-
-          API_JSON="$(az containerapp show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
-            -o json \
-            --only-show-errors)"
-
-          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] \
-            || fail 'The API application is not tagged as Test.'
-          [[ "$(jq -r '.properties.configuration.activeRevisionsMode // empty' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] \
-            || fail 'The protected Test API must use single-revision mode.'
-
-          BASE='${{ vars.PUBLIC_URL }}'
-          BASE="${BASE%/}"
-          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] \
-            || fail 'The configured public origin is not protected Test.'
-
-          BEFORE_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$API_JSON")"
-          BEFORE_SOURCE="$(jq -r '
-            [.properties.template.containers[0].env[]?
-             | select(.name == "PROJECTPULSE_SOURCE_COMMIT")
-             | .value // empty]
-            | if length == 1 then .[0] else empty end
-          ' <<<"$API_JSON")"
-          [[ -n "$BEFORE_IMAGE" ]] || fail 'The current Test API image is unavailable.'
-          [[ "$BEFORE_SOURCE" =~ ^[0-9a-f]{40}$ ]] || fail 'The current Test source marker is invalid.'
-
-          WORKER_COUNT="$(jq '
-            [.properties.template.containers[0].env[]?
-             | select(.name == "PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED")]
-            | length
-          ' <<<"$API_JSON")"
-          (( WORKER_COUNT <= 1 )) || fail 'The worker setting is duplicated.'
-
-          if (( WORKER_COUNT == 1 )); then
-            WORKER_SECRET_REF="$(jq -r '
-              [.properties.template.containers[0].env[]?
-               | select(.name == "PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED")]
-              | .[0].secretRef // empty
-            ' <<<"$API_JSON")"
-            [[ -z "$WORKER_SECRET_REF" ]] \
-              || fail 'The worker setting must not be secret-backed.'
-
-            WORKER_VALUE="$(jq -r '
-              [.properties.template.containers[0].env[]?
-               | select(.name == "PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED")]
-              | .[0].value // empty
-            ' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')"
-          else
-            WORKER_VALUE=''
-          fi
-
-          if [[ "$WORKER_VALUE" != true ]]; then
-            az containerapp update \
-              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-              -n '${{ vars.AZURE_API_APP }}' \
-              --set-env-vars PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED=true \
-              --revision-suffix "fhw-${GITHUB_RUN_ID}" \
-              --output none \
-              --only-show-errors
-          fi
-
-          AFTER_JSON="$(az containerapp show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
-            -o json \
-            --only-show-errors)"
-
-          AFTER_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$AFTER_JSON")"
-          AFTER_SOURCE="$(jq -r '
-            [.properties.template.containers[0].env[]?
-             | select(.name == "PROJECTPULSE_SOURCE_COMMIT")
-             | .value // empty]
-            | if length == 1 then .[0] else empty end
-          ' <<<"$AFTER_JSON")"
-          AFTER_WORKER_COUNT="$(jq '
-            [.properties.template.containers[0].env[]?
-             | select(.name == "PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED")]
-            | length
-          ' <<<"$AFTER_JSON")"
-          AFTER_WORKER_VALUE="$(jq -r '
-            [.properties.template.containers[0].env[]?
-             | select(.name == "PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED")]
-            | .[0].value // empty
-          ' <<<"$AFTER_JSON" | tr '[:upper:]' '[:lower:]')"
-          AFTER_WORKER_SECRET_REF="$(jq -r '
-            [.properties.template.containers[0].env[]?
-             | select(.name == "PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED")]
-            | .[0].secretRef // empty
-          ' <<<"$AFTER_JSON")"
-
-          [[ "$AFTER_IMAGE" == "$BEFORE_IMAGE" ]] \
-            || fail 'Worker activation unexpectedly changed the API image.'
-          [[ "$AFTER_SOURCE" == "$BEFORE_SOURCE" ]] \
-            || fail 'Worker activation unexpectedly changed the source marker.'
-          [[ "$AFTER_WORKER_COUNT" == 1 && "$AFTER_WORKER_VALUE" == true && -z "$AFTER_WORKER_SECRET_REF" ]] \
-            || fail 'The protected Test private document worker did not activate cleanly.'
-
-          HEALTH_READY=0
-          for attempt in $(seq 1 36); do
-            STATUS="$(curl -sS --max-time 30 \
-              -o "$RUNNER_TEMP/protected-test-worker-health.json" \
-              -w '%{http_code}' \
-              -H 'Cache-Control: no-cache' \
-              "$BASE/health?private_worker_activation=$GITHUB_RUN_ID-$attempt" || true)"
-            if [[ "$STATUS" == 200 ]] \
-              && jq -e '.status == "healthy"' "$RUNNER_TEMP/protected-test-worker-health.json" >/dev/null 2>&1; then
-              HEALTH_READY=1
-              break
-            fi
-            sleep 10
-          done
-          (( HEALTH_READY )) || fail 'Protected Test did not become healthy after worker activation.'
-
-          {
-            echo '## Protected Test private document worker'
-            echo
-            echo '- Environment: Protected Test only'
-            echo '- Worker activation: enabled'
-            echo "- Existing API image preserved: \`$AFTER_IMAGE\`"
-            echo "- Existing source marker preserved: \`$AFTER_SOURCE\`"
-            echo '- Production mutation: none'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          echo 'PROTECTED_TEST_PRIVATE_DOCUMENT_WORKER=ENABLED'
-          echo 'PROTECTED_TEST_APPLICATION_IMAGE_MUTATION=NONE'
-          echo 'PRODUCTION_MUTATION=NONE'
 
       - name: Dispatch exact candidate through the protected Test controller
         shell: bash
