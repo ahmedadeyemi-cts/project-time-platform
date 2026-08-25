@@ -55,12 +55,14 @@ psql_exec <<'SQL'
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE TABLE schema_migrations (
   migration_id text PRIMARY KEY,
+  description text NOT NULL,
   applied_at timestamptz NOT NULL DEFAULT now()
 );
 SQL
 
 psql_exec -f "$MIGRATION_CONTAINER" >/dev/null
 assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='096_project_planning_document_authority';")" migration_registered
+assert_eq "Durable project-document authority shared by Module 055C, FlowHive, and Project Forge." "$(value "SELECT description FROM schema_migrations WHERE migration_id='096_project_planning_document_authority';")" migration_description_recorded
 assert_eq project_planning_document_authority "$(value "SELECT to_regclass('public.project_planning_document_authority');")" authority_table_created
 assert_eq current_project_planning_document_authority "$(value "SELECT to_regclass('public.current_project_planning_document_authority');")" current_authority_view_created
 
