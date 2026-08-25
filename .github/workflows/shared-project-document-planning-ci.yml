@@ -16,9 +16,12 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHive*'
       - 'src/backend/ProjectTime.Api/Modules/ProjectForge*'
       - 'src/backend/ProjectTime.Api/Modules/ProjectPlanning*'
+      - 'src/backend/ProjectTime.Api/Modules/WorkRegisterDocumentContinuityModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs'
       - 'src/frontend/project-time-web/src/ProjectFlowHive*'
       - 'src/frontend/project-time-web/src/ProjectForge*'
       - 'src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js'
+      - 'src/frontend/project-time-web/src/work-register-document-integrity.js'
       - 'src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
       - 'tests/FlowHiveDetailedPlannerTests/**'
@@ -27,6 +30,7 @@ on:
       - 'tests/test-project-planning-collaboration-migration-095.sh'
       - 'tests/test-project-planning-document-authority-migration-096.sh'
       - 'tests/validate-shared-project-document-planning.mjs'
+      - 'tests/validate-work-register-document-continuity.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
   workflow_dispatch:
 
@@ -86,6 +90,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-work-register-document-continuity.mjs
           node tests/validate-flowhive-sow-evidence-autoadmission.mjs
           node tests/validate-project-planning-collaboration-access.mjs
           node tests/validate-project-planning-collaboration.mjs

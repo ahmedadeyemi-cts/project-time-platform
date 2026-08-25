@@ -48,6 +48,8 @@ src/backend/ProjectTime.Api/Modules/ProjectPlanningAccessResolver.cs
 src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
 src/backend/ProjectTime.Api/Modules/ProjectPlanningCollaborationModule.cs
 src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs
+src/backend/ProjectTime.Api/Modules/WorkRegisterDocumentContinuityModule.cs
 src/backend/ProjectTime.Api/Program.cs
 src/backend/ProjectTime.Api/ProjectTime.Api.csproj
 src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
@@ -60,6 +62,7 @@ src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx
 src/frontend/project-time-web/src/ProjectForgeCenter.jsx
 src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
 src/frontend/project-time-web/src/project-flowhive-center.css
+src/frontend/project-time-web/src/work-register-document-integrity.js
 tests/FlowHiveDetailedPlannerTests/Program.cs
 tests/test-flowhive-canonical-sow-authority-migration-094.sh
 tests/test-project-planning-collaboration-migration-095.sh
@@ -69,5 +72,6 @@ tests/validate-flowhive-sow-evidence-autoadmission.mjs
 tests/validate-project-planning-collaboration-access.mjs
 tests/validate-project-planning-collaboration.mjs
 tests/validate-shared-project-document-planning.mjs
+tests/validate-work-register-document-continuity.mjs
 tests/validate-systemwide-enterprise-reliability.mjs
 tests/validate-systemwide-image-build-controller.mjs
