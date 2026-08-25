@@ -1,12 +1,17 @@
 namespace ProjectTime.Api.Ai;
 
 /// <summary>
-/// Runs only when explicitly enabled by private-runtime configuration. Deploying
-/// the source alone does not start document processing or external traffic. Each
-/// cycle remains outside the Claude, OpenAI, and Module 064 generation path.
+/// Runs when explicitly enabled by private-runtime configuration. Protected Test
+/// may activate the worker from source only when the exact running commit and all
+/// private scanning, OCR, embedding, and RAG dependencies are present. Production
+/// still requires the explicit worker configuration flag.
 /// </summary>
 public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
 {
+    private const string EnvironmentVariable = "PROJECTPULSE_ENVIRONMENT";
+    private const string PrivateRagEnabledVariable = "PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED";
+    private const string WorkerEnabledVariable = "PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED";
+
     private readonly IServiceProvider _services;
     private readonly ILogger<PulseAiPrivateDocumentRuntimeWorker> _logger;
 
@@ -23,6 +28,9 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var options = PulseAiPrivateRuntimeOptions.FromEnvironment();
+            if (!options.WorkerEnabled && TryActivateProtectedTestWorker(options))
+                options = PulseAiPrivateRuntimeOptions.FromEnvironment();
+
             if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)
             {
                 await DelayAsync(TimeSpan.FromSeconds(Math.Max(30, options.PollSeconds)), stoppingToken);
@@ -74,6 +82,37 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
                 await DelayAsync(TimeSpan.FromSeconds(Math.Max(10, options.PollSeconds)), stoppingToken);
             }
         }
+    }
+
+    private bool TryActivateProtectedTestWorker(PulseAiPrivateRuntimeOptions options)
+    {
+        var environment = Environment.GetEnvironmentVariable(EnvironmentVariable)?.Trim() ?? string.Empty;
+        if (!environment.Equals("test", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var runningSourceCommit = Environment
+            .GetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable)?
+            .Trim()
+            .ToLowerInvariant() ?? string.Empty;
+        if (runningSourceCommit.Length != 40 || !runningSourceCommit.All(Uri.IsHexDigit))
+            return false;
+
+        if (!bool.TryParse(
+                Environment.GetEnvironmentVariable(PrivateRagEnabledVariable),
+                out var privateRagEnabled)
+            || !privateRagEnabled
+            || !options.MalwareScannerConfigured
+            || !options.OcrConfigured
+            || !options.EmbeddingConfigured)
+        {
+            return false;
+        }
+
+        Environment.SetEnvironmentVariable(WorkerEnabledVariable, "true");
+        _logger.LogInformation(
+            "Protected Test private document worker activated from the exact running source after dependency verification. SourceCommit={SourceCommit}",
+            runningSourceCommit);
+        return true;
     }
 
     private static async Task DelayAsync(
