@@ -73,6 +73,15 @@ function forwardedHeaders(input, init) {
   return headers;
 }
 
+function remember055cRequestContext(input, init) {
+  const headers = forwardedHeaders(input, init);
+  window.__projectPulse055cRequestHeaders = [...headers.entries()];
+  window.__projectPulse055cCredentials = init?.credentials
+    || (input instanceof Request ? input.credentials : undefined)
+    || 'same-origin';
+  return headers;
+}
+
 function currentProjectId() {
   return cleanText(window.__projectPulse055cCurrentProjectId || '');
 }
@@ -107,9 +116,12 @@ function installDeleteControls() {
       button.disabled = true;
       button.textContent = 'Deleting…';
       try {
+        const deleteHeaders = new Headers(window.__projectPulse055cRequestHeaders || []);
+        deleteHeaders.set('Content-Type', 'application/json');
         const response = await window.fetch(`/api/work-register/projects/${projectId}/documents/${id}`, {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: deleteHeaders,
+          credentials: window.__projectPulse055cCredentials || 'same-origin',
           body: JSON.stringify({ reason: reason.trim() })
         });
         const result = await response.json().catch(() => ({}));
@@ -165,6 +177,7 @@ function installWorkRegisterDocumentIntegrity() {
     if (detailsMatch && response.ok) {
       const projectId = detailsMatch[1].toLowerCase();
       window.__projectPulse055cCurrentProjectId = projectId;
+      const requestHeaders = remember055cRequestContext(input, init);
       let details;
       try {
         details = await response.clone().json();
@@ -174,8 +187,8 @@ function installWorkRegisterDocumentIntegrity() {
       try {
         const canonicalResponse = await previousFetch(`/api/work-register/projects/${projectId}/documents`, {
           method: 'GET',
-          headers: forwardedHeaders(input, init),
-          credentials: init?.credentials
+          headers: requestHeaders,
+          credentials: window.__projectPulse055cCredentials || 'same-origin'
         });
         if (canonicalResponse.ok) {
           const canonical = await canonicalResponse.json();
@@ -195,6 +208,7 @@ function installWorkRegisterDocumentIntegrity() {
     }
 
     if (url.pathname === DOCUMENT_UPLOAD_PATH && method === 'POST' && response.ok) {
+      remember055cRequestContext(input, init);
       let payload;
       try {
         payload = await response.clone().json();
