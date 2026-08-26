@@ -24,6 +24,7 @@ const rotationService = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncry
 const healthMonitor = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor.cs');
 const runtimeService = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs');
 const runtimeWorker = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs');
+const protectedTestCandidatePolicy = read('src/backend/ProjectTime.Api/Ai/PulseAiProtectedTestCandidatePolicy.cs');
 const ragRepository = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs');
 const systemRepository = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceRepository.cs');
 const providerModule = read('src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs');
@@ -257,15 +258,20 @@ assert(
 
 assert(
   'CANDIDATE_ACTIVE_DATA_PLANE_SPLIT',
-  runtimeWorker.includes('RequireValid().IsCandidate')
-    && runtimeService.includes('if (release.IsCandidate)')
-    && ragRepository.match(/RequireValid\(\)\.IsCandidate/g)?.length >= 4
-    && systemRepository.match(/RequireValid\(\)\.IsCandidate/g)?.length >= 6
-    && projectForge.includes('if (!release.IsCandidate) return null;')
-    && !runtimeWorker.includes('RequireValid().Active')
-    && !ragRepository.includes('RequireValid().Active')
-    && !systemRepository.includes('RequireValid().Active'),
-  'candidate blocks document and AI data mutations while active releases retain the normal data plane',
+  protectedTestCandidatePolicy.includes('PROJECTPULSE_ENVIRONMENT')
+    && protectedTestCandidatePolicy.includes('environment.Equals("test", StringComparison.OrdinalIgnoreCase)')
+    && protectedTestCandidatePolicy.includes('runningSourceCommit.Length != 40')
+    && protectedTestCandidatePolicy.includes('release.SourceCommit')
+    && protectedTestCandidatePolicy.includes('release.RunningSourceCommit')
+    && protectedTestCandidatePolicy.includes('release.EmbeddedSourceCommit')
+    && runtimeWorker.includes('PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)')
+    && runtimeService.includes('PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)')
+    && runtimeService.includes('RejectCandidateDataMutation("Private document queue mutation")')
+    && runtimeService.includes('RejectCandidateDataMutation("Private document version approval")')
+    && runtimeService.includes('RejectCandidateDataMutation("Private document processing cancellation")')
+    && runtimeService.includes('RejectCandidateDataMutation("Private document processing retry")')
+    && runtimeService.includes('return Empty("release_candidate_read_only", "release_candidate_read_only")'),
+  'candidate user/API mutations remain blocked while only the exact validated Protected Test background document processor may build private processing and citation state',
 );
 
 assert(

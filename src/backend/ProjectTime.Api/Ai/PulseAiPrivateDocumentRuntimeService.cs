@@ -370,7 +370,10 @@ public sealed class PulseAiPrivateDocumentRuntimeService
     {
         var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         if (release.IsCandidate)
-            return Empty("release_candidate_read_only", "release_candidate_read_only");
+        {
+            if (!PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))
+                return Empty("release_candidate_read_only", "release_candidate_read_only");
+        }
         var options = Options();
         if (!options.WorkerEnabled)
         {

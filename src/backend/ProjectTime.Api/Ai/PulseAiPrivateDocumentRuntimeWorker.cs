@@ -32,7 +32,7 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
                 options = PulseAiPrivateRuntimeOptions.FromEnvironment();
 
             var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
-            if (release.IsCandidate && !IsProtectedTestCandidateWorkerAllowed(release))
+            if (release.IsCandidate && !PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))
             {
                 await DelayAsync(TimeSpan.FromSeconds(Math.Max(30, options.PollSeconds)), stoppingToken);
                 continue;
@@ -83,27 +83,6 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
                 await DelayAsync(TimeSpan.FromSeconds(Math.Max(10, options.PollSeconds)), stoppingToken);
             }
         }
-    }
-
-    private static bool IsProtectedTestCandidateWorkerAllowed(ReleaseRuntimeSnapshot release)
-    {
-        if (!release.IsCandidate)
-            return false;
-
-        var environment = Environment.GetEnvironmentVariable(EnvironmentVariable)?.Trim() ?? string.Empty;
-        if (!environment.Equals("test", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        var runningSourceCommit = Environment
-            .GetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable)?
-            .Trim()
-            .ToLowerInvariant() ?? string.Empty;
-        if (runningSourceCommit.Length != 40 || !runningSourceCommit.All(Uri.IsHexDigit))
-            return false;
-
-        return string.Equals(release.SourceCommit, runningSourceCommit, StringComparison.Ordinal)
-            && string.Equals(release.RunningSourceCommit, runningSourceCommit, StringComparison.Ordinal)
-            && string.Equals(release.EmbeddedSourceCommit, runningSourceCommit, StringComparison.Ordinal);
     }
 
     private bool TryActivateProtectedTestWorker(PulseAiPrivateRuntimeOptions options)
