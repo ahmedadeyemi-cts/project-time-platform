@@ -85,6 +85,45 @@ jobs:
             'System-wide Enterprise Reliability CI'
           )
 
+          declare -A rerun_requested=()
+
+          rerun_infrastructure_failure() {
+            local workflow_name="$1" run_id="$2" run_attempt="$3" reason="$4"
+            local retry_key="${run_id}:${run_attempt}" response_file http_status
+
+            all_green=0
+            pending+=("$workflow_name=$reason-attempt-$run_attempt")
+
+            if (( run_attempt >= 4 )); then
+              fail "Required exact-SHA workflow exhausted infrastructure retries: $workflow_name ($reason; attempt $run_attempt)."
+            fi
+
+            if (( rerun_dispatched == 1 )) || [[ -n "${rerun_requested[$retry_key]:-}" ]]; then
+              return 0
+            fi
+
+            response_file="$RUNNER_TEMP/protected-uat-rerun-${run_id}-${run_attempt}.json"
+            http_status="$(
+              curl --silent --show-error \
+                --output "$response_file" \
+                --write-out '%{http_code}' \
+                --request POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H 'Accept: application/vnd.github+json' \
+                -H 'X-GitHub-Api-Version: 2022-11-28' \
+                "$API_ROOT/actions/runs/$run_id/rerun"
+            )"
+
+            if [[ "$http_status" != '201' && "$http_status" != '202' ]]; then
+              cat "$response_file" >&2 || true
+              fail "Could not re-run infrastructure-failed exact-SHA workflow $workflow_name; GitHub returned HTTP $http_status."
+            fi
+
+            rerun_requested["$retry_key"]=1
+            rerun_dispatched=1
+            echo "PROTECTED_UAT_INFRASTRUCTURE_RERUN workflow=$workflow_name runId=$run_id priorAttempt=$run_attempt reason=$reason"
+          }
+
           deadline=$((SECONDS + 5100))
           all_green=0
           while (( SECONDS < deadline )); do
@@ -98,24 +137,50 @@ jobs:
 
             all_green=1
             pending=()
+            rerun_dispatched=0
             for workflow_name in "${required_workflows[@]}"; do
-              state="$(
+              run_row="$(
                 jq -r --arg name "$workflow_name" '
                   [.workflow_runs[] | select(.name == $name)]
                   | sort_by(.created_at)
                   | last
                   | if . == null
-                    then "missing:"
-                    else "\(.status):\(.conclusion // "")"
+                    then ["", "missing", "", "0"]
+                    else [(.id | tostring), .status, (.conclusion // ""), ((.run_attempt // 1) | tostring)]
                     end
+                  | @tsv
                 ' <<<"$runs"
               )"
+              IFS=$'\t' read -r run_id run_status run_conclusion run_attempt <<<"$run_row"
+              run_attempt="${run_attempt:-0}"
+              state="${run_status}:${run_conclusion}"
 
               case "$state" in
                 completed:success)
                   ;;
+                completed:startup_failure)
+                  rerun_infrastructure_failure "$workflow_name" "$run_id" "$run_attempt" 'startup_failure'
+                  ;;
+                completed:cancelled)
+                  rerun_infrastructure_failure "$workflow_name" "$run_id" "$run_attempt" 'cancelled_before_gate_completion'
+                  ;;
+                completed:failure)
+                  jobs="$(
+                    curl --fail-with-body --silent --show-error \
+                      -H "Authorization: Bearer $GH_TOKEN" \
+                      -H 'Accept: application/vnd.github+json' \
+                      -H 'X-GitHub-Api-Version: 2022-11-28' \
+                      "$API_ROOT/actions/runs/$run_id/jobs?per_page=100"
+                  )"
+                  executed_step_count="$(jq '[.jobs[]? | ((.steps // []) | length)] | add // 0' <<<"$jobs")"
+                  if (( executed_step_count == 0 )); then
+                    rerun_infrastructure_failure "$workflow_name" "$run_id" "$run_attempt" 'failure_without_executed_steps'
+                  else
+                    fail "Required exact-SHA workflow failed after executing validation steps: $workflow_name ($state; run $run_id; executedSteps=$executed_step_count)"
+                  fi
+                  ;;
                 completed:*)
-                  fail "Required exact-SHA workflow failed: $workflow_name ($state)"
+                  fail "Required exact-SHA workflow failed: $workflow_name ($state; run $run_id)"
                   ;;
                 *)
                   all_green=0
