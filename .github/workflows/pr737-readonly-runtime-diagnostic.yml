@@ -50,20 +50,24 @@ jobs:
             [[ "$code" == 200 ]] || { echo "ERROR: GET $path HTTP=$code" >&2; cat "$out" >&2 || true; exit 1; }
           }
 
-          state_a="$(mktemp)"; state_b="$(mktemp)"; jobs="$(mktemp)"; readiness="$(mktemp)"
+          state_a="$(mktemp)"; state_b="$(mktemp)"; readiness="$(mktemp)"
           get_json "/api/celar-ai/v1/documents/$DOC_A/runtime-state" "$state_a"
           get_json "/api/celar-ai/v1/documents/$DOC_B/runtime-state" "$state_b"
-          get_json '/api/celar-ai/v1/documents/runtime/jobs?limit=500' "$jobs"
-          get_json '/api/celar-ai/v1/documents/runtime/readiness' "$readiness"
 
           echo '=== DOCUMENT A RUNTIME STATE ==='
           jq '{status,document:{documentId:.document.documentId,processingStatus:(.document.processingStatus // .document.status),errorCode:(.document.errorCode // .document.processingErrorCode // ""),updatedAt:.document.updatedAt,versionCount:.document.versionCount,chunkCount:.document.chunkCount,jobs:(.document.jobs // [] | map({jobId:(.jobId // .processingJobId),status,attemptCount,maximumAttempts,requestedPurpose,diagnosticCode,diagnosticMessage,requestedAt,updatedAt,completedAt}))}}' "$state_a"
           echo '=== DOCUMENT B RUNTIME STATE ==='
           jq '{status,document:{documentId:.document.documentId,processingStatus:(.document.processingStatus // .document.status),errorCode:(.document.errorCode // .document.processingErrorCode // ""),updatedAt:.document.updatedAt,versionCount:.document.versionCount,chunkCount:.document.chunkCount,jobs:(.document.jobs // [] | map({jobId:(.jobId // .processingJobId),status,attemptCount,maximumAttempts,requestedPurpose,diagnosticCode,diagnosticMessage,requestedAt,updatedAt,completedAt}))}}' "$state_b"
-          echo '=== MATCHING RECENT JOBS ==='
-          jq --arg a "$DOC_A" --arg b "$DOC_B" '{summary,jobs:(.jobs // [] | map(select((.documentId|tostring)==$a or (.documentId|tostring)==$b) | {jobId:(.jobId // .processingJobId),documentId,status,attemptCount,maximumAttempts,requestedPurpose,diagnosticCode,diagnosticMessage,requestedAt,updatedAt,completedAt}))}' "$jobs"
-          echo '=== RUNTIME READINESS ==='
-          jq '{status,readiness:{workerEnabled:.readiness.workerEnabled,automaticDocumentQueueEnabled:.readiness.automaticDocumentQueueEnabled,documentServicePrincipalAuthorized:.readiness.documentServicePrincipalAuthorized,malwareScannerEndpointPrivate:.readiness.malwareScannerEndpointPrivate,ocrConfigured:.readiness.ocrConfigured,ocrEndpointPrivate:.readiness.ocrEndpointPrivate,embeddingConfigured:.readiness.embeddingConfigured,embeddingEndpointPrivate:.readiness.embeddingEndpointPrivate,lexicalOnlyCompletionApproved:.readiness.lexicalOnlyCompletionApproved,queuedJobCount:.readiness.queuedJobCount,runningJobCount:.readiness.runningJobCount,failedJobCount:.readiness.failedJobCount,blockers:.readiness.blockers}}' "$readiness"
+
+          if code="$(curl -sS --max-time 60 -o "$readiness" -w '%{http_code}' \
+            -H "Authorization: Bearer $SESSION" -H "X-ProjectPulse-Session: $SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/celar-ai/v1/documents/runtime/readiness")" && [[ "$code" == 200 ]]; then
+            echo '=== RUNTIME READINESS ==='
+            jq '{status,readiness:{workerEnabled:.readiness.workerEnabled,automaticDocumentQueueEnabled:.readiness.automaticDocumentQueueEnabled,documentServicePrincipalAuthorized:.readiness.documentServicePrincipalAuthorized,malwareScannerEndpointPrivate:.readiness.malwareScannerEndpointPrivate,ocrConfigured:.readiness.ocrConfigured,ocrEndpointPrivate:.readiness.ocrEndpointPrivate,embeddingConfigured:.readiness.embeddingConfigured,embeddingEndpointPrivate:.readiness.embeddingEndpointPrivate,lexicalOnlyCompletionApproved:.readiness.lexicalOnlyCompletionApproved,queuedJobCount:.readiness.queuedJobCount,runningJobCount:.readiness.runningJobCount,failedJobCount:.readiness.failedJobCount,blockers:.readiness.blockers}}' "$readiness"
+          else
+            echo "RUNTIME_READINESS_OPTIONAL_HTTP=${code:-curl_failed}"
+          fi
 
           curl -sS --max-time 30 -o /dev/null \
             -X POST -H "Authorization: Bearer $SESSION" -H "X-ProjectPulse-Session: $SESSION" \
