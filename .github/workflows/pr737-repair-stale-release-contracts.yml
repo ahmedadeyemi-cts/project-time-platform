@@ -1,0 +1,136 @@
+name: PR737 Repair Stale Release Contracts
+
+on:
+  push:
+    branches:
+      - fix/shared-project-document-planning-20260819
+    paths:
+      - .github/workflows/pr737-repair-stale-release-contracts.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/shared-project-document-planning-20260819
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Repair shared planning and Oracle Test validators
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          shared_path = Path('tests/validate-shared-project-document-planning.mjs')
+          shared = shared_path.read_text(encoding='utf-8')
+          worker_read = "const privateDocumentWorker = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs');\n"
+          additional_reads = worker_read + "const privateDocumentRuntime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs');\nconst protectedTestCandidatePolicy = read('src/backend/ProjectTime.Api/Ai/PulseAiProtectedTestCandidatePolicy.cs');\n"
+          if shared.count(worker_read) != 1:
+              raise SystemExit('Expected private document worker read binding exactly once.')
+          shared = shared.replace(worker_read, additional_reads, 1)
+
+          start_marker = '// Protected Test may process an exact validated candidate, while every other candidate environment remains fenced.\n'
+          end_marker = '// Exact Protected-UAT validation proves download durability and server-owned generation.\n'
+          start = shared.find(start_marker)
+          end = shared.find(end_marker, start)
+          if start < 0 or end <= start:
+              raise SystemExit('Could not isolate the stale Protected Test validator block.')
+          replacement = '''// Protected Test may process an exact validated candidate, while every other candidate environment remains fenced.
+          for (const token of [
+            'PROJECTPULSE_ENVIRONMENT',
+            'environment.Equals("test", StringComparison.OrdinalIgnoreCase)',
+            'ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable',
+            'runningSourceCommit.Length != 40',
+            'release.SourceCommit',
+            'release.RunningSourceCommit',
+            'release.EmbeddedSourceCommit'
+          ]) requireText(protectedTestCandidatePolicy, token, 'Protected Test exact-candidate policy');
+          for (const token of [
+            'TryActivateProtectedTestWorker',
+            'var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();',
+            'PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)',
+            'PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED',
+            'options.MalwareScannerConfigured',
+            'options.OcrConfigured',
+            'options.EmbeddingConfigured',
+            'Environment.SetEnvironmentVariable(WorkerEnabledVariable, "true")'
+          ]) requireText(privateDocumentWorker, token, 'Protected Test exact-candidate private document worker');
+          for (const token of [
+            'var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();',
+            'if (release.IsCandidate)',
+            'PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)',
+            'return Empty("release_candidate_read_only", "release_candidate_read_only")',
+            'RejectCandidateDataMutation("Private document queue mutation")',
+            'RejectCandidateDataMutation("Private document version approval")',
+            'RejectCandidateDataMutation("Private document processing cancellation")',
+            'RejectCandidateDataMutation("Private document processing retry")'
+          ]) requireText(privateDocumentRuntime, token, 'Protected Test candidate data-plane split');
+          rejectText(privateDocumentWorker, 'IsProtectedTestCandidateWorkerAllowed', 'retired worker-local candidate policy');
+          rejectText(privateDocumentWorker, 'if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)', 'unconditional candidate private-document mutation fence');
+          rejectText(privateDocumentWorker, 'environment.Equals("production"', 'Production worker auto-activation');
+
+          '''
+          shared = shared[:start] + replacement + shared[end:]
+          shared_path.write_text(shared, encoding='utf-8')
+
+          oracle_path = Path('tests/validate-celar-ai-oracle-test-runtime.mjs')
+          oracle = oracle_path.read_text(encoding='utf-8')
+          oracle = oracle.replace('private-runtime-before.json', 'runtime-contract-before.json')
+          oracle = oracle.replace('private-runtime-after.json', 'runtime-contract-after.json')
+          if "  'MIGRATIONS_APPLIED=NONE',\n" not in oracle:
+              raise SystemExit('Expected obsolete Oracle migration marker was not found.')
+          oracle = oracle.replace("  'MIGRATIONS_APPLIED=NONE',\n", "  'applicationOnlyAfterMigration:true',\n", 1)
+          old_dispatch = "rejectText(currentTestController, 'workflow_dispatch:', 'manual deployment bypass')\n"
+          new_dispatch = '''for (const marker of [
+            'workflow_dispatch:',
+            'release_sha:',
+            'release_branch:',
+            "TARGET_RELEASE_BRANCH\" == 'fix/shared-project-document-planning-20260819'",
+            'TARGET_RELEASE_COMMIT\" =~ ^[0-9a-f]{40}$',
+            'current authorized branch head',
+          ]) requireText(currentTestController, marker, 'guarded exact-SHA Protected Test dispatch')
+          '''
+          if oracle.count(old_dispatch) != 1:
+              raise SystemExit('Expected obsolete workflow_dispatch rejection exactly once.')
+          oracle = oracle.replace(old_dispatch, new_dispatch, 1)
+          oracle_path.write_text(oracle, encoding='utf-8')
+
+          manifest_path = Path('.github/shared-project-document-planning-governed-release-files.txt')
+          manifest = manifest_path.read_text(encoding='utf-8')
+          oracle_entry = 'tests/validate-celar-ai-oracle-test-runtime.mjs\n'
+          if oracle_entry not in manifest:
+              anchor = 'tests/FlowHiveDetailedPlannerTests/Program.cs\n'
+              if manifest.count(anchor) != 1:
+                  raise SystemExit('Governed manifest test anchor was not found exactly once.')
+              manifest = manifest.replace(anchor, anchor + oracle_entry, 1)
+              manifest_path.write_text(manifest, encoding='utf-8')
+          PY
+
+      - name: Validate repaired release contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-celar-ai-oracle-test-runtime.mjs
+          git diff --check
+
+      - name: Commit repairs and remove one-time workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr737-repair-stale-release-contracts.yml
+          git add tests/validate-shared-project-document-planning.mjs \
+                  tests/validate-celar-ai-oracle-test-runtime.mjs \
+                  .github/shared-project-document-planning-governed-release-files.txt
+          git diff --cached --check
+          git commit -m "fix: align protected test release validators"
+          git push origin HEAD:fix/shared-project-document-planning-20260819
