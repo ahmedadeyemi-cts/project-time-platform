@@ -9,7 +9,6 @@ namespace ProjectTime.Api.Ai;
 /// </summary>
 public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
 {
-    private const string EnvironmentVariable = "PROJECTPULSE_ENVIRONMENT";
     private const string PrivateRagEnabledVariable = "PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED";
     private const string WorkerEnabledVariable = "PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED";
 
@@ -88,8 +87,7 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
 
     private bool TryActivateProtectedTestWorker(PulseAiPrivateRuntimeOptions options)
     {
-        var environment = Environment.GetEnvironmentVariable(EnvironmentVariable)?.Trim() ?? string.Empty;
-        if (!environment.Equals("test", StringComparison.OrdinalIgnoreCase))
+        if (!PulseAiProtectedTestCandidatePolicy.IsProtectedTestEnvironment())
             return false;
 
         var runningSourceCommit = Environment
@@ -112,7 +110,7 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
 
         Environment.SetEnvironmentVariable(WorkerEnabledVariable, "true");
         _logger.LogInformation(
-            "Protected Test private document worker activated from the exact running source after dependency verification. SourceCommit={SourceCommit}",
+            "Protected Test private document worker activated from governed Test runtime provenance and the exact running source after dependency verification. SourceCommit={SourceCommit}",
             runningSourceCommit);
         return true;
     }
