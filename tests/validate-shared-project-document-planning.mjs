@@ -126,19 +126,25 @@ for (const token of ['Retry automatic processing', 'AI Planner will automaticall
 for (const forbidden of ['AI draft studio', 'Optional approved SOW excerpt', 'Optional approved GSD excerpt', 'Prepare / queue processing', 'Generate and auto-fill detailed plan'])
   rejectText(`${flowHiveUi}\n${flowHivePanels}`, forbidden, 'legacy duplicate AI planning interface');
 
-// Protected Test can process automatically without weakening the Production flag.
+// Protected Test may process an exact validated candidate, while every other candidate environment remains fenced.
 for (const token of [
   'TryActivateProtectedTestWorker',
+  'IsProtectedTestCandidateWorkerAllowed',
+  'var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();',
+  'release.IsCandidate && !IsProtectedTestCandidateWorkerAllowed(release)',
   'PROJECTPULSE_ENVIRONMENT',
   'environment.Equals("test", StringComparison.OrdinalIgnoreCase)',
   'ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable',
+  'string.Equals(release.SourceCommit, runningSourceCommit, StringComparison.Ordinal)',
+  'string.Equals(release.RunningSourceCommit, runningSourceCommit, StringComparison.Ordinal)',
+  'string.Equals(release.EmbeddedSourceCommit, runningSourceCommit, StringComparison.Ordinal)',
   'PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED',
   'options.MalwareScannerConfigured',
   'options.OcrConfigured',
   'options.EmbeddingConfigured',
   'Environment.SetEnvironmentVariable(WorkerEnabledVariable, "true")'
-]) requireText(privateDocumentWorker, token, 'Protected Test private document worker activation');
-requireText(privateDocumentWorker, 'ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate', 'candidate private-document mutation fence');
+]) requireText(privateDocumentWorker, token, 'Protected Test exact-candidate private document worker');
+rejectText(privateDocumentWorker, 'if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)', 'unconditional candidate private-document mutation fence');
 rejectText(privateDocumentWorker, 'environment.Equals("production"', 'Production worker auto-activation');
 
 // Exact Protected-UAT validation proves download durability and server-owned generation.
