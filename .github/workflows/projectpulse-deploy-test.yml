@@ -14,7 +14,9 @@ on:
       - 'database/migrations/094_flowhive_canonical_sow_authority.sql'
       - 'database/migrations/095_project_planning_collaboration_access.sql'
       - 'database/migrations/096_project_planning_document_authority.sql'
+      - 'database/migrations/097_project_planning_identity_safe_admission.sql'
       - 'database/rollback/096_project_planning_document_authority_rollback.sql'
+      - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
       - 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'
       - 'scripts/release-test/run-flowhive-authority-migration-094-job.sh'
       - 'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'
@@ -22,6 +24,8 @@ on:
       - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
       - 'scripts/release-test/run-project-planning-document-authority-migration-job.sh'
       - 'tests/test-project-planning-document-authority-migration-096.sh'
+      - 'tests/test-project-planning-identity-safe-admission-migration-097.sh'
+      - 'tests/test-pulse-ai-runtime-job-query-shape.sh'
       - 'src/backend/ProjectTime.Api/**'
       - 'src/frontend/project-time-web/**'
       - 'tests/CelarAiAuthoritativePublicFactTests/**'
@@ -130,7 +134,9 @@ jobs:
             database/migrations/094_flowhive_canonical_sow_authority.sql \
             database/migrations/095_project_planning_collaboration_access.sql \
             database/migrations/096_project_planning_document_authority.sql \
+            database/migrations/097_project_planning_identity_safe_admission.sql \
             database/rollback/096_project_planning_document_authority_rollback.sql \
+            database/rollback/097_project_planning_identity_safe_admission_rollback.sql \
             scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh \
             scripts/release-test/run-flowhive-authority-migration-094-job.sh \
             scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh \
@@ -138,6 +144,8 @@ jobs:
             scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh \
             scripts/release-test/run-project-planning-document-authority-migration-job.sh \
             tests/test-project-planning-document-authority-migration-096.sh \
+            tests/test-project-planning-identity-safe-admission-migration-097.sh \
+            tests/test-pulse-ai-runtime-job-query-shape.sh \
             src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs \
             src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs \
             src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs \
@@ -179,6 +187,8 @@ jobs:
           bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
           bash tests/test-project-planning-collaboration-migration-095.sh
           bash tests/test-project-planning-document-authority-migration-096.sh
+          bash tests/test-project-planning-identity-safe-admission-migration-097.sh
+          bash tests/test-pulse-ai-runtime-job-query-shape.sh
           node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
           dotnet run --project tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj --configuration Release
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
@@ -199,7 +209,7 @@ jobs:
             '{
               environment:"test",
               applicationRelease:$releaseCommit,
-              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority"],
+              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission"],
               migrationScope:$migrationScope,
               utilizationRoleScopingUat:true,
               assignedWorkUat:true,
@@ -487,7 +497,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           jq -n --arg api "$API_IMAGE" --arg web "$WEB_IMAGE" --arg migration "$MIGRATION_IMAGE" '{apiImage:$api,webImage:$web,migrationImage:$migration}' > "$EVIDENCE_DIR/immutable-images.json"
 
-      - name: Apply and verify Migrations 086, 088, 093, 094, 095, and 096 inside Test private network
+      - name: Apply and verify Migrations 086, 088, 093, 094, 095, 096, and 097 inside Test private network
         id: migration
         shell: bash
         working-directory: release
@@ -511,7 +521,7 @@ jobs:
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
-          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
+          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
         id: deploy_api
@@ -1042,7 +1052,17 @@ jobs:
                 done
 
                 if [[ "$ASSET_FETCH_OK" == true ]]; then
-                  for marker in                     'pulse-display-utility-dock'                     'Evidence score'                     'Project Cost Alerts'                     'Data incomplete'                     'Select or type a customer'                     'FlowHive enterprise controls are temporarily unavailable.'                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'                     'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSHOT_V1'                     '--project-workload-responsive-metrics:1'                     'Login, logout & sessions'; do
+                  for marker in \
+                    'pulse-display-utility-dock' \
+                    'Evidence score' \
+                    'Project Cost Alerts' \
+                    'Data incomplete' \
+                    'Select or type a customer' \
+                    'FlowHive enterprise controls are temporarily unavailable.' \
+                    'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1' \
+                    'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSHOT_V1' \
+                    '--project-workload-responsive-metrics:1' \
+                    'Login, logout & sessions'; do
                     grep -Fq -- "$marker" "$FRONTEND_BUNDLE" || MISSING_MARKERS+=("$marker")
                   done
                 fi
@@ -1053,12 +1073,17 @@ jobs:
               ASSET_FETCH_OK=false
             fi
 
-            printf 'attempt=%s portalStatus=%s assetCount=%s assetFetchOk=%s missingCount=%s\n'               "$attempt" "$PORTAL_STATUS" "${#FRONTEND_ASSETS[@]}" "$ASSET_FETCH_OK" "${#MISSING_MARKERS[@]}"               >> "$FRONTEND_CONVERGENCE_LOG"
+            printf 'attempt=%s portalStatus=%s assetCount=%s assetFetchOk=%s missingCount=%s\n' \
+              "$attempt" "$PORTAL_STATUS" "${#FRONTEND_ASSETS[@]}" "$ASSET_FETCH_OK" "${#MISSING_MARKERS[@]}" \
+              >> "$FRONTEND_CONVERGENCE_LOG"
             for marker in "${MISSING_MARKERS[@]}"; do
               printf 'attempt=%s missingMarker=%s\n' "$attempt" "$marker" >> "$FRONTEND_CONVERGENCE_LOG"
             done
 
-            if [[ "$PORTAL_STATUS" == 200               && "$ASSET_FETCH_OK" == true               && ${#FRONTEND_ASSETS[@]} -gt 0               && ${#MISSING_MARKERS[@]} -eq 0 ]]; then
+            if [[ "$PORTAL_STATUS" == 200 \
+              && "$ASSET_FETCH_OK" == true \
+              && ${#FRONTEND_ASSETS[@]} -gt 0 \
+              && ${#MISSING_MARKERS[@]} -eq 0 ]]; then
               FRONTEND_READY=true
               echo "PROTECTED_TEST_FRONTEND_CONVERGED attempt=$attempt assets=${#FRONTEND_ASSETS[@]}"
               break
@@ -1098,6 +1123,7 @@ jobs:
               migration094:"applied_and_verified",
               migration095:"applied_and_verified",
               migration096:"applied_and_verified",
+              migration097:"applied_and_verified",
               projectManagementSummary:true,
               projectIntake:true,
               opportunityDirectory:true,
@@ -1192,7 +1218,7 @@ jobs:
             echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
             echo '- Environment: protected Test only'
             echo '- Target: https://phd-west-test.onenecklab.com'
-            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, 093, 094, 095, and 096: applied and verified' || echo '- Migrations 086, 088, 093, 094, 095, and 096: not completed'
+            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, 093, 094, 095, 096, and 097: applied and verified' || echo '- Migrations 086, 088, 093, 094, 095, 096, and 097: not completed'
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: passed' || echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: not completed'
             [[ -f "$EVIDENCE_DIR/utilization-role-scoping-uat.json" ]] && echo '- Kevin utilization role-scoping UAT: passed' || echo '- Kevin utilization role-scoping UAT: not completed'
             [[ -f "$EVIDENCE_DIR/rollback.json" ]] && echo '- Application image rollback: completed'
