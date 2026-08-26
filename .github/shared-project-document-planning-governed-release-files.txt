@@ -71,6 +71,7 @@ tests/FlowHiveDetailedPlannerTests/Program.cs
 tests/test-flowhive-canonical-sow-authority-migration-094.sh
 tests/test-project-planning-collaboration-migration-095.sh
 tests/test-project-planning-document-authority-migration-096.sh
+tests/validate-celar-ai-oracle-test-runtime.mjs
 tests/validate-celar-ai-pr630-consolidated.mjs
 tests/validate-flowhive-sow-evidence-autoadmission.mjs
 tests/validate-project-planning-collaboration-access.mjs
