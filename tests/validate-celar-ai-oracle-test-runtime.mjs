@@ -143,7 +143,12 @@ for (const marker of [
   'applicationOnlyAfterMigration:true',
   'PRODUCTION_MUTATION=NONE',
   'privateRuntimeConfigurationMutation:false',
-  'Restore exact prior Test images after failure',
+  'Snapshot protected Test and preserve rollback contract',
+  "--image '${{ steps.contract.outputs.old_api_image }}'",
+  "--image '${{ steps.contract.outputs.old_web_image }}'",
+  "--set-env-vars PROJECTPULSE_SOURCE_COMMIT='${{ steps.contract.outputs.old_source }}'",
+  'rollbackCompleted:true',
+  'migrationsRemainApplied:true',
 ]) requireText(currentTestController, marker, 'current protected-Test runtime-preservation controller')
 
 for (const marker of [
