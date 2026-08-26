@@ -112,7 +112,8 @@ rejectText(rollback, 'DROP COLUMN IF EXISTS account_executive_user_id', 'destruc
 
 for (const marker of [
   'SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=SUCCEEDED',
-  'projectpulse-migration"] == "086-088-093-094-095-096"',
+  'projectpulse-migration"] == "086-088-093-094-095-096-097"',
+  'MIGRATION_097=APPLIED_AND_VERIFIED',
   'main-db-password',
   'PROJECTPULSE_ENVIRONMENT'
 ]) requireText(migrationRunner, marker, 'protected Test private-network migration runner');
@@ -120,7 +121,7 @@ for (const marker of [
   'environment: test',
   'group: projectpulse-deploy-test',
   'queue: max',
-  'Migrations 086, 088, 093, 094, 095, and 096',
+  'Migrations 086, 088, 093, 094, 095, 096, and 097',
   'PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true',
   'Project Management summary',
   'FlowHive enterprise workspace',
@@ -131,6 +132,7 @@ for (const marker of [
   'migration094:"applied_and_verified"',
   'migration095:"applied_and_verified"',
   'migration096:"applied_and_verified"',
+  'migration097:"applied_and_verified"',
   'FLOWHIVE_AI_PLANNER_UAT=PASSED',
   'PROJECT_FORGE_AI_PLANNER_UAT=PASSED',
   'CELAR_AI_STABILITY_UAT=PASSED',
