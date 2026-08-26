@@ -10,9 +10,12 @@ on:
       - '.github/workflows/runtime-navigation-work-register-responsive-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+      - 'database/migrations/097_project_planning_identity_safe_admission.sql'
+      - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
       - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
       - 'src/backend/ProjectTime.Api/Program.cs'
       - 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
@@ -21,6 +24,8 @@ on:
       - 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
       - 'src/frontend/project-time-web/src/background-request-role-gate.js'
       - 'src/frontend/project-time-web/src/module-availability-bridge.js'
+      - 'tests/test-project-planning-identity-safe-admission-migration-097.sh'
+      - 'tests/test-pulse-ai-runtime-job-query-shape.sh'
       - 'tests/validate-utilization-role-scoping.mjs'
       - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
@@ -76,9 +81,12 @@ jobs:
           .github/workflows/runtime-navigation-work-register-responsive-ci.yml
           .github/workflows/systemwide-enterprise-reliability-ci.yml
           .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+          database/migrations/097_project_planning_identity_safe_admission.sql
+          database/rollback/097_project_planning_identity_safe_admission_rollback.sql
           scripts/release-test/run-assigned-work-protected-test-uat.sh
           scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
           src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
           src/backend/ProjectTime.Api/Program.cs
           src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
@@ -87,6 +95,8 @@ jobs:
           src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
           src/frontend/project-time-web/src/background-request-role-gate.js
           src/frontend/project-time-web/src/module-availability-bridge.js
+          tests/test-project-planning-identity-safe-admission-migration-097.sh
+          tests/test-pulse-ai-runtime-job-query-shape.sh
           tests/validate-utilization-role-scoping.mjs
           tests/validate-systemwide-image-build-controller.mjs
           tests/validate-systemwide-enterprise-reliability.mjs
@@ -161,7 +171,8 @@ jobs:
           if [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
             test -s "$SHARED_PLANNING_MANIFEST" || fail 'The shared project-document planning release manifest is missing.'
             grep -Ev '^[[:space:]]*(#|$)' "$SHARED_PLANNING_MANIFEST" | LC_ALL=C sort -u > "$RUNNER_TEMP/shared-project-document-planning-files"
-            cmp -s "$SHARED_PLANNING_MANIFEST" "$RUNNER_TEMP/shared-project-document-planning-files"               || fail 'The shared project-document planning release manifest must be sorted, unique, and comment-free.'
+            cmp -s "$SHARED_PLANNING_MANIFEST" "$RUNNER_TEMP/shared-project-document-planning-files" \
+              || fail 'The shared project-document planning release manifest must be sorted, unique, and comment-free.'
             while IFS= read -r required_file; do
               test -f "$required_file" || fail "Governed shared-planning artifact is missing: $required_file"
             done < "$RUNNER_TEMP/shared-project-document-planning-files"
@@ -229,13 +240,21 @@ jobs:
           grep -Fq 'https://phd-west-test.onenecklab.com' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_M087_PASSWORD' "$CONTROLLER"
           grep -Fq 'Build immutable API, web, and migration images' "$CONTROLLER"
-          grep -Fq 'Apply and verify Migrations 086, 088, 093, 094, 095, and 096 inside Test private network' "$CONTROLLER"
+          grep -Fq 'Apply and verify Migrations 086, 088, 093, 094, 095, 096, and 097 inside Test private network' "$CONTROLLER"
           grep -Fq 'database/migrations/093_assigned_work_canonical_visibility_repair.sql' "$CONTROLLER"
+          grep -Fq 'database/migrations/097_project_planning_identity_safe_admission.sql' "$CONTROLLER"
+          grep -Fq 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql' "$CONTROLLER"
+          grep -Fq 'tests/test-project-planning-identity-safe-admission-migration-097.sh' "$CONTROLLER"
+          grep -Fq 'tests/test-pulse-ai-runtime-job-query-shape.sh' "$CONTROLLER"
+          grep -Fq 'bash tests/test-project-planning-identity-safe-admission-migration-097.sh' "$CONTROLLER"
+          grep -Fq 'bash tests/test-pulse-ai-runtime-job-query-shape.sh' "$CONTROLLER"
           grep -Fq 'MIGRATION_093=APPLIED_AND_VERIFIED' "$CONTROLLER"
           grep -Fq 'MIGRATION_094=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           grep -Fq 'MIGRATION_096=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           grep -Fq '096_project_planning_document_authority.sql' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          grep -Fq '097_project_planning_identity_safe_admission.sql' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs' "$CONTROLLER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' "$CONTROLLER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' "$CONTROLLER"
@@ -246,6 +265,7 @@ jobs:
           grep -Fq 'migration094:"applied_and_verified"' "$CONTROLLER"
           grep -Fq 'migration095:"applied_and_verified"' "$CONTROLLER"
           grep -Fq 'migration096:"applied_and_verified"' "$CONTROLLER"
+          grep -Fq 'migration097:"applied_and_verified"' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
           grep -Fq 'Run protected-Test authenticated functional UAT' "$CONTROLLER"
@@ -266,6 +286,8 @@ jobs:
           ! grep -Fq 'phd-west.onenecklab.com' "$CONTROLLER"
           ! grep -Eq 'productionMutation:true|privateRuntimeConfigurationMutation:true' "$CONTROLLER" "$UTILIZATION_UAT" "$ASSIGNED_WORK_UAT"
 
+          bash tests/test-project-planning-identity-safe-admission-migration-097.sh
+          bash tests/test-pulse-ai-runtime-job-query-shape.sh
           node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
           node tests/validate-utilization-role-scoping.mjs
           node tests/validate-systemwide-image-build-controller.mjs
@@ -280,7 +302,7 @@ jobs:
           echo 'UTILIZATION_ROLE_SCOPING_SOURCE=PASSED'
           echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASSED'
           echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=PASSED'
-          echo 'MIGRATIONS_086_088_093_094_095_096=AUTHORIZED_TEST_APPLY_AND_VERIFY'
+          echo 'MIGRATIONS_086_088_093_094_095_096_097=AUTHORIZED_TEST_APPLY_AND_VERIFY'
           echo 'SHARED_PROJECT_DOCUMENT_PLANNING=AUTHORIZED_TEST_RELEASE'
           echo 'FLOWHIVE_FORGE_CELAR_AUTHENTICATED_UAT=REQUIRED'
           echo 'PRODUCTION_MUTATION=NONE'
