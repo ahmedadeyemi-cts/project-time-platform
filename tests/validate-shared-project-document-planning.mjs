@@ -153,7 +153,10 @@ for (const token of [
 ]) requireText(protectedTestCandidatePolicy, token, 'Protected Test governed runtime provenance');
 for (const token of [
   'TryActivateProtectedTestWorker',
-  'PulseAiProtectedTestCandidatePolicy.IsProtectedTestEnvironment()',
+  'TryActivateProtectedTestWorker(options, release)',
+  'ReleaseRuntimeSnapshot release',
+  'release.IsCandidate',
+  'PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)',
   'PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED',
   'options.MalwareScannerConfigured',
   'options.OcrConfigured',
