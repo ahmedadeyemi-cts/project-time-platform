@@ -64,6 +64,18 @@ for (const token of [
   'ReadyForGeneration'
 ]) requireText(resolver, token, 'project-scoped document authority');
 
+for (const token of [
+  'ShouldAutoRecoverFailedProcessing',
+  'ProcessingStatus.Equals("failed", StringComparison.OrdinalIgnoreCase)',
+  'project_planning_failed_recovery_',
+  'ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable',
+  'prior_recovery.requested_purpose=@purpose',
+  '@recovery=FALSE',
+  'safety or operator-controlled terminal states are never automatically requeued'
+]) requireText(resolver, token, 'bounded failed-document recovery');
+requireText(resolver, '"failed" or "rejected" or "quarantined" or "cancelled" or "canceled" or "unsupported"', 'terminal processing safety states');
+rejectText(resolver, 'ProcessingStatus.Equals("quarantined", StringComparison.OrdinalIgnoreCase);', 'quarantined documents must not be auto-recovered');
+
 rejectText(resolver, 'FileName.Contains', 'filename guessing must not establish SOW authority');
 rejectText(resolver, 'original_file_name ILIKE', 'filename guessing must not establish SOW authority');
 requireText(flowHiveEnterprise, 'LEFT JOIN work_register_documents work_register', 'FlowHive evidence workspace Work Register authority');
