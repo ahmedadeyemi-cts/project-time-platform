@@ -10,8 +10,6 @@ on:
 permissions:
   contents: read
 
-environment: test
-
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
