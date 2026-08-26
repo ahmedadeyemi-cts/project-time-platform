@@ -6,10 +6,15 @@ on:
       - fix/shared-project-document-planning-20260819
     paths:
       - scripts/pr737-atomic-repair.py
+      - scripts/pr737-repair-supplement.py
       - .github/workflows/pr737-atomic-repair.yml
 
 permissions:
   contents: write
+
+concurrency:
+  group: pr737-atomic-repair
+  cancel-in-progress: true
 
 jobs:
   repair:
@@ -24,7 +29,10 @@ jobs:
           persist-credentials: true
 
       - name: Apply bounded repair
-        run: python3 scripts/pr737-atomic-repair.py
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/pr737-atomic-repair.py
+          python3 scripts/pr737-repair-supplement.py
 
       - name: Validate migration 097
         run: bash tests/test-project-planning-identity-safe-admission-migration-097.sh
@@ -32,7 +40,7 @@ jobs:
       - name: Validate aggregate runtime job query
         run: bash tests/test-pulse-ai-runtime-job-query-shape.sh
 
-      - name: Validate release scripts
+      - name: Validate release scripts and governed manifest
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -41,6 +49,15 @@ jobs:
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
           grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          for path in \
+            '.github/workflows/project-planning-identity-safe-admission-ci.yml' \
+            'database/migrations/097_project_planning_identity_safe_admission.sql' \
+            'database/rollback/097_project_planning_identity_safe_admission_rollback.sql' \
+            'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs' \
+            'tests/test-project-planning-identity-safe-admission-migration-097.sh' \
+            'tests/test-pulse-ai-runtime-job-query-shape.sh'; do
+            grep -Fxq "$path" .github/shared-project-document-planning-governed-release-files.txt
+          done
 
       - name: Publish one clean repair commit
         shell: bash
@@ -50,6 +67,7 @@ jobs:
           rm -f .github/workflows/pr737-fix-identityless-document-queue.yml
           rm -f .github/workflows/pr737-atomic-repair.yml
           rm -f scripts/pr737-atomic-repair.py
+          rm -f scripts/pr737-repair-supplement.py
           git diff --check
           git config user.name 'projectpulse-release-bot'
           git config user.email 'projectpulse-release-bot@users.noreply.github.com'
