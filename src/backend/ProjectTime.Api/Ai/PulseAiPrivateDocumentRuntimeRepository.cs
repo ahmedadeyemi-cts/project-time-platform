@@ -131,13 +131,6 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         }
     }
 
-    /// <summary>
-    /// Resolves production-readiness evidence for the dedicated automatic
-    /// document-admission identity. A configured UUID is not sufficient: the
-    /// application user must still exist, be active, and receive the queue
-    /// permission through an active role assignment at the time readiness is
-    /// evaluated. No identity attributes are returned to the caller.
-    /// </summary>
     public async Task<DocumentServicePrincipalReadiness> InspectDocumentServicePrincipalAsync(
         Guid? userId,
         CancellationToken cancellationToken = default)
@@ -293,12 +286,6 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         }
     }
 
-    /// <summary>
-    /// Automatically admits one new, explicitly AI-eligible project document to
-    /// the private queue. Enabling the worker is the deployment-level consent;
-    /// cancelled, quarantined, failed, inactive, unlinked, or non-visible files
-    /// are never silently requeued by this path.
-    /// </summary>
     public async Task<AutoQueueResult?> EnqueueNextEligibleDocumentAsync(
         PulseAiPrivateRuntimeOptions options,
         CancellationToken cancellationToken = default)
@@ -416,7 +403,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 queued.ActorUserId,
                 queued.ActorUserId,
                 "document_automatically_queued",
-                "queued",
+                "requested",
                 queued.CorrelationId,
                 string.Empty,
                 new
@@ -847,7 +834,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
             actualUserId: actorUserId,
             effectiveUserId: actorUserId,
             eventCode: "document_version_approved",
-            eventStatus: "approved",
+            eventStatus: "succeeded",
             correlationId: $"approval-{Guid.NewGuid():N}",
             diagnosticCode: string.Empty,
             evidence: new
@@ -1110,7 +1097,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 item.ActualUserId,
                 item.EffectiveUserId,
                 "expired_worker_lease_recovered",
-                item.Status,
+                item.Status == "retry_wait" ? "partial" : item.Status,
                 item.CorrelationId,
                 item.DiagnosticCode,
                 new
