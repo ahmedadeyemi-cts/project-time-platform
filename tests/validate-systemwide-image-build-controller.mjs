@@ -32,8 +32,13 @@ assert.match(workflow, /BUILD_LOG="\$EVIDENCE_DIR\/image-build\.log"/);
 assert.match(workflow, /node tests\/validate-systemwide-image-build-controller\.mjs/);
 assert.match(workflow, /run-utilization-role-scoping-protected-test-uat\.sh/);
 assert.match(workflow, /093_assigned_work_canonical_visibility_repair\.sql/);
-assert.match(workflow, /Apply and verify Migrations 086, 088, 093, 094, 095, and 096 inside Test private network/);
+assert.match(workflow, /097_project_planning_identity_safe_admission\.sql/);
+assert.match(workflow, /097_project_planning_identity_safe_admission_rollback\.sql/);
+assert.match(workflow, /test-project-planning-identity-safe-admission-migration-097\.sh/);
+assert.match(workflow, /test-pulse-ai-runtime-job-query-shape\.sh/);
+assert.match(workflow, /Apply and verify Migrations 086, 088, 093, 094, 095, 096, and 097 inside Test private network/);
 assert.match(workflow, /MIGRATION_093=APPLIED_AND_VERIFIED/);
+assert.match(workflow, /migration097:"applied_and_verified"/);
 assert.match(
   workflow,
   /\(NOT EXISTS \(\s*SELECT 1\s*FROM work_register_task_assignment_history history[\s\S]*?\)\)::text;/,
@@ -48,7 +53,7 @@ assert.doesNotMatch(
 const migrationImageBuilders = [
   ['094', 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'],
   ['095', 'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'],
-  ['096', 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh']
+  ['096+097', 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh']
 ];
 for (const [migration, builderPath] of migrationImageBuilders) {
   const builder = fs.readFileSync(builderPath, 'utf8');
@@ -94,4 +99,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image migration-builders=094,095,096 utilization-uat=registered');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image migration-builders=094,095,096+097 utilization-uat=registered');
