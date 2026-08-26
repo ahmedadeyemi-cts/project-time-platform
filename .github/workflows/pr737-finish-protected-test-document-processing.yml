@@ -1,0 +1,174 @@
+name: PR737 Final Protected Test Document Repair
+
+on:
+  push:
+    branches:
+      - fix/shared-project-document-planning-20260819
+    paths:
+      - .github/workflows/pr737-finish-protected-test-document-processing.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/shared-project-document-planning-20260819
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 22
+
+      - name: Apply exact Protected Test processing boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          helper = Path('src/backend/ProjectTime.Api/Ai/PulseAiProtectedTestCandidatePolicy.cs')
+          helper.write_text('''namespace ProjectTime.Api.Ai;
+
+/// <summary>
+/// Allows one tightly bounded candidate mutation path: the background private-document
+/// processor in Protected Test. The release envelope must already be valid and the
+/// candidate, running, and embedded source commits must all be the exact same SHA.
+/// Interactive candidate data mutations remain blocked by RejectCandidateDataMutation.
+/// </summary>
+internal static class PulseAiProtectedTestCandidatePolicy
+{
+    private const string EnvironmentVariable = "PROJECTPULSE_ENVIRONMENT";
+
+    public static bool AllowsPrivateDocumentProcessing(ReleaseRuntimeSnapshot release)
+    {
+        if (!release.IsCandidate)
+            return false;
+
+        var environment = Environment.GetEnvironmentVariable(EnvironmentVariable)?.Trim() ?? string.Empty;
+        if (!environment.Equals("test", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var runningSourceCommit = Environment
+            .GetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable)?
+            .Trim()
+            .ToLowerInvariant() ?? string.Empty;
+        if (runningSourceCommit.Length != 40 || !runningSourceCommit.All(Uri.IsHexDigit))
+            return false;
+
+        return string.Equals(release.SourceCommit, runningSourceCommit, StringComparison.Ordinal)
+            && string.Equals(release.RunningSourceCommit, runningSourceCommit, StringComparison.Ordinal)
+            && string.Equals(release.EmbeddedSourceCommit, runningSourceCommit, StringComparison.Ordinal);
+    }
+}
+''', encoding='utf-8')
+
+          worker_path = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs')
+          worker = worker_path.read_text(encoding='utf-8')
+          old_condition = 'if (release.IsCandidate && !IsProtectedTestCandidateWorkerAllowed(release))'
+          new_condition = 'if (release.IsCandidate && !PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))'
+          if old_condition not in worker:
+              raise SystemExit('Expected worker candidate condition was not found; refusing broad mutation.')
+          worker = worker.replace(old_condition, new_condition, 1)
+          worker, removed = re.subn(
+              r'\n    private static bool IsProtectedTestCandidateWorkerAllowed\(ReleaseRuntimeSnapshot release\)\n    \{.*?\n    \}\n\n    private bool TryActivateProtectedTestWorker',
+              '\n    private bool TryActivateProtectedTestWorker',
+              worker,
+              count=1,
+              flags=re.S,
+          )
+          if removed != 1:
+              raise SystemExit('Expected duplicate worker policy helper was not found exactly once.')
+          worker_path.write_text(worker, encoding='utf-8')
+
+          service_path = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
+          service = service_path.read_text(encoding='utf-8')
+          old_service = '''        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        if (release.IsCandidate)
+            return Empty("release_candidate_read_only", "release_candidate_read_only");
+        var options = Options();
+'''
+          new_service = '''        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        if (release.IsCandidate)
+        {
+            if (!PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))
+                return Empty("release_candidate_read_only", "release_candidate_read_only");
+        }
+        var options = Options();
+'''
+          if service.count(old_service) != 1:
+              raise SystemExit('Expected runtime service candidate fence was not found exactly once.')
+          service = service.replace(old_service, new_service, 1)
+          service_path.write_text(service, encoding='utf-8')
+
+          validator_path = Path('src/frontend/project-time-web/scripts/validate-celar-ai-release-scoped-runtime.mjs')
+          validator = validator_path.read_text(encoding='utf-8')
+          worker_read = "const runtimeWorker = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs');\n"
+          helper_read = worker_read + "const protectedTestCandidatePolicy = read('src/backend/ProjectTime.Api/Ai/PulseAiProtectedTestCandidatePolicy.cs');\n"
+          if validator.count(worker_read) != 1:
+              raise SystemExit('Expected runtime worker validator source binding was not found exactly once.')
+          validator = validator.replace(worker_read, helper_read, 1)
+
+          pattern = re.compile(
+              r"assert\(\n  'CANDIDATE_ACTIVE_DATA_PLANE_SPLIT',.*?\n\);\n\n(?=assert\(\n  'CANDIDATE_BACKGROUND_AND_CONFIG_FREEZE')",
+              re.S,
+          )
+          replacement = '''assert(
+  'CANDIDATE_ACTIVE_DATA_PLANE_SPLIT',
+  protectedTestCandidatePolicy.includes('PROJECTPULSE_ENVIRONMENT')
+    && protectedTestCandidatePolicy.includes('environment.Equals("test", StringComparison.OrdinalIgnoreCase)')
+    && protectedTestCandidatePolicy.includes('runningSourceCommit.Length != 40')
+    && protectedTestCandidatePolicy.includes('release.SourceCommit')
+    && protectedTestCandidatePolicy.includes('release.RunningSourceCommit')
+    && protectedTestCandidatePolicy.includes('release.EmbeddedSourceCommit')
+    && runtimeWorker.includes('PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)')
+    && runtimeService.includes('if (release.IsCandidate)')
+    && runtimeService.includes('PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)')
+    && runtimeService.match(/RejectCandidateDataMutation/g)?.length >= 4
+    && ragRepository.match(/RequireValid\\(\\)\\.IsCandidate/g)?.length >= 4
+    && systemRepository.match(/RequireValid\\(\\)\\.IsCandidate/g)?.length >= 6
+    && projectForge.includes('if (!release.IsCandidate) return null;')
+    && !runtimeWorker.includes('RequireValid().Active')
+    && !ragRepository.includes('RequireValid().Active')
+    && !systemRepository.includes('RequireValid().Active'),
+  'candidate user/API mutations remain blocked while only the exact validated Protected Test background document processor may build private processing and citation state',
+);
+
+'''
+          validator, replaced = pattern.subn(replacement, validator, count=1)
+          if replaced != 1:
+              raise SystemExit('Expected candidate data-plane validator block was not found exactly once.')
+          validator_path.write_text(validator, encoding='utf-8')
+          PY
+
+      - name: Validate focused repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-celar-ai-release-scoped-runtime.mjs
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Commit repair and remove one-time workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr737-finish-protected-test-document-processing.yml
+          git add src/backend/ProjectTime.Api/Ai/PulseAiProtectedTestCandidatePolicy.cs \
+                  src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs \
+                  src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs \
+                  src/frontend/project-time-web/scripts/validate-celar-ai-release-scoped-runtime.mjs
+          git diff --cached --check
+          git commit -m "fix: allow exact protected test document processing"
+          git push origin HEAD:fix/shared-project-document-planning-20260819
