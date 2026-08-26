@@ -3,8 +3,9 @@ namespace ProjectTime.Api.Ai;
 /// <summary>
 /// Runs when explicitly enabled by private-runtime configuration. Protected Test
 /// may activate the worker from source only when the exact running commit and all
-/// private scanning, OCR, embedding, and RAG dependencies are present. Production
-/// still requires the explicit worker configuration flag.
+/// private scanning, OCR, embedding, and RAG dependencies are present. ProcessNextAsync
+/// independently enforces the same exact-SHA Protected Test candidate boundary.
+/// Production still requires the explicit worker configuration flag.
 /// </summary>
 public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
 {
