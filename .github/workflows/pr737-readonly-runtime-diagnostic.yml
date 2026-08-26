@@ -50,24 +50,17 @@ jobs:
             [[ "$code" == 200 ]] || { echo "ERROR: GET $path HTTP=$code" >&2; cat "$out" >&2 || true; exit 1; }
           }
 
-          state_a="$(mktemp)"; state_b="$(mktemp)"; readiness="$(mktemp)"
+          state_a="$(mktemp)"; state_b="$(mktemp)"
           get_json "/api/celar-ai/v1/documents/$DOC_A/runtime-state" "$state_a"
           get_json "/api/celar-ai/v1/documents/$DOC_B/runtime-state" "$state_b"
 
-          echo '=== DOCUMENT A RUNTIME STATE ==='
-          jq '{status,document:{documentId:.document.documentId,processingStatus:(.document.processingStatus // .document.status),errorCode:(.document.errorCode // .document.processingErrorCode // ""),updatedAt:.document.updatedAt,versionCount:.document.versionCount,chunkCount:.document.chunkCount,jobs:(.document.jobs // [] | map({jobId:(.jobId // .processingJobId),status,attemptCount,maximumAttempts,requestedPurpose,diagnosticCode,diagnosticMessage,requestedAt,updatedAt,completedAt}))}}' "$state_a"
-          echo '=== DOCUMENT B RUNTIME STATE ==='
-          jq '{status,document:{documentId:.document.documentId,processingStatus:(.document.processingStatus // .document.status),errorCode:(.document.errorCode // .document.processingErrorCode // ""),updatedAt:.document.updatedAt,versionCount:.document.versionCount,chunkCount:.document.chunkCount,jobs:(.document.jobs // [] | map({jobId:(.jobId // .processingJobId),status,attemptCount,maximumAttempts,requestedPurpose,diagnosticCode,diagnosticMessage,requestedAt,updatedAt,completedAt}))}}' "$state_b"
-
-          if code="$(curl -sS --max-time 60 -o "$readiness" -w '%{http_code}' \
-            -H "Authorization: Bearer $SESSION" -H "X-ProjectPulse-Session: $SESSION" \
-            -H 'X-ProjectPulse-Module-Number: 011' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
-            "$BASE/api/celar-ai/v1/documents/runtime/readiness")" && [[ "$code" == 200 ]]; then
-            echo '=== RUNTIME READINESS ==='
-            jq '{status,readiness:{workerEnabled:.readiness.workerEnabled,automaticDocumentQueueEnabled:.readiness.automaticDocumentQueueEnabled,documentServicePrincipalAuthorized:.readiness.documentServicePrincipalAuthorized,malwareScannerEndpointPrivate:.readiness.malwareScannerEndpointPrivate,ocrConfigured:.readiness.ocrConfigured,ocrEndpointPrivate:.readiness.ocrEndpointPrivate,embeddingConfigured:.readiness.embeddingConfigured,embeddingEndpointPrivate:.readiness.embeddingEndpointPrivate,lexicalOnlyCompletionApproved:.readiness.lexicalOnlyCompletionApproved,queuedJobCount:.readiness.queuedJobCount,runningJobCount:.readiness.runningJobCount,failedJobCount:.readiness.failedJobCount,blockers:.readiness.blockers}}' "$readiness"
-          else
-            echo "RUNTIME_READINESS_OPTIONAL_HTTP=${code:-curl_failed}"
-          fi
+          print_state() {
+            local label="$1" file="$2"
+            echo "=== $label ==="
+            jq '{status,document:{documentId:.document.documentId,processingStatus:.document.processingStatus,errorCode:.document.errorCode,processingUpdatedAt:.document.processingUpdatedAt,versionCount:.document.versionCount,activeChunkCount:.document.activeChunkCount,recentJobs:(.document.recentJobs // [] | map({jobId,actualUserId,effectiveUserId,requestedPurpose,status,attemptCount,maximumAttempts,diagnosticCode,diagnosticMessage,requestedAt,startedAt,completedAt,updatedAt}))}}' "$file"
+          }
+          print_state 'DOCUMENT A RUNTIME STATE' "$state_a"
+          print_state 'DOCUMENT B RUNTIME STATE' "$state_b"
 
           curl -sS --max-time 30 -o /dev/null \
             -X POST -H "Authorization: Bearer $SESSION" -H "X-ProjectPulse-Session: $SESSION" \
