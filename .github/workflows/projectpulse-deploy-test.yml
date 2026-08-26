@@ -397,7 +397,6 @@ jobs:
           install -m 0644 database/migrations/088_systemwide_enterprise_reliability.sql "$MIGRATION_CONTEXT/database/migrations/088_systemwide_enterprise_reliability.sql"
           install -m 0644 database/migrations/093_assigned_work_canonical_visibility_repair.sql "$MIGRATION_CONTEXT/database/migrations/093_assigned_work_canonical_visibility_repair.sql"
           printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$MIGRATION_CONTEXT/release-commit"
-
           cat > "$MIGRATION_CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
           #!/usr/bin/env bash
           set -Eeuo pipefail
@@ -775,8 +774,11 @@ jobs:
                 .status == "flowhive_enterprise_workspace_loaded"
                 and .access.canEditPlanner == true
                 and ((.sowEvidence // []) | any(
-                  ((.documentCategory // "") | ascii_downcase) == "sow"
-                  or ((.documentCategory // "") | ascii_downcase) == "statement_of_work"
+                  (
+                    ((.documentCategory // "") | ascii_downcase) == "sow"
+                    or ((.documentCategory // "") | ascii_downcase) == "statement_of_work"
+                  )
+                  and .readyForAiPlanner == true
                 ))
               ' "$candidate_output" >/dev/null 2>&1; then
               PROJECT_ID="$candidate_id"
@@ -784,9 +786,15 @@ jobs:
               break
             fi
           done
-          [[ "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'No Project Manager project exposed its existing Work Register SOW to FlowHive.'
+          [[ "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'No Project Manager project exposed a planner-ready existing Work Register SOW to FlowHive.'
           jq -e '.status == "flowhive_enterprise_workspace_loaded" and .access.canEditPlanner == true' "$EVIDENCE_DIR/flowhive-enterprise.json" >/dev/null || fail 'FlowHive enterprise workspace did not satisfy the Planner edit contract.'
-          jq -e '(.sowEvidence // []) | any(((.documentCategory // "") | ascii_downcase) == "sow")' "$EVIDENCE_DIR/flowhive-enterprise.json" >/dev/null || fail 'FlowHive did not resolve the project Work Register SOW without a duplicate upload.'
+          jq -e '(.sowEvidence // []) | any(
+            (
+              ((.documentCategory // "") | ascii_downcase) == "sow"
+              or ((.documentCategory // "") | ascii_downcase) == "statement_of_work"
+            )
+            and .readyForAiPlanner == true
+          )' "$EVIDENCE_DIR/flowhive-enterprise.json" >/dev/null || fail 'FlowHive did not resolve a planner-ready project Work Register SOW without a duplicate upload.'
 
           PROJECT_ROW="$(jq -c --arg projectId "$PROJECT_ID" '.projects[] | select(.projectId == $projectId)' "$EVIDENCE_DIR/flowhive-portfolio.json" | head -1)"
           [[ -n "$PROJECT_ROW" ]] || fail 'The selected FlowHive UAT project was not present in the PM portfolio.'
