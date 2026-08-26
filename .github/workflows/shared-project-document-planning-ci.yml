@@ -10,7 +10,9 @@ on:
       - 'database/migrations/094_flowhive_canonical_sow_authority.sql'
       - 'database/migrations/095_project_planning_collaboration_access.sql'
       - 'database/migrations/096_project_planning_document_authority.sql'
+      - 'database/migrations/097_project_planning_identity_safe_admission.sql'
       - 'database/rollback/096_project_planning_document_authority_rollback.sql'
+      - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
       - 'scripts/release-test/**'
       - 'src/backend/ProjectTime.Api/Ai/**'
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHive*'
@@ -29,6 +31,8 @@ on:
       - 'tests/test-flowhive-canonical-sow-authority-migration-094.sh'
       - 'tests/test-project-planning-collaboration-migration-095.sh'
       - 'tests/test-project-planning-document-authority-migration-096.sh'
+      - 'tests/test-project-planning-identity-safe-admission-migration-097.sh'
+      - 'tests/test-pulse-ai-runtime-job-query-shape.sh'
       - 'tests/validate-shared-project-document-planning.mjs'
       - 'tests/validate-work-register-document-continuity.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
@@ -98,14 +102,17 @@ jobs:
           node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
           (cd src/frontend/project-time-web && node scripts/validate-module-033-project-forge.mjs)
 
-      - name: Validate governed migrations
+      - name: Validate governed migrations and runtime job query
         shell: bash
         run: |
           set -Eeuo pipefail
           bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
           bash tests/test-project-planning-collaboration-migration-095.sh
           bash tests/test-project-planning-document-authority-migration-096.sh
+          bash tests/test-project-planning-identity-safe-admission-migration-097.sh
+          bash tests/test-pulse-ai-runtime-job-query-shape.sh
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
 
       - name: Run detailed Planner regressions
         run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
@@ -139,4 +146,6 @@ jobs:
             exit 1
           fi
           echo 'SHARED_PROJECT_DOCUMENT_PLANNING=VERIFIED'
+          echo 'MIGRATION_097=CONTRACT_VALIDATED'
+          echo 'PRIVATE_RUNTIME_JOB_QUERY=CONTRACT_VALIDATED'
           echo 'PRODUCTION_MUTATION=NONE'
