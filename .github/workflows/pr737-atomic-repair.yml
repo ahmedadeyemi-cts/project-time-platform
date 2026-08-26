@@ -21,7 +21,7 @@ jobs:
     if: github.repository == 'ahmedadeyemi-cts/project-time-platform'
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact repair branch
+      - name: Checkout repair branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: fix/shared-project-document-planning-20260819
@@ -33,6 +33,11 @@ jobs:
           set -Eeuo pipefail
           python3 scripts/pr737-atomic-repair.py
           python3 scripts/pr737-repair-supplement.py
+          rm -f .github/workflows/project-planning-identity-safe-admission-ci.yml
+          grep -Fvx '.github/workflows/project-planning-identity-safe-admission-ci.yml' \
+            .github/shared-project-document-planning-governed-release-files.txt \
+            > "$RUNNER_TEMP/governed-files.txt"
+          mv "$RUNNER_TEMP/governed-files.txt" .github/shared-project-document-planning-governed-release-files.txt
 
       - name: Validate migration 097
         run: bash tests/test-project-planning-identity-safe-admission-migration-097.sh
@@ -50,7 +55,6 @@ jobs:
           grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
           grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           for path in \
-            '.github/workflows/project-planning-identity-safe-admission-ci.yml' \
             'database/migrations/097_project_planning_identity_safe_admission.sql' \
             'database/rollback/097_project_planning_identity_safe_admission_rollback.sql' \
             'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs' \
@@ -59,19 +63,23 @@ jobs:
             grep -Fxq "$path" .github/shared-project-document-planning-governed-release-files.txt
           done
 
-      - name: Publish one clean repair commit
+      - name: Publish validated source repair
         shell: bash
         run: |
           set -Eeuo pipefail
-          rm -f .github/workflows/pr737-readonly-runtime-diagnostic.yml
-          rm -f .github/workflows/pr737-fix-identityless-document-queue.yml
-          rm -f .github/workflows/pr737-atomic-repair.yml
-          rm -f scripts/pr737-atomic-repair.py
-          rm -f scripts/pr737-repair-supplement.py
           git diff --check
           git config user.name 'projectpulse-release-bot'
           git config user.email 'projectpulse-release-bot@users.noreply.github.com'
-          git add -A
+          git add \
+            .github/shared-project-document-planning-governed-release-files.txt \
+            database/migrations/097_project_planning_identity_safe_admission.sql \
+            database/rollback/097_project_planning_identity_safe_admission_rollback.sql \
+            scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh \
+            scripts/release-test/run-project-planning-document-authority-migration-job.sh \
+            scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh \
+            src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs \
+            tests/test-project-planning-identity-safe-admission-migration-097.sh \
+            tests/test-pulse-ai-runtime-job-query-shape.sh
           git diff --cached --check
           git status --short
           git commit -m 'fix: close project document admission blockers'
