@@ -1,0 +1,60 @@
+name: PR737 Atomic Repair
+
+on:
+  push:
+    branches:
+      - fix/shared-project-document-planning-20260819
+    paths:
+      - scripts/pr737-atomic-repair.py
+      - .github/workflows/pr737-atomic-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/shared-project-document-planning-20260819
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply bounded repair
+        run: python3 scripts/pr737-atomic-repair.py
+
+      - name: Validate migration 097
+        run: bash tests/test-project-planning-identity-safe-admission-migration-097.sh
+
+      - name: Validate aggregate runtime job query
+        run: bash tests/test-pulse-ai-runtime-job-query-shape.sh
+
+      - name: Validate release scripts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          bash -n scripts/release-test/run-project-planning-document-authority-migration-job.sh
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+
+      - name: Publish one clean repair commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f .github/workflows/pr737-readonly-runtime-diagnostic.yml
+          rm -f .github/workflows/pr737-fix-identityless-document-queue.yml
+          rm -f .github/workflows/pr737-atomic-repair.yml
+          rm -f scripts/pr737-atomic-repair.py
+          git diff --check
+          git config user.name 'projectpulse-release-bot'
+          git config user.email 'projectpulse-release-bot@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git status --short
+          git commit -m 'fix: close project document admission blockers'
+          git push origin HEAD:fix/shared-project-document-planning-20260819
