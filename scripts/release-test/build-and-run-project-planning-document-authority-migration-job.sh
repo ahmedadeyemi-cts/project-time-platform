@@ -7,6 +7,7 @@ RELEASE_COMMIT="${RELIABILITY_RELEASE_COMMIT:-}"
 RUN_ID="${GITHUB_RUN_ID:-0}"
 RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-0}"
 MIGRATION_FILE="$ROOT/database/migrations/096_project_planning_document_authority.sql"
+IDENTITY_SAFE_MIGRATION_FILE="$ROOT/database/migrations/097_project_planning_identity_safe_admission.sql"
 MIGRATION_RUNNER="$ROOT/scripts/release-test/run-project-planning-document-authority-migration-job.sh"
 EVIDENCE_ROOT="${EVIDENCE_DIR:-}"
 CONTEXT=""
@@ -30,6 +31,7 @@ trap cleanup EXIT INT TERM
 [[ "$ACR_NAME" =~ ^[A-Za-z0-9]+$ ]] || fail "AZURE_ACR_NAME is missing or invalid."
 [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "RELIABILITY_RELEASE_COMMIT must be an exact commit."
 [[ -s "$MIGRATION_FILE" ]] || fail "Migration 096 source is missing."
+[[ -s "$IDENTITY_SAFE_MIGRATION_FILE" ]] || fail "Migration 097 source is missing."
 [[ -s "$MIGRATION_RUNNER" ]] || fail "Migration 096 private-network runner is missing."
 for command_name in az jq mktemp install chmod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required."
@@ -39,6 +41,7 @@ CONTEXT="$(mktemp -d "${RUNNER_TEMP:-/tmp}/project-planning-096-${RUN_ID}-${RUN_
 chmod 0700 "$CONTEXT"
 install -d -m 0700 "$CONTEXT/database/migrations"
 install -m 0444 "$MIGRATION_FILE" "$CONTEXT/database/migrations/096_project_planning_document_authority.sql"
+install -m 0444 "$IDENTITY_SAFE_MIGRATION_FILE" "$CONTEXT/database/migrations/097_project_planning_identity_safe_admission.sql"
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -58,6 +61,9 @@ MIGRATION="$ROOT/database/migrations/096_project_planning_document_authority.sql
   exit 1
 }
 psql -X -v ON_ERROR_STOP=1 --file "$MIGRATION"
+IDENTITY_SAFE_MIGRATION="$ROOT/database/migrations/097_project_planning_identity_safe_admission.sql"
+[[ -f "$IDENTITY_SAFE_MIGRATION" ]] || { echo 'ERROR: Migration 097 source is missing from the immutable image.' >&2; exit 1; }
+psql -X -v ON_ERROR_STOP=1 --file "$IDENTITY_SAFE_MIGRATION"
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='096_project_planning_document_authority')::text || '|' ||
@@ -73,7 +79,20 @@ SQL
   echo "ERROR: Migration 096 verification failed: $verification" >&2
   exit 1
 }
+identity_safe_verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
+SELECT
+  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='097_project_planning_identity_safe_admission')::text || '|' ||
+  (NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='public.project_intake_documents'::regclass AND tgname IN ('trg_module001_057_queue_project_ai_document_insert','trg_module001_057_queue_project_ai_document_update') AND NOT tgisinternal))::text || '|' ||
+  (to_regprocedure('public.module001_057_queue_project_ai_document()') IS NULL)::text || '|' ||
+  (NOT EXISTS (SELECT 1 FROM pulse_ai_document_processing_jobs WHERE requested_purpose='project_ai_generation_grounding' AND actual_user_id IS NULL AND effective_user_id IS NULL AND job_status IN ('queued','scanning','extracting','awaiting_ocr','embedding','indexing','retry_wait','cancel_requested')))::text;
+SQL
+)"
+[[ "$identity_safe_verification" == 'true|true|true|true' ]] || {
+  echo "ERROR: Migration 097 verification failed: $identity_safe_verification" >&2
+  exit 1
+}
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
 ENTRYPOINT
 chmod 0555 "$CONTEXT/entrypoint.sh"
 
@@ -130,6 +149,7 @@ export RELIABILITY_MIGRATION_JOB_NAME="pp096-${RUN_ID}-${RUN_ATTEMPT}"
 export RELIABILITY_MIGRATION_SCOPE="project-planning-document-authority-test"
 bash "$MIGRATION_RUNNER"
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"
@@ -138,4 +158,13 @@ if [[ -n "$EVIDENCE_ROOT" ]]; then
     --arg image "$RELIABILITY_MIGRATION_IMAGE" \
     '{status:"applied_and_verified",migration:"096_project_planning_document_authority",releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,productionMutation:false}' \
     > "$EVIDENCE_ROOT/migration-096.json"
+fi
+
+
+if [[ -n "$EVIDENCE_ROOT" ]]; then
+  jq -n \
+    --arg releaseCommit "$RELEASE_COMMIT" \
+    --arg image "$RELIABILITY_MIGRATION_IMAGE" \
+    '{status:"applied_and_verified",migration:"097_project_planning_identity_safe_admission",releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,productionMutation:false}' \
+    > "$EVIDENCE_ROOT/migration-097.json"
 fi

@@ -12,8 +12,10 @@
 database/migrations/094_flowhive_canonical_sow_authority.sql
 database/migrations/095_project_planning_collaboration_access.sql
 database/migrations/096_project_planning_document_authority.sql
+database/migrations/097_project_planning_identity_safe_admission.sql
 database/rollback/095_project_planning_collaboration_access_rollback.sql
 database/rollback/096_project_planning_document_authority_rollback.sql
+database/rollback/097_project_planning_identity_safe_admission_rollback.sql
 docs/architecture/flowhive-project-forge-protected-uat-release.md
 docs/architecture/project-planning-collaboration-access.md
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
@@ -31,6 +33,7 @@ scripts/release-test/verify-runtime.mjs
 scripts/validate-module-033-project-forge-interactive.sh
 src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseUploadStorage.cs
+src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
@@ -71,6 +74,8 @@ tests/FlowHiveDetailedPlannerTests/Program.cs
 tests/test-flowhive-canonical-sow-authority-migration-094.sh
 tests/test-project-planning-collaboration-migration-095.sh
 tests/test-project-planning-document-authority-migration-096.sh
+tests/test-project-planning-identity-safe-admission-migration-097.sh
+tests/test-pulse-ai-runtime-job-query-shape.sh
 tests/validate-celar-ai-oracle-test-runtime.mjs
 tests/validate-celar-ai-pr630-consolidated.mjs
 tests/validate-flowhive-sow-evidence-autoadmission.mjs

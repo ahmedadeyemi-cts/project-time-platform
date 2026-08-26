@@ -147,7 +147,7 @@ validate_job_ownership() {
       (.tags["projectpulse-release"] == $release) and
       (.tags["projectpulse-control"] == $control) and
       (.tags["projectpulse-run"] == $runScope) and
-      (.tags["projectpulse-migration"] == "086-088-093-094-095-096") and
+      (.tags["projectpulse-migration"] == "086-088-093-094-095-096-097") and
       (.identity.type == "UserAssigned") and
       ((.identity.userAssignedIdentities | keys | length) == 1) and
       (((.identity.userAssignedIdentities | keys[0]) | ascii_downcase) == ($identity | ascii_downcase)) and
@@ -256,7 +256,7 @@ jq -n \
       "projectpulse-release": $release,
       "projectpulse-control": $control,
       "projectpulse-run": $runScope,
-      "projectpulse-migration": "086-088-093-094-095-096"
+      "projectpulse-migration": "086-088-093-094-095-096-097"
     },
     properties: {
       environmentId: $environmentId,
@@ -347,3 +347,4 @@ echo 'MIGRATION_095=APPLIED_AND_VERIFIED'
 PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \
   bash scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
