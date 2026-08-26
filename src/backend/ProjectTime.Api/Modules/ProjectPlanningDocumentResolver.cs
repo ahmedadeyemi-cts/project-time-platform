@@ -173,7 +173,9 @@ internal static class ProjectPlanningDocumentResolver
         foreach (var document in failed)
         {
             var label = document.IsSow ? "SOW" : document.IsGsd ? "GSD" : document.CanonicalCategory;
-            var message = $"{label} private processing is {document.ProcessingStatus}; it was not automatically requeued to avoid an endless retry loop.";
+            var message = document.ShouldAutoRecoverFailedProcessing
+                ? $"{label} private processing is failed; automatic recovery is bounded to one queue attempt per exact application source release."
+                : $"{label} private processing is {document.ProcessingStatus}; safety or operator-controlled terminal states are never automatically requeued.";
             if (document.IsSow) blockers.Add(message); else warnings.Add(message);
         }
 
@@ -292,6 +294,11 @@ internal static class ProjectPlanningDocumentResolver
         string correlationId,
         CancellationToken cancellationToken)
     {
+        var recovery = evidence.ShouldAutoRecoverFailedProcessing;
+        var purpose = recovery
+            ? FailedRecoveryPurpose()
+            : Clean(requestedPurpose, 80, "project_planning_ai_automatic");
+
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             INSERT INTO pulse_ai_document_processing_jobs(
@@ -304,29 +311,53 @@ internal static class ProjectPlanningDocumentResolver
                  WHERE existing.project_intake_document_id=@document_id
                    AND existing.job_status IN (
                        'queued','scanning','extracting','awaiting_ocr','embedding','indexing',
-                       'retry_wait','cancel_requested'));
+                       'retry_wait','cancel_requested'))
+               AND (
+                   @recovery=FALSE
+                   OR NOT EXISTS(
+                       SELECT 1
+                         FROM pulse_ai_document_processing_jobs prior_recovery
+                        WHERE prior_recovery.project_intake_document_id=@document_id
+                          AND prior_recovery.requested_purpose=@purpose));
             """, connection, transaction);
         command.Parameters.AddWithValue("document_id", evidence.DocumentId);
         command.Parameters.AddWithValue("project_id", evidence.ProjectId);
         command.Parameters.AddWithValue("actual", actualUserId);
         command.Parameters.AddWithValue("effective", effectiveUserId);
-        command.Parameters.AddWithValue("purpose", Clean(requestedPurpose, 80, "project_planning_ai_automatic"));
+        command.Parameters.AddWithValue("purpose", purpose);
         command.Parameters.AddWithValue("correlation", Clean(correlationId, 180, Guid.NewGuid().ToString("N")));
+        command.Parameters.AddWithValue("recovery", recovery);
         var queued = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
 
-        await using var mark = new NpgsqlCommand("""
-            UPDATE project_intake_documents
-               SET pulse_ai_processing_status=CASE
-                       WHEN pulse_ai_processing_status='ready' THEN 'ready'
-                       ELSE 'queued'
-                   END,
-                   pulse_ai_processing_updated_at=NOW()
-             WHERE project_intake_document_id=@document_id;
-            """, connection, transaction);
-        mark.Parameters.AddWithValue("document_id", evidence.DocumentId);
-        await mark.ExecuteNonQueryAsync(cancellationToken);
+        if (queued || !evidence.ProcessingTerminalFailure)
+        {
+            await using var mark = new NpgsqlCommand("""
+                UPDATE project_intake_documents
+                   SET pulse_ai_processing_status=CASE
+                           WHEN pulse_ai_processing_status='ready' THEN 'ready'
+                           ELSE 'queued'
+                       END,
+                       pulse_ai_processing_updated_at=NOW()
+                 WHERE project_intake_document_id=@document_id;
+                """, connection, transaction);
+            mark.Parameters.AddWithValue("document_id", evidence.DocumentId);
+            await mark.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return queued;
+    }
+
+    private static string FailedRecoveryPurpose()
+    {
+        var sourceCommit = Environment
+            .GetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable)?
+            .Trim()
+            .ToLowerInvariant() ?? string.Empty;
+        var sourceKey = sourceCommit.Length == 40 && sourceCommit.All(Uri.IsHexDigit)
+            ? sourceCommit[..12]
+            : "unversioned";
+        return $"project_planning_failed_recovery_{sourceKey}";
     }
 
     private static string Clean(string? value, int maximum, string fallback)
@@ -415,7 +446,10 @@ internal sealed record ProjectPlanningDocumentEvidence(
     public bool ProcessingReady => ProcessingStatus.Equals("ready", StringComparison.OrdinalIgnoreCase);
     public bool ProcessingTerminalFailure => ProcessingStatus.Trim().ToLowerInvariant() is
         "failed" or "rejected" or "quarantined" or "cancelled" or "canceled" or "unsupported";
-    public bool ShouldAutoQueue => !ProcessingReady && !ProcessingTerminalFailure;
+    public bool ShouldAutoRecoverFailedProcessing =>
+        ProcessingStatus.Equals("failed", StringComparison.OrdinalIgnoreCase);
+    public bool ShouldAutoQueue => !ProcessingReady
+        && (!ProcessingTerminalFailure || ShouldAutoRecoverFailedProcessing);
     public bool AuthorityReady => AuthorityStatus.Trim().ToLowerInvariant() is "approved" or "canonical";
     public bool IndexReady => IndexStatus.Trim().ToLowerInvariant() is "lexical_ready" or "embedding_ready" or "ready";
     public bool ReadyForRetrieval => ProcessingReady
