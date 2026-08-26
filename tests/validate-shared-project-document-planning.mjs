@@ -22,6 +22,8 @@ const builder = read('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetaile
 const categories = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs');
 const privateRag = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
 const privateDocumentWorker = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs');
+const privateDocumentRuntime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs');
+const protectedTestCandidatePolicy = read('src/backend/ProjectTime.Api/Ai/PulseAiProtectedTestCandidatePolicy.cs');
 const deployment = read('.github/workflows/projectpulse-deploy-test.yml');
 const migrationRunner = read('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh');
 const program = read('src/backend/ProjectTime.Api/Program.cs');
@@ -31,7 +33,6 @@ const uploadStorage = read('src/backend/ProjectTime.Api/Ai/ProjectPulseUploadSto
 const flowHiveUi = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
 const flowHivePanels = read('src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx');
 const runtimeVerifier = read('scripts/release-test/verify-runtime.mjs');
-
 
 const candidateFenceIndex = program.indexOf('app.UseProjectPulseAiCandidateRequestFence();');
 const workRegisterAuthorizationIndex = program.indexOf('app.UseWorkRegisterAuthorization();');
@@ -128,22 +129,35 @@ for (const forbidden of ['AI draft studio', 'Optional approved SOW excerpt', 'Op
 
 // Protected Test may process an exact validated candidate, while every other candidate environment remains fenced.
 for (const token of [
-  'TryActivateProtectedTestWorker',
-  'IsProtectedTestCandidateWorkerAllowed',
-  'var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();',
-  'release.IsCandidate && !IsProtectedTestCandidateWorkerAllowed(release)',
   'PROJECTPULSE_ENVIRONMENT',
   'environment.Equals("test", StringComparison.OrdinalIgnoreCase)',
   'ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable',
-  'string.Equals(release.SourceCommit, runningSourceCommit, StringComparison.Ordinal)',
-  'string.Equals(release.RunningSourceCommit, runningSourceCommit, StringComparison.Ordinal)',
-  'string.Equals(release.EmbeddedSourceCommit, runningSourceCommit, StringComparison.Ordinal)',
+  'runningSourceCommit.Length != 40',
+  'release.SourceCommit',
+  'release.RunningSourceCommit',
+  'release.EmbeddedSourceCommit'
+]) requireText(protectedTestCandidatePolicy, token, 'Protected Test exact-candidate policy');
+for (const token of [
+  'TryActivateProtectedTestWorker',
+  'var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();',
+  'PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)',
   'PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED',
   'options.MalwareScannerConfigured',
   'options.OcrConfigured',
   'options.EmbeddingConfigured',
   'Environment.SetEnvironmentVariable(WorkerEnabledVariable, "true")'
 ]) requireText(privateDocumentWorker, token, 'Protected Test exact-candidate private document worker');
+for (const token of [
+  'var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();',
+  'if (release.IsCandidate)',
+  'PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)',
+  'return Empty("release_candidate_read_only", "release_candidate_read_only")',
+  'RejectCandidateDataMutation("Private document queue mutation")',
+  'RejectCandidateDataMutation("Private document version approval")',
+  'RejectCandidateDataMutation("Private document processing cancellation")',
+  'RejectCandidateDataMutation("Private document processing retry")'
+]) requireText(privateDocumentRuntime, token, 'Protected Test candidate data-plane split');
+rejectText(privateDocumentWorker, 'IsProtectedTestCandidateWorkerAllowed', 'retired worker-local candidate policy');
 rejectText(privateDocumentWorker, 'if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)', 'unconditional candidate private-document mutation fence');
 rejectText(privateDocumentWorker, 'environment.Equals("production"', 'Production worker auto-activation');
 
