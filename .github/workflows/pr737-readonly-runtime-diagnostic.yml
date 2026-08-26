@@ -1,0 +1,73 @@
+name: PR737 Read-only Protected Test SOW Diagnostic
+
+on:
+  push:
+    branches:
+      - fix/shared-project-document-planning-20260819
+    paths:
+      - .github/workflows/pr737-readonly-runtime-diagnostic.yml
+
+permissions:
+  contents: read
+
+environment: test
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    environment: test
+    steps:
+      - name: Read protected Test document runtime diagnostics
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          BASE='https://phd-west-test.onenecklab.com'
+          USERNAME='project.team.coordinator@ussignal.local'
+          DOC_A='3cddc0b5-7d42-4184-a588-2f234fff42e2'
+          DOC_B='fedb155e-6b62-4f65-bf6c-850370de3e80'
+          payload="$(mktemp)"
+          response="$(mktemp)"
+          trap 'rm -f "$payload" "$response"' EXIT
+          jq -n --arg username "$USERNAME" --arg password "$TEST_LOGIN_PASSWORD" '{username:$username,password:$password}' > "$payload"
+          status="$(curl -sS --max-time 60 -o "$response" -w '%{http_code}' \
+            -H 'Content-Type: application/json' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            --data-binary @"$payload" "$BASE/api/auth/local/login")"
+          [[ "$status" == 200 ]] || { echo "ERROR: diagnostic login HTTP=$status" >&2; exit 1; }
+          SESSION="$(jq -r '.sessionToken // empty' "$response")"
+          [[ ${#SESSION} -gt 20 ]] || { echo 'ERROR: diagnostic session missing' >&2; exit 1; }
+          echo "::add-mask::$SESSION"
+          unset TEST_LOGIN_PASSWORD
+
+          get_json() {
+            local path="$1" out="$2"
+            local code
+            code="$(curl -sS --max-time 60 -o "$out" -w '%{http_code}' \
+              -H "Authorization: Bearer $SESSION" \
+              -H "X-ProjectPulse-Session: $SESSION" \
+              -H 'X-ProjectPulse-Module-Number: 011' \
+              -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+              "$BASE$path")"
+            [[ "$code" == 200 ]] || { echo "ERROR: GET $path HTTP=$code" >&2; cat "$out" >&2 || true; exit 1; }
+          }
+
+          state_a="$(mktemp)"; state_b="$(mktemp)"; jobs="$(mktemp)"; readiness="$(mktemp)"
+          get_json "/api/celar-ai/v1/documents/$DOC_A/runtime-state" "$state_a"
+          get_json "/api/celar-ai/v1/documents/$DOC_B/runtime-state" "$state_b"
+          get_json '/api/celar-ai/v1/documents/runtime/jobs?limit=500' "$jobs"
+          get_json '/api/celar-ai/v1/documents/runtime/readiness' "$readiness"
+
+          echo '=== DOCUMENT A RUNTIME STATE ==='
+          jq '{status,document:{documentId:.document.documentId,processingStatus:(.document.processingStatus // .document.status),errorCode:(.document.errorCode // .document.processingErrorCode // ""),updatedAt:.document.updatedAt,versionCount:.document.versionCount,chunkCount:.document.chunkCount,jobs:(.document.jobs // [] | map({jobId:(.jobId // .processingJobId),status,attemptCount,maximumAttempts,requestedPurpose,diagnosticCode,diagnosticMessage,requestedAt,updatedAt,completedAt}))}}' "$state_a"
+          echo '=== DOCUMENT B RUNTIME STATE ==='
+          jq '{status,document:{documentId:.document.documentId,processingStatus:(.document.processingStatus // .document.status),errorCode:(.document.errorCode // .document.processingErrorCode // ""),updatedAt:.document.updatedAt,versionCount:.document.versionCount,chunkCount:.document.chunkCount,jobs:(.document.jobs // [] | map({jobId:(.jobId // .processingJobId),status,attemptCount,maximumAttempts,requestedPurpose,diagnosticCode,diagnosticMessage,requestedAt,updatedAt,completedAt}))}}' "$state_b"
+          echo '=== MATCHING RECENT JOBS ==='
+          jq --arg a "$DOC_A" --arg b "$DOC_B" '{summary,jobs:(.jobs // [] | map(select((.documentId|tostring)==$a or (.documentId|tostring)==$b) | {jobId:(.jobId // .processingJobId),documentId,status,attemptCount,maximumAttempts,requestedPurpose,diagnosticCode,diagnosticMessage,requestedAt,updatedAt,completedAt}))}' "$jobs"
+          echo '=== RUNTIME READINESS ==='
+          jq '{status,readiness:{workerEnabled:.readiness.workerEnabled,automaticDocumentQueueEnabled:.readiness.automaticDocumentQueueEnabled,documentServicePrincipalAuthorized:.readiness.documentServicePrincipalAuthorized,malwareScannerEndpointPrivate:.readiness.malwareScannerEndpointPrivate,ocrConfigured:.readiness.ocrConfigured,ocrEndpointPrivate:.readiness.ocrEndpointPrivate,embeddingConfigured:.readiness.embeddingConfigured,embeddingEndpointPrivate:.readiness.embeddingEndpointPrivate,lexicalOnlyCompletionApproved:.readiness.lexicalOnlyCompletionApproved,queuedJobCount:.readiness.queuedJobCount,runningJobCount:.readiness.runningJobCount,failedJobCount:.readiness.failedJobCount,blockers:.readiness.blockers}}' "$readiness"
+
+          curl -sS --max-time 30 -o /dev/null \
+            -X POST -H "Authorization: Bearer $SESSION" -H "X-ProjectPulse-Session: $SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/auth/session/logout" || true
