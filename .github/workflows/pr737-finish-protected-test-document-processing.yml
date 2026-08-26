@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   repair:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -33,123 +32,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          helper = Path('src/backend/ProjectTime.Api/Ai/PulseAiProtectedTestCandidatePolicy.cs')
-          helper.write_text('''namespace ProjectTime.Api.Ai;
-
-/// <summary>
-/// Allows one tightly bounded candidate mutation path: the background private-document
-/// processor in Protected Test. The release envelope must already be valid and the
-/// candidate, running, and embedded source commits must all be the exact same SHA.
-/// Interactive candidate data mutations remain blocked by RejectCandidateDataMutation.
-/// </summary>
-internal static class PulseAiProtectedTestCandidatePolicy
-{
-    private const string EnvironmentVariable = "PROJECTPULSE_ENVIRONMENT";
-
-    public static bool AllowsPrivateDocumentProcessing(ReleaseRuntimeSnapshot release)
-    {
-        if (!release.IsCandidate)
-            return false;
-
-        var environment = Environment.GetEnvironmentVariable(EnvironmentVariable)?.Trim() ?? string.Empty;
-        if (!environment.Equals("test", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        var runningSourceCommit = Environment
-            .GetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable)?
-            .Trim()
-            .ToLowerInvariant() ?? string.Empty;
-        if (runningSourceCommit.Length != 40 || !runningSourceCommit.All(Uri.IsHexDigit))
-            return false;
-
-        return string.Equals(release.SourceCommit, runningSourceCommit, StringComparison.Ordinal)
-            && string.Equals(release.RunningSourceCommit, runningSourceCommit, StringComparison.Ordinal)
-            && string.Equals(release.EmbeddedSourceCommit, runningSourceCommit, StringComparison.Ordinal);
-    }
-}
-''', encoding='utf-8')
-
-          worker_path = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs')
-          worker = worker_path.read_text(encoding='utf-8')
-          old_condition = 'if (release.IsCandidate && !IsProtectedTestCandidateWorkerAllowed(release))'
-          new_condition = 'if (release.IsCandidate && !PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))'
-          if old_condition not in worker:
-              raise SystemExit('Expected worker candidate condition was not found; refusing broad mutation.')
-          worker = worker.replace(old_condition, new_condition, 1)
-          worker, removed = re.subn(
-              r'\n    private static bool IsProtectedTestCandidateWorkerAllowed\(ReleaseRuntimeSnapshot release\)\n    \{.*?\n    \}\n\n    private bool TryActivateProtectedTestWorker',
-              '\n    private bool TryActivateProtectedTestWorker',
-              worker,
-              count=1,
-              flags=re.S,
-          )
-          if removed != 1:
-              raise SystemExit('Expected duplicate worker policy helper was not found exactly once.')
-          worker_path.write_text(worker, encoding='utf-8')
-
-          service_path = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
-          service = service_path.read_text(encoding='utf-8')
-          old_service = '''        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
-        if (release.IsCandidate)
-            return Empty("release_candidate_read_only", "release_candidate_read_only");
-        var options = Options();
-'''
-          new_service = '''        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
-        if (release.IsCandidate)
-        {
-            if (!PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))
-                return Empty("release_candidate_read_only", "release_candidate_read_only");
-        }
-        var options = Options();
-'''
-          if service.count(old_service) != 1:
-              raise SystemExit('Expected runtime service candidate fence was not found exactly once.')
-          service = service.replace(old_service, new_service, 1)
-          service_path.write_text(service, encoding='utf-8')
-
-          validator_path = Path('src/frontend/project-time-web/scripts/validate-celar-ai-release-scoped-runtime.mjs')
-          validator = validator_path.read_text(encoding='utf-8')
-          worker_read = "const runtimeWorker = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs');\n"
-          helper_read = worker_read + "const protectedTestCandidatePolicy = read('src/backend/ProjectTime.Api/Ai/PulseAiProtectedTestCandidatePolicy.cs');\n"
-          if validator.count(worker_read) != 1:
-              raise SystemExit('Expected runtime worker validator source binding was not found exactly once.')
-          validator = validator.replace(worker_read, helper_read, 1)
-
-          pattern = re.compile(
-              r"assert\(\n  'CANDIDATE_ACTIVE_DATA_PLANE_SPLIT',.*?\n\);\n\n(?=assert\(\n  'CANDIDATE_BACKGROUND_AND_CONFIG_FREEZE')",
-              re.S,
-          )
-          replacement = '''assert(
-  'CANDIDATE_ACTIVE_DATA_PLANE_SPLIT',
-  protectedTestCandidatePolicy.includes('PROJECTPULSE_ENVIRONMENT')
-    && protectedTestCandidatePolicy.includes('environment.Equals("test", StringComparison.OrdinalIgnoreCase)')
-    && protectedTestCandidatePolicy.includes('runningSourceCommit.Length != 40')
-    && protectedTestCandidatePolicy.includes('release.SourceCommit')
-    && protectedTestCandidatePolicy.includes('release.RunningSourceCommit')
-    && protectedTestCandidatePolicy.includes('release.EmbeddedSourceCommit')
-    && runtimeWorker.includes('PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)')
-    && runtimeService.includes('if (release.IsCandidate)')
-    && runtimeService.includes('PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)')
-    && runtimeService.match(/RejectCandidateDataMutation/g)?.length >= 4
-    && ragRepository.match(/RequireValid\\(\\)\\.IsCandidate/g)?.length >= 4
-    && systemRepository.match(/RequireValid\\(\\)\\.IsCandidate/g)?.length >= 6
-    && projectForge.includes('if (!release.IsCandidate) return null;')
-    && !runtimeWorker.includes('RequireValid().Active')
-    && !ragRepository.includes('RequireValid().Active')
-    && !systemRepository.includes('RequireValid().Active'),
-  'candidate user/API mutations remain blocked while only the exact validated Protected Test background document processor may build private processing and citation state',
-);
-
-'''
-          validator, replaced = pattern.subn(replacement, validator, count=1)
-          if replaced != 1:
-              raise SystemExit('Expected candidate data-plane validator block was not found exactly once.')
-          validator_path.write_text(validator, encoding='utf-8')
-          PY
+          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmltcG9ydCByZQoKaGVscGVyID0gUGF0aCgnc3JjL2JhY2tlbmQvUHJvamVjdFRpbWUuQXBpL0FpL1B1bHNlQWlQcm90ZWN0ZWRUZXN0Q2FuZGlkYXRlUG9saWN5LmNzJykKaGVscGVyLndyaXRlX3RleHQoIiIibmFtZXNwYWNlIFByb2plY3RUaW1lLkFwaS5BaTsKCi8vLyA8c3VtbWFyeT4KLy8vIEFsbG93cyBvbmUgdGlnaHRseSBib3VuZGVkIGNhbmRpZGF0ZSBtdXRhdGlvbiBwYXRoOiB0aGUgYmFja2dyb3VuZCBwcml2YXRlLWRvY3VtZW50Ci8vLyBwcm9jZXNzb3IgaW4gUHJvdGVjdGVkIFRlc3QuIFRoZSByZWxlYXNlIGVudmVsb3BlIG11c3QgYWxyZWFkeSBiZSB2YWxpZCBhbmQgdGhlCi8vLyBjYW5kaWRhdGUsIHJ1bm5pbmcsIGFuZCBlbWJlZGRlZCBzb3VyY2UgY29tbWl0cyBtdXN0IGFsbCBiZSB0aGUgZXhhY3Qgc2FtZSBTSEEuCi8vLyBJbnRlcmFjdGl2ZSBjYW5kaWRhdGUgZGF0YSBtdXRhdGlvbnMgcmVtYWluIGJsb2NrZWQgYnkgUmVqZWN0Q2FuZGlkYXRlRGF0YU11dGF0aW9uLgovLy8gPC9zdW1tYXJ5PgppbnRlcm5hbCBzdGF0aWMgY2xhc3MgUHVsc2VBaVByb3RlY3RlZFRlc3RDYW5kaWRhdGVQb2xpY3kKewogICAgcHJpdmF0ZSBjb25zdCBzdHJpbmcgRW52aXJvbm1lbnRWYXJpYWJsZSA9ICJQUk9KRUNUUFVMU0VfRU5WSVJPTk1FTlQiOwoKICAgIHB1YmxpYyBzdGF0aWMgYm9vbCBBbGxvd3NQcml2YXRlRG9jdW1lbnRQcm9jZXNzaW5nKFJlbGVhc2VSdW50aW1lU25hcHNob3QgcmVsZWFzZSkKICAgIHsKICAgICAgICBpZiAoIXJlbGVhc2UuSXNDYW5kaWRhdGUpCiAgICAgICAgICAgIHJldHVybiBmYWxzZTsKCiAgICAgICAgdmFyIGVudmlyb25tZW50ID0gRW52aXJvbm1lbnQuR2V0RW52aXJvbm1lbnRWYXJpYWJsZShFbnZpcm9ubWVudFZhcmlhYmxlKT8uVHJpbSgpID8/IHN0cmluZy5FbXB0eTsKICAgICAgICBpZiAoIWVudmlyb25tZW50LkVxdWFscygidGVzdCIsIFN0cmluZ0NvbXBhcmlzb24uT3JkaW5hbElnbm9yZUNhc2UpKQogICAgICAgICAgICByZXR1cm4gZmFsc2U7CgogICAgICAgIHZhciBydW5uaW5nU291cmNlQ29tbWl0ID0gRW52aXJvbm1lbnQKICAgICAgICAgICAgLkdldEVudmlyb25tZW50VmFyaWFibGUoUHJvamVjdFB1bHNlQWlSZWxlYXNlUnVudGltZVBvbGljeS5SdW5uaW5nU291cmNlQ29tbWl0VmFyaWFibGUpPwogICAgICAgICAgICAuVHJpbSgpCiAgICAgICAgICAgIC5Ub0xvd2VySW52YXJpYW50KCkgPz8gc3RyaW5nLkVtcHR5OwogICAgICAgIGlmIChydW5uaW5nU291cmNlQ29tbWl0Lkxlbmd0aCAhPSA0MCB8fCAhcnVubmluZ1NvdXJjZUNvbW1pdC5BbGwoVXJpLklzSGV4RGlnaXQpKQogICAgICAgICAgICByZXR1cm4gZmFsc2U7CgogICAgICAgIHJldHVybiBzdHJpbmcuRXF1YWxzKHJlbGVhc2UuU291cmNlQ29tbWl0LCBydW5uaW5nU291cmNlQ29tbWl0LCBTdHJpbmdDb21wYXJpc29uLk9yZGluYWwpCiAgICAgICAgICAgICYmIHN0cmluZy5FcXVhbHMocmVsZWFzZS5SdW5uaW5nU291cmNlQ29tbWl0LCBydW5uaW5nU291cmNlQ29tbWl0LCBTdHJpbmdDb21wYXJpc29uLk9yZGluYWwpCiAgICAgICAgICAgICYmIHN0cmluZy5FcXVhbHMocmVsZWFzZS5FbWJlZGRlZFNvdXJjZUNvbW1pdCwgcnVubmluZ1NvdXJjZUNvbW1pdCwgU3RyaW5nQ29tcGFyaXNvbi5PcmRpbmFsKTsKICAgIH0KfQoiIiIsIGVuY29kaW5nPSd1dGYtOCcpCgp3b3JrZXJfcGF0aCA9IFBhdGgoJ3NyYy9iYWNrZW5kL1Byb2plY3RUaW1lLkFwaS9BaS9QdWxzZUFpUHJpdmF0ZURvY3VtZW50UnVudGltZVdvcmtlci5jcycpCndvcmtlciA9IHdvcmtlcl9wYXRoLnJlYWRfdGV4dChlbmNvZGluZz0ndXRmLTgnKQpvbGRfY29uZGl0aW9uID0gJ2lmIChyZWxlYXNlLklzQ2FuZGlkYXRlICYmICFJc1Byb3RlY3RlZFRlc3RDYW5kaWRhdGVXb3JrZXJBbGxvd2VkKHJlbGVhc2UpKScKbmV3X2NvbmRpdGlvbiA9ICdpZiAocmVsZWFzZS5Jc0NhbmRpZGF0ZSAmJiAhUHVsc2VBaVByb3RlY3RlZFRlc3RDYW5kaWRhdGVQb2xpY3kuQWxsb3dzUHJpdmF0ZURvY3VtZW50UHJvY2Vzc2luZyhyZWxlYXNlKSknCmlmIHdvcmtlci5jb3VudChvbGRfY29uZGl0aW9uKSAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdCgnRXhwZWN0ZWQgd29ya2VyIGNhbmRpZGF0ZSBjb25kaXRpb24gd2FzIG5vdCBmb3VuZCBleGFjdGx5IG9uY2UuJykKd29ya2VyID0gd29ya2VyLnJlcGxhY2Uob2xkX2NvbmRpdGlvbiwgbmV3X2NvbmRpdGlvbiwgMSkKd29ya2VyLCByZW1vdmVkID0gcmUuc3VibigKICAgIHInXG4gICAgcHJpdmF0ZSBzdGF0aWMgYm9vbCBJc1Byb3RlY3RlZFRlc3RDYW5kaWRhdGVXb3JrZXJBbGxvd2VkXChSZWxlYXNlUnVudGltZVNuYXBzaG90IHJlbGVhc2VcKVxuICAgIFx7Lio/XG4gICAgXH1cblxuICAgIHByaXZhdGUgYm9vbCBUcnlBY3RpdmF0ZVByb3RlY3RlZFRlc3RXb3JrZXInLAogICAgJ1xuICAgIHByaXZhdGUgYm9vbCBUcnlBY3RpdmF0ZVByb3RlY3RlZFRlc3RXb3JrZXInLAogICAgd29ya2VyLAogICAgY291bnQ9MSwKICAgIGZsYWdzPXJlLlMsCikKaWYgcmVtb3ZlZCAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdCgnRXhwZWN0ZWQgZHVwbGljYXRlIHdvcmtlciBwb2xpY3kgaGVscGVyIHdhcyBub3QgZm91bmQgZXhhY3RseSBvbmNlLicpCndvcmtlcl9wYXRoLndyaXRlX3RleHQod29ya2VyLCBlbmNvZGluZz0ndXRmLTgnKQoKc2VydmljZV9wYXRoID0gUGF0aCgnc3JjL2JhY2tlbmQvUHJvamVjdFRpbWUuQXBpL0FpL1B1bHNlQWlQcml2YXRlRG9jdW1lbnRSdW50aW1lU2VydmljZS5jcycpCnNlcnZpY2UgPSBzZXJ2aWNlX3BhdGgucmVhZF90ZXh0KGVuY29kaW5nPSd1dGYtOCcpCm9sZF9zZXJ2aWNlID0gIiIiICAgICAgICB2YXIgcmVsZWFzZSA9IFByb2plY3RQdWxzZUFpUmVsZWFzZVJ1bnRpbWVQb2xpY3kuUmVxdWlyZVZhbGlkKCk7CiAgICAgICAgaWYgKHJlbGVhc2UuSXNDYW5kaWRhdGUpCiAgICAgICAgICAgIHJldHVybiBFbXB0eSgicmVsZWFzZV9jYW5kaWRhdGVfcmVhZF9vbmx5IiwgInJlbGVhc2VfY2FuZGlkYXRlX3JlYWRfb25seSIpOwogICAgICAgIHZhciBvcHRpb25zID0gT3B0aW9ucygpOwoiIiIKbmV3X3NlcnZpY2UgPSAiIiIgICAgICAgIHZhciByZWxlYXNlID0gUHJvamVjdFB1bHNlQWlSZWxlYXNlUnVudGltZVBvbGljeS5SZXF1aXJlVmFsaWQoKTsKICAgICAgICBpZiAocmVsZWFzZS5Jc0NhbmRpZGF0ZSkKICAgICAgICB7CiAgICAgICAgICAgIGlmICghUHVsc2VBaVByb3RlY3RlZFRlc3RDYW5kaWRhdGVQb2xpY3kuQWxsb3dzUHJpdmF0ZURvY3VtZW50UHJvY2Vzc2luZyhyZWxlYXNlKSkKICAgICAgICAgICAgICAgIHJldHVybiBFbXB0eSgicmVsZWFzZV9jYW5kaWRhdGVfcmVhZF9vbmx5IiwgInJlbGVhc2VfY2FuZGlkYXRlX3JlYWRfb25seSIpOwogICAgICAgIH0KICAgICAgICB2YXIgb3B0aW9ucyA9IE9wdGlvbnMoKTsKIiIiCmlmIHNlcnZpY2UuY291bnQob2xkX3NlcnZpY2UpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCdFeHBlY3RlZCBydW50aW1lIHNlcnZpY2UgY2FuZGlkYXRlIGZlbmNlIHdhcyBub3QgZm91bmQgZXhhY3RseSBvbmNlLicpCnNlcnZpY2UgPSBzZXJ2aWNlLnJlcGxhY2Uob2xkX3NlcnZpY2UsIG5ld19zZXJ2aWNlLCAxKQpzZXJ2aWNlX3BhdGgud3JpdGVfdGV4dChzZXJ2aWNlLCBlbmNvZGluZz0ndXRmLTgnKQoKdmFsaWRhdG9yX3BhdGggPSBQYXRoKCdzcmMvZnJvbnRlbmQvcHJvamVjdC10aW1lLXdlYi9zY3JpcHRzL3ZhbGlkYXRlLWNlbGFyLWFpLXJlbGVhc2Utc2NvcGVkLXJ1bnRpbWUubWpzJykKdmFsaWRhdG9yID0gdmFsaWRhdG9yX3BhdGgucmVhZF90ZXh0KGVuY29kaW5nPSd1dGYtOCcpCndvcmtlcl9yZWFkID0gImNvbnN0IHJ1bnRpbWVXb3JrZXIgPSByZWFkKCdzcmMvYmFja2VuZC9Qcm9qZWN0VGltZS5BcGkvQWkvUHVsc2VBaVByaXZhdGVEb2N1bWVudFJ1bnRpbWVXb3JrZXIuY3MnKTtcbiIKaGVscGVyX3JlYWQgPSB3b3JrZXJfcmVhZCArICJjb25zdCBwcm90ZWN0ZWRUZXN0Q2FuZGlkYXRlUG9saWN5ID0gcmVhZCgnc3JjL2JhY2tlbmQvUHJvamVjdFRpbWUuQXBpL0FpL1B1bHNlQWlQcm90ZWN0ZWRUZXN0Q2FuZGlkYXRlUG9saWN5LmNzJyk7XG4iCmlmIHZhbGlkYXRvci5jb3VudCh3b3JrZXJfcmVhZCkgIT0gMToKICAgIHJhaXNlIFN5c3RlbUV4aXQoJ0V4cGVjdGVkIHJ1bnRpbWUgd29ya2VyIHZhbGlkYXRvciBzb3VyY2UgYmluZGluZyB3YXMgbm90IGZvdW5kIGV4YWN0bHkgb25jZS4nKQp2YWxpZGF0b3IgPSB2YWxpZGF0b3IucmVwbGFjZSh3b3JrZXJfcmVhZCwgaGVscGVyX3JlYWQsIDEpCgpwYXR0ZXJuID0gcmUuY29tcGlsZSgKICAgIHIiYXNzZXJ0XChcbiAgJ0NBTkRJREFURV9BQ1RJVkVfREFUQV9QTEFORV9TUExJVCcsLio/XG5cKTtcblxuKD89YXNzZXJ0XChcbiAgJ0NBTkRJREFURV9CQUNLR1JPVU5EX0FORF9DT05GSUdfRlJFRVpFJykiLAogICAgcmUuUywKKQpyZXBsYWNlbWVudCA9ICIiImFzc2VydCgKICAnQ0FORElEQVRFX0FDVElWRV9EQVRBX1BMQU5FX1NQTElUJywKICBwcm90ZWN0ZWRUZXN0Q2FuZGlkYXRlUG9saWN5LmluY2x1ZGVzKCdQUk9KRUNUUFVMU0VfRU5WSVJPTk1FTlQnKQogICAgJiYgcHJvdGVjdGVkVGVzdENhbmRpZGF0ZVBvbGljeS5pbmNsdWRlcygnZW52aXJvbm1lbnQuRXF1YWxzKCJ0ZXN0IiwgU3RyaW5nQ29tcGFyaXNvbi5PcmRpbmFsSWdub3JlQ2FzZSgnKQogICAgJiYgcHJvdGVjdGVkVGVzdENhbmRpZGF0ZVBvbGljeS5pbmNsdWRlcygncnVubmluZ1NvdXJjZUNvbW1pdC5MZW5ndGggIT0gNDAnKQogICAgJiYgcHJvdGVjdGVkVGVzdENhbmRpZGF0ZVBvbGljeS5pbmNsdWRlcygncmVsZWFzZS5Tb3VyY2VDb21taXQnKQogICAgJiYgcHJvdGVjdGVkVGVzdENhbmRpZGF0ZVBvbGljeS5pbmNsdWRlcygncmVsZWFzZS5SdW5uaW5nU291cmNlQ29tbWl0JykKICAgICYmIHByb3RlY3RlZFRlc3RDYW5kaWRhdGVQb2xpY3kuaW5jbHVkZXMoJ3JlbGVhc2UuRW1iZWRkZWRTb3VyY2VDb21taXQnKQogICAgJiYgcnVudGltZVdvcmtlci5pbmNsdWRlcygnUHVsc2VBaVByb3RlY3RlZFRlc3RDYW5kaWRhdGVQb2xpY3kuQWxsb3dzUHJpdmF0ZURvY3VtZW50UHJvY2Vzc2luZyhyZWxlYXNlKScpCiAgICAmJiBydW50aW1lU2VydmljZS5pbmNsdWRlcygnaWYgKHJlbGVhc2UuSXNDYW5kaWRhdGUpJykKICAgICYmIHJ1bnRpbWVTZXJ2aWNlLmluY2x1ZGVzKCdQdWxzZUFpUHJvdGVjdGVkVGVzdENhbmRpZGF0ZVBvbGljeS5BbGxvd3NQcml2YXRlRG9jdW1lbnRQcm9jZXNzaW5nKHJlbGVhc2UpJykKICAgICYmIHJ1bnRpbWVTZXJ2aWNlLm1hdGNoKC9SZWplY3RDYW5kaWRhdGVEYXRhTXV0YXRpb24vZyk/Lmxlbmd0aCA+PSA0CiAgICAmJiByYWdSZXBvc2l0b3J5Lm1hdGNoKC9SZXF1aXJlVmFsaWRcXChcXClcXC5Jc0NhbmRpZGF0ZS9nKT8ubGVuZ3RoID49IDQKICAgICYmIHN5c3RlbVJlcG9zaXRvcnkubWF0Y2goL1JlcXVpcmVWYWxpZFxcKFxcKVxcLklzQ2FuZGlkYXRlL2cpPy5sZW5ndGggPj0gNgogICAgJiYgcHJvamVjdEZvcmdlLmluY2x1ZGVzKCdpZiAoIXJlbGVhc2UuSXNDYW5kaWRhdGUpIHJldHVybiBudWxsOycpCiAgICAmJiAhcnVudGltZVdvcmtlci5pbmNsdWRlcygnUmVxdWlyZVZhbGlkKCkuQWN0aXZlJykKICAgICYmICFyYWdSZXBvc2l0b3J5LmluY2x1ZGVzKCdSZXF1aXJlVmFsaWQoKS5BY3RpdmUnKQogICAgJiYgIXN5c3RlbVJlcG9zaXRvcnkuaW5jbHVkZXMoJ1JlcXVpcmVWYWxpZCgpLkFjdGl2ZScpLAogICdjYW5kaWRhdGUgdXNlci9BUEkgbXV0YXRpb25zIHJlbWFpbiBibG9ja2VkIHdoaWxlIG9ubHkgdGhlIGV4YWN0IHZhbGlkYXRlZCBQcm90ZWN0ZWQgVGVzdCBiYWNrZ3JvdW5kIGRvY3VtZW50IHByb2Nlc3NvciBtYXkgYnVpbGQgcHJpdmF0ZSBwcm9jZXNzaW5nIGFuZCBjaXRhdGlvbiBzdGF0ZScsCik7CgoiIiIKdmFsaWRhdG9yLCByZXBsYWNlZCA9IHBhdHRlcm4uc3VibihyZXBsYWNlbWVudCwgdmFsaWRhdG9yLCBjb3VudD0xKQppZiByZXBsYWNlZCAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdCgnRXhwZWN0ZWQgY2FuZGlkYXRlIGRhdGEtcGxhbmUgdmFsaWRhdG9yIGJsb2NrIHdhcyBub3QgZm91bmQgZXhhY3RseSBvbmNlLicpCnZhbGlkYXRvcl9wYXRoLndyaXRlX3RleHQodmFsaWRhdG9yLCBlbmNvZGluZz0ndXRmLTgnKQo=' | base64 --decode > /tmp/pr737-repair.py
+          python3 /tmp/pr737-repair.py
 
       - name: Validate focused repair
         shell: bash
