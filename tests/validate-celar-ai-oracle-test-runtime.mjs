@@ -136,15 +136,24 @@ for (const marker of [
   'environment: test',
   'group: projectpulse-deploy-test',
   'cancel-in-progress: false',
-  'private-runtime-before.json',
-  'private-runtime-after.json',
-  'diff -u "$EVIDENCE_DIR/private-runtime-before.json" "$EVIDENCE_DIR/private-runtime-after.json"',
+  'runtime-contract-before.json',
+  'runtime-contract-after.json',
+  'diff -u "$EVIDENCE_DIR/runtime-contract-before.json" "$EVIDENCE_DIR/runtime-contract-after.json"',
   'PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT"',
-  'MIGRATIONS_APPLIED=NONE',
+  'applicationOnlyAfterMigration:true',
   'PRODUCTION_MUTATION=NONE',
   'privateRuntimeConfigurationMutation:false',
   'Restore exact prior Test images after failure',
 ]) requireText(currentTestController, marker, 'current protected-Test runtime-preservation controller')
+
+for (const marker of [
+  'workflow_dispatch:',
+  'release_sha:',
+  'release_branch:',
+  'fix/shared-project-document-planning-20260819',
+  '^[0-9a-f]{40}$',
+  'current authorized branch head',
+]) requireText(currentTestController, marker, 'guarded exact-SHA Protected Test dispatch')
 
 for (const marker of [
   'PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_|UPLOAD_ROOT)',
@@ -152,7 +161,6 @@ for (const marker of [
 ]) requireText(currentTestController, marker, 'private-runtime environment preservation allowlist')
 
 rejectText(currentTestController, 'environment: production', 'Production environment binding')
-rejectText(currentTestController, 'workflow_dispatch:', 'manual deployment bypass')
 rejectText(currentTestController, 'az keyvault', 'unapproved key-vault access')
 rejectText(currentTestController, 'PROJECTPULSE_TEST_DATABASE_URL', 'database-secret access')
 rejectText(currentTestController, 'celarai.onenecklab.com', 'Oracle runtime endpoint mutation')
