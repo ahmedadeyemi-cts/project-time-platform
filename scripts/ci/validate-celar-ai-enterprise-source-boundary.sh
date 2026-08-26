@@ -47,7 +47,7 @@ elif [[ "$HEAD_BRANCH" == feature/celar-ai-internal-data-intelligence-* ]]; then
   publish_mode PRIVATE_RUNTIME_INTERNAL_DATA
 elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
   FLOWHIVE_RELEASE_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
-  ALLOWED_DATABASE='^(database/(migrations/(094_flowhive_canonical_sow_authority|095_project_planning_collaboration_access|096_project_planning_document_authority)\.sql|rollback/(095_project_planning_collaboration_access_rollback|096_project_planning_document_authority_rollback)\.sql))$'
+  ALLOWED_DATABASE='^(database/(migrations/(094_flowhive_canonical_sow_authority|095_project_planning_collaboration_access|096_project_planning_document_authority|097_project_planning_identity_safe_admission)\.sql|rollback/(095_project_planning_collaboration_access_rollback|096_project_planning_document_authority_rollback|097_project_planning_identity_safe_admission_rollback)\.sql))$'
   for required in \
     "$FLOWHIVE_RELEASE_MANIFEST" \
     '.github/workflows/celar-ai-enterprise-platform-ci.yml' \
@@ -58,11 +58,15 @@ elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
     'database/migrations/094_flowhive_canonical_sow_authority.sql' \
     'database/migrations/095_project_planning_collaboration_access.sql' \
     'database/migrations/096_project_planning_document_authority.sql' \
+    'database/migrations/097_project_planning_identity_safe_admission.sql' \
     'database/rollback/095_project_planning_collaboration_access_rollback.sql' \
     'database/rollback/096_project_planning_document_authority_rollback.sql' \
+    'database/rollback/097_project_planning_identity_safe_admission_rollback.sql' \
     'tests/test-flowhive-canonical-sow-authority-migration-094.sh' \
     'tests/test-project-planning-collaboration-migration-095.sh' \
-    'tests/test-project-planning-document-authority-migration-096.sh'; do
+    'tests/test-project-planning-document-authority-migration-096.sh' \
+    'tests/test-project-planning-identity-safe-admission-migration-097.sh' \
+    'tests/test-pulse-ai-runtime-job-query-shape.sh'; do
     test -f "$required"
     grep -Fxq "$required" <<<"$CHANGED"
     grep -Fxq "$required" "$FLOWHIVE_RELEASE_MANIFEST"
