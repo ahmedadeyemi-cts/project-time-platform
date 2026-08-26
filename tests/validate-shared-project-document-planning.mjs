@@ -137,10 +137,23 @@ for (const token of [
   'release.RunningSourceCommit',
   'release.EmbeddedSourceCommit'
 ]) requireText(protectedTestCandidatePolicy, token, 'Protected Test exact-candidate policy');
+
+// Regression for protected run 32927057407: the Container App preserved the governed
+// GitHub Environment Test secret provenance while PROJECTPULSE_ENVIRONMENT was absent.
+// That runtime must still be recognized as Protected Test without broadening candidate processing.
+for (const token of [
+  'IsProtectedTestEnvironment',
+  'PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED',
+  'github-environment://test/',
+  'PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN_SECRET_REFERENCE',
+  'PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN_SECRET_REFERENCE',
+  'PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN_SECRET_REFERENCE',
+  'PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN_SECRET_REFERENCE',
+  'ProtectedTestSecretReferenceVariables.All'
+]) requireText(protectedTestCandidatePolicy, token, 'Protected Test governed runtime provenance');
 for (const token of [
   'TryActivateProtectedTestWorker',
-  'var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();',
-  'PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)',
+  'PulseAiProtectedTestCandidatePolicy.IsProtectedTestEnvironment()',
   'PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED',
   'options.MalwareScannerConfigured',
   'options.OcrConfigured',
