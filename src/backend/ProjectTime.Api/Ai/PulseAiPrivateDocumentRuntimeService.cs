@@ -505,9 +505,12 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             }
             if (!scan.Clean)
             {
+                var diagnosticCode = string.IsNullOrWhiteSpace(scan.DiagnosticCode)
+                    ? "malware_scan_failed"
+                    : scan.DiagnosticCode;
                 return await RetryOrFailAsync(
                     job,
-                    "malware_scan_failed",
+                    diagnosticCode,
                     "The private malware scanner did not return a clean result.",
                     scan.ToPublicEvidence(),
                     cancellationToken);

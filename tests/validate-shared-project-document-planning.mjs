@@ -173,6 +173,19 @@ for (const token of [
   'RejectCandidateDataMutation("Private document processing cancellation")',
   'RejectCandidateDataMutation("Private document processing retry")'
 ]) requireText(privateDocumentRuntime, token, 'Protected Test candidate data-plane split');
+const malwareScanFailureStart = privateDocumentRuntime.indexOf('if (!scan.Clean)');
+const malwareScanFailureEnd = privateDocumentRuntime.indexOf('if (!IsSha256(scan.SourceSha256)', malwareScanFailureStart);
+if (malwareScanFailureStart < 0 || malwareScanFailureEnd <= malwareScanFailureStart) {
+  failures.push('bounded malware scanner diagnostic propagation: scan failure block is unavailable');
+} else {
+  const malwareScanFailure = privateDocumentRuntime.slice(malwareScanFailureStart, malwareScanFailureEnd);
+  for (const token of [
+    'var diagnosticCode = string.IsNullOrWhiteSpace(scan.DiagnosticCode)',
+    '? "malware_scan_failed"',
+    ': scan.DiagnosticCode;',
+    'job,\n                    diagnosticCode,'
+  ]) requireText(malwareScanFailure, token, 'bounded malware scanner diagnostic propagation');
+}
 rejectText(privateDocumentWorker, 'IsProtectedTestCandidateWorkerAllowed', 'retired worker-local candidate policy');
 rejectText(privateDocumentWorker, 'if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)', 'unconditional candidate private-document mutation fence');
 rejectText(privateDocumentWorker, 'environment.Equals("production"', 'Production worker auto-activation');
