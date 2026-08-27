@@ -150,6 +150,31 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             return Results.Ok(ToResponse((await LoadRunAsync(connection, projectId, runId, cancellationToken))!));
         }
 
+        if (documents.HasTerminalProcessingFailure)
+        {
+            var diagnostic = documents.TerminalDiagnosticCode.Length > 0
+                ? documents.TerminalDiagnosticCode
+                : "private_document_processing_failed";
+            await UpdateRunAsync(
+                connection,
+                runId,
+                "failed",
+                "private_document_processing",
+                30,
+                documents.Blockers,
+                documents.Warnings,
+                [
+                    $"Private project-document processing reached a terminal state. Diagnostic: {diagnostic}.",
+                    "Automatic planner polling did not requeue the failed document. Correct the bounded blocker and use the authorized explicit retry workflow."
+                ],
+                null,
+                null,
+                null,
+                cancellationToken,
+                completed: true);
+            return Results.Ok(ToResponse((await LoadRunAsync(connection, projectId, runId, cancellationToken))!));
+        }
+
         if (!documents.ReadyForGeneration)
         {
             var progress = documents.PendingDocuments.Count > 0 ? 30 : 50;
@@ -651,7 +676,6 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
     private static string CorrelationId(HttpContext context) =>
         Clean(context.Response.Headers["X-ProjectPulse-Correlation-Id"].FirstOrDefault()
             ?? context.TraceIdentifier, 180, Guid.NewGuid().ToString("N"));
-
 
     private static string Clean(string? value, int maximum, string fallback = "")
     {
