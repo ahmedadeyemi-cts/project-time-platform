@@ -1,10 +1,13 @@
 namespace ProjectTime.Api.Ai;
 
 /// <summary>
-/// Allows one tightly bounded candidate mutation path: the background private-document
-/// processor in Protected Test. The release envelope must already be valid and the
-/// candidate, running, and embedded source commits must all be the exact same SHA.
-/// Interactive candidate data mutations remain blocked by RejectCandidateDataMutation.
+/// Allows one tightly bounded Protected Test background-processing path. A release-scoped
+/// candidate must retain the exact source envelope; the established Protected-Test
+/// application controller may also deploy an unscoped candidate while preserving the
+/// already-approved private runtime binding. In that case processing is allowed only
+/// when the running and embedded source commits are the exact same SHA. Active release
+/// phases are never auto-activated through this Test-only path. Interactive candidate
+/// data mutations remain blocked by RejectCandidateDataMutation.
 /// </summary>
 internal static class PulseAiProtectedTestCandidatePolicy
 {
@@ -41,9 +44,6 @@ internal static class PulseAiProtectedTestCandidatePolicy
 
     public static bool AllowsPrivateDocumentProcessing(ReleaseRuntimeSnapshot release)
     {
-        if (!release.IsCandidate)
-            return false;
-
         if (!IsProtectedTestEnvironment())
             return false;
 
@@ -54,8 +54,17 @@ internal static class PulseAiProtectedTestCandidatePolicy
         if (runningSourceCommit.Length != 40 || !runningSourceCommit.All(Uri.IsHexDigit))
             return false;
 
-        return string.Equals(release.SourceCommit, runningSourceCommit, StringComparison.Ordinal)
-            && string.Equals(release.RunningSourceCommit, runningSourceCommit, StringComparison.Ordinal)
-            && string.Equals(release.EmbeddedSourceCommit, runningSourceCommit, StringComparison.Ordinal);
+        if (!string.Equals(release.RunningSourceCommit, runningSourceCommit, StringComparison.Ordinal)
+            || !string.Equals(release.EmbeddedSourceCommit, runningSourceCommit, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (release.IsCandidate)
+        {
+            return string.Equals(release.SourceCommit, runningSourceCommit, StringComparison.Ordinal);
+        }
+
+        return !release.IsReleaseScoped;
     }
 }

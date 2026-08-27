@@ -30,7 +30,6 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
             var options = PulseAiPrivateRuntimeOptions.FromEnvironment();
             var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
             if (!options.WorkerEnabled
-                && release.IsCandidate
                 && TryActivateProtectedTestWorker(options, release))
             {
                 options = PulseAiPrivateRuntimeOptions.FromEnvironment();
@@ -93,8 +92,7 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
         PulseAiPrivateRuntimeOptions options,
         ReleaseRuntimeSnapshot release)
     {
-        if (!release.IsCandidate
-            || !PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))
+        if (!PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))
         {
             return false;
         }
