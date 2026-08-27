@@ -40,6 +40,7 @@ src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeSourceResolver.cs
 src/backend/ProjectTime.Api/Ai/PulseAiProtectedTestCandidatePolicy.cs
 src/backend/ProjectTime.Api/Directory.Build.props
 src/backend/ProjectTime.Api/Modules/CelarAiTransientFailureMiddleware.cs
