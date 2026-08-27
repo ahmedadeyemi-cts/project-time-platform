@@ -155,6 +155,8 @@ internal static class ProjectPlanningDocumentResolver
             var sow = selection.StatementOfWork;
             if (!sow.ProcessingReady)
                 blockers.Add($"The active Work Register SOW private processing state is {sow.ProcessingStatus}.");
+            if (sow.ProcessingTerminalFailure && sow.ProcessingErrorCode.Length > 0)
+                blockers.Add($"The active Work Register SOW private processing diagnostic is {sow.ProcessingErrorCode}.");
             if (sow.ActiveVersionId is null)
                 blockers.Add("The active Work Register SOW has no current private version.");
             if (!sow.AuthorityReady)
@@ -173,9 +175,10 @@ internal static class ProjectPlanningDocumentResolver
         foreach (var document in failed)
         {
             var label = document.IsSow ? "SOW" : document.IsGsd ? "GSD" : document.CanonicalCategory;
-            var message = document.ShouldAutoRecoverFailedProcessing
-                ? $"{label} private processing is failed; automatic recovery is bounded to one queue attempt per exact application source release."
-                : $"{label} private processing is {document.ProcessingStatus}; safety or operator-controlled terminal states are never automatically requeued.";
+            var diagnostic = document.ProcessingErrorCode.Length > 0
+                ? $" Diagnostic: {document.ProcessingErrorCode}."
+                : string.Empty;
+            var message = $"{label} private processing is {document.ProcessingStatus}; terminal states are not automatically requeued.{diagnostic} An authorized explicit retry is required after the blocker is corrected.";
             if (document.IsSow) blockers.Add(message); else warnings.Add(message);
         }
 
@@ -207,6 +210,7 @@ internal static class ProjectPlanningDocumentResolver
                    COALESCE(document.document_category,''),
                    COALESCE(document.original_file_name,''),
                    COALESCE(document.pulse_ai_processing_status,'not_requested'),
+                   COALESCE(document.pulse_ai_processing_error_code,''),
                    document.pulse_ai_active_version_id,
                    COALESCE(version.authority_status,''),
                    COALESCE(version.index_status,''),
@@ -251,18 +255,19 @@ internal static class ProjectPlanningDocumentResolver
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
-                reader.IsDBNull(4) ? null : reader.GetGuid(4),
-                reader.GetString(5),
+                reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetGuid(5),
                 reader.GetString(6),
-                reader.IsDBNull(7) ? null : reader.GetGuid(7),
-                reader.GetString(8),
+                reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetGuid(8),
                 reader.GetString(9),
                 reader.GetString(10),
                 reader.GetString(11),
-                reader.GetFieldValue<DateTimeOffset>(12),
+                reader.GetString(12),
                 reader.GetFieldValue<DateTimeOffset>(13),
-                reader.GetInt32(14),
-                reader.GetInt32(15)));
+                reader.GetFieldValue<DateTimeOffset>(14),
+                reader.GetInt32(15),
+                reader.GetInt32(16)));
         }
         return rows;
     }
@@ -294,10 +299,7 @@ internal static class ProjectPlanningDocumentResolver
         string correlationId,
         CancellationToken cancellationToken)
     {
-        var recovery = evidence.ShouldAutoRecoverFailedProcessing;
-        var purpose = recovery
-            ? FailedRecoveryPurpose()
-            : Clean(requestedPurpose, 80, "project_planning_ai_automatic");
+        var purpose = Clean(requestedPurpose, 80, "project_planning_ai_automatic");
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
@@ -311,14 +313,7 @@ internal static class ProjectPlanningDocumentResolver
                  WHERE existing.project_intake_document_id=@document_id
                    AND existing.job_status IN (
                        'queued','scanning','extracting','awaiting_ocr','embedding','indexing',
-                       'retry_wait','cancel_requested'))
-               AND (
-                   @recovery=FALSE
-                   OR NOT EXISTS(
-                       SELECT 1
-                         FROM pulse_ai_document_processing_jobs prior_recovery
-                        WHERE prior_recovery.project_intake_document_id=@document_id
-                          AND prior_recovery.requested_purpose=@purpose));
+                       'retry_wait','cancel_requested'));
             """, connection, transaction);
         command.Parameters.AddWithValue("document_id", evidence.DocumentId);
         command.Parameters.AddWithValue("project_id", evidence.ProjectId);
@@ -326,10 +321,9 @@ internal static class ProjectPlanningDocumentResolver
         command.Parameters.AddWithValue("effective", effectiveUserId);
         command.Parameters.AddWithValue("purpose", purpose);
         command.Parameters.AddWithValue("correlation", Clean(correlationId, 180, Guid.NewGuid().ToString("N")));
-        command.Parameters.AddWithValue("recovery", recovery);
         var queued = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
 
-        if (queued || !evidence.ProcessingTerminalFailure)
+        if (queued)
         {
             await using var mark = new NpgsqlCommand("""
                 UPDATE project_intake_documents
@@ -338,7 +332,9 @@ internal static class ProjectPlanningDocumentResolver
                            ELSE 'queued'
                        END,
                        pulse_ai_processing_updated_at=NOW()
-                 WHERE project_intake_document_id=@document_id;
+                 WHERE project_intake_document_id=@document_id
+                   AND COALESCE(pulse_ai_processing_status,'not_requested') NOT IN (
+                       'failed','rejected','quarantined','cancelled','canceled','unsupported');
                 """, connection, transaction);
             mark.Parameters.AddWithValue("document_id", evidence.DocumentId);
             await mark.ExecuteNonQueryAsync(cancellationToken);
@@ -346,18 +342,6 @@ internal static class ProjectPlanningDocumentResolver
 
         await transaction.CommitAsync(cancellationToken);
         return queued;
-    }
-
-    private static string FailedRecoveryPurpose()
-    {
-        var sourceCommit = Environment
-            .GetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable)?
-            .Trim()
-            .ToLowerInvariant() ?? string.Empty;
-        var sourceKey = sourceCommit.Length == 40 && sourceCommit.All(Uri.IsHexDigit)
-            ? sourceCommit[..12]
-            : "unversioned";
-        return $"project_planning_failed_recovery_{sourceKey}";
     }
 
     private static string Clean(string? value, int maximum, string fallback)
@@ -404,6 +388,7 @@ internal sealed record ProjectPlanningDocumentEvidence(
     string Category,
     string FileName,
     string ProcessingStatus,
+    string ProcessingErrorCode,
     Guid? ActiveVersionId,
     string AuthorityStatus,
     string IndexStatus,
@@ -446,10 +431,7 @@ internal sealed record ProjectPlanningDocumentEvidence(
     public bool ProcessingReady => ProcessingStatus.Equals("ready", StringComparison.OrdinalIgnoreCase);
     public bool ProcessingTerminalFailure => ProcessingStatus.Trim().ToLowerInvariant() is
         "failed" or "rejected" or "quarantined" or "cancelled" or "canceled" or "unsupported";
-    public bool ShouldAutoRecoverFailedProcessing =>
-        ProcessingStatus.Equals("failed", StringComparison.OrdinalIgnoreCase);
-    public bool ShouldAutoQueue => !ProcessingReady
-        && (!ProcessingTerminalFailure || ShouldAutoRecoverFailedProcessing);
+    public bool ShouldAutoQueue => !ProcessingReady && !ProcessingTerminalFailure;
     public bool AuthorityReady => AuthorityStatus.Trim().ToLowerInvariant() is "approved" or "canonical";
     public bool IndexReady => IndexStatus.Trim().ToLowerInvariant() is "lexical_ready" or "embedding_ready" or "ready";
     public bool ReadyForRetrieval => ProcessingReady
@@ -475,8 +457,13 @@ internal sealed record ProjectPlanningDocumentResolution(
     IReadOnlyList<string> Warnings)
 {
     public bool HasAuthoritativeSow => StatementOfWork is not null;
+    public bool HasTerminalProcessingFailure => FailedDocuments.Count > 0;
+    public string TerminalDiagnosticCode => FailedDocuments
+        .Select(document => document.ProcessingErrorCode)
+        .FirstOrDefault(code => !string.IsNullOrWhiteSpace(code)) ?? string.Empty;
     public bool ReadyForGeneration => StatementOfWork is { ReadyForGeneration: true }
-        && PendingDocuments.Count == 0;
+        && PendingDocuments.Count == 0
+        && FailedDocuments.Count == 0;
     public IReadOnlySet<Guid> CurrentDocumentIds => SelectedDocuments
         .Where(document => document.ReadyForRetrieval)
         .Select(document => document.DocumentId)
