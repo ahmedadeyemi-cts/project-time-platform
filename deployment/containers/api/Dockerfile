@@ -12,15 +12,23 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 
+# The governed release controller checks out an exact commit SHA before building.
+# Preserve only detached .git/HEAD in the Docker context so the compiled assembly
+# can carry the same immutable source revision without exposing repository history.
+COPY .git/HEAD /tmp/projectpulse-source-revision
+
 COPY src/backend/ProjectTime.Api/ProjectTime.Api.csproj src/backend/ProjectTime.Api/
 RUN dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
 
 COPY src/backend/ProjectTime.Api/ src/backend/ProjectTime.Api/
-RUN dotnet publish src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
-    --configuration Release \
-    --no-restore \
-    --output /app/publish \
-    /p:UseAppHost=false
+RUN PROJECTPULSE_SOURCE_REVISION="$(tr -d '\r\n' < /tmp/projectpulse-source-revision)" \
+    && printf '%s\n' "$PROJECTPULSE_SOURCE_REVISION" | grep -Eq '^[0-9a-f]{40}$' \
+    && dotnet publish src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+      --configuration Release \
+      --no-restore \
+      --output /app/publish \
+      /p:UseAppHost=false \
+      /p:ProjectPulseSourceRevision="$PROJECTPULSE_SOURCE_REVISION"
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 

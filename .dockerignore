@@ -1,4 +1,5 @@
-.git
+.git/*
+!.git/HEAD
 .gitignore
 .github/*
 !.github/ISSUE_TEMPLATE

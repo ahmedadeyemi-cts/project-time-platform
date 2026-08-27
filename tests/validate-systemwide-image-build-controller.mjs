@@ -4,7 +4,11 @@ import fs from 'node:fs';
 
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 const retiredWorkflowPath = '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml';
+const apiDockerfilePath = 'deployment/containers/api/Dockerfile';
+const dockerignorePath = '.dockerignore';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
+const apiDockerfile = fs.readFileSync(apiDockerfilePath, 'utf8');
+const dockerignore = fs.readFileSync(dockerignorePath, 'utf8');
 
 assert.equal(
   fs.existsSync(retiredWorkflowPath),
@@ -48,6 +52,32 @@ assert.doesNotMatch(
   workflow,
   /\n\s{12}NOT EXISTS \(\s*SELECT 1\s*FROM work_register_task_assignment_history history/,
   'Migration 093 verification must not apply NOT to a text-cast EXISTS result'
+);
+
+assert.match(
+  dockerignore,
+  /^\.git\/\*$/m,
+  'Docker build context must exclude Git metadata by default'
+);
+assert.match(
+  dockerignore,
+  /^!\.git\/HEAD$/m,
+  'Docker build context must preserve only detached .git/HEAD for exact source provenance'
+);
+assert.match(
+  apiDockerfile,
+  /COPY \.git\/HEAD \/tmp\/projectpulse-source-revision/,
+  'API image must consume the exact checked-out Git HEAD'
+);
+assert.match(
+  apiDockerfile,
+  /grep -Eq '\^\[0-9a-f\]\{40\}\$'/,
+  'API image must reject a non-commit Git HEAD before publish'
+);
+assert.match(
+  apiDockerfile,
+  /\/p:ProjectPulseSourceRevision="\$PROJECTPULSE_SOURCE_REVISION"/,
+  'API publish must embed the exact checked-out source SHA in assembly metadata'
 );
 
 const migrationImageBuilders = [
@@ -99,4 +129,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image migration-builders=094,095,096+097 utilization-uat=registered');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=detached-head migration-builders=094,095,096+097 utilization-uat=registered');
