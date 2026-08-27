@@ -1,4 +1,13 @@
 <Project>
+  <!--
+    The governed Protected-Test release controller stages a temporary, untracked
+    .projectpulse-source-revision file containing the exact reviewed 40-character
+    candidate SHA. Ordinary builds do not have that file and remain unbound.
+  -->
+  <PropertyGroup Condition="'$(ProjectPulseSourceRevision)' == '' and Exists('$(MSBuildProjectDirectory)/.projectpulse-source-revision')">
+    <ProjectPulseSourceRevision>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/.projectpulse-source-revision'))</ProjectPulseSourceRevision>
+  </PropertyGroup>
+
   <PropertyGroup>
     <ModuleAvailabilityResilienceGeneratedDirectory>$(MSBuildProjectDirectory)/obj/module-availability-resilience</ModuleAvailabilityResilienceGeneratedDirectory>
     <ModuleAvailabilityResilienceGenerated>$(ModuleAvailabilityResilienceGeneratedDirectory)/ModuleAvailabilityModule.Resilient.g.cs</ModuleAvailabilityResilienceGenerated>

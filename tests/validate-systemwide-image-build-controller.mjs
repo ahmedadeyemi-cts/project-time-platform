@@ -5,9 +5,11 @@ import fs from 'node:fs';
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 const retiredWorkflowPath = '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml';
 const apiProjectPath = 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj';
-const sourceRevisionPropsPath = 'src/backend/ProjectTime.Api/Directory.Build.props';
+const apiBuildPropsPath = 'src/backend/ProjectTime.Api/Directory.Build.props';
+const sourceRevisionPath = 'src/backend/ProjectTime.Api/.projectpulse-source-revision';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
 const apiProject = fs.readFileSync(apiProjectPath, 'utf8');
+const apiBuildProps = fs.readFileSync(apiBuildPropsPath, 'utf8');
 
 assert.equal(
   fs.existsSync(retiredWorkflowPath),
@@ -58,6 +60,16 @@ assert.match(
   /<AssemblyMetadata Include="ProjectPulseSourceRevision" Value="\$\(ProjectPulseSourceRevision\)" \/>/,
   'API assembly metadata must remain bound to the ProjectPulseSourceRevision MSBuild property'
 );
+assert.match(
+  apiBuildProps,
+  /Exists\('\$\(MSBuildProjectDirectory\)\/\.projectpulse-source-revision'\)/,
+  'API build props must activate exact source binding only when the temporary release revision file exists'
+);
+assert.match(
+  apiBuildProps,
+  /<ProjectPulseSourceRevision>\$\(\[System\.IO\.File\]::ReadAllText\('\$\(MSBuildProjectDirectory\)\/\.projectpulse-source-revision'\)\)<\/ProjectPulseSourceRevision>/,
+  'API build props must read the exact staged release SHA into ProjectPulseSourceRevision'
+);
 
 const releaseCommit = (process.env.TARGET_RELEASE_COMMIT ?? '').trim().toLowerCase();
 if (releaseCommit.length > 0) {
@@ -67,20 +79,15 @@ if (releaseCommit.length > 0) {
     'the governed Protected-Test controller must supply an exact 40-character release SHA'
   );
   assert.equal(
-    fs.existsSync(sourceRevisionPropsPath),
+    fs.existsSync(sourceRevisionPath),
     false,
-    'the temporary source-revision props file must not already exist in reviewed source'
+    'the temporary source-revision file must not exist in reviewed source'
   );
-  fs.writeFileSync(
-    sourceRevisionPropsPath,
-    `<Project>\n  <PropertyGroup>\n    <ProjectPulseSourceRevision>${releaseCommit}</ProjectPulseSourceRevision>\n  </PropertyGroup>\n</Project>\n`,
-    { encoding: 'utf8', mode: 0o444 }
-  );
-  const stagedProps = fs.readFileSync(sourceRevisionPropsPath, 'utf8');
-  assert.match(
-    stagedProps,
-    new RegExp(`<ProjectPulseSourceRevision>${releaseCommit}<\\/ProjectPulseSourceRevision>`),
-    'the temporary MSBuild props file must bind the exact governed release SHA'
+  fs.writeFileSync(sourceRevisionPath, releaseCommit, { encoding: 'utf8', mode: 0o444 });
+  assert.equal(
+    fs.readFileSync(sourceRevisionPath, 'utf8'),
+    releaseCommit,
+    'the temporary source-revision file must contain only the exact governed release SHA'
   );
   console.log(`SYSTEMWIDE_API_SOURCE_REVISION_STAGED=${releaseCommit}`);
 }
@@ -134,4 +141,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-msbuild-props migration-builders=094,095,096+097 utilization-uat=registered');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097 utilization-uat=registered');
