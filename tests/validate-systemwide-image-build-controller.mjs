@@ -4,11 +4,10 @@ import fs from 'node:fs';
 
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 const retiredWorkflowPath = '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml';
-const apiDockerfilePath = 'deployment/containers/api/Dockerfile';
-const dockerignorePath = '.dockerignore';
+const apiProjectPath = 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj';
+const sourceRevisionPropsPath = 'src/backend/ProjectTime.Api/Directory.Build.props';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
-const apiDockerfile = fs.readFileSync(apiDockerfilePath, 'utf8');
-const dockerignore = fs.readFileSync(dockerignorePath, 'utf8');
+const apiProject = fs.readFileSync(apiProjectPath, 'utf8');
 
 assert.equal(
   fs.existsSync(retiredWorkflowPath),
@@ -55,30 +54,36 @@ assert.doesNotMatch(
 );
 
 assert.match(
-  dockerignore,
-  /^\.git\/\*$/m,
-  'Docker build context must exclude Git metadata by default'
+  apiProject,
+  /<AssemblyMetadata Include="ProjectPulseSourceRevision" Value="\$\(ProjectPulseSourceRevision\)" \/>/,
+  'API assembly metadata must remain bound to the ProjectPulseSourceRevision MSBuild property'
 );
-assert.match(
-  dockerignore,
-  /^!\.git\/HEAD$/m,
-  'Docker build context must preserve only detached .git/HEAD for exact source provenance'
-);
-assert.match(
-  apiDockerfile,
-  /COPY \.git\/HEAD \/tmp\/projectpulse-source-revision/,
-  'API image must consume the exact checked-out Git HEAD'
-);
-assert.match(
-  apiDockerfile,
-  /grep -Eq '\^\[0-9a-f\]\{40\}\$'/,
-  'API image must reject a non-commit Git HEAD before publish'
-);
-assert.match(
-  apiDockerfile,
-  /\/p:ProjectPulseSourceRevision="\$PROJECTPULSE_SOURCE_REVISION"/,
-  'API publish must embed the exact checked-out source SHA in assembly metadata'
-);
+
+const releaseCommit = (process.env.TARGET_RELEASE_COMMIT ?? '').trim().toLowerCase();
+if (releaseCommit.length > 0) {
+  assert.match(
+    releaseCommit,
+    /^[0-9a-f]{40}$/,
+    'the governed Protected-Test controller must supply an exact 40-character release SHA'
+  );
+  assert.equal(
+    fs.existsSync(sourceRevisionPropsPath),
+    false,
+    'the temporary source-revision props file must not already exist in reviewed source'
+  );
+  fs.writeFileSync(
+    sourceRevisionPropsPath,
+    `<Project>\n  <PropertyGroup>\n    <ProjectPulseSourceRevision>${releaseCommit}</ProjectPulseSourceRevision>\n  </PropertyGroup>\n</Project>\n`,
+    { encoding: 'utf8', mode: 0o444 }
+  );
+  const stagedProps = fs.readFileSync(sourceRevisionPropsPath, 'utf8');
+  assert.match(
+    stagedProps,
+    new RegExp(`<ProjectPulseSourceRevision>${releaseCommit}<\\/ProjectPulseSourceRevision>`),
+    'the temporary MSBuild props file must bind the exact governed release SHA'
+  );
+  console.log(`SYSTEMWIDE_API_SOURCE_REVISION_STAGED=${releaseCommit}`);
+}
 
 const migrationImageBuilders = [
   ['094', 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'],
@@ -129,4 +134,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=detached-head migration-builders=094,095,096+097 utilization-uat=registered');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-msbuild-props migration-builders=094,095,096+097 utilization-uat=registered');
