@@ -169,7 +169,7 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
             attachmentCommand.Parameters.AddWithValue("user_id", effectiveUserId);
             await using var attachmentReader = await attachmentCommand.ExecuteReaderAsync(cancellationToken);
             return await attachmentReader.ReadAsync(cancellationToken)
-                ? ReadSource(attachmentReader, access.ScopeLabel, access.RoleCodes)
+                ? ReadSource(attachmentReader, "conversation_owner_only", access.RoleCodes)
                 : null;
         }
         catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
