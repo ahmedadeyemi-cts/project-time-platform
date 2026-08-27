@@ -4,9 +4,8 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 
 USER root
 
-# The API publish uses a bounded Python source post-processor for legacy Word
-# extraction. Keep Python in the disposable SDK build stage only; it is not
-# copied into runtime.
+# Directory.Build.targets invokes a Python 3 source generator during publish.
+# Keep Python in the disposable SDK build stage only; it is not copied into runtime.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 \
     && python3 --version \
@@ -17,17 +16,6 @@ COPY src/backend/ProjectTime.Api/ProjectTime.Api.csproj src/backend/ProjectTime.
 RUN dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
 
 COPY src/backend/ProjectTime.Api/ src/backend/ProjectTime.Api/
-# FlowHive's protected-Test SOW is a legacy binary .doc. The canonical extractor
-# stays reviewable in Git, while the container build applies the existing
-# fail-closed OLE signature and antiword routing transform before MSBuild creates
-# its compiler copy. This keeps .doc parsing private and bounded without changing
-# the tracked canonical source during ordinary builds.
-RUN python3 src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py \
-        --path src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs \
-    && grep -Fq '".doc" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync' \
-        src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs \
-    && grep -Fq '".doc" => detected == "ole_compound_word"' \
-        src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs
 RUN dotnet publish src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
     --configuration Release \
     --no-restore \
