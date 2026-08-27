@@ -24,6 +24,10 @@ jobs:
     env:
       BASE: ${{ vars.PUBLIC_URL }}
       TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+      ORACLE_RUNTIME_TOKEN: ${{ secrets.PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN }}
+      ORACLE_RUNTIME_HOST: celarai.onenecklab.com
+      ORACLE_RUNTIME_IP: 129.213.82.144
+      ORACLE_MALWARE_SCAN_ENDPOINT: https://celarai.onenecklab.com/v1/scan
       PROJECT_ID: 0ea25cb8-1a7f-4baf-ba7b-2dd76215be49
     steps:
       - name: Query safe Protected Test private-job metadata
@@ -124,3 +128,80 @@ jobs:
           echo 'DOCUMENT_CONTENT_RETURNED=false'
           echo 'STORAGE_PATH_RETURNED=false'
           echo 'EMBEDDING_VECTOR_RETURNED=false'
+
+      - name: Probe bounded Oracle malware gateway contract with harmless fixture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ ${#ORACLE_RUNTIME_TOKEN} -ge 32 ]] \
+            || fail 'Protected Test Oracle runtime token is unavailable.'
+          mapfile -t resolved < <(getent ahostsv4 "$ORACLE_RUNTIME_HOST" | awk '{print $1}' | sort -u)
+          (( ${#resolved[@]} == 1 )) \
+            || fail 'Oracle runtime DNS must resolve to exactly one IPv4 address.'
+          [[ "${resolved[0]}" == "$ORACLE_RUNTIME_IP" ]] \
+            || fail 'Oracle runtime DNS does not match the approved Protected Test IPv4 pin.'
+
+          fixture="$(mktemp)"
+          response="$(mktemp)"
+          trap 'rm -f "$fixture" "$response"' EXIT
+          chmod 0600 "$fixture" "$response"
+          printf 'FlowHive Protected Test harmless malware gateway contract probe.\n' > "$fixture"
+          expected_size="$(wc -c < "$fixture" | tr -d '[:space:]')"
+
+          http_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 180 \
+            --resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" \
+            -o "$response" -w '%{http_code}' \
+            -H "Authorization: Bearer $ORACLE_RUNTIME_TOKEN" \
+            -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only' \
+            -H 'X-Pulse-AI-Feature: private_document_malware_scan' \
+            -H 'X-Pulse-AI-External-Escalation: false' \
+            -F "file=@$fixture;filename=flowhive-protected-test-probe.txt;type=application/octet-stream" \
+            "$ORACLE_MALWARE_SCAN_ENDPOINT" || true)"
+
+          json_valid=false
+          if jq -e . "$response" >/dev/null 2>&1; then
+            json_valid=true
+          fi
+
+          echo 'ORACLE_MALWARE_GATEWAY_DIAGNOSTIC_BEGIN'
+          if [[ "$json_valid" == true ]]; then
+            jq -c --arg httpStatus "$http_status" --argjson expectedSize "$expected_size" '
+              {
+                httpStatus:$httpStatus,
+                jsonValid:true,
+                status:(.status // null),
+                clean:(if (.clean | type) == "boolean" then .clean else null end),
+                scanner:(.scanner // null),
+                sizeBytesPresent:has("sizeBytes"),
+                sizeBytes:(if (.sizeBytes | type) == "number" then .sizeBytes else null end),
+                expectedSize:$expectedSize,
+                sizeMatches:((.sizeBytes | type) == "number" and .sizeBytes == $expectedSize),
+                signaturePresent:((.signature // "") | tostring | length > 0),
+                rawResponseReturned:false,
+                documentContentReturned:false
+              }
+            ' "$response"
+          else
+            jq -nc --arg httpStatus "$http_status" --argjson expectedSize "$expected_size" '{
+              httpStatus:$httpStatus,
+              jsonValid:false,
+              status:null,
+              clean:null,
+              scanner:null,
+              sizeBytesPresent:false,
+              sizeBytes:null,
+              expectedSize:$expectedSize,
+              sizeMatches:false,
+              signaturePresent:false,
+              rawResponseReturned:false,
+              documentContentReturned:false
+            }'
+          fi
+          echo 'ORACLE_MALWARE_GATEWAY_DIAGNOSTIC_END'
+
+          unset ORACLE_RUNTIME_TOKEN
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
+          echo 'SOW_DOCUMENT_SENT_TO_ORACLE=false'
