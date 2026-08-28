@@ -13,8 +13,10 @@ The generated extractor:
 3. recognizes bounded non-binary .doc content as legacy text/HTML/RTF;
 4. routes every admitted .doc through the single private legacy Word adapter;
 5. lets that adapter use antiword only for real OLE content and in-process
-   bounded parsing for text-compatible content; and
-6. requires a matching legacy Word/text-compatible signature before parsing.
+   bounded parsing for text-compatible content;
+6. requires a matching legacy Word/text-compatible signature before parsing; and
+7. accepts the worker's structurally validated sealed local immutable snapshot
+   when SMB mount permissions require processing outside the authoritative root.
 """
 
 from __future__ import annotations
@@ -53,6 +55,22 @@ def main() -> None:
         '            .Contains(extension, StringComparer.OrdinalIgnoreCase)\n'
         '            || extension.Equals(".doc", StringComparison.OrdinalIgnoreCase);\n',
         "legacy Word extension admission",
+    )
+
+    text = replace_once(
+        text,
+        '            pathConfined = fullPath.StartsWith(\n'
+        '                normalizedRoot,\n'
+        '                OperatingSystem.IsWindows()\n'
+        '                    ? StringComparison.OrdinalIgnoreCase\n'
+        '                    : StringComparison.Ordinal);\n',
+        '            pathConfined = fullPath.StartsWith(\n'
+        '                normalizedRoot,\n'
+        '                OperatingSystem.IsWindows()\n'
+        '                    ? StringComparison.OrdinalIgnoreCase\n'
+        '                    : StringComparison.Ordinal)\n'
+        '                || PulseAiImmutableProcessingSnapshotPolicy.IsTrustedLocalSnapshotPath(source, fullPath);\n',
+        "sealed immutable snapshot safety confinement",
     )
 
     # Read enough of the source to reject mislabeled binary payloads rather than
@@ -103,6 +121,7 @@ def main() -> None:
     required = [
         '".doc" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync',
         'extension.Equals(".doc", StringComparison.OrdinalIgnoreCase)',
+        'PulseAiImmutableProcessingSnapshotPolicy.IsTrustedLocalSnapshotPath(source, fullPath)',
         'var header = new byte[256]',
         'header[1] == 0x5C',
         'return "ole_compound_word"',
