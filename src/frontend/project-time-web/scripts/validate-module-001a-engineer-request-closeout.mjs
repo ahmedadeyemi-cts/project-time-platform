@@ -16,6 +16,9 @@ function requirePattern(source, pattern, label) {
 const migration = read('database/migrations/078_module_001a_engineer_request_closeout.sql');
 const rollback = read('database/rollback/078_module_001a_engineer_request_closeout_rollback.sql');
 const catalogMigration = read('database/migrations/089_module_catalog_role_administration_reconciliation.sql');
+const module001bCatalogMigration = read('database/migrations/098_module001b_role_catalog_registration.sql');
+const module001bCatalogRollback = read('database/rollback/098_module001b_role_catalog_registration_rollback.sql');
+const catalogRegistrationSource = [catalogMigration, module001bCatalogMigration].join('\n');
 const catalogRollback = read('database/rollback/089_module_catalog_role_administration_reconciliation_rollback.sql');
 const backend = read('src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs');
 const notificationRepository = read('src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRepository.cs');
@@ -61,7 +64,7 @@ if (new Set(registryModules.map((module) => module.moduleCode)).size !== registr
 const sqlQuote = (value) => String(value).replaceAll("'", "''");
 for (const module of registryModules) {
   requireText(
-    catalogMigration,
+    catalogRegistrationSource,
     `('${sqlQuote(module.moduleCode)}', '${sqlQuote(module.moduleName)}', '${sqlQuote(module.route)}', '${sqlQuote(module.group)}')`,
     `Role Administration catalog registration for Module ${module.moduleCode}`
   );
@@ -78,6 +81,10 @@ requireText(catalogMigration, 'migration_089_module_catalog_role_administration_
 requireText(catalogMigration, "'allowedWorkTypes', jsonb_build_array('SERVICE_REQUEST', 'PRESALES', 'INTERNAL')", 'eligible request types');
 requireText(catalogMigration, 'engineerOwnedOnly', 'own-assignment policy evidence');
 requireText(catalogRollback, 'Rollback 089 refused: a newer scoped role-policy version', 'guarded policy rollback');
+requireText(module001bCatalogMigration, "('001B', 'Time Reallocation & Corrections', 'time-reallocation', 'Time Management')", 'Module 001B Role Administration catalog registration');
+requireText(module001bCatalogMigration, '098_module001b_role_catalog_registration', 'Module 001B catalog migration identity');
+requireText(module001bCatalogMigration, 'Project Team Coordinator and Super Administrator only', 'Module 001B catalog authorization boundary');
+requireText(module001bCatalogRollback, 'Rollback 098 refused: active scoped role-policy grants exist for Module 001B.', 'Module 001B guarded catalog rollback');
 requireText(rolePermissionModel, "'001A': {", 'Module 001A intuitive permission preset');
 requireText(rolePermissionModel, "actions = [...new Set(['MODULE_ACCESS', ...actions])]", 'non-No Access presets grant module visibility');
 requireText(rolePermissionModel, "actionCode === 'MODULE_ACCESS' ? 'ORGANIZATION' : scope", 'organization module-access scope');
@@ -116,6 +123,7 @@ requireText(timesheetData, billingProjection, 'timer/task target billing filter'
 requireText(timesheetModule, billingProjection, 'work-queue billing filter');
 requireText(program, 'app.MapModule001AEngineerTaskCloseoutEndpoints();', 'backend registration');
 requireText(backendAvailability, '["001A"] = Module("001A", "engineer-task-closeout", "Engineer Request Closeout", "Time Management")', 'backend availability registry');
+requireText(backendAvailability, '["001B"] = Module("001B", "time-reallocation", "Time Reallocation & Corrections", "Time Management")', 'Module 001B backend availability registry');
 
 requireText(ui, "import { usSignalLogoDataUrl }", 'official logo source');
 requireText(ui, 'Engineer Request Closeout', 'enterprise UI title');
@@ -144,6 +152,7 @@ requirePattern(
   'notification reader closes before transaction commit'
 );
 requireText(registry, "moduleNumber: '001A'", 'availability registry');
+requireText(registry, "moduleNumber: '001B'", 'Module 001B availability registry');
 requireText(catalog, '| 001A | Engineer Request Closeout |', 'module catalog');
 requireText(docs, 'Module 055C remains the final request and task lifecycle authority', 'workflow documentation');
 
