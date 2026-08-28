@@ -78,8 +78,13 @@ def main() -> None:
         '            && header[7] == 0xE1) return "ole_compound_word";\n'
         '        if (extension.Equals(".doc", StringComparison.OrdinalIgnoreCase))\n'
         '        {\n'
+        '            if (header.Length >= 5\n'
+        '                && header[0] == 0x7B\n'
+        '                && header[1] == 0x5C\n'
+        '                && (header[2] == 0x72 || header[2] == 0x52)\n'
+        '                && (header[3] == 0x74 || header[3] == 0x54)\n'
+        '                && (header[4] == 0x66 || header[4] == 0x46)) return "legacy_doc_rtf";\n'
         '            var legacyPrefix = Encoding.ASCII.GetString(header).TrimStart();\n'
-        '            if (legacyPrefix.StartsWith("{\\\\rtf", StringComparison.OrdinalIgnoreCase)) return "legacy_doc_rtf";\n'
         '            if (legacyPrefix.StartsWith("<", StringComparison.Ordinal)) return "legacy_doc_html";\n'
         '            if (!header.Any(value => value == 0)) return "legacy_doc_text";\n'
         '        }\n'
@@ -99,6 +104,7 @@ def main() -> None:
         '".doc" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync',
         'extension.Equals(".doc", StringComparison.OrdinalIgnoreCase)',
         'var header = new byte[256]',
+        'header[1] == 0x5C',
         'return "ole_compound_word"',
         'return "legacy_doc_text"',
         'return "legacy_doc_html"',
