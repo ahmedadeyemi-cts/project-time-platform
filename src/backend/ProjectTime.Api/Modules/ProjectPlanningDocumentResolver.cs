@@ -47,11 +47,12 @@ internal static class ProjectPlanningDocumentResolver
 
         var newlyQueued = 0;
         if (retryTerminalSow
-            && selection.StatementOfWork is { ProcessingTerminalFailure: true } terminalSow)
+            && selection.StatementOfWork is { } retryableSow
+            && (retryableSow.ProcessingTerminalFailure || retryableSow.ProcessingRetryWait))
         {
             newlyQueued += await QueueAsync(
                 connection,
-                terminalSow,
+                retryableSow,
                 actualUserId,
                 effectiveUserId,
                 "flowhive_protected_test_explicit_retry",
@@ -330,28 +331,78 @@ internal static class ProjectPlanningDocumentResolver
         bool allowTerminalRetry = false)
     {
         var purpose = Clean(requestedPurpose, 80, "project_planning_ai_automatic");
+        var correlation = Clean(correlationId, 180, Guid.NewGuid().ToString("N"));
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
-            INSERT INTO pulse_ai_document_processing_jobs(
-                project_intake_document_id,project_id,actual_user_id,effective_user_id,
-                requested_by_user_id,requested_purpose,correlation_id)
-            SELECT @document_id,@project_id,@actual,@effective,@actual,@purpose,@correlation
-             WHERE NOT EXISTS(
-                SELECT 1
-                  FROM pulse_ai_document_processing_jobs existing
-                 WHERE existing.project_intake_document_id=@document_id
-                   AND existing.job_status IN (
-                       'queued','scanning','extracting','awaiting_ocr','embedding','indexing',
-                       'retry_wait','cancel_requested'));
-            """, connection, transaction);
-        command.Parameters.AddWithValue("document_id", evidence.DocumentId);
-        command.Parameters.AddWithValue("project_id", evidence.ProjectId);
-        command.Parameters.AddWithValue("actual", actualUserId);
-        command.Parameters.AddWithValue("effective", effectiveUserId);
-        command.Parameters.AddWithValue("purpose", purpose);
-        command.Parameters.AddWithValue("correlation", Clean(correlationId, 180, Guid.NewGuid().ToString("N")));
-        var queued = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var queued = false;
+
+        // Protected-Test explicit retry must not spend most of the UAT window waiting
+        // on the normal retry_wait backoff. Reuse the existing retryable job exactly as
+        // the authorized runtime RetryAsync path does, preserving ordinary production
+        // queue/backoff behavior for all non-explicit requests.
+        if (allowTerminalRetry)
+        {
+            await using var retry = new NpgsqlCommand("""
+                WITH retryable AS (
+                    SELECT pulse_ai_document_processing_job_id
+                      FROM pulse_ai_document_processing_jobs
+                     WHERE project_intake_document_id=@document_id
+                       AND job_status='retry_wait'
+                       AND cancellation_requested=FALSE
+                     ORDER BY requested_at DESC
+                     LIMIT 1
+                     FOR UPDATE
+                )
+                UPDATE pulse_ai_document_processing_jobs job
+                   SET job_status='queued',
+                       available_at=NOW(),
+                       attempt_count=CASE
+                           WHEN attempt_count >= maximum_attempts THEN 0
+                           ELSE attempt_count
+                       END,
+                       cancellation_requested=FALSE,
+                       completed_at=NULL,
+                       lease_owner='',
+                       lease_token=NULL,
+                       lease_heartbeat_at=NULL,
+                       lease_expires_at=NULL,
+                       diagnostic_code='',
+                       diagnostic_message='Protected Test explicit FlowHive retry after candidate repair.',
+                       requested_purpose=@purpose,
+                       correlation_id=@correlation
+                  FROM retryable
+                 WHERE job.pulse_ai_document_processing_job_id=retryable.pulse_ai_document_processing_job_id
+                RETURNING job.pulse_ai_document_processing_job_id;
+                """, connection, transaction);
+            retry.Parameters.AddWithValue("document_id", evidence.DocumentId);
+            retry.Parameters.AddWithValue("purpose", purpose);
+            retry.Parameters.AddWithValue("correlation", correlation);
+            queued = await retry.ExecuteScalarAsync(cancellationToken) is Guid;
+        }
+
+        if (!queued)
+        {
+            await using var command = new NpgsqlCommand("""
+                INSERT INTO pulse_ai_document_processing_jobs(
+                    project_intake_document_id,project_id,actual_user_id,effective_user_id,
+                    requested_by_user_id,requested_purpose,correlation_id)
+                SELECT @document_id,@project_id,@actual,@effective,@actual,@purpose,@correlation
+                 WHERE NOT EXISTS(
+                    SELECT 1
+                      FROM pulse_ai_document_processing_jobs existing
+                     WHERE existing.project_intake_document_id=@document_id
+                       AND existing.job_status IN (
+                           'queued','scanning','extracting','awaiting_ocr','embedding','indexing',
+                           'retry_wait','cancel_requested'));
+                """, connection, transaction);
+            command.Parameters.AddWithValue("document_id", evidence.DocumentId);
+            command.Parameters.AddWithValue("project_id", evidence.ProjectId);
+            command.Parameters.AddWithValue("actual", actualUserId);
+            command.Parameters.AddWithValue("effective", effectiveUserId);
+            command.Parameters.AddWithValue("purpose", purpose);
+            command.Parameters.AddWithValue("correlation", correlation);
+            queued = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        }
 
         if (queued)
         {
@@ -465,6 +516,7 @@ internal sealed record ProjectPlanningDocumentEvidence(
             workRegisterDocumentId) is not null;
 
     public bool ProcessingReady => ProcessingStatus.Equals("ready", StringComparison.OrdinalIgnoreCase);
+    public bool ProcessingRetryWait => ProcessingStatus.Equals("retry_wait", StringComparison.OrdinalIgnoreCase);
     public bool ProcessingTerminalFailure => ProcessingStatus.Trim().ToLowerInvariant() is
         "failed" or "rejected" or "quarantined" or "cancelled" or "canceled" or "unsupported";
     public bool ShouldAutoQueue => !ProcessingReady && !ProcessingTerminalFailure;
