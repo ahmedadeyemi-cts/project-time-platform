@@ -67,13 +67,14 @@ evidence_start = workflow.find(evidence_step, rollback_start)
 if rollback_start < 0 or evidence_start <= rollback_start:
     raise SystemExit('ASSERTION_FAILED protected_test_rollback_step_boundaries_missing')
 rollback_block = workflow[rollback_start:evidence_start]
-rollback_condition = "if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}"
-if rollback_condition not in rollback_block:
-    raise SystemExit('ASSERTION_FAILED protected_test_failed_uat_rollback_condition_missing')
-if "steps.uat.outputs.deployment_health_verified != 'true'" in rollback_block:
-    raise SystemExit('ASSERTION_FAILED protected_test_rollback_still_suppressed_after_healthy_deployment')
+health_scoped_marker = "steps.uat.outputs.deployment_health_verified != 'true'"
+unbounded_condition = "if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}"
+if health_scoped_marker not in rollback_block:
+    raise SystemExit('ASSERTION_FAILED protected_test_health_scoped_rollback_condition_missing')
+if unbounded_condition in rollback_block:
+    raise SystemExit('ASSERTION_FAILED protected_test_functional_uat_would_rollback_healthy_candidate')
 
 print('ASSERTION_PASSED private_runtime_list_jobs_shape_matches_reader=true')
 print('ASSERTION_PASSED private_extraction_diagnostics_preserved=true')
-print('ASSERTION_PASSED protected_test_failed_uat_rolls_back=true')
+print('ASSERTION_PASSED protected_test_healthy_failed_uat_candidate_preserved=true')
 PY
