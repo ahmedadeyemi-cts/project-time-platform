@@ -60,10 +60,17 @@ if 'extraction.Blockers.Count > 0 ? "private_extraction_blocked" : "private_extr
     raise SystemExit('ASSERTION_FAILED private_runtime_still_collapses_extraction_diagnostic')
 
 workflow = workflow_path.read_text(encoding='utf-8')
+rollback_step = '      - name: Restore exact prior Test images after application failure'
+evidence_step = '      - name: Upload protected-Test deployment evidence'
+rollback_start = workflow.find(rollback_step)
+evidence_start = workflow.find(evidence_step, rollback_start)
+if rollback_start < 0 or evidence_start <= rollback_start:
+    raise SystemExit('ASSERTION_FAILED protected_test_rollback_step_boundaries_missing')
+rollback_block = workflow[rollback_start:evidence_start]
 rollback_condition = "if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}"
-if rollback_condition not in workflow:
+if rollback_condition not in rollback_block:
     raise SystemExit('ASSERTION_FAILED protected_test_failed_uat_rollback_condition_missing')
-if "steps.uat.outputs.deployment_health_verified != 'true'" in workflow:
+if "steps.uat.outputs.deployment_health_verified != 'true'" in rollback_block:
     raise SystemExit('ASSERTION_FAILED protected_test_rollback_still_suppressed_after_healthy_deployment')
 
 print('ASSERTION_PASSED private_runtime_list_jobs_shape_matches_reader=true')
