@@ -10,13 +10,18 @@ the text-compatible .doc files already present in Work Register.
 The generated extractor:
 1. admits .doc only inside the existing extractor safety assessment;
 2. recognizes the OLE compound-file signature used by binary Word documents;
-3. recognizes bounded non-binary .doc content as legacy text/HTML/RTF;
+3. recognizes bounded non-binary .doc content as legacy text/HTML/RTF,
+   including BOM-identified UTF-16 text that the existing private reader can
+   decode without executing document content;
 4. routes every admitted .doc through the single private legacy Word adapter;
 5. lets that adapter use antiword only for real OLE content and in-process
    bounded parsing for text-compatible content;
-6. requires a matching legacy Word/text-compatible signature before parsing; and
+6. requires a matching legacy Word/text-compatible signature before parsing;
 7. accepts the worker's structurally validated sealed local immutable snapshot
-   when SMB mount permissions require processing outside the authoritative root.
+   when SMB mount permissions require processing outside the authoritative root;
+   and
+8. preserves a bounded, machine-actionable safety diagnostic when admission is
+   rejected so Protected-Test evidence identifies the failed predicate.
 """
 
 from __future__ import annotations
@@ -73,6 +78,33 @@ def main() -> None:
         "sealed immutable snapshot safety confinement",
     )
 
+    text = replace_once(
+        text,
+        '                options.ExtractionPreviewEnabled\n'
+        '                    ? "blocked_by_document_safety_policy"\n'
+        '                    : "extraction_preview_disabled",\n',
+        '                options.ExtractionPreviewEnabled\n'
+        '                    ? !safety.PathConfined\n'
+        '                        ? "blocked_by_document_path_policy"\n'
+        '                        : !safety.SignatureMatchesExtension\n'
+        '                            ? "blocked_by_document_signature_policy"\n'
+        '                            : !safety.MalwareScanAttested\n'
+        '                                ? "blocked_by_document_malware_attestation"\n'
+        '                                : !safety.SizeWithinLimit\n'
+        '                                    ? "blocked_by_document_size_policy"\n'
+        '                                    : !safety.IsRegularFile || safety.ReparsePointDetected\n'
+        '                                        ? "blocked_by_document_file_policy"\n'
+        '                                        : safety.MacroEnabledFormat\n'
+        '                                            ? "blocked_by_document_macro_policy"\n'
+        '                                            : safety.ArchiveBombRiskDetected\n'
+        '                                                ? "blocked_by_document_archive_policy"\n'
+        '                                                : !safety.ExtensionAllowed\n'
+        '                                                    ? "blocked_by_document_extension_policy"\n'
+        '                                                    : "blocked_by_document_safety_policy"\n'
+        '                    : "extraction_preview_disabled",\n',
+        "specific private document safety diagnostic",
+    )
+
     # Read enough of the source to reject mislabeled binary payloads rather than
     # deciding text compatibility from only the first dozen bytes.
     text = replace_once(
@@ -102,6 +134,9 @@ def main() -> None:
         '                && (header[2] == 0x72 || header[2] == 0x52)\n'
         '                && (header[3] == 0x74 || header[3] == 0x54)\n'
         '                && (header[4] == 0x66 || header[4] == 0x46)) return "legacy_doc_rtf";\n'
+        '            if (header.Length >= 2\n'
+        '                && ((header[0] == 0xFF && header[1] == 0xFE)\n'
+        '                    || (header[0] == 0xFE && header[1] == 0xFF))) return "legacy_doc_text";\n'
         '            var legacyPrefix = Encoding.ASCII.GetString(header).TrimStart();\n'
         '            if (legacyPrefix.StartsWith("<", StringComparison.Ordinal)) return "legacy_doc_html";\n'
         '            if (!header.Any(value => value == 0)) return "legacy_doc_text";\n'
@@ -122,7 +157,11 @@ def main() -> None:
         '".doc" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync',
         'extension.Equals(".doc", StringComparison.OrdinalIgnoreCase)',
         'PulseAiImmutableProcessingSnapshotPolicy.IsTrustedLocalSnapshotPath(source, fullPath)',
+        'blocked_by_document_signature_policy',
+        'blocked_by_document_path_policy',
         'var header = new byte[256]',
+        'header[0] == 0xFF && header[1] == 0xFE',
+        'header[0] == 0xFE && header[1] == 0xFF',
         'header[1] == 0x5C',
         'return "ole_compound_word"',
         'return "legacy_doc_text"',
