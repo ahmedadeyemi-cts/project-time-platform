@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -6,19 +7,38 @@ using System.Text.RegularExpressions;
 namespace ProjectTime.Api.Ai;
 
 /// <summary>
-/// Private, text-only extraction adapter for legacy binary Microsoft Word .doc
-/// files. The adapter invokes a fixed local antiword executable without a shell,
-/// never executes embedded macros, bounds output, applies a timeout, preserves
-/// the original source checksum, and returns only the same in-process section
-/// contract consumed by the existing private document pipeline.
+/// Private, text-only extraction adapter for legacy Microsoft Word .doc files.
+/// Real OLE binary Word documents are processed by a fixed local antiword
+/// executable without a shell. Text-compatible .doc documents are processed
+/// in-process after the same malware, signature, size, and path-confinement
+/// gates. Neither path executes embedded macros or objects, and both preserve
+/// the original source checksum and bounded extraction contract.
 /// </summary>
 public static class PulseAiLegacyBinaryWordExtraction
 {
-    public const string ContractVersion = "pulse-ai-legacy-binary-word-v1-20260818";
+    public const string ContractVersion = "pulse-ai-legacy-binary-word-v2-20260827";
     private const int MaximumErrorCharacters = 4_000;
     private static readonly TimeSpan ExtractionTimeout = TimeSpan.FromSeconds(60);
     private static readonly Regex MultiSpace = new("[ \\t]+", RegexOptions.Compiled);
     private static readonly Regex ExcessBlankLines = new("(?:\\r?\\n){3,}", RegexOptions.Compiled);
+    private static readonly Regex HtmlScriptStyle = new(
+        "<(script|style)[^>]*>.*?</\\1>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex HtmlTags = new(
+        "<[^>]+>",
+        RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex RtfParagraph = new(
+        @"\\(?:par[d]?|line)\b ?",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex RtfTab = new(
+        @"\\tab\b ?",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex RtfHexEscape = new(
+        @"\\'[0-9a-fA-F]{2}",
+        RegexOptions.Compiled);
+    private static readonly Regex RtfControlWord = new(
+        @"\\[a-zA-Z]+-?\d* ?",
+        RegexOptions.Compiled);
 
     public static async Task<PulseAiDocumentExtractionResult> ExtractAsync(
         PulseAiAuthorizedDocumentSource source,
@@ -26,6 +46,15 @@ public static class PulseAiLegacyBinaryWordExtraction
         PulseAiDocumentSafetyAssessment safety,
         CancellationToken cancellationToken)
     {
+        if (!safety.DetectedFormat.Equals("ole_compound_word", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ExtractTextCompatibleAsync(
+                source,
+                options,
+                safety,
+                cancellationToken);
+        }
+
         var toolPath = ResolveToolPath();
         if (!File.Exists(toolPath))
         {
@@ -127,23 +156,13 @@ public static class PulseAiLegacyBinaryWordExtraction
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            return new PulseAiDocumentExtractionResult(
-                Status: "extraction_preview_ready",
-                DocumentId: source.DocumentId,
-                OriginalFileName: source.OriginalFileName,
-                DetectedFormat: safety.DetectedFormat,
-                ExtractionMethod: "legacy_doc_antiword_text_only",
-                PageCount: 0,
-                SectionCount: sections.Count,
-                CharacterCount: characterCount,
-                EstimatedTokenCount: EstimateTokens(characterCount),
-                OcrRequired: false,
-                SourceSha256: safety.SourceSha256,
-                Safety: safety,
-                Sections: sections,
-                Warnings: warnings,
-                Blockers: [],
-                GeneratedAt: DateTimeOffset.UtcNow);
+            return Ready(
+                source,
+                safety,
+                sections,
+                characterCount,
+                "legacy_doc_antiword_text_only",
+                warnings);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -162,6 +181,178 @@ public static class PulseAiLegacyBinaryWordExtraction
                 DateTimeOffset.UtcNow);
         }
     }
+
+    private static async Task<PulseAiDocumentExtractionResult> ExtractTextCompatibleAsync(
+        PulseAiAuthorizedDocumentSource source,
+        PulseAiDocumentPipelineOptions options,
+        PulseAiDocumentSafetyAssessment safety,
+        CancellationToken cancellationToken)
+    {
+        if (safety.DetectedFormat is not ("legacy_doc_text" or "legacy_doc_html" or "legacy_doc_rtf"))
+        {
+            return Blocked(
+                source,
+                safety,
+                "legacy_word_signature_not_supported",
+                ["The .doc file is neither an approved OLE Word document nor an admitted text-compatible legacy Word document."],
+                [],
+                DateTimeOffset.UtcNow);
+        }
+
+        try
+        {
+            await using var stream = new FileStream(
+                source.StoragePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                64 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            using var reader = new StreamReader(
+                stream,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true,
+                bufferSize: 64 * 1024,
+                leaveOpen: false);
+            var raw = await ReadBoundedAsync(reader, options.MaximumCharacters, cancellationToken);
+            if (!LooksTextual(raw))
+            {
+                return Blocked(
+                    source,
+                    safety,
+                    "legacy_word_text_compatibility_rejected",
+                    ["The admitted text-compatible .doc contained too much binary or undecodable content for safe private text extraction."],
+                    [],
+                    DateTimeOffset.UtcNow);
+            }
+
+            var output = safety.DetectedFormat switch
+            {
+                "legacy_doc_html" => Normalize(WebUtility.HtmlDecode(
+                    HtmlTags.Replace(HtmlScriptStyle.Replace(raw, " "), Environment.NewLine))),
+                "legacy_doc_rtf" => NormalizeRtf(raw),
+                _ => Normalize(raw)
+            };
+            if (output.Length == 0)
+            {
+                return Blocked(
+                    source,
+                    safety,
+                    "legacy_word_no_extractable_text",
+                    ["The text-compatible legacy Word document did not contain usable text."],
+                    [],
+                    DateTimeOffset.UtcNow);
+            }
+
+            var sections = CreateSections(output, options);
+            if (sections.Count == 0)
+            {
+                return Blocked(
+                    source,
+                    safety,
+                    "legacy_word_no_extractable_text",
+                    ["The text-compatible legacy Word document did not produce citation-preserving sections."],
+                    [],
+                    DateTimeOffset.UtcNow);
+            }
+
+            var characterCount = sections.Sum(section => section.CharacterCount);
+            var extractionMethod = safety.DetectedFormat switch
+            {
+                "legacy_doc_html" => "legacy_doc_private_html_text",
+                "legacy_doc_rtf" => "legacy_doc_private_rtf_text",
+                _ => "legacy_doc_private_text_reader"
+            };
+            var warnings = safety.Warnings
+                .Concat(new[]
+                {
+                    "The .doc file uses a non-binary legacy text-compatible representation and was parsed in-process after private malware and path-confinement checks.",
+                    "No macro, embedded object, shell, or external provider was executed while extracting this document."
+                })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return Ready(
+                source,
+                safety,
+                sections,
+                characterCount,
+                extractionMethod,
+                warnings);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return Blocked(
+                source,
+                safety,
+                "legacy_word_text_extraction_failed",
+                ["The private text-compatible legacy Word adapter failed without exposing source content."],
+                [],
+                DateTimeOffset.UtcNow);
+        }
+    }
+
+    private static string NormalizeRtf(string value)
+    {
+        var text = value;
+        text = RtfParagraph.Replace(text, Environment.NewLine);
+        text = RtfTab.Replace(text, "\t");
+        text = RtfHexEscape.Replace(text, " ");
+        text = RtfControlWord.Replace(text, " ");
+        text = text
+            .Replace("\\{", "{")
+            .Replace("\\}", "}")
+            .Replace("\\\\", "\\")
+            .Replace('{', ' ')
+            .Replace('}', ' ');
+        return Normalize(text);
+    }
+
+    private static bool LooksTextual(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var invalid = 0;
+        foreach (var character in value)
+        {
+            if (character == '\uFFFD'
+                || (char.IsControl(character)
+                    && character is not '\r' and not '\n' and not '\t'))
+            {
+                invalid++;
+            }
+        }
+
+        return invalid <= Math.Max(4, value.Length / 20);
+    }
+
+    private static PulseAiDocumentExtractionResult Ready(
+        PulseAiAuthorizedDocumentSource source,
+        PulseAiDocumentSafetyAssessment safety,
+        IReadOnlyList<PulseAiExtractedSection> sections,
+        int characterCount,
+        string extractionMethod,
+        IReadOnlyList<string> warnings) =>
+        new(
+            Status: "extraction_preview_ready",
+            DocumentId: source.DocumentId,
+            OriginalFileName: source.OriginalFileName,
+            DetectedFormat: safety.DetectedFormat,
+            ExtractionMethod: extractionMethod,
+            PageCount: 0,
+            SectionCount: sections.Count,
+            CharacterCount: characterCount,
+            EstimatedTokenCount: EstimateTokens(characterCount),
+            OcrRequired: false,
+            SourceSha256: safety.SourceSha256,
+            Safety: safety,
+            Sections: sections,
+            Warnings: warnings,
+            Blockers: [],
+            GeneratedAt: DateTimeOffset.UtcNow);
 
     private static IReadOnlyList<PulseAiExtractedSection> CreateSections(
         string text,
@@ -228,9 +419,8 @@ public static class PulseAiLegacyBinaryWordExtraction
         var result = new StringBuilder(Math.Min(maximumCharacters, 256 * 1024));
         var buffer = new char[16 * 1024];
 
-        // Continue draining the redirected pipe after the retained-text limit is
-        // reached. Stopping the read early can block antiword when its remaining
-        // output fills the OS pipe buffer while the caller is waiting for exit.
+        // Continue draining redirected pipes after the retained-text limit is
+        // reached. For file reads this also keeps one bounded implementation.
         while (true)
         {
             var read = await reader.ReadAsync(buffer.AsMemory(), cancellationToken);
@@ -256,7 +446,7 @@ public static class PulseAiLegacyBinaryWordExtraction
             DocumentId: source.DocumentId,
             OriginalFileName: source.OriginalFileName,
             DetectedFormat: safety.DetectedFormat,
-            ExtractionMethod: "legacy_doc_antiword_text_only",
+            ExtractionMethod: "legacy_doc_private_text_only",
             PageCount: 0,
             SectionCount: 0,
             CharacterCount: 0,

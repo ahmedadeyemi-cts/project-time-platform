@@ -11,9 +11,9 @@ The generated extractor:
 1. admits .doc only inside the existing extractor safety assessment;
 2. recognizes the OLE compound-file signature used by binary Word documents;
 3. recognizes bounded non-binary .doc content as legacy text/HTML/RTF;
-4. routes real OLE .doc files to the fixed local antiword adapter;
-5. routes text-compatible .doc files through existing in-process text/HTML
-   extraction without executing macros, embedded objects, or external tools; and
+4. routes every admitted .doc through the single private legacy Word adapter;
+5. lets that adapter use antiword only for real OLE content and in-process
+   bounded parsing for text-compatible content; and
 6. requires a matching legacy Word/text-compatible signature before parsing.
 """
 
@@ -40,9 +40,7 @@ def main() -> None:
     text = replace_once(
         text,
         '                ".docx" => ExtractDocx(source, options, safety, cancellationToken),\n',
-        '                ".doc" when safety.DetectedFormat == "ole_compound_word" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync(source, options, safety, cancellationToken),\n'
-        '                ".doc" when safety.DetectedFormat == "legacy_doc_html" => await ExtractHtmlAsync(source, options, safety, cancellationToken),\n'
-        '                ".doc" => await ExtractTextAsync(source, options, safety, cancellationToken),\n'
+        '                ".doc" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync(source, options, safety, cancellationToken),\n'
         '                ".docx" => ExtractDocx(source, options, safety, cancellationToken),\n',
         "legacy Word extraction switch",
     )
@@ -98,9 +96,7 @@ def main() -> None:
     )
 
     required = [
-        '".doc" when safety.DetectedFormat == "ole_compound_word" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync',
-        '".doc" when safety.DetectedFormat == "legacy_doc_html" => await ExtractHtmlAsync',
-        '".doc" => await ExtractTextAsync',
+        '".doc" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync',
         'extension.Equals(".doc", StringComparison.OrdinalIgnoreCase)',
         'var header = new byte[256]',
         'return "ole_compound_word"',
