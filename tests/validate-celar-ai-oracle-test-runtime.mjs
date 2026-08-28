@@ -58,6 +58,10 @@ requireText(scanner, 'ScanWithHttpsGatewayAsync', 'HTTPS malware scan implementa
 requireText(scanner, 'scanner_response_invalid', 'fail-closed malformed response')
 requireText(scanner, 'X-Pulse-AI-Privacy-Boundary', 'privacy boundary header')
 requireText(scanner, 'MaximumGatewayResponseBytes', 'bounded scanner response')
+requireText(scanner, 'ResolveGatewayUploadFileName', 'legacy Word scanner transport filename normalization')
+requireText(scanner, 'var uploadFileName = ResolveGatewayUploadFileName(storagePath, uploadMediaType);', 'scanner transport filename selection')
+requireText(scanner, 'Path.ChangeExtension(fileName, ".txt")', 'text-compatible legacy Word scanner filename')
+requireText(scanner, 'multipart.Add(\n                fileContent,\n                "file",\n                uploadFileName);', 'normalized scanner multipart filename')
 requireText(runtime, 'authenticated Test-only HTTPS malware scanning gateway', 'runtime readiness evidence')
 
 const privateTargetStart = capabilityRouting.indexOf(
