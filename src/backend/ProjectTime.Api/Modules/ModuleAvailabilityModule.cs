@@ -21,6 +21,7 @@ public static class ModuleAvailabilityModule
         {
             ["001"] = Module("001", "timesheet", "Timesheet", "Time Management"),
             ["001A"] = Module("001A", "engineer-task-closeout", "Engineer Request Closeout", "Time Management"),
+            ["001B"] = Module("001B", "time-reallocation", "Time Reallocation & Corrections", "Time Management"),
             ["002"] = Module("002", "manager-approval", "Approval Inbox", "Approvals"),
             ["003"] = Module("003", "utilization", "Utilization", "Resource Management"),
             ["004"] = Module("004", "holiday-admin", "Holiday Administration", "Time Management"),
@@ -517,7 +518,6 @@ public static class ModuleAvailabilityModule
               AND ura.is_active = TRUE;
             """, connection);
         command.Parameters.AddWithValue("user_id", userId);
-
         var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync()) roles.Add(reader.GetString(0));
