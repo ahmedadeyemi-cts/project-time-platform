@@ -12,9 +12,18 @@ import {
 } from '../src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js';
 
 const source = fs.readFileSync('src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js', 'utf8');
+const plannerOrchestration = fs.readFileSync('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs', 'utf8');
 assert.equal(serverOwnedAiPlannerAdmission, true);
 assert(!source.includes('window.fetch = async'), 'Browser-global FlowHive admission interception must remain retired.');
 assert(source.includes('server-side AI Planner'), 'The server-owned admission boundary is not documented.');
+assert(
+  plannerOrchestration.includes('request.RetryTerminalDocumentProcessing\n            && PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)'),
+  'Protected-Test terminal SOW recovery must rely on the exact-source private-processing policy.'
+);
+assert(
+  !plannerOrchestration.includes('request.RetryTerminalDocumentProcessing\n            && release.IsCandidate'),
+  'FlowHive must not add a release.IsCandidate gate that blocks governed unscoped exact-SHA Protected-Test recovery.'
+);
 
 const payload = normalizePreparePayload({ approveCurrentVersion: false, correlationId: 'uat-correlation' });
 assert.equal(payload.approveCurrentVersion, false);
