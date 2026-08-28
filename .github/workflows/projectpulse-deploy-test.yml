@@ -595,6 +595,8 @@ jobs:
             sleep 5
           done
           [[ "$READY" == true ]] || fail 'Protected Test did not become healthy.'
+          echo 'deployment_health_verified=true' >> "$GITHUB_OUTPUT"
+          jq -n --arg source "$TARGET_RELEASE_COMMIT" '{deploymentHealthVerified:true,sourceCommit:$source,productionMutation:false}' > "$EVIDENCE_DIR/deployment-health-verified.json"
 
           login() {
             local username="$1" output="$2" password="$3" payload
@@ -849,8 +851,14 @@ jobs:
             flowhive_result="$(auth_get "/api/project-flowhive/projects/$PROJECT_ID/ai-planner/runs/$FLOWHIVE_RUN_ID" "$EVIDENCE_DIR/flowhive-ai-planner.json" "$flowhive_headers" "$flowhive_stderr" "$PROJECT_MANAGER_SESSION" '066')"
             IFS='|' read -r flowhive_curl_exit flowhive_status <<<"$flowhive_result"
             rm -f "$flowhive_headers" "$flowhive_stderr"
-            [[ "$flowhive_curl_exit" == 0 && "$flowhive_status" == 200 ]] || fail "FlowHive AI Planner poll returned curl=$flowhive_curl_exit HTTP=$flowhive_status; no 400/422/503 is permitted."
+            [[ "$flowhive_curl_exit" == 0 && ( "$flowhive_status" == 200 || "$flowhive_status" == 202 ) ]] || fail "FlowHive AI Planner poll returned curl=$flowhive_curl_exit HTTP=$flowhive_status; expected 200 or 202 while processing and no 400/422/503."
             jq -e . "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null || fail 'FlowHive AI Planner poll did not return JSON.'
+            printf 'attempt=%s httpStatus=%s status=%s phase=%s terminal=%s\n' \
+              "$attempt" "$flowhive_status" \
+              "$(jq -r '.status // "unknown"' "$EVIDENCE_DIR/flowhive-ai-planner.json")" \
+              "$(jq -r '.phase // "unknown"' "$EVIDENCE_DIR/flowhive-ai-planner.json")" \
+              "$(jq -r '.terminal // false' "$EVIDENCE_DIR/flowhive-ai-planner.json")" \
+              >> "$EVIDENCE_DIR/flowhive-ai-planner-polls.log"
           done
           [[ "$FLOWHIVE_READY" == true ]] || fail 'FlowHive AI Planner did not persist a working draft after automatic document processing.'
           jq -e '
@@ -1182,7 +1190,7 @@ jobs:
           bash scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
 
       - name: Restore exact prior Test images after application failure
-        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && steps.uat.outputs.deployment_health_verified != 'true' }}
         shell: bash
         working-directory: release
         run: |
@@ -1224,6 +1232,9 @@ jobs:
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: passed' || echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: not completed'
             [[ -f "$EVIDENCE_DIR/utilization-role-scoping-uat.json" ]] && echo '- Kevin utilization role-scoping UAT: passed' || echo '- Kevin utilization role-scoping UAT: not completed'
             [[ -f "$EVIDENCE_DIR/rollback.json" ]] && echo '- Application image rollback: completed'
+            if [[ -f "$EVIDENCE_DIR/deployment-health-verified.json" && ! -f "$EVIDENCE_DIR/rollback.json" ]]; then
+              echo '- Healthy Protected-Test candidate: preserved for direct diagnosis even if a later UAT gate fails'
+            fi
             echo '- Production mutation: none'
             echo '- Oracle/private AI runtime mutation: none'
           } >> "$GITHUB_STEP_SUMMARY"
