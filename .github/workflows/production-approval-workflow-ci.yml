@@ -1,4 +1,4 @@
-name: Validate Production Approval and PTC Move Time
+name: Validate Production Approval and Module 001B Time Reallocation
 
 on:
   push:
@@ -12,13 +12,18 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkCompatibility.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkflowHardening.cs'
       - 'src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module001BTimeReallocationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs'
       - 'src/frontend/project-time-web/scripts/validate-pending-time-workflow.mjs'
       - 'src/frontend/project-time-web/src/ProductionApprovalWorkPortal.jsx'
       - 'src/frontend/project-time-web/src/production-approval-work.css'
       - 'src/frontend/project-time-web/src/production-approval-work-hardening.css'
-      - 'src/frontend/project-time-web/src/module001/PtcGuidedMovePortal.jsx'
       - 'src/frontend/project-time-web/src/module001/ptc-guided-move.css'
+      - 'src/frontend/project-time-web/src/module001/module001b-reallocation-retirement.css'
       - 'src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'
+      - 'src/frontend/project-time-web/src/module001b/Module001BTimeReallocationPortal.jsx'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
   workflow_dispatch:
 
 permissions:
@@ -65,7 +70,7 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
-      - name: Validate approval and PTC contracts
+      - name: Validate approval and Module 001B contracts
         working-directory: src/frontend/project-time-web
         run: |
           node ./scripts/validate-pending-time-workflow.mjs
@@ -87,9 +92,11 @@ jobs:
           for marker in \
             'Time approvals across all weeks' \
             'This is the only approval surface' \
-            'Move Time wizard' \
-            'Approve entire week' \
-            'Manager then PTC approval; PM not required' \
+            'Time Reallocation & Corrections' \
+            'Open Module 001B' \
+            'Submitted and approved time stays in its current status' \
+            'No worker resubmission, Manager approval, or Project Manager approval is required' \
+            '/api/runtime/timesheet/steward/001b/reallocation/entries/' \
             '/api/approval-work/v2/pending' \
             '/api/approval-work/v2/bulk-complete'; do
             grep -Fq "$marker" /tmp/production-approval.js
@@ -98,8 +105,12 @@ jobs:
             '.production-approval-center' \
             '.production-approval-project-scope' \
             '.production-approval-return-guidance' \
-            '.ptc-guided-launcher' \
+            '.module001b-reallocation-launcher' \
             '.ptc-guided-destination-groups'; do
             grep -Fq "$marker" /tmp/production-approval.css
           done
-          echo 'PRODUCTION_APPROVAL_COMPILED_MARKERS=PASS'
+          if grep -Fq 'Move Time wizard' /tmp/production-approval.js; then
+            echo 'Retired Module 001 Move Time wizard is still present in the production bundle.' >&2
+            exit 1
+          fi
+          echo 'PRODUCTION_APPROVAL_MODULE001B_COMPILED_MARKERS=PASS'
