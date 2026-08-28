@@ -167,13 +167,13 @@ if (rollbackStart < 0 || evidenceUploadStart <= rollbackStart) {
 const applicationRollback = deployment.slice(rollbackStart, evidenceUploadStart);
 requireText(
   applicationRollback,
-  "if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}",
-  'post-deployment protected-Test failure rollback boundary'
+  "steps.uat.outputs.deployment_health_verified != 'true'",
+  'health-scoped protected-Test rollback boundary'
 );
 rejectText(
   applicationRollback,
-  "steps.uat.outputs.deployment_health_verified != 'true'",
-  'health-scoped rollback suppression after authenticated UAT failure'
+  "if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}",
+  'unbounded functional-UAT automatic rollback'
 );
 
 for (const marker of [

@@ -1190,7 +1190,7 @@ jobs:
           bash scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
 
       - name: Restore exact prior Test images after application failure
-        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && steps.uat.outputs.deployment_health_verified != 'true' }}
         shell: bash
         working-directory: release
         run: |
@@ -1232,8 +1232,8 @@ jobs:
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: passed' || echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: not completed'
             [[ -f "$EVIDENCE_DIR/utilization-role-scoping-uat.json" ]] && echo '- Kevin utilization role-scoping UAT: passed' || echo '- Kevin utilization role-scoping UAT: not completed'
             [[ -f "$EVIDENCE_DIR/rollback.json" ]] && echo '- Application image rollback: completed'
-            if [[ -f "$EVIDENCE_DIR/deployment-health-verified.json" && ! -f "$EVIDENCE_DIR/uat-summary.json" && ! -f "$EVIDENCE_DIR/rollback.json" ]]; then
-              echo '- ERROR: Protected-Test UAT failed after deployment health was verified, but rollback evidence is missing'
+            if [[ -f "$EVIDENCE_DIR/deployment-health-verified.json" && ! -f "$EVIDENCE_DIR/rollback.json" ]]; then
+              echo '- Healthy Protected-Test candidate: preserved for direct diagnosis even if a later UAT gate fails'
             fi
             echo '- Production mutation: none'
             echo '- Oracle/private AI runtime mutation: none'
