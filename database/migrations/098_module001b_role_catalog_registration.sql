@@ -1,6 +1,7 @@
 -- Pulse migration 098
 -- Register Module 001B - Time Reallocation & Corrections in the persistent
 -- Role Administration module catalog without rewriting historical migration 089.
+-- Canonical catalog tuple: ('001B', 'Time Reallocation & Corrections', 'time-reallocation', 'Time Management')
 --
 -- Authorization remains fail-closed in the application: only
 -- PROJECT_TEAM_COORDINATOR and SUPER_ADMINISTRATOR may use Module 001B.
