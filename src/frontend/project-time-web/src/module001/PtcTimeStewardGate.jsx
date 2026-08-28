@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import ProductionApprovalWorkPortal from '../ProductionApprovalWorkPortal.jsx';
+import Module001BTimeReallocationPortal from '../module001b/Module001BTimeReallocationPortal.jsx';
 import {
   EFFECTIVE_ROLE_AUTHORITY_EVENTS,
   hasAnyEffectiveRole,
   readEffectiveRoleAuthority
 } from '../effective-role-authority.js';
-import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';
 import PtcTimesheetManagementPortal from './PtcTimesheetManagementPortal.jsx';
+import './module001b-reallocation-retirement.css';
 
 // View-As storage compatibility remains centralized in effective-role-authority.js
 // under the canonical key 'projectPulseViewAsUser'.
@@ -14,6 +15,13 @@ const TIME_STEWARD_ROLES = new Set([
   'PROJECT_TEAM_COORDINATOR',
   'SUPER_ADMINISTRATOR',
   'ADMINISTRATOR'
+]);
+
+// Module 001B is intentionally stricter than the legacy Module 001 steward shell.
+// Normal Administrators, Managers, PMs, Engineers, and every other role are No Access.
+const MODULE001B_ROLES = new Set([
+  'PROJECT_TEAM_COORDINATOR',
+  'SUPER_ADMINISTRATOR'
 ]);
 
 const APPROVAL_ROLES = new Set([
@@ -43,19 +51,16 @@ export default function PtcTimeStewardGate() {
     };
   }, []);
 
-  // Legacy validator migration note: `if (state.active && !state.allowed) return null`
-  // is now represented by the fail-closed authority-ready and role-family checks below.
   if (!authority.ready) return null;
 
   const canStewardTime = hasAnyEffectiveRole(authority, TIME_STEWARD_ROLES);
+  const canUseModule001B = hasAnyEffectiveRole(authority, MODULE001B_ROLES);
   const canReviewApprovals = hasAnyEffectiveRole(authority, APPROVAL_ROLES);
-
-  if (!canStewardTime && !canReviewApprovals) return null;
 
   return (
     <>
+      <Module001BTimeReallocationPortal allowed={canUseModule001B} />
       {canStewardTime ? <PtcTimesheetManagementPortal /> : null}
-      {canStewardTime ? <PtcGuidedMovePortal /> : null}
       {canReviewApprovals ? <ProductionApprovalWorkPortal /> : null}
     </>
   );
