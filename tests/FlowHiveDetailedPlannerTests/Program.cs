@@ -198,6 +198,101 @@ var boundedOutput = await boundedTask!;
 Assert(boundedOutput.Length == 1_024, "legacy_word_retained_output_is_bounded");
 Assert(oversizedReader.EndOfStream, "legacy_word_excess_output_is_fully_drained");
 
+// Reproduce the Protected-Test SMB processing boundary with a structurally valid
+// sealed local immutable snapshot. This exercises the compiled extractor rather
+// than the standalone adapter, so CI fails if the generated-source rewrite is
+// skipped and the runtime falls back to blocked_by_document_safety_policy.
+var snapshotProcessingRoot = Path.Combine(
+    Path.GetTempPath(),
+    "projectpulse-private-document-processing");
+var snapshotJobId = Guid.NewGuid();
+var snapshotLeaseToken = Guid.NewGuid();
+var snapshotFence = Convert.ToHexString(
+        System.Security.Cryptography.RandomNumberGenerator.GetBytes(16))
+    .ToLowerInvariant();
+var legacySowBytes = Encoding.UTF8.GetBytes(
+    "Scope of Services\n\nPlan the approved collaboration migration.\n\nValidate service readiness and complete customer handoff.");
+var legacySowSha256 = Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(legacySowBytes))
+    .ToLowerInvariant();
+var snapshotFileName = $"{legacySowSha256}.doc";
+var snapshotJobDirectory = Path.Combine(snapshotProcessingRoot, snapshotJobId.ToString("N"));
+var snapshotAttemptDirectory = Path.Combine(
+    snapshotJobDirectory,
+    $"1-{snapshotLeaseToken:N}-{snapshotFence}");
+var snapshotPath = Path.Combine(snapshotAttemptDirectory, snapshotFileName);
+var unrelatedUploadRoot = Path.Combine(
+    Path.GetTempPath(),
+    $"flowhive-legacy-word-upload-root-{Guid.NewGuid():N}");
+Directory.CreateDirectory(snapshotAttemptDirectory);
+Directory.CreateDirectory(unrelatedUploadRoot);
+await File.WriteAllBytesAsync(snapshotPath, legacySowBytes);
+
+try
+{
+    var legacySowSource = new PulseAiAuthorizedDocumentSource(
+        DocumentId: Guid.NewGuid(),
+        ProjectId: Guid.NewGuid(),
+        ProjectCode: "TEST-066",
+        ProjectName: "Detailed FlowHive planning test",
+        CustomerName: "Test customer",
+        DocumentType: "sow",
+        DocumentCategory: "scope_of_services",
+        OriginalFileName: "SOW_Sample.doc",
+        StoredFileName: snapshotFileName,
+        StoragePath: snapshotPath,
+        ContentType: "application/msword",
+        SizeBytes: legacySowBytes.LongLength,
+        EngineeringVisible: true,
+        AiTimesheetContextEnabled: true,
+        ExtractionStatus: "queued",
+        ExistingContextSummaryReady: false,
+        ContextLastProcessedAt: null,
+        UploadedAt: DateTimeOffset.UtcNow,
+        UploadSource: "work_register",
+        AccessScope: "project",
+        Classification: "internal",
+        RoleCodes: ["project_manager"]);
+
+    var legacySowOptions = new PulseAiDocumentPipelineOptions(
+        UploadRoot: unrelatedUploadRoot,
+        ExtractionPreviewEnabled: true,
+        MalwareScanAttested: true,
+        MalwareScannerMode: "compiled_regression_attested",
+        OcrEndpointConfigured: false,
+        PrivateEmbeddingEndpointConfigured: false,
+        PrivateVectorIndexConfigured: false,
+        MaximumFileBytes: 25L * 1024L * 1024L,
+        MaximumPages: 500,
+        MaximumCharacters: 2_000_000,
+        MaximumSections: 1_000,
+        MaximumChunks: 1_500,
+        ChunkCharacters: 2_400,
+        ChunkOverlapCharacters: 280);
+
+    var compiledExtractor = new PulseAiPrivateDocumentExtractionService(
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<PulseAiPrivateDocumentExtractionService>.Instance);
+    var legacySowExtraction = await compiledExtractor.ExtractAsync(
+        legacySowSource,
+        legacySowOptions,
+        CancellationToken.None);
+
+    Assert(legacySowExtraction.Status == "extraction_preview_ready", "legacy_word_compiled_extractor_ready");
+    Assert(legacySowExtraction.Safety.PathConfined, "legacy_word_sealed_snapshot_path_is_trusted");
+    Assert(legacySowExtraction.Safety.SignatureMatchesExtension, "legacy_word_signature_is_admitted");
+    Assert(legacySowExtraction.Safety.DetectedFormat == "legacy_doc_text", "legacy_word_text_compatible_format_detected");
+    Assert(legacySowExtraction.ExtractionMethod == "legacy_doc_private_text_reader", "legacy_word_compiled_route_uses_private_adapter");
+    Assert(legacySowExtraction.SourceSha256 == legacySowSha256, "legacy_word_compiled_route_preserves_source_sha");
+    Assert(legacySowExtraction.Sections.Count > 0, "legacy_word_compiled_route_produces_citation_sections");
+}
+finally
+{
+    if (Directory.Exists(snapshotJobDirectory))
+        Directory.Delete(snapshotJobDirectory, recursive: true);
+    if (Directory.Exists(unrelatedUploadRoot))
+        Directory.Delete(unrelatedUploadRoot, recursive: true);
+}
+
 var shortWindow = sourcePlan with { ProjectEndDate = sourcePlan.ProjectStartDate!.Value.AddDays(4) };
 var shortGenerated = ProjectFlowHiveDetailedPlanBuilder.Build(shortWindow, privatePlan);
 var shortSchedule = ProjectFlowHiveScheduleEngine.Calculate(shortGenerated);
