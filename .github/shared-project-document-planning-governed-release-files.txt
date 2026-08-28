@@ -36,6 +36,7 @@ scripts/validate-module-033-project-forge-interactive.sh
 src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseUploadStorage.cs
 src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs
+src/backend/ProjectTime.Api/Ai/PulseAiImmutableProcessingSnapshotPolicy.cs
 src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
