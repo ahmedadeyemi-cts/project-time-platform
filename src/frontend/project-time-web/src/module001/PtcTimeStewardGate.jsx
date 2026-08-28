@@ -37,6 +37,11 @@ const APPROVAL_ROLES = new Set([
   'PM_TEAM_LEAD'
 ]);
 
+function currentRoute() {
+  if (typeof window === 'undefined') return '';
+  return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0];
+}
+
 export default function PtcTimeStewardGate() {
   const [authority, setAuthority] = useState(() => readEffectiveRoleAuthority());
 
@@ -56,10 +61,21 @@ export default function PtcTimeStewardGate() {
   const canStewardTime = hasAnyEffectiveRole(authority, TIME_STEWARD_ROLES);
   const canUseModule001B = hasAnyEffectiveRole(authority, MODULE001B_ROLES);
   const canReviewApprovals = hasAnyEffectiveRole(authority, APPROVAL_ROLES);
+  const showModule001BLauncher = canUseModule001B && currentRoute() === 'timesheet';
 
   return (
     <>
       <Module001BTimeReallocationPortal allowed={canUseModule001B} />
+      {showModule001BLauncher ? (
+        <button
+          type="button"
+          className="module001b-reallocation-launcher"
+          onClick={() => { window.location.hash = '#time-reallocation'; }}
+        >
+          <strong>Time Reallocation</strong>
+          <span>Open Module 001B</span>
+        </button>
+      ) : null}
       {canStewardTime ? <PtcTimesheetManagementPortal /> : null}
       {canReviewApprovals ? <ProductionApprovalWorkPortal /> : null}
     </>
