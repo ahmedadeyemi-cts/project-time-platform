@@ -8,7 +8,8 @@ namespace ProjectTime.Api.Modules;
 public sealed record ProjectFlowHiveAiPlannerRunRequest(
     ProjectFlowHivePlanRequest? Plan,
     string? RequestedOutcome,
-    string? DetailLevel = "comprehensive");
+    string? DetailLevel = "comprehensive",
+    bool RetryTerminalDocumentProcessing = false);
 
 internal static class ProjectFlowHiveAiPlannerOrchestrationModule
 {
@@ -122,6 +123,10 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         CancellationToken cancellationToken)
     {
         var correlationId = CorrelationId(context);
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        var protectedTestExplicitRetry = request.RetryTerminalDocumentProcessing
+            && release.IsCandidate
+            && PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release);
         var documents = await ProjectPlanningDocumentResolver.ResolveAndPrepareAsync(
             connection,
             projectId,
@@ -130,7 +135,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             "flowhive_ai_planner_automatic",
             correlationId,
             queuePending: true,
-            cancellationToken);
+            cancellationToken,
+            retryTerminalSow: protectedTestExplicitRetry);
 
         if (!documents.HasAuthoritativeSow)
         {
