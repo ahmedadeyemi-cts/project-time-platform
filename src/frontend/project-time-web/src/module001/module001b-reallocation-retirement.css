@@ -1,0 +1,23 @@
+/*
+ * Module 001B owns all time reallocation. These selectors remove the legacy
+ * destination/move controls from the Module 001 PTC workspace while retaining
+ * its non-reallocation correction capabilities. The legacy mutation endpoints
+ * are also retired server-side, so this is UX cleanup rather than security.
+ */
+.ptc-time-steward-portal .ptc-destination-catalog,
+.ptc-time-steward-portal .ptc-entry-section > header > button,
+.ptc-time-steward-portal .ptc-entry-table th:nth-child(5),
+.ptc-time-steward-portal .ptc-entry-table td:nth-child(5) {
+  display: none !important;
+}
+
+.ptc-time-steward-portal .ptc-steward-hero::after {
+  content: 'Time reallocation has moved to Module 001B · Time Reallocation & Corrections.';
+  display: block;
+  flex-basis: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-subtle, rgba(0, 0, 0, 0.04));
+  font-weight: 700;
+}
