@@ -146,6 +146,36 @@ rejectText(deployment, "'Customer from Customer Directory'", 'stale case-sensiti
 requireText(deployment, "'FlowHive enterprise controls are temporarily unavailable.'", 'deployed FlowHive degraded-state marker');
 rejectText(deployment, "'FlowHive enterprise workspace is not ready'", 'stale FlowHive bundle marker');
 
+requireText(
+  deployment,
+  '[[ "$flowhive_curl_exit" == 0 && ( "$flowhive_status" == 200 || "$flowhive_status" == 202 ) ]]',
+  'FlowHive nonterminal HTTP 200/202 planner poll contract'
+);
+requireText(deployment, 'flowhive-ai-planner-polls.log', 'FlowHive planner poll evidence');
+requireText(deployment, 'deployment_health_verified=true', 'post-deployment health marker');
+const healthReady = deployment.indexOf('[[ "$READY" == true ]] || fail \'Protected Test did not become healthy.\'');
+const healthVerified = deployment.indexOf("echo 'deployment_health_verified=true' >> \"$GITHUB_OUTPUT\"", healthReady);
+const firstLoginHelper = deployment.indexOf('          login() {', healthReady);
+if (healthReady < 0 || healthVerified <= healthReady || firstLoginHelper <= healthVerified) {
+  throw new Error('Protected-Test health must be verified and exported before functional UAT begins.');
+}
+const rollbackStart = deployment.indexOf('      - name: Restore exact prior Test images after application failure');
+const evidenceUploadStart = deployment.indexOf('      - name: Upload protected-Test deployment evidence', rollbackStart);
+if (rollbackStart < 0 || evidenceUploadStart <= rollbackStart) {
+  throw new Error('Protected-Test rollback step boundaries are incomplete.');
+}
+const applicationRollback = deployment.slice(rollbackStart, evidenceUploadStart);
+requireText(
+  applicationRollback,
+  "steps.uat.outputs.deployment_health_verified != 'true'",
+  'health-scoped protected-Test rollback boundary'
+);
+rejectText(
+  applicationRollback,
+  "if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}",
+  'unbounded functional-UAT automatic rollback'
+);
+
 for (const marker of [
   "ENGINEER='demo.engineer@ussignal.local'",
   'engineer-login-redacted.json',
