@@ -65,17 +65,36 @@ for (const token of [
   'ReadyForGeneration'
 ]) requireText(resolver, token, 'project-scoped document authority');
 
+// Terminal private-processing failures are evidence, not an invitation for passive
+// planner polling to create another job. Recovery must be a distinct explicit path.
 for (const token of [
-  'ShouldAutoRecoverFailedProcessing',
-  'ProcessingStatus.Equals("failed", StringComparison.OrdinalIgnoreCase)',
-  'project_planning_failed_recovery_',
-  'ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable',
-  'prior_recovery.requested_purpose=@purpose',
-  '@recovery=FALSE',
-  'safety or operator-controlled terminal states are never automatically requeued'
-]) requireText(resolver, token, 'bounded failed-document recovery');
+  'pulse_ai_processing_error_code',
+  'ProcessingErrorCode',
+  'ProcessingTerminalFailure',
+  'public bool ShouldAutoQueue => !ProcessingReady && !ProcessingTerminalFailure;',
+  'terminal states are not automatically requeued',
+  'retryTerminalSow',
+  'allowTerminalRetry: true',
+  'flowhive_protected_test_explicit_retry',
+  '@allow_terminal_retry=TRUE'
+]) requireText(resolver, token, 'terminal document processing contract');
 requireText(resolver, '"failed" or "rejected" or "quarantined" or "cancelled" or "canceled" or "unsupported"', 'terminal processing safety states');
-rejectText(resolver, 'ProcessingStatus.Equals("quarantined", StringComparison.OrdinalIgnoreCase);', 'quarantined documents must not be auto-recovered');
+for (const forbidden of [
+  'ShouldAutoRecoverFailedProcessing',
+  'project_planning_failed_recovery_',
+  'prior_recovery.requested_purpose=@purpose'
+]) rejectText(resolver, forbidden, 'passive failed-document recovery must stay removed');
+
+// FlowHive must make a terminal private-document failure terminal and return the
+// persisted bounded diagnostic instead of presenting an endless processing state.
+for (const token of [
+  'HasTerminalProcessingFailure',
+  'TerminalDiagnosticCode',
+  '"failed",',
+  'Private project-document processing reached a terminal state. Diagnostic:',
+  'Automatic planner polling did not requeue the failed document.',
+  'completed: true'
+]) requireText(flowHive, token, 'FlowHive terminal document failure semantics');
 
 rejectText(resolver, 'FileName.Contains', 'filename guessing must not establish SOW authority');
 rejectText(resolver, 'original_file_name ILIKE', 'filename guessing must not establish SOW authority');
@@ -173,6 +192,13 @@ for (const token of [
   'RejectCandidateDataMutation("Private document processing cancellation")',
   'RejectCandidateDataMutation("Private document processing retry")'
 ]) requireText(privateDocumentRuntime, token, 'Protected Test candidate data-plane split');
+for (const token of [
+  'RetryTerminalDocumentProcessing',
+  'protectedTestExplicitRetry',
+  'release.IsCandidate',
+  'PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)',
+  'retryTerminalSow: protectedTestExplicitRetry'
+]) requireText(flowHive, token, 'Protected Test explicit FlowHive terminal retry');
 const malwareScanFailureStart = privateDocumentRuntime.indexOf('if (!scan.Clean)');
 const malwareScanFailureEnd = privateDocumentRuntime.indexOf('if (!IsSha256(scan.SourceSha256)', malwareScanFailureStart);
 if (malwareScanFailureStart < 0 || malwareScanFailureEnd <= malwareScanFailureStart) {
