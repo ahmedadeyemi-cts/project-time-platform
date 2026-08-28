@@ -83,8 +83,8 @@ for (const token of [
 }
 
 for (const token of [
-  'MODULE 001B · TIME REALLOCATION & CORRECTIONS',
-  'Time Reallocation & Corrections',
+  'MODULE 001B · PROJECT TEAM COORDINATOR',
+  'Time Reallocation &amp; Corrections',
   'No Access',
   'Project Team Coordinators and Super Administrators',
   '/api/runtime/timesheet/steward/001b/reallocation/entries/${encodeURIComponent(selectedEntry.timeEntryId)}/move',
@@ -208,8 +208,8 @@ if (!leanWebBuildContext) {
     'managerApprovalRequired = false',
     'projectManagerApprovalRequired = false',
     'var originalStatus = original.Status;',
-    'currentStatus = reloaded.Status',
-    'approvalStatePreserved = true'
+    'currentStatus = revised.Status',
+    'statusUnchanged'
   ]) {
     requireText(module001bBackend, token, 'Module 001B Time Reallocation backend');
   }
@@ -234,7 +234,7 @@ if (!leanWebBuildContext) {
   rejectText(productionBackend, "approval.approval_stage = 'project_manager'", 'Historical PM approval gating');
   rejectText(productionBackend, "existing.approval_stage = 'project_manager'", 'Historical PM approval gating');
   rejectText(productionBackend, 'existing.approval_stage = @approval_stage', 'Historical stage approval gating');
-  rejectText(module001bBackend, 'status = \'draft\'', 'Module 001B submission-state preservation');
+  rejectText(module001bBackend, "status = 'draft'", 'Module 001B submission-state preservation');
   rejectText(module001bBackend, 'status = "draft"', 'Module 001B submission-state preservation');
 
   requireText(workflowOperations, 'Approval decisions are completed only in Pending approval work.', 'Post-approval operations workspace');
