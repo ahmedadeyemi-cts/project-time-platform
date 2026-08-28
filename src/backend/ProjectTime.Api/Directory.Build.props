@@ -19,15 +19,23 @@
     adapter only to that ignored compiler copy after the existing ClosedXML
     compatibility rewrite. The canonical extractor remains readable and the
     post-processor fails closed if any expected source anchor changes.
+
+    Make GenerateScopedRbacSources an explicit dependency rather than relying on
+    target ordering alone. Protected-Test evidence proved that a runtime can
+    otherwise reach the canonical safety path and reject the sealed local SMB
+    processing snapshot before the legacy Word adapter is reachable.
   -->
   <Target Name="EnableFlowHiveLegacyWordExtraction"
-          AfterTargets="GenerateScopedRbacSources"
           BeforeTargets="CoreCompile"
+          DependsOnTargets="GenerateScopedRbacSources"
           Condition="'$(PulseAiPrivateExtractorGenerated)' != ''">
     <Exec Command="python3 &quot;$(MSBuildProjectDirectory)/build/enable-flowhive-legacy-word-extraction.py&quot; --path &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
     <Exec Command="grep -Fq '&quot;.doc&quot; =&gt; await PulseAiLegacyBinaryWordExtraction.ExtractAsync' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
     <Exec Command="grep -Fq 'extension.Equals(&quot;.doc&quot;, StringComparison.OrdinalIgnoreCase)' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
     <Exec Command="grep -Fq 'ole_compound_word' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <Exec Command="grep -Fq 'PulseAiImmutableProcessingSnapshotPolicy.IsTrustedLocalSnapshotPath(source, fullPath)' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <Exec Command="grep -Fq 'blocked_by_document_path_policy' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <Exec Command="grep -Fq 'blocked_by_document_signature_policy' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
   </Target>
 
   <!--
