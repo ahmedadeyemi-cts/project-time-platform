@@ -3,12 +3,18 @@
 
 The canonical extractor stays reviewable and the existing build continues to
 apply its ClosedXML compatibility substitutions first. This post-processor then
-makes four exact, fail-closed edits to the generated source:
+makes exact, fail-closed edits to the generated source so legacy Word documents
+remain private and non-executable while supporting both real OLE Word files and
+the text-compatible .doc files already present in Work Register.
 
-1. admit .doc only inside the extractor safety assessment;
-2. recognize the OLE compound-file signature used by binary Word documents;
-3. route .doc to the private antiword text-only adapter; and
-4. require the matching legacy Word signature.
+The generated extractor:
+1. admits .doc only inside the existing extractor safety assessment;
+2. recognizes the OLE compound-file signature used by binary Word documents;
+3. recognizes bounded non-binary .doc content as legacy text/HTML/RTF;
+4. routes real OLE .doc files to the fixed local antiword adapter;
+5. routes text-compatible .doc files through existing in-process text/HTML
+   extraction without executing macros, embedded objects, or external tools; and
+6. requires a matching legacy Word/text-compatible signature before parsing.
 """
 
 from __future__ import annotations
@@ -34,7 +40,9 @@ def main() -> None:
     text = replace_once(
         text,
         '                ".docx" => ExtractDocx(source, options, safety, cancellationToken),\n',
-        '                ".doc" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync(source, options, safety, cancellationToken),\n'
+        '                ".doc" when safety.DetectedFormat == "ole_compound_word" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync(source, options, safety, cancellationToken),\n'
+        '                ".doc" when safety.DetectedFormat == "legacy_doc_html" => await ExtractHtmlAsync(source, options, safety, cancellationToken),\n'
+        '                ".doc" => await ExtractTextAsync(source, options, safety, cancellationToken),\n'
         '                ".docx" => ExtractDocx(source, options, safety, cancellationToken),\n',
         "legacy Word extraction switch",
     )
@@ -49,6 +57,15 @@ def main() -> None:
         "legacy Word extension admission",
     )
 
+    # Read enough of the source to reject mislabeled binary payloads rather than
+    # deciding text compatibility from only the first dozen bytes.
+    text = replace_once(
+        text,
+        '        var header = new byte[12];\n',
+        '        var header = new byte[256];\n',
+        "legacy Word bounded signature probe",
+    )
+
     text = replace_once(
         text,
         '        if (header.Any(value => value == 0)) return "binary_unknown";\n',
@@ -61,23 +78,36 @@ def main() -> None:
         '            && header[5] == 0xB1\n'
         '            && header[6] == 0x1A\n'
         '            && header[7] == 0xE1) return "ole_compound_word";\n'
+        '        if (extension.Equals(".doc", StringComparison.OrdinalIgnoreCase))\n'
+        '        {\n'
+        '            var legacyPrefix = Encoding.ASCII.GetString(header).TrimStart();\n'
+        '            if (legacyPrefix.StartsWith("{\\\\rtf", StringComparison.OrdinalIgnoreCase)) return "legacy_doc_rtf";\n'
+        '            if (legacyPrefix.StartsWith("<", StringComparison.Ordinal)) return "legacy_doc_html";\n'
+        '            if (!header.Any(value => value == 0)) return "legacy_doc_text";\n'
+        '        }\n'
         '        if (header.Any(value => value == 0)) return "binary_unknown";\n',
-        "legacy Word OLE signature",
+        "legacy Word OLE and text-compatible signatures",
     )
 
     text = replace_once(
         text,
         '        ".docx" or ".pptx" or ".xlsx" => detected == "zip_openxml",\n',
-        '        ".doc" => detected == "ole_compound_word",\n'
+        '        ".doc" => detected is "ole_compound_word" or "legacy_doc_text" or "legacy_doc_html" or "legacy_doc_rtf",\n'
         '        ".docx" or ".pptx" or ".xlsx" => detected == "zip_openxml",\n',
         "legacy Word signature match",
     )
 
     required = [
-        '".doc" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync',
+        '".doc" when safety.DetectedFormat == "ole_compound_word" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync',
+        '".doc" when safety.DetectedFormat == "legacy_doc_html" => await ExtractHtmlAsync',
+        '".doc" => await ExtractTextAsync',
         'extension.Equals(".doc", StringComparison.OrdinalIgnoreCase)',
+        'var header = new byte[256]',
         'return "ole_compound_word"',
-        '".doc" => detected == "ole_compound_word"',
+        'return "legacy_doc_text"',
+        'return "legacy_doc_html"',
+        'return "legacy_doc_rtf"',
+        '".doc" => detected is "ole_compound_word" or "legacy_doc_text" or "legacy_doc_html" or "legacy_doc_rtf"',
     ]
     missing = [marker for marker in required if marker not in text]
     if missing:
