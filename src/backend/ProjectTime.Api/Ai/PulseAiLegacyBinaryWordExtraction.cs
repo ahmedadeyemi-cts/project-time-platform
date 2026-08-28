@@ -419,8 +419,8 @@ public static class PulseAiLegacyBinaryWordExtraction
         var result = new StringBuilder(Math.Min(maximumCharacters, 256 * 1024));
         var buffer = new char[16 * 1024];
 
-        // Continue draining redirected pipes after the retained-text limit is
-        // reached. For file reads this also keeps one bounded implementation.
+        // Continue draining the redirected pipe after the retained-text limit is
+        // reached. The same bounded reader is also reused for private file input.
         while (true)
         {
             var read = await reader.ReadAsync(buffer.AsMemory(), cancellationToken);
