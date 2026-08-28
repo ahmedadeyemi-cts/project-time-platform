@@ -62,6 +62,14 @@ requireText(scanner, 'ResolveGatewayUploadFileName', 'legacy Word scanner transp
 requireText(scanner, 'var uploadFileName = ResolveGatewayUploadFileName(storagePath, uploadMediaType);', 'scanner transport filename selection')
 requireText(scanner, 'Path.ChangeExtension(fileName, ".txt")', 'text-compatible legacy Word scanner filename')
 requireText(scanner, 'multipart.Add(\n                fileContent,\n                "file",\n                uploadFileName);', 'normalized scanner multipart filename')
+requireText(scanner, 'var cleanStatusCompatible = status.Length == 0 || status == "clean";', 'clean gateway status compatibility')
+requireText(scanner, 'var acceptedClean = cleanStatusCompatible && clean && sizeValid && scannerValid;', 'fail-closed clean scanner attestation')
+for (const marker of [
+  'scanner_response_identity_invalid',
+  'scanner_response_size_mismatch',
+  'scanner_response_clean_flag_invalid',
+  'scanner_response_status_invalid',
+]) requireText(scanner, marker, 'bounded scanner response diagnostic')
 requireText(runtime, 'authenticated Test-only HTTPS malware scanning gateway', 'runtime readiness evidence')
 
 const privateTargetStart = capabilityRouting.indexOf(
