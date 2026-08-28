@@ -195,10 +195,14 @@ for (const token of [
 for (const token of [
   'RetryTerminalDocumentProcessing',
   'protectedTestExplicitRetry',
-  'release.IsCandidate',
   'PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release)',
   'retryTerminalSow: protectedTestExplicitRetry'
 ]) requireText(flowHive, token, 'Protected Test explicit FlowHive terminal retry');
+rejectText(
+  flowHive,
+  'request.RetryTerminalDocumentProcessing\n            && release.IsCandidate',
+  'Protected Test explicit FlowHive terminal retry must not add a release.IsCandidate gate'
+);
 const malwareScanFailureStart = privateDocumentRuntime.indexOf('if (!scan.Clean)');
 const malwareScanFailureEnd = privateDocumentRuntime.indexOf('if (!IsSha256(scan.SourceSha256)', malwareScanFailureStart);
 if (malwareScanFailureStart < 0 || malwareScanFailureEnd <= malwareScanFailureStart) {
