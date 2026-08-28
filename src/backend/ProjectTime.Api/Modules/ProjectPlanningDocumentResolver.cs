@@ -225,7 +225,21 @@ internal static class ProjectPlanningDocumentResolver
                    COALESCE(document.document_category,''),
                    COALESCE(document.original_file_name,''),
                    COALESCE(document.pulse_ai_processing_status,'not_requested'),
-                   COALESCE(document.pulse_ai_processing_error_code,''),
+                   CASE
+                       WHEN COALESCE(document.pulse_ai_processing_error_code,'') IN (
+                           'private_extraction_blocked','private_extraction_failed')
+                       THEN COALESCE(
+                           NULLIF((
+                               SELECT event.evidence_json->>'status'
+                                 FROM pulse_ai_document_processing_events event
+                                WHERE event.project_intake_document_id=document.project_intake_document_id
+                                  AND event.diagnostic_code=document.pulse_ai_processing_error_code
+                                ORDER BY event.created_at DESC
+                                LIMIT 1
+                           ),''),
+                           COALESCE(document.pulse_ai_processing_error_code,''))
+                       ELSE COALESCE(document.pulse_ai_processing_error_code,'')
+                   END,
                    document.pulse_ai_active_version_id,
                    COALESCE(version.authority_status,''),
                    COALESCE(version.index_status,''),
