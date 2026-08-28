@@ -36,7 +36,8 @@ internal static class ProjectPlanningDocumentResolver
         string requestedPurpose,
         string correlationId,
         bool queuePending,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retryTerminalSow = false)
     {
         var documents = await LoadAsync(connection, projectId, cancellationToken);
         var selection = SelectCurrent(documents);
@@ -45,6 +46,20 @@ internal static class ProjectPlanningDocumentResolver
             await NormalizeAsync(connection, document, cancellationToken);
 
         var newlyQueued = 0;
+        if (retryTerminalSow
+            && selection.StatementOfWork is { ProcessingTerminalFailure: true } terminalSow)
+        {
+            newlyQueued += await QueueAsync(
+                connection,
+                terminalSow,
+                actualUserId,
+                effectiveUserId,
+                "flowhive_protected_test_explicit_retry",
+                correlationId,
+                cancellationToken,
+                allowTerminalRetry: true) ? 1 : 0;
+        }
+
         if (queuePending)
         {
             foreach (var document in selection.SelectedDocuments.Where(document => document.ShouldAutoQueue))
@@ -297,7 +312,8 @@ internal static class ProjectPlanningDocumentResolver
         Guid effectiveUserId,
         string requestedPurpose,
         string correlationId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowTerminalRetry = false)
     {
         var purpose = Clean(requestedPurpose, 80, "project_planning_ai_automatic");
 
@@ -331,12 +347,18 @@ internal static class ProjectPlanningDocumentResolver
                            WHEN pulse_ai_processing_status='ready' THEN 'ready'
                            ELSE 'queued'
                        END,
+                       pulse_ai_processing_error_code=CASE
+                           WHEN pulse_ai_processing_status='ready' THEN pulse_ai_processing_error_code
+                           ELSE ''
+                       END,
                        pulse_ai_processing_updated_at=NOW()
                  WHERE project_intake_document_id=@document_id
-                   AND COALESCE(pulse_ai_processing_status,'not_requested') NOT IN (
-                       'failed','rejected','quarantined','cancelled','canceled','unsupported');
+                   AND (@allow_terminal_retry=TRUE
+                        OR COALESCE(pulse_ai_processing_status,'not_requested') NOT IN (
+                            'failed','rejected','quarantined','cancelled','canceled','unsupported'));
                 """, connection, transaction);
             mark.Parameters.AddWithValue("document_id", evidence.DocumentId);
+            mark.Parameters.AddWithValue("allow_terminal_retry", allowTerminalRetry);
             await mark.ExecuteNonQueryAsync(cancellationToken);
         }
 
