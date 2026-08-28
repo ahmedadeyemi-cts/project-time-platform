@@ -170,7 +170,7 @@ internal static class ProjectPlanningDocumentResolver
             var sow = selection.StatementOfWork;
             if (!sow.ProcessingReady)
                 blockers.Add($"The active Work Register SOW private processing state is {sow.ProcessingStatus}.");
-            if (sow.ProcessingTerminalFailure && sow.ProcessingErrorCode.Length > 0)
+            if (sow.ProcessingErrorCode.Length > 0)
                 blockers.Add($"The active Work Register SOW private processing diagnostic is {sow.ProcessingErrorCode}.");
             if (sow.ActiveVersionId is null)
                 blockers.Add("The active Work Register SOW has no current private version.");
