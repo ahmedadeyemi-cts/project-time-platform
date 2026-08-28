@@ -63,7 +63,12 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             && seed.ProjectEndDate.Value < seed.ProjectStartDate.Value)
             return Validation("The requested project finish date cannot precede the project Start Date.");
 
-        request = request with { Plan = seed };
+        // The initial authenticated Start AI Planner action is the only automatic
+        // request that may recover a terminal SOW, and only the exact governed
+        // Protected-Test candidate is allowed to honor that request. Polling
+        // reconstructs the request with the default false value and can never
+        // resurrect a terminal document failure.
+        request = request with { Plan = seed, RetryTerminalDocumentProcessing = true };
         var runId = await GetOrCreateRunAsync(
             connection,
             projectId,
