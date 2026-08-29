@@ -1,4 +1,4 @@
-/* Module 001 runtime v2: React-owned extension slots, persistent timer, and flexible PTC destinations. */
+/* Module 001 runtime v2: React-owned extension slots and persistent timer support. */
 
 .module001-active-timer-recovery-host,
 .module001-ptc-time-steward-host {
@@ -115,139 +115,19 @@ body.projectpulse-module001-timer-mode #timesheet #module001-start-stop-tab {
   line-height: 1.35;
 }
 
-.ptc-destination-catalog {
-  display: grid;
-  gap: 0.75rem;
-  padding: 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 0.9rem;
-  background: var(--surface-strong, var(--card));
-}
-
-.ptc-destination-catalog > header {
-  display: flex;
-  gap: 1rem;
-  align-items: start;
-  justify-content: space-between;
-}
-
-.ptc-destination-catalog h3,
-.ptc-destination-catalog p {
-  margin: 0.15rem 0;
-}
-
-.ptc-destination-catalog > header p {
-  max-width: 940px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-.ptc-destination-catalog > header > span {
-  flex: 0 0 auto;
-  padding: 0.4rem 0.6rem;
-  border-radius: 999px;
-  background: rgba(14, 116, 144, 0.1);
-  color: #0e7490;
-  font-size: 0.75rem;
-  font-weight: 900;
-}
-
-.ptc-destination-groups {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.65rem;
-}
-
-.ptc-destination-groups details {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 0.8rem;
-  background: var(--surface, var(--card));
-}
-
-.ptc-destination-groups summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.7rem;
-  cursor: pointer;
-  list-style: none;
-}
-
-.ptc-destination-groups summary::-webkit-details-marker {
-  display: none;
-}
-
-.ptc-destination-groups summary span {
-  display: inline-flex;
-  min-width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.1);
-  color: #1d4ed8;
-  font-size: 0.75rem;
-  font-weight: 900;
-}
-
-.ptc-destination-groups details > div {
-  display: grid;
-  gap: 0.45rem;
-  max-height: 300px;
-  overflow: auto;
-  padding: 0 0.7rem 0.7rem;
-}
-
-.ptc-destination-groups article {
-  display: grid;
-  gap: 0.15rem;
-  padding: 0.55rem;
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  border-radius: 0.65rem;
-  background: color-mix(in srgb, var(--surface, #fff) 94%, #eff6ff 6%);
-}
-
-.ptc-destination-groups article strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ptc-destination-groups article small,
-.ptc-destination-groups details > div > p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.72rem;
-  line-height: 1.35;
-}
-
 .ptc-select-user-prompt {
   border: 1px dashed rgba(14, 116, 144, 0.35);
   border-radius: 0.9rem;
   background: rgba(236, 254, 255, 0.42);
 }
 
-.ptc-entry-table optgroup {
-  color: var(--text-primary, inherit);
-  font-weight: 800;
-}
-
-.ptc-entry-table option {
-  font-weight: 500;
-}
-
-/* The More menu and Module 001 runtime now use React-owned children. The only
-   runtime bridge mutations permitted are attributes such as hidden/aria/data. */
+/* The More menu and Module 001 runtime use React-owned children. Runtime
+   compatibility bridges may mutate attributes only, never React child structure. */
 [data-projectpulse-react-owned-slot="true"] {
   box-sizing: border-box;
 }
 
 @media (max-width: 1100px) {
-  .ptc-destination-groups {
-    grid-template-columns: 1fr;
-  }
-
   .module001-server-timer-recovery {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -266,10 +146,5 @@ body.projectpulse-module001-timer-mode #timesheet #module001-start-stop-tab {
 
   .module001-server-timer-clock {
     text-align: left;
-  }
-
-  .ptc-destination-catalog > header {
-    align-items: stretch;
-    flex-direction: column;
   }
 }
