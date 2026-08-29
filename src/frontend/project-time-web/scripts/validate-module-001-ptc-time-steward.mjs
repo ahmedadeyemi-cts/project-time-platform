@@ -238,6 +238,7 @@ if (externalAvailable) {
     'UsePtcTimeStewardRoleBoundary',
     'PROJECT_TEAM_COORDINATOR',
     'SUPER_ADMINISTRATOR',
+    'app.MapModule001BTimeReallocationEndpoints();',
     '/api/timesheet/ptc',
     '/api/runtime/timesheet/steward',
     'time_steward_role_required',
@@ -268,7 +269,6 @@ if (externalAvailable) {
     'await result.ExecuteAsync(context);'
   ], 'Explicit Module 001 result execution');
 
-  // The legacy backend endpoint remains compiled only as a 410-protected tombstone path.
   requireAll(backendV2, [
     'MapModule001TimeStewardV2Endpoints',
     '/api/runtime/timesheet/steward/v2/users',
@@ -322,9 +322,8 @@ if (externalAvailable) {
     'app.UsePtcTimeStewardRoleBoundary();',
     'app.UseModule001ResultExecutionCompatibility();',
     'app.MapModule001TimeStewardV2Endpoints();',
-    'app.MapModule001PtcTimesheetManagementEndpoints();',
-    'app.MapModule001BTimeReallocationEndpoints();'
-  ], 'Backend registration');
+    'app.MapModule001PtcTimesheetManagementEndpoints();'
+  ], 'Backend project registration');
 } else {
   console.log('MODULE_001_PTC_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
