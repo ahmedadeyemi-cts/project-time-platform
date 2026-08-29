@@ -22,6 +22,7 @@ const [
   boundary,
   project,
   gate,
+  module001bGate,
   roleAuthority,
   main,
   authoritative,
@@ -36,6 +37,7 @@ const [
   optional('src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs'),
   optional('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
   read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'),
+  read('src/frontend/project-time-web/src/module001b/Module001BTimeReallocationGate.jsx'),
   read('src/frontend/project-time-web/src/effective-role-authority.js'),
   read('src/frontend/project-time-web/src/main.jsx'),
   read('src/frontend/project-time-web/src/projectpulse-authoritative-api.js'),
@@ -96,17 +98,40 @@ requireAll(gate, [
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
   'if (!authority.ready) return null',
-  'const MODULE001B_ROLES = new Set([',
-  'const canUseModule001B = hasAnyEffectiveRole(authority, MODULE001B_ROLES);',
-  '<Module001BTimeReallocationPortal allowed={canUseModule001B} />',
   '<PtcTimesheetManagementPortal />',
   '<ProductionApprovalWorkPortal />'
-], 'Effective-role PTC UI gate');
+], 'Effective-role Module 001 UI gate');
 rejectAll(gate, [
   'PtcRuntimeTaskCatalog',
   "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
-  '<PtcGuidedMovePortal />'
-], 'single PTC portal owner and retired Module 001 reallocation mount');
+  '<PtcGuidedMovePortal />',
+  'Module001B',
+  'MODULE001B_ROLES',
+  'time-reallocation',
+  'reallocat',
+  'move time'
+], 'Module 001 ownership boundary');
+
+requireAll(module001bGate, [
+  'Module001BTimeReallocationGate',
+  "from '../effective-role-authority.js'",
+  'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
+  'hasAnyEffectiveRole',
+  'readEffectiveRoleAuthority',
+  'const MODULE001B_ROLES = new Set([',
+  "'PROJECT_TEAM_COORDINATOR'",
+  "'SUPER_ADMINISTRATOR'",
+  'hasAnyEffectiveRole(authority, MODULE001B_ROLES)',
+  'allowed={hasAnyEffectiveRole(authority, MODULE001B_ROLES)}',
+  'if (!authority.ready) return null'
+], 'Independent Module 001B effective-role gate');
+rejectAll(module001bGate, [
+  "'ADMINISTRATOR'",
+  "'MANAGER'",
+  "'PROJECT_MANAGER'",
+  "'ENGINEER'",
+  "'ENGINEERING_LEAD'"
+], 'Module 001B fixed-role access');
 
 requireAll(roleAuthority, [
   'normalizeProjectPulseRoleCodes',
@@ -137,9 +162,11 @@ if (
 requireAll(main, [
   "import './projectpulse-authoritative-api.js';",
   "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
+  "import Module001BTimeReallocationGate from './module001b/Module001BTimeReallocationGate.jsx';",
   '<PtcTimeStewardGate />',
+  '<Module001BTimeReallocationGate />',
   '<TimesheetEnhancementPortal />'
-], 'Gated PTC and timer application mount');
+], 'Independent Module 001, Module 001B, and timer application mounts');
 rejectAll(main, [
   "import PtcTimesheetManagementPortal from './module001/PtcTimesheetManagementPortal.jsx';",
   'Module001ActiveTimerRecoveryPortal',
@@ -219,12 +246,8 @@ if (stewardV2) {
     'ENGINEERING_LEAD',
     'PROJECT_MANAGEMENT',
     'PROJECT_MANAGEMENT_LEAD',
-    'Requests / Service Requests',
-    'Project Tasks',
-    'Non-Project Time',
-    'Module001EnsurePtcAssignmentV2Async',
-    'crossActivityTypeMove = true'
-  ], 'Flexible PTC v2 source retained behind the Module 001 410 retirement boundary');
+    'submissionOnBehalf = false'
+  ], 'PTC v2 source retained behind the Module 001 410 retirement boundary');
 }
 
 if (queries) {
@@ -235,4 +258,4 @@ if (queries) {
   ], 'Role and module query foundation');
 }
 
-console.log('ROLE_PERMISSION_TIMESHEET_STABILIZATION=PASS database=PTP timer=server-authoritative pTC=v2 module001b=strict-reallocation domOwnership=react-owned');
+console.log('ROLE_PERMISSION_TIMESHEET_STABILIZATION=PASS database=PTP timer=server-authoritative module001=ordinary-time-only module001b=strict-independent-reallocation domOwnership=react-owned');
