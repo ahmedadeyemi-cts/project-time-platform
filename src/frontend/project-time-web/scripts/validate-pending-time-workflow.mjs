@@ -138,7 +138,7 @@ for (const token of [
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
   'hasAnyEffectiveRole(authority, MODULE001B_ROLES)',
-  '<Module001BTimeReallocationPortal allowed={allowed} />'
+  'allowed={hasAnyEffectiveRole(authority, MODULE001B_ROLES)}'
 ]) {
   requireText(module001bGate, token, 'Independent Module 001B gate');
 }
