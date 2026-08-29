@@ -15,6 +15,7 @@ public static partial class ScopedRolePolicyModule
         // Module 001B is registered with the same fail-closed time-steward role
         // boundary as the existing protected steward reads.
         app.MapModule001BTimeReallocationEndpoints();
+        app.MapModule001BProtectedTestUatEndpoints();
 
         app.Use(async (context, next) =>
         {
