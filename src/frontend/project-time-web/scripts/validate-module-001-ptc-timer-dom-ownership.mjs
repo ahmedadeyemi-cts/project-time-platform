@@ -181,9 +181,16 @@ requireAll(gate, [
   '<PtcTimesheetManagementPortal />',
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
-  'if (state.active && !state.allowed) return null'
-], 'PTC effective-role gate');
-rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'retired nested PTC portal');
+  'const MODULE001B_ROLES = new Set([',
+  'const canUseModule001B = hasAnyEffectiveRole(authority, MODULE001B_ROLES);',
+  '<Module001BTimeReallocationPortal allowed={canUseModule001B} />',
+  'if (!authority.ready) return null'
+], 'PTC effective-role and Module 001B gate');
+rejectAll(gate, [
+  'PtcRuntimeTaskCatalog',
+  "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
+  '<PtcGuidedMovePortal />'
+], 'retired nested PTC and Module 001 reallocation portals');
 
 requireAll(main, [
   '<TimesheetEnhancementPortal />',
@@ -264,5 +271,6 @@ console.log('MODULE_001_PTC_TIMER_DOM_OWNERSHIP=PASS');
 console.log('MODULE_001_ELIGIBLE_ROLES=ENGINEERING,ENGINEERING_LEAD,PROJECT_MANAGEMENT,PROJECT_MANAGEMENT_LEAD');
 console.log('MODULE_001_TIMER_GROUPS=REQUESTS_PROJECT_TASKS_NON_PROJECT');
 console.log('MODULE_001_TIMER_PERSISTENCE=SERVER_AUTHORITATIVE');
+console.log('MODULE_001B_REALLOCATION_GATE=STRICT_PTC_SUPERADMIN');
 console.log('PROJECTPULSE_REACT_CHILD_MUTATION=0');
 console.log('MODULE_026_PR207_INCLUDED=YES');
