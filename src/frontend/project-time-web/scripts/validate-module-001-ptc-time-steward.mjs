@@ -102,7 +102,9 @@ requireAll(gate, [
   'hasAnyEffectiveRole',
   'readEffectiveRoleAuthority',
   'if (!authority.ready) return null',
-  'if (!canStewardTime && !canReviewApprovals) return null',
+  'const MODULE001B_ROLES = new Set([',
+  'const canUseModule001B = hasAnyEffectiveRole(authority, MODULE001B_ROLES);',
+  '<Module001BTimeReallocationPortal allowed={canUseModule001B} />',
   '<PtcTimesheetManagementPortal />'
 ], 'Effective-role PTC frontend gate');
 rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal ownership');
@@ -171,8 +173,11 @@ if (externalAvailable) {
     '/api/timesheet/ptc',
     '/api/runtime/timesheet/steward',
     'time_steward_role_required',
-    'Only Project Team Coordinator or Super Administrator may manage another user',
-    'view_as_read_only'
+    'No Access. Module 001B is restricted to Project Team Coordinator and Super Administrator.',
+    'view_as_read_only',
+    'legacyModule001Move',
+    'StatusCodes.Status410Gone',
+    'module_001b_reallocation_required'
   ], 'Non-bypassable time-steward role boundary');
 
   requireAll(runtimeBackend, [
@@ -220,7 +225,7 @@ if (externalAvailable) {
     "association_source = 'PTC_TIME_STEWARD'",
     'crossActivityTypeMove = true',
     'submissionOnBehalf = false'
-  ], 'Flexible PTC v2 workspace and move API');
+  ], 'Flexible PTC v2 workspace and legacy move implementation retained behind 410 retirement boundary');
 
   requireAll(backend, [
     'MapModule001PtcTimesheetManagementEndpoints',
@@ -283,4 +288,4 @@ if (externalAvailable) {
   console.log('MODULE_001_PTC_EXTERNAL_SOURCE_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
-console.log('MODULE_001_PTC_TIME_STEWARD=PASS eligibleRoles=4 destinationGroups=3 submissionOnBehalf=false');
+console.log('MODULE_001_PTC_TIME_STEWARD=PASS eligibleRoles=4 destinationGroups=3 submissionOnBehalf=false module001b=strict-reallocation');
