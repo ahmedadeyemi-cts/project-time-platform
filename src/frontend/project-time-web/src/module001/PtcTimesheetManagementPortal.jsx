@@ -1,14 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { authoritativeApi } from '../projectpulse-authoritative-api.js';
 import './ptc-timesheet-management.css';
 import './module001-runtime-v2.css';
-
-const DESTINATION_GROUPS = Object.freeze([
-  'Requests / Service Requests',
-  'Project Tasks',
-  'Non-Project Time'
-]);
 
 function module001Api(path, options = {}) {
   return authoritativeApi(path, {
@@ -35,7 +29,7 @@ function sundayFor(date) {
   return copy.toISOString().slice(0, 10);
 }
 
-function moveWeek(weekStart, offset) {
+function shiftWeek(weekStart, offset) {
   const date = new Date(`${weekStart}T12:00:00`);
   date.setDate(date.getDate() + offset * 7);
   return date.toISOString().slice(0, 10);
@@ -81,65 +75,6 @@ function activityLabel(entry) {
     entry?.projectCode || entry?.projectName,
     entry?.taskCode || entry?.taskName
   ].filter(Boolean).join(' · ') || 'Project task';
-}
-
-function destinationValue(target = {}) {
-  const existing = String(target.selectionValue || '').trim();
-  if (existing) return existing;
-  if (target.assignmentId) return `assignment:${target.assignmentId}`;
-  if (target.projectId && target.taskId) return `project-task:${target.projectId}:${target.taskId}`;
-  if (target.nonProjectTimeCategoryId) return `category:${target.nonProjectTimeCategoryId}`;
-  return '';
-}
-
-function destinationPayload(value) {
-  const [kind, first, second] = String(value || '').split(':');
-  if (kind === 'assignment' && first) {
-    return {
-      destinationType: 'assignment',
-      assignmentId: first,
-      projectId: null,
-      taskId: null,
-      nonProjectTimeCategoryId: null
-    };
-  }
-  if (kind === 'project-task' && first && second) {
-    return {
-      destinationType: 'project_task',
-      assignmentId: null,
-      projectId: first,
-      taskId: second,
-      nonProjectTimeCategoryId: null
-    };
-  }
-  if (kind === 'category' && first) {
-    return {
-      destinationType: 'non_project',
-      assignmentId: null,
-      projectId: null,
-      taskId: null,
-      nonProjectTimeCategoryId: first
-    };
-  }
-  return null;
-}
-
-function targetLabel(target = {}) {
-  const assignmentNote = target.requiresAssignment ? ' · assignment will be created' : '';
-  return `${target.selectionLabel || target.categoryName || target.taskName || 'Activity'}${assignmentNote}`;
-}
-
-function groupTargets(targets) {
-  const groups = new Map(DESTINATION_GROUPS.map((name) => [name, []]));
-  for (const target of targets || []) {
-    const group = DESTINATION_GROUPS.includes(target.groupLabel)
-      ? target.groupLabel
-      : target.destinationType === 'non_project'
-        ? 'Non-Project Time'
-        : 'Project Tasks';
-    groups.get(group).push(target);
-  }
-  return DESTINATION_GROUPS.map((name) => ({ name, targets: groups.get(name) }));
 }
 
 function EditEntryDialog({ entry, onClose, onSave, busy }) {
@@ -210,94 +145,6 @@ function EditEntryDialog({ entry, onClose, onSave, busy }) {
   </div>;
 }
 
-function CreateTaskDialog({ projects, targetUserId, onClose, onCreated, busy }) {
-  const [projectId, setProjectId] = useState(projects[0]?.projectId || '');
-  const [taskCode, setTaskCode] = useState('');
-  const [taskName, setTaskName] = useState('');
-  const [taskDescription, setTaskDescription] = useState('');
-  const [billable, setBillable] = useState(true);
-  const [reason, setReason] = useState('');
-
-  return <div className="ptc-modal" role="presentation">
-    <article role="dialog" aria-modal="true" aria-label="Create replacement task">
-      <header>
-        <div>
-          <p className="eyebrow">Create and assign replacement task</p>
-          <h2>Make the correct destination available</h2>
-        </div>
-        <button type="button" onClick={onClose} aria-label="Close">×</button>
-      </header>
-      <label>
-        <span>Project</span>
-        <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-          {projects.map((project) => (
-            <option key={project.projectId} value={project.projectId}>
-              {project.projectCode} · {project.projectName}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="ptc-form-grid">
-        <label>
-          <span>Task code</span>
-          <input
-            value={taskCode}
-            onChange={(event) => setTaskCode(event.target.value)}
-            placeholder="Example: CORRECTION-01"
-          />
-        </label>
-        <label>
-          <span>Task name</span>
-          <input
-            value={taskName}
-            onChange={(event) => setTaskName(event.target.value)}
-            placeholder="Clear task name"
-          />
-        </label>
-      </div>
-      <label>
-        <span>Task description</span>
-        <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} />
-      </label>
-      <label className="ptc-checkbox">
-        <input
-          type="checkbox"
-          checked={billable}
-          onChange={(event) => setBillable(event.target.checked)}
-        />
-        <span>Billable task</span>
-      </label>
-      <label>
-        <span>Required reason</span>
-        <textarea
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="Why is a new task needed for this user’s time?"
-        />
-      </label>
-      <footer>
-        <button type="button" onClick={onClose}>Cancel</button>
-        <button
-          type="button"
-          className="primary"
-          disabled={busy || !projectId || !taskCode.trim() || !taskName.trim() || !reason.trim()}
-          onClick={() => onCreated({
-            targetUserId,
-            projectId,
-            taskCode: taskCode.trim(),
-            taskName: taskName.trim(),
-            taskDescription: taskDescription.trim(),
-            billable,
-            reason: reason.trim()
-          })}
-        >
-          Create and assign task
-        </button>
-      </footer>
-    </article>
-  </div>;
-}
-
 export default function PtcTimesheetManagementPortal() {
   const [host, setHost] = useState(() => ownedHost());
   const [authorized, setAuthorized] = useState(null);
@@ -312,8 +159,6 @@ export default function PtcTimesheetManagementPortal() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [editingEntry, setEditingEntry] = useState(null);
-  const [creatingTask, setCreatingTask] = useState(false);
-  const [moveSelections, setMoveSelections] = useState({});
 
   useEffect(() => {
     const synchronize = () => setHost((current) => {
@@ -364,26 +209,19 @@ export default function PtcTimesheetManagementPortal() {
   const loadWorkspace = useCallback(async () => {
     if (!host || authorized !== true || !selectedUserId) {
       setDetail(null);
-      setMoveSelections({});
       return;
     }
     setLoadingWorkspace(true);
     try {
       const payload = await module001Api(
         `/api/runtime/timesheet/steward/v2/users/${encodeURIComponent(selectedUserId)}/workspace?weekStart=${encodeURIComponent(weekStart)}`,
-        { requiredCollections: ['entries', 'moveTargets', 'nonProjectCategories', 'availableProjects'] }
+        { requiredCollections: ['entries'] }
       );
       setDetail(payload);
-      setMoveSelections((current) => {
-        const next = {};
-        for (const entry of payload.entries || []) next[entry.timeEntryId] = current[entry.timeEntryId] || '';
-        return next;
-      });
       setError('');
     } catch (requestError) {
       setDetail(null);
-      setMoveSelections({});
-      setError(requestError?.message || 'The selected user’s time and available destinations could not be loaded.');
+      setError(requestError?.message || 'The selected user’s time could not be loaded.');
     } finally {
       setLoadingWorkspace(false);
     }
@@ -414,9 +252,6 @@ export default function PtcTimesheetManagementPortal() {
 
   const selectedUser = users.find((user) => user.userId === selectedUserId) || null;
   const entries = Array.isArray(detail?.entries) ? detail.entries : [];
-  const moveTargets = Array.isArray(detail?.moveTargets) ? detail.moveTargets : [];
-  const availableProjects = Array.isArray(detail?.availableProjects) ? detail.availableProjects : [];
-  const groupedTargets = useMemo(() => groupTargets(moveTargets), [moveTargets]);
   const editableStatus = (status) => ['draft', 'manager_declined', 'pm_declined'].includes(String(status || '').toLowerCase());
 
   async function run(key, action, successMessage) {
@@ -444,7 +279,7 @@ export default function PtcTimesheetManagementPortal() {
         `/api/timesheet/ptc/users/${selectedUserId}/weeks/${weekStart}/unsubmit`,
         { method: 'POST', body: JSON.stringify({ reason }) }
       ),
-      'The week is now draft. Make the corrections, then the user must review and submit it again.'
+      'The week is now draft. The user must review and submit it again after ordinary time corrections are complete.'
     );
   }
 
@@ -458,32 +293,6 @@ export default function PtcTimesheetManagementPortal() {
       }),
       'The time entry was corrected and recorded in immutable audit history.'
     ).finally(() => setEditingEntry(null));
-  }
-
-  function moveEntry(entry) {
-    const selected = moveSelections[entry.timeEntryId];
-    const destination = destinationPayload(selected);
-    if (!destination) {
-      setError('Select a Project Task, Request / Service Request, or Non-Project Time destination.');
-      return;
-    }
-    const target = moveTargets.find((item) => destinationValue(item) === selected);
-    const reason = reasonPrompt(
-      `Move ${entry.hours} hour(s) from ${activityLabel(entry)} to ${targetLabel(target)}`
-    );
-    if (!reason) return;
-    void run(
-      `move-${entry.timeEntryId}`,
-      () => module001Api(`/api/runtime/timesheet/steward/v2/entries/${entry.timeEntryId}/move`, {
-        method: 'POST',
-        body: JSON.stringify({
-          targetUserId: selectedUserId,
-          ...destination,
-          reason
-        })
-      }),
-      'The time entry was moved to the selected activity. The user must review and resubmit the week.'
-    );
   }
 
   function removeEntry(entry) {
@@ -502,17 +311,6 @@ export default function PtcTimesheetManagementPortal() {
     );
   }
 
-  function createTask(payload) {
-    void run(
-      'create-task',
-      () => module001Api('/api/timesheet/ptc/tasks', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      }),
-      'The replacement task was created and assigned to the selected user. It is now available as a move destination.'
-    ).finally(() => setCreatingTask(false));
-  }
-
   if (!host || authorized === false) return null;
 
   return createPortal(
@@ -524,23 +322,23 @@ export default function PtcTimesheetManagementPortal() {
       <header className="ptc-steward-hero">
         <div>
           <p className="eyebrow">Project Team Coordinator · Time Steward</p>
-          <h2>Manage time for other users</h2>
+          <h2>Manage ordinary time for other users</h2>
           <p>
-            Select an eligible delivery user and week, return submitted time to draft, then correct,
-            move, create, assign, or remove time with an immutable business reason.
+            Select an eligible delivery user and week to review ordinary time, return a week to draft when necessary,
+            correct draft entry details, or remove an incorrect draft entry with an immutable business reason.
           </p>
         </div>
         <div className="ptc-no-submit">
           <strong>No submission on behalf</strong>
-          <span>The selected user reviews and submits the corrected week. This workspace never submits for them.</span>
+          <span>The selected user reviews and submits a corrected draft week. This workspace never submits for them.</span>
         </div>
       </header>
 
       <div className="ptc-workflow-steps">
         <span>1 · Select eligible user</span>
-        <span>2 · Return to draft when needed</span>
-        <span>3 · Correct or move to any authorized activity</span>
-        <span>4 · User reviews and resubmits</span>
+        <span>2 · Review the selected week</span>
+        <span>3 · Correct ordinary draft-entry details</span>
+        <span>4 · User reviews and submits</span>
       </div>
 
       {error ? <p className="ptc-alert error" role="alert">{error}</p> : null}
@@ -548,18 +346,14 @@ export default function PtcTimesheetManagementPortal() {
 
       <section className="ptc-toolbar">
         <div className="ptc-week-nav">
-          <button type="button" onClick={() => setWeekStart(moveWeek(weekStart, -1))}>Previous week</button>
+          <button type="button" onClick={() => setWeekStart(shiftWeek(weekStart, -1))}>Previous week</button>
           <strong>Week of {displayDate(weekStart)}</strong>
           <button type="button" onClick={() => setWeekStart(sundayFor(new Date()))}>Current week</button>
-          <button type="button" onClick={() => setWeekStart(moveWeek(weekStart, 1))}>Next week</button>
+          <button type="button" onClick={() => setWeekStart(shiftWeek(weekStart, 1))}>Next week</button>
         </div>
         <label>
           <span>Find user</span>
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Name or email"
-          />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or email" />
         </label>
         <label>
           <span>Select eligible user</span>
@@ -597,7 +391,7 @@ export default function PtcTimesheetManagementPortal() {
             <small>Current selected week</small>
           </article>
           <article className="ptc-user-action">
-            <span>Correction workflow</span>
+            <span>Draft correction workflow</span>
             <button
               type="button"
               disabled={Boolean(busy) || !detail?.timesheet || detail?.timesheet?.status === 'draft'}
@@ -605,39 +399,8 @@ export default function PtcTimesheetManagementPortal() {
             >
               {busy === 'unsubmit' ? 'Returning…' : 'Return week to draft'}
             </button>
-            <small>Required before changing submitted or approved time</small>
+            <small>Use only when ordinary time-entry values require correction.</small>
           </article>
-        </section>
-
-        <section className="ptc-destination-catalog" aria-label="Available correction destinations">
-          <header>
-            <div>
-              <p className="eyebrow">Available work for selected user</p>
-              <h3>Move time across all supported activity types</h3>
-              <p>
-                Existing assignments are ready immediately. Selecting another active project task creates the
-                required assignment in the same governed transaction. Non-Project Time remains available as a destination.
-              </p>
-            </div>
-            <span>{moveTargets.length} destinations</span>
-          </header>
-          <div className="ptc-destination-groups">
-            {groupedTargets.map((group) => (
-              <details key={group.name} open={group.name === 'Requests / Service Requests'}>
-                <summary><strong>{group.name}</strong><span>{group.targets.length}</span></summary>
-                <div>
-                  {group.targets.slice(0, 12).map((target) => (
-                    <article key={destinationValue(target)}>
-                      <strong>{target.selectionLabel || target.categoryName || target.taskName}</strong>
-                      <small>{target.requiresAssignment ? 'Assignment created when selected for a move' : 'Available now'}</small>
-                    </article>
-                  ))}
-                  {group.targets.length > 12 ? <p>{group.targets.length - 12} additional destinations are available in each Move to activity list.</p> : null}
-                  {group.targets.length === 0 ? <p>No {group.name.toLowerCase()} are currently available.</p> : null}
-                </div>
-              </details>
-            ))}
-          </div>
         </section>
 
         <section className="ptc-entry-section">
@@ -645,127 +408,65 @@ export default function PtcTimesheetManagementPortal() {
             <div>
               <p className="eyebrow">Selected user’s time entries</p>
               <h3>{loadingWorkspace ? 'Loading entries…' : `${entries.length} entry or entries`}</h3>
-              <p>
-                Edit and removal require a draft week. A move may target a request, any active project task,
-                or Non-Project Time. The selected user must review and resubmit afterward.
-              </p>
+              <p>Draft entries can be corrected or removed. Submitted and approved entries remain read-only in Module 001.</p>
             </div>
-            <button
-              type="button"
-              disabled={Boolean(busy) || !selectedUserId || availableProjects.length === 0}
-              onClick={() => setCreatingTask(true)}
-            >
-              Create replacement task
-            </button>
           </header>
+
           <div className="ptc-entry-table-wrap">
             <table className="ptc-entry-table">
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Current activity</th>
-                  <th>Hours and description</th>
-                  <th>Correct</th>
-                  <th>Move to activity</th>
-                  <th>Remove</th>
+                  <th>Activity</th>
+                  <th>Hours</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map((entry) => {
-                  const canEdit = editableStatus(entry.status);
-                  return <tr key={entry.timeEntryId}>
+                {entries.map((entry) => (
+                  <tr key={entry.timeEntryId}>
+                    <td>{displayDate(entry.workDate)}</td>
+                    <td><strong>{activityLabel(entry)}</strong><small>{entry.description || 'No description'}</small></td>
+                    <td>{Number(entry.hours || 0).toFixed(2)}</td>
+                    <td>{statusLabel(entry.status)}</td>
                     <td>
-                      <strong>{displayDate(entry.workDate)}</strong>
-                      <small>{statusLabel(entry.status)}</small>
+                      <div className="ptc-entry-actions">
+                        <button
+                          type="button"
+                          disabled={Boolean(busy) || !editableStatus(entry.status)}
+                          onClick={() => setEditingEntry(entry)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(busy) || !editableStatus(entry.status)}
+                          onClick={() => removeEntry(entry)}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </td>
-                    <td>
-                      <strong>{activityLabel(entry)}</strong>
-                      <span>{entry.entryGroup || (entry.nonProjectTimeCategoryId ? 'Non-Project Time' : 'Project Tasks')}</span>
-                    </td>
-                    <td>
-                      <strong>{Number(entry.hours).toFixed(2)} hours · {entry.billable ? 'Billable' : 'Non-billable'}</strong>
-                      <span>{entry.description || 'No description'}</span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        disabled={Boolean(busy) || !canEdit}
-                        onClick={() => setEditingEntry(entry)}
-                      >
-                        Edit entry
-                      </button>
-                    </td>
-                    <td>
-                      <select
-                        value={moveSelections[entry.timeEntryId] || ''}
-                        disabled={Boolean(busy) || !canEdit}
-                        onChange={(event) => setMoveSelections((current) => ({
-                          ...current,
-                          [entry.timeEntryId]: event.target.value
-                        }))}
-                      >
-                        <option value="">Select destination</option>
-                        {groupedTargets.map((group) => (
-                          <optgroup key={group.name} label={group.name}>
-                            {group.targets.map((target) => (
-                              <option key={destinationValue(target)} value={destinationValue(target)}>
-                                {targetLabel(target)}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={Boolean(busy) || !moveSelections[entry.timeEntryId] || !canEdit}
-                        onClick={() => moveEntry(entry)}
-                      >
-                        {busy === `move-${entry.timeEntryId}` ? 'Moving…' : 'Move time'}
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="danger"
-                        disabled={Boolean(busy) || !canEdit}
-                        onClick={() => removeEntry(entry)}
-                      >
-                        {busy === `remove-${entry.timeEntryId}` ? 'Removing…' : 'Remove draft entry'}
-                      </button>
-                    </td>
-                  </tr>;
-                })}
-                {!loadingWorkspace && entries.length === 0 ? <tr>
-                  <td colSpan="6">
-                    <div className="ptc-empty">
-                      <strong>No time entries for this user and week</strong>
-                      <span>Select another week or user, or confirm that the user has started their timesheet.</span>
-                    </div>
-                  </td>
-                </tr> : null}
+                  </tr>
+                ))}
+                {!loadingWorkspace && entries.length === 0 ? (
+                  <tr><td colSpan="5">No time entries exist for the selected user and week.</td></tr>
+                ) : null}
               </tbody>
             </table>
           </div>
         </section>
-      </> : <section className="ptc-empty ptc-select-user-prompt">
-        <strong>Select an eligible user</strong>
-        <span>The workspace will load their week, entries, regular tasks, requests, and Non-Project Time destinations.</span>
-      </section>}
+      </> : <p className="ptc-empty-state">Select an eligible user to review ordinary time.</p>}
 
-      {editingEntry ? <EditEntryDialog
-        entry={editingEntry}
-        busy={Boolean(busy)}
-        onClose={() => setEditingEntry(null)}
-        onSave={saveEntry}
-      /> : null}
-
-      {creatingTask ? <CreateTaskDialog
-        projects={availableProjects}
-        targetUserId={selectedUserId}
-        busy={Boolean(busy)}
-        onClose={() => setCreatingTask(false)}
-        onCreated={createTask}
-      /> : null}
+      {editingEntry ? (
+        <EditEntryDialog
+          entry={editingEntry}
+          busy={Boolean(busy)}
+          onClose={() => setEditingEntry(null)}
+          onSave={saveEntry}
+        />
+      ) : null}
     </section>,
     host
   );
