@@ -5,7 +5,11 @@ python3 - \
   "$ROOT/src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs" \
   "$ROOT/src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs" \
   "$ROOT/.github/workflows/projectpulse-deploy-test.yml" \
-  "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs" <<'PY'
+  "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs" \
+  "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs" \
+  "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerWorker.cs" \
+  "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs" \
+  "$ROOT/src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs" <<'PY'
 from pathlib import Path
 import sys
 
@@ -13,6 +17,10 @@ repository_path = Path(sys.argv[1])
 runtime_path = Path(sys.argv[2])
 workflow_path = Path(sys.argv[3])
 resolver_path = Path(sys.argv[4])
+orchestration_path = Path(sys.argv[5])
+worker_path = Path(sys.argv[6])
+orchestrator_path = Path(sys.argv[7])
+services_path = Path(sys.argv[8])
 
 text = repository_path.read_text(encoding='utf-8')
 start = text.index('public async Task<IReadOnlyList<PulseAiPrivateProcessingJob>> ListJobsAsync(')
@@ -70,6 +78,42 @@ if ready_marker not in resolver:
 if 'ReadyForRetrieval && AuthorityReady && ScopeCitationCount > 0' in resolver:
     raise SystemExit('ASSERTION_FAILED authoritative_sow_still_requires_magic_scope_phrase')
 
+orchestration = orchestration_path.read_text(encoding='utf-8')
+required_orchestration_markers = [
+    '(Func<Guid, Guid, HttpContext, CancellationToken, Task<IResult>>)GetAsync',
+    'Polling is deliberately read-only.',
+    'ProcessNextQueuedRunAsync(',
+    'pg_try_advisory_lock(hashtextextended(@run_id::text,735))',
+    '"persist_working_draft"',
+    'working_payload IS DISTINCT FROM EXCLUDED.working_payload',
+    'requestPollingReadOnly = true',
+    'backgroundGeneration = true',
+]
+missing_orchestration = [marker for marker in required_orchestration_markers if marker not in orchestration]
+if missing_orchestration:
+    raise SystemExit(f'ASSERTION_FAILED flowhive_background_orchestration_markers_missing={missing_orchestration}')
+for forbidden in [
+    'GetAndAdvanceAsync',
+    'return await AdvanceAsync(',
+    'CelarAiEnterprisePlatformService enterprise,\n        CancellationToken cancellationToken)\n    {\n        request ??=',
+]:
+    if forbidden in orchestration:
+        raise SystemExit(f'ASSERTION_FAILED flowhive_http_request_still_advances_generation={forbidden}')
+
+worker = worker_path.read_text(encoding='utf-8')
+if ': BackgroundService' not in worker or 'ProcessNextQueuedRunAsync' not in worker:
+    raise SystemExit('ASSERTION_FAILED flowhive_background_worker_missing')
+
+services = services_path.read_text(encoding='utf-8')
+if 'services.AddHostedService<ProjectFlowHiveAiPlannerWorker>();' not in services:
+    raise SystemExit('ASSERTION_FAILED flowhive_background_worker_not_registered')
+
+orchestrator = orchestrator_path.read_text(encoding='utf-8')
+if 'scopeCitations.Length > 0' in orchestrator or 'ContainsScopeMarker(' in orchestrator:
+    raise SystemExit('ASSERTION_FAILED project_planning_grounding_still_magic_heading_dependent')
+if '&& sowCitations.Length > 0;' not in orchestrator:
+    raise SystemExit('ASSERTION_FAILED project_planning_authoritative_sow_citation_gate_missing')
+
 workflow = workflow_path.read_text(encoding='utf-8')
 rollback_step = '      - name: Restore exact prior Test images after application failure'
 evidence_step = '      - name: Upload protected-Test deployment evidence'
@@ -88,5 +132,9 @@ if unbounded_condition in rollback_block:
 print('ASSERTION_PASSED private_runtime_list_jobs_shape_matches_reader=true')
 print('ASSERTION_PASSED private_extraction_diagnostics_preserved=true')
 print('ASSERTION_PASSED authoritative_sow_readiness_not_heading_dependent=true')
+print('ASSERTION_PASSED flowhive_ai_generation_runs_outside_http_request=true')
+print('ASSERTION_PASSED flowhive_ai_planner_polling_is_read_only=true')
+print('ASSERTION_PASSED flowhive_ai_planner_restart_persistence_is_idempotent=true')
+print('ASSERTION_PASSED project_planning_grounding_not_heading_dependent=true')
 print('ASSERTION_PASSED protected_test_healthy_failed_uat_candidate_preserved=true')
 PY

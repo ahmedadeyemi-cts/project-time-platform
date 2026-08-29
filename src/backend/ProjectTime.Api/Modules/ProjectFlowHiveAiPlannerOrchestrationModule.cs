@@ -25,10 +25,10 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
     {
         endpoints.MapPost(
             "/api/project-flowhive/projects/{projectId:guid}/ai-planner/runs",
-            (Func<Guid, ProjectFlowHiveAiPlannerRunRequest?, HttpContext, CelarAiEnterprisePlatformService, CancellationToken, Task<IResult>>)CreateOrResumeAsync);
+            (Func<Guid, ProjectFlowHiveAiPlannerRunRequest?, HttpContext, CancellationToken, Task<IResult>>)CreateOrResumeAsync);
         endpoints.MapGet(
             "/api/project-flowhive/projects/{projectId:guid}/ai-planner/runs/{runId:guid}",
-            (Func<Guid, Guid, HttpContext, CelarAiEnterprisePlatformService, CancellationToken, Task<IResult>>)GetAndAdvanceAsync);
+            (Func<Guid, Guid, HttpContext, CancellationToken, Task<IResult>>)GetAsync);
         return endpoints;
     }
 
@@ -36,7 +36,6 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         Guid projectId,
         ProjectFlowHiveAiPlannerRunRequest? request,
         HttpContext context,
-        CelarAiEnterprisePlatformService enterprise,
         CancellationToken cancellationToken)
     {
         request ??= new ProjectFlowHiveAiPlannerRunRequest(null, null, "comprehensive");
@@ -63,11 +62,9 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             && seed.ProjectEndDate.Value < seed.ProjectStartDate.Value)
             return Validation("The requested project finish date cannot precede the project Start Date.");
 
-        // The initial authenticated Start AI Planner action is the only automatic
-        // request that may recover a terminal SOW, and only the governed exact-source
-        // Protected-Test boundary is allowed to honor that request. Polling
-        // reconstructs the request with the default false value and can never
-        // resurrect a terminal document failure.
+        // The authenticated start action may perform the bounded document-admission
+        // pass so the governed Protected-Test retry can be honored once. Long-running
+        // AI inference is never executed inside this request.
         request = request with { Plan = seed, RetryTerminalDocumentProcessing = true };
         var runId = await GetOrCreateRunAsync(
             connection,
@@ -76,20 +73,43 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             access,
             CorrelationId(context),
             cancellationToken);
-        return await AdvanceAsync(connection, projectId, runId, seed, request, access, context, enterprise, cancellationToken);
+
+        var stored = await LoadRunAsync(connection, projectId, runId, cancellationToken);
+        if (stored is null)
+            return Results.Json(new
+            {
+                status = "flowhive_ai_planner_run_unavailable",
+                message = "The durable AI Planner operation could not be reloaded.",
+                stateChanged = false
+            }, statusCode: StatusCodes.Status500InternalServerError);
+
+        if (!stored.Terminal
+            && stored.Status != "generating"
+            && stored.GeneratedPlan is null)
+        {
+            await AdvanceAdmissionAsync(
+                connection,
+                projectId,
+                runId,
+                request,
+                access,
+                context,
+                cancellationToken);
+            stored = (await LoadRunAsync(connection, projectId, runId, cancellationToken))!;
+        }
+
+        return RunResult(stored);
     }
 
-    private static async Task<IResult> GetAndAdvanceAsync(
+    private static async Task<IResult> GetAsync(
         Guid projectId,
         Guid runId,
         HttpContext context,
-        CelarAiEnterprisePlatformService enterprise,
         CancellationToken cancellationToken)
     {
         var opened = await OpenAsync(projectId, context, requireEdit: true, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
-        var access = opened.Access!;
         var stored = await LoadRunAsync(connection, projectId, runId, cancellationToken);
         if (stored is null)
             return Results.NotFound(new
@@ -98,8 +118,6 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 message = "The AI Planner operation was not found for the selected project.",
                 stateChanged = false
             });
-        if (stored.Terminal)
-            return Results.Ok(ToResponse(stored));
         if (stored.Plan is null)
             return Results.Json(new
             {
@@ -109,22 +127,19 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 message = "The AI Planner operation does not contain a valid project seed.",
                 stateChanged = false
             }, statusCode: StatusCodes.Status500InternalServerError);
-        var request = new ProjectFlowHiveAiPlannerRunRequest(
-            stored.Plan,
-            stored.RequestedOutcome,
-            stored.DetailLevel);
-        return await AdvanceAsync(connection, projectId, runId, stored.Plan, request, access, context, enterprise, cancellationToken);
+
+        // Polling is deliberately read-only. The background worker owns document
+        // re-evaluation, AI generation, and mutable working-copy persistence.
+        return RunResult(stored);
     }
 
-    private static async Task<IResult> AdvanceAsync(
+    private static async Task AdvanceAdmissionAsync(
         NpgsqlConnection connection,
         Guid projectId,
         Guid runId,
-        ProjectFlowHivePlanRequest seed,
         ProjectFlowHiveAiPlannerRunRequest request,
         PlannerAccess access,
         HttpContext context,
-        CelarAiEnterprisePlatformService enterprise,
         CancellationToken cancellationToken)
     {
         var correlationId = CorrelationId(context);
@@ -142,6 +157,245 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             cancellationToken,
             retryTerminalSow: protectedTestExplicitRetry);
 
+        await PersistDocumentStateAsync(
+            connection,
+            runId,
+            documents,
+            cancellationToken,
+            readyPhase: "queued_for_generation");
+    }
+
+    internal static async Task<bool> ProcessNextQueuedRunAsync(
+        IServiceProvider services,
+        CancellationToken cancellationToken)
+    {
+        var config = ProjectFlowHiveDatabaseConfig.FromEnvironment();
+        if (config.Missing.Count > 0) return false;
+
+        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using (var schema = new NpgsqlCommand(
+            $"SELECT to_regclass('public.{RunTable}') IS NOT NULL;",
+            connection))
+        {
+            var present = await schema.ExecuteScalarAsync(cancellationToken);
+            if (present is not bool tablePresent || !tablePresent) return false;
+        }
+
+        var candidates = new List<(Guid RunId, Guid ProjectId)>();
+        await using (var command = new NpgsqlCommand($"""
+            SELECT run_id,project_id
+            FROM {RunTable}
+            WHERE status IN ('queued','processing','generating')
+              AND (phase <> 'ai_route_retry' OR updated_at <= NOW() - INTERVAL '30 seconds')
+            ORDER BY CASE status
+                         WHEN 'generating' THEN 0
+                         WHEN 'queued' THEN 1
+                         ELSE 2
+                     END,
+                     updated_at,
+                     created_at
+            LIMIT 12;
+            """, connection))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                candidates.Add((reader.GetGuid(0), reader.GetGuid(1)));
+            }
+        }
+
+        foreach (var candidate in candidates)
+        {
+            if (!await TryLockRunAsync(connection, candidate.RunId, cancellationToken))
+                continue;
+
+            try
+            {
+                var stored = await LoadRunAsync(
+                    connection,
+                    candidate.ProjectId,
+                    candidate.RunId,
+                    cancellationToken);
+                if (stored is null || stored.Terminal) return true;
+
+                await AdvanceWorkerAsync(connection, stored, services, cancellationToken);
+                return true;
+            }
+            finally
+            {
+                await UnlockRunAsync(connection, candidate.RunId);
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task AdvanceWorkerAsync(
+        NpgsqlConnection connection,
+        PlannerRun stored,
+        IServiceProvider services,
+        CancellationToken cancellationToken)
+    {
+        if (stored.Plan is null)
+        {
+            await UpdateRunAsync(
+                connection,
+                stored.RunId,
+                "failed",
+                "invalid_requested_plan",
+                100,
+                ["The durable AI Planner operation does not contain a valid project seed."],
+                stored.Warnings,
+                ["The background worker stopped because the persisted project seed was invalid."],
+                null,
+                null,
+                null,
+                cancellationToken,
+                completed: true);
+            return;
+        }
+
+        if (stored.GeneratedPlan is not null
+            && stored.Schedule is not null
+            && stored.Validation is not null)
+        {
+            await PersistWorkingDraftAndCompleteAsync(
+                connection,
+                stored.RunId,
+                stored.ProjectId,
+                stored.ActualUserId,
+                stored.GeneratedPlan,
+                stored.Schedule,
+                stored.Validation,
+                stored.Warnings,
+                cancellationToken);
+            return;
+        }
+
+        var documents = await ProjectPlanningDocumentResolver.ResolveAndPrepareAsync(
+            connection,
+            stored.ProjectId,
+            stored.ActualUserId,
+            stored.EffectiveUserId,
+            "flowhive_ai_planner_background",
+            stored.CorrelationId,
+            queuePending: true,
+            cancellationToken,
+            retryTerminalSow: false);
+
+        if (!documents.HasAuthoritativeSow
+            || documents.HasTerminalProcessingFailure
+            || !documents.ReadyForGeneration)
+        {
+            await PersistDocumentStateAsync(
+                connection,
+                stored.RunId,
+                documents,
+                cancellationToken,
+                readyPhase: "queued_for_generation");
+            return;
+        }
+
+        await UpdateRunAsync(
+            connection,
+            stored.RunId,
+            "generating",
+            "extract_and_expand_work_packages",
+            65,
+            [],
+            documents.Warnings,
+            ["The current authoritative Work Register SOW and supporting project documents are citation ready. Background plan generation started."],
+            null,
+            null,
+            null,
+            cancellationToken);
+
+        var context = new DefaultHttpContext
+        {
+            RequestServices = services,
+            TraceIdentifier = Clean(
+                stored.CorrelationId,
+                180,
+                Guid.NewGuid().ToString("N"))
+        };
+        if (!string.IsNullOrWhiteSpace(stored.CorrelationId))
+            context.Request.Headers["X-Correlation-Id"] = stored.CorrelationId;
+
+        var enterprise = services.GetRequiredService<CelarAiEnterprisePlatformService>();
+        var generation = await ProjectPlanningAiOrchestrator.GenerateAsync(
+            enterprise,
+            stored.ActualUserId,
+            stored.EffectiveUserId,
+            stored.Plan,
+            documents,
+            stored.RequestedOutcome,
+            stored.DetailLevel,
+            CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+            allowSanitizedExternalFallback: true,
+            context,
+            cancellationToken);
+
+        if (!generation.Succeeded
+            || generation.Plan is null
+            || generation.Validation is null
+            || generation.Schedule is null)
+        {
+            var transient = generation.Status == "project_planning_ai_temporarily_unavailable";
+            await UpdateRunAsync(
+                connection,
+                stored.RunId,
+                transient ? "processing" : "needs_attention",
+                transient ? "ai_route_retry" : "evidence_review",
+                transient ? 70 : 60,
+                generation.MissingEvidence,
+                generation.Warnings,
+                [generation.Message],
+                null,
+                null,
+                null,
+                cancellationToken,
+                completed: !transient);
+            return;
+        }
+
+        // Persist generated artifacts before touching the working copy. If the API
+        // restarts after model completion, the next worker resumes here instead of
+        // invoking the model again.
+        await UpdateRunAsync(
+            connection,
+            stored.RunId,
+            "generating",
+            "persist_working_draft",
+            90,
+            [],
+            generation.Warnings,
+            ["Source-grounded generation completed. Persisting the mutable FlowHive working draft."],
+            generation.Plan,
+            generation.Schedule,
+            generation.Validation,
+            cancellationToken);
+
+        await PersistWorkingDraftAndCompleteAsync(
+            connection,
+            stored.RunId,
+            stored.ProjectId,
+            stored.ActualUserId,
+            generation.Plan,
+            generation.Schedule,
+            generation.Validation,
+            generation.Warnings,
+            cancellationToken);
+    }
+
+    private static async Task PersistDocumentStateAsync(
+        NpgsqlConnection connection,
+        Guid runId,
+        ProjectPlanningDocumentResolution documents,
+        CancellationToken cancellationToken,
+        string readyPhase)
+    {
         if (!documents.HasAuthoritativeSow)
         {
             await UpdateRunAsync(
@@ -156,8 +410,9 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 null,
                 null,
                 null,
-                cancellationToken);
-            return Results.Ok(ToResponse((await LoadRunAsync(connection, projectId, runId, cancellationToken))!));
+                cancellationToken,
+                completed: true);
+            return;
         }
 
         if (documents.HasTerminalProcessingFailure)
@@ -182,7 +437,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 null,
                 cancellationToken,
                 completed: true);
-            return Results.Ok(ToResponse((await LoadRunAsync(connection, projectId, runId, cancellationToken))!));
+            return;
         }
 
         if (!documents.ReadyForGeneration)
@@ -194,7 +449,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 "processing",
                 documents.PendingDocuments.Count > 0
                     ? "private_document_processing"
-                    : "authority_index_and_scope",
+                    : "authority_index_and_citations",
                 progress,
                 documents.Blockers,
                 documents.Warnings,
@@ -203,76 +458,45 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 null,
                 null,
                 cancellationToken);
-            return Results.Json(
-                ToResponse((await LoadRunAsync(connection, projectId, runId, cancellationToken))!),
-                statusCode: StatusCodes.Status202Accepted);
+            return;
         }
 
         await UpdateRunAsync(
             connection,
             runId,
-            "generating",
-            "extract_and_expand_work_packages",
-            65,
+            "processing",
+            readyPhase,
+            60,
             [],
             documents.Warnings,
-            ["The current Work Register SOW and supporting project documents are citation ready. Detailed plan generation started."],
+            ["The current authoritative Work Register SOW and supporting project documents are ready for background AI generation."],
             null,
             null,
             null,
             cancellationToken);
+    }
 
-        var generation = await ProjectPlanningAiOrchestrator.GenerateAsync(
-            enterprise,
-            access.ActualUserId,
-            access.EffectiveUserId,
-            seed,
-            documents,
-            request.RequestedOutcome,
-            request.DetailLevel,
-            CelarAiCapabilityCatalog.ProjectFlowHivePlan,
-            allowSanitizedExternalFallback: true,
-            context,
-            cancellationToken);
-
-        if (!generation.Succeeded
-            || generation.Plan is null
-            || generation.Validation is null
-            || generation.Schedule is null)
-        {
-            var transient = generation.Status == "project_planning_ai_temporarily_unavailable";
-            await UpdateRunAsync(
-                connection,
-                runId,
-                transient ? "processing" : "needs_attention",
-                transient ? "ai_route_retry" : "evidence_review",
-                transient ? 70 : 60,
-                generation.MissingEvidence,
-                generation.Warnings,
-                [generation.Message],
-                null,
-                null,
-                null,
-                cancellationToken);
-            var response = ToResponse((await LoadRunAsync(connection, projectId, runId, cancellationToken))!);
-            return transient
-                ? Results.Json(response, statusCode: StatusCodes.Status202Accepted)
-                : Results.Ok(response);
-        }
-
-        var generated = generation.Plan;
-        var validation = generation.Validation;
-        var schedule = generation.Schedule;
+    private static async Task PersistWorkingDraftAndCompleteAsync(
+        NpgsqlConnection connection,
+        Guid runId,
+        Guid projectId,
+        Guid actor,
+        ProjectFlowHivePlanRequest generated,
+        ProjectFlowHiveScheduleResult schedule,
+        ProjectFlowHivePlanValidationResult validation,
+        IReadOnlyList<string> sourceWarnings,
+        CancellationToken cancellationToken)
+    {
         var workingCopy = await SaveWorkingCopyAsync(
             connection,
             projectId,
             generated,
-            access.ActualUserId,
+            actor,
             validation,
             schedule,
             cancellationToken);
 
-        var warnings = generation.Warnings
+        var warnings = sourceWarnings
             .Concat([
                 "The generated plan was saved only as the mutable FlowHive working draft.",
                 "No immutable version, reviewed baseline, assignment, capacity reservation, or customer commitment was created automatically."
@@ -282,7 +506,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         await UpdateRunAsync(
             connection,
             runId,
-            generation.Status,
+            FinalStatus(schedule),
             "working_draft_ready",
             100,
             [],
@@ -294,8 +518,50 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             validation,
             cancellationToken,
             completed: true);
-        return Results.Ok(ToResponse((await LoadRunAsync(connection, projectId, runId, cancellationToken))!));
     }
+
+    private static string FinalStatus(ProjectFlowHiveScheduleResult schedule) =>
+        schedule.ProjectTargetEndDate.HasValue
+        && schedule.ProjectFinishDate.HasValue
+        && schedule.ProjectFinishDate.Value > schedule.ProjectTargetEndDate.Value
+            ? "completed_with_schedule_overrun"
+            : "completed";
+
+    private static async Task<bool> TryLockRunAsync(
+        NpgsqlConnection connection,
+        Guid runId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT pg_try_advisory_lock(hashtextextended(@run_id::text,735));",
+            connection);
+        command.Parameters.AddWithValue("run_id", runId);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    private static async Task UnlockRunAsync(
+        NpgsqlConnection connection,
+        Guid runId)
+    {
+        if (connection.State != System.Data.ConnectionState.Open) return;
+        try
+        {
+            await using var command = new NpgsqlCommand(
+                "SELECT pg_advisory_unlock(hashtextextended(@run_id::text,735));",
+                connection);
+            command.Parameters.AddWithValue("run_id", runId);
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+        catch
+        {
+            // Closing the connection also releases session advisory locks.
+        }
+    }
+
+    private static IResult RunResult(PlannerRun run) =>
+        run.Terminal
+            ? Results.Ok(ToResponse(run))
+            : Results.Json(ToResponse(run), statusCode: StatusCodes.Status202Accepted);
 
     private static async Task<ProjectFlowHivePlanRequest?> LoadProjectSeedAsync(
         NpgsqlConnection connection,
@@ -414,21 +680,33 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
     {
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-            INSERT INTO project_flowhive_working_copies(
-                project_id,plan_id,working_payload,updated_by_user_id)
-            VALUES(@project_id,@plan_id,@payload::jsonb,@actor)
-            ON CONFLICT(project_id) DO UPDATE
-            SET plan_id=EXCLUDED.plan_id,
-                working_payload=EXCLUDED.working_payload,
-                updated_by_user_id=EXCLUDED.updated_by_user_id
-            RETURNING working_revision,row_version,updated_at;
+            WITH upsert AS (
+                INSERT INTO project_flowhive_working_copies(
+                    project_id,plan_id,working_payload,updated_by_user_id)
+                VALUES(@project_id,@plan_id,@payload::jsonb,@actor)
+                ON CONFLICT(project_id) DO UPDATE
+                SET plan_id=EXCLUDED.plan_id,
+                    working_payload=EXCLUDED.working_payload,
+                    updated_by_user_id=EXCLUDED.updated_by_user_id
+                WHERE project_flowhive_working_copies.working_payload IS DISTINCT FROM EXCLUDED.working_payload
+                RETURNING working_revision,row_version,updated_at
+            )
+            SELECT working_revision,row_version,updated_at
+            FROM upsert
+            UNION ALL
+            SELECT working_revision,row_version,updated_at
+            FROM project_flowhive_working_copies
+            WHERE project_id=@project_id
+              AND NOT EXISTS(SELECT 1 FROM upsert)
+            LIMIT 1;
             """, connection, transaction);
         command.Parameters.AddWithValue("project_id", projectId);
         command.Parameters.Add("plan_id", NpgsqlDbType.Uuid).Value = plan.PlanId.HasValue ? plan.PlanId.Value : DBNull.Value;
         command.Parameters.AddWithValue("payload", JsonSerializer.Serialize(plan, Json));
         command.Parameters.AddWithValue("actor", actor);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        await reader.ReadAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            throw new InvalidOperationException("FlowHive working-copy persistence returned no durable row.");
         var result = new WorkingCopyResult(
             reader.GetInt32(0),
             reader.GetGuid(1),
@@ -494,6 +772,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         await using var command = new NpgsqlCommand($"""
             SELECT run_id,project_id,status,phase,progress_percent,
                    requested_plan::text,requested_outcome,detail_level,
+                   actual_actor_user_id,effective_actor_user_id,
                    COALESCE(generated_plan::text,''),COALESCE(schedule_payload::text,''),
                    COALESCE(validation_payload::text,''),blockers::text,warnings::text,
                    operation_logs::text,correlation_id,created_at,updated_at,completed_at
@@ -514,16 +793,18 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(5)),
             reader.GetString(6),
             reader.GetString(7),
-            Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(8)),
-            Deserialize<ProjectFlowHiveScheduleResult>(reader.GetString(9)),
-            Deserialize<ProjectFlowHivePlanValidationResult>(reader.GetString(10)),
-            Deserialize<string[]>(reader.GetString(11)) ?? [],
-            Deserialize<string[]>(reader.GetString(12)) ?? [],
+            reader.GetGuid(8),
+            reader.GetGuid(9),
+            Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(10)),
+            Deserialize<ProjectFlowHiveScheduleResult>(reader.GetString(11)),
+            Deserialize<ProjectFlowHivePlanValidationResult>(reader.GetString(12)),
             Deserialize<string[]>(reader.GetString(13)) ?? [],
-            reader.GetString(14),
-            reader.GetFieldValue<DateTimeOffset>(15),
-            reader.GetFieldValue<DateTimeOffset>(16),
-            reader.IsDBNull(17) ? null : reader.GetFieldValue<DateTimeOffset>(17),
+            Deserialize<string[]>(reader.GetString(14)) ?? [],
+            Deserialize<string[]>(reader.GetString(15)) ?? [],
+            reader.GetString(16),
+            reader.GetFieldValue<DateTimeOffset>(17),
+            reader.GetFieldValue<DateTimeOffset>(18),
+            reader.IsDBNull(19) ? null : reader.GetFieldValue<DateTimeOffset>(19),
             status is "completed" or "completed_with_schedule_overrun" or "needs_attention" or "failed");
     }
 
@@ -557,7 +838,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             correlationId = run.CorrelationId,
             workingDraft = new
             {
-                persisted = run.GeneratedPlan is not null,
+                persisted = run.GeneratedPlan is not null
+                    && run.Phase == "working_draft_ready",
                 immutableVersionCreated = false,
                 baselineCreated = false,
                 reviewRequired = true
@@ -584,7 +866,9 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 phaseOrder = new[] { "Plan", "Design", "Implement", "Validate", "Release" },
                 sourceGrounded = run.GeneratedPlan?.CelarAiCitationIds?.Count > 0,
                 automaticPrivateProcessing = true,
-                automaticWorkingCopyPersistence = true
+                automaticWorkingCopyPersistence = true,
+                requestPollingReadOnly = true,
+                backgroundGeneration = true
             },
             createdAt = run.CreatedAt,
             updatedAt = run.UpdatedAt,
@@ -715,6 +999,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         ProjectFlowHivePlanRequest? Plan,
         string RequestedOutcome,
         string DetailLevel,
+        Guid ActualUserId,
+        Guid EffectiveUserId,
         ProjectFlowHivePlanRequest? GeneratedPlan,
         ProjectFlowHiveScheduleResult? Schedule,
         ProjectFlowHivePlanValidationResult? Validation,

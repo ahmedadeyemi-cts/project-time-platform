@@ -88,10 +88,6 @@ internal static class ProjectPlanningAiOrchestrator
         var sowCitations = currentCitations
             .Where(citation => citation.DocumentId == currentSowId)
             .ToArray();
-        var scopeCitations = sowCitations
-            .Where(citation => ContainsScopeMarker(citation.SectionTitle)
-                || ContainsScopeMarker(citation.CitationAnchor))
-            .ToArray();
 
         var privatePlan = composition.FlowHivePlan;
         var completedStatus = composition.Status is
@@ -105,15 +101,14 @@ internal static class ProjectPlanningAiOrchestrator
                 && task.CitationIds.All(currentCitationIds.Contains));
         var grounded = completedStatus
             && citedPlan
-            && sowCitations.Length > 0
-            && scopeCitations.Length > 0;
+            && sowCitations.Length > 0;
 
         if (!grounded)
         {
             var missing = composition.MissingEvidence
                 .Concat(documents.Blockers)
                 .Concat([
-                    "Celar AI did not return a complete plan cited to the current active Work Register SOW and its Scope of Services. No generic plan was substituted."
+                    "Celar AI did not return a complete plan cited to the current authoritative Work Register SOW and current authorized project evidence. No generic plan was substituted."
                 ])
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -223,12 +218,6 @@ internal static class ProjectPlanningAiOrchestrator
             CelarAiConfidence = composition.Confidence
         };
     }
-
-    private static bool ContainsScopeMarker(string? value) =>
-        !string.IsNullOrWhiteSpace(value)
-        && (value.Contains("scope", StringComparison.OrdinalIgnoreCase)
-            || value.Contains("service", StringComparison.OrdinalIgnoreCase)
-            || value.Contains("deliverable", StringComparison.OrdinalIgnoreCase));
 
     private static string Clean(string? value, int maximum, string fallback)
     {
