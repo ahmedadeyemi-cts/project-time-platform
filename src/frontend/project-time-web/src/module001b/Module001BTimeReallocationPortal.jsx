@@ -121,6 +121,17 @@ function NoAccess() {
   );
 }
 
+function emptyTaskDraft(projectId = '') {
+  return {
+    projectId,
+    taskCode: '',
+    taskName: '',
+    taskDescription: '',
+    billable: true,
+    reason: ''
+  };
+}
+
 export default function Module001BTimeReallocationPortal({ allowed }) {
   const [routeActive, setRouteActive] = useState(() => isModule001BRoute());
   const [weekStart, setWeekStart] = useState(() => sundayFor(new Date()));
@@ -131,6 +142,8 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
   const [destination, setDestination] = useState('');
   const [destinationSearch, setDestinationSearch] = useState('');
   const [reason, setReason] = useState('');
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [taskDraft, setTaskDraft] = useState(() => emptyTaskDraft());
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -171,7 +184,7 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
     try {
       const payload = await sharedTimeApi(
         `/api/runtime/timesheet/steward/v2/users/${encodeURIComponent(selectedUserId)}/workspace?weekStart=${encodeURIComponent(weekStart)}`,
-        { requiredCollections: ['entries', 'moveTargets'] }
+        { requiredCollections: ['entries', 'moveTargets', 'availableProjects'] }
       );
       setWorkspace(payload);
     } catch (requestError) {
@@ -187,6 +200,7 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
 
   const entries = Array.isArray(workspace?.entries) ? workspace.entries : [];
   const targets = Array.isArray(workspace?.moveTargets) ? workspace.moveTargets : [];
+  const availableProjects = Array.isArray(workspace?.availableProjects) ? workspace.availableProjects : [];
   const selectedEntry = entries.find((entry) => entry.timeEntryId === entryId) || null;
   const selectedTarget = targets.find((target) => destinationValue(target) === destination) || null;
   const search = destinationSearch.trim().toLowerCase();
@@ -201,7 +215,58 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
     targets: filteredTargets.filter((target) => destinationGroup(target) === group)
   })), [filteredTargets]);
 
+  useEffect(() => {
+    if (!showCreateTask) return;
+    setTaskDraft((current) => current.projectId || availableProjects.length === 0
+      ? current
+      : { ...current, projectId: availableProjects[0].projectId });
+  }, [availableProjects, showCreateTask]);
+
   const canMove = Boolean(selectedEntry && destinationPayload(destination) && reason.trim().length >= 5 && !busy);
+  const canCreateTask = Boolean(
+    selectedUserId
+      && taskDraft.projectId
+      && taskDraft.taskCode.trim()
+      && taskDraft.taskName.trim()
+      && taskDraft.reason.trim().length >= 5
+      && !busy
+  );
+
+  async function createDestinationTask() {
+    if (!canCreateTask) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await sharedTimeApi('/api/timesheet/ptc/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          targetUserId: selectedUserId,
+          projectId: taskDraft.projectId,
+          taskCode: taskDraft.taskCode.trim(),
+          taskName: taskDraft.taskName.trim(),
+          taskDescription: taskDraft.taskDescription.trim(),
+          billable: Boolean(taskDraft.billable),
+          reason: taskDraft.reason.trim()
+        })
+      });
+      const newDestination = result?.projectId && result?.taskId
+        ? `project-task:${result.projectId}:${result.taskId}`
+        : '';
+      await loadWorkspace();
+      if (newDestination) setDestination(newDestination);
+      setShowCreateTask(false);
+      setTaskDraft(emptyTaskDraft(availableProjects[0]?.projectId || ''));
+      setMessage(
+        `New ${taskDraft.billable ? 'billable' : 'non-billable'} task created and assigned. `
+        + 'It is selected as the reallocation destination; review the correction reason and reallocate the time.'
+      );
+    } catch (requestError) {
+      setError(requestError?.message || 'The new destination task could not be created.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function reallocate() {
     if (!canMove) return;
@@ -250,7 +315,7 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
             <p className="eyebrow">MODULE 001B · PROJECT TEAM COORDINATOR</p>
             <h1 style={{ marginBottom: 8 }}>Time Reallocation &amp; Corrections</h1>
             <p style={{ maxWidth: 850 }}>
-              Move an existing time entry to the correct project task, service request task, or non-project activity without reopening the timesheet.
+              Move an existing time entry to the correct project task, service request task, newly created billable or non-billable task, or non-project activity without reopening the timesheet.
             </p>
           </div>
           <button type="button" onClick={() => { window.location.hash = '#dashboard'; }}>Close</button>
@@ -269,7 +334,12 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
               <label>
                 <span>Eligible user</span>
                 <select value={selectedUserId} disabled={loading || busy} onChange={(event) => {
-                  setSelectedUserId(event.target.value); setEntryId(''); setDestination(''); setMessage('');
+                  setSelectedUserId(event.target.value);
+                  setEntryId('');
+                  setDestination('');
+                  setShowCreateTask(false);
+                  setTaskDraft(emptyTaskDraft());
+                  setMessage('');
                 }}>
                   <option value="">{loading ? 'Loading users…' : 'Select user'}</option>
                   {users.map((user) => <option key={user.userId} value={user.userId}>{user.displayName} · {user.email}</option>)}
@@ -307,13 +377,102 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
           </section>
 
           <section className="ptc-guided-section">
-            <header><strong>3. Choose the correct destination</strong><span>Project tasks · Service requests · Non-project time</span></header>
+            <header>
+              <strong>3. Choose the correct destination</strong>
+              <span>Project tasks · Service requests · Non-project time</span>
+            </header>
             <label className="ptc-guided-destination-search">
               <span>Search destinations</span>
               <input type="search" value={destinationSearch} disabled={!entryId || busy}
                 onChange={(event) => setDestinationSearch(event.target.value)}
                 placeholder="Project, task, request number, or non-project activity" />
             </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0 14px' }}>
+              <button
+                type="button"
+                disabled={!selectedUserId || availableProjects.length === 0 || busy}
+                onClick={() => setShowCreateTask((current) => !current)}
+              >
+                {showCreateTask ? 'Hide new task form' : 'Create new billable / non-billable task'}
+              </button>
+            </div>
+
+            {showCreateTask ? (
+              <section className="ptc-guided-section" style={{ marginBottom: 16 }}>
+                <header>
+                  <strong>Create and assign a new destination task</strong>
+                  <span>The new task becomes immediately selectable for this reallocation.</span>
+                </header>
+                <div className="ptc-guided-form-grid three">
+                  <label>
+                    <span>Project</span>
+                    <select
+                      value={taskDraft.projectId}
+                      disabled={busy}
+                      onChange={(event) => setTaskDraft((current) => ({ ...current, projectId: event.target.value }))}
+                    >
+                      <option value="">Select project</option>
+                      {availableProjects.map((project) => (
+                        <option key={project.projectId} value={project.projectId}>
+                          {project.projectCode} · {project.projectName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Task code</span>
+                    <input
+                      value={taskDraft.taskCode}
+                      disabled={busy}
+                      onChange={(event) => setTaskDraft((current) => ({ ...current, taskCode: event.target.value }))}
+                      placeholder="Example: CORRECTION-01"
+                    />
+                  </label>
+                  <label>
+                    <span>Task name</span>
+                    <input
+                      value={taskDraft.taskName}
+                      disabled={busy}
+                      onChange={(event) => setTaskDraft((current) => ({ ...current, taskName: event.target.value }))}
+                      placeholder="Clear destination task name"
+                    />
+                  </label>
+                </div>
+                <label>
+                  <span>Task description</span>
+                  <textarea
+                    value={taskDraft.taskDescription}
+                    disabled={busy}
+                    onChange={(event) => setTaskDraft((current) => ({ ...current, taskDescription: event.target.value }))}
+                    placeholder="Optional description for the new task"
+                  />
+                </label>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={taskDraft.billable}
+                    disabled={busy}
+                    onChange={(event) => setTaskDraft((current) => ({ ...current, billable: event.target.checked }))}
+                  />
+                  <span>Billable task (clear for non-billable)</span>
+                </label>
+                <label>
+                  <span>Required creation reason</span>
+                  <textarea
+                    value={taskDraft.reason}
+                    disabled={busy}
+                    onChange={(event) => setTaskDraft((current) => ({ ...current, reason: event.target.value }))}
+                    placeholder="Why is a new destination task required?"
+                  />
+                </label>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button type="button" className="primary" disabled={!canCreateTask} onClick={createDestinationTask}>
+                    {busy ? 'Creating…' : 'Create and assign task'}
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
             <div className="ptc-guided-destination-groups">
               {groupedTargets.map(({ group, targets: groupItems }) => (
                 <section key={group}>
@@ -338,7 +497,7 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
             <header><strong>4. Review and reallocate</strong></header>
             <div className="ptc-guided-review-grid">
               <article><span>From</span><strong>{selectedEntry ? activityLabel(selectedEntry) : 'Select an entry'}</strong><small>{selectedEntry ? `${selectedEntry.hours} hour(s) · ${statusLabel(selectedEntry.status)}` : '—'}</small></article>
-              <article><span>To</span><strong>{selectedTarget ? destinationLabel(selectedTarget) : 'Select a destination'}</strong><small>{selectedTarget ? destinationGroup(selectedTarget) : '—'}</small></article>
+              <article><span>To</span><strong>{selectedTarget ? destinationLabel(selectedTarget) : destination ? 'Newly created project task' : 'Select a destination'}</strong><small>{selectedTarget ? destinationGroup(selectedTarget) : destination ? 'Project Tasks' : '—'}</small></article>
             </div>
             <label>
               <span>Required correction reason</span>
