@@ -82,9 +82,6 @@ requireAll(authoritative, [
 ], 'Wrapper-independent authoritative API client');
 rejectAll(authoritative, ['window.fetch(', 'fetch(path'], 'Wrapper-independent authoritative XHR client');
 
-// Legacy read compatibility remains fail-closed for older panels. Modules 012
-// and 037 themselves now use /api/rbac/v1; this bridge must never synthesize
-// missing arrays or turn an incomplete success into an empty valid contract.
 requireAll(bridge, [
   "import { authoritativeApi } from './projectpulse-authoritative-api.js';",
   "DIRECT_ROLE_POLICY_MARKER = 'projectpulse-role-policy-direct-fetch-v3'",
@@ -145,10 +142,16 @@ requireAll(gate, [
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
   'if (!authority.ready) return null',
-  'if (!canStewardTime && !canReviewApprovals) return null',
+  'const MODULE001B_ROLES = new Set([',
+  'const canUseModule001B = hasAnyEffectiveRole(authority, MODULE001B_ROLES);',
+  '<Module001BTimeReallocationPortal allowed={canUseModule001B} />',
   '<PtcTimesheetManagementPortal />'
-], 'Effective-role PTC gate');
-rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal owner');
+], 'Effective-role PTC and Module 001B gate');
+rejectAll(gate, [
+  'PtcRuntimeTaskCatalog',
+  "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
+  '<PtcGuidedMovePortal />'
+], 'single PTC portal owner and retired Module 001 reallocation mount');
 
 requireAll(roleAuthority, [
   'normalizeProjectPulseRoleCodes',
@@ -250,7 +253,7 @@ if (externalAvailable) {
     'canMoveToNonProjectTime = true',
     'Module001EnsurePtcAssignmentV2Async',
     'crossActivityTypeMove = true'
-  ], 'PTC v2 backend');
+  ], 'PTC v2 backend retained behind the Module 001 410 retirement boundary');
 
   requireAll(resultExecution, [
     'UseModule001ResultExecutionCompatibility',
@@ -290,4 +293,4 @@ for (const forbidden of [
   }
 }
 
-console.log('RUNTIME_ROLE_POLICY_PTC_DATA=PASS pTCTransport=v2-authoritative timerPersistence=server-authoritative');
+console.log('RUNTIME_ROLE_POLICY_PTC_DATA=PASS pTCTransport=v2-authoritative timerPersistence=server-authoritative module001b=strict-reallocation');
