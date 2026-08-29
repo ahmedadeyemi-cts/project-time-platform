@@ -86,9 +86,8 @@ requireText(catalogRollback, 'Rollback 089 refused: a newer scoped role-policy v
 requireText(module001bBoundary, 'PROJECT_TEAM_COORDINATOR', 'Module 001B fixed PTC role boundary');
 requireText(module001bBoundary, 'SUPER_ADMINISTRATOR', 'Module 001B fixed Super Administrator role boundary');
 requireText(module001bBoundary, 'No Access. Module 001B is restricted to Project Team Coordinator and Super Administrator.', 'Module 001B fixed No Access boundary');
-requireText(moduleDirectoryAuthority, "const MODULE001B_FIXED_ACCESS_ROLES = new Set([", 'Module 001B fixed navigation role boundary');
-requireText(moduleDirectoryAuthority, "'PROJECT_TEAM_COORDINATOR'", 'Module 001B PTC navigation role');
-requireText(moduleDirectoryAuthority, "'SUPER_ADMINISTRATOR'", 'Module 001B Super Administrator navigation role');
+requireText(moduleDirectoryAuthority, "const MODULE001B_ROLES = new Set(['PROJECT_TEAM_COORDINATOR', 'SUPER_ADMINISTRATOR']);", 'Module 001B fixed navigation role boundary');
+requireText(moduleDirectoryAuthority, "normalizedModuleNumber(module?.moduleNumber) !== '001B' || allowed", 'Module 001B directory fail-closed filter');
 requireText(rolePermissionModel, "'001A': {", 'Module 001A intuitive permission preset');
 requireText(rolePermissionModel, "actions = [...new Set(['MODULE_ACCESS', ...actions])]", 'non-No Access presets grant module visibility');
 requireText(rolePermissionModel, "actionCode === 'MODULE_ACCESS' ? 'ORGANIZATION' : scope", 'organization module-access scope');
