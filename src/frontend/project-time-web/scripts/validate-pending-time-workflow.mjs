@@ -92,14 +92,15 @@ for (const token of [
   'Requests / Service Requests',
   'Project Tasks',
   'Non-Project Time',
-  'Move an existing time entry to the correct project task, service request task, newly created billable or non-billable task, or non-project activity without reopening the timesheet.',
+  'Correct the allocation of an existing time entry without changing the worker, work date,',
+  'worked hours, or submission/approval status.',
   'Submitted and approved time stays in its current status.',
   'No worker resubmission, Manager approval, or Project Manager approval is required.',
   'Create new billable / non-billable task',
-  'Create and assign a new destination task',
+  'Create and assign a destination task',
   'billable: Boolean(taskDraft.billable)',
   '`project-task:${result.projectId}:${result.taskId}`',
-  "window.dispatchEvent(new CustomEvent('projectpulse:ptc-time-reallocated'"
+  "window.dispatchEvent(new CustomEvent('projectpulse:module001b-time-reallocated'"
 ]) {
   requireText(reallocationPortal, token, 'Module 001B Time Reallocation portal');
 }
