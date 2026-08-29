@@ -404,9 +404,40 @@ jq -e '
 ' "$EVIDENCE_DIR/module001b-capabilities.json" >/dev/null \
   || fail "Module 001B capabilities do not preserve the approved reallocation contract."
 
-FIXTURE_STATUS="$(module001b_request POST \
-  '/api/runtime/timesheet/steward/001b/protected-test-uat/fixture' \
-  "$EVIDENCE_DIR/module001b-fixture.json")"
+# Azure Container Apps remains deliberately in single-revision mode, but while a new
+# revision is starting the old healthy revision can continue serving for a short period.
+# The prior controller treated that old-revision 404 as an application failure. Retry only
+# the fail-closed route-unavailable response (and bounded gateway handoff statuses) until
+# the enabled revision actually serves the disposable fixture endpoint.
+FIXTURE_STATUS=''
+for attempt in $(seq 1 36); do
+  : > "$EVIDENCE_DIR/module001b-fixture.json"
+  FIXTURE_STATUS="$(module001b_request POST \
+    '/api/runtime/timesheet/steward/001b/protected-test-uat/fixture' \
+    "$EVIDENCE_DIR/module001b-fixture.json")"
+  if [[ "$FIXTURE_STATUS" == 201 ]]; then
+    echo "MODULE001B_ENABLED_REVISION=SERVING attempt=$attempt" >&2
+    break
+  fi
+
+  if [[ "$FIXTURE_STATUS" == 404 ]] \
+    && jq -e '.status == "protected_test_uat_route_unavailable"' \
+      "$EVIDENCE_DIR/module001b-fixture.json" >/dev/null 2>&1; then
+    echo "MODULE001B_ENABLED_REVISION=PENDING attempt=$attempt status=$FIXTURE_STATUS" >&2
+    sleep 5
+    continue
+  fi
+
+  case "$FIXTURE_STATUS" in
+    000|502|503|504)
+      echo "MODULE001B_ENABLED_REVISION=TRANSIENT attempt=$attempt status=$FIXTURE_STATUS" >&2
+      sleep 5
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 [[ "$FIXTURE_STATUS" == 201 ]] || fail "Protected-Test Module 001B fixture creation returned HTTP $FIXTURE_STATUS."
 jq -e --arg release "$EXPECTED_RELEASE_SHA" '
   .status == "protected_test_fixture_ready"
