@@ -9,7 +9,8 @@ python3 - \
   "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs" \
   "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerWorker.cs" \
   "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs" \
-  "$ROOT/src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs" <<'PY'
+  "$ROOT/src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs" \
+  "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs" <<'PY'
 from pathlib import Path
 import sys
 
@@ -21,6 +22,7 @@ orchestration_path = Path(sys.argv[5])
 worker_path = Path(sys.argv[6])
 orchestrator_path = Path(sys.argv[7])
 services_path = Path(sys.argv[8])
+enterprise_path = Path(sys.argv[9])
 
 text = repository_path.read_text(encoding='utf-8')
 start = text.index('public async Task<IReadOnlyList<PulseAiPrivateProcessingJob>> ListJobsAsync(')
@@ -113,6 +115,16 @@ if 'scopeCitations.Length > 0' in orchestrator or 'ContainsScopeMarker(' in orch
     raise SystemExit('ASSERTION_FAILED project_planning_grounding_still_magic_heading_dependent')
 if '&& sowCitations.Length > 0;' not in orchestrator:
     raise SystemExit('ASSERTION_FAILED project_planning_authoritative_sow_citation_gate_missing')
+if 'current active Work Register SOW' not in orchestrator:
+    raise SystemExit('ASSERTION_FAILED shared_planning_authoritative_sow_contract_marker_missing')
+
+enterprise = enterprise_path.read_text(encoding='utf-8')
+if 'No Scope of Services citation was located.' in enterprise:
+    raise SystemExit('ASSERTION_FAILED enterprise_sow_readiness_still_magic_heading_dependent')
+if 'if (scopeCitations == 0)' in enterprise:
+    raise SystemExit('ASSERTION_FAILED enterprise_sow_readiness_still_blocks_on_scope_heading_count')
+if 'authoritative, citation-ready Work Register SOW' not in enterprise:
+    raise SystemExit('ASSERTION_FAILED enterprise_sow_authority_summary_missing')
 
 workflow = workflow_path.read_text(encoding='utf-8')
 rollback_step = '      - name: Restore exact prior Test images after application failure'
@@ -136,5 +148,6 @@ print('ASSERTION_PASSED flowhive_ai_generation_runs_outside_http_request=true')
 print('ASSERTION_PASSED flowhive_ai_planner_polling_is_read_only=true')
 print('ASSERTION_PASSED flowhive_ai_planner_restart_persistence_is_idempotent=true')
 print('ASSERTION_PASSED project_planning_grounding_not_heading_dependent=true')
+print('ASSERTION_PASSED enterprise_sow_readiness_not_heading_dependent=true')
 print('ASSERTION_PASSED protected_test_healthy_failed_uat_candidate_preserved=true')
 PY

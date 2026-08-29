@@ -142,8 +142,8 @@ internal static class ProjectFlowHiveEnterpriseModule
                 readyCount = evidence.Count(item => item.ReadyForAiPlanner),
                 approvedSowScopeReady = evidence.Any(item => item.ReadyForAiPlanner),
                 explanation = evidence.Any(item => item.ReadyForAiPlanner)
-                    ? "At least one approved, citation-ready SOW scope source is available to AI Planner."
-                    : "AI Planner requires a project SOW that is visible, privately processed, active, approved or canonical, indexed, and supported by scope citations."
+                    ? "At least one authoritative, citation-ready Work Register SOW is available to AI Planner."
+                    : "AI Planner requires an active Work Register SOW that is visible, privately processed, approved or canonical, indexed, and supported by citation-ready chunks."
             },
             financials = new
             {
@@ -1372,7 +1372,6 @@ internal static class ProjectFlowHiveEnterpriseModule
                 if (authority is not ("approved" or "canonical")) blockers.Add("The active version is not approved or canonical.");
                 if (index is not ("lexical_ready" or "embedding_ready" or "ready")) blockers.Add("The active version is not citation indexed.");
                 if (citations == 0) blockers.Add("No citation-ready chunks are available.");
-                if (scopeCitations == 0) blockers.Add("No Scope of Services citation was located.");
                 rows.Add(new ProjectFlowHiveSowEvidenceState(
                     documentId,file,category,processing,visible,activeVersion,authority,index,version,
                     citations,scopeCitations,blockers.Count == 0,blockers));

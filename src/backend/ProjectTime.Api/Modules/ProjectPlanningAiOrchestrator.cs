@@ -108,7 +108,7 @@ internal static class ProjectPlanningAiOrchestrator
             var missing = composition.MissingEvidence
                 .Concat(documents.Blockers)
                 .Concat([
-                    "Celar AI did not return a complete plan cited to the current authoritative Work Register SOW and current authorized project evidence. No generic plan was substituted."
+                    "Celar AI did not return a complete plan cited to the current active Work Register SOW and current authorized project evidence. No generic plan was substituted."
                 ])
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
