@@ -72,7 +72,10 @@ if (boundary) {
     '/api/runtime/timesheet/steward',
     '/api/scoped-time/',
     'time_steward_role_required',
-    "Only Project Team Coordinator or Super Administrator may manage another user's time"
+    'No Access. Module 001B is restricted to Project Team Coordinator and Super Administrator.',
+    'legacyModule001Move',
+    'StatusCodes.Status410Gone',
+    'module_001b_reallocation_required'
   ], 'Time-steward hard role boundary');
 }
 
@@ -93,11 +96,17 @@ requireAll(gate, [
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
   'if (!authority.ready) return null',
-  'if (!canStewardTime && !canReviewApprovals) return null',
+  'const MODULE001B_ROLES = new Set([',
+  'const canUseModule001B = hasAnyEffectiveRole(authority, MODULE001B_ROLES);',
+  '<Module001BTimeReallocationPortal allowed={canUseModule001B} />',
   '<PtcTimesheetManagementPortal />',
   '<ProductionApprovalWorkPortal />'
 ], 'Effective-role PTC UI gate');
-rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal owner');
+rejectAll(gate, [
+  'PtcRuntimeTaskCatalog',
+  "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
+  '<PtcGuidedMovePortal />'
+], 'single PTC portal owner and retired Module 001 reallocation mount');
 
 requireAll(roleAuthority, [
   'normalizeProjectPulseRoleCodes',
@@ -215,7 +224,7 @@ if (stewardV2) {
     'Non-Project Time',
     'Module001EnsurePtcAssignmentV2Async',
     'crossActivityTypeMove = true'
-  ], 'Flexible PTC v2 source');
+  ], 'Flexible PTC v2 source retained behind the Module 001 410 retirement boundary');
 }
 
 if (queries) {
@@ -226,4 +235,4 @@ if (queries) {
   ], 'Role and module query foundation');
 }
 
-console.log('ROLE_PERMISSION_TIMESHEET_STABILIZATION=PASS database=PTP timer=server-authoritative pTC=v2 domOwnership=react-owned');
+console.log('ROLE_PERMISSION_TIMESHEET_STABILIZATION=PASS database=PTP timer=server-authoritative pTC=v2 module001b=strict-reallocation domOwnership=react-owned');
