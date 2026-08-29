@@ -88,13 +88,18 @@ for (const token of [
   'No Access',
   'Project Team Coordinators and Super Administrators',
   '/api/runtime/timesheet/steward/001b/reallocation/entries/${encodeURIComponent(selectedEntry.timeEntryId)}/move',
-  "requiredCollections: ['entries', 'moveTargets']",
+  '/api/timesheet/ptc/tasks',
+  "requiredCollections: ['entries', 'moveTargets', 'availableProjects']",
   'Requests / Service Requests',
   'Project Tasks',
   'Non-Project Time',
-  'Move an existing time entry to the correct project task, service request task, or non-project activity without reopening the timesheet.',
+  'Move an existing time entry to the correct project task, service request task, newly created billable or non-billable task, or non-project activity without reopening the timesheet.',
   'Submitted and approved time stays in its current status.',
   'No worker resubmission, Manager approval, or Project Manager approval is required.',
+  'Create new billable / non-billable task',
+  'Create and assign a new destination task',
+  'billable: Boolean(taskDraft.billable)',
+  '`project-task:${result.projectId}:${result.taskId}`',
   "window.dispatchEvent(new CustomEvent('projectpulse:ptc-time-reallocated'"
 ]) {
   requireText(reallocationPortal, token, 'Module 001B Time Reallocation portal');
@@ -288,6 +293,7 @@ if (!leanWebBuildContext) {
 
   console.log('PRODUCTION_APPROVAL_BACKEND_VALIDATION=PASS');
   console.log('MODULE001B_REALLOCATION_BACKEND_VALIDATION=PASS');
+  console.log('MODULE001B_NEW_DESTINATION_TASK=PASS');
   console.log('MODULE001B_LEGACY_MOVE_RETIREMENT=PASS');
 } else {
   console.log('PRODUCTION_APPROVAL_BACKEND_VALIDATION=SKIPPED_LEAN_WEB_CONTEXT');
@@ -306,6 +312,7 @@ console.log('MANAGER_PM_PTC_BULK_APPROVAL=PASS');
 console.log('NON_PROJECT_MANAGER_TO_PTC_ROUTE=PASS');
 console.log('PM_PROJECT_SCOPE_ISOLATION=PASS');
 console.log('MODULE001B_TIME_REALLOCATION=PASS');
+console.log('MODULE001B_NEW_DESTINATION_TASK=PASS');
 console.log('MODULE001B_NO_REAPPROVAL=PASS');
 console.log('IMMUTABLE_APPROVAL_EVIDENCE=PASS');
 process.exit(0);
