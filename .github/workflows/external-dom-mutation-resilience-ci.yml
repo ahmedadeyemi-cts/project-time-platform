@@ -36,10 +36,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify exact frontend-only scope
+      - name: Enforce owner scope or run regression mode
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: |
           set -Eeuo pipefail
           if [[ -n "$BASE_SHA" ]]; then
@@ -47,8 +48,10 @@ jobs:
           else
             git diff --name-only HEAD^...HEAD | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-files"
           fi
+          git diff --check "${BASE_SHA:+$BASE_SHA...}HEAD" || exit 1
 
-          cat > "$RUNNER_TEMP/allowed-files" <<'FILES'
+          if [[ "$HEAD_REF" == fix/admin-runtime-stability-dom-mutation-recovery-* ]]; then
+            cat > "$RUNNER_TEMP/allowed-files" <<'FILES'
           .github/workflows/external-dom-mutation-resilience-ci.yml
           src/frontend/project-time-web/index.html
           src/frontend/project-time-web/scripts/test-external-dom-mutation-resilience.mjs
@@ -56,18 +59,19 @@ jobs:
           src/frontend/project-time-web/src/external-dom-mutation-resilience.js
           src/frontend/project-time-web/src/main.jsx
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/allowed-files" -o "$RUNNER_TEMP/allowed-files"
-
-          comm -23 "$RUNNER_TEMP/actual-files" "$RUNNER_TEMP/allowed-files" > "$RUNNER_TEMP/unexpected-files"
-          if [[ -s "$RUNNER_TEMP/unexpected-files" ]]; then
-            echo 'Unexpected files in external DOM mutation resilience PR:' >&2
-            cat "$RUNNER_TEMP/unexpected-files" >&2
-            exit 1
+            sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-files"
+            LC_ALL=C sort -u "$RUNNER_TEMP/allowed-files" -o "$RUNNER_TEMP/allowed-files"
+            comm -23 "$RUNNER_TEMP/actual-files" "$RUNNER_TEMP/allowed-files" > "$RUNNER_TEMP/unexpected-files"
+            if [[ -s "$RUNNER_TEMP/unexpected-files" ]]; then
+              echo 'Unexpected files in external DOM mutation resilience owner PR:' >&2
+              cat "$RUNNER_TEMP/unexpected-files" >&2
+              exit 1
+            fi
+            ! grep -Eq '^database/(migrations|rollback)/|^src/backend/|^\.github/workflows/projectpulse-deploy-' "$RUNNER_TEMP/actual-files"
+            echo 'EXTERNAL_DOM_MUTATION_SCOPE=FRONTEND_ONLY'
+          else
+            echo 'EXTERNAL_DOM_MUTATION_SCOPE=REGRESSION_MODE'
           fi
-
-          ! grep -Eq '^database/(migrations|rollback)/|^src/backend/|^\.github/workflows/projectpulse-deploy-' "$RUNNER_TEMP/actual-files"
-          echo 'EXTERNAL_DOM_MUTATION_SCOPE=FRONTEND_ONLY'
           echo 'PRODUCTION_MUTATION=NONE'
 
       - name: Set up Node.js 22

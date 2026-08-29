@@ -25,6 +25,7 @@ const rejectAll = (source, values, label) => {
 
 const resultExecution = optionalRead('src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs');
 const stewardV2 = optionalRead('src/backend/ProjectTime.Api/Modules/Module001TimeStewardV2Module.cs');
+const stewardBoundary = optionalRead('src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs');
 const project = optionalRead('src/backend/ProjectTime.Api/ProjectTime.Api.csproj');
 const slotInjector = read('src/frontend/project-time-web/scripts/inject-module-001-owned-extension-slots.mjs');
 const moreInjector = read('src/frontend/project-time-web/scripts/inject-react-owned-more-menu.mjs');
@@ -33,6 +34,7 @@ const timerView = read('src/frontend/project-time-web/src/module001/TimesheetTim
 const picker = read('src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx');
 const stewardPortal = read('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx');
 const gate = read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx');
+const module001bGate = read('src/frontend/project-time-web/src/module001b/Module001BTimeReallocationGate.jsx');
 const main = read('src/frontend/project-time-web/src/main.jsx');
 const runtimeCss = read('src/frontend/project-time-web/src/module001/module001-runtime-v2.css');
 const bridge = read('src/frontend/project-time-web/src/module-availability-bridge.js');
@@ -42,7 +44,7 @@ const module026 = read('src/frontend/project-time-web/src/CrmErpIntegrationCente
 const module026Backend = optionalRead('src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs');
 const packageJson = read('src/frontend/project-time-web/package.json');
 
-const fullModule001BackendContext = Boolean(resultExecution && stewardV2 && project);
+const fullModule001BackendContext = Boolean(resultExecution && stewardV2 && stewardBoundary && project);
 if (fullModule001BackendContext) {
   requireAll(resultExecution, [
     'UseModule001ResultExecutionCompatibility',
@@ -66,20 +68,19 @@ if (fullModule001BackendContext) {
     'ENGINEERING_LEAD',
     'PROJECT_MANAGEMENT',
     'PROJECT_MANAGEMENT_LEAD',
-    'Requests / Service Requests',
-    'Project Tasks',
-    'Non-Project Time',
-    'canAssignExistingProjectTaskDuringMove = true',
-    'canMoveToNonProjectTime = true',
-    'TIME_TASK_ASSIGN',
-    'Module001EnsurePtcAssignmentV2Async',
-    'non_project_time_category_id = @category_id',
-    "association_source = 'PTC_TIME_STEWARD'",
-    'crossActivityTypeMove = true',
     'submissionOnBehalf = false'
-  ], 'Module 001 time-steward v2 backend');
+  ], 'Module 001 time-steward v2 compatibility backend');
+
+  requireAll(stewardBoundary, [
+    'legacyModule001Move',
+    'StatusCodes.Status410Gone',
+    'module_001b_reallocation_required',
+    'The legacy Module 001 move workflow is retired and cannot unsubmit or return time to Draft.',
+    '/api/runtime/timesheet/steward/001b/reallocation/entries/{timeEntryId}/move'
+  ], 'Module 001 legacy move tombstone boundary');
 
   requireAll(project, [
+    'app.UsePtcTimeStewardRoleBoundary();',
     'app.UseModule001ResultExecutionCompatibility();',
     'app.MapModule001TimeStewardV2Endpoints();',
     'app.MapModule001TimesheetEnhancementEndpoints();',
@@ -148,22 +149,41 @@ requireAll(stewardPortal, [
   "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
   '/api/runtime/timesheet/steward/v2/users?weekStart=',
   '/api/runtime/timesheet/steward/v2/users/${encodeURIComponent(selectedUserId)}/workspace',
-  '/api/runtime/timesheet/steward/v2/entries/${entry.timeEntryId}/move',
   "requiredCollections: ['users']",
-  "requiredCollections: ['entries', 'moveTargets', 'nonProjectCategories', 'availableProjects']",
+  "requiredCollections: ['entries']",
+  'Project Team Coordinator · Time Steward',
+  'Manage ordinary time for other users',
   'Engineering, Engineering Lead, Project Management, and Project Management Lead',
-  'Move time across all supported activity types',
-  'assignment will be created',
-  '<optgroup key={group.name} label={group.name}>',
-  'Create replacement task',
+  'Return week to draft',
+  'Save correction',
+  'Remove',
+  'Submitted and approved entries remain read-only in Module 001.',
+  'Required reason',
   'No submission on behalf',
-  'immutable audit history'
-], 'React-owned PTC workspace');
+  'immutable audit history',
+  'data-projectpulse-time-steward-contract="module001-time-steward-v2"'
+], 'React-owned Module 001 ordinary-time workspace');
+rejectAll(stewardPortal, [
+  '/move',
+  'Move time',
+  'move time',
+  'Move to',
+  'move to',
+  'destination',
+  'reallocat',
+  'Module001B',
+  'time-reallocation',
+  'Create replacement task',
+  'Create and assign replacement task',
+  'moveTargets',
+  'availableProjects'
+], 'Module 001 allocation boundary');
 
 for (const [label, source] of [
   ['timer portal', timerPortal],
   ['PTC portal', stewardPortal],
   ['PTC gate', gate],
+  ['Module 001B gate', module001bGate],
   ['intuitive More module', intuitive]
 ]) {
   rejectAll(source, [
@@ -178,24 +198,41 @@ for (const [label, source] of [
 }
 
 requireAll(gate, [
+  "import ProductionApprovalWorkPortal from '../ProductionApprovalWorkPortal.jsx';",
+  "from '../effective-role-authority.js'",
+  'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
+  'hasAnyEffectiveRole',
+  'readEffectiveRoleAuthority',
   '<PtcTimesheetManagementPortal />',
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
-  'const MODULE001B_ROLES = new Set([',
-  'const canUseModule001B = hasAnyEffectiveRole(authority, MODULE001B_ROLES);',
-  '<Module001BTimeReallocationPortal allowed={canUseModule001B} />',
   'if (!authority.ready) return null'
-], 'PTC effective-role and Module 001B gate');
+], 'Module 001 effective-role gate');
 rejectAll(gate, [
-  'PtcRuntimeTaskCatalog',
-  "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
-  '<PtcGuidedMovePortal />'
-], 'retired nested PTC and Module 001 reallocation portals');
+  'Module001B',
+  'time-reallocation',
+  'reallocat',
+  'move time',
+  'PtcGuidedMovePortal'
+], 'Module 001 gate allocation boundary');
+
+requireAll(module001bGate, [
+  "import Module001BTimeReallocationPortal from './Module001BTimeReallocationPortal.jsx';",
+  "from '../effective-role-authority.js'",
+  'MODULE001B_ROLES',
+  "'PROJECT_TEAM_COORDINATOR'",
+  "'SUPER_ADMINISTRATOR'",
+  'hasAnyEffectiveRole(authority, MODULE001B_ROLES)',
+  'allowed={hasAnyEffectiveRole(authority, MODULE001B_ROLES)}'
+], 'Independent Module 001B role gate');
 
 requireAll(main, [
+  "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
+  "import Module001BTimeReallocationGate from './module001b/Module001BTimeReallocationGate.jsx';",
   '<TimesheetEnhancementPortal />',
-  '<PtcTimeStewardGate />'
-], 'single Module 001 portal mounts');
+  '<PtcTimeStewardGate />',
+  '<Module001BTimeReallocationGate />'
+], 'independent Module 001 and 001B mounts');
 rejectAll(main, [
   'Module001ActiveTimerRecoveryPortal',
   '<PtcRuntimeTaskCatalog />'
@@ -205,10 +242,14 @@ requireAll(runtimeCss, [
   'body.projectpulse-module001-timer-mode',
   '.module001-server-timer-recovery',
   '.module001-server-timer-clock',
-  '.ptc-destination-catalog',
-  '.ptc-destination-groups',
+  '.ptc-select-user-prompt',
   '[data-projectpulse-react-owned-slot="true"]'
 ], 'Module 001 runtime v2 styling');
+rejectAll(runtimeCss, [
+  '.ptc-destination-catalog',
+  '.ptc-destination-groups',
+  'flexible PTC destinations'
+], 'retired Module 001 allocation styling');
 
 requireAll(bridge, [
   "permissionEvidenceState = 'loading'",
@@ -271,6 +312,8 @@ console.log('MODULE_001_PTC_TIMER_DOM_OWNERSHIP=PASS');
 console.log('MODULE_001_ELIGIBLE_ROLES=ENGINEERING,ENGINEERING_LEAD,PROJECT_MANAGEMENT,PROJECT_MANAGEMENT_LEAD');
 console.log('MODULE_001_TIMER_GROUPS=REQUESTS_PROJECT_TASKS_NON_PROJECT');
 console.log('MODULE_001_TIMER_PERSISTENCE=SERVER_AUTHORITATIVE');
+console.log('MODULE_001_ALLOCATION_UI=ABSENT');
 console.log('MODULE_001B_REALLOCATION_GATE=STRICT_PTC_SUPERADMIN');
+console.log('MODULE_001B_OWNERSHIP=INDEPENDENT_ROOT_MOUNT');
 console.log('PROJECTPULSE_REACT_CHILD_MUTATION=0');
 console.log('MODULE_026_PR207_INCLUDED=YES');

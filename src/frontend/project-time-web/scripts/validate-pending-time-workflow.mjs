@@ -36,11 +36,10 @@ const approvalCss = [
   read('src/frontend/project-time-web/src/production-approval-work-hardening.css')
 ].join('\n');
 const reallocationPortal = read('src/frontend/project-time-web/src/module001b/Module001BTimeReallocationPortal.jsx');
-const reallocationCss = [
-  read('src/frontend/project-time-web/src/module001/ptc-guided-move.css'),
-  read('src/frontend/project-time-web/src/module001/module001b-reallocation-retirement.css')
-].join('\n');
-const compositionGate = read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx');
+const reallocationCss = read('src/frontend/project-time-web/src/module001b/module001b-time-reallocation.css');
+const module001Gate = read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx');
+const module001bGate = read('src/frontend/project-time-web/src/module001b/Module001BTimeReallocationGate.jsx');
+const main = read('src/frontend/project-time-web/src/main.jsx');
 const workflowOperations = read('src/frontend/project-time-web/src/ApprovalExportAuditWorkflowCenter.jsx');
 
 for (const token of [
@@ -93,54 +92,79 @@ for (const token of [
   'Requests / Service Requests',
   'Project Tasks',
   'Non-Project Time',
-  'Move an existing time entry to the correct project task, service request task, newly created billable or non-billable task, or non-project activity without reopening the timesheet.',
+  'Correct the allocation of an existing time entry without changing the worker, work date,',
+  'worked hours, or submission/approval status.',
   'Submitted and approved time stays in its current status.',
   'No worker resubmission, Manager approval, or Project Manager approval is required.',
   'Create new billable / non-billable task',
-  'Create and assign a new destination task',
+  'Create and assign a destination task',
   'billable: Boolean(taskDraft.billable)',
   '`project-task:${result.projectId}:${result.taskId}`',
-  "window.dispatchEvent(new CustomEvent('projectpulse:ptc-time-reallocated'"
+  "window.dispatchEvent(new CustomEvent('projectpulse:module001b-time-reallocated'"
 ]) {
   requireText(reallocationPortal, token, 'Module 001B Time Reallocation portal');
 }
 
 for (const token of [
-  '.ptc-guided-dialog',
-  '.ptc-guided-section',
-  '.ptc-guided-destination-groups',
-  '.module001b-reallocation-launcher',
-  'Time reallocation has moved to Module 001B'
+  '.module001b-shell',
+  '.module001b-workspace',
+  '.module001b-section',
+  '.module001b-destination-list',
+  '.module001b-choice',
+  '.module001b-actions'
 ]) {
   requireText(reallocationCss, token, 'Module 001B Time Reallocation styles');
 }
 
 for (const token of [
   "import ProductionApprovalWorkPortal from '../ProductionApprovalWorkPortal.jsx';",
-  "import Module001BTimeReallocationPortal from '../module001b/Module001BTimeReallocationPortal.jsx';",
   "from '../effective-role-authority.js'",
   'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
   'hasAnyEffectiveRole',
   'readEffectiveRoleAuthority',
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
-  'const MODULE001B_ROLES = new Set([',
-  "currentRoute() === 'timesheet'",
-  '<Module001BTimeReallocationPortal allowed={canUseModule001B} />',
-  "window.location.hash = '#time-reallocation';",
   '<ProductionApprovalWorkPortal />',
   '<PtcTimesheetManagementPortal />',
   'if (!authority.ready) return null;'
 ]) {
-  requireText(compositionGate, token, 'Frontend composition gate');
+  requireText(module001Gate, token, 'Module 001 frontend composition gate');
+}
+
+for (const token of [
+  "import Module001BTimeReallocationPortal from './Module001BTimeReallocationPortal.jsx';",
+  "from '../effective-role-authority.js'",
+  'MODULE001B_ROLES',
+  "'PROJECT_TEAM_COORDINATOR'",
+  "'SUPER_ADMINISTRATOR'",
+  'hasAnyEffectiveRole(authority, MODULE001B_ROLES)',
+  'allowed={hasAnyEffectiveRole(authority, MODULE001B_ROLES)}'
+]) {
+  requireText(module001bGate, token, 'Independent Module 001B gate');
+}
+
+for (const token of [
+  "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
+  "import Module001BTimeReallocationGate from './module001b/Module001BTimeReallocationGate.jsx';",
+  '<PtcTimeStewardGate />',
+  '<Module001BTimeReallocationGate />'
+]) {
+  requireText(main, token, 'Independent Module 001 and 001B application mounts');
 }
 
 rejectText(approvalPortal, 'window.prompt', 'Production approval portal');
 rejectText(reallocationPortal, 'window.prompt', 'Module 001B Time Reallocation portal');
-rejectText(compositionGate, "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';", 'Retired Module 001 Move Time mount');
-rejectText(compositionGate, '<PtcGuidedMovePortal />', 'Retired Module 001 Move Time mount');
-rejectText(compositionGate, '<PendingApprovalWorkPortal />', 'Retired approval portal mount');
-rejectText(compositionGate, 'PtcNonProjectTaskPortal', 'Duplicate non-project creation launcher');
+for (const retired of [
+  'Module001B',
+  'time-reallocation',
+  'reallocat',
+  'move time',
+  'PtcGuidedMovePortal'
+]) {
+  rejectText(module001Gate, retired, 'Module 001 allocation boundary');
+}
+rejectText(module001Gate, '<PendingApprovalWorkPortal />', 'Retired approval portal mount');
+rejectText(module001Gate, 'PtcNonProjectTaskPortal', 'Duplicate non-project creation launcher');
 
 if (!leanWebBuildContext) {
   const productionBackend = read('src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkModule.cs');
@@ -203,6 +227,7 @@ if (!leanWebBuildContext) {
     'module001b-time-reallocation-v1-2026-08-28',
     '/api/runtime/timesheet/steward/001b/reallocation/capabilities',
     '/api/runtime/timesheet/steward/001b/reallocation/entries/{timeEntryId:guid}/move',
+    'Module001BTimeReallocationRequest',
     'allocationOnly = true',
     'workerEditable = false',
     'workDateEditable = false',
@@ -218,6 +243,7 @@ if (!leanWebBuildContext) {
   ]) {
     requireText(module001bBackend, token, 'Module 001B Time Reallocation backend');
   }
+  rejectText(module001bBackend, 'Module001PtcMoveV2Request request', 'Module 001B request binding');
 
   for (const token of [
     'TimeStewardRoleCodes',
@@ -314,5 +340,7 @@ console.log('PM_PROJECT_SCOPE_ISOLATION=PASS');
 console.log('MODULE001B_TIME_REALLOCATION=PASS');
 console.log('MODULE001B_NEW_DESTINATION_TASK=PASS');
 console.log('MODULE001B_NO_REAPPROVAL=PASS');
+console.log('MODULE001B_INDEPENDENT_OWNERSHIP=PASS');
+console.log('MODULE001_ALLOCATION_UI=ABSENT');
 console.log('IMMUTABLE_APPROVAL_EVIDENCE=PASS');
 process.exit(0);

@@ -22,7 +22,7 @@ public static partial class ScopedRolePolicyModule
             (Func<HttpContext, IResult>)Module001BTimeReallocationCapabilities);
         app.MapPost(
             "/api/runtime/timesheet/steward/001b/reallocation/entries/{timeEntryId:guid}/move",
-            (Func<Guid, Module001PtcMoveV2Request, HttpContext, Task<IResult>>)Module001BReallocateEntryAsync);
+            (Func<Guid, Module001BTimeReallocationRequest, HttpContext, Task<IResult>>)Module001BReallocateEntryAsync);
         return app;
     }
 
@@ -52,9 +52,18 @@ public static partial class ScopedRolePolicyModule
 
     private static async Task<IResult> Module001BReallocateEntryAsync(
         Guid timeEntryId,
-        Module001PtcMoveV2Request request,
+        Module001BTimeReallocationRequest request,
         HttpContext context)
     {
+        if (request.TargetUserId == Guid.Empty)
+        {
+            return Results.BadRequest(new
+            {
+                status = "target_user_required",
+                message = "Select an eligible user before reallocating time."
+            });
+        }
+
         var reason = (request.Reason ?? string.Empty).Trim();
         if (reason.Length < 5)
             return ReasonRequired("reallocate the selected time entry");
@@ -258,7 +267,7 @@ public static partial class ScopedRolePolicyModule
                     await transaction.RollbackAsync(context.RequestAborted);
                     return Results.BadRequest(new
                     {
-                        status = "move_destination_required",
+                        status = "reallocation_destination_required",
                         message = "Select a Project Task, Request / Service Request, or Non-Project Time destination."
                     });
                 }
@@ -473,4 +482,20 @@ public static partial class ScopedRolePolicyModule
             throw;
         }
     }
+}
+
+/// <summary>
+/// JSON contract owned exclusively by Module 001B. Keeping these values as strings/nullable
+/// GUIDs prevents the legacy Module 001 request model from rejecting valid 001B destination
+/// payloads during minimal-API model binding before the endpoint can return a structured result.
+/// </summary>
+internal sealed class Module001BTimeReallocationRequest
+{
+    public Guid TargetUserId { get; init; }
+    public string? DestinationType { get; init; }
+    public Guid? AssignmentId { get; init; }
+    public Guid? ProjectId { get; init; }
+    public Guid? TaskId { get; init; }
+    public Guid? NonProjectTimeCategoryId { get; init; }
+    public string? Reason { get; init; }
 }

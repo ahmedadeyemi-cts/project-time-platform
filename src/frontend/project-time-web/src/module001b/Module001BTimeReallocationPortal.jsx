@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { authoritativeApi } from '../projectpulse-authoritative-api.js';
-import '../module001/ptc-guided-move.css';
+import './module001b-time-reallocation.css';
 
 const DESTINATION_GROUPS = Object.freeze([
   'Requests / Service Requests',
@@ -9,8 +9,8 @@ const DESTINATION_GROUPS = Object.freeze([
   'Non-Project Time'
 ]);
 
-function sharedTimeApi(path, options = {}) {
-  return authoritativeApi(path, { ...options, moduleNumber: '001' });
+function module001bApi(path, options = {}) {
+  return authoritativeApi(path, { ...options, moduleNumber: '001B' });
 }
 
 function isModule001BRoute() {
@@ -66,13 +66,22 @@ function destinationValue(target = {}) {
 function destinationPayload(value) {
   const [kind, first, second] = String(value || '').split(':');
   if (kind === 'assignment' && first) {
-    return { destinationType: 'assignment', assignmentId: first, projectId: null, taskId: null, nonProjectTimeCategoryId: null };
+    return {
+      destinationType: 'assignment', assignmentId: first, projectId: null,
+      taskId: null, nonProjectTimeCategoryId: null
+    };
   }
   if (kind === 'project-task' && first && second) {
-    return { destinationType: 'project_task', assignmentId: null, projectId: first, taskId: second, nonProjectTimeCategoryId: null };
+    return {
+      destinationType: 'project_task', assignmentId: null, projectId: first,
+      taskId: second, nonProjectTimeCategoryId: null
+    };
   }
   if (kind === 'category' && first) {
-    return { destinationType: 'non_project', assignmentId: null, projectId: null, taskId: null, nonProjectTimeCategoryId: first };
+    return {
+      destinationType: 'non_project', assignmentId: null, projectId: null,
+      taskId: null, nonProjectTimeCategoryId: first
+    };
   }
   return null;
 }
@@ -97,12 +106,7 @@ function destinationGroup(target = {}) {
 
 function ModuleShell({ children }) {
   return createPortal(
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 2147482000, overflow: 'auto',
-      background: 'var(--background, #f5f7fb)', padding: '28px'
-    }} data-module="001B">
-      {children}
-    </div>,
+    <div className="module001b-shell" data-module="001B">{children}</div>,
     document.body
   );
 }
@@ -110,12 +114,16 @@ function ModuleShell({ children }) {
 function NoAccess() {
   return (
     <ModuleShell>
-      <main style={{ maxWidth: 900, margin: '8vh auto', background: 'var(--surface, white)', borderRadius: 18, padding: 32 }}>
-        <p className="eyebrow">MODULE 001B · TIME REALLOCATION &amp; CORRECTIONS</p>
-        <h1>No Access</h1>
-        <p>This module is restricted to Project Team Coordinators and Super Administrators.</p>
-        <p>Managers, Project Managers, Engineers, Engineering Leads, Administrators, and all other roles cannot access or execute time reallocation.</p>
-        <button type="button" onClick={() => { window.location.hash = '#dashboard'; }}>Return to dashboard</button>
+      <main className="module001b-workspace">
+        <section className="module001b-card">
+          <p className="eyebrow">MODULE 001B · TIME REALLOCATION &amp; CORRECTIONS</p>
+          <h1>No Access</h1>
+          <p>This module is restricted to Project Team Coordinators and Super Administrators.</p>
+          <p>Managers, Project Managers, Engineers, Engineering Leads, Administrators, and all other roles cannot access or execute time reallocation.</p>
+          <div className="module001b-actions">
+            <button type="button" onClick={() => { window.location.hash = '#dashboard'; }}>Return to dashboard</button>
+          </div>
+        </section>
       </main>
     </ModuleShell>
   );
@@ -160,7 +168,7 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
     setLoading(true);
     setError('');
     try {
-      const payload = await sharedTimeApi(
+      const payload = await module001bApi(
         `/api/runtime/timesheet/steward/v2/users?weekStart=${encodeURIComponent(weekStart)}&search=`,
         { requiredCollections: ['users'] }
       );
@@ -182,7 +190,7 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
     setLoading(true);
     setError('');
     try {
-      const payload = await sharedTimeApi(
+      const payload = await module001bApi(
         `/api/runtime/timesheet/steward/v2/users/${encodeURIComponent(selectedUserId)}/workspace?weekStart=${encodeURIComponent(weekStart)}`,
         { requiredCollections: ['entries', 'moveTargets', 'availableProjects'] }
       );
@@ -202,14 +210,15 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
   const targets = Array.isArray(workspace?.moveTargets) ? workspace.moveTargets : [];
   const availableProjects = Array.isArray(workspace?.availableProjects) ? workspace.availableProjects : [];
   const selectedEntry = entries.find((entry) => entry.timeEntryId === entryId) || null;
-  const selectedTarget = targets.find((target) => destinationValue(target) === destination) || null;
   const search = destinationSearch.trim().toLowerCase();
+
   const filteredTargets = useMemo(() => targets.filter((target) => {
     if (!search) return true;
     return [target.selectionLabel, target.projectCode, target.projectName, target.taskCode, target.taskName,
       target.categoryName, target.categoryCode, target.serviceRequestNumber, target.groupLabel]
       .filter(Boolean).join(' ').toLowerCase().includes(search);
   }), [targets, search]);
+
   const groupedTargets = useMemo(() => DESTINATION_GROUPS.map((group) => ({
     group,
     targets: filteredTargets.filter((target) => destinationGroup(target) === group)
@@ -222,7 +231,9 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
       : { ...current, projectId: availableProjects[0].projectId });
   }, [availableProjects, showCreateTask]);
 
-  const canMove = Boolean(selectedEntry && destinationPayload(destination) && reason.trim().length >= 5 && !busy);
+  const canReallocate = Boolean(
+    selectedEntry && destinationPayload(destination) && reason.trim().length >= 5 && !busy
+  );
   const canCreateTask = Boolean(
     selectedUserId
       && taskDraft.projectId
@@ -238,7 +249,7 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
     setError('');
     setMessage('');
     try {
-      const result = await sharedTimeApi('/api/timesheet/ptc/tasks', {
+      const result = await module001bApi('/api/timesheet/ptc/tasks', {
         method: 'POST',
         body: JSON.stringify({
           targetUserId: selectedUserId,
@@ -250,17 +261,13 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
           reason: taskDraft.reason.trim()
         })
       });
-      const newDestination = result?.projectId && result?.taskId
-        ? `project-task:${result.projectId}:${result.taskId}`
-        : '';
       await loadWorkspace();
-      if (newDestination) setDestination(newDestination);
+      if (result?.projectId && result?.taskId) {
+        setDestination(`project-task:${result.projectId}:${result.taskId}`);
+      }
       setShowCreateTask(false);
       setTaskDraft(emptyTaskDraft(availableProjects[0]?.projectId || ''));
-      setMessage(
-        `New ${taskDraft.billable ? 'billable' : 'non-billable'} task created and assigned. `
-        + 'It is selected as the reallocation destination; review the correction reason and reallocate the time.'
-      );
+      setMessage('New destination task created and assigned. Review the correction reason before reallocating the entry.');
     } catch (requestError) {
       setError(requestError?.message || 'The new destination task could not be created.');
     } finally {
@@ -269,14 +276,14 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
   }
 
   async function reallocate() {
-    if (!canMove) return;
+    if (!canReallocate) return;
     const payload = destinationPayload(destination);
     const preservedStatus = selectedEntry.status;
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      const result = await sharedTimeApi(
+      const result = await module001bApi(
         `/api/runtime/timesheet/steward/001b/reallocation/entries/${encodeURIComponent(selectedEntry.timeEntryId)}/move`,
         {
           method: 'POST',
@@ -288,16 +295,16 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
         }
       );
       setMessage(
-        `Allocation moved successfully. Status stayed ${statusLabel(result?.currentStatus || preservedStatus)}. `
+        `Allocation corrected successfully. Status stayed ${statusLabel(result?.currentStatus || preservedStatus)}. `
         + 'No worker resubmission, Manager approval, or Project Manager approval is required.'
       );
       setEntryId('');
       setDestination('');
       setReason('');
       await loadWorkspace();
-      window.dispatchEvent(new CustomEvent('projectpulse:ptc-time-reallocated', { detail: result }));
+      window.dispatchEvent(new CustomEvent('projectpulse:module001b-time-reallocated', { detail: result }));
     } catch (requestError) {
-      setError(requestError?.message || 'The time allocation could not be moved. No submission state was changed.');
+      setError(requestError?.message || 'The time allocation could not be corrected. No submission state was changed.');
       await loadWorkspace();
     } finally {
       setBusy(false);
@@ -309,215 +316,183 @@ export default function Module001BTimeReallocationPortal({ allowed }) {
 
   return (
     <ModuleShell>
-      <main style={{ maxWidth: 1320, margin: '0 auto' }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', gap: 24, alignItems: 'flex-start', marginBottom: 22 }}>
+      <main className="module001b-workspace">
+        <header className="module001b-header">
           <div>
             <p className="eyebrow">MODULE 001B · PROJECT TEAM COORDINATOR</p>
-            <h1 style={{ marginBottom: 8 }}>Time Reallocation &amp; Corrections</h1>
-            <p style={{ maxWidth: 850 }}>
-              Move an existing time entry to the correct project task, service request task, newly created billable or non-billable task, or non-project activity without reopening the timesheet.
+            <h1>Time Reallocation &amp; Corrections</h1>
+            <p>
+              Correct the allocation of an existing time entry without changing the worker, work date,
+              worked hours, or submission/approval status.
             </p>
           </div>
           <button type="button" onClick={() => { window.location.hash = '#dashboard'; }}>Close</button>
         </header>
 
-        <section className="ptc-guided-alert success" style={{ marginBottom: 18 }}>
-          <strong>Administrative correction:</strong> Submitted and approved time stays in its current status. No unsubmit, Draft transition, worker resubmission, Manager approval, or Project Manager approval is triggered.
-        </section>
-        {error ? <p className="ptc-guided-alert error" role="alert">{error}</p> : null}
-        {message ? <p className="ptc-guided-alert success" role="status">{message}</p> : null}
+        <p className="module001b-alert success">
+          <strong>Administrative allocation correction:</strong> Submitted and approved time stays in its current status.
+          No unsubmit, Draft transition, worker resubmission, Manager approval, or Project Manager approval is triggered.
+        </p>
+        {error ? <p className="module001b-alert error" role="alert">{error}</p> : null}
+        {message ? <p className="module001b-alert success" role="status">{message}</p> : null}
 
-        <article className="ptc-guided-dialog" style={{ position: 'static', width: '100%', maxWidth: 'none', margin: 0 }}>
-          <section className="ptc-guided-section">
-            <header><strong>1. Find the person and week</strong></header>
-            <div className="ptc-guided-form-grid three">
-              <label>
-                <span>Eligible user</span>
-                <select value={selectedUserId} disabled={loading || busy} onChange={(event) => {
-                  setSelectedUserId(event.target.value);
-                  setEntryId('');
-                  setDestination('');
-                  setShowCreateTask(false);
-                  setTaskDraft(emptyTaskDraft());
-                  setMessage('');
-                }}>
-                  <option value="">{loading ? 'Loading users…' : 'Select user'}</option>
-                  {users.map((user) => <option key={user.userId} value={user.userId}>{user.displayName} · {user.email}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Week</span>
-                <input type="date" value={weekStart} disabled={busy} onChange={(event) => setWeekStart(sundayFor(new Date(`${event.target.value}T12:00:00`)))} />
-                <small>Week of {displayDate(weekStart)}</small>
-              </label>
-              <div className="ptc-guided-week-buttons">
-                <button type="button" disabled={busy} onClick={() => setWeekStart(shiftWeek(weekStart, -1))}>Previous</button>
-                <button type="button" disabled={busy} onClick={() => setWeekStart(sundayFor(new Date()))}>Current</button>
-                <button type="button" disabled={busy} onClick={() => setWeekStart(shiftWeek(weekStart, 1))}>Next</button>
-              </div>
-            </div>
-          </section>
-
-          <section className="ptc-guided-section">
-            <header><strong>2. Select the time entry</strong><span>{loading ? 'Loading…' : `${entries.length} entries`}</span></header>
-            <div className="ptc-guided-entry-list">
-              {entries.map((entry) => (
-                <label key={entry.timeEntryId} className={entryId === entry.timeEntryId ? 'selected' : ''}>
-                  <input type="radio" name="module001b-entry" checked={entryId === entry.timeEntryId} disabled={busy}
-                    onChange={() => { setEntryId(entry.timeEntryId); setDestination(''); setMessage(''); }} />
-                  <span>
-                    <strong>{displayDate(entry.workDate)} · {Number(entry.hours).toFixed(2)} hours · {statusLabel(entry.status)}</strong>
-                    <small>{activityLabel(entry)}</small>
-                    <small>{entry.description || 'No description'}</small>
-                  </span>
-                </label>
-              ))}
-              {selectedUserId && !loading && entries.length === 0 ? <p>No time entries exist for this week.</p> : null}
-            </div>
-          </section>
-
-          <section className="ptc-guided-section">
-            <header>
-              <strong>3. Choose the correct destination</strong>
-              <span>Project tasks · Service requests · Non-project time</span>
-            </header>
-            <label className="ptc-guided-destination-search">
-              <span>Search destinations</span>
-              <input type="search" value={destinationSearch} disabled={!entryId || busy}
-                onChange={(event) => setDestinationSearch(event.target.value)}
-                placeholder="Project, task, request number, or non-project activity" />
-            </label>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0 14px' }}>
-              <button
-                type="button"
-                disabled={!selectedUserId || availableProjects.length === 0 || busy}
-                onClick={() => setShowCreateTask((current) => !current)}
-              >
-                {showCreateTask ? 'Hide new task form' : 'Create new billable / non-billable task'}
-              </button>
-            </div>
-
-            {showCreateTask ? (
-              <section className="ptc-guided-section" style={{ marginBottom: 16 }}>
-                <header>
-                  <strong>Create and assign a new destination task</strong>
-                  <span>The new task becomes immediately selectable for this reallocation.</span>
-                </header>
-                <div className="ptc-guided-form-grid three">
-                  <label>
-                    <span>Project</span>
-                    <select
-                      value={taskDraft.projectId}
-                      disabled={busy}
-                      onChange={(event) => setTaskDraft((current) => ({ ...current, projectId: event.target.value }))}
-                    >
-                      <option value="">Select project</option>
-                      {availableProjects.map((project) => (
-                        <option key={project.projectId} value={project.projectId}>
-                          {project.projectCode} · {project.projectName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span>Task code</span>
-                    <input
-                      value={taskDraft.taskCode}
-                      disabled={busy}
-                      onChange={(event) => setTaskDraft((current) => ({ ...current, taskCode: event.target.value }))}
-                      placeholder="Example: CORRECTION-01"
-                    />
-                  </label>
-                  <label>
-                    <span>Task name</span>
-                    <input
-                      value={taskDraft.taskName}
-                      disabled={busy}
-                      onChange={(event) => setTaskDraft((current) => ({ ...current, taskName: event.target.value }))}
-                      placeholder="Clear destination task name"
-                    />
-                  </label>
-                </div>
-                <label>
-                  <span>Task description</span>
-                  <textarea
-                    value={taskDraft.taskDescription}
-                    disabled={busy}
-                    onChange={(event) => setTaskDraft((current) => ({ ...current, taskDescription: event.target.value }))}
-                    placeholder="Optional description for the new task"
-                  />
-                </label>
-                <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={taskDraft.billable}
-                    disabled={busy}
-                    onChange={(event) => setTaskDraft((current) => ({ ...current, billable: event.target.checked }))}
-                  />
-                  <span>Billable task (clear for non-billable)</span>
-                </label>
-                <label>
-                  <span>Required creation reason</span>
-                  <textarea
-                    value={taskDraft.reason}
-                    disabled={busy}
-                    onChange={(event) => setTaskDraft((current) => ({ ...current, reason: event.target.value }))}
-                    placeholder="Why is a new destination task required?"
-                  />
-                </label>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button type="button" className="primary" disabled={!canCreateTask} onClick={createDestinationTask}>
-                    {busy ? 'Creating…' : 'Create and assign task'}
-                  </button>
-                </div>
-              </section>
-            ) : null}
-
-            <div className="ptc-guided-destination-groups">
-              {groupedTargets.map(({ group, targets: groupItems }) => (
-                <section key={group}>
-                  <header><strong>{group}</strong><span>{groupItems.length}</span></header>
-                  <div>
-                    {groupItems.slice(0, 80).map((target) => {
-                      const value = destinationValue(target);
-                      return <button type="button" key={value} className={destination === value ? 'selected' : ''}
-                        disabled={!entryId || busy} onClick={() => setDestination(value)}>
-                        <strong>{destinationLabel(target)}</strong>
-                        <small>{target.requiresAssignment ? 'Assignment will be created automatically' : 'Available for immediate reallocation'}</small>
-                      </button>;
-                    })}
-                    {groupItems.length === 0 ? <p>No matching destinations.</p> : null}
-                  </div>
-                </section>
-              ))}
-            </div>
-          </section>
-
-          <section className="ptc-guided-section review">
-            <header><strong>4. Review and reallocate</strong></header>
-            <div className="ptc-guided-review-grid">
-              <article><span>From</span><strong>{selectedEntry ? activityLabel(selectedEntry) : 'Select an entry'}</strong><small>{selectedEntry ? `${selectedEntry.hours} hour(s) · ${statusLabel(selectedEntry.status)}` : '—'}</small></article>
-              <article><span>To</span><strong>{selectedTarget ? destinationLabel(selectedTarget) : destination ? 'Newly created project task' : 'Select a destination'}</strong><small>{selectedTarget ? destinationGroup(selectedTarget) : destination ? 'Project Tasks' : '—'}</small></article>
-            </div>
+        <section className="module001b-section">
+          <header><strong>1. Find the person and week</strong></header>
+          <div className="module001b-grid">
             <label>
-              <span>Required correction reason</span>
-              <textarea value={reason} disabled={busy} onChange={(event) => setReason(event.target.value)} placeholder="Why is this allocation being corrected?" />
-              <small>The reason is retained in the time-management audit trail.</small>
+              <span>Eligible user</span>
+              <select value={selectedUserId} disabled={loading || busy} onChange={(event) => {
+                setSelectedUserId(event.target.value);
+                setEntryId('');
+                setDestination('');
+                setMessage('');
+              }}>
+                <option value="">{loading ? 'Loading users…' : 'Select user'}</option>
+                {users.map((user) => (
+                  <option key={user.userId} value={user.userId}>{user.displayName} · {user.email}</option>
+                ))}
+              </select>
             </label>
-            {selectedEntry ? (
-              <p className="ptc-guided-alert success">
-                <strong>Status protection:</strong> {statusLabel(selectedEntry.status)} will remain {statusLabel(selectedEntry.status)} after this move.
-              </p>
-            ) : null}
-          </section>
+            <label>
+              <span>Week</span>
+              <input type="date" value={weekStart} disabled={busy}
+                onChange={(event) => setWeekStart(sundayFor(new Date(`${event.target.value}T12:00:00`)))} />
+              <small className="module001b-muted">Week of {displayDate(weekStart)}</small>
+            </label>
+            <div className="module001b-inline-controls">
+              <button type="button" disabled={busy} onClick={() => setWeekStart(shiftWeek(weekStart, -1))}>Previous</button>
+              <button type="button" disabled={busy} onClick={() => setWeekStart(sundayFor(new Date()))}>Current</button>
+              <button type="button" disabled={busy} onClick={() => setWeekStart(shiftWeek(weekStart, 1))}>Next</button>
+            </div>
+          </div>
+        </section>
 
-          <footer className="ptc-guided-footer">
-            <button type="button" disabled={busy} onClick={() => { window.location.hash = '#dashboard'; }}>Cancel</button>
-            <button type="button" className="primary" disabled={!canMove} onClick={reallocate}>
+        <section className="module001b-section">
+          <header><strong>2. Select the existing time entry</strong></header>
+          <div className="module001b-entry-list">
+            {entries.map((entry) => (
+              <label key={entry.timeEntryId} className={`module001b-choice ${entryId === entry.timeEntryId ? 'selected' : ''}`}>
+                <input type="radio" name="module001b-entry" checked={entryId === entry.timeEntryId} disabled={busy}
+                  onChange={() => { setEntryId(entry.timeEntryId); setDestination(''); setMessage(''); }} />
+                <span>
+                  <strong>{displayDate(entry.workDate)} · {Number(entry.hours).toFixed(2)} hours · {statusLabel(entry.status)}</strong>
+                  <small>{activityLabel(entry)}</small>
+                  <small>{entry.description || 'No description'}</small>
+                </span>
+              </label>
+            ))}
+            {selectedUserId && !loading && entries.length === 0 ? <p>No time entries exist for this week.</p> : null}
+          </div>
+        </section>
+
+        <section className="module001b-section">
+          <header><strong>3. Choose the correct destination</strong></header>
+          <label>
+            <span>Search destinations</span>
+            <input type="search" value={destinationSearch} disabled={!entryId || busy}
+              onChange={(event) => setDestinationSearch(event.target.value)}
+              placeholder="Project, task, request number, or non-project activity" />
+          </label>
+          <div className="module001b-actions">
+            <button type="button" disabled={!selectedUserId || availableProjects.length === 0 || busy}
+              onClick={() => setShowCreateTask((current) => !current)}>
+              {showCreateTask ? 'Hide new task form' : 'Create new billable / non-billable task'}
+            </button>
+          </div>
+
+          {showCreateTask ? (
+            <section className="module001b-card">
+              <strong>Create and assign a destination task</strong>
+              <div className="module001b-grid">
+                <label>
+                  <span>Project</span>
+                  <select value={taskDraft.projectId} disabled={busy}
+                    onChange={(event) => setTaskDraft((current) => ({ ...current, projectId: event.target.value }))}>
+                    <option value="">Select project</option>
+                    {availableProjects.map((project) => (
+                      <option key={project.projectId} value={project.projectId}>
+                        {project.projectCode} · {project.projectName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Task code</span>
+                  <input value={taskDraft.taskCode} disabled={busy}
+                    onChange={(event) => setTaskDraft((current) => ({ ...current, taskCode: event.target.value }))} />
+                </label>
+                <label>
+                  <span>Task name</span>
+                  <input value={taskDraft.taskName} disabled={busy}
+                    onChange={(event) => setTaskDraft((current) => ({ ...current, taskName: event.target.value }))} />
+                </label>
+              </div>
+              <label>
+                <span>Task description</span>
+                <textarea value={taskDraft.taskDescription} disabled={busy}
+                  onChange={(event) => setTaskDraft((current) => ({ ...current, taskDescription: event.target.value }))} />
+              </label>
+              <label className="module001b-check">
+                <input type="checkbox" checked={taskDraft.billable} disabled={busy}
+                  onChange={(event) => setTaskDraft((current) => ({ ...current, billable: event.target.checked }))} />
+                <span>Billable task (clear for non-billable)</span>
+              </label>
+              <label>
+                <span>Required task-creation reason</span>
+                <textarea value={taskDraft.reason} disabled={busy}
+                  onChange={(event) => setTaskDraft((current) => ({ ...current, reason: event.target.value }))} />
+              </label>
+              <div className="module001b-actions">
+                <button type="button" className="primary" disabled={!canCreateTask} onClick={() => void createDestinationTask()}>
+                  {busy ? 'Working…' : 'Create destination task'}
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {groupedTargets.map(({ group, targets: groupItems }) => (
+            <section key={group} className="module001b-card">
+              <strong>{group} · {groupItems.length}</strong>
+              <div className="module001b-destination-list">
+                {groupItems.map((target) => {
+                  const value = destinationValue(target);
+                  return (
+                    <label key={value} className={`module001b-choice ${destination === value ? 'selected' : ''}`}>
+                      <input type="radio" name="module001b-destination" value={value}
+                        checked={destination === value} disabled={!entryId || busy}
+                        onChange={() => setDestination(value)} />
+                      <span>
+                        <strong>{destinationLabel(target)}</strong>
+                        <small>{target.requiresAssignment ? 'Assignment will be created for the original work date.' : 'Available now'}</small>
+                      </span>
+                    </label>
+                  );
+                })}
+                {groupItems.length === 0 ? <p>No matching destinations.</p> : null}
+              </div>
+            </section>
+          ))}
+        </section>
+
+        <section className="module001b-section">
+          <header><strong>4. Required correction reason</strong></header>
+          <label>
+            <span>Business reason</span>
+            <textarea value={reason} disabled={!selectedEntry || busy}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Explain why the existing allocation is being corrected (minimum 5 characters)." />
+          </label>
+          {selectedEntry ? (
+            <p className="module001b-muted">
+              Protected values: {displayDate(selectedEntry.workDate)} · {Number(selectedEntry.hours).toFixed(2)} hours · {statusLabel(selectedEntry.status)}.
+            </p>
+          ) : null}
+          <div className="module001b-actions">
+            <button type="button" className="primary" disabled={!canReallocate} onClick={() => void reallocate()}>
               {busy ? 'Reallocating…' : 'Reallocate time'}
             </button>
-          </footer>
-        </article>
+          </div>
+        </section>
       </main>
     </ModuleShell>
   );
