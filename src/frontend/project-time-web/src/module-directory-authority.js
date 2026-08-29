@@ -1,8 +1,24 @@
+import { hasAnyEffectiveRole, readEffectiveRoleAuthority } from './effective-role-authority.js';
+
 export const MODULE_DIRECTORY_AUTHORITY_CONTRACT = 'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1';
 export const SHARED_WORKSPACE_MODULE_AUTHORITY_CONTRACT = 'SHARED_WORKSPACE_MODULE_AUTHORITY_V1';
 
+const MODULE001B_ROLES = new Set(['PROJECT_TEAM_COORDINATOR', 'SUPER_ADMINISTRATOR']);
+
 function normalizedModuleNumber(value) {
   return String(value || '').trim().toUpperCase();
+}
+
+function module001BRoleAllowed() {
+  const authority = readEffectiveRoleAuthority();
+  return authority.ready && hasAnyEffectiveRole(authority, MODULE001B_ROLES);
+}
+
+function applyModule001BRoleBoundary(modules) {
+  const allowed = module001BRoleAllowed();
+  return (modules || []).filter((module) => (
+    normalizedModuleNumber(module?.moduleNumber) !== '001B' || allowed
+  ));
 }
 
 function currentViewAsUserId() {
@@ -33,10 +49,10 @@ export function authorizedModulesFromEffectiveNavigationState(projectModules, na
     (navigationState.retiredModuleNumbers || []).map(normalizedModuleNumber).filter(Boolean)
   );
 
-  return (projectModules || []).filter((module) => {
+  return applyModule001BRoleBoundary((projectModules || []).filter((module) => {
     const moduleNumber = normalizedModuleNumber(module?.moduleNumber);
     return Boolean(moduleNumber) && !denied.has(moduleNumber) && !retired.has(moduleNumber);
-  });
+  }));
 }
 
 export function authorizedModulesFromNavigationState(projectModules, navigationState) {
@@ -53,7 +69,9 @@ export function authorizedModulesFromNavigationState(projectModules, navigationS
     const allowed = new Set(
       (published.moduleNumbers || []).map(normalizedModuleNumber).filter(Boolean)
     );
-    return (projectModules || []).filter((module) => allowed.has(normalizedModuleNumber(module?.moduleNumber)));
+    return applyModule001BRoleBoundary(
+      (projectModules || []).filter((module) => allowed.has(normalizedModuleNumber(module?.moduleNumber)))
+    );
   }
 
   return authorizedModulesFromEffectiveNavigationState(projectModules, navigationState);
