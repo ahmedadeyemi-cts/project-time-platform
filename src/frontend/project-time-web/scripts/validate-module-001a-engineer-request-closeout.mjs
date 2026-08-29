@@ -16,18 +16,17 @@ function requirePattern(source, pattern, label) {
 const migration = read('database/migrations/078_module_001a_engineer_request_closeout.sql');
 const rollback = read('database/rollback/078_module_001a_engineer_request_closeout_rollback.sql');
 const catalogMigration = read('database/migrations/089_module_catalog_role_administration_reconciliation.sql');
-const module001bCatalogMigration = read('database/migrations/098_module001b_role_catalog_registration.sql');
-const module001bCatalogRollback = read('database/rollback/098_module001b_role_catalog_registration_rollback.sql');
-const catalogRegistrationSource = [catalogMigration, module001bCatalogMigration].join('\n');
 const catalogRollback = read('database/rollback/089_module_catalog_role_administration_reconciliation_rollback.sql');
 const backend = read('src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs');
 const notificationRepository = read('src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRepository.cs');
 const backendAvailability = read('src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs');
+const module001bBoundary = read('src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs');
 const program = read('src/backend/ProjectTime.Api/Program.cs');
 const timesheetData = read('src/backend/ProjectTime.Api/Modules/Module001TimesheetData.cs');
 const timesheetModule = read('src/backend/ProjectTime.Api/Modules/Module001TimesheetEnhancementModule.cs');
 const app = read('src/frontend/project-time-web/src/App.jsx');
 const registry = read('src/frontend/project-time-web/src/module-availability-registry.js');
+const moduleDirectoryAuthority = read('src/frontend/project-time-web/src/module-directory-authority.js');
 const rolePermissionModel = read('src/frontend/project-time-web/src/role-permission-model.js');
 const navigationPolicy = read('src/frontend/project-time-web/src/module-navigation-access-policy.js');
 const ui = read('src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx');
@@ -62,12 +61,15 @@ if (new Set(registryModules.map((module) => module.moduleCode)).size !== registr
   failures.push('module catalog reconciliation: canonical module numbers must be unique');
 }
 const sqlQuote = (value) => String(value).replaceAll("'", "''");
-for (const module of registryModules) {
+for (const module of registryModules.filter((module) => module.moduleCode !== '001B')) {
   requireText(
-    catalogRegistrationSource,
+    catalogMigration,
     `('${sqlQuote(module.moduleCode)}', '${sqlQuote(module.moduleName)}', '${sqlQuote(module.route)}', '${sqlQuote(module.group)}')`,
     `Role Administration catalog registration for Module ${module.moduleCode}`
   );
+}
+if (catalogMigration.includes("('001B', 'Time Reallocation & Corrections', 'time-reallocation', 'Time Management')")) {
+  failures.push('Module 001B fixed-role boundary: Module 001B must not be dynamically grantable through the Role Administration catalog');
 }
 for (const roleCode of ['ENGINEER', 'ENGINEERING', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD']) {
   requireText(catalogMigration, `('${roleCode}', 'VIEW_ENGINEER_TASK_CLOSEOUT_001A')`, `${roleCode} view permission repair`);
@@ -81,10 +83,12 @@ requireText(catalogMigration, 'migration_089_module_catalog_role_administration_
 requireText(catalogMigration, "'allowedWorkTypes', jsonb_build_array('SERVICE_REQUEST', 'PRESALES', 'INTERNAL')", 'eligible request types');
 requireText(catalogMigration, 'engineerOwnedOnly', 'own-assignment policy evidence');
 requireText(catalogRollback, 'Rollback 089 refused: a newer scoped role-policy version', 'guarded policy rollback');
-requireText(module001bCatalogMigration, "('001B', 'Time Reallocation & Corrections', 'time-reallocation', 'Time Management')", 'Module 001B Role Administration catalog registration');
-requireText(module001bCatalogMigration, '098_module001b_role_catalog_registration', 'Module 001B catalog migration identity');
-requireText(module001bCatalogMigration, 'Project Team Coordinator and Super Administrator only', 'Module 001B catalog authorization boundary');
-requireText(module001bCatalogRollback, 'Rollback 098 refused: active scoped role-policy grants exist for Module 001B.', 'Module 001B guarded catalog rollback');
+requireText(module001bBoundary, 'PROJECT_TEAM_COORDINATOR', 'Module 001B fixed PTC role boundary');
+requireText(module001bBoundary, 'SUPER_ADMINISTRATOR', 'Module 001B fixed Super Administrator role boundary');
+requireText(module001bBoundary, 'No Access. Module 001B is restricted to Project Team Coordinator and Super Administrator.', 'Module 001B fixed No Access boundary');
+requireText(moduleDirectoryAuthority, "const MODULE001B_FIXED_ACCESS_ROLES = new Set([", 'Module 001B fixed navigation role boundary');
+requireText(moduleDirectoryAuthority, "'PROJECT_TEAM_COORDINATOR'", 'Module 001B PTC navigation role');
+requireText(moduleDirectoryAuthority, "'SUPER_ADMINISTRATOR'", 'Module 001B Super Administrator navigation role');
 requireText(rolePermissionModel, "'001A': {", 'Module 001A intuitive permission preset');
 requireText(rolePermissionModel, "actions = [...new Set(['MODULE_ACCESS', ...actions])]", 'non-No Access presets grant module visibility');
 requireText(rolePermissionModel, "actionCode === 'MODULE_ACCESS' ? 'ORGANIZATION' : scope", 'organization module-access scope');
@@ -124,6 +128,7 @@ requireText(timesheetModule, billingProjection, 'work-queue billing filter');
 requireText(program, 'app.MapModule001AEngineerTaskCloseoutEndpoints();', 'backend registration');
 requireText(backendAvailability, '["001A"] = Module("001A", "engineer-task-closeout", "Engineer Request Closeout", "Time Management")', 'backend availability registry');
 requireText(backendAvailability, '["001B"] = Module("001B", "time-reallocation", "Time Reallocation & Corrections", "Time Management")', 'Module 001B backend availability registry');
+requireText(backendAvailability, 'Missing rows are treated as enabled', 'Module 001B migration-free availability default');
 
 requireText(ui, "import { usSignalLogoDataUrl }", 'official logo source');
 requireText(ui, 'Engineer Request Closeout', 'enterprise UI title');
