@@ -11,7 +11,28 @@
   <PropertyGroup>
     <ModuleAvailabilityResilienceGeneratedDirectory>$(MSBuildProjectDirectory)/obj/module-availability-resilience</ModuleAvailabilityResilienceGeneratedDirectory>
     <ModuleAvailabilityResilienceGenerated>$(ModuleAvailabilityResilienceGeneratedDirectory)/ModuleAvailabilityModule.Resilient.g.cs</ModuleAvailabilityResilienceGenerated>
+    <FlowHivePrivateExtractorGeneratedDirectory>$(MSBuildProjectDirectory)/obj/flowhive-private-document</FlowHivePrivateExtractorGeneratedDirectory>
+    <FlowHivePrivateExtractorGenerated>$(FlowHivePrivateExtractorGeneratedDirectory)/PulseAiPrivateDocumentExtractionService.g.cs</FlowHivePrivateExtractorGenerated>
   </PropertyGroup>
+
+  <!--
+    ProjectTime.Api.csproj evaluates PulseAiPrivateExtractorGenerated before
+    IntermediateOutputPath is populated, which can resolve the generated private
+    extractor into tracked source. Redirect that compiler copy immediately before
+    GenerateScopedRbacSources executes and remove the historic tracked generated
+    copy from Compile. The canonical Ai source remains the reviewable authority,
+    while all build-time FlowHive compatibility edits stay under ignored obj/.
+  -->
+  <Target Name="PrepareFlowHivePrivateExtractorGeneratedPath"
+          BeforeTargets="GenerateScopedRbacSources">
+    <PropertyGroup>
+      <PulseAiPrivateExtractorGenerated>$(FlowHivePrivateExtractorGenerated)</PulseAiPrivateExtractorGenerated>
+    </PropertyGroup>
+    <MakeDir Directories="$(FlowHivePrivateExtractorGeneratedDirectory)" />
+    <ItemGroup>
+      <Compile Remove="PulseAiPrivateDocumentExtractionService.g.cs" />
+    </ItemGroup>
+  </Target>
 
   <!--
     The API project already generates a compiler-compatible private document
