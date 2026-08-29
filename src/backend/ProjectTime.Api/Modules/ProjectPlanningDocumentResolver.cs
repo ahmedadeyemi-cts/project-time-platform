@@ -181,8 +181,6 @@ internal static class ProjectPlanningDocumentResolver
                 blockers.Add("The active Work Register SOW private version is not citation indexed.");
             if (sow.CitationCount == 0)
                 blockers.Add("The active Work Register SOW has no citation-ready chunks.");
-            if (sow.ScopeCitationCount == 0)
-                blockers.Add("No Scope of Services citation was detected in the active Work Register SOW.");
         }
 
         if (selection.GeneralSolutionDesign is null)
@@ -529,7 +527,7 @@ internal sealed record ProjectPlanningDocumentEvidence(
         && IndexReady
         && CitationCount > 0;
     public bool ReadyForGeneration => IsSow
-        ? ReadyForRetrieval && AuthorityReady && ScopeCitationCount > 0
+        ? ReadyForRetrieval && AuthorityReady
         : ReadyForRetrieval;
 }
 
