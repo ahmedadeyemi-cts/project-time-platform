@@ -4,13 +4,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python3 - \
   "$ROOT/src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs" \
   "$ROOT/src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs" \
-  "$ROOT/.github/workflows/projectpulse-deploy-test.yml" <<'PY'
+  "$ROOT/.github/workflows/projectpulse-deploy-test.yml" \
+  "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs" <<'PY'
 from pathlib import Path
 import sys
 
 repository_path = Path(sys.argv[1])
 runtime_path = Path(sys.argv[2])
 workflow_path = Path(sys.argv[3])
+resolver_path = Path(sys.argv[4])
 
 text = repository_path.read_text(encoding='utf-8')
 start = text.index('public async Task<IReadOnlyList<PulseAiPrivateProcessingJob>> ListJobsAsync(')
@@ -59,6 +61,15 @@ if missing_runtime:
 if 'extraction.Blockers.Count > 0 ? "private_extraction_blocked" : "private_extraction_failed"' in runtime:
     raise SystemExit('ASSERTION_FAILED private_runtime_still_collapses_extraction_diagnostic')
 
+resolver = resolver_path.read_text(encoding='utf-8')
+if 'No Scope of Services citation was detected in the active Work Register SOW.' in resolver:
+    raise SystemExit('ASSERTION_FAILED authoritative_work_register_sow_still_blocked_by_heading_phrase')
+ready_marker = 'public bool ReadyForGeneration => IsSow\n        ? ReadyForRetrieval && AuthorityReady\n        : ReadyForRetrieval;'
+if ready_marker not in resolver:
+    raise SystemExit('ASSERTION_FAILED authoritative_sow_readiness_contract_missing')
+if 'ReadyForRetrieval && AuthorityReady && ScopeCitationCount > 0' in resolver:
+    raise SystemExit('ASSERTION_FAILED authoritative_sow_still_requires_magic_scope_phrase')
+
 workflow = workflow_path.read_text(encoding='utf-8')
 rollback_step = '      - name: Restore exact prior Test images after application failure'
 evidence_step = '      - name: Upload protected-Test deployment evidence'
@@ -76,5 +87,6 @@ if unbounded_condition in rollback_block:
 
 print('ASSERTION_PASSED private_runtime_list_jobs_shape_matches_reader=true')
 print('ASSERTION_PASSED private_extraction_diagnostics_preserved=true')
+print('ASSERTION_PASSED authoritative_sow_readiness_not_heading_dependent=true')
 print('ASSERTION_PASSED protected_test_healthy_failed_uat_candidate_preserved=true')
 PY
