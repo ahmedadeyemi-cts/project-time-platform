@@ -10,10 +10,11 @@ on:
       - completed
 
 permissions:
+  id-token: write
   contents: read
 
 concurrency:
-  group: module001b-live-reallocation-protected-test-uat
+  group: projectpulse-deploy-test
   cancel-in-progress: false
 
 jobs:
@@ -32,10 +33,66 @@ jobs:
       EVIDENCE_DIR: /tmp/module001b-live-reallocation-uat
 
     steps:
+      - name: Sign in to protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Enable disposable Module 001B Protected-Test fixture surface
+        id: fixture_gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          BASE="${BASE%/}"
+          [[ "$BASE" == "https://phd-west-test.onenecklab.com" ]] \
+            || fail 'PUBLIC_URL is not the governed Protected-Test origin.'
+          [[ "$EXPECTED_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || fail 'The triggering deployment did not provide an exact release SHA.'
+
+          CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
+          [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] \
+            || fail 'Azure login is outside the protected Test subscription.'
+
+          API_JSON="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] \
+            || fail 'The target API is not tagged Test.'
+          ACTIVE_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_JSON")"
+          [[ "$ACTIVE_SOURCE" == "$EXPECTED_RELEASE_SHA" ]] \
+            || fail "Protected Test is not running the triggering release SHA ($ACTIVE_SOURCE != $EXPECTED_RELEASE_SHA)."
+
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --set-env-vars PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED=true \
+            --revision-suffix "m1be-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+
+          AFTER_JSON="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            -o json --only-show-errors)"
+          SOURCE_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          FLAG_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          [[ "$SOURCE_AFTER" == "$EXPECTED_RELEASE_SHA" ]] \
+            || fail 'The source marker changed while enabling the Protected-Test fixture surface.'
+          [[ "$FLAG_AFTER" == true ]] \
+            || fail 'The Protected-Test fixture surface did not enable.'
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          echo 'MODULE001B_PROTECTED_TEST_FIXTURE_SURFACE=ENABLED_TEMPORARILY'
+
       - name: Prove live Module 001B submitted-time reallocation
         shell: bash
         run: |
           set -Eeuo pipefail
+          umask 077
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           BASE="${BASE%/}"
@@ -53,7 +110,7 @@ jobs:
           login() {
             local output="$1" payload status
             payload="$(mktemp)"
-            chmod 0600 "$payload" "$output"
+            chmod 0600 "$payload"
             jq -n \
               --arg username 'project.team.coordinator@ussignal.local' \
               --arg password "$TEST_LOGIN_PASSWORD" \
@@ -101,13 +158,20 @@ jobs:
           }
           trap cleanup_fixture EXIT
 
-          health_status="$(curl -sS --max-time 60 \
-            -o "$EVIDENCE_DIR/health.json" -w '%{http_code}' \
-            -H 'Cache-Control: no-cache' \
-            "$BASE/health?module001b-live-uat=${GITHUB_RUN_ID}" || true)"
-          [[ "$health_status" == 200 ]] || fail "Protected-Test health returned HTTP $health_status."
-          jq -e '.status == "healthy"' "$EVIDENCE_DIR/health.json" >/dev/null \
-            || fail 'Protected Test is not healthy.'
+          READY=false
+          for attempt in $(seq 1 30); do
+            health_status="$(curl -sS --max-time 30 \
+              -o "$EVIDENCE_DIR/health.json" -w '%{http_code}' \
+              -H 'Cache-Control: no-cache' \
+              "$BASE/health?module001b-live-uat=${GITHUB_RUN_ID}-$attempt" || true)"
+            if [[ "$health_status" == 200 ]] \
+              && jq -e '.status == "healthy"' "$EVIDENCE_DIR/health.json" >/dev/null 2>&1; then
+              READY=true
+              break
+            fi
+            sleep 5
+          done
+          [[ "$READY" == true ]] || fail 'Protected Test did not become healthy after enabling the fixture surface.'
 
           LOGIN_RESPONSE="$EVIDENCE_DIR/coordinator-login.json"
           login_status="$(login "$LOGIN_RESPONSE")"
@@ -271,3 +335,59 @@ jobs:
 
           cat "$EVIDENCE_DIR/summary.json"
           echo 'MODULE001B_LIVE_REALLOCATION_UAT=PASSED'
+
+      - name: Disable disposable Module 001B Protected-Test fixture surface
+        if: ${{ always() && steps.fixture_gate.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          BASE="${BASE%/}"
+          CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
+          [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] \
+            || fail 'Azure login is outside the protected Test subscription during fixture shutdown.'
+
+          BEFORE_JSON="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$BEFORE_JSON")" == test ]] \
+            || fail 'The fixture shutdown target is not tagged Test.'
+          SOURCE_BEFORE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$BEFORE_JSON")"
+          [[ "$SOURCE_BEFORE" == "$EXPECTED_RELEASE_SHA" ]] \
+            || fail 'The deployed source changed before fixture shutdown.'
+
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --set-env-vars PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED=false \
+            --revision-suffix "m1bd-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+
+          AFTER_JSON="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            -o json --only-show-errors)"
+          SOURCE_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          FLAG_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          [[ "$SOURCE_AFTER" == "$EXPECTED_RELEASE_SHA" ]] \
+            || fail 'The source marker changed while disabling the Protected-Test fixture surface.'
+          [[ "$FLAG_AFTER" == false ]] \
+            || fail 'The Protected-Test fixture surface did not disable.'
+
+          READY=false
+          for attempt in $(seq 1 30); do
+            health_status="$(curl -sS --max-time 30 \
+              -o /tmp/module001b-disable-health.json -w '%{http_code}' \
+              -H 'Cache-Control: no-cache' \
+              "$BASE/health?module001b-fixture-disabled=${GITHUB_RUN_ID}-$attempt" || true)"
+            if [[ "$health_status" == 200 ]] \
+              && jq -e '.status == "healthy"' /tmp/module001b-disable-health.json >/dev/null 2>&1; then
+              READY=true
+              break
+            fi
+            sleep 5
+          done
+          [[ "$READY" == true ]] || fail 'Protected Test did not return healthy after disabling the fixture surface.'
+          echo 'MODULE001B_PROTECTED_TEST_FIXTURE_SURFACE=DISABLED'
