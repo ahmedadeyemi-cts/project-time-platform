@@ -14,6 +14,7 @@ on:
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
       - 'src/backend/ProjectTime.Api/Program.cs'
       - 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
       - 'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs'
@@ -61,8 +62,10 @@ jobs:
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+          RETIRED_MODULE001B_UAT='.github/workflows/module001b-live-reallocation-protected-test-uat.yml'
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
           ASSIGNED_WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
+          MODULE001B_FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
           git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
@@ -152,6 +155,15 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files" -o "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"
 
+          cat > "$RUNNER_TEMP/exact-module001b-live-uat-repair-files" <<'FILES'
+          .github/workflows/module001b-live-reallocation-protected-test-uat.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          scripts/release-test/run-assigned-work-protected-test-uat.sh
+          src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-module001b-live-uat-repair-files" -o "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
+
           git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
           if cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
             echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
@@ -161,6 +173,8 @@ jobs:
             echo 'EXACT_PR719_MODULE_DIRECTORY_OWNER_001A_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"; then
             echo 'EXACT_MODULES_DIRECTORY_AUTHORITY_STARVATION_SCOPE=PASSED'
+          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"; then
+            echo 'EXACT_MODULE001B_LIVE_UAT_REPAIR_SCOPE=PASSED'
           else
             comm -23 "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
             [[ ! -s "$RUNNER_TEMP/unexpected-release-files" ]] || {
@@ -172,8 +186,10 @@ jobs:
 
           test -f "$CONTROLLER" || fail 'The governed protected-Test controller is missing.'
           test ! -e "$RETIRED_CONTROLLER" || fail 'The unregistered duplicate protected-Test controller was not retired.'
+          test ! -e "$RETIRED_MODULE001B_UAT" || fail 'The parallel Module 001B protected-Test mutator was not retired.'
           test -f "$UTILIZATION_UAT" || fail 'The utilization role-scoping UAT script is missing.'
           test -f "$ASSIGNED_WORK_UAT" || fail 'The assigned-work UAT script is missing.'
+          test -f "$MODULE001B_FIXTURE" || fail 'The Module 001B disposable protected-Test fixture module is missing.'
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           bash -n "$UTILIZATION_UAT"
           bash -n "$ASSIGNED_WORK_UAT"
@@ -207,6 +223,14 @@ jobs:
           grep -Fq 'Production mutation: none' "$CONTROLLER"
           grep -Fq 'Oracle/private AI runtime mutation: none' "$CONTROLLER"
 
+          grep -Fq 'PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED=true' "$ASSIGNED_WORK_UAT"
+          grep -Fq 'PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED=false' "$ASSIGNED_WORK_UAT"
+          grep -Fq 'MODULE001B_LIVE_REALLOCATION_UAT=PASS' "$ASSIGNED_WORK_UAT"
+          grep -Fq 'currentEmployeeWeekMutation:false' "$ASSIGNED_WORK_UAT"
+          grep -Fq 'productionMutation:false' "$ASSIGNED_WORK_UAT"
+          grep -Fq 'PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED' "$MODULE001B_FIXTURE"
+          grep -Fq 'protected_test_uat_route_unavailable' "$MODULE001B_FIXTURE"
+
           ! grep -Fq 'full_imae' "$CONTROLLER"
           ! grep -Eq 'local[[:space:]]+repository="\$1".*image="\$repository:' "$CONTROLLER"
           ! grep -Eq '^[[:space:]]*environment:[[:space:]]*production([[:space:]]|$)' "$CONTROLLER"
@@ -225,6 +249,7 @@ jobs:
 
           echo 'GOVERNED_PROTECTED_TEST_CONTROLLER=PASSED'
           echo 'ASSIGNED_WORK_VISIBILITY_SOURCE=PASSED'
+          echo 'MODULE001B_LIVE_REALLOCATION_SOURCE=PASSED'
           echo 'UTILIZATION_ROLE_SCOPING_SOURCE=PASSED'
           echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASSED'
           echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=PASSED'
