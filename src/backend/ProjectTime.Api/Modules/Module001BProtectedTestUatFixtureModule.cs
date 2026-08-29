@@ -5,15 +5,16 @@ namespace ProjectTime.Api.Modules;
 /// <summary>
 /// Disposable live-UAT fixture support for Module 001B.
 ///
-/// These routes are deliberately fail-closed to the protected Test public host and
-/// remain behind the normal Project Team Coordinator / Super Administrator steward
-/// boundary. They create a single submitted entry in an isolated future week, allow
-/// the real Module 001B reallocation endpoint to mutate it, and then remove the
+/// These routes are deliberately fail-closed behind an explicit Protected-Test runtime
+/// enable flag and remain behind the normal Project Team Coordinator / Super Administrator
+/// steward boundary. They create a single submitted entry in an isolated future week,
+/// allow the real Module 001B reallocation endpoint to mutate it, and then remove the
 /// disposable records. No current employee Timesheet week is used as UAT data.
 /// </summary>
 public static partial class ScopedRolePolicyModule
 {
-    private const string Module001BProtectedTestHost = "phd-west-test.onenecklab.com";
+    private const string Module001BProtectedTestUatEnabledVariable =
+        "PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED";
     private const string Module001BProtectedTestFixtureDescription =
         "PROTECTED_TEST_UAT_MODULE001B_REALLOCATION";
     private const string Module001BProtectedTestTargetEmail =
@@ -35,15 +36,15 @@ public static partial class ScopedRolePolicyModule
 
     private static bool Module001BIsProtectedTestRequest(HttpContext context)
         => string.Equals(
-            context.Request.Host.Host,
-            Module001BProtectedTestHost,
+            Environment.GetEnvironmentVariable(Module001BProtectedTestUatEnabledVariable),
+            "true",
             StringComparison.OrdinalIgnoreCase);
 
     private static IResult Module001BProtectedTestOnly()
         => Results.NotFound(new
         {
             status = "protected_test_uat_route_unavailable",
-            message = "This disposable UAT route is available only on Protected Test."
+            message = "This disposable UAT route is available only while the governed Protected-Test UAT gate is enabled."
         });
 
     private static async Task<Guid?> Module001BProtectedTestTargetUserIdAsync(
