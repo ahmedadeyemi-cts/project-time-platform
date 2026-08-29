@@ -264,7 +264,9 @@ internal static class ProjectPlanningDocumentResolver
                        AND (chunk.section_title ILIKE '%scope%'
                             OR chunk.section_title ILIKE '%service%'
                             OR chunk.citation_anchor ILIKE '%scope%'
-                            OR chunk.citation_anchor ILIKE '%service%'))
+                            OR chunk.citation_anchor ILIKE '%service%'
+                            OR chunk.chunk_text ILIKE '%scope of service%'
+                            OR chunk.chunk_text ILIKE '%scope of work%'))
               FROM project_intake_documents document
               LEFT JOIN work_register_documents work_register
                 ON work_register.work_register_document_id=document.work_register_document_id
