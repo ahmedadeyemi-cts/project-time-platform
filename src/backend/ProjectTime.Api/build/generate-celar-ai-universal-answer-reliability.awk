@@ -14,6 +14,9 @@ BEGIN {
   changed_delegate = 0
   inserted_parameter = 0
   inserted_plan = 0
+  inserted_product_knowledge_plan = 0
+  inserted_product_knowledge_branch = 0
+  inserted_product_knowledge_helper = 0
   inserted_public_fact_precheck = 0
   inserted_public_fact_branch = 0
   inserted_public_fact_helper = 0
@@ -52,7 +55,7 @@ mode == "production" {
 
   if (line ~ /CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken/) {
     gsub(/CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken/,
-      "CelarAiPeopleAndGuidanceService, CelarAiAuthoritativePublicFactService, CelarAiUniversalAnswerReliabilityService, CelarAiCapabilityRoutingStore, CancellationToken", line)
+      "CelarAiPeopleAndGuidanceService, PulseAiQuestionPlanner, CelarAiAuthoritativePublicFactService, CelarAiUniversalAnswerReliabilityService, CelarAiCapabilityRoutingStore, CancellationToken", line)
     changed_delegate++
   }
 
@@ -83,7 +86,20 @@ mode == "production" {
   }
 
   if (line ~ /^[[:space:]]*if \(attachmentIds\.Length == 0 && intent\.Code == \"current_date_time\"\)[[:space:]]*$/) {
-    print "        if (authoritativePublicFactPreverified)"
+    print "        if (directProductKnowledge is not null)"
+    print "        {"
+    print "            result = await DirectResultAsync("
+    print "                request,"
+    print "                identity.Value,"
+    print "                access,"
+    print "                repository,"
+    print "                context,"
+    print "                intent,"
+    print "                ProductKnowledgeAnswer(directProductKnowledge),"
+    print "                \"celar_ai_governed_product_knowledge\","
+    print "                cancellationToken);"
+    print "        }"
+    print "        else if (authoritativePublicFactPreverified)"
     print "        {"
     print "            result = await PersistAuthoritativePublicFactAsync("
     print "                request,"
@@ -96,10 +112,44 @@ mode == "production" {
     print "                cancellationToken);"
     print "        }"
     sub(/if \(/, "else if (", line)
+    inserted_product_knowledge_branch++
     inserted_public_fact_branch++
   }
 
   if (line ~ /^[[:space:]]*private static async Task<PulseAiSystemQuestionResult> DirectResultAsync\([[:space:]]*$/) {
+    print "    private static bool IsStableProductKnowledgeQuestion(string question)"
+    print "    {"
+    print "        var normalized = Whitespace().Replace(question.Trim().ToLowerInvariant(), \" \");"
+    print "        if (!normalized.Contains(\"flowhive\", StringComparison.Ordinal)) return false;"
+    print "        var asksPurpose = normalized.Contains(\"purpose\", StringComparison.Ordinal)"
+    print "            || normalized.StartsWith(\"what is flowhive\", StringComparison.Ordinal)"
+    print "            || normalized.StartsWith(\"what is project flowhive\", StringComparison.Ordinal)"
+    print "            || normalized.StartsWith(\"what does flowhive\", StringComparison.Ordinal)"
+    print "            || normalized.StartsWith(\"what does project flowhive\", StringComparison.Ordinal);"
+    print "        var asksLiveState = normalized.Contains(\"current status\", StringComparison.Ordinal)"
+    print "            || normalized.Contains(\"right now\", StringComparison.Ordinal)"
+    print "            || normalized.Contains(\"for project\", StringComparison.Ordinal)"
+    print "            || normalized.Contains(\"schedule\", StringComparison.Ordinal)"
+    print "            || normalized.Contains(\"timeline\", StringComparison.Ordinal)"
+    print "            || normalized.Contains(\"milestone\", StringComparison.Ordinal)"
+    print "            || normalized.Contains(\"dependency\", StringComparison.Ordinal);"
+    print "        return asksPurpose && !asksLiveState;"
+    print "    }"
+    print ""
+    print "    private static PulseAiSystemDetailedAnswer ProductKnowledgeAnswer(PulseAiKnowledgeAnswer knowledge)"
+    print "    {"
+    print "        var now = DateTimeOffset.UtcNow;"
+    print "        return Answer("
+    print "            knowledge.Summary,"
+    print "            knowledge.Title,"
+    print "            knowledge.DetailedSteps,"
+    print "            knowledge.ImportantRules,"
+    print "            .99m,"
+    print "            \"Governed source-controlled Pulse product knowledge. No provider or model execution was required.\","
+    print "            now);"
+    print "    }"
+    print ""
+    inserted_product_knowledge_helper++
     print "    private static async Task<PulseAiSystemQuestionResult> PersistAuthoritativePublicFactAsync("
     print "        CelarAiProductionChatRequest request,"
     print "        (Guid Actual, Guid Effective) identity,"
@@ -171,6 +221,7 @@ mode == "production" {
   }
 
   if (line ~ /^[[:space:]]*CelarAiPeopleAndGuidanceService peopleAndGuidance,[[:space:]]*$/) {
+    print "        PulseAiQuestionPlanner questionPlanner,"
     print "        CelarAiAuthoritativePublicFactService authoritativePublicFacts,"
     print "        CelarAiUniversalAnswerReliabilityService universalReliability,"
     inserted_parameter++
@@ -189,6 +240,10 @@ mode == "production" {
   }
 
   if (line ~ /^[[:space:]]*PulseAiSystemQuestionResult result;[[:space:]]*$/) {
+    print "        var directProductKnowledge = attachmentIds.Length == 0 && IsStableProductKnowledgeQuestion(question)"
+    print "            ? questionPlanner.PlanHelpSearch(question).DirectKnowledgeAnswer"
+    print "            : null;"
+    inserted_product_knowledge_plan++
     print "        PulseAiSystemQuestionResult? authoritativePublicFactCandidate = null;"
     print "        var authoritativePublicFactPreverified = false;"
     print "        if (attachmentIds.Length == 0 && intent.Code == \"general_knowledge\")"
@@ -267,6 +322,6 @@ END {
   if (mode == "services") {
     if (inserted_service != 1 || inserted_current_fact_service != 1 || inserted_operations_service != 1) exit 42
   } else if (mode == "production") {
-    if (inserted_map != 1 || inserted_intent_map != 1 || changed_delegate != 1 || inserted_parameter != 1 || inserted_plan != 1 || inserted_public_fact_precheck != 1 || inserted_public_fact_branch != 1 || inserted_public_fact_helper != 1 || inserted_current_fact_gate != 1 || inserted_gate != 1 || inserted_evidence != 1 || inserted_flowhive_canonical_work_package_instruction != 1 || inserted_flowhive_freshness_precheck != 1 || inserted_flowhive_freshness_postcheck != 1 || inserted_flowhive_citation_gate != 1 || replaced_flowhive_builder != 1) exit 42
+    if (inserted_map != 1 || inserted_intent_map != 1 || changed_delegate != 1 || inserted_parameter != 1 || inserted_plan != 1 || inserted_product_knowledge_plan != 1 || inserted_product_knowledge_branch != 1 || inserted_product_knowledge_helper != 1 || inserted_public_fact_precheck != 1 || inserted_public_fact_branch != 1 || inserted_public_fact_helper != 1 || inserted_current_fact_gate != 1 || inserted_gate != 1 || inserted_evidence != 1 || inserted_flowhive_canonical_work_package_instruction != 1 || inserted_flowhive_freshness_precheck != 1 || inserted_flowhive_freshness_postcheck != 1 || inserted_flowhive_citation_gate != 1 || replaced_flowhive_builder != 1) exit 42
   } else exit 42
 }
