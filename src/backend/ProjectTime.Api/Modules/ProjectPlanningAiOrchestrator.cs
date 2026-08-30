@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Npgsql;
 using ProjectTime.Api.Ai;
 
 namespace ProjectTime.Api.Modules;
@@ -11,6 +13,11 @@ namespace ProjectTime.Api.Modules;
 internal static class ProjectPlanningAiOrchestrator
 {
     internal const string Contract = "project-planning-ai-orchestrator-v1-20260819";
+    private const string DurableRunTable = "project_flowhive_ai_planner_runs";
+    private static readonly JsonSerializerOptions DurablePlannerJson = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     internal static async Task<ProjectPlanningGenerationResult> GenerateAsync(
         CelarAiEnterprisePlatformService enterprise,
@@ -37,6 +44,26 @@ internal static class ProjectPlanningAiOrchestrator
             requestedOutcome,
             4_000,
             "Create a complete source-backed project planning draft. Extract each cited SOW work package once, then expand it into Plan, Design, Implement, Validate, and Release. Include detailed steps, products, platforms, versions, licensing, quantities, tools, systems, interfaces, access, inputs, outputs, responsibilities, acceptance, validation, rollback, risks, assumptions, open questions, roles, effort, duration, dependencies, milestones, and citations. Never fabricate missing information; convert it into open questions.");
+
+        // Project Forge is a review projection of the same governed planning graph,
+        // not a reason to invoke the model a second time behind an HTTP gateway.
+        // Reuse a completed current-version FlowHive planner run, or durably queue
+        // one for the background worker and let the caller poll with HTTP 202.
+        if (string.Equals(
+                capabilityCode,
+                CelarAiCapabilityCatalog.ProjectForgePlanEstimate,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return await ReuseOrQueueDurableFlowHivePlanAsync(
+                actualUserId,
+                effectiveUserId,
+                seed,
+                documents,
+                outcome,
+                detailLevel,
+                context,
+                cancellationToken);
+        }
 
         CelarAiComposeResult composition;
         try
@@ -181,6 +208,280 @@ internal static class ProjectPlanningAiOrchestrator
             warnings);
     }
 
+    private static async Task<ProjectPlanningGenerationResult> ReuseOrQueueDurableFlowHivePlanAsync(
+        Guid actualUserId,
+        Guid effectiveUserId,
+        ProjectFlowHivePlanRequest seed,
+        ProjectPlanningDocumentResolution documents,
+        string outcome,
+        string? detailLevel,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!seed.ProjectId.HasValue)
+        {
+            return ProjectPlanningGenerationResult.Failed(
+                "project_planning_ai_temporarily_unavailable",
+                "Project Forge could not resolve the exact project identifier for the shared background planner.",
+                ["The exact selected project UUID is required before Project Forge can reuse or queue the shared planner."],
+                documents.Warnings);
+        }
+
+        var config = ProjectFlowHiveDatabaseConfig.FromEnvironment();
+        if (config.Missing.Count > 0)
+        {
+            return ProjectPlanningGenerationResult.Failed(
+                "project_planning_ai_temporarily_unavailable",
+                "The durable shared planner store is temporarily unavailable.",
+                config.Missing,
+                documents.Warnings);
+        }
+
+        var projectId = seed.ProjectId.Value;
+        var currentSowVersion = documents.StatementOfWork?.ActiveVersionId?.ToString("D") ?? string.Empty;
+        var currentGsdVersion = documents.GeneralSolutionDesign?.ActiveVersionId?.ToString("D") ?? string.Empty;
+        var correlationId = Clean(
+            context.Response.Headers["X-ProjectPulse-Correlation-Id"].FirstOrDefault()
+                ?? context.TraceIdentifier,
+            180,
+            Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(config.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+            await using (var guard = new NpgsqlCommand(
+                "SELECT pg_advisory_xact_lock(hashtextextended(@project_id::text,734));",
+                connection,
+                transaction))
+            {
+                guard.Parameters.AddWithValue("project_id", projectId);
+                await guard.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            var rows = new List<DurablePlannerRow>();
+            await using (var command = new NpgsqlCommand($"""
+                SELECT run_id,status,phase,progress_percent,
+                       COALESCE(generated_plan::text,''),
+                       COALESCE(schedule_payload::text,''),
+                       COALESCE(validation_payload::text,''),
+                       COALESCE(warnings::text,'[]'),
+                       COALESCE(correlation_id,''),
+                       completed_at
+                  FROM {DurableRunTable}
+                 WHERE project_id=@project_id
+                   AND actual_actor_user_id=@actual
+                   AND effective_actor_user_id=@effective
+                   AND status IN ('queued','processing','generating','completed','completed_with_schedule_overrun')
+                 ORDER BY created_at DESC
+                 LIMIT 12
+                 FOR UPDATE;
+                """, connection, transaction))
+            {
+                command.Parameters.AddWithValue("project_id", projectId);
+                command.Parameters.AddWithValue("actual", actualUserId);
+                command.Parameters.AddWithValue("effective", effectiveUserId);
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    rows.Add(new DurablePlannerRow(
+                        reader.GetGuid(0),
+                        reader.GetString(1),
+                        reader.GetString(2),
+                        Convert.ToInt32(reader.GetValue(3)),
+                        Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(4)),
+                        Deserialize<ProjectFlowHiveScheduleResult>(reader.GetString(5)),
+                        Deserialize<ProjectFlowHivePlanValidationResult>(reader.GetString(6)),
+                        Deserialize<string[]>(reader.GetString(7)) ?? [],
+                        reader.GetString(8),
+                        reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9)));
+                }
+            }
+
+            foreach (var row in rows)
+            {
+                if (row.Status is not ("completed" or "completed_with_schedule_overrun")
+                    || row.Plan is null
+                    || row.Schedule is null
+                    || row.Validation is null
+                    || !MatchesCurrentAuthority(row.Plan, projectId, currentSowVersion, currentGsdVersion))
+                {
+                    continue;
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+                return ReusedDurableResult(row, documents);
+            }
+
+            var active = rows.FirstOrDefault(row => row.Status is "queued" or "processing" or "generating");
+            if (active is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return ProjectPlanningGenerationResult.Failed(
+                    "project_planning_ai_temporarily_unavailable",
+                    $"The shared durable planner is still processing this project ({active.Status}/{active.Phase}, {active.ProgressPercent}%). Project Forge will reuse it when complete.",
+                    [],
+                    documents.Warnings.Concat([
+                        "Project Forge did not start a second synchronous AI request while the shared planner was already running."
+                    ]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+            }
+
+            var runId = Guid.NewGuid();
+            var queuedSeed = seed with
+            {
+                SowVersion = currentSowVersion,
+                GsdVersion = currentGsdVersion.Length == 0 ? null : currentGsdVersion
+            };
+            await using (var insert = new NpgsqlCommand($"""
+                INSERT INTO {DurableRunTable}(
+                    run_id,project_id,status,phase,progress_percent,requested_plan,
+                    requested_outcome,detail_level,actual_actor_user_id,effective_actor_user_id,
+                    correlation_id,operation_logs)
+                VALUES(@run_id,@project_id,'queued','resolve_project',5,@plan::jsonb,
+                    @outcome,@detail,@actual,@effective,@correlation,@logs::jsonb);
+                """, connection, transaction))
+            {
+                insert.Parameters.AddWithValue("run_id", runId);
+                insert.Parameters.AddWithValue("project_id", projectId);
+                insert.Parameters.AddWithValue("plan", JsonSerializer.Serialize(queuedSeed, DurablePlannerJson));
+                insert.Parameters.AddWithValue("outcome", Clean(outcome, 4_000, string.Empty));
+                insert.Parameters.AddWithValue("detail", Clean(detailLevel, 80, "comprehensive"));
+                insert.Parameters.AddWithValue("actual", actualUserId);
+                insert.Parameters.AddWithValue("effective", effectiveUserId);
+                insert.Parameters.AddWithValue("correlation", correlationId);
+                insert.Parameters.AddWithValue("logs", JsonSerializer.Serialize(new[]
+                {
+                    "Project Forge queued the shared durable FlowHive planner instead of running AI inside the gateway request."
+                }, DurablePlannerJson));
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return ProjectPlanningGenerationResult.Failed(
+                "project_planning_ai_temporarily_unavailable",
+                "Project Forge queued the shared durable planner in the background. Retry this request while the planner completes; no second synchronous AI request was started.",
+                [],
+                documents.Warnings.Concat([
+                    $"Shared planner run {runId:D} is queued for background generation."
+                ]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            context.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("ProjectPlanningAiOrchestrator")
+                .LogWarning(exception, "Project Forge could not reuse or queue the durable FlowHive planner.");
+            return ProjectPlanningGenerationResult.Failed(
+                "project_planning_ai_temporarily_unavailable",
+                "The shared durable planner is temporarily unavailable. No Project Forge draft was changed.",
+                [],
+                documents.Warnings.Concat([
+                    "The current project documents remain available; retrying does not require another upload."
+                ]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        }
+    }
+
+    private static ProjectPlanningGenerationResult ReusedDurableResult(
+        DurablePlannerRow row,
+        ProjectPlanningDocumentResolution documents)
+    {
+        var plan = row.Plan!;
+        var schedule = row.Schedule!;
+        var validation = row.Validation!;
+        var warnings = row.Warnings
+            .Concat(documents.Warnings)
+            .Concat([
+                "Project Forge reused the completed durable FlowHive planning artifact for the same project and current document versions; no second model inference was executed in this HTTP request."
+            ])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var correlationId = !string.IsNullOrWhiteSpace(plan.CelarAiCorrelationId)
+            ? plan.CelarAiCorrelationId!
+            : row.CorrelationId;
+        var provider = !string.IsNullOrWhiteSpace(plan.CelarAiProviderCode)
+            ? plan.CelarAiProviderCode!
+            : "shared_durable_flowhive_planner";
+        var composition = new CelarAiComposeResult(
+            Status: "celar_ai_solution_draft_completed",
+            Mode: "project_plan",
+            PrimaryExecutionPath: "shared_durable_flowhive_planner",
+            ProjectId: plan.ProjectId,
+            ProjectCode: plan.ProjectCode ?? string.Empty,
+            ProjectName: plan.ProjectName ?? string.Empty,
+            DetailedAnswer: null,
+            FlowHivePlan: null,
+            SowDraft: null,
+            Timeline: [],
+            Diagram: null,
+            Citations: [],
+            Warnings: warnings,
+            MissingEvidence: [],
+            Conflicts: [],
+            CoverageScore: 1m,
+            Confidence: plan.CelarAiConfidence ?? 1m,
+            ConfidenceExplanation: "Project Forge reused the already source-grounded durable FlowHive plan for the exact current project-document authority.",
+            ExternalAssistance: null,
+            DataAsOf: row.CompletedAt ?? DateTimeOffset.UtcNow,
+            CorrelationId: correlationId,
+            SelectedTarget: provider,
+            AttemptedTargets: [provider],
+            SkippedTargets: [],
+            TargetDecisions: []);
+
+        return new ProjectPlanningGenerationResult(
+            validation.Valid && schedule.Valid,
+            row.Status,
+            validation.Valid && schedule.Valid
+                ? "Project Forge reused the completed source-cited five-phase FlowHive planning artifact."
+                : "The shared FlowHive planning artifact requires correction before Project Forge can save it.",
+            composition,
+            plan,
+            validation,
+            schedule,
+            [],
+            warnings);
+    }
+
+    private static bool MatchesCurrentAuthority(
+        ProjectFlowHivePlanRequest plan,
+        Guid projectId,
+        string currentSowVersion,
+        string currentGsdVersion)
+    {
+        if (plan.ProjectId != projectId) return false;
+        if (string.IsNullOrWhiteSpace(currentSowVersion)
+            || !string.Equals(plan.SowVersion, currentSowVersion, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (currentGsdVersion.Length == 0)
+        {
+            if (!string.IsNullOrWhiteSpace(plan.GsdVersion)) return false;
+        }
+        else if (!string.Equals(plan.GsdVersion, currentGsdVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var executable = (plan.Tasks ?? [])
+            .Where(task => !task.IsSummary && !task.IsMilestone)
+            .ToArray();
+        return executable.Length > 0
+            && executable.All(task => (task.CitationIds?.Count ?? 0) > 0)
+            && (plan.CelarAiCitationIds?.Count ?? 0) > 0;
+    }
+
+    private static T? Deserialize<T>(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return default;
+        try { return JsonSerializer.Deserialize<T>(value, DurablePlannerJson); }
+        catch { return default; }
+    }
+
     private static ProjectFlowHivePlanRequest ApplySchedule(
         ProjectFlowHivePlanRequest generated,
         ProjectFlowHiveScheduleResult schedule,
@@ -225,6 +526,18 @@ internal static class ProjectPlanningAiOrchestrator
         if (clean.Length == 0) clean = fallback;
         return clean.Length <= maximum ? clean : clean[..maximum];
     }
+
+    private sealed record DurablePlannerRow(
+        Guid RunId,
+        string Status,
+        string Phase,
+        int ProgressPercent,
+        ProjectFlowHivePlanRequest? Plan,
+        ProjectFlowHiveScheduleResult? Schedule,
+        ProjectFlowHivePlanValidationResult? Validation,
+        IReadOnlyList<string> Warnings,
+        string CorrelationId,
+        DateTimeOffset? CompletedAt);
 }
 
 internal sealed record ProjectPlanningGenerationResult(
