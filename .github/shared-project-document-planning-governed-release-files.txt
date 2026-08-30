@@ -87,6 +87,7 @@ tests/test-flowhive-canonical-sow-authority-migration-094.sh
 tests/test-project-planning-collaboration-migration-095.sh
 tests/test-project-planning-document-authority-migration-096.sh
 tests/test-project-planning-identity-safe-admission-migration-097.sh
+tests/test-projectpulse-api-startup.sh
 tests/test-pulse-ai-runtime-job-query-shape.sh
 tests/validate-celar-ai-flowhive-authoritative-release.mjs
 tests/validate-celar-ai-oracle-test-runtime.mjs
