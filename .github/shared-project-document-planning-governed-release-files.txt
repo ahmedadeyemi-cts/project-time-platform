@@ -34,6 +34,7 @@ scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
 scripts/release-test/verify-runtime.mjs
 scripts/validate-module-033-project-forge-interactive.sh
 src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
+src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseUploadStorage.cs
 src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs
 src/backend/ProjectTime.Api/Ai/PulseAiImmutableProcessingSnapshotPolicy.cs
@@ -51,6 +52,7 @@ src/backend/ProjectTime.Api/Modules/CelarAiTransientFailureMiddleware.cs
 src/backend/ProjectTime.Api/Modules/FlowHiveProtectedTestReleaseMarker.cs
 src/backend/ProjectTime.Api/Modules/PostgresProjectFlowHivePlanRepository.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerWorker.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs
@@ -67,6 +69,7 @@ src/backend/ProjectTime.Api/Modules/WorkRegisterDocumentContinuityModule.cs
 src/backend/ProjectTime.Api/Program.cs
 src/backend/ProjectTime.Api/ProjectTime.Api.csproj
 src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py
+src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
 src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
 src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
 src/frontend/project-time-web/scripts/validate-celar-ai-release-scoped-runtime.mjs
@@ -85,6 +88,7 @@ tests/test-project-planning-collaboration-migration-095.sh
 tests/test-project-planning-document-authority-migration-096.sh
 tests/test-project-planning-identity-safe-admission-migration-097.sh
 tests/test-pulse-ai-runtime-job-query-shape.sh
+tests/validate-celar-ai-flowhive-authoritative-release.mjs
 tests/validate-celar-ai-oracle-test-runtime.mjs
 tests/validate-celar-ai-pr630-consolidated.mjs
 tests/validate-flowhive-sow-evidence-autoadmission.mjs
