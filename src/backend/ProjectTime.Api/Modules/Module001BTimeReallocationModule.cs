@@ -178,7 +178,7 @@ public static partial class ScopedRolePolicyModule
                     ) VALUES (
                         @time_entry_id,
                         @category_id,
-                        'PTC_TIME_REALLOCATION_001B',
+                        'EXISTING_ENTRY',
                         @actor_user_id,
                         @actor_user_id
                     )
@@ -188,7 +188,7 @@ public static partial class ScopedRolePolicyModule
                                   task_id = NULL,
                                   assignment_id = NULL,
                                   non_project_time_category_id = EXCLUDED.non_project_time_category_id,
-                                  association_source = 'PTC_TIME_REALLOCATION_001B',
+                                  association_source = 'EXISTING_ENTRY',
                                   updated_by_user_id = EXCLUDED.updated_by_user_id;
                     """, connection, transaction))
                 {
@@ -343,7 +343,7 @@ public static partial class ScopedRolePolicyModule
                         @project_id,
                         @task_id,
                         @assignment_id,
-                        'PTC_TIME_REALLOCATION_001B',
+                        'EXISTING_ENTRY',
                         @actor_user_id,
                         @actor_user_id
                     )
@@ -353,7 +353,7 @@ public static partial class ScopedRolePolicyModule
                                   task_id = EXCLUDED.task_id,
                                   assignment_id = EXCLUDED.assignment_id,
                                   non_project_time_category_id = NULL,
-                                  association_source = 'PTC_TIME_REALLOCATION_001B',
+                                  association_source = 'EXISTING_ENTRY',
                                   updated_by_user_id = EXCLUDED.updated_by_user_id;
                     """, connection, transaction))
                 {
