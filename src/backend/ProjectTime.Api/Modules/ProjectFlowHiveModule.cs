@@ -53,7 +53,6 @@ public static class ProjectFlowHiveModule
             (Func<ProjectFlowHiveArtifactRequest, HttpContext, IResult>)BuildExcelPreview);
 
         app.MapProjectFlowHiveEnterpriseEndpoints();
-        app.MapProjectPlanningCollaborationEndpoints();
 
         return app;
     }
