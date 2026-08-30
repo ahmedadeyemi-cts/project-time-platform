@@ -1,0 +1,38 @@
+name: Validate Module 001B Single-Revision Repair V2
+
+on:
+  push:
+    branches:
+      - fix/module001b-single-revision-convergence-20260830
+    paths:
+      - '.github/workflows/module001b-single-revision-build-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/module001b-single-revision-convergence-20260830
+          fetch-depth: 0
+      - name: Apply validate and publish target blob
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -c "import base64,zlib;exec(zlib.decompress(base64.b64decode('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')))"
+          bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
+          grep -Fq 'module001b_wait_single_revision_converged() {' scripts/release-test/run-assigned-work-protected-test-uat.sh
+          grep -Fq 'MODULE001B_SINGLE_REVISION_CONVERGED' scripts/release-test/run-assigned-work-protected-test-uat.sh
+          if grep -Fq 'az containerapp ingress traffic set' scripts/release-test/run-assigned-work-protected-test-uat.sh; then exit 1; fi
+          if grep -Fq -- '--revision-weight' scripts/release-test/run-assigned-work-protected-test-uat.sh; then exit 1; fi
+          git diff --check
+          SCRIPT_B64="$(base64 -w0 scripts/release-test/run-assigned-work-protected-test-uat.sh)"
+          SCRIPT_SHA="$(jq -n --arg content "$SCRIPT_B64" '{content:$content,encoding:"base64"}' | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input - --jq '.sha')"
+          echo "MODULE001B_SINGLE_REVISION_SCRIPT_BLOB_SHA=$SCRIPT_SHA"
+          echo 'MODULE001B_SINGLE_REVISION_PATCH_VALIDATED=true'
