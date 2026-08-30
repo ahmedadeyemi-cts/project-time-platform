@@ -55,6 +55,10 @@ for (const marker of [
 
 requireMarker(generator, 'MapCelarAiOperationsIntentEndpoints', 'operations-intent registration');
 requireMarker(generator, 'CelarAiAuthoritativePublicFactService', 'public-fact service registration');
+requireMarker(generator, 'PulseAiQuestionPlanner questionPlanner', 'stable product-knowledge planner injection');
+requireMarker(generator, 'IsStableProductKnowledgeQuestion', 'stable product-knowledge classifier');
+requireMarker(generator, 'ProductKnowledgeAnswer', 'stable product-knowledge deterministic answer');
+requireMarker(generator, 'celar_ai_governed_product_knowledge', 'stable product-knowledge provider marker');
 requireMarker(generator, 'PersistAuthoritativePublicFactAsync', 'current-fact persistence fast path');
 requireMarker(generator, 'authoritativePublicFactPreverified', 'current-fact preverification guard');
 requireMarker(generator, 'authoritativePublicFacts.VerifyAsync', 'pre-promotion current-fact verification');
@@ -65,15 +69,23 @@ requireMarker(reliabilityGenerator, 'conflicting_evidence_requires_review', 'sou
 
 const chatStart = generatedProduction.indexOf('private static async Task<IResult> ChatAsync');
 if (chatStart < 0) throw new Error('generated runtime chat: ChatAsync was not generated');
+const productPlanIndex = generatedProduction.indexOf('questionPlanner.PlanHelpSearch(question).DirectKnowledgeAnswer', chatStart);
+const productFastPathIndex = generatedProduction.indexOf('ProductKnowledgeAnswer(directProductKnowledge)', chatStart);
 const preverifyIndex = generatedProduction.indexOf('var publicFactVerified = await authoritativePublicFacts.VerifyAsync(', chatStart);
 const providerIndex = generatedProduction.indexOf('result = await system.AskAsync(', chatStart);
 const fastPersistIndex = generatedProduction.indexOf('result = await PersistAuthoritativePublicFactAsync(', chatStart);
-if (preverifyIndex < 0 || providerIndex < 0 || fastPersistIndex < 0) {
-  throw new Error('generated runtime chat: current-fact fast path or normal provider path is missing');
+if (productPlanIndex < 0 || productFastPathIndex < 0 || preverifyIndex < 0 || providerIndex < 0 || fastPersistIndex < 0) {
+  throw new Error('generated runtime chat: stable product, current-fact, or normal provider path is missing');
+}
+if (!(productPlanIndex < productFastPathIndex && productFastPathIndex < providerIndex)) {
+  throw new Error('generated runtime chat: governed stable product knowledge must resolve before any normal provider generation');
 }
 if (!(preverifyIndex < fastPersistIndex && fastPersistIndex < providerIndex)) {
   throw new Error('generated runtime chat: authoritative current-fact verification must occur before any normal provider generation');
 }
+requireMarker(generatedProduction, 'normalized.Contains("flowhive", StringComparison.Ordinal)', 'FlowHive stable product signal');
+requireMarker(generatedProduction, 'normalized.Contains("purpose", StringComparison.Ordinal)', 'FlowHive purpose signal');
+requireMarker(generatedProduction, 'if (directProductKnowledge is not null)', 'stable product fast-path branch');
 requireMarker(generatedProduction, 'if (!ReferenceEquals(publicFactVerified, publicFactSeed))', 'recognized public-fact profile gate');
 requireMarker(generatedProduction, 'if (!authoritativePublicFactPreverified)', 'duplicate public-fact retrieval guard');
 requireMarker(generatedProduction, 'sourceCount = provisional.Sources.Count', 'persisted authoritative source evidence');
@@ -108,5 +120,6 @@ console.log('PROJECT_FORGE_REFRESH_RACE_GUARD=PASS');
 console.log('PROJECT_FORGE_SELECTED_PROJECT_BRIDGE=PASS');
 console.log('CELAR_AI_AUTHORITATIVE_PUBLIC_FACT_PACKAGE=PASS');
 console.log('CELAR_AI_CURRENT_FACT_FAST_PATH=PASS');
+console.log('CELAR_AI_STABLE_PRODUCT_FAST_PATH=PASS');
 console.log('CELAR_AI_OPERATIONS_INTENT_REGISTRATION=PASS');
 console.log('PROJECT_MANAGEMENT_MIGRATION_077_COMPATIBILITY=PASS');
