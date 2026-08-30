@@ -856,7 +856,7 @@ jobs:
           bash scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
 
       - name: Restore exact prior Test images after application failure
-        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        if: ${{ always() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && (steps.deploy_api.outcome == 'failure' || steps.deploy_web.outcome == 'failure' || steps.uat.outcome == 'failure') }}
         shell: bash
         working-directory: release
         run: |
