@@ -237,6 +237,7 @@ MODULE001B_SESSION=''
 MODULE001B_ENTRY_ID=''
 MODULE001B_API_APP=''
 MODULE001B_API_RG=''
+MODULE001B_API_IMAGE=''
 MODULE001B_GATE_ENABLED=false
 
 module001b_request() {
@@ -318,26 +319,61 @@ module001b_wait_healthy() {
 }
 
 module001b_disable_gate() {
-  if [[ "$MODULE001B_GATE_ENABLED" != true || -z "$MODULE001B_API_RG" || -z "$MODULE001B_API_APP" ]]; then
+  if [[ "$MODULE001B_GATE_ENABLED" != true || -z "$MODULE001B_API_RG" || -z "$MODULE001B_API_APP" || -z "$MODULE001B_API_IMAGE" ]]; then
     return 0
   fi
-  set +e
-  az containerapp update \
+
+  local before flag_before disabled_revision disabled_traffic after source_after flag_after
+  before="$(az containerapp show -g "$MODULE001B_API_RG" -n "$MODULE001B_API_APP" -o json --only-show-errors)" || return $?
+  flag_before="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$before")"
+
+  # Make gate closure idempotent. If a prior attempt created the disabled revision
+  # but failed before traffic moved, reuse that latest revision instead of creating
+  # another revision with the same suffix.
+  if [[ "$flag_before" != false ]]; then
+    az containerapp update \
+      -g "$MODULE001B_API_RG" \
+      -n "$MODULE001B_API_APP" \
+      --set-env-vars PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED=false \
+      --revision-suffix "m1bd-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-1}" \
+      --output none --only-show-errors || return $?
+  fi
+
+  disabled_revision="$(az containerapp show \
     -g "$MODULE001B_API_RG" \
     -n "$MODULE001B_API_APP" \
-    --set-env-vars PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED=false \
-    --revision-suffix "m1bd-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-1}" \
-    --output none --only-show-errors
-  local disable_rc=$?
-  set -e
-  MODULE001B_GATE_ENABLED=false
-  [[ $disable_rc -eq 0 ]] || return "$disable_rc"
+    --query properties.latestRevisionName \
+    -o tsv --only-show-errors)" || return $?
+  [[ -n "$disabled_revision" ]] || return 1
 
-  local after source_after flag_after
+  bash scripts/wait-containerapp-ready-revision.sh \
+    "$MODULE001B_API_RG" \
+    "$MODULE001B_API_APP" \
+    "$disabled_revision" \
+    "$MODULE001B_API_IMAGE" \
+    60 5 || return $?
+
+  az containerapp ingress traffic set \
+    -g "$MODULE001B_API_RG" \
+    -n "$MODULE001B_API_APP" \
+    --revision-weight "$disabled_revision=100" \
+    --output none --only-show-errors || return $?
+
+  disabled_traffic="$(az containerapp revision show \
+    -g "$MODULE001B_API_RG" \
+    -n "$MODULE001B_API_APP" \
+    --revision "$disabled_revision" \
+    --query properties.trafficWeight \
+    -o tsv --only-show-errors)" || return $?
+  [[ "$disabled_traffic" == 100 ]] || return 1
+
   after="$(az containerapp show -g "$MODULE001B_API_RG" -n "$MODULE001B_API_APP" -o json --only-show-errors)" || return $?
   source_after="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$after")"
   flag_after="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$after")"
-  [[ "$source_after" == "$EXPECTED_RELEASE_SHA" && "$flag_after" == false ]]
+  [[ "$source_after" == "$EXPECTED_RELEASE_SHA" && "$flag_after" == false ]] || return 1
+
+  MODULE001B_GATE_ENABLED=false
+  echo "MODULE001B_DISABLED_REVISION=SERVING revision=$disabled_revision traffic=100" >&2
 }
 
 module001b_cleanup() {
@@ -388,6 +424,9 @@ API_BEFORE="$(az containerapp show -g "$MODULE001B_API_RG" -n "$MODULE001B_API_A
   || fail "Module 001B UAT resolved a container app that is not tagged Test."
 [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_BEFORE")" == "$EXPECTED_RELEASE_SHA" ]] \
   || fail "Module 001B UAT resolved a Test API app on the wrong source SHA."
+MODULE001B_API_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$API_BEFORE")"
+[[ -n "$MODULE001B_API_IMAGE" ]] \
+  || fail "Module 001B UAT could not resolve the immutable Test API image."
 
 echo 'MODULE001B_PROTECTED_TEST_FIXTURE_SURFACE=ENABLING'
 az containerapp update \
@@ -398,12 +437,45 @@ az containerapp update \
   --output none --only-show-errors
 MODULE001B_GATE_ENABLED=true
 
+MODULE001B_ENABLED_REVISION="$(az containerapp show \
+  -g "$MODULE001B_API_RG" \
+  -n "$MODULE001B_API_APP" \
+  --query properties.latestRevisionName \
+  -o tsv --only-show-errors)"
+[[ -n "$MODULE001B_ENABLED_REVISION" ]] \
+  || fail "Module 001B Protected-Test fixture enable did not create a revision."
+
+# A template update can return before the new revision owns ingress. Wait for the exact
+# immutable revision, then route all Test API traffic to it. This prevents health checks
+# from succeeding on the new revision while fixture calls continue landing on the old
+# fail-closed revision.
+bash scripts/wait-containerapp-ready-revision.sh \
+  "$MODULE001B_API_RG" \
+  "$MODULE001B_API_APP" \
+  "$MODULE001B_ENABLED_REVISION" \
+  "$MODULE001B_API_IMAGE" \
+  60 5
+az containerapp ingress traffic set \
+  -g "$MODULE001B_API_RG" \
+  -n "$MODULE001B_API_APP" \
+  --revision-weight "$MODULE001B_ENABLED_REVISION=100" \
+  --output none --only-show-errors
+MODULE001B_ENABLED_TRAFFIC="$(az containerapp revision show \
+  -g "$MODULE001B_API_RG" \
+  -n "$MODULE001B_API_APP" \
+  --revision "$MODULE001B_ENABLED_REVISION" \
+  --query properties.trafficWeight \
+  -o tsv --only-show-errors)"
+[[ "$MODULE001B_ENABLED_TRAFFIC" == 100 ]] \
+  || fail "Module 001B enabled revision did not receive 100 percent Test API traffic."
+
 API_ENABLED="$(az containerapp show -g "$MODULE001B_API_RG" -n "$MODULE001B_API_APP" -o json --only-show-errors)"
 [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_ENABLED")" == "$EXPECTED_RELEASE_SHA" ]] \
   || fail "Protected Test source marker changed while enabling Module 001B fixture access."
 [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_ENABLED")" == true ]] \
   || fail "Module 001B Protected-Test fixture surface did not enable."
 module001b_wait_healthy enabled
+echo "MODULE001B_ENABLED_REVISION=ROUTED revision=$MODULE001B_ENABLED_REVISION traffic=100" >&2
 
 PTC_LOGIN_PAYLOAD="$(mktemp)"
 PTC_LOGIN_RESPONSE="$(mktemp)"
@@ -444,11 +516,9 @@ jq -e '
 ' "$EVIDENCE_DIR/module001b-capabilities.json" >/dev/null \
   || fail "Module 001B capabilities do not preserve the approved reallocation contract."
 
-# Azure Container Apps remains deliberately in single-revision mode, but while a new
-# revision is starting the old healthy revision can continue serving for a short period.
-# The prior controller treated that old-revision 404 as an application failure. Retry only
-# the fail-closed route-unavailable response (and bounded gateway handoff statuses) until
-# the enabled revision actually serves the disposable fixture endpoint.
+# The exact enabled revision is already ready and owns 100 percent of Test API ingress.
+# Keep bounded retries only for transient gateway propagation; a persistent old-revision
+# response is still treated as a governed UAT failure.
 FIXTURE_STATUS=''
 for attempt in $(seq 1 36); do
   : > "$EVIDENCE_DIR/module001b-fixture.json"
@@ -515,10 +585,9 @@ jq -n \
     reason:"Protected Test synthetic Module 001B submitted-time reallocation UAT."
   }' > "$MOVE_PAYLOAD"
 
-# The enabled revision can still be in the same bounded Container Apps handoff window
-# after fixture creation. Retry only transport/gateway failures and the explicit
-# fail-closed old-revision response; genuine authorization and domain failures remain
-# single-attempt failures and cannot be hidden by this controller.
+# The enabled revision is ingress-pinned before this call. Retry only bounded
+# transport/gateway propagation and the explicit fail-closed old-revision response;
+# genuine authorization and domain failures remain single-attempt failures.
 MOVE_STATUS=''
 for attempt in $(seq 1 36); do
   : > "$EVIDENCE_DIR/module001b-move.json"
