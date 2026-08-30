@@ -258,6 +258,48 @@ module001b_request() {
   curl "${args[@]}" "$BASE$path" || true
 }
 
+
+module001b_cleanup_fixture() {
+  local output="$1" status='' attempt
+  [[ -n "$MODULE001B_ENTRY_ID" ]] || {
+    printf '204'
+    return 0
+  }
+
+  for attempt in $(seq 1 36); do
+    : > "$output"
+    status="$(module001b_request DELETE \
+      "/api/runtime/timesheet/steward/001b/protected-test-uat/fixture/$MODULE001B_ENTRY_ID" \
+      "$output")"
+
+    if [[ "$status" == 200 ]]; then
+      echo "MODULE001B_CLEANUP_REVISION=SERVING attempt=$attempt" >&2
+      printf '%s' "$status"
+      return 0
+    fi
+
+    if [[ "$status" == 404 ]] \
+      && jq -e '.status == "protected_test_uat_route_unavailable"' "$output" >/dev/null 2>&1; then
+      echo "MODULE001B_CLEANUP_REVISION=PENDING attempt=$attempt status=$status" >&2
+      sleep 5
+      continue
+    fi
+
+    case "$status" in
+      000|502|503|504)
+        echo "MODULE001B_CLEANUP_REVISION=TRANSIENT attempt=$attempt status=$status" >&2
+        sleep 5
+        ;;
+      *)
+        printf '%s' "$status"
+        return 0
+        ;;
+    esac
+  done
+
+  printf '%s' "$status"
+}
+
 module001b_wait_healthy() {
   local label="$1" ready=false status attempt
   for attempt in $(seq 1 36); do
@@ -302,9 +344,7 @@ module001b_cleanup() {
   local original_rc=$?
   set +e
   if [[ -n "$MODULE001B_SESSION" && -n "$MODULE001B_ENTRY_ID" ]]; then
-    module001b_request DELETE \
-      "/api/runtime/timesheet/steward/001b/protected-test-uat/fixture/$MODULE001B_ENTRY_ID" \
-      "$EVIDENCE_DIR/module001b-cleanup-on-exit.json" >/dev/null
+    module001b_cleanup_fixture "$EVIDENCE_DIR/module001b-cleanup-on-exit.json" >/dev/null
   fi
   module001b_disable_gate
   local gate_rc=$?
@@ -556,9 +596,7 @@ jq -e \
   ' "$EVIDENCE_DIR/module001b-workspace-after.json" >/dev/null \
   || fail "The Module 001B reallocated entry did not persist with submitted state and protected fields intact."
 
-CLEANUP_STATUS="$(module001b_request DELETE \
-  "/api/runtime/timesheet/steward/001b/protected-test-uat/fixture/$MODULE001B_ENTRY_ID" \
-  "$EVIDENCE_DIR/module001b-cleanup.json")"
+CLEANUP_STATUS="$(module001b_cleanup_fixture "$EVIDENCE_DIR/module001b-cleanup.json")"
 [[ "$CLEANUP_STATUS" == 200 ]] || fail "Protected-Test Module 001B fixture cleanup returned HTTP $CLEANUP_STATUS."
 jq -e '
   .status == "protected_test_fixture_removed"
