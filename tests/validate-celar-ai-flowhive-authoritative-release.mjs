@@ -16,6 +16,7 @@ const main = read('src/frontend/project-time-web/src/main.jsx');
 const portal = read('src/frontend/project-time-web/src/ProjectForgeFlowHiveSyncPortal.jsx');
 const flowHive = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
 const repair = read('src/frontend/project-time-web/scripts/repair-module-066-generated-jsx.mjs');
+const privateRag = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
 const generatorPath = path.join(root, 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk');
 const productionPath = path.join(root, 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs');
 const generator = fs.readFileSync(generatorPath, 'utf8');
@@ -52,6 +53,18 @@ for (const marker of [
   'Move to phase',
   'draggable={Boolean(enterprise?.access?.canManage)}'
 ]) requireMarker(flowHive, marker, 'Module 066 enterprise UI');
+
+for (const marker of [
+  '.Where(task => !IsPhaseSummaryTask(task))',
+  'plan.Tasks.All(task => task.CitationIds.Count > 0)',
+  'private_flowhive_task_citations_incomplete',
+  'DeterministicEvidenceAnswer(',
+  'Every executable task must contain at least one citationIds value',
+  'Never emit a phase-only summary row'
+]) requireMarker(privateRag, marker, 'FlowHive executable-task citation gate');
+for (const phase of ['Plan', 'Design', 'Implement', 'Validate', 'Release']) {
+  requireMarker(privateRag, `\"${phase}\"`, `FlowHive ${phase} phase-summary filter`);
+}
 
 requireMarker(generator, 'MapCelarAiOperationsIntentEndpoints', 'operations-intent registration');
 requireMarker(generator, 'CelarAiAuthoritativePublicFactService', 'public-fact service registration');
@@ -116,6 +129,7 @@ forbidMarker(projectSummaryPatch, 'pr.probability, pr.impact', 'retired Migratio
 forbidMarker(projectSummaryPatch, 'pr.mitigation_plan', 'retired Migration 011 mitigation field');
 
 console.log('FLOWHIVE_ENTERPRISE_UI_CURRENT_MAIN=PASS');
+console.log('FLOWHIVE_EXECUTABLE_TASK_CITATION_GATE=PASS');
 console.log('PROJECT_FORGE_REFRESH_RACE_GUARD=PASS');
 console.log('PROJECT_FORGE_SELECTED_PROJECT_BRIDGE=PASS');
 console.log('CELAR_AI_AUTHORITATIVE_PUBLIC_FACT_PACKAGE=PASS');
