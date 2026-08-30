@@ -474,9 +474,40 @@ jq -n \
     nonProjectTimeCategoryId:$categoryId,
     reason:"Protected Test synthetic Module 001B submitted-time reallocation UAT."
   }' > "$MOVE_PAYLOAD"
-MOVE_STATUS="$(module001b_request POST \
-  "/api/runtime/timesheet/steward/001b/reallocation/entries/$MODULE001B_ENTRY_ID/move" \
-  "$EVIDENCE_DIR/module001b-move.json" "$MOVE_PAYLOAD")"
+
+# The enabled revision can still be in the same bounded Container Apps handoff window
+# after fixture creation. Retry only transport/gateway failures and the explicit
+# fail-closed old-revision response; genuine authorization and domain failures remain
+# single-attempt failures and cannot be hidden by this controller.
+MOVE_STATUS=''
+for attempt in $(seq 1 36); do
+  : > "$EVIDENCE_DIR/module001b-move.json"
+  MOVE_STATUS="$(module001b_request POST \
+    "/api/runtime/timesheet/steward/001b/reallocation/entries/$MODULE001B_ENTRY_ID/move" \
+    "$EVIDENCE_DIR/module001b-move.json" "$MOVE_PAYLOAD")"
+  if [[ "$MOVE_STATUS" == 200 ]]; then
+    echo "MODULE001B_MOVE_REVISION=SERVING attempt=$attempt" >&2
+    break
+  fi
+
+  if [[ "$MOVE_STATUS" == 404 ]] \
+    && jq -e '.status == "protected_test_uat_route_unavailable"' \
+      "$EVIDENCE_DIR/module001b-move.json" >/dev/null 2>&1; then
+    echo "MODULE001B_MOVE_REVISION=PENDING attempt=$attempt status=$MOVE_STATUS" >&2
+    sleep 5
+    continue
+  fi
+
+  case "$MOVE_STATUS" in
+    000|502|503|504)
+      echo "MODULE001B_MOVE_REVISION=TRANSIENT attempt=$attempt status=$MOVE_STATUS" >&2
+      sleep 5
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 rm -f "$MOVE_PAYLOAD"
 [[ "$MOVE_STATUS" == 200 ]] || fail "Live Module 001B /move returned HTTP $MOVE_STATUS."
 jq -e \
