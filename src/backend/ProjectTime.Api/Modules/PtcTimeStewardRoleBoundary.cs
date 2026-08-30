@@ -12,6 +12,11 @@ public static partial class ScopedRolePolicyModule
 
     public static WebApplication UsePtcTimeStewardRoleBoundary(this WebApplication app)
     {
+        // Module 001B is registered with the same fail-closed time-steward role
+        // boundary as the existing protected steward reads.
+        app.MapModule001BTimeReallocationEndpoints();
+        app.MapModule001BProtectedTestUatEndpoints();
+
         app.Use(async (context, next) =>
         {
             var path = context.Request.Path.Value ?? string.Empty;
@@ -49,7 +54,7 @@ public static partial class ScopedRolePolicyModule
                     allowedRoles = TimeStewardRoleCodes,
                     effectiveRoles = actor.RoleCodes,
                     isViewAs = actor.IsViewAs,
-                    message = "Only Project Team Coordinator or Super Administrator may manage another user's time."
+                    message = "No Access. Module 001B is restricted to Project Team Coordinator and Super Administrator."
                 });
                 return;
             }
@@ -63,6 +68,27 @@ public static partial class ScopedRolePolicyModule
                 {
                     status = "view_as_read_only",
                     message = "Time-steward changes are disabled while using Administrator View-As."
+                });
+                return;
+            }
+
+            // Reallocation no longer belongs to Module 001. Keep the legacy endpoints
+            // unavailable even for authorized users so no caller can fall back to the
+            // old Draft/unsubmit workflow.
+            var legacyModule001Move =
+                method == "POST"
+                && path.EndsWith("/move", StringComparison.OrdinalIgnoreCase)
+                && (path.StartsWith("/api/timesheet/ptc/entries/", StringComparison.OrdinalIgnoreCase)
+                    || path.StartsWith("/api/runtime/timesheet/steward/v2/entries/", StringComparison.OrdinalIgnoreCase));
+            if (legacyModule001Move)
+            {
+                context.Response.StatusCode = StatusCodes.Status410Gone;
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    status = "module_001b_reallocation_required",
+                    module = "001B",
+                    message = "Time reallocation has moved to Module 001B. The legacy Module 001 move workflow is retired and cannot unsubmit or return time to Draft.",
+                    replacement = "/api/runtime/timesheet/steward/001b/reallocation/entries/{timeEntryId}/move"
                 });
                 return;
             }

@@ -3,6 +3,7 @@ import './intuitive-more-menu.js';
 export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet', group: 'Time Management' }),
   Object.freeze({ moduleNumber: '001A', route: 'engineer-task-closeout', displayName: 'Engineer Request Closeout', group: 'Time Management', description: 'Engineer-owned closeout for Service Request, Pre-Sales, and Internal tasks with immediate Module 001 billing lock, immutable history, guarded reopen, and accountable PTC notification.' }),
+  Object.freeze({ moduleNumber: '001B', route: 'time-reallocation', displayName: 'Time Reallocation & Corrections', group: 'Time Management', description: 'PTC and Super Administrator-only administrative reallocation of time across project tasks, service requests, and non-project activities without unsubmit, Draft transition, worker resubmission, Manager approval, or Project Manager approval.' }),
   Object.freeze({ moduleNumber: '002', route: 'manager-approval', displayName: 'Approval Inbox', group: 'Approvals' }),
   Object.freeze({ moduleNumber: '003', route: 'utilization', displayName: 'Utilization', group: 'Resource Management' }),
   Object.freeze({ moduleNumber: '004', route: 'holiday-admin', displayName: 'Holiday Administration', group: 'Time Management' }),

@@ -25,6 +25,7 @@ const [
   matrixModel,
   portal,
   gate,
+  module001bGate,
   roleAuthority,
   timerPortal,
   timerView,
@@ -34,6 +35,7 @@ const [
   ptcBackend,
   ptcBackendV2,
   resultExecution,
+  boundary,
   project
 ] = await Promise.all([
   text('src/frontend/project-time-web/src/api-json-response.js'),
@@ -43,6 +45,7 @@ const [
   text('src/frontend/project-time-web/src/role-permission-matrix-model.js'),
   text('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'),
   text('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'),
+  text('src/frontend/project-time-web/src/module001b/Module001BTimeReallocationGate.jsx'),
   text('src/frontend/project-time-web/src/effective-role-authority.js'),
   text('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'),
   text('src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx'),
@@ -52,6 +55,7 @@ const [
   optionalText('src/backend/ProjectTime.Api/Modules/Module001PtcTimesheetManagement.cs'),
   optionalText('src/backend/ProjectTime.Api/Modules/Module001TimeStewardV2Module.cs'),
   optionalText('src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs'),
+  optionalText('src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs'),
   optionalText('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
 ]);
 
@@ -82,9 +86,6 @@ requireAll(authoritative, [
 ], 'Wrapper-independent authoritative API client');
 rejectAll(authoritative, ['window.fetch(', 'fetch(path'], 'Wrapper-independent authoritative XHR client');
 
-// Legacy read compatibility remains fail-closed for older panels. Modules 012
-// and 037 themselves now use /api/rbac/v1; this bridge must never synthesize
-// missing arrays or turn an incomplete success into an empty valid contract.
 requireAll(bridge, [
   "import { authoritativeApi } from './projectpulse-authoritative-api.js';",
   "DIRECT_ROLE_POLICY_MARKER = 'projectpulse-role-policy-direct-fetch-v3'",
@@ -118,23 +119,32 @@ requireAll(portal, [
   "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
   '/api/runtime/timesheet/steward/v2/users?weekStart=',
   '/api/runtime/timesheet/steward/v2/users/${encodeURIComponent(selectedUserId)}/workspace',
-  '/api/runtime/timesheet/steward/v2/entries/${entry.timeEntryId}/move',
   "requiredCollections: ['users']",
-  "requiredCollections: ['entries', 'moveTargets', 'nonProjectCategories', 'availableProjects']",
+  "requiredCollections: ['entries']",
+  'Project Team Coordinator · Time Steward',
+  'Manage ordinary time for other users',
   'Engineering, Engineering Lead, Project Management, and Project Management Lead',
-  'Requests / Service Requests',
-  'Project Tasks',
-  'Non-Project Time',
-  'assignment will be created',
+  'Return week to draft',
+  'Save correction',
+  'Remove',
+  'Submitted and approved entries remain read-only in Module 001.',
   'No submission on behalf'
-], 'Wrapper-independent PTC v2 caller');
+], 'Wrapper-independent Module 001 ordinary-time caller');
 rejectAll(portal, [
+  '/move',
+  'moveTargets',
+  'availableProjects',
+  'assignment will be created',
+  'destination',
+  'reallocat',
+  'Module001B',
+  'time-reallocation',
   'publishUsers(payload)',
   'publishWorkspace(payload)',
   'PtcRuntimeTaskCatalog',
   'document.createElement',
   '.insertBefore('
-], 'Retired PTC compatibility portal behavior');
+], 'Module 001 ordinary-time ownership boundary');
 
 requireAll(gate, [
   'PtcTimeStewardGate',
@@ -145,10 +155,39 @@ requireAll(gate, [
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
   'if (!authority.ready) return null',
-  'if (!canStewardTime && !canReviewApprovals) return null',
   '<PtcTimesheetManagementPortal />'
-], 'Effective-role PTC gate');
-rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal owner');
+], 'Effective-role Module 001 gate');
+rejectAll(gate, [
+  'PtcRuntimeTaskCatalog',
+  "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
+  '<PtcGuidedMovePortal />',
+  'Module001B',
+  'MODULE001B_ROLES',
+  'time-reallocation',
+  'reallocat',
+  'move time'
+], 'Module 001 gate ownership boundary');
+
+requireAll(module001bGate, [
+  'Module001BTimeReallocationGate',
+  "from '../effective-role-authority.js'",
+  'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
+  'hasAnyEffectiveRole',
+  'readEffectiveRoleAuthority',
+  'const MODULE001B_ROLES = new Set([',
+  "'PROJECT_TEAM_COORDINATOR'",
+  "'SUPER_ADMINISTRATOR'",
+  'hasAnyEffectiveRole(authority, MODULE001B_ROLES)',
+  'allowed={hasAnyEffectiveRole(authority, MODULE001B_ROLES)}',
+  'if (!authority.ready) return null'
+], 'Independent Module 001B gate');
+rejectAll(module001bGate, [
+  "'ADMINISTRATOR'",
+  "'MANAGER'",
+  "'PROJECT_MANAGER'",
+  "'ENGINEER'",
+  "'ENGINEERING_LEAD'"
+], 'Module 001B fixed-role access');
 
 requireAll(roleAuthority, [
   'normalizeProjectPulseRoleCodes',
@@ -204,9 +243,11 @@ requireAll(main, [
   "import './runtime-data-compatibility.js';",
   "import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';",
   "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
+  "import Module001BTimeReallocationGate from './module001b/Module001BTimeReallocationGate.jsx';",
   '<TimesheetEnhancementPortal />',
-  '<PtcTimeStewardGate />'
-], 'Integrated Module 001 application mount');
+  '<PtcTimeStewardGate />',
+  '<Module001BTimeReallocationGate />'
+], 'Independent Module 001 and Module 001B application mounts');
 rejectAll(main, [
   'Module001ActiveTimerRecoveryPortal',
   'PtcRuntimeTaskCatalog'
@@ -217,6 +258,7 @@ const externalAvailable = [
   ptcBackend,
   ptcBackendV2,
   resultExecution,
+  boundary,
   project
 ].every(Boolean);
 
@@ -243,14 +285,16 @@ if (externalAvailable) {
     '/api/runtime/timesheet/steward/v2/users',
     '/api/runtime/timesheet/steward/v2/users/{targetUserId:guid}/workspace',
     '/api/runtime/timesheet/steward/v2/entries/{timeEntryId:guid}/move',
-    'Requests / Service Requests',
-    'Project Tasks',
-    'Non-Project Time',
-    'canAssignExistingProjectTaskDuringMove = true',
-    'canMoveToNonProjectTime = true',
-    'Module001EnsurePtcAssignmentV2Async',
-    'crossActivityTypeMove = true'
-  ], 'PTC v2 backend');
+    'submissionOnBehalf = false'
+  ], 'Module 001 v2 compatibility backend retained behind the 410 retirement boundary');
+
+  requireAll(boundary, [
+    'legacyModule001Move',
+    'StatusCodes.Status410Gone',
+    'module_001b_reallocation_required',
+    'The legacy Module 001 move workflow is retired and cannot unsubmit or return time to Draft.',
+    '/api/runtime/timesheet/steward/001b/reallocation/entries/{timeEntryId}/move'
+  ], 'Module 001 move retirement boundary');
 
   requireAll(resultExecution, [
     'UseModule001ResultExecutionCompatibility',
@@ -267,9 +311,10 @@ if (externalAvailable) {
     'app.MapPost("/api/timesheet/ptc/entries/{timeEntryId:guid}/remove"',
     'app.MapPost("/api/timesheet/ptc/tasks"',
     'canSubmitOnBehalf = false'
-  ], 'Governed PTC mutation backend');
+  ], 'Governed Module 001 ordinary-time mutation backend');
 
   requireAll(project, [
+    'app.UsePtcTimeStewardRoleBoundary();',
     'app.UseModule001ResultExecutionCompatibility();',
     'app.MapModule001TimeStewardV2Endpoints();',
     'app.MapModule001PtcTimesheetManagementEndpoints();',
@@ -290,4 +335,4 @@ for (const forbidden of [
   }
 }
 
-console.log('RUNTIME_ROLE_POLICY_PTC_DATA=PASS pTCTransport=v2-authoritative timerPersistence=server-authoritative');
+console.log('RUNTIME_ROLE_POLICY_PTC_DATA=PASS pTCTransport=v2-authoritative timerPersistence=server-authoritative module001=ordinary-time-only module001b=strict-independent-reallocation');

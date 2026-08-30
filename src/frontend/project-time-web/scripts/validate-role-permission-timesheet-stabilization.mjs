@@ -22,6 +22,7 @@ const [
   boundary,
   project,
   gate,
+  module001bGate,
   roleAuthority,
   main,
   authoritative,
@@ -36,6 +37,7 @@ const [
   optional('src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs'),
   optional('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
   read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'),
+  read('src/frontend/project-time-web/src/module001b/Module001BTimeReallocationGate.jsx'),
   read('src/frontend/project-time-web/src/effective-role-authority.js'),
   read('src/frontend/project-time-web/src/main.jsx'),
   read('src/frontend/project-time-web/src/projectpulse-authoritative-api.js'),
@@ -72,7 +74,10 @@ if (boundary) {
     '/api/runtime/timesheet/steward',
     '/api/scoped-time/',
     'time_steward_role_required',
-    "Only Project Team Coordinator or Super Administrator may manage another user's time"
+    'No Access. Module 001B is restricted to Project Team Coordinator and Super Administrator.',
+    'legacyModule001Move',
+    'StatusCodes.Status410Gone',
+    'module_001b_reallocation_required'
   ], 'Time-steward hard role boundary');
 }
 
@@ -93,11 +98,40 @@ requireAll(gate, [
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
   'if (!authority.ready) return null',
-  'if (!canStewardTime && !canReviewApprovals) return null',
   '<PtcTimesheetManagementPortal />',
   '<ProductionApprovalWorkPortal />'
-], 'Effective-role PTC UI gate');
-rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal owner');
+], 'Effective-role Module 001 UI gate');
+rejectAll(gate, [
+  'PtcRuntimeTaskCatalog',
+  "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
+  '<PtcGuidedMovePortal />',
+  'Module001B',
+  'MODULE001B_ROLES',
+  'time-reallocation',
+  'reallocat',
+  'move time'
+], 'Module 001 ownership boundary');
+
+requireAll(module001bGate, [
+  'Module001BTimeReallocationGate',
+  "from '../effective-role-authority.js'",
+  'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
+  'hasAnyEffectiveRole',
+  'readEffectiveRoleAuthority',
+  'const MODULE001B_ROLES = new Set([',
+  "'PROJECT_TEAM_COORDINATOR'",
+  "'SUPER_ADMINISTRATOR'",
+  'hasAnyEffectiveRole(authority, MODULE001B_ROLES)',
+  'allowed={hasAnyEffectiveRole(authority, MODULE001B_ROLES)}',
+  'if (!authority.ready) return null'
+], 'Independent Module 001B effective-role gate');
+rejectAll(module001bGate, [
+  "'ADMINISTRATOR'",
+  "'MANAGER'",
+  "'PROJECT_MANAGER'",
+  "'ENGINEER'",
+  "'ENGINEERING_LEAD'"
+], 'Module 001B fixed-role access');
 
 requireAll(roleAuthority, [
   'normalizeProjectPulseRoleCodes',
@@ -128,9 +162,11 @@ if (
 requireAll(main, [
   "import './projectpulse-authoritative-api.js';",
   "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
+  "import Module001BTimeReallocationGate from './module001b/Module001BTimeReallocationGate.jsx';",
   '<PtcTimeStewardGate />',
+  '<Module001BTimeReallocationGate />',
   '<TimesheetEnhancementPortal />'
-], 'Gated PTC and timer application mount');
+], 'Independent Module 001, Module 001B, and timer application mounts');
 rejectAll(main, [
   "import PtcTimesheetManagementPortal from './module001/PtcTimesheetManagementPortal.jsx';",
   'Module001ActiveTimerRecoveryPortal',
@@ -210,12 +246,8 @@ if (stewardV2) {
     'ENGINEERING_LEAD',
     'PROJECT_MANAGEMENT',
     'PROJECT_MANAGEMENT_LEAD',
-    'Requests / Service Requests',
-    'Project Tasks',
-    'Non-Project Time',
-    'Module001EnsurePtcAssignmentV2Async',
-    'crossActivityTypeMove = true'
-  ], 'Flexible PTC v2 source');
+    'submissionOnBehalf = false'
+  ], 'PTC v2 source retained behind the Module 001 410 retirement boundary');
 }
 
 if (queries) {
@@ -226,4 +258,4 @@ if (queries) {
   ], 'Role and module query foundation');
 }
 
-console.log('ROLE_PERMISSION_TIMESHEET_STABILIZATION=PASS database=PTP timer=server-authoritative pTC=v2 domOwnership=react-owned');
+console.log('ROLE_PERMISSION_TIMESHEET_STABILIZATION=PASS database=PTP timer=server-authoritative module001=ordinary-time-only module001b=strict-independent-reallocation domOwnership=react-owned');

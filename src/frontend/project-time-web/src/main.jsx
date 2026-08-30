@@ -31,6 +31,7 @@ import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.j
 import CriticalRoutePresentationBoundary from './CriticalRoutePresentationBoundary.jsx';
 import TimesheetEnhancementPortal from './module001/TimesheetEnhancementPortal.jsx';
 import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';
+import Module001BTimeReallocationGate from './module001b/Module001BTimeReallocationGate.jsx';
 import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.jsx';
 import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
 import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDualConnectionPortal.jsx';
@@ -87,6 +88,7 @@ createRoot(
       <DashboardPersonalCalendarPortal />
       <TimesheetEnhancementPortal />
       <PtcTimeStewardGate />
+      <Module001BTimeReallocationGate />
       <ProjectExpenseCrossModulePortal />
       <Module005ExperienceCompatibility />
       <MicrosoftIntegrationDualConnectionPortal />

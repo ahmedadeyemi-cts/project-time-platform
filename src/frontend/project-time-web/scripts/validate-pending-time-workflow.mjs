@@ -35,9 +35,11 @@ const approvalCss = [
   read('src/frontend/project-time-web/src/production-approval-work.css'),
   read('src/frontend/project-time-web/src/production-approval-work-hardening.css')
 ].join('\n');
-const guidedMove = read('src/frontend/project-time-web/src/module001/PtcGuidedMovePortal.jsx');
-const guidedMoveCss = read('src/frontend/project-time-web/src/module001/ptc-guided-move.css');
-const compositionGate = read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx');
+const reallocationPortal = read('src/frontend/project-time-web/src/module001b/Module001BTimeReallocationPortal.jsx');
+const reallocationCss = read('src/frontend/project-time-web/src/module001b/module001b-time-reallocation.css');
+const module001Gate = read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx');
+const module001bGate = read('src/frontend/project-time-web/src/module001b/Module001BTimeReallocationGate.jsx');
+const main = read('src/frontend/project-time-web/src/main.jsx');
 const workflowOperations = read('src/frontend/project-time-web/src/ApprovalExportAuditWorkflowCenter.jsx');
 
 for (const token of [
@@ -80,54 +82,97 @@ for (const token of [
 }
 
 for (const token of [
-  'Move Time wizard',
-  'Return to draft and move time',
-  '/api/runtime/timesheet/steward/v2/entries/${encodeURIComponent(selectedEntry.timeEntryId)}/move',
-  '/api/timesheet/ptc/non-project-activities',
-  'Create and select activity',
-  'Manager then PTC approval; PM not required',
-  'immutable time-management evidence',
-  "requiredCollections: ['entries', 'moveTargets', 'nonProjectCategories', 'availableProjects']"
+  'MODULE 001B · PROJECT TEAM COORDINATOR',
+  'Time Reallocation &amp; Corrections',
+  'No Access',
+  'Project Team Coordinators and Super Administrators',
+  '/api/runtime/timesheet/steward/001b/reallocation/entries/${encodeURIComponent(selectedEntry.timeEntryId)}/move',
+  '/api/timesheet/ptc/tasks',
+  "requiredCollections: ['entries', 'moveTargets', 'availableProjects']",
+  'Requests / Service Requests',
+  'Project Tasks',
+  'Non-Project Time',
+  'Correct the allocation of an existing time entry without changing the worker, work date,',
+  'worked hours, or submission/approval status.',
+  'Submitted and approved time stays in its current status.',
+  'No worker resubmission, Manager approval, or Project Manager approval is required.',
+  'Create new billable / non-billable task',
+  'Create and assign a destination task',
+  'billable: Boolean(taskDraft.billable)',
+  '`project-task:${result.projectId}:${result.taskId}`',
+  "window.dispatchEvent(new CustomEvent('projectpulse:module001b-time-reallocated'"
 ]) {
-  requireText(guidedMove, token, 'Guided PTC Move Time portal');
+  requireText(reallocationPortal, token, 'Module 001B Time Reallocation portal');
 }
 
 for (const token of [
-  '.ptc-guided-launcher',
-  '.ptc-guided-overlay',
-  '.ptc-guided-steps',
-  '.ptc-guided-destination-groups',
-  '.ptc-guided-reopen'
+  '.module001b-shell',
+  '.module001b-workspace',
+  '.module001b-section',
+  '.module001b-destination-list',
+  '.module001b-choice',
+  '.module001b-actions'
 ]) {
-  requireText(guidedMoveCss, token, 'Guided PTC Move Time styles');
+  requireText(reallocationCss, token, 'Module 001B Time Reallocation styles');
 }
 
 for (const token of [
   "import ProductionApprovalWorkPortal from '../ProductionApprovalWorkPortal.jsx';",
-  "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
   "from '../effective-role-authority.js'",
   'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
   'hasAnyEffectiveRole',
   'readEffectiveRoleAuthority',
+  "'PROJECT_TEAM_COORDINATOR'",
+  "'SUPER_ADMINISTRATOR'",
   '<ProductionApprovalWorkPortal />',
-  '<PtcGuidedMovePortal />',
   '<PtcTimesheetManagementPortal />',
-  'if (!authority.ready) return null;',
-  'if (!canStewardTime && !canReviewApprovals) return null;'
+  'if (!authority.ready) return null;'
 ]) {
-  requireText(compositionGate, token, 'Frontend composition gate');
+  requireText(module001Gate, token, 'Module 001 frontend composition gate');
+}
+
+for (const token of [
+  "import Module001BTimeReallocationPortal from './Module001BTimeReallocationPortal.jsx';",
+  "from '../effective-role-authority.js'",
+  'MODULE001B_ROLES',
+  "'PROJECT_TEAM_COORDINATOR'",
+  "'SUPER_ADMINISTRATOR'",
+  'hasAnyEffectiveRole(authority, MODULE001B_ROLES)',
+  'allowed={hasAnyEffectiveRole(authority, MODULE001B_ROLES)}'
+]) {
+  requireText(module001bGate, token, 'Independent Module 001B gate');
+}
+
+for (const token of [
+  "import PtcTimeStewardGate from './module001/PtcTimeStewardGate.jsx';",
+  "import Module001BTimeReallocationGate from './module001b/Module001BTimeReallocationGate.jsx';",
+  '<PtcTimeStewardGate />',
+  '<Module001BTimeReallocationGate />'
+]) {
+  requireText(main, token, 'Independent Module 001 and 001B application mounts');
 }
 
 rejectText(approvalPortal, 'window.prompt', 'Production approval portal');
-rejectText(guidedMove, 'window.prompt', 'Guided PTC Move Time portal');
-rejectText(compositionGate, '<PendingApprovalWorkPortal />', 'Retired approval portal mount');
-rejectText(compositionGate, 'PtcNonProjectTaskPortal', 'Duplicate non-project creation launcher');
+rejectText(reallocationPortal, 'window.prompt', 'Module 001B Time Reallocation portal');
+for (const retired of [
+  'Module001B',
+  'time-reallocation',
+  'reallocat',
+  'move time',
+  'PtcGuidedMovePortal'
+]) {
+  rejectText(module001Gate, retired, 'Module 001 allocation boundary');
+}
+rejectText(module001Gate, '<PendingApprovalWorkPortal />', 'Retired approval portal mount');
+rejectText(module001Gate, 'PtcNonProjectTaskPortal', 'Duplicate non-project creation launcher');
 
 if (!leanWebBuildContext) {
   const productionBackend = read('src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkModule.cs');
   const hardeningBackend = read('src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkflowHardening.cs');
   const compatibility = read('src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkCompatibility.cs');
   const endpointCompositionRoot = read('src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs');
+  const module001bBackend = read('src/backend/ProjectTime.Api/Modules/Module001BTimeReallocationModule.cs');
+  const stewardBoundary = read('src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs');
   const migration002 = read('database/migrations/002_non_project_time_and_hour_types.sql');
 
   for (const token of [
@@ -178,12 +223,50 @@ if (!leanWebBuildContext) {
     requireText(hardeningBackend, token, 'Production approval hardening');
   }
 
+  for (const token of [
+    'module001b-time-reallocation-v1-2026-08-28',
+    '/api/runtime/timesheet/steward/001b/reallocation/capabilities',
+    '/api/runtime/timesheet/steward/001b/reallocation/entries/{timeEntryId:guid}/move',
+    'Module001BTimeReallocationRequest',
+    'allocationOnly = true',
+    'workerEditable = false',
+    'workDateEditable = false',
+    'workedTimeEditable = false',
+    'submissionStatePreserved = true',
+    'unsubmitRequired = false',
+    'workerResubmissionRequired = false',
+    'managerApprovalRequired = false',
+    'projectManagerApprovalRequired = false',
+    'var originalStatus = original.Status;',
+    'currentStatus = revised.Status',
+    'statusUnchanged'
+  ]) {
+    requireText(module001bBackend, token, 'Module 001B Time Reallocation backend');
+  }
+  rejectText(module001bBackend, 'Module001PtcMoveV2Request request', 'Module 001B request binding');
+
+  for (const token of [
+    'TimeStewardRoleCodes',
+    '"PROJECT_TEAM_COORDINATOR"',
+    '"SUPER_ADMINISTRATOR"',
+    'app.MapModule001BTimeReallocationEndpoints();',
+    'legacyModule001Move',
+    'StatusCodes.Status410Gone',
+    'module_001b_reallocation_required',
+    'The legacy Module 001 move workflow is retired and cannot unsubmit or return time to Draft.',
+    '/api/runtime/timesheet/steward/001b/reallocation/entries/{timeEntryId}/move'
+  ]) {
+    requireText(stewardBoundary, token, 'Module 001B role and retirement boundary');
+  }
+
   rejectText(productionBackend, 'LIMIT 5000', 'Production approval backend');
   rejectText(productionBackend, 'detail: exception.Message', 'Production approval backend');
   rejectText(productionBackend, 'INSERT INTO project_tasks', 'Non-project activity backend');
   rejectText(productionBackend, "approval.approval_stage = 'project_manager'", 'Historical PM approval gating');
   rejectText(productionBackend, "existing.approval_stage = 'project_manager'", 'Historical PM approval gating');
   rejectText(productionBackend, 'existing.approval_stage = @approval_stage', 'Historical stage approval gating');
+  rejectText(module001bBackend, "status = 'draft'", 'Module 001B submission-state preservation');
+  rejectText(module001bBackend, 'status = "draft"', 'Module 001B submission-state preservation');
 
   requireText(workflowOperations, 'Approval decisions are completed only in Pending approval work.', 'Post-approval operations workspace');
   requireText(workflowOperations, "runAction(item, 'reconcile')", 'Post-approval operations workspace');
@@ -235,6 +318,9 @@ if (!leanWebBuildContext) {
   }
 
   console.log('PRODUCTION_APPROVAL_BACKEND_VALIDATION=PASS');
+  console.log('MODULE001B_REALLOCATION_BACKEND_VALIDATION=PASS');
+  console.log('MODULE001B_NEW_DESTINATION_TASK=PASS');
+  console.log('MODULE001B_LEGACY_MOVE_RETIREMENT=PASS');
 } else {
   console.log('PRODUCTION_APPROVAL_BACKEND_VALIDATION=SKIPPED_LEAN_WEB_CONTEXT');
 }
@@ -251,6 +337,10 @@ console.log('SEARCH_RELOADS_OPEN_WEEKS=PASS');
 console.log('MANAGER_PM_PTC_BULK_APPROVAL=PASS');
 console.log('NON_PROJECT_MANAGER_TO_PTC_ROUTE=PASS');
 console.log('PM_PROJECT_SCOPE_ISOLATION=PASS');
-console.log('PTC_GUIDED_MOVE_TIME=PASS');
+console.log('MODULE001B_TIME_REALLOCATION=PASS');
+console.log('MODULE001B_NEW_DESTINATION_TASK=PASS');
+console.log('MODULE001B_NO_REAPPROVAL=PASS');
+console.log('MODULE001B_INDEPENDENT_OWNERSHIP=PASS');
+console.log('MODULE001_ALLOCATION_UI=ABSENT');
 console.log('IMMUTABLE_APPROVAL_EVIDENCE=PASS');
 process.exit(0);

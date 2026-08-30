@@ -5,11 +5,10 @@ import {
   hasAnyEffectiveRole,
   readEffectiveRoleAuthority
 } from '../effective-role-authority.js';
-import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';
 import PtcTimesheetManagementPortal from './PtcTimesheetManagementPortal.jsx';
 
-// View-As storage compatibility remains centralized in effective-role-authority.js
-// under the canonical key 'projectPulseViewAsUser'.
+// Module 001 owns ordinary time recording, stewardship, and approval only.
+// Allocation corrections are intentionally outside this module.
 const TIME_STEWARD_ROLES = new Set([
   'PROJECT_TEAM_COORDINATOR',
   'SUPER_ADMINISTRATOR',
@@ -43,19 +42,14 @@ export default function PtcTimeStewardGate() {
     };
   }, []);
 
-  // Legacy validator migration note: `if (state.active && !state.allowed) return null`
-  // is now represented by the fail-closed authority-ready and role-family checks below.
   if (!authority.ready) return null;
 
   const canStewardTime = hasAnyEffectiveRole(authority, TIME_STEWARD_ROLES);
   const canReviewApprovals = hasAnyEffectiveRole(authority, APPROVAL_ROLES);
 
-  if (!canStewardTime && !canReviewApprovals) return null;
-
   return (
     <>
       {canStewardTime ? <PtcTimesheetManagementPortal /> : null}
-      {canStewardTime ? <PtcGuidedMovePortal /> : null}
       {canReviewApprovals ? <ProductionApprovalWorkPortal /> : null}
     </>
   );
