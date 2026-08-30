@@ -147,4 +147,40 @@ grep -Fq 'session_required' /tmp/projectpulse-startup-protected-combined-readine
   exit 1
 }
 
-echo 'PROJECTPULSE_API_STARTUP_SMOKE=PASS health=200 version=200 publicReadinessContracts=ready protectedAuthBoundary=ready projectIntakeIResultBinding=ready operationalCountsSuppressed=true'
+PROJECT_PLANNING_PROJECTS_STATUS="$(curl -sS -o /tmp/projectpulse-startup-project-planning-projects.json -w '%{http_code}' "$BASE/api/project-planning/projects?module=066" || true)"
+[[ "$PROJECT_PLANNING_PROJECTS_STATUS" == 401 ]] || {
+  echo "ERROR: Project-planning project-list route is not registered behind the session boundary; status=$PROJECT_PLANNING_PROJECTS_STATUS" >&2
+  cat /tmp/projectpulse-startup-project-planning-projects.json >&2 || true
+  exit 1
+}
+grep -Fq 'session_required' /tmp/projectpulse-startup-project-planning-projects.json || {
+  echo 'ERROR: Project-planning project-list route did not return the controlled session-required contract.' >&2
+  cat /tmp/projectpulse-startup-project-planning-projects.json >&2 || true
+  exit 1
+}
+
+PROJECT_PLANNING_ACCESS_STATUS="$(curl -sS -o /tmp/projectpulse-startup-project-planning-access.json -w '%{http_code}' "$BASE/api/project-planning/projects/00000000-0000-0000-0000-000000000001/access?module=066" || true)"
+[[ "$PROJECT_PLANNING_ACCESS_STATUS" == 401 ]] || {
+  echo "ERROR: Project-planning access route is not registered behind the session boundary; status=$PROJECT_PLANNING_ACCESS_STATUS" >&2
+  cat /tmp/projectpulse-startup-project-planning-access.json >&2 || true
+  exit 1
+}
+grep -Fq 'session_required' /tmp/projectpulse-startup-project-planning-access.json || {
+  echo 'ERROR: Project-planning access route did not return the controlled session-required contract.' >&2
+  cat /tmp/projectpulse-startup-project-planning-access.json >&2 || true
+  exit 1
+}
+
+PROJECT_PLANNING_COLLABORATORS_STATUS="$(curl -sS -o /tmp/projectpulse-startup-project-planning-collaborators.json -w '%{http_code}' "$BASE/api/project-planning/projects/00000000-0000-0000-0000-000000000001/collaborators?module=066" || true)"
+[[ "$PROJECT_PLANNING_COLLABORATORS_STATUS" == 401 ]] || {
+  echo "ERROR: Project-planning collaborator-list route is not registered behind the session boundary; status=$PROJECT_PLANNING_COLLABORATORS_STATUS" >&2
+  cat /tmp/projectpulse-startup-project-planning-collaborators.json >&2 || true
+  exit 1
+}
+grep -Fq 'session_required' /tmp/projectpulse-startup-project-planning-collaborators.json || {
+  echo 'ERROR: Project-planning collaborator-list route did not return the controlled session-required contract.' >&2
+  cat /tmp/projectpulse-startup-project-planning-collaborators.json >&2 || true
+  exit 1
+}
+
+echo 'PROJECTPULSE_API_STARTUP_SMOKE=PASS health=200 version=200 publicReadinessContracts=ready protectedAuthBoundary=ready projectPlanningCollaborationRoutes=ready projectIntakeIResultBinding=ready operationalCountsSuppressed=true'
