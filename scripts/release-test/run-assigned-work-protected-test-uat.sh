@@ -318,12 +318,60 @@ module001b_wait_healthy() {
   [[ "$ready" == true ]] || fail "Protected Test did not become healthy during Module 001B $label."
 }
 
+
+module001b_wait_single_revision_converged() {
+  local label="$1" expected_revision="$2" ready=false attempt
+  local app_json revisions_json mode latest latest_ready active_count active_name
+  local revision_json revision_image revision_active
+
+  for attempt in $(seq 1 60); do
+    app_json="$(az containerapp show \
+      -g "$MODULE001B_API_RG" \
+      -n "$MODULE001B_API_APP" \
+      -o json --only-show-errors 2>/dev/null || true)"
+    revisions_json="$(az containerapp revision list \
+      -g "$MODULE001B_API_RG" \
+      -n "$MODULE001B_API_APP" \
+      -o json --only-show-errors 2>/dev/null || true)"
+
+    mode="$(jq -r '.properties.configuration.activeRevisionsMode // empty' <<<"${app_json:-{}}")"
+    latest="$(jq -r '.properties.latestRevisionName // empty' <<<"${app_json:-{}}")"
+    latest_ready="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"${app_json:-{}}")"
+    active_count="$(jq '[.[]? | select(.properties.active == true)] | length' <<<"${revisions_json:-[]}" 2>/dev/null || printf '0')"
+    active_name="$(jq -r '[.[]? | select(.properties.active == true) | .name] | if length == 1 then .[0] else empty end' <<<"${revisions_json:-[]}" 2>/dev/null || true)"
+    revision_json="$(jq -c --arg name "$expected_revision" '[.[]? | select(.name == $name)] | if length == 1 then .[0] else {} end' <<<"${revisions_json:-[]}" 2>/dev/null || printf '{}')"
+    revision_image="$(jq -r '.properties.template.containers[0].image // empty' <<<"${revision_json:-{}}" 2>/dev/null || true)"
+    revision_active="$(jq -r '.properties.active // false' <<<"${revision_json:-{}}" 2>/dev/null || printf 'false')"
+
+    printf 'MODULE001B_SINGLE_REVISION_WAIT label=%s attempt=%s expected=%s mode=%s latest=%s latestReady=%s activeCount=%s activeName=%s revisionActive=%s imageMatch=%s\n' \
+      "$label" "$attempt" "$expected_revision" "${mode:-none}" "${latest:-none}" "${latest_ready:-none}" \
+      "${active_count:-0}" "${active_name:-none}" "${revision_active:-false}" \
+      "$([[ "$revision_image" == "$MODULE001B_API_IMAGE" ]] && printf true || printf false)" >&2
+
+    if [[ "${mode,,}" == single \
+      && "$latest" == "$expected_revision" \
+      && "$latest_ready" == "$expected_revision" \
+      && "$active_count" == 1 \
+      && "$active_name" == "$expected_revision" \
+      && "$revision_active" == true \
+      && "$revision_image" == "$MODULE001B_API_IMAGE" ]]; then
+      ready=true
+      break
+    fi
+
+    sleep 5
+  done
+
+  [[ "$ready" == true ]] || return 1
+  echo "MODULE001B_SINGLE_REVISION_CONVERGED label=$label revision=$expected_revision activeCount=1" >&2
+}
+
 module001b_disable_gate() {
   if [[ "$MODULE001B_GATE_ENABLED" != true || -z "$MODULE001B_API_RG" || -z "$MODULE001B_API_APP" || -z "$MODULE001B_API_IMAGE" ]]; then
     return 0
   fi
 
-  local before flag_before disabled_revision disabled_traffic after source_after flag_after
+  local before flag_before disabled_revision after source_after flag_after
   before="$(az containerapp show -g "$MODULE001B_API_RG" -n "$MODULE001B_API_APP" -o json --only-show-errors)" || return $?
   flag_before="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$before")"
 
@@ -353,19 +401,7 @@ module001b_disable_gate() {
     "$MODULE001B_API_IMAGE" \
     60 5 || return $?
 
-  az containerapp ingress traffic set \
-    -g "$MODULE001B_API_RG" \
-    -n "$MODULE001B_API_APP" \
-    --revision-weight "$disabled_revision=100" \
-    --output none --only-show-errors || return $?
-
-  disabled_traffic="$(az containerapp revision show \
-    -g "$MODULE001B_API_RG" \
-    -n "$MODULE001B_API_APP" \
-    --revision "$disabled_revision" \
-    --query properties.trafficWeight \
-    -o tsv --only-show-errors)" || return $?
-  [[ "$disabled_traffic" == 100 ]] || return 1
+  module001b_wait_single_revision_converged disabled "$disabled_revision" || return $?
 
   after="$(az containerapp show -g "$MODULE001B_API_RG" -n "$MODULE001B_API_APP" -o json --only-show-errors)" || return $?
   source_after="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$after")"
@@ -373,7 +409,7 @@ module001b_disable_gate() {
   [[ "$source_after" == "$EXPECTED_RELEASE_SHA" && "$flag_after" == false ]] || return 1
 
   MODULE001B_GATE_ENABLED=false
-  echo "MODULE001B_DISABLED_REVISION=SERVING revision=$disabled_revision traffic=100" >&2
+  echo "MODULE001B_DISABLED_REVISION=SERVING revision=$disabled_revision singleRevisionConverged=true" >&2
 }
 
 module001b_cleanup() {
@@ -455,19 +491,8 @@ bash scripts/wait-containerapp-ready-revision.sh \
   "$MODULE001B_ENABLED_REVISION" \
   "$MODULE001B_API_IMAGE" \
   60 5
-az containerapp ingress traffic set \
-  -g "$MODULE001B_API_RG" \
-  -n "$MODULE001B_API_APP" \
-  --revision-weight "$MODULE001B_ENABLED_REVISION=100" \
-  --output none --only-show-errors
-MODULE001B_ENABLED_TRAFFIC="$(az containerapp revision show \
-  -g "$MODULE001B_API_RG" \
-  -n "$MODULE001B_API_APP" \
-  --revision "$MODULE001B_ENABLED_REVISION" \
-  --query properties.trafficWeight \
-  -o tsv --only-show-errors)"
-[[ "$MODULE001B_ENABLED_TRAFFIC" == 100 ]] \
-  || fail "Module 001B enabled revision did not receive 100 percent Test API traffic."
+module001b_wait_single_revision_converged enabled "$MODULE001B_ENABLED_REVISION" \
+  || fail "Module 001B enabled revision did not converge as the sole active Test API revision."
 
 API_ENABLED="$(az containerapp show -g "$MODULE001B_API_RG" -n "$MODULE001B_API_APP" -o json --only-show-errors)"
 [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_ENABLED")" == "$EXPECTED_RELEASE_SHA" ]] \
@@ -475,7 +500,7 @@ API_ENABLED="$(az containerapp show -g "$MODULE001B_API_RG" -n "$MODULE001B_API_
 [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_ENABLED")" == true ]] \
   || fail "Module 001B Protected-Test fixture surface did not enable."
 module001b_wait_healthy enabled
-echo "MODULE001B_ENABLED_REVISION=ROUTED revision=$MODULE001B_ENABLED_REVISION traffic=100" >&2
+echo "MODULE001B_ENABLED_REVISION=SERVING revision=$MODULE001B_ENABLED_REVISION singleRevisionConverged=true" >&2
 
 PTC_LOGIN_PAYLOAD="$(mktemp)"
 PTC_LOGIN_RESPONSE="$(mktemp)"
