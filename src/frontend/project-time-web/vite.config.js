@@ -33,9 +33,8 @@ function verifyFlowHiveBrowserContract() {
     '/api/project-flowhive/projects/',
     '/ai-planner/runs',
     'AI Planning Workspace',
-    'Delete SOW',
-    'Delete GSD',
-    'data-projectpulse-055c-shared-delete'
+    'data-projectpulse-055c-shared-delete',
+    'active FlowHive/Project Forge evidence'
   ]) {
     if (!bundle.includes(marker)) {
       throw new Error(`FLOWHIVE_BROWSER_CONTRACT_FAILED=compiled_bundle_missing_${marker.replaceAll(/[^a-z0-9]+/gi, '_')}`);
