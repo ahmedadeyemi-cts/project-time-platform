@@ -14,6 +14,13 @@ async function restoreCelarAiProductionSources() {
   await import('./scripts/restore-celar-ai-production-sources.mjs');
 }
 
+async function prepareCelarAiProductionSources() {
+  if (!fs.existsSync(celarAiProductionBackupRoot)) {
+    await import('./scripts/backup-celar-ai-production-sources.mjs');
+  }
+  await import('./scripts/inject-celar-ai-production-platform.mjs');
+}
+
 function compiledJavascript(root) {
   if (!fs.existsSync(root)) return '';
   return fs.readdirSync(root, { withFileTypes: true })
@@ -53,6 +60,9 @@ function verifyFlowHiveBrowserContract() {
 const celarAiProductionSourceTransaction = {
   name: 'celar-ai-production-source-transaction',
   apply: 'build',
+  async buildStart() {
+    await prepareCelarAiProductionSources();
+  },
   async buildEnd(error) {
     if (error) await restoreCelarAiProductionSources();
   },
