@@ -27,6 +27,13 @@ const flowHiveLivePlannerDocumentDeleteExactPaths = new Set([
   'tests/validate-celar-ai-pr630-consolidated.mjs',
   'tests/validate-work-register-document-continuity.mjs'
 ]);
+const finalProtectedTestIntegrationExtraPaths = new Set([
+  'scripts/wait-containerapp-ready-revision.sh'
+]);
+const flowHiveLivePlannerDocumentDeleteIntegrationPaths = new Set([
+  ...flowHiveLivePlannerDocumentDeleteExactPaths,
+  ...finalProtectedTestIntegrationExtraPaths
+]);
 const localBranchName = (() => {
   try {
     return String(originalExecFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' })).trim();
@@ -54,6 +61,9 @@ const currentSourceDiffPaths = (() => {
 const flowHiveLivePlannerDocumentDeleteExactScope =
   currentSourceDiffPaths.length === flowHiveLivePlannerDocumentDeleteExactPaths.size
   && currentSourceDiffPaths.every((path) => flowHiveLivePlannerDocumentDeleteExactPaths.has(path));
+const flowHiveLivePlannerDocumentDeleteFinalIntegrationScope =
+  currentSourceDiffPaths.length === flowHiveLivePlannerDocumentDeleteIntegrationPaths.size
+  && currentSourceDiffPaths.every((path) => flowHiveLivePlannerDocumentDeleteIntegrationPaths.has(path));
 const systemwideReliabilityMode =
   branchName.startsWith('fix/systemwide-enterprise-reliability-final-')
   || branchName.startsWith('fix/celar-ai-president-identity-extraction-');
@@ -65,7 +75,8 @@ const sharedProjectDocumentPlanningCompatibilityMode =
   branchName.startsWith('fix/shared-project-document-planning-');
 const flowHiveLivePlannerDocumentDeleteCompatibilityMode =
   branchName.startsWith('fix/flowhive-live-planner-document-delete-')
-  || flowHiveLivePlannerDocumentDeleteExactScope;
+  || flowHiveLivePlannerDocumentDeleteExactScope
+  || flowHiveLivePlannerDocumentDeleteFinalIntegrationScope;
 const scopedCompatibilityMode = systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
@@ -132,10 +143,14 @@ if (projectPlanningCollaborationCompatibilityMode)
   console.log('CELAR_PR630_PROJECT_PLANNING_COLLABORATION_COMPATIBILITY=PASS');
 if (sharedProjectDocumentPlanningCompatibilityMode)
   console.log('CELAR_PR630_SHARED_PROJECT_DOCUMENT_PLANNING_COMPATIBILITY=PASS');
-if (flowHiveLivePlannerDocumentDeleteCompatibilityMode)
-  console.log(
-    `CELAR_PR630_FLOWHIVE_LIVE_PLANNER_DOCUMENT_DELETE_COMPATIBILITY=PASS scope=${flowHiveLivePlannerDocumentDeleteExactScope ? 'exact-reviewed-files' : 'reviewed-branch'}`
-  );
+if (flowHiveLivePlannerDocumentDeleteCompatibilityMode) {
+  const scope = flowHiveLivePlannerDocumentDeleteFinalIntegrationScope
+    ? 'exact-reviewed-files-plus-module001b'
+    : flowHiveLivePlannerDocumentDeleteExactScope
+      ? 'exact-reviewed-files'
+      : 'reviewed-branch';
+  console.log(`CELAR_PR630_FLOWHIVE_LIVE_PLANNER_DOCUMENT_DELETE_COMPATIBILITY=PASS scope=${scope}`);
+}
 
 try {
   await import('./validate-celar-ai-pr630-consolidated-legacy.mjs');
