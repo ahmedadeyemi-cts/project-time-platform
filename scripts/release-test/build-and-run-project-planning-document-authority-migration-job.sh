@@ -10,6 +10,7 @@ MIGRATION_FILE="$ROOT/database/migrations/096_project_planning_document_authorit
 IDENTITY_SAFE_MIGRATION_FILE="$ROOT/database/migrations/097_project_planning_identity_safe_admission.sql"
 OWNER_STORAGE_MIGRATION_FILE="$ROOT/database/migrations/098_module_management_owner_storage_reconciliation.sql"
 CUSTOMER_SOURCE_MIGRATION_FILE="$ROOT/database/migrations/098_customer_directory_source_authority.sql"
+MODULE025_MIGRATION_FILE="$ROOT/database/migrations/099_module025_sow_gsd_workspace.sql"
 MIGRATION_RUNNER="$ROOT/scripts/release-test/run-project-planning-document-authority-migration-job.sh"
 EVIDENCE_ROOT="${EVIDENCE_DIR:-}"
 CONTEXT=""
@@ -36,6 +37,7 @@ trap cleanup EXIT INT TERM
 [[ -s "$IDENTITY_SAFE_MIGRATION_FILE" ]] || fail "Migration 097 source is missing."
 [[ -s "$OWNER_STORAGE_MIGRATION_FILE" ]] || fail "Module owner storage migration 098 source is missing."
 [[ -s "$CUSTOMER_SOURCE_MIGRATION_FILE" ]] || fail "Customer source authority migration 098 source is missing."
+[[ -s "$MODULE025_MIGRATION_FILE" ]] || fail "Module 025 SOW/GSD migration 099 source is missing."
 [[ -s "$MIGRATION_RUNNER" ]] || fail "Migration 096 private-network runner is missing."
 for command_name in az jq mktemp install chmod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required."
@@ -48,6 +50,7 @@ install -m 0444 "$MIGRATION_FILE" "$CONTEXT/database/migrations/096_project_plan
 install -m 0444 "$IDENTITY_SAFE_MIGRATION_FILE" "$CONTEXT/database/migrations/097_project_planning_identity_safe_admission.sql"
 install -m 0444 "$OWNER_STORAGE_MIGRATION_FILE" "$CONTEXT/database/migrations/098_module_management_owner_storage_reconciliation.sql"
 install -m 0444 "$CUSTOMER_SOURCE_MIGRATION_FILE" "$CONTEXT/database/migrations/098_customer_directory_source_authority.sql"
+install -m 0444 "$MODULE025_MIGRATION_FILE" "$CONTEXT/database/migrations/099_module025_sow_gsd_workspace.sql"
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -76,6 +79,9 @@ psql -X -v ON_ERROR_STOP=1 --file "$OWNER_STORAGE_MIGRATION"
 CUSTOMER_SOURCE_MIGRATION="$ROOT/database/migrations/098_customer_directory_source_authority.sql"
 [[ -f "$CUSTOMER_SOURCE_MIGRATION" ]] || { echo 'ERROR: Customer source authority migration 098 source is missing from the immutable image.' >&2; exit 1; }
 psql -X -v ON_ERROR_STOP=1 --file "$CUSTOMER_SOURCE_MIGRATION"
+MODULE025_MIGRATION="$ROOT/database/migrations/099_module025_sow_gsd_workspace.sql"
+[[ -f "$MODULE025_MIGRATION" ]] || { echo 'ERROR: Module 025 SOW/GSD migration 099 source is missing from the immutable image.' >&2; exit 1; }
+psql -X -v ON_ERROR_STOP=1 --file "$MODULE025_MIGRATION"
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='096_project_planning_document_authority')::text || '|' ||
@@ -133,10 +139,27 @@ SQL
   echo "ERROR: Customer source authority migration 098 verification failed: $customer_source_verification" >&2
   exit 1
 }
+module025_verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
+SELECT
+  (to_regclass('public.module025_sow_gsd_engagements') IS NOT NULL)::text || '|' ||
+  (to_regclass('public.module025_sow_gsd_phases') IS NOT NULL)::text || '|' ||
+  (to_regclass('public.module025_sow_gsd_events') IS NOT NULL)::text || '|' ||
+  (to_regprocedure('public.module025_protect_sow_gsd_identity()') IS NOT NULL)::text || '|' ||
+  EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.module025_sow_gsd_engagements'::regclass AND tgname='trg_module025_protect_sow_gsd_identity' AND NOT tgisinternal)::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='module025_sow_gsd_engagements' AND column_name='commercial_model')::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='module025_sow_gsd_phases' AND column_name='suggested_hours')::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='module025_sow_gsd_phases' AND column_name='final_hours')::text;
+SQL
+)"
+[[ "$module025_verification" == 'true|true|true|true|true|true|true|true' ]] || {
+  echo "ERROR: Module 025 SOW/GSD migration 099 verification failed: $module025_verification" >&2
+  exit 1
+}
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED'
 ENTRYPOINT
 chmod 0555 "$CONTEXT/entrypoint.sh"
 
@@ -196,6 +219,7 @@ echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED'
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"
@@ -228,4 +252,12 @@ if [[ -n "$EVIDENCE_ROOT" ]]; then
     --arg image "$RELIABILITY_MIGRATION_IMAGE" \
     '{status:"applied_and_verified",migration:"098_customer_directory_source_authority",releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,productionMutation:false}' \
     > "$EVIDENCE_ROOT/migration-098-customer-source.json"
+fi
+
+if [[ -n "$EVIDENCE_ROOT" ]]; then
+  jq -n \
+    --arg releaseCommit "$RELEASE_COMMIT" \
+    --arg image "$RELIABILITY_MIGRATION_IMAGE" \
+    '{status:"applied_and_verified",migration:"099_module025_sow_gsd_workspace",releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,productionMutation:false}' \
+    > "$EVIDENCE_ROOT/migration-099.json"
 fi
