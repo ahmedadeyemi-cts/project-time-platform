@@ -341,12 +341,15 @@ jobs:
             '/api/celar-ai/v1/production/readiness' \
             '/api/project-flowhive/projects/' \
             '/ai-planner/runs' \
-            'Generate and auto-fill detailed plan' \
+            'AI Planning Workspace' \
             'Initialize production lifecycle schema' \
             'Verified current fact' \
             'Knowledge & RAG' \
             'Model Registry'; do
-            grep -Fqi "$marker" /tmp/celar-ai-production.js
+            if ! grep -Fqi "$marker" /tmp/celar-ai-production.js; then
+              echo "CELAR_AI_PRODUCTION_MISSING_JS_MARKER=$marker" >&2
+              exit 1
+            fi
           done
           if grep -Fq '/api/project-flowhive/ai/production-generate' /tmp/celar-ai-production.js; then
             echo 'Legacy FlowHive production-generate browser route remains in compiled bundle.' >&2
@@ -356,7 +359,10 @@ jobs:
             '.celar-production-platform' \
             '.celar-trust-banner' \
             '.celar-flowhive-production-result'; do
-            grep -Fq "$marker" /tmp/celar-ai-production.css
+            if ! grep -Fq "$marker" /tmp/celar-ai-production.css; then
+              echo "CELAR_AI_PRODUCTION_MISSING_CSS_MARKER=$marker" >&2
+              exit 1
+            fi
           done
           echo 'CELAR_AI_PRODUCTION_FRONTEND_BUILD=PASSED'
 
