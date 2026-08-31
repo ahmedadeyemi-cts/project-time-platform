@@ -17,6 +17,11 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 [[ "$SLEEP_SECONDS" =~ ^[1-9][0-9]*$ ]] || fail "sleep seconds must be a positive integer"
 command -v jq >/dev/null || fail "jq is required"
 
+MODULE001B_PROTECTED_TEST_RECONCILE=false
+case "$EXPECTED_REVISION" in
+  *--m1be-*|*--m1bd-*) MODULE001B_PROTECTED_TEST_RECONCILE=true ;;
+esac
+
 for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
   LATEST_READY="$(az containerapp show \
     --resource-group "$RESOURCE_GROUP" \
@@ -41,8 +46,51 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
     "${PROVISIONING_STATE:-unknown}" "${HEALTH_STATE:-unknown}" "${ACTIVE:-unknown}" "${TRAFFIC_WEIGHT:-unknown}"
 
   if [[ "$LATEST_READY" == "$EXPECTED_REVISION" && "$IMAGE" == "$EXPECTED_IMAGE" ]]; then
-    echo "CONTAINERAPP_CANDIDATE_READY app=$APP_NAME revision=$EXPECTED_REVISION image=$EXPECTED_IMAGE"
-    exit 0
+    if [[ "$MODULE001B_PROTECTED_TEST_RECONCILE" != true ]]; then
+      echo "CONTAINERAPP_CANDIDATE_READY app=$APP_NAME revision=$EXPECTED_REVISION image=$EXPECTED_IMAGE"
+      exit 0
+    fi
+
+    APP_JSON="$(az containerapp show \
+      --resource-group "$RESOURCE_GROUP" \
+      --name "$APP_NAME" \
+      --output json --only-show-errors)" \
+      || fail "Could not inspect the Module 001B protected-Test Container App before revision reconciliation."
+    ENVIRONMENT_TAG="$(jq -r '.tags.environment // empty' <<<"$APP_JSON")"
+    REVISION_MODE="$(jq -r '.properties.configuration.activeRevisionsMode // empty' <<<"$APP_JSON")"
+    LATEST_REVISION="$(jq -r '.properties.latestRevisionName // empty' <<<"$APP_JSON")"
+
+    [[ "$ENVIRONMENT_TAG" == test ]] \
+      || fail "Refusing Module 001B revision reconciliation because the Container App is not tagged Test."
+    [[ "${REVISION_MODE,,}" == single ]] \
+      || fail "Refusing Module 001B revision reconciliation because the Container App is not in Single revision mode."
+    [[ "$LATEST_REVISION" == "$EXPECTED_REVISION" ]] \
+      || fail "Refusing Module 001B revision reconciliation because a different revision is now latest: expected=$EXPECTED_REVISION latest=${LATEST_REVISION:-none}."
+
+    if [[ "$ACTIVE" == true ]]; then
+      REVISIONS_JSON="$(az containerapp revision list \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$APP_NAME" \
+        --output json --only-show-errors)" \
+        || fail "Could not inspect active revisions for Module 001B protected-Test reconciliation."
+      mapfile -t ACTIVE_REVISIONS < <(jq -r '.[]? | select(.properties.active == true) | .name' <<<"$REVISIONS_JSON")
+
+      if [[ ${#ACTIVE_REVISIONS[@]} -eq 1 && "${ACTIVE_REVISIONS[0]}" == "$EXPECTED_REVISION" ]]; then
+        echo "CONTAINERAPP_CANDIDATE_READY app=$APP_NAME revision=$EXPECTED_REVISION image=$EXPECTED_IMAGE singleRevisionConverged=true"
+        exit 0
+      fi
+
+      for stale_revision in "${ACTIVE_REVISIONS[@]}"; do
+        [[ "$stale_revision" == "$EXPECTED_REVISION" ]] && continue
+        echo "MODULE001B_STALE_REVISION_DEACTIVATE app=$APP_NAME expected=$EXPECTED_REVISION stale=$stale_revision" >&2
+        az containerapp revision deactivate \
+          --resource-group "$RESOURCE_GROUP" \
+          --name "$APP_NAME" \
+          --revision "$stale_revision" \
+          --output none --only-show-errors \
+          || fail "Failed to deactivate stale Module 001B protected-Test revision: $stale_revision"
+      done
+    fi
   fi
 
   case "${PROVISIONING_STATE,,}:${HEALTH_STATE,,}" in
