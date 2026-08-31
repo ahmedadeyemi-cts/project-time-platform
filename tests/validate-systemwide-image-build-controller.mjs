@@ -87,6 +87,16 @@ assert.match(
   /az containerapp revision deactivate/,
   'Module 001B protected-Test reconciliation must deactivate stale active revisions explicitly'
 );
+assert.doesNotMatch(
+  revisionWait,
+  /if \[\[ "\$ACTIVE" == true \]\]; then/,
+  'Module 001B reconciliation must not require the newly-ready revision to be active before deactivating stale revisions'
+);
+assert.match(
+  revisionWait,
+  /requiring ACTIVE=true here creates a circular wait/,
+  'Module 001B reconciliation must document the ready-but-inactive Single-mode handoff'
+);
 assert.match(
   revisionWait,
   /singleRevisionConverged=true/,
@@ -102,6 +112,8 @@ assert.doesNotMatch(
   /--revision-weight/,
   'Module 001B reconciliation must not restore revision-weight manipulation'
 );
+const revisionWaitSyntax = spawnSync('bash', ['-n', revisionWaitPath], { encoding: 'utf8' });
+assert.equal(revisionWaitSyntax.status, 0, revisionWaitSyntax.stderr);
 
 assert.match(
   apiProject,
@@ -189,4 +201,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097 utilization-uat=registered module001b-single-revision-reconcile=guarded');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097 utilization-uat=registered module001b-single-revision-reconcile=ready-inactive-safe');
