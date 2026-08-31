@@ -112,7 +112,7 @@ internal sealed record Module025PhaseRow(
     IReadOnlyList<string> ValidationSteps,
     IReadOnlyList<string> Risks,
     string LoeRationale,
-    IReadOnlyList<Guid> SourceCitationIds,
+    IReadOnlyList<int> SourceCitationIds,
     bool AiGenerated,
     DateTimeOffset UpdatedAt);
 
