@@ -29,7 +29,6 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
           sales = Path('src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx')
           text = sales.read_text()
@@ -39,21 +38,25 @@ jobs:
               if marker not in text:
                   raise SystemExit('SalesDeliveryWorkflowCenter import marker not found')
               text = text.replace(marker, marker + import_line, 1)
-          pattern = re.compile(r"function SowGenerator\(\) \{.*?\n\}\n\nfunction AiTimeEntry\(\) \{", re.S)
-          replacement = "function SowGenerator() {\n  return <SowGsdWorkspace />;\n}\n\nfunction AiTimeEntry() {"
-          text, count = pattern.subn(replacement, text, count=1)
-          if count != 1:
-              raise SystemExit(f'Expected one SowGenerator function, replaced {count}')
+          start = text.find('function SowGenerator() {')
+          end = text.find('function AiTimeEntry() {')
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('SowGenerator/AiTimeEntry boundary not found')
+          text = text[:start] + "function SowGenerator() {\n  return <SowGsdWorkspace />;\n}\n\n" + text[end:]
           sales.write_text(text)
 
           analytics = Path('src/backend/ProjectTime.Api/AnalyticsCenterModule.g.cs')
           text = analytics.read_text()
           hook = '        endpoints.MapSowGsdWorkspaceEndpoints();\n'
           if hook not in text:
-              marker = '    public static IEndpointRouteBuilder MapAnalyticsCenterEndpoints(this IEndpointRouteBuilder endpoints)\n    {\n'
-              if marker not in text:
-                  raise SystemExit('Analytics endpoint marker not found')
-              text = text.replace(marker, marker + hook, 1)
+              method = 'public static IEndpointRouteBuilder MapAnalyticsCenterEndpoints('
+              start = text.find(method)
+              if start < 0:
+                  raise SystemExit('Analytics endpoint method not found')
+              brace = text.find('{', start)
+              if brace < 0:
+                  raise SystemExit('Analytics endpoint method brace not found')
+              text = text[:brace + 1] + '\n' + hook.rstrip('\n') + text[brace + 1:]
           analytics.write_text(text)
           PY
       - name: Commit completed source integration
