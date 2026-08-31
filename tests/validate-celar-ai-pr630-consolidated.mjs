@@ -35,10 +35,13 @@ const projectPlanningCollaborationCompatibilityMode =
   branchName.startsWith('feature/project-planning-collaboration-access-');
 const sharedProjectDocumentPlanningCompatibilityMode =
   branchName.startsWith('fix/shared-project-document-planning-');
+const flowHiveLivePlannerDocumentDeleteCompatibilityMode =
+  branchName.startsWith('fix/flowhive-live-planner-document-delete-');
 const scopedCompatibilityMode = systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
-  || sharedProjectDocumentPlanningCompatibilityMode;
+  || sharedProjectDocumentPlanningCompatibilityMode
+  || flowHiveLivePlannerDocumentDeleteCompatibilityMode;
 const pr630AllowedPrefixes = [
   '.github/workflows/celar-ai-',
   'database/migrations/084_module_076_',
@@ -100,6 +103,8 @@ if (projectPlanningCollaborationCompatibilityMode)
   console.log('CELAR_PR630_PROJECT_PLANNING_COLLABORATION_COMPATIBILITY=PASS');
 if (sharedProjectDocumentPlanningCompatibilityMode)
   console.log('CELAR_PR630_SHARED_PROJECT_DOCUMENT_PLANNING_COMPATIBILITY=PASS');
+if (flowHiveLivePlannerDocumentDeleteCompatibilityMode)
+  console.log('CELAR_PR630_FLOWHIVE_LIVE_PLANNER_DOCUMENT_DELETE_COMPATIBILITY=PASS');
 
 try {
   await import('./validate-celar-ai-pr630-consolidated-legacy.mjs');
