@@ -25,6 +25,7 @@ public static class AnalyticsCenterModule
     public static IEndpointRouteBuilder MapAnalyticsCenterEndpoints(
         this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapSowGsdWorkspaceEndpoints();
         endpoints.MapGet(
             "/api/analytics/catalog",
             (Func<HttpContext, Task<IResult>>)GetCatalogAsync);
