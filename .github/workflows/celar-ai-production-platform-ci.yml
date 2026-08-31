@@ -339,7 +339,8 @@ jobs:
             'Created by Dr. Ahmed Adeyemi' \
             '/api/celar-ai/v2/chat' \
             '/api/celar-ai/v1/production/readiness' \
-            '/api/project-flowhive/ai/production-generate' \
+            '/api/project-flowhive/projects/' \
+            '/ai-planner/runs' \
             'Generate and auto-fill detailed plan' \
             'Initialize production lifecycle schema' \
             'Verified current fact' \
@@ -347,6 +348,10 @@ jobs:
             'Model Registry'; do
             grep -Fqi "$marker" /tmp/celar-ai-production.js
           done
+          if grep -Fq '/api/project-flowhive/ai/production-generate' /tmp/celar-ai-production.js; then
+            echo 'Legacy FlowHive production-generate browser route remains in compiled bundle.' >&2
+            exit 1
+          fi
           for marker in \
             '.celar-production-platform' \
             '.celar-trust-banner' \
