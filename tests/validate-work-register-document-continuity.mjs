@@ -11,6 +11,7 @@ const requireText = (source, token, label) => {
 const modulePath = 'src/backend/ProjectTime.Api/Modules/WorkRegisterDocumentContinuityModule.cs';
 const authorizationPath = 'src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs';
 const integrityPath = 'src/frontend/project-time-web/src/work-register-document-integrity.js';
+const workRegisterPath = 'src/frontend/project-time-web/src/WorkRegisterCenter.jsx';
 const resolverPath = 'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs';
 const workflowPath = '.github/workflows/shared-project-document-planning-ci.yml';
 const manifestPath = '.github/shared-project-document-planning-governed-release-files.txt';
@@ -18,6 +19,7 @@ const manifestPath = '.github/shared-project-document-planning-governed-release-
 const moduleSource = read(modulePath);
 const authorizationSource = read(authorizationPath);
 const integritySource = read(integrityPath);
+const workRegisterSource = read(workRegisterPath);
 const resolverSource = read(resolverPath);
 const workflowSource = read(workflowPath);
 const manifestSource = read(manifestPath);
@@ -47,16 +49,30 @@ for (const token of [
 for (const token of [
   'mergeCanonicalDocuments',
   '/documents`',
-  'Delete from 055C and 019',
+  '.work-register-document-card',
+  '.work-register-document-actions',
+  'canonicalDocumentForCard',
+  'canonicalDocument.canDelete === false',
+  'Delete SOW',
+  'Delete GSD',
   "method: 'DELETE'",
   'required audit reason',
+  'active FlowHive/Project Forge evidence',
   "['deleted', 'removed', 'purged']",
   'MutationObserver',
   'remember055cRequestContext',
   '__projectPulse055cRequestHeaders',
   '__projectPulse055cCredentials',
-  "deleteHeaders.set('Content-Type', 'application/json')"
+  "deleteHeaders.set('Content-Type', 'application/json')",
+  'data-projectpulse-055c-shared-delete'
 ]) requireText(integritySource, token, 'Module 055C frontend continuity');
+
+for (const token of [
+  'work-register-document-card',
+  'work-register-document-actions',
+  'archiveWorkRegisterDocument(document)',
+  'document.canArchive'
+]) requireText(workRegisterSource, token, 'Manage Existing Project document cards');
 
 for (const token of [
   'document.is_active=TRUE',
@@ -78,6 +94,7 @@ for (const entry of [modulePath, authorizationPath, integrityPath, 'tests/valida
 
 console.log('WORK_REGISTER_DOCUMENT_CONTINUITY=VERIFIED');
 console.log('MODULE_055C_CANONICAL_DOCUMENT_READ=VERIFIED');
+console.log('MODULE_055C_NATIVE_MANAGE_EXISTING_DELETE=VERIFIED');
 console.log('MODULE_055C_019_SHARED_DELETE=VERIFIED');
 console.log('MODULE_055C_DELETE_AUTH_CONTEXT=VERIFIED');
 console.log('FLOWHIVE_FORGE_DELETE_AUTHORITY=VERIFIED');
