@@ -15,6 +15,18 @@ const requiredPr630BaselinePaths = [
   'database/migrations/084_module_076_celar_ai_defect_operations.sql',
   'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
 ];
+const flowHiveLivePlannerDocumentDeleteExactPaths = new Set([
+  '.github/workflows/celar-ai-production-platform-ci.yml',
+  'src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs',
+  'src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs',
+  'src/frontend/project-time-web/scripts/validate-live-ui-route-authority.mjs',
+  'src/frontend/project-time-web/scripts/validate-production-consistency.mjs',
+  'src/frontend/project-time-web/src/PageContextGuide.jsx',
+  'src/frontend/project-time-web/src/work-register-document-integrity.js',
+  'src/frontend/project-time-web/vite.config.js',
+  'tests/validate-celar-ai-pr630-consolidated.mjs',
+  'tests/validate-work-register-document-continuity.mjs'
+]);
 const localBranchName = (() => {
   try {
     return String(originalExecFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' })).trim();
@@ -26,6 +38,22 @@ const branchName = process.env.CELAR_PR630_VALIDATION_BRANCH
   || process.env.GITHUB_HEAD_REF
   || process.env.GITHUB_REF_NAME
   || localBranchName;
+const currentSourceDiffPaths = (() => {
+  try {
+    return String(originalExecFileSync(
+      'git',
+      ['diff', '--name-only', 'origin/main...HEAD'],
+      { encoding: 'utf8' }
+    ))
+      .split(/\r?\n/)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+})();
+const flowHiveLivePlannerDocumentDeleteExactScope =
+  currentSourceDiffPaths.length === flowHiveLivePlannerDocumentDeleteExactPaths.size
+  && currentSourceDiffPaths.every((path) => flowHiveLivePlannerDocumentDeleteExactPaths.has(path));
 const systemwideReliabilityMode =
   branchName.startsWith('fix/systemwide-enterprise-reliability-final-')
   || branchName.startsWith('fix/celar-ai-president-identity-extraction-');
@@ -36,7 +64,8 @@ const projectPlanningCollaborationCompatibilityMode =
 const sharedProjectDocumentPlanningCompatibilityMode =
   branchName.startsWith('fix/shared-project-document-planning-');
 const flowHiveLivePlannerDocumentDeleteCompatibilityMode =
-  branchName.startsWith('fix/flowhive-live-planner-document-delete-');
+  branchName.startsWith('fix/flowhive-live-planner-document-delete-')
+  || flowHiveLivePlannerDocumentDeleteExactScope;
 const scopedCompatibilityMode = systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
@@ -104,7 +133,9 @@ if (projectPlanningCollaborationCompatibilityMode)
 if (sharedProjectDocumentPlanningCompatibilityMode)
   console.log('CELAR_PR630_SHARED_PROJECT_DOCUMENT_PLANNING_COMPATIBILITY=PASS');
 if (flowHiveLivePlannerDocumentDeleteCompatibilityMode)
-  console.log('CELAR_PR630_FLOWHIVE_LIVE_PLANNER_DOCUMENT_DELETE_COMPATIBILITY=PASS');
+  console.log(
+    `CELAR_PR630_FLOWHIVE_LIVE_PLANNER_DOCUMENT_DELETE_COMPATIBILITY=PASS scope=${flowHiveLivePlannerDocumentDeleteExactScope ? 'exact-reviewed-files' : 'reviewed-branch'}`
+  );
 
 try {
   await import('./validate-celar-ai-pr630-consolidated-legacy.mjs');
