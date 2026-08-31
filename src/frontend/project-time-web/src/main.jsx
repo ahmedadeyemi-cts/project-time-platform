@@ -70,8 +70,8 @@ import './enterprise-ui-polish.css';
 import './celar-ai-control-followup.css';
 import './account-center.css';
 import './workspace-navigation.css';
-import './enterprise-contrast-guard.css';
 import './customer-source-authority.css';
+import './enterprise-contrast-guard.css';
 
 createRoot(
   protectReactOwnedRoot(document.getElementById('root'))
