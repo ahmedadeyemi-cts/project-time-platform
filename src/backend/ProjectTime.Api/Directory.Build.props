@@ -104,8 +104,7 @@
   <Target Name="RegisterCustomerSourceAuthorityEndpoints"
           AfterTargets="GenerateScopedRbacSources"
           BeforeTargets="CoreCompile">
-    <Exec Command="grep -Fq 'app.MapCustomerDirectorySellSyncEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
-    <Exec Command="grep -Fq 'app.MapCustomerSourceAuthorityEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot; || sed -i '/app.MapCustomerDirectorySellSyncEndpoints();/a app.MapCustomerSourceAuthorityEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'app.MapCustomerSourceAuthorityEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot; || sed -i '/app.Run();/i app.MapCustomerSourceAuthorityEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
     <Exec Command="grep -Fq 'app.MapCustomerSourceAuthorityEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
   </Target>
 </Project>
