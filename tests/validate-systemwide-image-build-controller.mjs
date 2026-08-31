@@ -7,9 +7,11 @@ const retiredWorkflowPath = '.github/workflows/systemwide-enterprise-reliability
 const apiProjectPath = 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj';
 const apiBuildPropsPath = 'src/backend/ProjectTime.Api/Directory.Build.props';
 const sourceRevisionPath = 'src/backend/ProjectTime.Api/.projectpulse-source-revision';
+const revisionWaitPath = 'scripts/wait-containerapp-ready-revision.sh';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
 const apiProject = fs.readFileSync(apiProjectPath, 'utf8');
 const apiBuildProps = fs.readFileSync(apiBuildPropsPath, 'utf8');
+const revisionWait = fs.readFileSync(revisionWaitPath, 'utf8');
 
 assert.equal(
   fs.existsSync(retiredWorkflowPath),
@@ -53,6 +55,52 @@ assert.doesNotMatch(
   workflow,
   /\n\s{12}NOT EXISTS \(\s*SELECT 1\s*FROM work_register_task_assignment_history history/,
   'Migration 093 verification must not apply NOT to a text-cast EXISTS result'
+);
+
+assert.match(
+  revisionWait,
+  /MODULE001B_PROTECTED_TEST_RECONCILE=false/,
+  'Module 001B reconciliation must remain opt-in rather than changing the generic readiness helper'
+);
+assert.match(
+  revisionWait,
+  /\*--m1be-\*\|\*--m1bd-\*/,
+  'only Module 001B protected-Test fixture revisions may enter stale-revision reconciliation'
+);
+assert.match(
+  revisionWait,
+  /Refusing Module 001B revision reconciliation because the Container App is not tagged Test\./,
+  'Module 001B reconciliation must fail closed outside the Test-tagged Container App'
+);
+assert.match(
+  revisionWait,
+  /Refusing Module 001B revision reconciliation because the Container App is not in Single revision mode\./,
+  'Module 001B reconciliation must require Single revision mode'
+);
+assert.match(
+  revisionWait,
+  /Refusing Module 001B revision reconciliation because a different revision is now latest:/,
+  'Module 001B reconciliation must refuse to mutate after a concurrent newer revision appears'
+);
+assert.match(
+  revisionWait,
+  /az containerapp revision deactivate/,
+  'Module 001B protected-Test reconciliation must deactivate stale active revisions explicitly'
+);
+assert.match(
+  revisionWait,
+  /singleRevisionConverged=true/,
+  'Module 001B reconciliation must prove sole-active convergence before returning success'
+);
+assert.doesNotMatch(
+  revisionWait,
+  /containerapp ingress traffic set/,
+  'Module 001B reconciliation must not restore manual ingress traffic manipulation'
+);
+assert.doesNotMatch(
+  revisionWait,
+  /--revision-weight/,
+  'Module 001B reconciliation must not restore revision-weight manipulation'
 );
 
 assert.match(
@@ -141,4 +189,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097 utilization-uat=registered');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097 utilization-uat=registered module001b-single-revision-reconcile=guarded');
