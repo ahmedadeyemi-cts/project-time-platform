@@ -1,16 +1,9 @@
-# 025A SOW Generator + Claude Review
+# 025A SOW Generator + Claude Review (Superseded)
 
-## What this adds
-This adds the first visible SOW Generator workflow to ProjectPulse.
+This document described an earlier hash-route (`#sow-generator`) SOW Generator prototype
+that no longer exists in the codebase. It was fully replaced on 2026-08-30 by the
+persistent Module 025 SOW/GSD Workspace.
 
-## Dashboard
-A new dashboard card opens the SOW Generator workspace.
-
-## SOW/GSD Reuse
-The workflow intentionally reuses the existing Project Hours / SOW-GSD / Engineer Allocation document area. It does not create duplicate upload locations.
-
-## Claude Review
-The Solution Architect enters a high-level description. The page generates reviewable SOW draft sections and requires human review before the draft can move forward.
-
-## Next Build Pass
-The next pass should wire the shared Claude provider, Word template output, signed SOW handoff, and assignment notification workflow.
+See [025A SOW & GSD Workspace](025A-sow-generator-dashboard-workspace.md) and
+[docs/production/025_SOW_GENERATOR_CLAUDE_REVIEW_WORKFLOW.md](../production/025_SOW_GENERATOR_CLAUDE_REVIEW_WORKFLOW.md)
+for the current implementation.
