@@ -1,4 +1,5 @@
 import USSignalLogo from './USSignalLogo.jsx';
+import SowGsdWorkspace from '../module025/SowGsdWorkspace.jsx';
 import './enterprise-module-system.css';
 import './enterprise-module-route-adoption.css';
 
@@ -14,10 +15,10 @@ const MODULE_PRESENTATION = Object.freeze({
   '025': Object.freeze({
     route: 'sow-generator',
     group: 'Sales & Opportunities',
-    title: 'SOW Generator',
-    summary: 'Prepare governed statements of work with consistent scope, assumptions, deliverables, and review evidence.',
+    title: 'SOW & GSD Workspace',
+    summary: 'Create, review, autosave, confirm, archive, and export governed SOW/GSD packages with detailed P/D/I/V/R scope and level of effort.',
     owner: 'Sales and Solution Architecture',
-    posture: 'Document workflow'
+    posture: 'SOW/GSD authoring and review workflow'
   }),
   '027': Object.freeze({
     route: 'signed-handoff',
@@ -274,6 +275,18 @@ export default function EnterpriseModulePresentation({ activeRoute, moduleCode: 
 
   const metadata = MODULE_PRESENTATION[moduleCode];
   if (!metadata) return null;
+
+  if (moduleCode === '025') {
+    return (
+      <section
+        className="uss-enterprise-module-presentation uss-enterprise-module-presentation--module025"
+        data-group6-enterprise-presentation={moduleCode}
+        data-group6-enterprise-route={metadata.route}
+      >
+        <SowGsdWorkspace />
+      </section>
+    );
+  }
 
   return (
     <section

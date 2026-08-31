@@ -9,6 +9,7 @@ RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-0}"
 MIGRATION_FILE="$ROOT/database/migrations/096_project_planning_document_authority.sql"
 IDENTITY_SAFE_MIGRATION_FILE="$ROOT/database/migrations/097_project_planning_identity_safe_admission.sql"
 OWNER_STORAGE_MIGRATION_FILE="$ROOT/database/migrations/098_module_management_owner_storage_reconciliation.sql"
+CUSTOMER_SOURCE_MIGRATION_FILE="$ROOT/database/migrations/098_customer_directory_source_authority.sql"
 MIGRATION_RUNNER="$ROOT/scripts/release-test/run-project-planning-document-authority-migration-job.sh"
 EVIDENCE_ROOT="${EVIDENCE_DIR:-}"
 CONTEXT=""
@@ -33,7 +34,8 @@ trap cleanup EXIT INT TERM
 [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "RELIABILITY_RELEASE_COMMIT must be an exact commit."
 [[ -s "$MIGRATION_FILE" ]] || fail "Migration 096 source is missing."
 [[ -s "$IDENTITY_SAFE_MIGRATION_FILE" ]] || fail "Migration 097 source is missing."
-[[ -s "$OWNER_STORAGE_MIGRATION_FILE" ]] || fail "Migration 098 source is missing."
+[[ -s "$OWNER_STORAGE_MIGRATION_FILE" ]] || fail "Module owner storage migration 098 source is missing."
+[[ -s "$CUSTOMER_SOURCE_MIGRATION_FILE" ]] || fail "Customer source authority migration 098 source is missing."
 [[ -s "$MIGRATION_RUNNER" ]] || fail "Migration 096 private-network runner is missing."
 for command_name in az jq mktemp install chmod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required."
@@ -45,6 +47,7 @@ install -d -m 0700 "$CONTEXT/database/migrations"
 install -m 0444 "$MIGRATION_FILE" "$CONTEXT/database/migrations/096_project_planning_document_authority.sql"
 install -m 0444 "$IDENTITY_SAFE_MIGRATION_FILE" "$CONTEXT/database/migrations/097_project_planning_identity_safe_admission.sql"
 install -m 0444 "$OWNER_STORAGE_MIGRATION_FILE" "$CONTEXT/database/migrations/098_module_management_owner_storage_reconciliation.sql"
+install -m 0444 "$CUSTOMER_SOURCE_MIGRATION_FILE" "$CONTEXT/database/migrations/098_customer_directory_source_authority.sql"
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -68,8 +71,11 @@ IDENTITY_SAFE_MIGRATION="$ROOT/database/migrations/097_project_planning_identity
 [[ -f "$IDENTITY_SAFE_MIGRATION" ]] || { echo 'ERROR: Migration 097 source is missing from the immutable image.' >&2; exit 1; }
 psql -X -v ON_ERROR_STOP=1 --file "$IDENTITY_SAFE_MIGRATION"
 OWNER_STORAGE_MIGRATION="$ROOT/database/migrations/098_module_management_owner_storage_reconciliation.sql"
-[[ -f "$OWNER_STORAGE_MIGRATION" ]] || { echo 'ERROR: Migration 098 source is missing from the immutable image.' >&2; exit 1; }
+[[ -f "$OWNER_STORAGE_MIGRATION" ]] || { echo 'ERROR: Module owner storage migration 098 source is missing from the immutable image.' >&2; exit 1; }
 psql -X -v ON_ERROR_STOP=1 --file "$OWNER_STORAGE_MIGRATION"
+CUSTOMER_SOURCE_MIGRATION="$ROOT/database/migrations/098_customer_directory_source_authority.sql"
+[[ -f "$CUSTOMER_SOURCE_MIGRATION" ]] || { echo 'ERROR: Customer source authority migration 098 source is missing from the immutable image.' >&2; exit 1; }
+psql -X -v ON_ERROR_STOP=1 --file "$CUSTOMER_SOURCE_MIGRATION"
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='096_project_planning_document_authority')::text || '|' ||
@@ -109,12 +115,28 @@ SELECT
 SQL
 )"
 [[ "$owner_storage_verification" == 'true|true|true|true|true|true|true' ]] || {
-  echo "ERROR: Migration 098 verification failed: $owner_storage_verification" >&2
+  echo "ERROR: Module owner storage migration 098 verification failed: $owner_storage_verification" >&2
+  exit 1
+}
+customer_source_verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
+SELECT
+  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='098_customer_directory_source_authority')::text || '|' ||
+  (to_regclass('public.customer_directory_source_authority') IS NOT NULL)::text || '|' ||
+  (to_regclass('public.customer_directory_source_authority_history') IS NOT NULL)::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='customer_directory_source_authority' AND column_name='source_mode')::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='customer_directory_source_authority' AND column_name='provider_key')::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='customer_directory_source_links' AND column_name='source_system' AND character_maximum_length >= 120)::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='customer_directory_sync_runs' AND column_name='source_system' AND character_maximum_length >= 120)::text;
+SQL
+)"
+[[ "$customer_source_verification" == 'true|true|true|true|true|true|true' ]] || {
+  echo "ERROR: Customer source authority migration 098 verification failed: $customer_source_verification" >&2
   exit 1
 }
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
-echo 'MIGRATION_098=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED'
 ENTRYPOINT
 chmod 0555 "$CONTEXT/entrypoint.sh"
 
@@ -172,7 +194,8 @@ export RELIABILITY_MIGRATION_SCOPE="project-planning-document-authority-test"
 bash "$MIGRATION_RUNNER"
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
-echo 'MIGRATION_098=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED'
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"
@@ -197,4 +220,12 @@ if [[ -n "$EVIDENCE_ROOT" ]]; then
     --arg image "$RELIABILITY_MIGRATION_IMAGE" \
     '{status:"applied_and_verified",migration:"098_module_management_owner_storage_reconciliation",releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,productionMutation:false}' \
     > "$EVIDENCE_ROOT/migration-098.json"
+fi
+
+if [[ -n "$EVIDENCE_ROOT" ]]; then
+  jq -n \
+    --arg releaseCommit "$RELEASE_COMMIT" \
+    --arg image "$RELIABILITY_MIGRATION_IMAGE" \
+    '{status:"applied_and_verified",migration:"098_customer_directory_source_authority",releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,productionMutation:false}' \
+    > "$EVIDENCE_ROOT/migration-098-customer-source.json"
 fi
