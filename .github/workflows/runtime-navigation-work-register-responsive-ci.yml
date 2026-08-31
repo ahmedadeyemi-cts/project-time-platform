@@ -3,6 +3,7 @@ name: Runtime Navigation, Work Register, and Responsive Workspace CI
 on:
   pull_request:
     paths:
+      - '.github/shared-project-document-planning-governed-release-files.txt'
       - '.github/workflows/module-loading-assignment-propagation-ci.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
@@ -48,6 +49,22 @@ jobs:
         run: |
           set -Eeuo pipefail
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" | LC_ALL=C sort -u > /tmp/runtime-repair-changed.txt
+
+          GOVERNED_SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
+          if grep -Fxq "$GOVERNED_SHARED_PLANNING_MANIFEST" /tmp/runtime-repair-changed.txt; then
+            grep -Ev '^[[:space:]]*(#|$)' "$GOVERNED_SHARED_PLANNING_MANIFEST" | LC_ALL=C sort -u > /tmp/runtime-governed-shared-planning.txt
+            cmp -s "$GOVERNED_SHARED_PLANNING_MANIFEST" /tmp/runtime-governed-shared-planning.txt || {
+              echo 'ERROR: Governed shared-planning manifest must already be sorted, unique, and comment-free.' >&2
+              exit 1
+            }
+            if cmp -s /tmp/runtime-repair-changed.txt /tmp/runtime-governed-shared-planning.txt; then
+              echo 'RUNTIME_REPAIR_GOVERNED_SHARED_PLANNING_SOURCE_BOUNDARY=PASS'
+              exit 0
+            fi
+            echo 'ERROR: Shared-planning manifest is present but does not exactly match the pull-request source set.' >&2
+            comm -3 /tmp/runtime-governed-shared-planning.txt /tmp/runtime-repair-changed.txt >&2 || true
+            exit 1
+          fi
 
           cat > /tmp/runtime-repair-signatures.txt <<'EOF'
           .github/pr698-payload/chunk-000.b64

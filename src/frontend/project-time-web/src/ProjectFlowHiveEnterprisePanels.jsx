@@ -32,19 +32,21 @@ export function FlowHiveSaveBar({ dirty, workingCopy, canManage, busy, onSaveWor
 
 export function FlowHiveEvidenceReadiness({ enterprise, canManage, busy, onPrepare }) {
   const evidence = enterprise?.sowEvidence || [];
+  const terminalFailures = new Set(['failed', 'rejected', 'quarantined', 'cancelled', 'canceled', 'unsupported']);
   return <section className="flowhive-enterprise-card flowhive-evidence-card">
-    <header><div><span>AI Planner evidence</span><h3>SOW and GSD readiness</h3></div><strong className={enterprise?.sowEvidenceSummary?.approvedSowScopeReady ? 'ready' : 'blocked'}>{enterprise?.sowEvidenceSummary?.approvedSowScopeReady ? 'Ready' : 'Action required'}</strong></header>
+    <header><div><span>AI Planner evidence</span><h3>SOW and GSD readiness</h3></div><strong className={enterprise?.sowEvidenceSummary?.approvedSowScopeReady ? 'ready' : 'blocked'}>{enterprise?.sowEvidenceSummary?.approvedSowScopeReady ? 'Ready' : 'Automatic processing'}</strong></header>
     <p>{enterprise?.sowEvidenceSummary?.explanation || 'Select a project to inspect private planning evidence.'}</p>
-    {!evidence.length ? <div className="flowhive-empty-state">No SOW or GSD candidate is registered for this project. Upload the approved source through the project document workspace.</div> : null}
-    <div className="flowhive-evidence-list">{evidence.map((item) => <article key={item.documentId} className={item.readyForAiPlanner ? 'ready' : 'blocked'}>
-      <div><strong>{item.originalFileName}</strong><span>{label(item.documentCategory)} · {item.documentVersion || 'No active version'}</span></div>
-      <dl><div><dt>Private processing</dt><dd>{label(item.processingStatus)}</dd></div><div><dt>Authority</dt><dd>{label(item.authorityStatus || 'not approved')}</dd></div><div><dt>Index</dt><dd>{label(item.indexStatus || 'not indexed')}</dd></div><div><dt>Citations</dt><dd>{item.citationCount} total · {item.scopeCitationCount} scope</dd></div></dl>
-      {item.blockers?.length ? <ul>{item.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <p className="flowhive-ready-message">This source is approved and citation-ready for AI Planner.</p>}
-      {!item.readyForAiPlanner && canManage ? <div className="flowhive-evidence-actions">
-        <button type="button" disabled={busy} onClick={() => onPrepare(item, false)}>{busy === `evidence-${item.documentId}` ? 'Preparing…' : 'Prepare / queue processing'}</button>
-        {item.processingStatus === 'ready' && item.activeVersionId && !['approved', 'canonical'].includes(item.authorityStatus) ? <button type="button" className="primary" disabled={busy} onClick={() => onPrepare(item, true)}>Approve current processed version</button> : null}
-      </div> : null}
-    </article>)}</div>
+    {!evidence.length ? <div className="flowhive-empty-state">No current Work Register SOW or GSD is registered for this project. FlowHive uses the documents already stored in Module 055C; no duplicate upload is requested here.</div> : null}
+    <div className="flowhive-evidence-list">{evidence.map((item) => {
+      const terminalFailure = terminalFailures.has(String(item.processingStatus || '').toLowerCase());
+      return <article key={item.documentId} className={item.readyForAiPlanner ? 'ready' : 'blocked'}>
+        <div><strong>{item.originalFileName}</strong><span>{label(item.documentCategory)} · {item.documentVersion || 'No active version'}</span></div>
+        <dl><div><dt>Private processing</dt><dd>{label(item.processingStatus)}</dd></div><div><dt>Authority</dt><dd>{label(item.authorityStatus || 'not approved')}</dd></div><div><dt>Index</dt><dd>{label(item.indexStatus || 'not indexed')}</dd></div><div><dt>Citations</dt><dd>{item.citationCount} total · {item.scopeCitationCount} scope</dd></div></dl>
+        {item.blockers?.length ? <ul>{item.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <p className="flowhive-ready-message">This source is current, approved, and citation-ready for AI Planner.</p>}
+        {!item.readyForAiPlanner && !terminalFailure ? <p className="flowhive-ready-message">AI Planner will automatically start or resume private processing for this project document.</p> : null}
+        {terminalFailure && canManage ? <div className="flowhive-evidence-actions"><button type="button" disabled={busy} onClick={() => onPrepare(item, false)}>{busy === `evidence-${item.documentId}` ? 'Retrying…' : 'Retry automatic processing'}</button></div> : null}
+      </article>;
+    })}</div>
   </section>;
 }
 
@@ -84,14 +86,14 @@ export function FlowHiveFinancialsPanel({ enterprise, financials, controls, setC
   </div>;
 }
 
-export function FlowHiveStatusRaidPanel({ enterprise, draftPlan, statusDraft, setStatusDraft, newRaid, setNewRaid, canManage, busy, onCreateRaid, onDeleteRaid, onGenerateSummary, onCreateStatusReport }) {
+export function FlowHiveStatusRaidPanel({ enterprise, draftPlan, statusDraft, setStatusDraft, newRaid, setNewRaid, canEditPlanner, canAdministerPlanner, busy, onCreateRaid, onDeleteRaid, onGenerateSummary, onCreateStatusReport }) {
   const raid = enterprise?.raidItems || [];
   const reports = enterprise?.statusReports || [];
   return <div className="flowhive-view-panel">
     <div className="flowhive-section-heading"><div><span>PMI-aligned delivery controls</span><h3>Status reporting and RAID</h3><p>Track risks, issues, actions, decisions, assumptions, dependencies, and changes. Status reports are immutable snapshots; corrections create a new report.</p></div></div>
     <section className="flowhive-enterprise-card">
       <header><div><span>RAID register</span><h3>Open project controls</h3></div><strong>{raid.filter((item) => !['closed', 'resolved', 'rejected'].includes(item.status)).length} open</strong></header>
-      {canManage ? <div className="flowhive-raid-create">
+      {canEditPlanner ? <div className="flowhive-raid-create">
         <label>Type<select value={newRaid.itemType} onChange={(event) => setNewRaid({ ...newRaid, itemType: event.target.value })}>{['risk', 'issue', 'action', 'decision', 'assumption', 'dependency', 'change'].map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>
         <label>Priority<select value={newRaid.priority} onChange={(event) => setNewRaid({ ...newRaid, priority: event.target.value })}>{['low', 'medium', 'high', 'critical'].map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>
         <label className="wide">Title<input value={newRaid.title} onChange={(event) => setNewRaid({ ...newRaid, title: event.target.value })} placeholder="Concise project control statement" /></label>
@@ -100,15 +102,15 @@ export function FlowHiveStatusRaidPanel({ enterprise, draftPlan, statusDraft, se
         <label className="wide">Mitigation / action<textarea rows="2" value={newRaid.mitigation} onChange={(event) => setNewRaid({ ...newRaid, mitigation: event.target.value })} /></label>
         <button type="button" className="primary" disabled={busy || newRaid.title.trim().length < 3} onClick={onCreateRaid}>{busy === 'raid-create' ? 'Adding…' : 'Add RAID item'}</button>
       </div> : null}
-      <div className="flowhive-raid-table-wrap"><table className="flowhive-raid-table"><thead><tr><th>Type</th><th>Title</th><th>Priority</th><th>Status</th><th>Owner</th><th>Due</th><th>Mitigation</th><th>Action</th></tr></thead><tbody>{raid.map((item) => <tr key={item.raidItemId}><td>{label(item.itemType)}</td><td><strong>{item.title}</strong><small>{item.description}</small></td><td><span className={`flowhive-priority ${item.priority}`}>{label(item.priority)}</span></td><td>{label(item.status)}</td><td>{item.ownerName || 'Unassigned'}</td><td>{date(item.dueDate)}</td><td>{item.mitigation || 'Not recorded'}</td><td>{canManage ? <button type="button" className="danger-quiet" disabled={busy} onClick={() => onDeleteRaid(item)}>Delete</button> : 'Read-only'}</td></tr>)}</tbody></table></div>
+      <div className="flowhive-raid-table-wrap"><table className="flowhive-raid-table"><thead><tr><th>Type</th><th>Title</th><th>Priority</th><th>Status</th><th>Owner</th><th>Due</th><th>Mitigation</th><th>Action</th></tr></thead><tbody>{raid.map((item) => <tr key={item.raidItemId}><td>{label(item.itemType)}</td><td><strong>{item.title}</strong><small>{item.description}</small></td><td><span className={`flowhive-priority ${item.priority}`}>{label(item.priority)}</span></td><td>{label(item.status)}</td><td>{item.ownerName || 'Unassigned'}</td><td>{date(item.dueDate)}</td><td>{item.mitigation || 'Not recorded'}</td><td>{canEditPlanner ? <button type="button" className="danger-quiet" disabled={busy} onClick={() => onDeleteRaid(item)}>Delete</button> : 'Read-only'}</td></tr>)}</tbody></table></div>
       {!raid.length ? <div className="flowhive-empty-state">No RAID items have been recorded for this project.</div> : null}
     </section>
     <section className="flowhive-enterprise-card">
       <header><div><span>Executive communication</span><h3>Create project status report</h3></div><span>{draftPlan?.projectCode || 'Select project'}</span></header>
-      <div className="flowhive-health-grid">{['overallHealth', 'scheduleHealth', 'financialHealth', 'scopeHealth'].map((field) => <label key={field}>{label(field)}<select value={statusDraft[field]} disabled={!canManage} onChange={(event) => setStatusDraft({ ...statusDraft, [field]: event.target.value })}>{(field === 'overallHealth' ? ['green', 'amber', 'red', 'complete', 'not_started'] : ['green', 'amber', 'red', 'unknown']).map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>)}</div>
-      <label className="flowhive-full-width">Executive summary<textarea rows="6" value={statusDraft.executiveSummary || ''} disabled={!canManage} onChange={(event) => setStatusDraft({ ...statusDraft, executiveSummary: event.target.value, generatedSource: 'pm_edited' })} /></label>
+      <div className="flowhive-health-grid">{['overallHealth', 'scheduleHealth', 'financialHealth', 'scopeHealth'].map((field) => <label key={field}>{label(field)}<select value={statusDraft[field]} disabled={!canAdministerPlanner} onChange={(event) => setStatusDraft({ ...statusDraft, [field]: event.target.value })}>{(field === 'overallHealth' ? ['green', 'amber', 'red', 'complete', 'not_started'] : ['green', 'amber', 'red', 'unknown']).map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>)}</div>
+      <label className="flowhive-full-width">Executive summary<textarea rows="6" value={statusDraft.executiveSummary || ''} disabled={!canAdministerPlanner} onChange={(event) => setStatusDraft({ ...statusDraft, executiveSummary: event.target.value, generatedSource: 'pm_edited' })} /></label>
       <div className="flowhive-status-detail-grid"><LinesEditor label="Accomplishments" value={statusDraft.accomplishments} onChange={(value) => setStatusDraft({ ...statusDraft, accomplishments: value })} placeholder="One completed outcome per line" /><LinesEditor label="Next steps" value={statusDraft.nextSteps} onChange={(value) => setStatusDraft({ ...statusDraft, nextSteps: value })} /><LinesEditor label="Decisions needed" value={statusDraft.decisionsNeeded} onChange={(value) => setStatusDraft({ ...statusDraft, decisionsNeeded: value })} /><LinesEditor label="Key risks" value={statusDraft.keyRisks} onChange={(value) => setStatusDraft({ ...statusDraft, keyRisks: value })} /></div>
-      <footer><button type="button" disabled={!canManage || busy} onClick={onGenerateSummary}>Refresh AI/status summary</button><button type="button" className="primary" disabled={!canManage || busy || (statusDraft.executiveSummary || '').trim().length < 20} onClick={onCreateStatusReport}>{busy === 'status-report' ? 'Creating…' : 'Create immutable status report'}</button></footer>
+      <footer><button type="button" disabled={!canAdministerPlanner || busy} onClick={onGenerateSummary}>Refresh AI/status summary</button><button type="button" className="primary" disabled={!canAdministerPlanner || busy || (statusDraft.executiveSummary || '').trim().length < 20} onClick={onCreateStatusReport}>{busy === 'status-report' ? 'Creating…' : 'Create immutable status report'}</button></footer>
     </section>
     <section className="flowhive-enterprise-card"><header><div><span>History</span><h3>Immutable status reports</h3></div><strong>{reports.length}</strong></header>{reports.map((report) => <details key={report.statusReportId}><summary>{date(report.statusDate)} · {label(report.overallHealth)} · {label(report.generatedSource)}</summary><p>{report.executiveSummary}</p></details>)}{!reports.length ? <div className="flowhive-empty-state">No status report has been created.</div> : null}</section>
   </div>;

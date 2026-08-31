@@ -1,8 +1,38 @@
 <Project>
+  <!--
+    The governed Protected-Test release controller stages a temporary, untracked
+    .projectpulse-source-revision file containing the exact reviewed 40-character
+    candidate SHA. Ordinary builds do not have that file and remain unbound.
+  -->
+  <PropertyGroup Condition="'$(ProjectPulseSourceRevision)' == '' and Exists('$(MSBuildProjectDirectory)/.projectpulse-source-revision')">
+    <ProjectPulseSourceRevision>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/.projectpulse-source-revision'))</ProjectPulseSourceRevision>
+  </PropertyGroup>
+
   <PropertyGroup>
     <ModuleAvailabilityResilienceGeneratedDirectory>$(MSBuildProjectDirectory)/obj/module-availability-resilience</ModuleAvailabilityResilienceGeneratedDirectory>
     <ModuleAvailabilityResilienceGenerated>$(ModuleAvailabilityResilienceGeneratedDirectory)/ModuleAvailabilityModule.Resilient.g.cs</ModuleAvailabilityResilienceGenerated>
+    <FlowHivePrivateExtractorGeneratedDirectory>$(MSBuildProjectDirectory)/obj/flowhive-private-document</FlowHivePrivateExtractorGeneratedDirectory>
+    <FlowHivePrivateExtractorGenerated>$(FlowHivePrivateExtractorGeneratedDirectory)/PulseAiPrivateDocumentExtractionService.g.cs</FlowHivePrivateExtractorGenerated>
   </PropertyGroup>
+
+  <!--
+    ProjectTime.Api.csproj evaluates PulseAiPrivateExtractorGenerated before
+    IntermediateOutputPath is populated, which can resolve the generated private
+    extractor into tracked source. Redirect that compiler copy immediately before
+    GenerateScopedRbacSources executes and remove the historic tracked generated
+    copy from Compile. The canonical Ai source remains the reviewable authority,
+    while all build-time FlowHive compatibility edits stay under ignored obj/.
+  -->
+  <Target Name="PrepareFlowHivePrivateExtractorGeneratedPath"
+          BeforeTargets="GenerateScopedRbacSources">
+    <PropertyGroup>
+      <PulseAiPrivateExtractorGenerated>$(FlowHivePrivateExtractorGenerated)</PulseAiPrivateExtractorGenerated>
+    </PropertyGroup>
+    <MakeDir Directories="$(FlowHivePrivateExtractorGeneratedDirectory)" />
+    <ItemGroup>
+      <Compile Remove="PulseAiPrivateDocumentExtractionService.g.cs" />
+    </ItemGroup>
+  </Target>
 
   <!--
     The API project already generates a compiler-compatible private document
@@ -10,15 +40,23 @@
     adapter only to that ignored compiler copy after the existing ClosedXML
     compatibility rewrite. The canonical extractor remains readable and the
     post-processor fails closed if any expected source anchor changes.
+
+    Make GenerateScopedRbacSources an explicit dependency rather than relying on
+    target ordering alone. Protected-Test evidence proved that a runtime can
+    otherwise reach the canonical safety path and reject the sealed local SMB
+    processing snapshot before the legacy Word adapter is reachable.
   -->
   <Target Name="EnableFlowHiveLegacyWordExtraction"
-          AfterTargets="GenerateScopedRbacSources"
           BeforeTargets="CoreCompile"
+          DependsOnTargets="GenerateScopedRbacSources"
           Condition="'$(PulseAiPrivateExtractorGenerated)' != ''">
     <Exec Command="python3 &quot;$(MSBuildProjectDirectory)/build/enable-flowhive-legacy-word-extraction.py&quot; --path &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
     <Exec Command="grep -Fq '&quot;.doc&quot; =&gt; await PulseAiLegacyBinaryWordExtraction.ExtractAsync' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
     <Exec Command="grep -Fq 'extension.Equals(&quot;.doc&quot;, StringComparison.OrdinalIgnoreCase)' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
     <Exec Command="grep -Fq 'ole_compound_word' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <Exec Command="grep -Fq 'PulseAiImmutableProcessingSnapshotPolicy.IsTrustedLocalSnapshotPath(source, fullPath)' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <Exec Command="grep -Fq 'blocked_by_document_path_policy' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <Exec Command="grep -Fq 'blocked_by_document_signature_policy' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
   </Target>
 
   <!--

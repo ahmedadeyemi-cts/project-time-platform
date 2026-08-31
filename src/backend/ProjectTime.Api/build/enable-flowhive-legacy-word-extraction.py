@@ -3,12 +3,25 @@
 
 The canonical extractor stays reviewable and the existing build continues to
 apply its ClosedXML compatibility substitutions first. This post-processor then
-makes four exact, fail-closed edits to the generated source:
+makes exact, fail-closed edits to the generated source so legacy Word documents
+remain private and non-executable while supporting both real OLE Word files and
+the text-compatible .doc files already present in Work Register.
 
-1. admit .doc only inside the extractor safety assessment;
-2. recognize the OLE compound-file signature used by binary Word documents;
-3. route .doc to the private antiword text-only adapter; and
-4. require the matching legacy Word signature.
+The generated extractor:
+1. admits .doc only inside the existing extractor safety assessment;
+2. recognizes the OLE compound-file signature used by binary Word documents;
+3. recognizes bounded non-binary .doc content as legacy text/HTML/RTF,
+   including BOM-identified UTF-16 text that the existing private reader can
+   decode without executing document content;
+4. routes every admitted .doc through the single private legacy Word adapter;
+5. lets that adapter use antiword only for real OLE content and in-process
+   bounded parsing for text-compatible content;
+6. requires a matching legacy Word/text-compatible signature before parsing;
+7. accepts the worker's structurally validated sealed local immutable snapshot
+   when SMB mount permissions require processing outside the authoritative root;
+   and
+8. preserves a bounded, machine-actionable safety diagnostic when admission is
+   rejected so Protected-Test evidence identifies the failed predicate.
 """
 
 from __future__ import annotations
@@ -51,6 +64,58 @@ def main() -> None:
 
     text = replace_once(
         text,
+        '            pathConfined = fullPath.StartsWith(\n'
+        '                normalizedRoot,\n'
+        '                OperatingSystem.IsWindows()\n'
+        '                    ? StringComparison.OrdinalIgnoreCase\n'
+        '                    : StringComparison.Ordinal);\n',
+        '            pathConfined = fullPath.StartsWith(\n'
+        '                normalizedRoot,\n'
+        '                OperatingSystem.IsWindows()\n'
+        '                    ? StringComparison.OrdinalIgnoreCase\n'
+        '                    : StringComparison.Ordinal)\n'
+        '                || PulseAiImmutableProcessingSnapshotPolicy.IsTrustedLocalSnapshotPath(source, fullPath);\n',
+        "sealed immutable snapshot safety confinement",
+    )
+
+    text = replace_once(
+        text,
+        '                options.ExtractionPreviewEnabled\n'
+        '                    ? "blocked_by_document_safety_policy"\n'
+        '                    : "extraction_preview_disabled",\n',
+        '                options.ExtractionPreviewEnabled\n'
+        '                    ? !safety.PathConfined\n'
+        '                        ? "blocked_by_document_path_policy"\n'
+        '                        : !safety.SignatureMatchesExtension\n'
+        '                            ? "blocked_by_document_signature_policy"\n'
+        '                            : !safety.MalwareScanAttested\n'
+        '                                ? "blocked_by_document_malware_attestation"\n'
+        '                                : !safety.SizeWithinLimit\n'
+        '                                    ? "blocked_by_document_size_policy"\n'
+        '                                    : !safety.IsRegularFile || safety.ReparsePointDetected\n'
+        '                                        ? "blocked_by_document_file_policy"\n'
+        '                                        : safety.MacroEnabledFormat\n'
+        '                                            ? "blocked_by_document_macro_policy"\n'
+        '                                            : safety.ArchiveBombRiskDetected\n'
+        '                                                ? "blocked_by_document_archive_policy"\n'
+        '                                                : !safety.ExtensionAllowed\n'
+        '                                                    ? "blocked_by_document_extension_policy"\n'
+        '                                                    : "blocked_by_document_safety_policy"\n'
+        '                    : "extraction_preview_disabled",\n',
+        "specific private document safety diagnostic",
+    )
+
+    # Read enough of the source to reject mislabeled binary payloads rather than
+    # deciding text compatibility from only the first dozen bytes.
+    text = replace_once(
+        text,
+        '        var header = new byte[12];\n',
+        '        var header = new byte[256];\n',
+        "legacy Word bounded signature probe",
+    )
+
+    text = replace_once(
+        text,
         '        if (header.Any(value => value == 0)) return "binary_unknown";\n',
         '        if (header.Length >= 8\n'
         '            && header[0] == 0xD0\n'
@@ -61,14 +126,29 @@ def main() -> None:
         '            && header[5] == 0xB1\n'
         '            && header[6] == 0x1A\n'
         '            && header[7] == 0xE1) return "ole_compound_word";\n'
+        '        if (extension.Equals(".doc", StringComparison.OrdinalIgnoreCase))\n'
+        '        {\n'
+        '            if (header.Length >= 5\n'
+        '                && header[0] == 0x7B\n'
+        '                && header[1] == 0x5C\n'
+        '                && (header[2] == 0x72 || header[2] == 0x52)\n'
+        '                && (header[3] == 0x74 || header[3] == 0x54)\n'
+        '                && (header[4] == 0x66 || header[4] == 0x46)) return "legacy_doc_rtf";\n'
+        '            if (header.Length >= 2\n'
+        '                && ((header[0] == 0xFF && header[1] == 0xFE)\n'
+        '                    || (header[0] == 0xFE && header[1] == 0xFF))) return "legacy_doc_text";\n'
+        '            var legacyPrefix = Encoding.ASCII.GetString(header).TrimStart();\n'
+        '            if (legacyPrefix.StartsWith("<", StringComparison.Ordinal)) return "legacy_doc_html";\n'
+        '            if (!header.Any(value => value == 0)) return "legacy_doc_text";\n'
+        '        }\n'
         '        if (header.Any(value => value == 0)) return "binary_unknown";\n',
-        "legacy Word OLE signature",
+        "legacy Word OLE and text-compatible signatures",
     )
 
     text = replace_once(
         text,
         '        ".docx" or ".pptx" or ".xlsx" => detected == "zip_openxml",\n',
-        '        ".doc" => detected == "ole_compound_word",\n'
+        '        ".doc" => detected is "ole_compound_word" or "legacy_doc_text" or "legacy_doc_html" or "legacy_doc_rtf",\n'
         '        ".docx" or ".pptx" or ".xlsx" => detected == "zip_openxml",\n',
         "legacy Word signature match",
     )
@@ -76,8 +156,18 @@ def main() -> None:
     required = [
         '".doc" => await PulseAiLegacyBinaryWordExtraction.ExtractAsync',
         'extension.Equals(".doc", StringComparison.OrdinalIgnoreCase)',
+        'PulseAiImmutableProcessingSnapshotPolicy.IsTrustedLocalSnapshotPath(source, fullPath)',
+        'blocked_by_document_signature_policy',
+        'blocked_by_document_path_policy',
+        'var header = new byte[256]',
+        'header[0] == 0xFF && header[1] == 0xFE',
+        'header[0] == 0xFE && header[1] == 0xFF',
+        'header[1] == 0x5C',
         'return "ole_compound_word"',
-        '".doc" => detected == "ole_compound_word"',
+        'return "legacy_doc_text"',
+        'return "legacy_doc_html"',
+        'return "legacy_doc_rtf"',
+        '".doc" => detected is "ole_compound_word" or "legacy_doc_text" or "legacy_doc_html" or "legacy_doc_rtf"',
     ]
     missing = [marker for marker in required if marker not in text]
     if missing:

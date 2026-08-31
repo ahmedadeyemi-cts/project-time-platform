@@ -24,7 +24,8 @@ public sealed record ProjectFlowHivePlanRequest(
     string? CelarAiProviderCode = null,
     string? CelarAiCorrelationId = null,
     decimal? CelarAiConfidence = null,
-    IReadOnlyList<int>? CelarAiCitationIds = null);
+    IReadOnlyList<int>? CelarAiCitationIds = null,
+    IReadOnlyList<ProjectFlowHivePlanMilestoneInput>? Milestones = null);
 
 public sealed record ProjectFlowHivePlanTaskInput(
     Guid? ClientTaskId,
@@ -57,7 +58,33 @@ public sealed record ProjectFlowHivePlanTaskInput(
     DateOnly? EstimatedStartDate = null,
     DateOnly? EstimatedFinishDate = null,
     string? Comments = null,
-    string? Notes = null);
+    string? Notes = null,
+    IReadOnlyList<string>? Products = null,
+    IReadOnlyList<string>? Platforms = null,
+    IReadOnlyList<string>? Manufacturers = null,
+    IReadOnlyList<string>? Models = null,
+    IReadOnlyList<string>? SoftwareVersions = null,
+    IReadOnlyList<string>? FirmwareVersions = null,
+    IReadOnlyList<string>? LicensingRequirements = null,
+    IReadOnlyList<string>? Quantities = null,
+    IReadOnlyList<string>? Tools = null,
+    IReadOnlyList<string>? Systems = null,
+    IReadOnlyList<string>? Interfaces = null,
+    IReadOnlyList<string>? IntegrationPoints = null,
+    IReadOnlyList<string>? AccessRequirements = null,
+    IReadOnlyList<string>? RollbackSteps = null,
+    IReadOnlyList<string>? Assumptions = null,
+    IReadOnlyList<string>? RequiredRoles = null);
+
+public sealed record ProjectFlowHivePlanMilestoneInput(
+    Guid ClientMilestoneId,
+    string Name,
+    string Description,
+    string PredecessorWbs,
+    DateOnly? TargetDate,
+    IReadOnlyList<string> AcceptanceEvidence,
+    IReadOnlyList<int> CitationIds,
+    bool IsAssumption);
 
 public sealed record ProjectFlowHiveDependencyInput(
     string? PredecessorWbs,

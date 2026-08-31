@@ -67,10 +67,15 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
                                 'architecture','design','order','quote','proposal'
                             ) THEN 'confidential_project_document'
                             ELSE 'internal_project_document'
-                        END)
+                        END),
+                    d.work_register_document_id,
+                    COALESCE(work_register.stored_file_path, '')
                 FROM project_intake_documents d
                 JOIN projects p ON p.project_id = d.project_id
                 LEFT JOIN clients c ON c.client_id = p.client_id
+                LEFT JOIN work_register_documents work_register
+                  ON work_register.work_register_document_id = d.work_register_document_id
+                 AND work_register.project_id = d.project_id
                 WHERE d.project_intake_document_id = @document_id
                   AND d.is_active = TRUE
                   AND d.project_id IS NOT NULL
@@ -108,7 +113,7 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
             await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             {
                 if (await reader.ReadAsync(cancellationToken))
-                    return ReadSource(reader, access.ScopeLabel, access.RoleCodes);
+                    return ReadProjectSource(reader, access.ScopeLabel, access.RoleCodes);
             }
 
             // Conversation attachments deliberately do not inherit broad
@@ -180,6 +185,36 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
                 Diagnostic(exception));
             return null;
         }
+    }
+
+    private static PulseAiAuthorizedDocumentSource ReadProjectSource(
+        NpgsqlDataReader reader,
+        string accessScope,
+        IReadOnlySet<string> roleCodes)
+    {
+        var source = ReadSource(reader, accessScope, roleCodes);
+        if (reader.IsDBNull(20)
+            || source.ProjectId is not Guid projectId)
+        {
+            return source;
+        }
+
+        var workRegisterDocumentId = reader.GetGuid(20);
+        var workRegisterStoredPath = reader.GetString(21);
+        var durablePath = ProjectPulseUploadStorage.ResolveExistingStoredFile(
+            workRegisterStoredPath,
+            projectId,
+            workRegisterDocumentId);
+
+        // A linked Module 055C document is governed by the durable Work Register
+        // identity. The bridge row may contain an absolute path from an older API
+        // revision, so use the same relocation logic as the download endpoint.
+        // If the durable file cannot be resolved, preserve the bridge path only
+        // so the existing immutable-snapshot gate can fail closed with its normal
+        // bounded diagnostic rather than bypassing storage validation.
+        return durablePath is null
+            ? source
+            : source with { StoragePath = durablePath };
     }
 
     private static PulseAiAuthorizedDocumentSource ReadSource(

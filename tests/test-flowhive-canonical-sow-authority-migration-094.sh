@@ -71,11 +71,11 @@ CREATE TABLE schema_migrations (
     description TEXT NOT NULL DEFAULT '',
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Reproduce the long-lived Protected Test state: the complete 079/081 physical
+-- contract exists, but historical bookkeeping rows were never recorded.
 INSERT INTO schema_migrations(migration_id, description)
-VALUES
-    ('079_coordinated_runtime_ai_document_rbac_repair', 'test prerequisite'),
-    ('081_celar_ai_private_runtime_activation', 'test prerequisite'),
-    ('086_module_066_flowhive_enterprise_pm', 'test prerequisite');
+VALUES ('086_module_066_flowhive_enterprise_pm', 'test prerequisite');
 
 CREATE TABLE projects (
     project_id UUID PRIMARY KEY,
@@ -169,6 +169,7 @@ assert_eq revoked "$(value "SELECT authority_status FROM pulse_ai_document_versi
 assert_eq candidate "$(value "SELECT authority_status FROM pulse_ai_document_versions WHERE pulse_ai_document_version_id='94300000-0000-0000-0000-000000000005';")" archived_source_not_promoted
 assert_eq 2 "$(value "SELECT COUNT(*) FROM module094_flowhive_sow_authority_evidence;")" initial_promotion_evidence_count
 assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='094_flowhive_canonical_sow_authority';")" migration_registered
+assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id IN ('079_coordinated_runtime_ai_document_rbac_repair','081_celar_ai_private_runtime_activation');")" missing_historical_registrations_not_fabricated
 
 psql_exec -c "UPDATE project_intake_documents SET pulse_ai_processing_status='ready' WHERE project_intake_document_id='94200000-0000-0000-0000-000000000003';" >/dev/null
 assert_eq canonical "$(value "SELECT authority_status FROM pulse_ai_document_versions WHERE pulse_ai_document_version_id='94300000-0000-0000-0000-000000000003';")" ready_transition_trigger_promotes

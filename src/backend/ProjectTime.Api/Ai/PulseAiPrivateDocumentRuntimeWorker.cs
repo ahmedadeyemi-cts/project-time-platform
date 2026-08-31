@@ -1,12 +1,17 @@
 namespace ProjectTime.Api.Ai;
 
 /// <summary>
-/// Runs only when explicitly enabled by private-runtime configuration. Deploying
-/// the source alone does not start document processing or external traffic. Each
-/// cycle remains outside the Claude, OpenAI, and Module 064 generation path.
+/// Runs when explicitly enabled by private-runtime configuration. Protected Test
+/// may activate the worker from source only when the exact running candidate commit
+/// and all private scanning, OCR, embedding, and RAG dependencies are present.
+/// ProcessNextAsync independently enforces the same exact-SHA Protected Test candidate
+/// boundary. Production still requires the explicit worker configuration flag.
 /// </summary>
 public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
 {
+    private const string PrivateRagEnabledVariable = "PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED";
+    private const string WorkerEnabledVariable = "PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED";
+
     private readonly IServiceProvider _services;
     private readonly ILogger<PulseAiPrivateDocumentRuntimeWorker> _logger;
 
@@ -23,7 +28,14 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var options = PulseAiPrivateRuntimeOptions.FromEnvironment();
-            if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)
+            var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+            if (!options.WorkerEnabled
+                && TryActivateProtectedTestWorker(options, release))
+            {
+                options = PulseAiPrivateRuntimeOptions.FromEnvironment();
+            }
+
+            if (release.IsCandidate && !PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))
             {
                 await DelayAsync(TimeSpan.FromSeconds(Math.Max(30, options.PollSeconds)), stoppingToken);
                 continue;
@@ -74,6 +86,40 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
                 await DelayAsync(TimeSpan.FromSeconds(Math.Max(10, options.PollSeconds)), stoppingToken);
             }
         }
+    }
+
+    private bool TryActivateProtectedTestWorker(
+        PulseAiPrivateRuntimeOptions options,
+        ReleaseRuntimeSnapshot release)
+    {
+        if (!PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))
+        {
+            return false;
+        }
+
+        var runningSourceCommit = Environment
+            .GetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.RunningSourceCommitVariable)?
+            .Trim()
+            .ToLowerInvariant() ?? string.Empty;
+        if (runningSourceCommit.Length != 40 || !runningSourceCommit.All(Uri.IsHexDigit))
+            return false;
+
+        if (!bool.TryParse(
+                Environment.GetEnvironmentVariable(PrivateRagEnabledVariable),
+                out var privateRagEnabled)
+            || !privateRagEnabled
+            || !options.MalwareScannerConfigured
+            || !options.OcrConfigured
+            || !options.EmbeddingConfigured)
+        {
+            return false;
+        }
+
+        Environment.SetEnvironmentVariable(WorkerEnabledVariable, "true");
+        _logger.LogInformation(
+            "Protected Test private document worker activated from governed Test runtime provenance and the exact candidate source after dependency verification. SourceCommit={SourceCommit}",
+            runningSourceCommit);
+        return true;
     }
 
     private static async Task DelayAsync(

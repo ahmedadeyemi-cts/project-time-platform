@@ -47,7 +47,10 @@ const paths = {
   calculationProgram: path.join(repositoryRoot, 'scripts/module-066-validation/Program.cs'),
   migration: path.join(repositoryRoot, 'database/migrations/074_module_066_project_flowhive_production.sql'),
   rollback: path.join(repositoryRoot, 'database/rollback/074_module_066_project_flowhive_production_rollback.sql'),
-  migrationTest: path.join(repositoryRoot, 'tests/test-module-066-project-flowhive-migration-074.sh')
+  migrationTest: path.join(repositoryRoot, 'tests/test-module-066-project-flowhive-migration-074.sh'),
+  aiOrchestration: path.join(backendDirectory, 'ProjectFlowHiveAiPlannerOrchestrationModule.cs'),
+  documentResolver: path.join(backendDirectory, 'ProjectPlanningDocumentResolver.cs'),
+  runtimeVerifier: path.join(repositoryRoot, 'scripts/release-test/verify-runtime.mjs')
 };
 
 const assertions = [];
@@ -103,6 +106,9 @@ const calculationProgram = readRequired('CALCULATION_PROGRAM', paths.calculation
 const migration = readRequired('MIGRATION_074', paths.migration);
 const rollback = readRequired('ROLLBACK_074', paths.rollback);
 const migrationTest = readRequired('MIGRATION_074_TEST', paths.migrationTest);
+const aiOrchestration = readRequired('AI_ORCHESTRATION', paths.aiOrchestration);
+const documentResolver = readRequired('DOCUMENT_RESOLVER', paths.documentResolver);
+const runtimeVerifier = readRequired('RUNTIME_VERIFIER', paths.runtimeVerifier);
 
 const moduleBackend = [backend, contracts, schedule, ai, brand, artifacts].join('\n');
 const moduleDocs = [readme, matrix, apiContract, authorization, persistence, scheduling, aiDoc, artifactsDoc, overlap, evidence].join('\n');
@@ -373,7 +379,7 @@ assertInvariant(
     frontend.includes('Portfolio') &&
     frontend.includes('Planner') &&
     frontend.includes('Timeline & risk') &&
-    frontend.includes('AI draft studio') &&
+    frontend.includes('AI Planning Workspace') &&
     frontend.includes('Branded exports') &&
     frontend.includes('Governance'),
   'phase-aware full workspace source'
@@ -402,27 +408,27 @@ assertInvariant(
   'MODULE_066_FRONTEND_COMPUTE_AND_ARTIFACT_ROUTES',
   frontend.includes("postJson('/api/project-flowhive/planning/validate'") &&
     frontend.includes("postJson('/api/project-flowhive/schedule/calculate'") &&
-    frontend.includes("postJson('/api/project-flowhive/ai/production-generate'") &&
+    frontend.includes('postJson(`/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs`') &&
     frontend.includes('/api/project-flowhive/artifacts/${format}-preview'),
   'validation, deterministic schedule, governed Celar generation, and reviewed artifact actions'
 );
 
 assertInvariant(
   'MODULE_066_SOW_GROUNDED_PER_TASK_TIMELINE',
-    celarProduction.includes('status = "flowhive_sow_evidence_not_ready"') &&
-    celarProduction.includes('No generic plan was substituted') &&
-    celarProduction.includes('Private evidence citations:') &&
-    celarProduction.includes('CitationIds: task.CitationIds') &&
-    celarProduction.includes('privateFlowHivePlan.Tasks.All(task =>') &&
-    celarProduction.includes('EstimatedStartDate = scheduledTask.StartDate') &&
-    celarProduction.includes('EstimatedFinishDate = scheduledTask.EndDate') &&
-    repository.includes('EstimatedStartDate = scheduledTask.StartDate') &&
-    repository.includes('EstimatedFinishDate = scheduledTask.EndDate') &&
-    repository.includes('AddJson(insert, "plan_payload", persistedRequest)') &&
+    aiOrchestration.includes('ProjectPlanningDocumentResolver.ResolveAndPrepareAsync') &&
+    aiOrchestration.includes('ProjectPlanningAiOrchestrator.GenerateAsync') &&
+    aiOrchestration.includes('SaveWorkingCopyAsync') &&
+    aiOrchestration.includes('working_draft_ready') &&
+    documentResolver.includes('ScopeCitationCount') &&
+    documentResolver.includes('DurableFileAvailable') &&
+    privateRag.includes('plan.Tasks.SelectMany(task => task.CitationIds)') &&
     frontend.includes('an uncited generic template is never substituted') &&
-    frontend.includes('task.estimatedStartDate || scheduled?.startDate') &&
-    frontend.includes('task.estimatedFinishDate || scheduled?.endDate'),
-  'citation-ready private SOW evidence produces visible and immutably persisted per-task durations, starts, finishes, and citations without a generic plan substitute'
+    frontend.includes('flowhive-smartsheet-table') &&
+    runtimeVerifier.includes('module055cSowDownload') &&
+    runtimeVerifier.includes('Array.isArray(task.citationIds)') &&
+    runtimeVerifier.includes('Number(task.durationWorkingDays) > 0') &&
+    runtimeVerifier.includes('Number(task.remainingEffortHours) > 0'),
+  'current durable SOW evidence produces citation-backed tasks, effort, durations, schedule dates, and a mutable Planner working copy without a generic substitute'
 );
 
 assertInvariant(
@@ -614,9 +620,11 @@ assertInvariant(
   'MODULE_066_STATUS_PRODUCTION_READY',
   backend.includes('status = persistence.Ready ? "production_ready"') &&
     frontend.includes('data-mode="production"') &&
-    frontend.includes('Production connected') &&
-    frontend.includes('Configured order:'),
-  'runtime and UI report production capability from dependency evidence rather than a static connected label'
+    frontend.includes("capabilityResponse?.databaseMutationEnabled ? 'Planner services ready'") &&
+    frontend.includes("enterpriseError ? 'Readiness required'") &&
+    !frontend.includes('>Production connected</span>') &&
+    runtimeVerifier.includes('Web source stamp does not match the exact release SHA'),
+  'runtime and UI report readiness from backend dependency evidence and exact deployed-SHA verification rather than a static connected label'
 );
 
 assertInvariant(

@@ -187,6 +187,37 @@ async function requestBytes(route) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+async function requestBinary(route, options = {}) {
+  const target = new URL(route, base);
+  assert(target.origin === new URL(base).origin, "Verifier refused a cross-origin binary request.");
+  const headers = {
+    Accept: options.accept || "application/octet-stream",
+    "Cache-Control": "no-cache, no-store, max-age=0",
+    Pragma: "no-cache",
+  };
+  if (options.authenticated === true) {
+    headers.Authorization = "Bearer " + session;
+    headers["X-ProjectPulse-Session"] = session;
+    headers.Origin = base;
+    headers["Sec-Fetch-Site"] = "same-origin";
+    if (options.moduleNumber) headers["X-ProjectPulse-Module-Number"] = options.moduleNumber;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs || 120000);
+  try {
+    const response = await fetch(target, { headers, redirect: "manual", signal: controller.signal });
+    assert(response.status < 300 || response.status >= 400, "Verifier refused an HTTP redirect for binary request " + route + ".");
+    return {
+      status: response.status,
+      bytes: Buffer.from(await response.arrayBuffer()),
+      contentType: String(response.headers.get("content-type") || ""),
+      contentDisposition: String(response.headers.get("content-disposition") || ""),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const evidence = {
   environment: "test",
   sourceSha,
@@ -331,7 +362,8 @@ async function run() {
     "Temporal context graph",
     "Self-monitoring adapters",
     "Project planning command center",
-    "Generate and auto-fill detailed plan",
+    "AI Planning Workspace",
+    "Start AI Planner",
     "/api/project-flowhive",
   ]) {
     assert(bundle.text.includes(marker), "Web production bundle is missing the Celar smart-interaction or context-fabric marker: " + marker + ".");
@@ -1081,6 +1113,94 @@ try {
       evidence.failure = "Project Forge cleanup failed.";
     }
   }
-  writeEvidence();
+
+
+// FLOWHIVE_AUTHENTICATED_AI_PLANNER_UAT
+// Exercises the exact Protected UAT project/SOW reported by the product owner.
+if (authenticatedUatEnabled) {
+  const flowHiveProjectId = (process.env.PROJECTPULSE_TEST_FLOWHIVE_PROJECT_ID || "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49").trim().toLowerCase();
+  const flowHiveSowDocumentId = (process.env.PROJECTPULSE_TEST_FLOWHIVE_SOW_DOCUMENT_ID || "3cddc0b5-7d42-4184-a588-2f234fff42e2").trim().toLowerCase();
+  assert(uuidPattern.test(flowHiveProjectId), "Protected-Test FlowHive project ID is invalid.");
+  assert(uuidPattern.test(flowHiveSowDocumentId), "Protected-Test FlowHive SOW document ID is invalid.");
+
+  const enterprise = await request(
+    "/api/project-flowhive/projects/" + encodeURIComponent(flowHiveProjectId) + "/enterprise",
+    { authenticated: true, moduleNumber: "066", timeoutMs: 120000 },
+  );
+  assert(enterprise.status === 200, "FlowHive enterprise workspace returned HTTP " + enterprise.status + ".");
+  const exactSow = (enterprise.json?.sowEvidence || []).find((item) => String(item?.documentId || "").toLowerCase() === flowHiveSowDocumentId);
+  assert(exactSow, "The exact protected-Test Work Register SOW was not resolved in FlowHive.");
+
+  const sowDownload = await requestBinary(
+    "/api/work-register/projects/documents/" + encodeURIComponent(flowHiveSowDocumentId) + "/download",
+    { authenticated: true, moduleNumber: "055C", timeoutMs: 120000 },
+  );
+  assert(sowDownload.status === 200, "Module 055C SOW download returned HTTP " + sowDownload.status + ".");
+  assert(sowDownload.bytes.length > 0, "Module 055C SOW download returned an empty file.");
+  assert(!sowDownload.contentType.toLowerCase().includes("json"), "Module 055C SOW download returned an error document instead of the stored file.");
+  evidence.authenticatedChecks.module055cSowDownload = {
+    documentId: flowHiveSowDocumentId,
+    bytes: sowDownload.bytes.length,
+    contentType: sowDownload.contentType,
+    contentDispositionPresent: sowDownload.contentDisposition.length > 0,
+    persistedAcrossApiRevision: true,
+  };
+
+  const portfolio = await request("/api/project-flowhive/portfolio", { authenticated: true, moduleNumber: "066" });
+  assert(portfolio.status === 200, "FlowHive portfolio returned HTTP " + portfolio.status + ".");
+  const portfolioProject = (portfolio.json?.projects || []).find((item) => String(item?.projectId || "").toLowerCase() === flowHiveProjectId);
+  assert(portfolioProject, "The exact protected-Test project is outside the authenticated FlowHive scope.");
+
+  let run = await request(
+    "/api/project-flowhive/projects/" + encodeURIComponent(flowHiveProjectId) + "/ai-planner/runs",
+    {
+      method: "POST", authenticated: true, moduleNumber: "066", timeoutMs: 180000,
+      body: { requestedOutcome: "Create the complete source-backed working draft without automatic baselining.", detailLevel: "comprehensive" }
+    },
+  );
+  assert(![400, 422, 502, 503, 504].includes(run.status), "FlowHive AI Planner returned prohibited HTTP " + run.status + ".");
+  assert([200, 202].includes(run.status), "FlowHive AI Planner returned unexpected HTTP " + run.status + ".");
+  assert(uuidPattern.test(String(run.json?.runId || "")), "FlowHive AI Planner returned no durable run ID.");
+
+  for (let attempt = 0; attempt < 240 && !run.json?.terminal; attempt += 1) {
+    await sleep(5000);
+    run = await request(
+      "/api/project-flowhive/projects/" + encodeURIComponent(flowHiveProjectId) + "/ai-planner/runs/" + encodeURIComponent(run.json.runId),
+      { authenticated: true, moduleNumber: "066", timeoutMs: 180000 },
+    );
+    assert(![400, 422, 502, 503, 504].includes(run.status), "FlowHive AI Planner polling returned prohibited HTTP " + run.status + ".");
+    assert([200, 202].includes(run.status), "FlowHive AI Planner polling returned unexpected HTTP " + run.status + ".");
+  }
+  assert(run.json?.terminal === true, "FlowHive AI Planner did not reach a terminal state during authenticated UAT.");
+  assert(["completed", "completed_with_schedule_overrun"].includes(run.json?.status), "FlowHive AI Planner did not complete: " + JSON.stringify(run.json?.blockers || []));
+  assert(run.json?.workingDraft?.persisted === true, "AI Planner did not persist the working draft.");
+  assert(run.json?.workingDraft?.immutableVersionCreated === false, "AI Planner automatically created an immutable version.");
+  assert(run.json?.workingDraft?.baselineCreated === false, "AI Planner automatically baselined its output.");
+  assert(run.json?.scheduleAssessment?.estimatesCompressed === false, "AI Planner compressed estimates to the requested finish date.");
+  const tasks = run.json?.plan?.tasks || [];
+  for (const phase of ["Plan", "Design", "Implement", "Validate", "Release"]) {
+    assert(tasks.some((task) => task?.phase === phase && task?.isSummary !== true), "AI Planner did not create a detailed " + phase + " task.");
+  }
+  for (const task of tasks.filter((item) => item?.isSummary !== true)) {
+    assert(String(task.description || "").trim().length > 0, "Generated task has no description.");
+    assert(Array.isArray(task.detailedSteps) && task.detailedSteps.length > 0, "Generated task has no ordered steps.");
+    assert(Number(task.durationWorkingDays) > 0, "Generated task has no duration.");
+    assert(Number(task.remainingEffortHours) > 0, "Generated task has no effort estimate.");
+    assert(Array.isArray(task.citationIds) && task.citationIds.length > 0, "Generated task has no SOW citation.");
+    assert(Array.isArray(task.openQuestions), "Generated task has no open-question collection.");
+  }
+  evidence.authenticatedChecks.flowHiveAiPlanner = {
+    status: run.json.status,
+    runId: run.json.runId,
+    taskCount: tasks.length,
+    estimatesCompressed: false,
+    workingDraftPersisted: true,
+    immutableVersionCreated: false,
+    baselineCreated: false,
+    prohibitedHttpStatusesObserved: false
+  };
+}
+
+writeEvidence();
   if (evidence.status !== "passed") process.exitCode = 1;
 }

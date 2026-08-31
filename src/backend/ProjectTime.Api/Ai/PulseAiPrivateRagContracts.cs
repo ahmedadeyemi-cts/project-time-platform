@@ -34,6 +34,17 @@ public static class PulseAiPrivateRagPolicy
         "order_form",
         "quote",
         "proposal",
+        "requirements",
+        "requirements_document",
+        "customer_requirements",
+        "technical_specification",
+        "technical_specs",
+        "project_charter",
+        "implementation_plan",
+        "deployment_plan",
+        "runbook",
+        "method_of_procedure",
+        "mop",
         "supporting"
     ];
 
@@ -378,7 +389,22 @@ public sealed record PulseAiPrivateFlowHiveTask(
     IReadOnlyList<string>? Risks = null,
     IReadOnlyList<string>? OpenQuestions = null,
     decimal? EstimatedHours = null,
-    string Priority = "normal");
+    string Priority = "normal",
+    IReadOnlyList<string>? Products = null,
+    IReadOnlyList<string>? Platforms = null,
+    IReadOnlyList<string>? Manufacturers = null,
+    IReadOnlyList<string>? Models = null,
+    IReadOnlyList<string>? SoftwareVersions = null,
+    IReadOnlyList<string>? FirmwareVersions = null,
+    IReadOnlyList<string>? LicensingRequirements = null,
+    IReadOnlyList<string>? Quantities = null,
+    IReadOnlyList<string>? Tools = null,
+    IReadOnlyList<string>? Systems = null,
+    IReadOnlyList<string>? Interfaces = null,
+    IReadOnlyList<string>? IntegrationPoints = null,
+    IReadOnlyList<string>? AccessRequirements = null,
+    IReadOnlyList<string>? RollbackSteps = null,
+    IReadOnlyList<string>? Assumptions = null);
 
 public sealed record PulseAiPrivateFlowHiveMilestone(
     string Name,
@@ -496,7 +522,10 @@ public sealed record PulseAiPrivateFlowHiveRequest(
     string? ProjectName,
     string? RequestedOutcome,
     string? DetailLevel = "comprehensive",
-    string? FeatureCode = null);
+    string? FeatureCode = null,
+    Guid? ProjectId = null,
+    Guid? TaskId = null,
+    Guid? AssignmentId = null);
 
 public sealed record PulseAiPrivateFeedbackRequest(
     string? FeedbackType,

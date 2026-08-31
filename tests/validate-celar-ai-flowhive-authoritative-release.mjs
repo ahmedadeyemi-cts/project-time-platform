@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,7 +16,15 @@ const main = read('src/frontend/project-time-web/src/main.jsx');
 const portal = read('src/frontend/project-time-web/src/ProjectForgeFlowHiveSyncPortal.jsx');
 const flowHive = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
 const repair = read('src/frontend/project-time-web/scripts/repair-module-066-generated-jsx.mjs');
-const generator = read('src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk');
+const privateRag = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
+const generatorPath = path.join(root, 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk');
+const productionPath = path.join(root, 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs');
+const generator = fs.readFileSync(generatorPath, 'utf8');
+const generatedProduction = execFileSync(
+  'awk',
+  ['-v', 'mode=production', '-f', generatorPath, productionPath],
+  { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }
+);
 const reliabilityGenerator = read('src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability-service.py');
 const publicFacts = read('src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs');
 const operationsIntent = read('src/backend/ProjectTime.Api/Modules/CelarAiOperationsIntentModule.cs');
@@ -45,13 +54,54 @@ for (const marker of [
   'draggable={Boolean(enterprise?.access?.canManage)}'
 ]) requireMarker(flowHive, marker, 'Module 066 enterprise UI');
 
+for (const marker of [
+  '.Where(task => !IsPhaseSummaryTask(task))',
+  'plan.Tasks.All(task => task.CitationIds.Count > 0)',
+  'private_flowhive_task_citations_incomplete',
+  'DeterministicEvidenceAnswer(',
+  'Every executable task must contain at least one citationIds value',
+  'Never emit a phase-only summary row'
+]) requireMarker(privateRag, marker, 'FlowHive executable-task citation gate');
+for (const phase of ['Plan', 'Design', 'Implement', 'Validate', 'Release']) {
+  requireMarker(privateRag, `\"${phase}\"`, `FlowHive ${phase} phase-summary filter`);
+}
+
 requireMarker(generator, 'MapCelarAiOperationsIntentEndpoints', 'operations-intent registration');
 requireMarker(generator, 'CelarAiAuthoritativePublicFactService', 'public-fact service registration');
+requireMarker(generator, 'PulseAiQuestionPlanner questionPlanner', 'stable product-knowledge planner injection');
+requireMarker(generator, 'IsStableProductKnowledgeQuestion', 'stable product-knowledge classifier');
+requireMarker(generator, 'ProductKnowledgeAnswer', 'stable product-knowledge deterministic answer');
+requireMarker(generator, 'celar_ai_governed_product_knowledge', 'stable product-knowledge provider marker');
+requireMarker(generator, 'PersistAuthoritativePublicFactAsync', 'current-fact persistence fast path');
+requireMarker(generator, 'authoritativePublicFactPreverified', 'current-fact preverification guard');
 requireMarker(generator, 'authoritativePublicFacts.VerifyAsync', 'pre-promotion current-fact verification');
 requireMarker(reliabilityGenerator, 'governed_public_ai', 'provider-source exclusion');
 requireMarker(reliabilityGenerator, 'authoritative_public_web', 'official source requirement');
 requireMarker(reliabilityGenerator, 'material_claim_citation_support_missing', 'claim citation gate');
 requireMarker(reliabilityGenerator, 'conflicting_evidence_requires_review', 'source conflict blocker');
+
+const chatStart = generatedProduction.indexOf('private static async Task<IResult> ChatAsync');
+if (chatStart < 0) throw new Error('generated runtime chat: ChatAsync was not generated');
+const productPlanIndex = generatedProduction.indexOf('questionPlanner.PlanHelpSearch(question).DirectKnowledgeAnswer', chatStart);
+const productFastPathIndex = generatedProduction.indexOf('ProductKnowledgeAnswer(directProductKnowledge)', chatStart);
+const preverifyIndex = generatedProduction.indexOf('var publicFactVerified = await authoritativePublicFacts.VerifyAsync(', chatStart);
+const providerIndex = generatedProduction.indexOf('result = await system.AskAsync(', chatStart);
+const fastPersistIndex = generatedProduction.indexOf('result = await PersistAuthoritativePublicFactAsync(', chatStart);
+if (productPlanIndex < 0 || productFastPathIndex < 0 || preverifyIndex < 0 || providerIndex < 0 || fastPersistIndex < 0) {
+  throw new Error('generated runtime chat: stable product, current-fact, or normal provider path is missing');
+}
+if (!(productPlanIndex < productFastPathIndex && productFastPathIndex < providerIndex)) {
+  throw new Error('generated runtime chat: governed stable product knowledge must resolve before any normal provider generation');
+}
+if (!(preverifyIndex < fastPersistIndex && fastPersistIndex < providerIndex)) {
+  throw new Error('generated runtime chat: authoritative current-fact verification must occur before any normal provider generation');
+}
+requireMarker(generatedProduction, 'normalized.Contains("flowhive", StringComparison.Ordinal)', 'FlowHive stable product signal');
+requireMarker(generatedProduction, 'normalized.Contains("purpose", StringComparison.Ordinal)', 'FlowHive purpose signal');
+requireMarker(generatedProduction, 'if (directProductKnowledge is not null)', 'stable product fast-path branch');
+requireMarker(generatedProduction, 'if (!ReferenceEquals(publicFactVerified, publicFactSeed))', 'recognized public-fact profile gate');
+requireMarker(generatedProduction, 'if (!authoritativePublicFactPreverified)', 'duplicate public-fact retrieval guard');
+requireMarker(generatedProduction, 'sourceCount = provisional.Sources.Count', 'persisted authoritative source evidence');
 
 for (const marker of [
   'https://www.whitehouse.gov/administration/',
@@ -79,8 +129,11 @@ forbidMarker(projectSummaryPatch, 'pr.probability, pr.impact', 'retired Migratio
 forbidMarker(projectSummaryPatch, 'pr.mitigation_plan', 'retired Migration 011 mitigation field');
 
 console.log('FLOWHIVE_ENTERPRISE_UI_CURRENT_MAIN=PASS');
+console.log('FLOWHIVE_EXECUTABLE_TASK_CITATION_GATE=PASS');
 console.log('PROJECT_FORGE_REFRESH_RACE_GUARD=PASS');
 console.log('PROJECT_FORGE_SELECTED_PROJECT_BRIDGE=PASS');
 console.log('CELAR_AI_AUTHORITATIVE_PUBLIC_FACT_PACKAGE=PASS');
+console.log('CELAR_AI_CURRENT_FACT_FAST_PATH=PASS');
+console.log('CELAR_AI_STABLE_PRODUCT_FAST_PATH=PASS');
 console.log('CELAR_AI_OPERATIONS_INTENT_REGISTRATION=PASS');
 console.log('PROJECT_MANAGEMENT_MIGRATION_077_COMPATIBILITY=PASS');

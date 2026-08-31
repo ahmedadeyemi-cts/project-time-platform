@@ -75,12 +75,9 @@ public static class ProjectFlowHiveDetailedPlanBuilder
             }
         }
 
-        generated = FitPackageChainsToSelectedWindow(
-            generated,
-            source.ProjectStartDate,
-            source.ProjectEndDate);
-
         var dependencies = BuildDependencies(workPackages, generatedWbs);
+        var milestones = BuildMilestones(workPackages, generatedWbs, privatePlan.Milestones);
+        var assignments = BuildRoleAssignments(generated);
         var notes = BuildPlanNotes(privatePlan, workPackages.Length);
 
         return source with
@@ -90,7 +87,8 @@ public static class ProjectFlowHiveDetailedPlanBuilder
             ProjectStartDate = source.ProjectStartDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
             Tasks = generated,
             Dependencies = dependencies,
-            Assignments = [],
+            Assignments = assignments,
+            Milestones = milestones,
             Notes = Limit(notes, 12_000, string.Empty),
             CelarAiCitationIds = privatePlan.CitationIds
                 .Distinct()
@@ -142,7 +140,10 @@ public static class ProjectFlowHiveDetailedPlanBuilder
             UsSignalResponsibilities: PhaseUsSignalResponsibilities(phase.Name, package),
             Prerequisites: PhasePrerequisites(phase.Name, package),
             Risks: PhaseRisks(phase.Name, package),
-            OpenQuestions: PhaseOpenQuestions(phase.Name, package),
+            OpenQuestions: PhaseOpenQuestions(phase.Name, package)
+                .Concat(TechnicalGapQuestions(package))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
             Priority: package.Priority,
             CitationIds: package.CitationIds,
             Comments: $"Source work package {packageNumber}; deterministic {phase.Name} expansion under {DetailContract}.",
@@ -151,7 +152,104 @@ public static class ProjectFlowHiveDetailedPlanBuilder
                 + $"Source WBS references: {string.Join(", ", package.SourceWbs.DefaultIfEmpty("not supplied"))}. "
                 + $"Source assumption flag: {(package.IsAssumption ? "yes" : "no")}. {citationText}",
                 4_000,
-                string.Empty));
+                string.Empty),
+            Products: Combine(24, 1_000, package.Products, TechnicalInventory(package, "product", "appliance", "solution")),
+            Platforms: Combine(24, 1_000, package.Platforms, TechnicalInventory(package, "platform", "cloud", "operating system", "hypervisor")),
+            Manufacturers: Combine(24, 1_000, package.Manufacturers, TechnicalInventory(package, "manufacturer", "vendor", "cisco", "microsoft", "nutanix", "vmware", "dell", "hpe")),
+            Models: Combine(24, 1_000, package.Models, TechnicalInventory(package, "model", "sku", "part number")),
+            SoftwareVersions: Combine(24, 1_000, package.SoftwareVersions, TechnicalInventory(package, "software", "version", "release", "edition")),
+            FirmwareVersions: Combine(24, 1_000, package.FirmwareVersions, TechnicalInventory(package, "firmware", "bios")),
+            LicensingRequirements: Combine(24, 1_000, package.LicensingRequirements, TechnicalInventory(package, "license", "licensing", "subscription", "entitlement")),
+            Quantities: Combine(24, 1_000, package.Quantities, TechnicalInventory(package, "quantity", "count", "total", "each", "units", "devices", "servers")),
+            Tools: Combine(24, 1_000, package.Tools, TechnicalInventory(package, "tool", "utility", "console", "portal", "cli")),
+            Systems: Combine(24, 1_000, package.Systems, TechnicalInventory(package, "system", "server", "cluster", "tenant", "application", "database")),
+            Interfaces: Combine(24, 1_000, package.Interfaces, TechnicalInventory(package, "interface", "api", "protocol", "port", "endpoint")),
+            IntegrationPoints: Combine(24, 1_000, package.IntegrationPoints, TechnicalInventory(package, "integrat", "connect", "federat", "synchron")),
+            AccessRequirements: Combine(24, 1_000, package.AccessRequirements, TechnicalInventory(package, "access", "permission", "credential", "account", "role")),
+            RollbackSteps: Combine(24, 1_000, package.RollbackSteps, TechnicalInventory(package, "rollback", "backout", "restore", "revert", "backup")),
+            Assumptions: Combine(
+                24,
+                1_000,
+                package.Assumptions,
+                package.IsAssumption ? new[] { package.Description } : [],
+                TechnicalInventory(package, "assum", "subject to", "dependent on")),
+            RequiredRoles: package.RequiredRoles.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
+    private static IReadOnlyList<ProjectFlowHivePlanMilestoneInput> BuildMilestones(
+        IReadOnlyList<CanonicalWorkPackage> workPackages,
+        IReadOnlyDictionary<(string PackageKey, string Phase), string> generatedWbs,
+        IReadOnlyList<PulseAiPrivateFlowHiveMilestone> sourceMilestones)
+    {
+        var milestones = workPackages.Select(package =>
+            new ProjectFlowHivePlanMilestoneInput(
+                Guid.NewGuid(),
+                Limit($"{package.Name} accepted and released", 300, "Work package accepted and released"),
+                Limit(
+                    $"Complete the cited release, handoff, and acceptance gate for {package.Description}",
+                    2_000,
+                    "Complete the cited release and acceptance gate."),
+                generatedWbs[(package.Key, "Release")],
+                null,
+                package.AcceptanceCriteria
+                    .Concat(package.ValidationSteps)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(20)
+                    .DefaultIfEmpty("Retain approved acceptance and release evidence for the cited work package.")
+                    .ToArray(),
+                package.CitationIds,
+                package.IsAssumption)).ToList();
+
+        foreach (var milestone in sourceMilestones.Take(100))
+        {
+            var citations = milestone.CitationIds.Distinct().OrderBy(value => value).ToArray();
+            if (citations.Length == 0) continue;
+            var related = workPackages.FirstOrDefault(package => package.CitationIds.Intersect(citations).Any());
+            var predecessor = related is null
+                ? generatedWbs[(workPackages[^1].Key, "Release")]
+                : generatedWbs[(related.Key, "Release")];
+            milestones.Add(new ProjectFlowHivePlanMilestoneInput(
+                Guid.NewGuid(),
+                Limit(milestone.Name, 300, "Cited project milestone"),
+                Limit(milestone.Description, 2_000, "Complete the cited project milestone."),
+                predecessor,
+                null,
+                milestone.AcceptanceEvidence
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(20)
+                    .DefaultIfEmpty("Retain objective acceptance evidence for the cited milestone.")
+                    .ToArray(),
+                citations,
+                milestone.IsAssumption));
+        }
+
+        return milestones
+            .GroupBy(item => $"{item.PredecessorWbs}|{item.Name}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Take(250)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<ProjectFlowHivePlanAssignmentInput> BuildRoleAssignments(
+        IReadOnlyList<ProjectFlowHivePlanTaskInput> tasks)
+    {
+        return tasks
+            .Where(task => !task.IsSummary && !task.IsMilestone)
+            .Select(task => new
+            {
+                Task = task,
+                Role = (task.RequiredRoles ?? [])
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+                    ?? "Required delivery role — PM review required"
+            })
+            .Select(item => new ProjectFlowHivePlanAssignmentInput(
+                item.Task.WbsNumber,
+                null,
+                item.Role,
+                100m,
+                Math.Max(0.25m, item.Task.RemainingEffortHours)))
+            .Take(5_000)
+            .ToArray();
     }
 
     private static IReadOnlyList<ProjectFlowHiveDependencyInput> BuildDependencies(
@@ -306,58 +404,50 @@ public static class ProjectFlowHiveDetailedPlanBuilder
         return allocated;
     }
 
-    private static List<ProjectFlowHivePlanTaskInput> FitPackageChainsToSelectedWindow(
-        List<ProjectFlowHivePlanTaskInput> tasks,
-        DateOnly? start,
-        DateOnly? end)
+
+    private static IReadOnlyList<string> TechnicalInventory(
+        CanonicalWorkPackage package,
+        params string[] terms)
     {
-        if (!start.HasValue || !end.HasValue || end.Value < start.Value) return tasks;
-        var workingDays = 0;
-        for (var date = start.Value; date <= end.Value; date = date.AddDays(1))
-            if (date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday) workingDays++;
-        if (workingDays < Phases.Length) return tasks;
-
-        var executable = tasks.Where(task => !task.IsSummary).ToArray();
-        var scaled = new Dictionary<Guid, int>();
-        foreach (var packageGroup in executable.GroupBy(task => PackageOrdinal(task.WbsNumber)))
-        {
-            var currentTotal = packageGroup.Sum(task => task.DurationWorkingDays);
-            if (currentTotal <= workingDays)
-            {
-                foreach (var task in packageGroup)
-                    scaled[task.ClientTaskId!.Value] = task.DurationWorkingDays;
-                continue;
-            }
-
-            var packageTasks = packageGroup.ToArray();
-            var ratio = (decimal)workingDays / currentTotal;
-            foreach (var task in packageTasks)
-                scaled[task.ClientTaskId!.Value] = Math.Max(1, (int)Math.Floor(task.DurationWorkingDays * ratio));
-            while (packageTasks.Sum(task => scaled[task.ClientTaskId!.Value]) > workingDays)
-            {
-                var candidate = packageTasks
-                    .Where(task => scaled[task.ClientTaskId!.Value] > 1)
-                    .OrderByDescending(task => scaled[task.ClientTaskId!.Value])
-                    .FirstOrDefault();
-                if (candidate is null) break;
-                scaled[candidate.ClientTaskId!.Value]--;
-            }
-        }
-
-        return tasks.Select(task => task.IsSummary || task.ClientTaskId is null || !scaled.TryGetValue(task.ClientTaskId.Value, out var duration)
-            ? task
-            : task with
-            {
-                DurationWorkingDays = duration,
-                RemainingEffortHours = Math.Min(task.RemainingEffortHours, Math.Max(0.25m, duration * 8m))
-            }).ToList();
+        var source = new[] { package.Name, package.Description }
+            .Concat(package.DetailedSteps)
+            .Concat(package.Inputs)
+            .Concat(package.Outputs)
+            .Concat(package.AcceptanceCriteria)
+            .Concat(package.ValidationSteps)
+            .Concat(package.CustomerResponsibilities)
+            .Concat(package.UsSignalResponsibilities)
+            .Concat(package.Prerequisites)
+            .Concat(package.Risks)
+            .Concat(package.OpenQuestions)
+            .Where(value => !string.IsNullOrWhiteSpace(value));
+        return source
+            .Where(value => terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            .Select(value => Limit(value, 1_000, string.Empty))
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(24)
+            .ToArray();
     }
 
-    private static string PackageOrdinal(string? wbs)
+    private static IReadOnlyList<string> TechnicalGapQuestions(CanonicalWorkPackage package)
     {
-        var value = wbs?.Trim() ?? string.Empty;
-        var separator = value.IndexOf('.');
-        return separator >= 0 && separator + 1 < value.Length ? value[(separator + 1)..] : value;
+        var questions = new List<string>();
+        void Require(string question, params string[] terms)
+        {
+            if (TechnicalInventory(package, terms).Count == 0) questions.Add(question);
+        }
+        if (package.Products.Count + package.Platforms.Count + package.Manufacturers.Count + package.Models.Count == 0)
+            Require("Confirm every product, platform, manufacturer, and model required for this work package; the SOW evidence did not state all of them.", "product", "platform", "manufacturer", "vendor", "model");
+        if (package.SoftwareVersions.Count + package.FirmwareVersions.Count == 0)
+            Require("Confirm applicable software and firmware versions and whether upgrades or compatibility constraints apply.", "software", "version", "firmware", "bios", "release");
+        if (package.LicensingRequirements.Count + package.Quantities.Count == 0)
+            Require("Confirm licensing, subscription, entitlement, and quantity requirements before implementation.", "license", "licensing", "subscription", "entitlement", "quantity", "count");
+        if (package.Tools.Count + package.Systems.Count + package.Interfaces.Count + package.IntegrationPoints.Count + package.AccessRequirements.Count == 0)
+            Require("Confirm the approved tools, systems, interfaces, integration points, and access path needed to perform and validate the work.", "tool", "system", "interface", "api", "integrat", "access", "permission");
+        if (package.RollbackSteps.Count == 0)
+            Require("Confirm the reviewed rollback or backout procedure and the objective trigger for invoking it.", "rollback", "backout", "restore", "revert");
+        return questions;
     }
 
     private static IReadOnlyList<string> PhaseSteps(string phase, CanonicalWorkPackage package)
@@ -643,6 +733,21 @@ public static class ProjectFlowHiveDetailedPlanBuilder
         public List<string> Prerequisites { get; } = [];
         public List<string> Risks { get; } = [];
         public List<string> OpenQuestions { get; } = [];
+        public List<string> Products { get; } = [];
+        public List<string> Platforms { get; } = [];
+        public List<string> Manufacturers { get; } = [];
+        public List<string> Models { get; } = [];
+        public List<string> SoftwareVersions { get; } = [];
+        public List<string> FirmwareVersions { get; } = [];
+        public List<string> LicensingRequirements { get; } = [];
+        public List<string> Quantities { get; } = [];
+        public List<string> Tools { get; } = [];
+        public List<string> Systems { get; } = [];
+        public List<string> Interfaces { get; } = [];
+        public List<string> IntegrationPoints { get; } = [];
+        public List<string> AccessRequirements { get; } = [];
+        public List<string> RollbackSteps { get; } = [];
+        public List<string> Assumptions { get; } = [];
 
         public void Merge(PulseAiPrivateFlowHiveTask task, IReadOnlyList<int> citations)
         {
@@ -662,6 +767,21 @@ public static class ProjectFlowHiveDetailedPlanBuilder
             AddDistinct(Prerequisites, task.Prerequisites);
             AddDistinct(Risks, task.Risks);
             AddDistinct(OpenQuestions, task.OpenQuestions);
+            AddDistinct(Products, task.Products);
+            AddDistinct(Platforms, task.Platforms);
+            AddDistinct(Manufacturers, task.Manufacturers);
+            AddDistinct(Models, task.Models);
+            AddDistinct(SoftwareVersions, task.SoftwareVersions);
+            AddDistinct(FirmwareVersions, task.FirmwareVersions);
+            AddDistinct(LicensingRequirements, task.LicensingRequirements);
+            AddDistinct(Quantities, task.Quantities);
+            AddDistinct(Tools, task.Tools);
+            AddDistinct(Systems, task.Systems);
+            AddDistinct(Interfaces, task.Interfaces);
+            AddDistinct(IntegrationPoints, task.IntegrationPoints);
+            AddDistinct(AccessRequirements, task.AccessRequirements);
+            AddDistinct(RollbackSteps, task.RollbackSteps);
+            AddDistinct(Assumptions, task.Assumptions);
 
             var candidateName = CanonicalName(task.Name);
             if (candidateName.Length > Name.Length) Name = Limit(candidateName, 240, Name);

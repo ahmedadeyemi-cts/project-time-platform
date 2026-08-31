@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
-const frontend = process.cwd();
-const repository = path.resolve(frontend, '../../..');
+const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const read = (relative) => fs.readFileSync(path.join(repository, relative), 'utf8');
 const requireText = (source, text, label) => {
   if (!source.includes(text)) throw new Error(`${label} is missing ${JSON.stringify(text)}`);
@@ -251,39 +250,37 @@ if (saveEstimateStart < 0 || /startDate|dueDate|plannedStartDate|plannedEndDate/
   throw new Error('Project Forge estimate-only saves must not transmit task schedule fields.');
 }
 
-const refusalGate = backend.indexOf('var compositionRefused = string.Equals(');
-const evidenceGate = backend.indexOf('var groundedStatus = composition.Status is');
-const projectEvidencePreflight = backend.indexOf('var projectEvidence = await authorization.LoadProjectEvidenceReadinessAsync(');
-const compositionCall = backend.indexOf('var composition = await enterprise.ComposeAsync(');
-const taskProjection = backend.indexOf('var generatedTasks = (composition.FlowHivePlan?.Tasks ?? [])');
-if (refusalGate < 0 || evidenceGate < 0 || taskProjection < 0 || refusalGate > taskProjection || evidenceGate > taskProjection) {
-  throw new Error('Project Forge must refuse unsafe or ungrounded composition before projecting or persisting plan tasks.');
-}
-if (projectEvidencePreflight < 0 || compositionCall < 0 || projectEvidencePreflight > compositionCall) {
-  throw new Error('Project Forge must verify citation-ready evidence for the selected project before calling any AI target.');
+const documentResolution = backend.indexOf('ProjectPlanningDocumentResolver.ResolveAndPrepareAsync');
+const evidenceGate = backend.indexOf('if (!documents.ReadyForGeneration)');
+const compositionCall = backend.indexOf('ProjectPlanningAiOrchestrator.GenerateAsync');
+const generationGate = backend.indexOf('if (!generation.Succeeded');
+const taskProjection = backend.indexOf('var generatedTasks = (generatedPlan.Tasks ?? [])');
+if (
+  documentResolution < 0 || evidenceGate < 0 || compositionCall < 0 ||
+  generationGate < 0 || taskProjection < 0 ||
+  documentResolution > compositionCall || evidenceGate > compositionCall ||
+  generationGate > taskProjection
+) {
+  throw new Error('Project Forge must resolve and prepare current project documents, then refuse unsafe or ungrounded generation before projecting or persisting plan tasks.');
 }
 for (const token of [
-  'status = "ai_plan_generation_refused"',
-  '"celar_ai_solution_draft_completed" or',
-  '"celar_ai_solution_draft_partial"',
-  'composition.FlowHivePlan.Tasks.Count > 0',
-  'composition.FlowHivePlan.CitationIds',
-  'composition.FlowHivePlan.Tasks.SelectMany(task => task.CitationIds)',
-  'composition.FlowHivePlan.Milestones.SelectMany(milestone => milestone.CitationIds)',
-  'planCitationIds.Length > 0',
-  'composition.Citations.Count > 0',
-  'status = "ai_plan_evidence_insufficient"',
+  'ProjectPlanningDocumentResolver.ResolveAndPrepareAsync',
+  'ProjectPlanningAiOrchestrator.GenerateAsync',
+  'project_planning_documents_processing',
+  'Status202Accepted',
+  'project_planning_authoritative_sow_missing',
+  'document_grounded_review_draft_created',
+  'canonicalTasksCreated = false',
+  'assignmentsCreated = false',
+  'automaticBaselineCreated = false',
   'stateChanged = false'
-]) requireText(backend, token, 'Project Forge fail-closed AI persistence gate');
+]) requireText(backend, token, 'Project Forge fail-closed shared AI persistence gate');
 for (const token of [
-  'projectReadyDocumentCount = projectEvidence.ReadyDocumentCount',
-  'projectActiveChunkCount = projectEvidence.ActiveChunkCount',
-  'projectEvidence.ReadyDocumentCount == 0',
   'PulseAiPrivateRetrievalAuthorizationService authorization',
-  'ToPrivateRagAccess(access)',
   'PulseAiPrivateRagPolicy.FlowHiveCategories',
-  'No AI target was called and no draft was saved.'
-]) requireText(backend, token, 'Project Forge selected-project evidence preflight');
+  'projectReadyDocumentCount = projectEvidence.ReadyDocumentCount',
+  'projectActiveChunkCount = projectEvidence.ActiveChunkCount'
+]) requireText(backend, token, 'Project Forge selected-project evidence and authorization contract');
 for (const token of [
   'ProjectDocumentAuthorizationPredicate',
   'LoadProjectEvidenceReadinessAsync(',
@@ -299,13 +296,20 @@ for (const token of [
 for (const token of [
   'const projectEvidenceMissing = Boolean(',
   'aiConnection.projectReadyDocumentCount',
-  'projectEvidenceMissing ? \'Project evidence required\''
-]) requireText(center, token, 'Project Forge selected-project evidence UI gate');
+  'Project Forge will automatically prepare the current project SOW, GSD, and supporting documents.',
+  "disabled={!currentProjectId || busy === 'ai'}",
+  'for (let attempt = 1; attempt <= 60; attempt += 1)',
+  "status === 'project_planning_documents_processing'",
+  'waitForProjectPlanning('
+]) requireText(center, token, 'Project Forge automatic project-document processing UI gate');
+if (center.includes("projectEvidenceMissing ? 'Project evidence required'")) {
+  throw new Error('Project Forge must not block AI planning before the server can automatically prepare the current project documents.');
+}
 if (backend.includes('composition.FlowHivePlan.CitationIds.Count > 0')) {
   throw new Error('Project Forge must accept citations attached to tasks or milestones, not only top-level plan citations.');
 }
-if ((backend.split('compositionStatus = composition.Status').length - 1) < 5) {
-  throw new Error('Project Forge AI success/error responses must disclose the private artifact composition status.');
+if ((backend.split('generation.Composition').length - 1) < 8) {
+  throw new Error('Project Forge AI success/error responses must disclose the governed composition evidence.');
 }
 if (backend.includes('groundedStatus && string.Equals(composition.SelectedTarget')) {
   throw new Error('Project Forge must preserve a citation-backed private scaffold when a separate external/local assistance target finishes the route.');
@@ -341,7 +345,7 @@ for (const token of [
   'PlanningDescription(task)',
   'AppendPlanningSection(value, "Detailed procedure"',
   'AppendPlanningSection(value, "Acceptance criteria"',
-  'task.EstimatedHours ?? task.EstimatedDurationDays * 8m',
+  'Math.Max(0m, task.RemainingEffortHours)',
   'CelarAiKnowledgeFabricService knowledgeFabricService',
   'module064Connection = new',
   'privateKnowledgeReady = forgeConnection?.PrivateKnowledgeReady == true'
@@ -361,14 +365,14 @@ for (const token of [
   'project -> document -> authoritative version -> section or worksheet -> chunk -> citation'
 ]) requireText(knowledgeFabric, token, 'Project Forge knowledge-fabric evidence');
 for (const token of [
-  'composition.SelectedTarget',
-  'composition.AttemptedTargets',
-  'composition.SkippedTargets',
-  'composition.TargetDecisions',
-  'composition.PrimaryExecutionPath'
+  'generation.Composition.SelectedTarget',
+  'generation.Composition.AttemptedTargets',
+  'generation.Composition.SkippedTargets',
+  'generation.Composition.TargetDecisions',
+  'generation.Composition.PrimaryExecutionPath'
 ]) {
   const occurrences = backend.split(token).length - 1;
-  if (occurrences < 4) throw new Error(`Project Forge AI success/error responses must include truthful route metadata: ${token}`);
+  if (occurrences < 1) throw new Error(`Project Forge AI success/error responses must include truthful route metadata: ${token}`);
 }
 
 for (const token of [

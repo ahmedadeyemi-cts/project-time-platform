@@ -582,10 +582,12 @@ assert(
     && enterpriseService.includes('WorkPackages: workPackages')
     && forgeModule.includes('PlanningDescription(task)')
     && forgeModule.includes('AppendPlanningSection(value, "Detailed procedure"')
-    && forgeModule.includes('task.EstimatedHours ?? task.EstimatedDurationDays * 8m')
+    && forgeModule.includes('Math.Max(1, task.DurationWorkingDays)')
+    && forgeModule.includes('Math.Max(0m, task.RemainingEffortHours)')
+    && forgeModule.includes('automaticBaselineCreated = false')
     && forgePanel.includes('Project Forge is connected')
     && forgePanel.includes('automatically fills each customer-facing task'),
-  'SOW, FlowHive, and Project Forge use one capability-aware private planning schema that automatically fills detailed customer-facing work sections and preserves review controls'
+  'SOW, FlowHive, and Project Forge use one capability-aware private planning schema that automatically fills detailed customer-facing work sections, preserves source estimates, and prohibits automatic baseline creation'
 );
 
 assert(

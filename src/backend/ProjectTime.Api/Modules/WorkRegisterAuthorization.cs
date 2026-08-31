@@ -41,6 +41,11 @@ public static class WorkRegisterAuthorization
 
     public static WebApplication UseWorkRegisterAuthorization(this WebApplication app)
     {
+        // Program.cs already calls this startup extension exactly once. Register the
+        // shared FlowHive/Project Forge collaboration routes here so the endpoint
+        // contract cannot exist in source without also entering the runtime route table.
+        app.MapProjectPlanningCollaborationEndpoints();
+
         app.Use(async (context, next) =>
         {
             var path = context.Request.Path.Value ?? string.Empty;
@@ -52,7 +57,11 @@ public static class WorkRegisterAuthorization
 
             if (await ProjectManagementWorkRegisterScope.TryHandleReadAsync(
                     context,
-                    _ => next()))
+                    async _ =>
+                    {
+                        if (!await WorkRegisterDocumentContinuityModule.TryHandleAsync(context))
+                            await next();
+                    }))
             {
                 return;
             }
@@ -149,6 +158,9 @@ public static class WorkRegisterAuthorization
                 return;
             }
 
+            if (await WorkRegisterDocumentContinuityModule.TryHandleAsync(context))
+                return;
+
             await next();
         });
 
@@ -223,13 +235,28 @@ public static class WorkRegisterAuthorization
         var pathSegments = normalizedPath
             .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+        var isDocumentContinuityPath = pathSegments.Length == 6
+            && string.Equals(pathSegments[0], "api", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(pathSegments[1], "work-register", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(pathSegments[2], "projects", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(pathSegments[3], out _)
+            && string.Equals(pathSegments[4], "documents", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(pathSegments[5], out _);
+
         var isPurchaseOrderPath = pathSegments.Length == 5
             && string.Equals(pathSegments[0], "api", StringComparison.OrdinalIgnoreCase)
             && string.Equals(pathSegments[1], "work-register", StringComparison.OrdinalIgnoreCase)
             && string.Equals(pathSegments[2], "projects", StringComparison.OrdinalIgnoreCase)
             && string.Equals(pathSegments[4], "purchase-order", StringComparison.OrdinalIgnoreCase);
 
-        if (isPurchaseOrderPath)
+        if (isDocumentContinuityPath)
+        {
+            candidates.Add(new WorkRegisterProjectIdCandidate(
+                "route:projectId",
+                pathSegments[3],
+                IsEndpointProjectId: true));
+        }
+        else if (isPurchaseOrderPath)
         {
             candidates.Add(new WorkRegisterProjectIdCandidate(
                 "route:projectId",

@@ -370,7 +370,10 @@ public sealed class PulseAiPrivateDocumentRuntimeService
     {
         var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         if (release.IsCandidate)
-            return Empty("release_candidate_read_only", "release_candidate_read_only");
+        {
+            if (!PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(release))
+                return Empty("release_candidate_read_only", "release_candidate_read_only");
+        }
         var options = Options();
         if (!options.WorkerEnabled)
         {
@@ -502,9 +505,12 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             }
             if (!scan.Clean)
             {
+                var diagnosticCode = string.IsNullOrWhiteSpace(scan.DiagnosticCode)
+                    ? "malware_scan_failed"
+                    : scan.DiagnosticCode;
                 return await RetryOrFailAsync(
                     job,
-                    "malware_scan_failed",
+                    diagnosticCode,
                     "The private malware scanner did not return a clean result.",
                     scan.ToPublicEvidence(),
                     cancellationToken);
@@ -644,9 +650,33 @@ public sealed class PulseAiPrivateDocumentRuntimeService
 
             if (!extraction.ExtractionSucceeded)
             {
+                var diagnosticCode = ResolveExtractionFailureDiagnostic(extraction);
+                if (IsDeterministicDocumentPolicyFailure(diagnosticCode))
+                {
+                    await _repository.CompleteTerminalAsync(
+                        job,
+                        "failed",
+                        "failed",
+                        "processing_failed",
+                        "failed",
+                        diagnosticCode,
+                        "The private extractor rejected the document under a deterministic safety policy. Correct the policy blocker before retrying.",
+                        extraction.ToPublicEvidence(),
+                        cancellationToken);
+                    return Result(
+                        "failed",
+                        job,
+                        null,
+                        extraction.SectionCount,
+                        0,
+                        0,
+                        diagnosticCode,
+                        extraction.Warnings);
+                }
+
                 return await RetryOrFailAsync(
                     job,
-                    extraction.Blockers.Count > 0 ? "private_extraction_blocked" : "private_extraction_failed",
+                    diagnosticCode,
                     "The private extractor did not return a usable citation-preserving document representation.",
                     extraction.ToPublicEvidence(),
                     cancellationToken);
@@ -808,6 +838,29 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             catch (OperationCanceledException) { }
         }
     }
+
+    private static string ResolveExtractionFailureDiagnostic(PulseAiDocumentExtractionResult extraction)
+    {
+        var status = extraction.Status?.Trim().ToLowerInvariant() ?? string.Empty;
+        return status switch
+        {
+            "blocked_by_document_path_policy"
+                or "blocked_by_document_signature_policy"
+                or "blocked_by_document_malware_attestation"
+                or "blocked_by_document_size_policy"
+                or "blocked_by_document_file_policy"
+                or "blocked_by_document_macro_policy"
+                or "blocked_by_document_archive_policy"
+                or "blocked_by_document_extension_policy"
+                or "blocked_by_document_safety_policy" => status,
+            _ => extraction.Blockers.Count > 0
+                ? "private_extraction_blocked"
+                : "private_extraction_failed"
+        };
+    }
+
+    private static bool IsDeterministicDocumentPolicyFailure(string diagnosticCode) =>
+        diagnosticCode.StartsWith("blocked_by_document_", StringComparison.Ordinal);
 
     private static bool IsSha256(string value) =>
         value.Length == 64 && value.All(Uri.IsHexDigit);

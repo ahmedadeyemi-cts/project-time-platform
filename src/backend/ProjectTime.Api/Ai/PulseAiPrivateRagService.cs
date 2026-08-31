@@ -294,9 +294,9 @@ public sealed class PulseAiPrivateRagService
         }
         var projectCode = Clean(request.ProjectCode, 120);
         var projectName = Clean(request.ProjectName, 300);
-        if (projectCode.Length == 0 && projectName.Length == 0)
+        if (!request.ProjectId.HasValue && projectCode.Length == 0 && projectName.Length == 0)
         {
-            return Blocked(feature, purpose, "project_context_required", "An authorized project code or name is required.");
+            return Blocked(feature, purpose, "project_context_required", "An exact authorized project identity, project code, or project name is required.");
         }
         var requestedOutcome = Clean(request.RequestedOutcome, 6_000);
         var question = $"""
@@ -313,9 +313,9 @@ public sealed class PulseAiPrivateRagService
             feature: feature,
             purpose: purpose,
             question: question,
-            projectId: null,
-            taskId: null,
-            assignmentId: null,
+            projectId: request.ProjectId,
+            taskId: request.TaskId,
+            assignmentId: request.AssignmentId,
             projectCode: projectCode,
             projectName: projectName,
             requireTimesheetFlag: false,
@@ -636,7 +636,9 @@ public sealed class PulseAiPrivateRagService
             if (dto is null) throw new JsonException("FlowHive plan JSON was empty.");
             var plan = new PulseAiPrivateFlowHivePlan(
                 Objective: Limit(dto.Objective, 4_000, "Prepare a reviewable project plan from the authorized project evidence."),
-                Tasks: asTasks(dto.Tasks, retrieval.Chunks.Count),
+                Tasks: asTasks(dto.Tasks, retrieval.Chunks.Count)
+                    .Where(task => !IsPhaseSummaryTask(task))
+                    .ToArray(),
                 Milestones: asMilestones(dto.Milestones, retrieval.Chunks.Count),
                 Dependencies: List(dto.Dependencies, 100, 2_000),
                 RequiredRoles: List(dto.RequiredRoles, 60, 1_000),
@@ -648,6 +650,32 @@ public sealed class PulseAiPrivateRagService
                 CitationIds: ValidCitationIds(dto.CitationIds, retrieval.Chunks.Count),
                 Confidence: Math.Clamp(dto.Confidence ?? retrieval.CoverageScore, 0m, 1m),
                 ConfidenceExplanation: Limit(dto.ConfidenceExplanation, 2_000, "Confidence reflects private source coverage. Dates and dependencies require deterministic FlowHive scheduling and Engineering review."));
+
+            // The shared planning orchestrator requires every executable model task
+            // to cite current authorized evidence. Keep that contract aligned here:
+            // structural phase-summary rows are not executable work packages and are
+            // removed, while any remaining uncited task causes the model artifact to
+            // fail closed into the existing deterministic citation-preserving scaffold.
+            var taskCitationsComplete = plan.Tasks.Count > 0
+                && plan.Tasks.All(task => task.CitationIds.Count > 0);
+            if (!taskCitationsComplete && AllowsDeterministicCitedPlanningFallback(query.FeatureCode))
+            {
+                var fallback = DeterministicEvidenceAnswer(
+                    answerRunId,
+                    query,
+                    retrieval,
+                    model with { DiagnosticCode = "private_flowhive_task_citations_incomplete" },
+                    directKnowledge: null,
+                    flowHive: true);
+                return fallback with
+                {
+                    Warnings =
+                    [
+                        "The private model returned one or more executable planning tasks without complete authorized source citations. Celar AI rejected those unsupported tasks and preserved a deterministic citation-grounded scope scaffold instead; PM and Engineering review remains mandatory."
+                    ]
+                };
+            }
+
             var allCitationIds = plan.CitationIds
                 .Concat(plan.Tasks.SelectMany(task => task.CitationIds))
                 .Concat(plan.Milestones.SelectMany(milestone => milestone.CitationIds))
@@ -940,6 +968,14 @@ public sealed class PulseAiPrivateRagService
     private static bool AllowsDeterministicCitedPlanningFallback(string featureCode) =>
         featureCode is CelarAiCapabilityCatalog.ProjectFlowHivePlan
             or CelarAiCapabilityCatalog.ProjectForgePlanEstimate;
+
+    private static bool IsPhaseSummaryTask(PulseAiPrivateFlowHiveTask task)
+    {
+        var phase = task.Phase?.Trim() ?? string.Empty;
+        if (phase is not ("Plan" or "Design" or "Implement" or "Validate" or "Release"))
+            return false;
+        return string.Equals(task.Name?.Trim(), phase, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string DeterministicPlanningPhase(
         PulseAiPrivateRetrievedChunk chunk,
@@ -1273,7 +1309,22 @@ public sealed class PulseAiPrivateRagService
                 Risks = List(task.Risks, 40, 2_000),
                 OpenQuestions = List(task.OpenQuestions, 40, 2_000),
                 EstimatedHours = task.EstimatedHours is null ? null : Math.Clamp(task.EstimatedHours.Value, 0.1m, 4_000m),
-                Priority = PlanningPriority(task.Priority)
+                Priority = PlanningPriority(task.Priority),
+                Products = List(task.Products, 40, 1_500),
+                Platforms = List(task.Platforms, 40, 1_500),
+                Manufacturers = List(task.Manufacturers, 40, 1_500),
+                Models = List(task.Models, 40, 1_500),
+                SoftwareVersions = List(task.SoftwareVersions, 40, 1_500),
+                FirmwareVersions = List(task.FirmwareVersions, 40, 1_500),
+                LicensingRequirements = List(task.LicensingRequirements, 40, 2_000),
+                Quantities = List(task.Quantities, 40, 1_500),
+                Tools = List(task.Tools, 40, 1_500),
+                Systems = List(task.Systems, 40, 1_500),
+                Interfaces = List(task.Interfaces, 40, 1_500),
+                IntegrationPoints = List(task.IntegrationPoints, 40, 2_000),
+                AccessRequirements = List(task.AccessRequirements, 40, 2_000),
+                RollbackSteps = List(task.RollbackSteps, 40, 2_000),
+                Assumptions = List(task.Assumptions, 40, 2_000)
             })
             .ToArray();
 
@@ -1405,6 +1456,7 @@ public sealed class PulseAiPrivateRagService
         Prepare the most complete reviewable WBS, work packages, milestones, dependency logic, roles, assumptions, risks, out-of-scope items, open questions, and source conflicts supported by the private evidence for {feature}.
         Requested outcome: {(requestedOutcome.Length == 0 ? "Create the full private document-to-plan draft." : requestedOutcome)}
         Begin with the approved SOW Scope of Services. Expand each supported scope component into logically ordered, executable tasks distributed across Plan, Design, Implement, Validate, and Release. Do not repeat phase summary rows as tasks; return the detailed child work packages and their phase values.
+        Every executable task must contain at least one citationIds value that references the supplied authorized evidence. Never emit a phase-only summary row such as a task named only Plan, Design, Implement, Validate, or Release. If a task cannot be source-cited, do not return it as executable work; record the missing fact in openQuestions instead.
         Automatically fill every requested section and every structured task field. Preserve source citations and identify every missing contractual or technical input. Do not leave a field empty when the evidence supports it; when evidence does not support a value, provide a clearly labeled assumption or open question instead of inventing a fact.
         """;
 

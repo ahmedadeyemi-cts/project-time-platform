@@ -112,7 +112,8 @@ rejectText(rollback, 'DROP COLUMN IF EXISTS account_executive_user_id', 'destruc
 
 for (const marker of [
   'SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=SUCCEEDED',
-  'projectpulse-migration"] == "086-088-093"',
+  'projectpulse-migration"] == "086-088-093-094-095-096-097"',
+  'MIGRATION_097=APPLIED_AND_VERIFIED',
   'main-db-password',
   'PROJECTPULSE_ENVIRONMENT'
 ]) requireText(migrationRunner, marker, 'protected Test private-network migration runner');
@@ -120,7 +121,7 @@ for (const marker of [
   'environment: test',
   'group: projectpulse-deploy-test',
   'queue: max',
-  'Migrations 086, 088, and 093',
+  'Migrations 086, 088, 093, 094, 095, 096, and 097',
   'PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true',
   'Project Management summary',
   'FlowHive enterprise workspace',
@@ -128,6 +129,13 @@ for (const marker of [
   'Run protected-Test utilization role-scoping UAT',
   'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSHOT_V1',
   'migration093:"applied_and_verified"',
+  'migration094:"applied_and_verified"',
+  'migration095:"applied_and_verified"',
+  'migration096:"applied_and_verified"',
+  'migration097:"applied_and_verified"',
+  'FLOWHIVE_AI_PLANNER_UAT=PASSED',
+  'PROJECT_FORGE_AI_PLANNER_UAT=PASSED',
+  'CELAR_AI_STABILITY_UAT=PASSED',
   'Who is the current President of the United States?',
   'Who is the CEO of US Signal?',
   'Production mutation: none'
@@ -137,6 +145,36 @@ requireText(deployment, "'Select or type a customer'", 'deployed SOW customer-se
 rejectText(deployment, "'Customer from Customer Directory'", 'stale case-sensitive customer-selector marker');
 requireText(deployment, "'FlowHive enterprise controls are temporarily unavailable.'", 'deployed FlowHive degraded-state marker');
 rejectText(deployment, "'FlowHive enterprise workspace is not ready'", 'stale FlowHive bundle marker');
+
+requireText(
+  deployment,
+  '[[ "$flowhive_curl_exit" == 0 && ( "$flowhive_status" == 200 || "$flowhive_status" == 202 ) ]]',
+  'FlowHive nonterminal HTTP 200/202 planner poll contract'
+);
+requireText(deployment, 'flowhive-ai-planner-polls.log', 'FlowHive planner poll evidence');
+requireText(deployment, 'deployment_health_verified=true', 'post-deployment health marker');
+const healthReady = deployment.indexOf('[[ "$READY" == true ]] || fail \'Protected Test did not become healthy.\'');
+const healthVerified = deployment.indexOf("echo 'deployment_health_verified=true' >> \"$GITHUB_OUTPUT\"", healthReady);
+const firstLoginHelper = deployment.indexOf('          login() {', healthReady);
+if (healthReady < 0 || healthVerified <= healthReady || firstLoginHelper <= healthVerified) {
+  throw new Error('Protected-Test health must be verified and exported before functional UAT begins.');
+}
+const rollbackStart = deployment.indexOf('      - name: Restore exact prior Test images after application failure');
+const evidenceUploadStart = deployment.indexOf('      - name: Upload protected-Test deployment evidence', rollbackStart);
+if (rollbackStart < 0 || evidenceUploadStart <= rollbackStart) {
+  throw new Error('Protected-Test rollback step boundaries are incomplete.');
+}
+const applicationRollback = deployment.slice(rollbackStart, evidenceUploadStart);
+requireText(
+  applicationRollback,
+  "steps.uat.outputs.deployment_health_verified != 'true'",
+  'health-scoped protected-Test rollback boundary'
+);
+rejectText(
+  applicationRollback,
+  "if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}",
+  'unbounded functional-UAT automatic rollback'
+);
 
 for (const marker of [
   "ENGINEER='demo.engineer@ussignal.local'",
@@ -189,11 +227,11 @@ if (!auditEvents.some((event) =>
 }
 
 const authGetStart = deployment.indexOf('          auth_get() {');
-const authPostStart = deployment.indexOf('          auth_post() {', authGetStart);
+const authPostStart = deployment.indexOf('          auth_post_as() {', authGetStart);
 const requireGetStart = deployment.indexOf('          require_get() {', authPostStart);
 const firstRequiredGet = deployment.indexOf("          require_get 'Project Management summary'", requireGetStart);
 if (authGetStart < 0 || authPostStart < 0 || requireGetStart < 0 || firstRequiredGet < 0) {
-  throw new Error('Protected-Test authenticated GET UAT helpers are incomplete.');
+  throw new Error('Protected-Test authenticated GET and scoped POST UAT helpers are incomplete.');
 }
 const authGet = deployment.slice(authGetStart, authPostStart);
 const requireGet = deployment.slice(requireGetStart, firstRequiredGet);

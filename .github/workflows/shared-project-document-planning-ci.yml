@@ -1,0 +1,151 @@
+name: Validate Shared FlowHive and Project Forge Document Planning
+
+on:
+  pull_request:
+    paths:
+      - '.github/shared-project-document-planning-governed-release-files.txt'
+      - '.github/workflows/shared-project-document-planning-ci.yml'
+      - '.github/workflows/projectpulse-deploy-test.yml'
+      - '.github/workflows/projectpulse-release-test-control-ci.yml'
+      - 'database/migrations/094_flowhive_canonical_sow_authority.sql'
+      - 'database/migrations/095_project_planning_collaboration_access.sql'
+      - 'database/migrations/096_project_planning_document_authority.sql'
+      - 'database/migrations/097_project_planning_identity_safe_admission.sql'
+      - 'database/rollback/096_project_planning_document_authority_rollback.sql'
+      - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
+      - 'scripts/release-test/**'
+      - 'src/backend/ProjectTime.Api/Ai/**'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHive*'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectForge*'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanning*'
+      - 'src/backend/ProjectTime.Api/Modules/WorkRegisterDocumentContinuityModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs'
+      - 'src/frontend/project-time-web/src/ProjectFlowHive*'
+      - 'src/frontend/project-time-web/src/ProjectForge*'
+      - 'src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js'
+      - 'src/frontend/project-time-web/src/work-register-document-integrity.js'
+      - 'src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
+      - 'tests/FlowHiveDetailedPlannerTests/**'
+      - 'tests/FlowHiveSowFreshnessTests/**'
+      - 'tests/test-flowhive-canonical-sow-authority-migration-094.sh'
+      - 'tests/test-project-planning-collaboration-migration-095.sh'
+      - 'tests/test-project-planning-document-authority-migration-096.sh'
+      - 'tests/test-project-planning-identity-safe-admission-migration-097.sh'
+      - 'tests/test-pulse-ai-runtime-job-query-shape.sh'
+      - 'tests/validate-shared-project-document-planning.mjs'
+      - 'tests/validate-work-register-document-continuity.mjs'
+      - 'tests/validate-systemwide-enterprise-reliability.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-project-document-planning-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate shared project-document planning
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: projectpulse
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: projectpulse
+      PGDATABASE: postgres
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate shared document, access, and module contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-work-register-document-continuity.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          (cd src/frontend/project-time-web && node scripts/validate-module-033-project-forge.mjs)
+
+      - name: Validate governed migrations and runtime job query
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          bash tests/test-project-planning-identity-safe-admission-migration-097.sh
+          bash tests/test-pulse-ai-runtime-job-query-shape.sh
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+
+      - name: Run detailed Planner regressions
+        run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+
+      - name: Run SOW freshness regressions
+        run: dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+
+      - name: Build and start the API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+
+      - name: Audit and build the frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Validate clean source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          if git ls-tree -r --name-only HEAD | grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64|one-time-flowhive-clean)'; then
+            echo 'Temporary recovery artifacts remain in the release source.' >&2
+            exit 1
+          fi
+          echo 'SHARED_PROJECT_DOCUMENT_PLANNING=VERIFIED'
+          echo 'MIGRATION_097=CONTRACT_VALIDATED'
+          echo 'PRIVATE_RUNTIME_JOB_QUERY=CONTRACT_VALIDATED'
+          echo 'PRODUCTION_MUTATION=NONE'
