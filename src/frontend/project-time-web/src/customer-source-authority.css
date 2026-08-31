@@ -1,0 +1,184 @@
+.customer-source-authority {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1250;
+  width: min(390px, calc(100vw - 32px));
+  max-height: min(78vh, 760px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border-color, rgba(124, 145, 178, 0.35));
+  border-radius: 16px;
+  background: var(--surface-elevated, rgba(19, 30, 49, 0.98));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  color: var(--text-primary, inherit);
+  backdrop-filter: blur(14px);
+}
+
+.customer-source-authority__header,
+.customer-source-authority__preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.customer-source-authority__header {
+  margin-bottom: 14px;
+}
+
+.customer-source-authority__eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.customer-source-authority__status {
+  max-width: 180px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: right;
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.customer-source-authority__status--ready {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.customer-source-authority__status--attention {
+  background: rgba(245, 158, 11, 0.16);
+}
+
+.customer-source-authority__status--manual {
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.customer-source-authority__field {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.customer-source-authority__field select,
+.customer-source-authority__field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border: 1px solid var(--border-color, rgba(124, 145, 178, 0.35));
+  border-radius: 9px;
+  background: var(--surface, rgba(15, 23, 42, 0.88));
+  color: inherit;
+}
+
+.customer-source-authority button {
+  border: 1px solid var(--border-color, rgba(124, 145, 178, 0.35));
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: var(--surface, rgba(15, 23, 42, 0.88));
+  color: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.customer-source-authority button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.customer-source-authority__primary {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.customer-source-authority__mode-card {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border-color, rgba(124, 145, 178, 0.3));
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.customer-source-authority__mode-card p,
+.customer-source-authority__note,
+.customer-source-authority__mode-card small {
+  margin: 7px 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  opacity: 0.82;
+}
+
+.customer-source-authority__pull {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.customer-source-authority__preview {
+  margin-top: 12px;
+}
+
+.customer-source-authority__preview-list {
+  display: grid;
+  gap: 5px;
+  max-height: 230px;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.customer-source-authority__preview-list > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.07);
+}
+
+.customer-source-authority__preview-list span {
+  display: grid;
+  gap: 2px;
+}
+
+.customer-source-authority__preview-list small {
+  opacity: 0.68;
+  text-transform: capitalize;
+}
+
+.customer-source-authority__alert,
+.customer-source-authority__message {
+  margin: 9px 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.customer-source-authority__message {
+  background: rgba(59, 130, 246, 0.13);
+}
+
+.customer-source-authority__alert--compact {
+  margin-top: 10px;
+}
+
+html[data-customer-source-mode='manual'] .customer-directory-center[data-module='021'] .customer-sell-sync,
+html[data-customer-source-mode='crm'] .customer-directory-center[data-module='021'] .customer-sell-sync {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  .customer-source-authority {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    max-height: 68vh;
+  }
+}
