@@ -87,6 +87,11 @@ assert.match(
   /az containerapp revision deactivate/,
   'Module 001B protected-Test reconciliation must deactivate stale active revisions explicitly'
 );
+assert.doesNotMatch(
+  revisionWait,
+  /if\s+\[\[\s*"\$ACTIVE"\s*==\s*true\s*\]\];\s*then[\s\S]*?az containerapp revision deactivate/,
+  'Module 001B reconciliation must not wait for the expected revision to become active before deactivating stale active revisions'
+);
 assert.match(
   revisionWait,
   /singleRevisionConverged=true/,
