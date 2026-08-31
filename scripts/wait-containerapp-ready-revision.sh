@@ -67,30 +67,31 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
     [[ "$LATEST_REVISION" == "$EXPECTED_REVISION" ]] \
       || fail "Refusing Module 001B revision reconciliation because a different revision is now latest: expected=$EXPECTED_REVISION latest=${LATEST_REVISION:-none}."
 
-    if [[ "$ACTIVE" == true ]]; then
-      REVISIONS_JSON="$(az containerapp revision list \
+    # In Single revision mode the expected revision can be latestReady while still inactive
+    # because the prior revision remains active. Reconcile stale active revisions as soon as
+    # the expected revision is ready; requiring ACTIVE=true here creates a circular wait.
+    REVISIONS_JSON="$(az containerapp revision list \
+      --resource-group "$RESOURCE_GROUP" \
+      --name "$APP_NAME" \
+      --output json --only-show-errors)" \
+      || fail "Could not inspect active revisions for Module 001B protected-Test reconciliation."
+    mapfile -t ACTIVE_REVISIONS < <(jq -r '.[]? | select(.properties.active == true) | .name' <<<"$REVISIONS_JSON")
+
+    if [[ ${#ACTIVE_REVISIONS[@]} -eq 1 && "${ACTIVE_REVISIONS[0]}" == "$EXPECTED_REVISION" ]]; then
+      echo "CONTAINERAPP_CANDIDATE_READY app=$APP_NAME revision=$EXPECTED_REVISION image=$EXPECTED_IMAGE singleRevisionConverged=true"
+      exit 0
+    fi
+
+    for stale_revision in "${ACTIVE_REVISIONS[@]}"; do
+      [[ "$stale_revision" == "$EXPECTED_REVISION" ]] && continue
+      echo "MODULE001B_STALE_REVISION_DEACTIVATE app=$APP_NAME expected=$EXPECTED_REVISION stale=$stale_revision" >&2
+      az containerapp revision deactivate \
         --resource-group "$RESOURCE_GROUP" \
         --name "$APP_NAME" \
-        --output json --only-show-errors)" \
-        || fail "Could not inspect active revisions for Module 001B protected-Test reconciliation."
-      mapfile -t ACTIVE_REVISIONS < <(jq -r '.[]? | select(.properties.active == true) | .name' <<<"$REVISIONS_JSON")
-
-      if [[ ${#ACTIVE_REVISIONS[@]} -eq 1 && "${ACTIVE_REVISIONS[0]}" == "$EXPECTED_REVISION" ]]; then
-        echo "CONTAINERAPP_CANDIDATE_READY app=$APP_NAME revision=$EXPECTED_REVISION image=$EXPECTED_IMAGE singleRevisionConverged=true"
-        exit 0
-      fi
-
-      for stale_revision in "${ACTIVE_REVISIONS[@]}"; do
-        [[ "$stale_revision" == "$EXPECTED_REVISION" ]] && continue
-        echo "MODULE001B_STALE_REVISION_DEACTIVATE app=$APP_NAME expected=$EXPECTED_REVISION stale=$stale_revision" >&2
-        az containerapp revision deactivate \
-          --resource-group "$RESOURCE_GROUP" \
-          --name "$APP_NAME" \
-          --revision "$stale_revision" \
-          --output none --only-show-errors \
-          || fail "Failed to deactivate stale Module 001B protected-Test revision: $stale_revision"
-      done
-    fi
+        --revision "$stale_revision" \
+        --output none --only-show-errors \
+        || fail "Failed to deactivate stale Module 001B protected-Test revision: $stale_revision"
+    done
   fi
 
   case "${PROVISIONING_STATE,,}:${HEALTH_STATE,,}" in
