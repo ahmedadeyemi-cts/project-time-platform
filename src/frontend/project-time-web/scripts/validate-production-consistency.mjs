@@ -130,13 +130,23 @@ for (const [name, foreground, background, minimum] of requiredContrasts) {
 
 const flowHive = text(join(frontendRoot, 'src/ProjectFlowHiveCenter.jsx'));
 for (const contract of [
-  '/api/project-flowhive/ai/production-generate',
+  '/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs',
+  'runAiPlannerOperation',
+  'const result = await runAiPlannerOperation();',
   '/api/project-flowhive/plans/drafts',
+  'AI Planning Workspace',
   'Save immutable version',
   'Establish reviewed baseline',
   'The exact stored Module 064 order is followed for this capability.',
   'Private SOW, GSD, design, task, and assignment evidence stays inside the governed boundary.'
 ]) if (!flowHive.includes(contract)) fail(`flowhive_contract_missing_${contract}`);
+
+for (const prohibited of [
+  "postJson('/api/project-flowhive/ai/production-generate'",
+  'postJson("/api/project-flowhive/ai/production-generate"',
+  "fetch('/api/project-flowhive/ai/production-generate'",
+  'fetch("/api/project-flowhive/ai/production-generate"'
+]) if (flowHive.includes(prohibited)) fail('flowhive_frontend_legacy_production_generate_reachable');
 
 const cicdFrontend = text(join(frontendRoot, 'src/CiCdPipelineCenter.jsx'));
 const cicdBackend = text(join(backendRoot, 'Modules/CiCdPipelineModule.cs'));
@@ -162,5 +172,5 @@ console.log(`PRODUCTION_CONSISTENCY_MODULES=${frontend.size}`);
 console.log(`PRODUCTION_CONSISTENCY_SOURCE_FILES=${sourceFiles.length}`);
 console.log('PRODUCTION_CONSISTENCY_BRAND=CELAR_AI_ONLY');
 console.log('PRODUCTION_CONSISTENCY_CONTRAST=WCAG_AA_OR_BETTER');
-console.log('PRODUCTION_CONSISTENCY_FLOWHIVE=PRODUCTION_VERSIONED');
+console.log('PRODUCTION_CONSISTENCY_FLOWHIVE=DURABLE_PROJECT_SCOPED_PLANNER');
 console.log('PRODUCTION_CONSISTENCY=PASSED');
