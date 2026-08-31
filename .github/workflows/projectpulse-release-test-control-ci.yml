@@ -182,6 +182,22 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-module001b-live-uat-repair-files" -o "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
 
+          cat > "$RUNNER_TEMP/exact-pr770-final-protected-test-files" <<'FILES'
+          .github/workflows/celar-ai-production-platform-ci.yml
+          scripts/wait-containerapp-ready-revision.sh
+          src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs
+          src/frontend/project-time-web/scripts/validate-live-ui-route-authority.mjs
+          src/frontend/project-time-web/scripts/validate-production-consistency.mjs
+          src/frontend/project-time-web/src/PageContextGuide.jsx
+          src/frontend/project-time-web/src/work-register-document-integrity.js
+          src/frontend/project-time-web/vite.config.js
+          tests/validate-celar-ai-pr630-consolidated.mjs
+          tests/validate-work-register-document-continuity.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-pr770-final-protected-test-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-pr770-final-protected-test-files" -o "$RUNNER_TEMP/exact-pr770-final-protected-test-files"
+
           git fetch --no-tags origin main
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
@@ -211,6 +227,13 @@ jobs:
               exit 1
             }
             echo 'FLOWHIVE_PR734_GOVERNED_RELEASE_SCOPE=PASSED'
+          elif [[ "${{ github.event.pull_request.number }}" == '770' ]]; then
+            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-pr770-final-protected-test-files" || {
+              echo 'PR #770 final Protected-Test release scope differs from its exact reviewed file set.' >&2
+              diff -u "$RUNNER_TEMP/exact-pr770-final-protected-test-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_PR770_FINAL_PROTECTED_TEST_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
             echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-assigned-work-repair-files"; then
