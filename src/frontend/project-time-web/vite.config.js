@@ -14,6 +14,43 @@ async function restoreCelarAiProductionSources() {
   await import('./scripts/restore-celar-ai-production-sources.mjs');
 }
 
+function compiledJavascript(root) {
+  if (!fs.existsSync(root)) return '';
+  return fs.readdirSync(root, { withFileTypes: true })
+    .flatMap((entry) => {
+      const fullPath = path.join(root, entry.name);
+      if (entry.isDirectory()) return [compiledJavascript(fullPath)];
+      return entry.isFile() && entry.name.endsWith('.js') ? [fs.readFileSync(fullPath, 'utf8')] : [];
+    })
+    .join('\n');
+}
+
+function verifyFlowHiveBrowserContract() {
+  const bundle = compiledJavascript(path.join(webRoot, 'dist'));
+  if (!bundle) throw new Error('FLOWHIVE_BROWSER_CONTRACT_FAILED=compiled_javascript_missing');
+
+  for (const marker of [
+    '/api/project-flowhive/projects/',
+    '/ai-planner/runs',
+    'AI Planning Workspace',
+    'Delete SOW',
+    'Delete GSD',
+    'data-projectpulse-055c-shared-delete'
+  ]) {
+    if (!bundle.includes(marker)) {
+      throw new Error(`FLOWHIVE_BROWSER_CONTRACT_FAILED=compiled_bundle_missing_${marker.replaceAll(/[^a-z0-9]+/gi, '_')}`);
+    }
+  }
+
+  if (bundle.includes('/api/project-flowhive/ai/production-generate')) {
+    throw new Error('FLOWHIVE_BROWSER_CONTRACT_FAILED=legacy_production_generate_is_browser_reachable');
+  }
+
+  console.log('FLOWHIVE_BROWSER_DURABLE_PLANNER_ROUTE=VERIFIED');
+  console.log('FLOWHIVE_BROWSER_LEGACY_PLANNER_ROUTE=ABSENT');
+  console.log('WORK_REGISTER_BROWSER_SOW_GSD_DELETE=VERIFIED');
+}
+
 const celarAiProductionSourceTransaction = {
   name: 'celar-ai-production-source-transaction',
   apply: 'build',
@@ -21,7 +58,11 @@ const celarAiProductionSourceTransaction = {
     if (error) await restoreCelarAiProductionSources();
   },
   async closeBundle() {
-    await restoreCelarAiProductionSources();
+    try {
+      verifyFlowHiveBrowserContract();
+    } finally {
+      await restoreCelarAiProductionSources();
+    }
   }
 };
 
