@@ -8,6 +8,7 @@ DB_NAME="projectpulse"
 DB_PASSWORD="projectpulse-test-only"
 MIGRATION_CONTAINER="/workspace/database/migrations/096_project_planning_document_authority.sql"
 ROLLBACK_CONTAINER="/workspace/database/rollback/096_project_planning_document_authority_rollback.sql"
+CUMULATIVE_MIGRATION_RUNNER="$ROOT/scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh"
 
 cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -28,9 +29,28 @@ assert_eq() {
 
 for required in \
   "$ROOT/database/migrations/096_project_planning_document_authority.sql" \
-  "$ROOT/database/rollback/096_project_planning_document_authority_rollback.sql"; do
+  "$ROOT/database/rollback/096_project_planning_document_authority_rollback.sql" \
+  "$CUMULATIVE_MIGRATION_RUNNER"; do
   test -s "$required" || { echo "ASSERTION_FAILED missing_artifact=$required" >&2; exit 1; }
 done
+
+# The governed Protected-Test deployment path must remain cumulative through the
+# release migrations that extend Module Management, customer-source authority,
+# and Module 025. This static contract prevents a future release from silently
+# dropping 098/098/099 while retaining the older 096/097 migration test.
+for cumulative_migration in \
+  '098_module_management_owner_storage_reconciliation.sql' \
+  '098_customer_directory_source_authority.sql' \
+  '099_module025_sow_gsd_workspace.sql' \
+  'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED' \
+  'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED' \
+  'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED'; do
+  grep -Fq "$cumulative_migration" "$CUMULATIVE_MIGRATION_RUNNER" || {
+    echo "ASSERTION_FAILED governed_cumulative_migration_contract=$cumulative_migration" >&2
+    exit 1
+  }
+done
+echo 'ASSERTION_PASSED governed_cumulative_migration_contract=096-097-098-098-099'
 
 docker run -d --name "$CONTAINER" \
   -e POSTGRES_USER="$DB_USER" \
