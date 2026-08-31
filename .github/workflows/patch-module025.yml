@@ -1,0 +1,61 @@
+name: Patch Module 025 integration
+
+on:
+  push:
+    branches:
+      - feature/module-025-sow-gsd-workspace-20260830
+    paths:
+      - src/backend/ProjectTime.Api/Modules/SowGsdWorkspaceModule.cs
+
+permissions:
+  contents: write
+
+jobs:
+  patch-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/module-025-sow-gsd-workspace-20260830
+      - name: Wire Module 025 workspace
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          sales = Path('src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx')
+          text = sales.read_text()
+          import_line = "import SowGsdWorkspace from './SowGsdWorkspace';\n"
+          if import_line not in text:
+              marker = "import './sales-delivery-workflow-center.css';\n"
+              if marker not in text:
+                  raise SystemExit('SalesDeliveryWorkflowCenter import marker not found')
+              text = text.replace(marker, marker + import_line, 1)
+          pattern = re.compile(r"function SowGenerator\(\) \{.*?\n\}\n\nfunction AiTimeEntry\(\) \{", re.S)
+          replacement = "function SowGenerator() {\n  return <SowGsdWorkspace />;\n}\n\nfunction AiTimeEntry() {"
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one SowGenerator function, replaced {count}')
+          sales.write_text(text)
+
+          analytics = Path('src/backend/ProjectTime.Api/AnalyticsCenterModule.g.cs')
+          text = analytics.read_text()
+          hook = '        endpoints.MapSowGsdWorkspaceEndpoints();\n'
+          if hook not in text:
+              marker = '    public static IEndpointRouteBuilder MapAnalyticsCenterEndpoints(this IEndpointRouteBuilder endpoints)\n    {\n'
+              if marker not in text:
+                  raise SystemExit('Analytics endpoint marker not found')
+              text = text.replace(marker, marker + hook, 1)
+          analytics.write_text(text)
+          PY
+      - name: Commit integration wiring
+        shell: bash
+        run: |
+          rm -f .github/workflows/patch-module025.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx src/backend/ProjectTime.Api/AnalyticsCenterModule.g.cs .github/workflows/patch-module025.yml
+          git diff --cached --check
+          git commit -m "Wire Module 025 SOW GSD workspace"
+          git push origin HEAD:feature/module-025-sow-gsd-workspace-20260830
