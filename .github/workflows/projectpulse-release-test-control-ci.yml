@@ -12,6 +12,7 @@ on:
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
       - 'database/migrations/097_project_planning_identity_safe_admission.sql'
       - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
       - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
@@ -71,6 +72,7 @@ jobs:
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
           ASSIGNED_WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
           MODULE001B_FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
+          DOCUMENT_AUTHORITY_MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
           SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
@@ -86,6 +88,7 @@ jobs:
           .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
           database/migrations/097_project_planning_identity_safe_admission.sql
           database/rollback/097_project_planning_identity_safe_admission_rollback.sql
+          scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
           scripts/release-test/run-assigned-work-protected-test-uat.sh
           scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
@@ -230,7 +233,9 @@ jobs:
           test -f "$UTILIZATION_UAT" || fail 'The utilization role-scoping UAT script is missing.'
           test -f "$ASSIGNED_WORK_UAT" || fail 'The assigned-work UAT script is missing.'
           test -f "$MODULE001B_FIXTURE" || fail 'The Module 001B disposable protected-Test fixture module is missing.'
+          test -f "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER" || fail 'The governed document-authority migration builder is missing.'
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash -n "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           bash -n "$UTILIZATION_UAT"
           bash -n "$ASSIGNED_WORK_UAT"
 
@@ -269,8 +274,15 @@ jobs:
           grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           grep -Fq 'MIGRATION_096=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          grep -Fq '096_project_planning_document_authority.sql' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
-          grep -Fq '097_project_planning_identity_safe_admission.sql' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          grep -Fq '096_project_planning_document_authority.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq '097_project_planning_identity_safe_admission.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq '098_module_management_owner_storage_reconciliation.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq '098_customer_directory_source_authority.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq '099_module025_sow_gsd_workspace.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq 'migration-099.json' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs' "$CONTROLLER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' "$CONTROLLER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' "$CONTROLLER"
@@ -327,7 +339,7 @@ jobs:
           echo 'UTILIZATION_ROLE_SCOPING_SOURCE=PASSED'
           echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASSED'
           echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=PASSED'
-          echo 'MIGRATIONS_086_088_093_094_095_096_097=AUTHORIZED_TEST_APPLY_AND_VERIFY'
+          echo 'MIGRATIONS_086_088_093_094_095_096_097_098_099=AUTHORIZED_TEST_APPLY_AND_VERIFY'
           echo 'SHARED_PROJECT_DOCUMENT_PLANNING=AUTHORIZED_TEST_RELEASE'
           echo 'FLOWHIVE_FORGE_CELAR_AUTHENTICATED_UAT=REQUIRED'
           echo 'PRODUCTION_MUTATION=NONE'
