@@ -164,81 +164,31 @@ save('WorkTaskBuilderPanel.jsx', workTaskBuilder);
       'flowhive_requested_outcome');
   }
 
-  if (!content.includes("'/api/project-flowhive/ai/production-generate'")) {
-    const functionStart = content.indexOf('  async function previewAiRequest() {');
-    const functionEnd = content.indexOf('\n\n  async function downloadArtifact', functionStart);
-    if (functionStart < 0 || functionEnd < 0) throw new Error('CELAR_AI_PRODUCTION_MISSING_ANCHOR=flowhive_ai_function');
-    const productionFunction = `  async function previewAiRequest() {
-    if (!draftPlan) return;
-    setBusy('ai');
-    setError('');
-    try {
-      const result = await postJson('/api/project-flowhive/ai/production-generate', {
-        plan: draftPlan,
-        gsdExcerpt,
-        sowExcerpt,
-        requestedOutcome,
-        detailLevel: 'comprehensive',
-        diagramType: 'flowchart',
-        allowSanitizedExternalFallback: true
-      });
-      setAiPreview(result);
-      if (result.plan) setDraftPlan(result.plan);
-      if (result.schedule?.valid) setSchedule(result.schedule);
-      setValidation(result.validation || null);
-      setNotice(result.schedule?.valid
-        ? 'Celar AI produced a detailed private review draft and deterministic FlowHive schedule. Nothing was persisted or baselined.'
-        : 'Celar AI produced a review draft that requires plan correction before scheduling.');
-    } catch (actionError) {
-      setError(actionError.message);
-    } finally {
-      setBusy('');
+  // FlowHive V2 owns its planner implementation. The production transform must
+  // never replace it with the retired compatibility endpoint. This assertion is
+  // intentionally inside the injector because this transform runs after source
+  // validation and previously rewrote the correct checked-in implementation.
+  const durableContracts = [
+    'async function runAiPlannerOperation()',
+    'postJson(`/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs`',
+    'const result = await runAiPlannerOperation();',
+    'AI Planning Workspace',
+    'an uncited generic template is never substituted'
+  ];
+  for (const contract of durableContracts) {
+    if (!content.includes(contract)) {
+      throw new Error(`CELAR_AI_PRODUCTION_FLOWHIVE_DURABLE_CONTRACT_MISSING=${contract}`);
     }
-  }`;
-    content = `${content.slice(0, functionStart)}${productionFunction}${content.slice(functionEnd)}`;
   }
 
-  if (!content.includes('Celar AI governed Project FlowHive generation')) {
-    const aiStart = content.indexOf("      {activeView === 'ai' ? (");
-    const aiEnd = content.indexOf("      {activeView === 'exports' ? (", aiStart);
-    if (aiStart < 0 || aiEnd < 0) throw new Error('CELAR_AI_PRODUCTION_MISSING_ANCHOR=flowhive_ai_view');
-    const aiBlock = `      {activeView === 'ai' ? (
-        <div className="flowhive-view-panel flowhive-ai-layout">
-          <div className="flowhive-ai-copy">
-            <h3>Celar AI governed Project FlowHive generation</h3>
-            <p>Project FlowHive now executes through Celar AI and Module 064 instead of stopping at a preview. It retrieves authorized private project evidence, creates a detailed review plan, validates it with the deterministic FlowHive engine, and reports evidence, assumptions, risks, missing inputs, confidence, and review controls.</p>
-            <ol>
-              <li>Celar AI is the primary private planning target.</li>
-              <li>Authorized SOW, GSD, IQS, design, architecture, project, task, and assignment evidence remains private.</li>
-              <li>When the stored Module 064 order and both runtime privacy flags allow fallback, Claude or OpenAI automatically receives only a fixed backend-owned, identity-free planning capsule.</li>
-              <li>The governed local template remains the final fallback.</li>
-              <li>Every output remains a PM and Engineering review draft; no baseline, assignment, capacity reservation, or customer date is created.</li>
-            </ol>
-          </div>
-          {!draftPlan ? <EmptyState>Create or open a local plan draft first.</EmptyState> : <div className="flowhive-ai-form">
-            <label>Requested outcome<textarea value={requestedOutcome} onChange={(event) => setRequestedOutcome(event.target.value)} rows={5} /></label>
-            <label>Optional approved GSD excerpt<textarea value={gsdExcerpt} onChange={(event) => setGsdExcerpt(event.target.value)} placeholder="Optional private supplemental excerpt. Celar AI also searches authorized indexed project documents." /></label>
-            <label>Optional approved SOW excerpt<textarea value={sowExcerpt} onChange={(event) => setSowExcerpt(event.target.value)} placeholder="Optional private supplemental excerpt. It is not sent to a public provider." /></label>
-            <div className="flowhive-ai-external-toggle"><span><strong>Automatic governed fallback</strong><small>Module 064 follows the stored eligible-target order. With required private document inference, Celar AI is attempted first; a later public target receives only a fixed backend-owned, identity-free planning capsule.</small></span></div>
-            <button type="button" className="primary" onClick={previewAiRequest} disabled={busy}>{busy === 'ai' ? 'Generating detailed Celar AI draft…' : 'Generate detailed Celar AI plan'}</button>
-            {aiPreview ? <section className="celar-flowhive-production-result">
-              <header><div><span>Celar AI Project FlowHive result</span><strong>{labelFrom(aiPreview.status)}</strong></div><div><span>Execution path</span><strong>{labelFrom(aiPreview.executionPath)}</strong></div></header>
-              <div className="metrics"><div><span>Confidence</span><strong>{formatPercent(aiPreview.confidence)}</strong></div><div><span>Tasks</span><strong>{aiPreview.plan?.tasks?.length || 0}</strong></div><div><span>Working days</span><strong>{aiPreview.schedule?.scheduledWorkingDays ?? 'Not calculated'}</strong></div><div><span>Critical tasks</span><strong>{aiPreview.schedule?.criticalTaskCount ?? 'Not calculated'}</strong></div></div>
-              <p>{aiPreview.confidenceExplanation}</p>
-              {aiPreview.plan?.tasks?.length ? <div className="tasks"><table><thead><tr><th>WBS</th><th>Task</th><th>Description</th><th>Duration</th><th>Status</th></tr></thead><tbody>{aiPreview.plan.tasks.map((task, index) => <tr key={task.clientTaskId || \`${'${'}task.wbsNumber}-${'${'}index}\`}><td><code>{task.wbsNumber}</code></td><td><strong>{task.name}</strong></td><td>{task.description}</td><td>{task.durationWorkingDays} day(s)</td><td>{labelFrom(task.status)}</td></tr>)}</tbody></table></div> : null}
-              {aiPreview.citations?.length ? <details open><summary>Private source citations ({aiPreview.citations.length})</summary><ul>{aiPreview.citations.map((citation) => <li key={citation.citationId}><strong>[{citation.citationId}] {citation.originalFileName}</strong> · {citation.documentVersion} · {citation.citationAnchor}</li>)}</ul></details> : null}
-              {aiPreview.missingEvidence?.length ? <details open><summary>Missing evidence ({aiPreview.missingEvidence.length})</summary><ul>{aiPreview.missingEvidence.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
-              {aiPreview.conflicts?.length ? <details open><summary>Conflicts ({aiPreview.conflicts.length})</summary><ul>{aiPreview.conflicts.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
-              {aiPreview.warnings?.length ? <details open><summary>Warnings and review controls ({aiPreview.warnings.length})</summary><ul>{aiPreview.warnings.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
-              {aiPreview.externalAssistance ? <details><summary>Sanitized generic assistance</summary><p>{aiPreview.externalAssistance.warning}</p><pre>{aiPreview.externalAssistance.content}</pre></details> : null}
-              <footer><span>Provider order: {aiPreview.providerOrder?.join(' → ')}</span><span>Data as of {formatDate(aiPreview.dataAsOf)}</span><span>Correlation <code>{aiPreview.correlationId}</code></span></footer>
-            </section> : null}
-          </div>}
-        </div>
-      ) : null}
-
-`;
-    content = `${content.slice(0, aiStart)}${aiBlock}${content.slice(aiEnd)}`;
+  const legacyExecutableContracts = [
+    "postJson('/api/project-flowhive/ai/production-generate'",
+    'postJson("/api/project-flowhive/ai/production-generate"',
+    "fetch('/api/project-flowhive/ai/production-generate'",
+    'fetch("/api/project-flowhive/ai/production-generate"'
+  ];
+  if (legacyExecutableContracts.some((contract) => content.includes(contract))) {
+    throw new Error('CELAR_AI_PRODUCTION_FLOWHIVE_LEGACY_BROWSER_ROUTE_REJECTED');
   }
 
   if (!content.includes(marker)) content = content.replace("import './projectpulse-module-standard.css';", `import './projectpulse-module-standard.css';\n${marker}`);
@@ -249,5 +199,5 @@ console.log(`CELAR_AI_PRODUCTION_FILES_CHANGED=${changed.length}`);
 for (const relative of changed) console.log(`CELAR_AI_PRODUCTION_CHANGED=${relative}`);
 console.log('CELAR_AI_PRODUCTION_MODULE011=AUTHORITATIVE_SINGLE_SHELL');
 console.log('CELAR_AI_PRODUCTION_CHAT=INTENT_FIRST_V2');
-console.log('CELAR_AI_PRODUCTION_FLOWHIVE=EXECUTION_ENABLED_REVIEW_ONLY');
+console.log('CELAR_AI_PRODUCTION_FLOWHIVE=DURABLE_PROJECT_SCOPED_PLANNER');
 console.log('CELAR_AI_PRODUCTION_INJECTOR=PASSED');
