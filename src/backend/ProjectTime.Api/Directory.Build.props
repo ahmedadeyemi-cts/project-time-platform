@@ -13,6 +13,8 @@
     <ModuleAvailabilityResilienceGenerated>$(ModuleAvailabilityResilienceGeneratedDirectory)/ModuleAvailabilityModule.Resilient.g.cs</ModuleAvailabilityResilienceGenerated>
     <FlowHivePrivateExtractorGeneratedDirectory>$(MSBuildProjectDirectory)/obj/flowhive-private-document</FlowHivePrivateExtractorGeneratedDirectory>
     <FlowHivePrivateExtractorGenerated>$(FlowHivePrivateExtractorGeneratedDirectory)/PulseAiPrivateDocumentExtractionService.g.cs</FlowHivePrivateExtractorGenerated>
+    <CustomerSourceAuthorityGeneratedDirectory>$(MSBuildProjectDirectory)/obj/customer-source-authority</CustomerSourceAuthorityGeneratedDirectory>
+    <CustomerSourceCommercialGenerated>$(CustomerSourceAuthorityGeneratedDirectory)/SellCommercialReadModelModule.CustomerSource.g.cs</CustomerSourceCommercialGenerated>
   </PropertyGroup>
 
   <!--
@@ -78,5 +80,32 @@
       <Compile Remove="Modules/ModuleAvailabilityModule.cs" />
       <Compile Include="$(ModuleAvailabilityResilienceGenerated)" />
     </ItemGroup>
+  </Target>
+
+  <!--
+    Module 021 now owns one explicit customer-source authority. Keep the canonical
+    SELL commercial reader reviewable while compiling a guarded source-aware copy
+    for Module 042 and other downstream commercial consumers.
+  -->
+  <Target Name="GenerateCustomerSourceAwareCommercialReadModel"
+          BeforeTargets="CoreCompile">
+    <MakeDir Directories="$(CustomerSourceAuthorityGeneratedDirectory)" />
+    <Exec Command="python3 &quot;$(MSBuildProjectDirectory)/build/generate-customer-source-aware-commercial-read-model.py&quot; --input &quot;$(MSBuildProjectDirectory)/Modules/SellCommercialReadModelModule.cs&quot; --output &quot;$(CustomerSourceCommercialGenerated)&quot;" />
+    <Exec Command="grep -Fq 'CustomerSourceAuthorityModule.LoadAuthorityAsync' &quot;$(CustomerSourceCommercialGenerated)&quot;" />
+    <Exec Command="grep -Fq 'manual_source_active' &quot;$(CustomerSourceCommercialGenerated)&quot;" />
+    <Exec Command="grep -Fq 'crm_source_active' &quot;$(CustomerSourceCommercialGenerated)&quot;" />
+    <ItemGroup>
+      <Compile Remove="Modules/SellCommercialReadModelModule.cs" />
+      <Compile Include="$(CustomerSourceCommercialGenerated)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The generated Program remains the single endpoint composition authority. -->
+  <Target Name="RegisterCustomerSourceAuthorityEndpoints"
+          AfterTargets="GenerateScopedRbacSources"
+          BeforeTargets="CoreCompile">
+    <Exec Command="grep -Fq 'app.MapCustomerDirectorySellSyncEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'app.MapCustomerSourceAuthorityEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot; || sed -i '/app.MapCustomerDirectorySellSyncEndpoints();/a app.MapCustomerSourceAuthorityEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'app.MapCustomerSourceAuthorityEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
   </Target>
 </Project>
