@@ -22,6 +22,46 @@ case "$EXPECTED_REVISION" in
   *--m1be-*|*--m1bd-*) MODULE001B_PROTECTED_TEST_RECONCILE=true ;;
 esac
 
+LATEST_READY=''
+IMAGE=''
+PROVISIONING_STATE=''
+HEALTH_STATE=''
+ACTIVE=''
+TRAFFIC_WEIGHT=''
+ACTIVE_REVISION_NAMES_JSON='[]'
+
+write_module001b_reconcile_evidence() {
+  local phase="$1"
+  [[ "$MODULE001B_PROTECTED_TEST_RECONCILE" == true && -n "${EVIDENCE_DIR:-}" ]] || return 0
+  mkdir -p "$EVIDENCE_DIR" 2>/dev/null || true
+  jq -n \
+    --arg phase "$phase" \
+    --arg app "$APP_NAME" \
+    --arg expectedRevision "$EXPECTED_REVISION" \
+    --arg expectedImage "$EXPECTED_IMAGE" \
+    --arg latestReady "${LATEST_READY:-}" \
+    --arg observedImage "${IMAGE:-}" \
+    --arg provisioningState "${PROVISIONING_STATE:-}" \
+    --arg healthState "${HEALTH_STATE:-}" \
+    --arg active "${ACTIVE:-}" \
+    --arg trafficWeight "${TRAFFIC_WEIGHT:-}" \
+    --argjson activeRevisions "${ACTIVE_REVISION_NAMES_JSON:-[]}" \
+    '{
+      phase:$phase,
+      app:$app,
+      expectedRevision:$expectedRevision,
+      expectedImage:$expectedImage,
+      latestReadyRevision:$latestReady,
+      observedImage:$observedImage,
+      provisioningState:$provisioningState,
+      healthState:$healthState,
+      expectedRevisionActive:($active == "true"),
+      trafficWeight:$trafficWeight,
+      activeRevisions:$activeRevisions,
+      productionMutation:false
+    }' > "$EVIDENCE_DIR/module001b-revision-reconcile.json" 2>/dev/null || true
+}
+
 for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
   LATEST_READY="$(az containerapp show \
     --resource-group "$RESOURCE_GROUP" \
@@ -40,10 +80,12 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
   HEALTH_STATE="$(jq -r '.healthState // empty' <<<"${REVISION_JSON:-{}}" 2>/dev/null || true)"
   ACTIVE="$(jq -r '.active // empty' <<<"${REVISION_JSON:-{}}" 2>/dev/null || true)"
   TRAFFIC_WEIGHT="$(jq -r '.trafficWeight // empty' <<<"${REVISION_JSON:-{}}" 2>/dev/null || true)"
+  ACTIVE_REVISION_NAMES_JSON='[]'
 
   printf 'REVISION_WAIT app=%s attempt=%s expected=%s latestReady=%s image=%s provisioning=%s health=%s active=%s traffic=%s\n' \
     "$APP_NAME" "$attempt" "$EXPECTED_REVISION" "${LATEST_READY:-none}" "${IMAGE:-none}" \
     "${PROVISIONING_STATE:-unknown}" "${HEALTH_STATE:-unknown}" "${ACTIVE:-unknown}" "${TRAFFIC_WEIGHT:-unknown}"
+  write_module001b_reconcile_evidence observed
 
   if [[ "$LATEST_READY" == "$EXPECTED_REVISION" && "$IMAGE" == "$EXPECTED_IMAGE" ]]; then
     if [[ "$MODULE001B_PROTECTED_TEST_RECONCILE" != true ]]; then
@@ -67,19 +109,40 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
     [[ "$LATEST_REVISION" == "$EXPECTED_REVISION" ]] \
       || fail "Refusing Module 001B revision reconciliation because a different revision is now latest: expected=$EXPECTED_REVISION latest=${LATEST_REVISION:-none}."
 
-    # In Single revision mode the expected revision can be latestReady while still inactive
-    # because the prior revision remains active. Reconcile stale active revisions as soon as
-    # the expected revision is ready; requiring ACTIVE=true here creates a circular wait.
     REVISIONS_JSON="$(az containerapp revision list \
       --resource-group "$RESOURCE_GROUP" \
       --name "$APP_NAME" \
       --output json --only-show-errors)" \
       || fail "Could not inspect active revisions for Module 001B protected-Test reconciliation."
     mapfile -t ACTIVE_REVISIONS < <(jq -r '.[]? | select(.properties.active == true) | .name' <<<"$REVISIONS_JSON")
+    ACTIVE_REVISION_NAMES_JSON="$(jq -c '[.[]? | select(.properties.active == true) | .name]' <<<"$REVISIONS_JSON" 2>/dev/null || printf '[]')"
+    write_module001b_reconcile_evidence ready_for_reconciliation
 
     if [[ ${#ACTIVE_REVISIONS[@]} -eq 1 && "${ACTIVE_REVISIONS[0]}" == "$EXPECTED_REVISION" ]]; then
+      write_module001b_reconcile_evidence converged
       echo "CONTAINERAPP_CANDIDATE_READY app=$APP_NAME revision=$EXPECTED_REVISION image=$EXPECTED_IMAGE singleRevisionConverged=true"
       exit 0
+    fi
+
+    EXPECTED_IS_ACTIVE=false
+    for active_revision in "${ACTIVE_REVISIONS[@]}"; do
+      if [[ "$active_revision" == "$EXPECTED_REVISION" ]]; then
+        EXPECTED_IS_ACTIVE=true
+        break
+      fi
+    done
+
+    if [[ "$EXPECTED_IS_ACTIVE" != true ]]; then
+      echo "MODULE001B_EXPECTED_REVISION_ACTIVATE app=$APP_NAME revision=$EXPECTED_REVISION" >&2
+      write_module001b_reconcile_evidence activation_requested
+      az containerapp revision activate \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$APP_NAME" \
+        --revision "$EXPECTED_REVISION" \
+        --output none --only-show-errors \
+        || fail "Failed to activate the ready Module 001B protected-Test revision: $EXPECTED_REVISION"
+      sleep "$SLEEP_SECONDS"
+      continue
     fi
 
     for stale_revision in "${ACTIVE_REVISIONS[@]}"; do
@@ -96,6 +159,7 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
 
   case "${PROVISIONING_STATE,,}:${HEALTH_STATE,,}" in
     failed:*|canceled:*|*:failed|*:unhealthy)
+      write_module001b_reconcile_evidence terminal_revision_failure
       echo "Candidate revision entered a terminal failure state." >&2
       break
       ;;
@@ -103,6 +167,7 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
   sleep "$SLEEP_SECONDS"
 done
 
+write_module001b_reconcile_evidence timed_out
 az containerapp show \
   --resource-group "$RESOURCE_GROUP" \
   --name "$APP_NAME" \
