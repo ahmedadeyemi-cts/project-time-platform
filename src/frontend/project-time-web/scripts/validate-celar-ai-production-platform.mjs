@@ -56,7 +56,15 @@ assert('POPULATED_TABS', ['Overview', 'Knowledge & RAG', 'Tools & Coverage', 'Da
 assert('SCHEMA_INIT_CONTROL', platform.includes('/api/celar-ai/v1/production/schema/initialize') && platform.includes('Initialize production lifecycle schema'), 'actual administrators can initialize lifecycle schema');
 assert('CHAT_V2', help.includes("'/api/celar-ai/v2/chat'") && help.includes('clientTimeZone') && help.includes('TrustSummary'), 'global chat uses intent-first v2 and visible trust status');
 const legacyFlowHiveBrowserCall = /(?:postJson|fetch)\(\s*['"`]\/api\/project-flowhive\/ai\/production-generate/.test(flowHive);
-assert('FLOWHIVE_UI', flowHive.includes('AI Planning Workspace') && flowHive.includes('runAiPlannerOperation') && flowHive.includes('/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs') && flowHive.includes('ensureSowEvidenceAvailable') && !legacyFlowHiveBrowserCall, 'FlowHive V2 uses durable project-scoped AI planner runs, SOW evidence readiness, and no executable legacy production-generate browser call');
+const durableFlowHivePlanner = flowHive.includes('AI Planning Workspace')
+  && flowHive.includes('runAiPlannerOperation')
+  && flowHive.includes('/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs')
+  && flowHive.includes('/ai-planner/runs/${result.runId}')
+  && flowHive.includes('FlowHiveEvidenceReadiness')
+  && flowHive.includes('resolving the project SOW and GSD')
+  && flowHive.includes('scopeOfServicesLocated')
+  && flowHive.includes('approvedSowCitationCount');
+assert('FLOWHIVE_UI', durableFlowHivePlanner && !legacyFlowHiveBrowserCall, 'FlowHive V2 creates and polls durable project-scoped AI planner runs, surfaces SOW evidence readiness/citations, and has no executable legacy production-generate browser call');
 assert('INJECTOR_CHAIN', contextInjector.includes("inject-celar-ai-production-platform.mjs") && injector.includes('CELAR_AI_PRODUCTION_INJECTOR=PASSED'), 'production source integration runs after compatibility injectors');
 assert('RESPONSIVE_STYLE', css.includes('.celar-production-platform') && css.includes('.celar-trust-banner') && css.includes('.celar-flowhive-production-result') && css.includes('@media(max-width:900px)'), 'production shell, trust, FlowHive, and responsive styles exist');
 assert('NO_DUPLICATE_LEGACY_ROUTE', !moduleSource.includes('const string FlowHiveRoute = "/api/project-flowhive/ai/generate"'), 'production FlowHive route does not collide with the compatibility endpoint');
