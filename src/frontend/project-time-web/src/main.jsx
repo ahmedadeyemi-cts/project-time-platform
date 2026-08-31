@@ -38,6 +38,7 @@ import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDual
 import MicrosoftMailTransportReadinessPanel from './MicrosoftMailTransportReadinessPanel.jsx';
 import EnterpriseExperienceController from './EnterpriseExperienceController.jsx';
 import ProjectForgeFlowHiveSyncPortal from './ProjectForgeFlowHiveSyncPortal.jsx';
+import CustomerSourceAuthorityPortal from './CustomerSourceAuthorityPortal.jsx';
 import ApplicationErrorBoundary from './ApplicationErrorBoundary.jsx';
 import WorkspaceNavigationPortal from './WorkspaceNavigationPortal.jsx';
 import './approval-access-navigation-compatibility.js';
@@ -70,6 +71,7 @@ import './celar-ai-control-followup.css';
 import './account-center.css';
 import './workspace-navigation.css';
 import './enterprise-contrast-guard.css';
+import './customer-source-authority.css';
 
 createRoot(
   protectReactOwnedRoot(document.getElementById('root'))
@@ -94,6 +96,7 @@ createRoot(
       <MicrosoftIntegrationDualConnectionPortal />
       <MicrosoftMailTransportReadinessPanel />
       <ProjectForgeFlowHiveSyncPortal />
+      <CustomerSourceAuthorityPortal />
       <AuthenticatedHelpAssistant />
       <WorkspaceNavigationPortal />
     </ApplicationErrorBoundary>
