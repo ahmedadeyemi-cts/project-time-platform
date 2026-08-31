@@ -114,7 +114,8 @@ test('CELAR_ARCHITECTURE_MOUNT', celarPlatform.includes('<CelarAiArchitectureOve
 test('CELAR_PAGE_CONTEXT', pageContext.includes("'work-task-builder': {")
   && pageContext.includes("page: 'Celar AI — Module 011'")
   && pageContext.includes('/api/celar-ai/v2/chat')
-  && pageContext.includes('/api/project-flowhive/ai/production-generate'));
+  && pageContext.includes('/api/project-flowhive/projects/{projectId}/ai-planner/runs')
+  && !pageContext.includes('/api/project-flowhive/ai/production-generate'));
 test('MODULE_NAVIGATION_AUTHORITY_CONVERGED',
   moduleAvailabilityBridge.includes("nativeFetch('/api/security/me', request)")
     && moduleAvailabilityBridge.includes('security?.permanentFullControl === true')

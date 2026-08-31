@@ -45,7 +45,7 @@ const routeContext = {
   'work-task-builder': {
     page: 'Celar AI — Module 011',
     purpose: 'Unified operational intelligence for the US Signal Solution Provider division, including intent-first answers, private knowledge and RAG, governed live-data tools, architecture, solution composition, model lifecycle, and Project FlowHive planning.',
-    backend: '/api/celar-ai/v2/chat, /api/celar-ai/v1/production/readiness, /api/celar-ai/v1/production/architecture, and /api/project-flowhive/ai/production-generate',
+    backend: '/api/celar-ai/v2/chat, /api/celar-ai/v1/production/readiness, /api/celar-ai/v1/production/architecture, and /api/project-flowhive/projects/{projectId}/ai-planner/runs',
     check: 'Confirm the Celar AI production workspace and architecture render, the page identifies Module 011, procedural questions receive direct intent-first answers with a trust classification, and Project FlowHive generation remains review-only.'
   },
   'production-readiness': {
