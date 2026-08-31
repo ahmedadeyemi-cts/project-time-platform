@@ -8,10 +8,12 @@ const apiProjectPath = 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj';
 const apiBuildPropsPath = 'src/backend/ProjectTime.Api/Directory.Build.props';
 const sourceRevisionPath = 'src/backend/ProjectTime.Api/.projectpulse-source-revision';
 const revisionWaitPath = 'scripts/wait-containerapp-ready-revision.sh';
+const documentAuthorityMigrationBuilderPath = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
 const apiProject = fs.readFileSync(apiProjectPath, 'utf8');
 const apiBuildProps = fs.readFileSync(apiBuildPropsPath, 'utf8');
 const revisionWait = fs.readFileSync(revisionWaitPath, 'utf8');
+const documentAuthorityMigrationBuilder = fs.readFileSync(documentAuthorityMigrationBuilderPath, 'utf8');
 
 assert.equal(
   fs.existsSync(retiredWorkflowPath),
@@ -116,6 +118,37 @@ const revisionWaitSyntax = spawnSync('bash', ['-n', revisionWaitPath], { encodin
 assert.equal(revisionWaitSyntax.status, 0, revisionWaitSyntax.stderr);
 
 assert.match(
+  documentAuthorityMigrationBuilder,
+  /099_module025_sow_gsd_workspace\.sql/,
+  'the governed private-network migration image must carry Module 025 migration 099'
+);
+assert.match(
+  documentAuthorityMigrationBuilder,
+  /psql -X -v ON_ERROR_STOP=1 --file "\$MODULE025_MIGRATION"/,
+  'the governed private-network migration job must execute Module 025 migration 099'
+);
+assert.match(
+  documentAuthorityMigrationBuilder,
+  /module025_verification=/,
+  'the governed migration job must verify Module 025 workspace schema readiness'
+);
+assert.match(
+  documentAuthorityMigrationBuilder,
+  /to_regclass\('public\.module025_sow_gsd_engagements'\)/,
+  'Module 025 migration verification must prove the engagement workspace table exists'
+);
+assert.match(
+  documentAuthorityMigrationBuilder,
+  /MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED/,
+  'the governed migration job must publish an explicit migration 099 success marker'
+);
+assert.match(
+  documentAuthorityMigrationBuilder,
+  /migration-099\.json/,
+  'the governed migration job must emit migration 099 release evidence'
+);
+
+assert.match(
   apiProject,
   /<AssemblyMetadata Include="ProjectPulseSourceRevision" Value="\$\(ProjectPulseSourceRevision\)" \/>/,
   'API assembly metadata must remain bound to the ProjectPulseSourceRevision MSBuild property'
@@ -155,7 +188,7 @@ if (releaseCommit.length > 0) {
 const migrationImageBuilders = [
   ['094', 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'],
   ['095', 'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'],
-  ['096+097', 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh']
+  ['096+097+098+099', documentAuthorityMigrationBuilderPath]
 ];
 for (const [migration, builderPath] of migrationImageBuilders) {
   const builder = fs.readFileSync(builderPath, 'utf8');
@@ -201,4 +234,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097 utilization-uat=registered module001b-single-revision-reconcile=ready-inactive-safe');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097+098+099 utilization-uat=registered module001b-single-revision-reconcile=ready-inactive-safe module025-migration099=registered');
