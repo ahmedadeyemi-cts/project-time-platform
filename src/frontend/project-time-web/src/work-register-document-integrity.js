@@ -4,8 +4,8 @@
  * Backend authorization remains authoritative. This compatibility layer
  * prevents an empty document identity from being promoted as a successful
  * upload, merges the canonical Work Register document projection into the
- * existing project-details response, and exposes governed shared deletion only
- * beside an existing editable Archive control.
+ * existing project-details response, and exposes governed shared deletion beside
+ * the native editable Archive control used by Manage Existing Project.
  */
 
 const DOCUMENT_UPLOAD_PATH = '/api/work-register/projects/documents/upload';
@@ -13,7 +13,7 @@ const EMPTY_DOCUMENT_ROUTE = '/api/work-register/projects/documents//';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DETAILS_PATTERN = /^\/api\/work-register\/projects\/([0-9a-f-]{36})\/details$/i;
 const DOWNLOAD_PATTERN = /\/api\/work-register\/projects\/documents\/([0-9a-f-]{36})\/download/i;
-const DELETE_BUTTON_MARKER = 'projectPulse055cSharedDelete';
+const DELETE_BUTTON_ATTRIBUTE = 'data-projectpulse-055c-shared-delete';
 
 function cleanText(value) {
   return String(value ?? '').trim();
@@ -59,6 +59,7 @@ function mergeCanonicalDocuments(details, canonical) {
     seen.add(id);
     return true;
   });
+  window.__projectPulse055cCanonicalDocuments = canonicalDocuments;
   return {
     ...details,
     documents,
@@ -86,64 +87,127 @@ function currentProjectId() {
   return cleanText(window.__projectPulse055cCurrentProjectId || '');
 }
 
+function canonicalDocumentNames(document) {
+  return [
+    document?.fileName,
+    document?.documentName,
+    document?.originalFileName
+  ].map(cleanText).filter(Boolean);
+}
+
+function canonicalDocumentForCard(card) {
+  const title = cleanText(card?.querySelector('strong')?.textContent);
+  if (!title) return null;
+  const canonicalDocuments = Array.isArray(window.__projectPulse055cCanonicalDocuments)
+    ? window.__projectPulse055cCanonicalDocuments
+    : [];
+  const matches = canonicalDocuments.filter((document) => canonicalDocumentNames(document).includes(title));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function hasDeleteControl(actionContainer) {
+  return Boolean(actionContainer?.querySelector(`[${DELETE_BUTTON_ATTRIBUTE}="true"]`));
+}
+
+function appendDeleteControl({ actionContainer, archiveButton, projectId, id, label, documentType = '' }) {
+  if (!actionContainer || !archiveButton || hasDeleteControl(actionContainer)) return;
+  if (!UUID_PATTERN.test(projectId) || !UUID_PATTERN.test(id)) return;
+
+  const normalizedType = cleanText(documentType).toUpperCase();
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `${archiveButton.className || 'secondary-action'} danger`;
+  button.textContent = normalizedType === 'SOW' || normalizedType === 'GSD'
+    ? `Delete ${normalizedType}`
+    : 'Delete';
+  button.setAttribute(DELETE_BUTTON_ATTRIBUTE, 'true');
+  button.setAttribute('aria-label', `Delete ${cleanText(label) || 'project document'}`);
+  button.addEventListener('click', async () => {
+    const displayLabel = cleanText(label) || 'this document';
+    const reason = window.prompt(`Delete ${displayLabel}? Enter the required audit reason:`);
+    if (!reason || !reason.trim()) return;
+    if (!window.confirm('This removes the shared document from Manage Existing Project, Project Workspace, and active FlowHive/Project Forge evidence while retaining immutable audit history. Continue?')) return;
+
+    button.disabled = true;
+    button.textContent = 'Deleting…';
+    try {
+      const deleteHeaders = new Headers(window.__projectPulse055cRequestHeaders || []);
+      deleteHeaders.set('Content-Type', 'application/json');
+      const response = await window.fetch(`/api/work-register/projects/${projectId}/documents/${id}`, {
+        method: 'DELETE',
+        headers: deleteHeaders,
+        credentials: window.__projectPulse055cCredentials || 'same-origin',
+        body: JSON.stringify({ reason: reason.trim() })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || `HTTP ${response.status}`);
+
+      const card = actionContainer.closest('.work-register-document-card, article, li, .document-card, .drawer-card');
+      if (card) card.remove();
+      else button.remove();
+      window.dispatchEvent(new CustomEvent('projectpulse-work-register-document-deleted', {
+        detail: { projectId, documentId: id, result }
+      }));
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = normalizedType === 'SOW' || normalizedType === 'GSD'
+        ? `Delete ${normalizedType}`
+        : 'Delete';
+      window.alert(error instanceof Error ? error.message : 'Unable to delete shared project document.');
+    }
+  });
+  actionContainer.appendChild(button);
+}
+
 function installDeleteControls() {
   const projectId = currentProjectId();
   if (!UUID_PATTERN.test(projectId)) return;
 
+  // Current Manage Existing Project cards use React buttons rather than download anchors.
+  // Resolve their stable document identity from the canonical 055C projection that was
+  // merged into the details response, then place Delete beside the native Archive action.
+  document.querySelectorAll('.work-register-document-card').forEach((card) => {
+    const actionContainer = card.querySelector('.work-register-document-actions');
+    if (!actionContainer || hasDeleteControl(actionContainer)) return;
+    const archiveButton = [...actionContainer.querySelectorAll('button')]
+      .find((button) => cleanText(button.textContent).toLowerCase() === 'archive');
+    if (!archiveButton) return;
+
+    const canonicalDocument = canonicalDocumentForCard(card);
+    if (!canonicalDocument || canonicalDocument.canDelete === false) return;
+    const id = documentId(canonicalDocument);
+    if (!id) return;
+    appendDeleteControl({
+      actionContainer,
+      archiveButton,
+      projectId,
+      id,
+      label: card.querySelector('strong')?.textContent,
+      documentType: canonicalDocument.documentType
+    });
+  });
+
+  // Keep continuity with legacy document surfaces that still render a direct
+  // download anchor. The native-card path above is authoritative for 055C.
   document.querySelectorAll('a[href*="/api/work-register/projects/documents/"][href*="/download"]').forEach((anchor) => {
     const match = cleanText(anchor.getAttribute('href')).match(DOWNLOAD_PATTERN);
     const id = match?.[1] || '';
     if (!UUID_PATTERN.test(id)) return;
 
     const actionContainer = anchor.parentElement;
-    if (!actionContainer || actionContainer.querySelector(`[data-${DELETE_BUTTON_MARKER}]`)) return;
+    if (!actionContainer || hasDeleteControl(actionContainer)) return;
 
     const archiveButton = [...actionContainer.querySelectorAll('button')]
       .find((button) => cleanText(button.textContent).toLowerCase() === 'archive');
     if (!archiveButton) return;
 
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `${archiveButton.className || 'secondary-action'} danger`;
-    button.textContent = 'Delete from 055C and 019';
-    button.dataset[DELETE_BUTTON_MARKER] = 'true';
-    button.addEventListener('click', async () => {
-      const label = cleanText(anchor.textContent) || 'this document';
-      const reason = window.prompt(`Delete ${label}? Enter the required audit reason:`);
-      if (!reason || !reason.trim()) return;
-      if (!window.confirm('This removes the shared document from Module 055C, Module 019, and active FlowHive/Project Forge evidence. Continue?')) return;
-
-      button.disabled = true;
-      button.textContent = 'Deleting…';
-      try {
-        const deleteHeaders = new Headers(window.__projectPulse055cRequestHeaders || []);
-        deleteHeaders.set('Content-Type', 'application/json');
-        const response = await window.fetch(`/api/work-register/projects/${projectId}/documents/${id}`, {
-          method: 'DELETE',
-          headers: deleteHeaders,
-          credentials: window.__projectPulse055cCredentials || 'same-origin',
-          body: JSON.stringify({ reason: reason.trim() })
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.message || `HTTP ${response.status}`);
-
-        const card = actionContainer.closest('article, li, .document-card, .work-register-document-card, .detail-card, .drawer-card');
-        if (card) card.remove();
-        else {
-          anchor.remove();
-          archiveButton.remove();
-          button.remove();
-        }
-        window.dispatchEvent(new CustomEvent('projectpulse-work-register-document-deleted', {
-          detail: { projectId, documentId: id, result }
-        }));
-      } catch (error) {
-        button.disabled = false;
-        button.textContent = 'Delete from 055C and 019';
-        window.alert(error instanceof Error ? error.message : 'Unable to delete shared project document.');
-      }
+    appendDeleteControl({
+      actionContainer,
+      archiveButton,
+      projectId,
+      id,
+      label: anchor.textContent
     });
-    actionContainer.appendChild(button);
   });
 }
 
@@ -192,9 +256,10 @@ function installWorkRegisterDocumentIntegrity() {
         });
         if (canonicalResponse.ok) {
           const canonical = await canonicalResponse.json();
+          const merged = mergeCanonicalDocuments(details, canonical);
           queueMicrotask(installDeleteControls);
           return responseJson(
-            mergeCanonicalDocuments(details, canonical),
+            merged,
             response.status,
             response.statusText,
             response.headers
