@@ -109,6 +109,9 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
     [[ "$LATEST_REVISION" == "$EXPECTED_REVISION" ]] \
       || fail "Refusing Module 001B revision reconciliation because a different revision is now latest: expected=$EXPECTED_REVISION latest=${LATEST_REVISION:-none}."
 
+    # The ready revision must be activated before stale cleanup. In the prior controller,
+    # requiring ACTIVE=true here creates a circular wait when Single mode keeps the old
+    # revision active while the exact newly-ready revision is still inactive.
     REVISIONS_JSON="$(az containerapp revision list \
       --resource-group "$RESOURCE_GROUP" \
       --name "$APP_NAME" \
