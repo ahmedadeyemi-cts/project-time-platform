@@ -15,6 +15,7 @@ on:
       - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+      - 'scripts/wait-containerapp-ready-revision.sh'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
@@ -70,6 +71,7 @@ jobs:
           RETIRED_MODULE001B_UAT='.github/workflows/module001b-live-reallocation-protected-test-uat.yml'
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
           ASSIGNED_WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
+          MODULE001B_REVISION_WAIT='scripts/wait-containerapp-ready-revision.sh'
           MODULE001B_FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
           SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
@@ -89,6 +91,7 @@ jobs:
           scripts/release-test/run-assigned-work-protected-test-uat.sh
           scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
+          scripts/wait-containerapp-ready-revision.sh
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
           src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
           src/backend/ProjectTime.Api/Program.cs
@@ -229,10 +232,12 @@ jobs:
           test ! -e "$RETIRED_MODULE001B_UAT" || fail 'The parallel Module 001B protected-Test mutator was not retired.'
           test -f "$UTILIZATION_UAT" || fail 'The utilization role-scoping UAT script is missing.'
           test -f "$ASSIGNED_WORK_UAT" || fail 'The assigned-work UAT script is missing.'
+          test -f "$MODULE001B_REVISION_WAIT" || fail 'The Module 001B revision readiness helper is missing.'
           test -f "$MODULE001B_FIXTURE" || fail 'The Module 001B disposable protected-Test fixture module is missing.'
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           bash -n "$UTILIZATION_UAT"
           bash -n "$ASSIGNED_WORK_UAT"
+          bash -n "$MODULE001B_REVISION_WAIT"
 
           grep -Fq 'name: Deploy System-wide Enterprise Reliability and Utilization to Protected Test' "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
@@ -300,6 +305,11 @@ jobs:
           grep -Fq 'MODULE001B_LIVE_REALLOCATION_UAT=PASS' "$ASSIGNED_WORK_UAT"
           grep -Fq 'currentEmployeeWeekMutation:false' "$ASSIGNED_WORK_UAT"
           grep -Fq 'productionMutation:false' "$ASSIGNED_WORK_UAT"
+          grep -Fq 'MODULE001B_PROTECTED_TEST_RECONCILE=false' "$MODULE001B_REVISION_WAIT"
+          grep -Fq 'MODULE001B_STALE_REVISION_DEACTIVATE' "$MODULE001B_REVISION_WAIT"
+          ! grep -Fq 'if [[ "$ACTIVE" == true ]]; then' "$MODULE001B_REVISION_WAIT"
+          ! grep -Fq 'containerapp ingress traffic set' "$MODULE001B_REVISION_WAIT"
+          ! grep -Fq -- '--revision-weight' "$MODULE001B_REVISION_WAIT"
           grep -Fq 'PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED' "$MODULE001B_FIXTURE"
           grep -Fq 'protected_test_uat_route_unavailable' "$MODULE001B_FIXTURE"
 
@@ -324,6 +334,7 @@ jobs:
           echo 'GOVERNED_PROTECTED_TEST_CONTROLLER=PASSED'
           echo 'ASSIGNED_WORK_VISIBILITY_SOURCE=PASSED'
           echo 'MODULE001B_LIVE_REALLOCATION_SOURCE=PASSED'
+          echo 'MODULE001B_READY_INACTIVE_RECONCILIATION=AUTHORIZED'
           echo 'UTILIZATION_ROLE_SCOPING_SOURCE=PASSED'
           echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASSED'
           echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=PASSED'
