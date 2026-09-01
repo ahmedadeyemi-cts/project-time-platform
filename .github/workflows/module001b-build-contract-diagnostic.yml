@@ -1,0 +1,62 @@
+name: Diagnose Module 001B Generated API Contract
+
+on:
+  push:
+    branches:
+      - diag/module001b-test-upstream-20260901
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Inspect generated and published Module 001B route contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact diagnostic source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build API through normal generated Program seam
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Inspect generated source and compiled assembly
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '=== CHECKED_IN_SOURCE_MATCHES ==='
+          grep -R -n -F 'newEffortType' src/backend/ProjectTime.Api || true
+          grep -R -n -F 'project, support, or after_hours' src/backend/ProjectTime.Api || true
+
+          echo '=== GENERATED_CS_MATCHES ==='
+          find src/backend/ProjectTime.Api "$RUNNER_TEMP" -type f -name '*.cs' -print0 2>/dev/null \
+            | xargs -0 -r grep -n -F 'newEffortType' || true
+          find src/backend/ProjectTime.Api "$RUNNER_TEMP" -type f -name '*.cs' -print0 2>/dev/null \
+            | xargs -0 -r grep -n -F 'project, support, or after_hours' || true
+
+          DLL="$(find src/backend/ProjectTime.Api/bin/Release -type f -name 'ProjectTime.Api.dll' | head -1)"
+          [[ -n "$DLL" && -f "$DLL" ]]
+          echo "API_DLL=$DLL"
+          echo '=== COMPILED_DLL_LEGACY_MATCHES ==='
+          strings -el "$DLL" | grep -F 'newEffortType' || true
+          strings -el "$DLL" | grep -F 'project, support, or after_hours' || true
+          strings -a "$DLL" | grep -F 'newEffortType' || true
+          strings -a "$DLL" | grep -F 'project, support, or after_hours' || true
+
+          echo '=== COMPILED_DLL_CURRENT_MATCHES ==='
+          strings -el "$DLL" | grep -F 'module001b-time-reallocation-v1-2026-08-28' || true
+          strings -el "$DLL" | grep -F 'destinationType must be project, non_project, support, or after_hours' || true
+          strings -a "$DLL" | grep -F 'module001b-time-reallocation-v1-2026-08-28' || true
+
+          echo 'PRODUCTION_MUTATION=NONE'
