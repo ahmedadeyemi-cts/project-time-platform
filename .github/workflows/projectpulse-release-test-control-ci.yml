@@ -183,7 +183,6 @@ jobs:
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-module001b-live-uat-repair-files" -o "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
 
           cat > "$RUNNER_TEMP/exact-pr777-module025-workspace-files" <<'FILES'
-          .github/workflows/projectpulse-release-test-control-ci.yml
           database/migrations/089_module_catalog_role_administration_reconciliation.sql
           src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs
           src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs
