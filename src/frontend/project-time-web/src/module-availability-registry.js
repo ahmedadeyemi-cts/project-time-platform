@@ -45,7 +45,7 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '022', route: 'cost-alerts', displayName: 'Cost Alerts', group: 'Reports & Workflow' }),
   Object.freeze({ moduleNumber: '023', route: 'time-compliance', displayName: 'Time Compliance', group: 'Time Management' }),
   Object.freeze({ moduleNumber: '024', route: 'sales-intake', displayName: 'Sales Intake', group: 'Sales & Opportunities' }),
-  Object.freeze({ moduleNumber: '025', route: 'sow-generator', displayName: 'SOW Generator', group: 'Sales & Opportunities' }),
+  Object.freeze({ moduleNumber: '025', route: 'sow-generator', displayName: 'SOW & GSD Workspace', group: 'Sales & Opportunities', description: 'Create, review, autosave, confirm, archive, and export governed SOW/GSD packages with detailed Plan, Design, Implement, Validate, and Release scope and reviewed level of effort.' }),
   Object.freeze({ moduleNumber: '026', route: 'crm-integration', displayName: 'CRM / ERP Integration Center', group: 'Integrations' }),
   Object.freeze({ moduleNumber: '027', route: 'signed-handoff', displayName: 'Signed Handoff', group: 'Project Delivery' }),
   Object.freeze({ moduleNumber: '028', route: 'ai-time-entry', displayName: 'AI Time Entry', group: 'Time Management' }),
