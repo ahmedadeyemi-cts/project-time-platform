@@ -44,9 +44,9 @@ requireText(contextGenerator, 'WorkLifecycleHistoryBillingRoles', 'Work Lifecycl
 requireText(contextGenerator, 'WorkLifecycleHistoryBroadReadRoles', 'Work Lifecycle broad read roles')
 requireText(contextGenerator, 'BuildProjectHistoryAccessDeniedAnswer', 'history access-denied result without audit retrieval')
 requireText(contextGenerator, 'Ordinary project resource assignment alone does not grant lifecycle audit history.', 'resource assignment cannot widen lifecycle audit authority')
-requireText(contextGenerator, '@can_view_lifecycle_portfolio = TRUE', 'Work Lifecycle portfolio readers enter project-history resolver scope')
 requireText(contextGenerator, 'CanResolveProjectHistoryPortfolio', 'portfolio history role classifier')
 requireText(contextGenerator, 'AddProjectFactsScopeParameters', 'project resolver receives lifecycle-specific scope parameter')
+requireText(contextGenerator, 'command.Parameters["is_broad_scope"].Value = true', 'history-only portfolio roles reuse the established broad project scope parameter')
 requireText(contextGenerator, 'query.ProjectReference,\\n                    query.Kind,', 'project resolver receives query kind without widening stakeholder lookups')
 
 const buildProps = read('src/backend/ProjectTime.Api/Directory.Build.props')
