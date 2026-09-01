@@ -160,6 +160,20 @@ assert(
   count(salesDelivery, "request('/api/project-intake/requests',") === 1,
   'The intake uploader must have one guarded create call and reuse the retained package on retry.'
 );
+contains(
+  salesDelivery,
+  "import SowGsdWorkspace from '../module025/SowGsdWorkspace.jsx';",
+  'Module 025 SOW/GSD workspace import'
+);
+contains(
+  salesDelivery,
+  "module === '025' ? <SowGsdWorkspace />",
+  'Module 025 live workspace route'
+);
+assert(
+  !salesDelivery.includes('function SowGenerator()'),
+  'Module 025 live route must not retain the legacy inline SOW Generator.'
+);
 
 const predev = packageJson.scripts?.predev ?? '';
 const prebuild = packageJson.scripts?.prebuild ?? '';
