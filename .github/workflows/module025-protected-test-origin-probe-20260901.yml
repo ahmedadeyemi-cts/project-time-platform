@@ -1,0 +1,114 @@
+name: Module 025 Protected-Test Origin Probe 20260901
+
+on:
+  push:
+    branches:
+      - uat/module025-live-20260901
+    paths:
+      - '.github/workflows/module025-protected-test-origin-probe-20260901.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Verify Module 025 trusted browser origin without mutation
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      BASE: https://phd-west-test.onenecklab.com
+      TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+    steps:
+      - name: Require Protected-Test credential
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || { echo 'Protected-Test credential unavailable.' >&2; exit 1; }
+
+      - name: Probe Module 025 same-origin normalization
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          health_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 60 \
+            -o "$tmp/health.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            "$BASE/health?module025-origin-probe=$GITHUB_RUN_ID" || true)"
+          [[ "$health_status" == 200 ]] || { echo "Protected Test health returned HTTP $health_status" >&2; exit 1; }
+          jq -e '.status == "healthy"' "$tmp/health.json" >/dev/null
+
+          jq -n --arg username 'demo.manager@ussignal.local' --arg password "$TEST_LOGIN_PASSWORD" \
+            '{username:$username,password:$password}' > "$tmp/login-input.json"
+          login_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$tmp/login.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            -H 'Content-Type: application/json' \
+            -H "Origin: $BASE" \
+            -H 'Sec-Fetch-Site: same-origin' \
+            --data-binary @"$tmp/login-input.json" \
+            "$BASE/api/auth/local/login" || true)"
+          [[ "$login_status" == 200 ]] || { echo "Manager fixture login returned HTTP $login_status" >&2; exit 1; }
+          token="$(jq -r '.sessionToken // empty' "$tmp/login.json")"
+          [[ -n "$token" ]] || { echo 'Manager fixture returned no session token.' >&2; exit 1; }
+          echo "::add-mask::$token"
+
+          bootstrap_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$tmp/bootstrap.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            -H "X-ProjectPulse-Session: $token" \
+            -H 'X-ProjectPulse-Module-Number: 025' \
+            -H "Origin: $BASE" \
+            -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/module025/sow-gsd/bootstrap" || true)"
+          [[ "$bootstrap_status" == 200 ]] || { echo "Module 025 bootstrap returned HTTP $bootstrap_status" >&2; exit 1; }
+          jq -e '.status == "module025_workspace_ready" and .access.isManager == true and .access.canCreate == false' "$tmp/bootstrap.json" >/dev/null \
+            || { echo 'Manager fixture is not the expected read-only Module 025 identity.' >&2; exit 1; }
+
+          printf '{}\n' > "$tmp/create-input.json"
+          create_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$tmp/create.json" -w '%{http_code}' \
+            -X POST \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $token" \
+            -H "X-ProjectPulse-Session: $token" \
+            -H 'X-ProjectPulse-Module-Number: 025' \
+            -H "Origin: $BASE" \
+            -H 'Sec-Fetch-Site: same-origin' \
+            --data-binary @"$tmp/create-input.json" \
+            "$BASE/api/module025/sow-gsd" || true)"
+
+          create_body="$(cat "$tmp/create.json")"
+          if grep -Eqi 'origin_rejected|request origin is not allowed|origin is not allowed' "$tmp/create.json"; then
+            echo 'ERROR: Module 025 still rejected the legitimate Protected-Test browser origin.' >&2
+            cat "$tmp/create.json" >&2
+            exit 1
+          fi
+          [[ "$create_status" == 403 ]] || {
+            echo "ERROR: Expected the read-only manager fixture to reach Module 025 RBAC and return HTTP 403; got $create_status." >&2
+            cat "$tmp/create.json" >&2
+            exit 1
+          }
+          grep -Fq 'module025_create' "$tmp/create.json" || {
+            echo 'ERROR: Request did not reach the expected Module 025 create-authorization boundary.' >&2
+            cat "$tmp/create.json" >&2
+            exit 1
+          }
+
+          curl -sS --http1.1 --connect-timeout 20 --max-time 60 \
+            -o /dev/null -X POST \
+            -H "Authorization: Bearer $token" \
+            -H "X-ProjectPulse-Session: $token" \
+            -H 'X-ProjectPulse-Module-Number: 025' \
+            -H "Origin: $BASE" \
+            -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/auth/session/logout" || true
+
+          echo "MODULE025_ORIGIN_PROBE=PASS"
+          echo "CREATE_HTTP_STATUS=$create_status"
+          echo 'EXPECTED_BOUNDARY=module025_create'
+          echo 'STATE_MUTATION=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
