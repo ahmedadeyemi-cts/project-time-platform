@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   configure:
-    name: Inspect Module 025 generation failure
+    name: Verify Module 025 repaired Protected-Test runtime
     environment: test
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -25,25 +25,31 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Inspect recent Module 025 API exceptions
+      - name: Verify source and governed public origin
         shell: bash
+        env:
+          EXPECTED_SOURCE: f7c86b45cff09741dd022c0e80bc1e6ad7d5c80b
+          EXPECTED_PUBLIC_URL: https://phd-west-test.onenecklab.com
         run: |
           set -Eeuo pipefail
           current_subscription="$(az account show --query id -o tsv --only-show-errors)"
           [[ "${current_subscription,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]]
-          raw="$(mktemp)"
-          az containerapp logs show \
-            --resource-group '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            --name '${{ vars.AZURE_API_APP }}' \
-            --type console \
-            --tail 300 \
-            --format text > "$raw" 2>&1 || true
-          echo '--- FILTERED MODULE025/CELAR/EXCEPTION LOGS ---'
-          grep -Ei 'Module 025|Module025|Celar AI enterprise composition|InvalidOperationException|Npgsql|security_configuration_unavailable|sow-gsd|exception' "$raw" \
-            | sed -E 's/(Bearer|X-ProjectPulse-Session:)[[:space:]]+[^[:space:]]+/\1 [REDACTED]/g' \
-            | tail -n 180 || true
-          echo '--- END FILTERED LOGS ---'
-          rm -f "$raw"
+          api="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          source="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$api")"
+          public_url="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_PUBLIC_URL") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$api")"
+          image="$(jq -r '.properties.template.containers[0].image // empty' <<<"$api")"
+          revision="$(jq -r '.properties.latestRevisionName // empty' <<<"$api")"
+          [[ "$source" == "$EXPECTED_SOURCE" ]]
+          [[ "$public_url" == "$EXPECTED_PUBLIC_URL" ]]
+          [[ "$image" == *@sha256:* ]]
+          health_status="$(curl -sS --max-time 60 -o /tmp/health.json -w '%{http_code}' -H 'Cache-Control: no-cache' "$EXPECTED_PUBLIC_URL/health?m025-generation-repair=$GITHUB_RUN_ID" || true)"
+          [[ "$health_status" == 200 ]]
+          jq -e '.status == "healthy"' /tmp/health.json >/dev/null
+          echo "MODULE025_RUNTIME=READY"
+          echo "SOURCE_COMMIT=$source"
+          echo "PUBLIC_ORIGIN=$public_url"
+          echo "API_REVISION=$revision"
+          echo "PRODUCTION_MUTATION=NONE"
 
       - name: Sign out
         if: always()
