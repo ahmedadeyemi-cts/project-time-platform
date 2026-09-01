@@ -203,7 +203,9 @@ public static class ProjectPulsePublicOriginCompatibility
             || path.StartsWith("/api/auth/sso/", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/api/admin/azure/users/preview", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/integrations/026/", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/public/integrations/026/oauth/callback", StringComparison.OrdinalIgnoreCase);
+            || path.Equals("/api/public/integrations/026/oauth/callback", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/module025/sow-gsd", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/module025/sow-gsd/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryApprovedAuthority(string value, HttpContext context, out Uri authority)
