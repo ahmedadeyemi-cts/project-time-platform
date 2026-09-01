@@ -1,0 +1,102 @@
+name: Validate Module 025 Governed Protected-Test Release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'database/migrations/089_module_catalog_role_administration_reconciliation.sql'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs'
+      - 'src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs'
+      - 'src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'tests/validate-systemwide-enterprise-reliability.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module025-governed-protected-test-release-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Module 025 exact release scope and Protected-Test controls
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out exact proposed Module 025 release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Validate exact Module 025 release boundary
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Pull-request base SHA is unavailable.'
+          git cat-file -e "$BASE_SHA^{commit}" || fail 'Exact pull-request base commit is unavailable.'
+
+          cat > "$RUNNER_TEMP/expected-module025-files" <<'FILES'
+          database/migrations/089_module_catalog_role_administration_reconciliation.sql
+          src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs
+          src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs
+          src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx
+          src/frontend/project-time-web/src/module-availability-registry.js
+          tests/validate-systemwide-enterprise-reliability.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-module025-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/expected-module025-files" -o "$RUNNER_TEMP/expected-module025-files"
+
+          git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-module025-files"
+          cmp -s "$RUNNER_TEMP/expected-module025-files" "$RUNNER_TEMP/actual-module025-files" || {
+            echo 'PR differs from the exact governed Module 025 release set.' >&2
+            diff -u "$RUNNER_TEMP/expected-module025-files" "$RUNNER_TEMP/actual-module025-files" >&2 || true
+            exit 1
+          }
+
+          CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+          test -f "$CONTROLLER" || fail 'Protected-Test deployment controller is missing.'
+          grep -Fq 'environment: test' "$CONTROLLER"
+          grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
+          grep -Fq 'cancel-in-progress: false' "$CONTROLLER"
+          grep -Fq 'Build immutable API, web, and migration images' "$CONTROLLER"
+          grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
+          grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
+          grep -Fq 'Run protected-Test authenticated functional UAT' "$CONTROLLER"
+          grep -Fq 'Run protected-Test assigned-work visibility UAT' "$CONTROLLER"
+          grep -Fq 'Run protected-Test utilization role-scoping UAT' "$CONTROLLER"
+          grep -Fq 'Production mutation: none' "$CONTROLLER"
+          grep -Fq 'Oracle/private AI runtime mutation: none' "$CONTROLLER"
+
+          MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+          test -f "$MIGRATION_BUILDER" || fail 'Governed migration builder is missing.'
+          grep -Fq '098_module_management_owner_storage_reconciliation.sql' "$MIGRATION_BUILDER"
+          grep -Fq '098_customer_directory_source_authority.sql' "$MIGRATION_BUILDER"
+          grep -Fq '099_module025_sow_gsd_workspace.sql' "$MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED' "$MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED' "$MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED' "$MIGRATION_BUILDER"
+
+          node src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check "$BASE_SHA...HEAD"
+
+          echo 'MODULE025_EXACT_GOVERNED_SCOPE=PASSED'
+          echo 'MODULE025_LIVE_WORKSPACE_ROUTE=PASSED'
+          echo 'MIGRATIONS_098_099_PROTECTED_TEST=REQUIRED'
+          echo 'AUTHENTICATED_ASSIGNED_WORK_UTILIZATION_UAT=REQUIRED'
+          echo 'PRODUCTION_MUTATION=NONE'
