@@ -3,6 +3,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+// Module 025 route assertions intentionally guard the governed SOW/GSD workspace rather than the retired inline generator.
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
 const repositoryRoot = path.resolve(webRoot, '../../..');
@@ -159,6 +160,20 @@ for (const marker of [
 assert(
   count(salesDelivery, "request('/api/project-intake/requests',") === 1,
   'The intake uploader must have one guarded create call and reuse the retained package on retry.'
+);
+contains(
+  salesDelivery,
+  "import SowGsdWorkspace from '../module025/SowGsdWorkspace.jsx';",
+  'Module 025 SOW/GSD workspace import'
+);
+contains(
+  salesDelivery,
+  "module === '025' ? <SowGsdWorkspace />",
+  'Module 025 live workspace route'
+);
+assert(
+  !salesDelivery.includes('function SowGenerator()'),
+  'Module 025 live route must not retain the legacy inline SOW Generator.'
 );
 
 const predev = packageJson.scripts?.predev ?? '';
