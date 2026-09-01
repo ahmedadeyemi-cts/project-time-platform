@@ -1,0 +1,82 @@
+name: One-Time Protected UAT Workflow Control for Celar AI PR782
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: protected-uat-celar-ai-pr782-workflow-control
+  cancel-in-progress: false
+
+jobs:
+  control:
+    if: >-
+      github.event.issue.pull_request &&
+      github.actor == 'ahmedadeyemi-cts' &&
+      (github.event.comment.body == 'ENABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d' ||
+       github.event.comment.body == 'DISABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+      EXPECTED_RELEASE_SOURCE_SHA: 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d
+      CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
+    steps:
+      - name: Verify immutable release boundary before enable
+        if: github.event.comment.body == 'ENABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${EXPECTED_RELEASE_SOURCE_SHA}...${actual_main}")"
+          status="$(jq -r '.status' <<<"$comparison")"
+          [[ "$status" == 'ahead' || "$status" == 'identical' ]] || {
+            echo "Main no longer descends from the reviewed release source: $status" >&2
+            exit 1
+          }
+          mapfile -t changed_files < <(jq -r '.files[].filename' <<<"$comparison")
+          [[ ${#changed_files[@]} -eq 1 && "${changed_files[0]}" == "$CONTROL_WORKFLOW_PATH" ]] || {
+            echo 'Unexpected source drift exists between the reviewed release boundary and current main:' >&2
+            printf '  %s\n' "${changed_files[@]}" >&2
+            exit 1
+          }
+          echo "PROTECTED_UAT_REVIEWED_SOURCE_SHA=$EXPECTED_RELEASE_SOURCE_SHA"
+          echo "PROTECTED_UAT_CONTROLLED_MAIN_SHA=$actual_main"
+
+      - name: Apply exact workflow control
+        id: control
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          command='${{ github.event.comment.body }}'
+          if [[ "$command" == ENABLE\ PROTECTED\ UAT\ PR782\ "$EXPECTED_RELEASE_SOURCE_SHA" ]]; then
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
+            expected_state='active'
+            action='enabled'
+          else
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
+            expected_state='disabled_manually'
+            action='disabled'
+          fi
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
+          [[ "$state" == "$expected_state" ]] || {
+            echo "Protected UAT workflow state mismatch: expected $expected_state, found $state" >&2
+            exit 1
+          }
+          echo "action=$action" >> "$GITHUB_OUTPUT"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_UAT_DEPLOY_WORKFLOW_ACTION=$action"
+          echo "PROTECTED_UAT_DEPLOY_WORKFLOW_STATE=$state"
+
+      - name: Record workflow-control evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment workflow control completed.\n\n- Reviewed release source: \`$EXPECTED_RELEASE_SOURCE_SHA\`\n- Workflow: \`$DEPLOY_WORKFLOW\`\n- Action: \`${{ steps.control.outputs.action }}\`\n- Verified state: \`${{ steps.control.outputs.state }}\`\n- Production mutation: none"
