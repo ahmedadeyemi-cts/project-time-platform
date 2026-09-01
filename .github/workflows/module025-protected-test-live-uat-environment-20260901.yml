@@ -1,0 +1,56 @@
+name: Temporary Module 025 Test-Environment Live UAT
+
+on:
+  push:
+    branches:
+      - uat/module025-live-20260901
+    paths:
+      - '.github/workflows/module025-protected-test-live-uat-environment-20260901.yml'
+      - 'scripts/release-test/run-module025-protected-test-live-uat.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  module025-live-uat:
+    name: Exercise Module 025 in Protected Test
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE: https://phd-west-test.onenecklab.com
+      TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+      EVIDENCE_DIR: /tmp/module025-protected-test-live-evidence
+      EXPECTED_DEPLOYED_SOURCE: 0906e7c0a30d724bb6099860ac46da6eb50f18f6
+    steps:
+      - name: Check out isolated UAT branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Require Test environment credential
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || {
+            echo 'ERROR: Test environment secret PROJECTPULSE_M087_PASSWORD is unavailable.' >&2
+            exit 1
+          }
+          echo 'PROTECTED_TEST_LOGIN_SECRET=AVAILABLE'
+
+      - name: Run live Module 025 acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash scripts/release-test/run-module025-protected-test-live-uat.sh
+
+      - name: Upload Module 025 live evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module025-protected-test-live-uat-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/module025-protected-test-live-evidence
+          if-no-files-found: warn
+          retention-days: 14
