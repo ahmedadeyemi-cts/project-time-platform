@@ -45,7 +45,7 @@ public static class ModuleAvailabilityModule
             ["022"] = Module("022", "cost-alerts", "Cost Alerts", "Reports & Workflow"),
             ["023"] = Module("023", "time-compliance", "Time Compliance", "Time Management"),
             ["024"] = Module("024", "sales-intake", "Sales Intake", "Sales & Opportunities"),
-            ["025"] = Module("025", "sow-generator", "SOW Generator", "Sales & Opportunities"),
+            ["025"] = Module("025", "sow-generator", "SOW & GSD Workspace", "Sales & Opportunities"),
             ["026"] = Module("026", "crm-integration", "CRM / ERP Integration Center", "Integrations"),
             ["027"] = Module("027", "signed-handoff", "Signed Handoff", "Project Delivery"),
             ["028"] = Module("028", "ai-time-entry", "AI Time Entry", "Time Management"),
