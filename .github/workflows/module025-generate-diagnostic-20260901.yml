@@ -1,0 +1,47 @@
+name: Module 025 Generate Diagnostic 20260901
+
+on:
+  push:
+    branches:
+      - uat/module025-live-20260901
+    paths:
+      - '.github/workflows/module025-generate-diagnostic-20260901.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  diagnose:
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Sign in to Protected-Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Inspect recent Module 025 API exceptions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          raw="$(mktemp)"
+          az containerapp logs show \
+            --resource-group '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            --name '${{ vars.AZURE_API_APP }}' \
+            --type console \
+            --tail 300 \
+            --format text > "$raw" 2>&1 || true
+          echo '--- FILTERED MODULE025/CELAR/EXCEPTION LOGS ---'
+          grep -Ei 'Module 025|Module025|Celar AI enterprise composition|InvalidOperationException|Npgsql|security_configuration_unavailable|sow-gsd|exception' "$raw" \
+            | sed -E 's/(Bearer|X-ProjectPulse-Session:)[[:space:]]+[^[:space:]]+/\1 [REDACTED]/g' \
+            | tail -n 180 || true
+          echo '--- END FILTERED LOGS ---'
+          rm -f "$raw"
+
+      - name: Sign out
+        if: always()
+        run: az logout || true
