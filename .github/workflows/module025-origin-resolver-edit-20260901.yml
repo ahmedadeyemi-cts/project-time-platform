@@ -1,0 +1,57 @@
+name: Module 025 origin resolver surgical edit 20260901
+
+on:
+  push:
+    branches:
+      - fix/module025-origin-resolver-20260901
+    paths:
+      - '.github/workflows/module025-origin-resolver-edit-20260901.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  edit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/module025-origin-resolver-20260901
+          fetch-depth: 0
+      - name: Replace Module 025 same-origin resolver
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs')
+          source = path.read_text()
+          old = '''    private static bool SameOrigin(HttpContext context) { if (!context.Request.Headers.TryGetValue("Origin", out var values)) return true; if (!Uri.TryCreate(values.ToString(), UriKind.Absolute, out var origin)) return false; return string.Equals(origin.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase) && string.Equals(origin.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase) && origin.Port == (context.Request.Host.Port ?? (context.Request.IsHttps ? 443 : 80)); }'''
+          new = '''    private static bool SameOrigin(HttpContext context)
+    {
+        if (!context.Request.Headers.TryGetValue("Origin", out var values)) return true;
+        if (!ProjectPulsePublicOriginCompatibility.TryOrigin(values.ToString(), context, out var browserOrigin)) return false;
+        if (!ProjectPulsePublicOriginCompatibility.TryResolveProxyOrConfiguredOrigin(context, out var requestOrigin, out _)) return false;
+        return string.Equals(browserOrigin.Scheme, requestOrigin.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(browserOrigin.Host, requestOrigin.Host, StringComparison.OrdinalIgnoreCase)
+            && browserOrigin.Port == requestOrigin.Port;
+    }'''
+          if source.count(old) != 1:
+              raise SystemExit(f'Expected exactly one Module 025 SameOrigin source anchor; found {source.count(old)}')
+          path.write_text(source.replace(old, new, 1))
+          PY
+          grep -Fq 'ProjectPulsePublicOriginCompatibility.TryResolveProxyOrConfiguredOrigin(context, out var requestOrigin, out _)' src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+          grep -Fq 'ProjectPulsePublicOriginCompatibility.TryOrigin(values.ToString(), context, out var browserOrigin)' src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+          rm .github/workflows/module025-origin-resolver-edit-20260901.yml
+          git diff --check
+      - name: Commit surgical repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs .github/workflows/module025-origin-resolver-edit-20260901.yml
+          git diff --cached --check
+          git commit -m 'Fix Module 025 same-origin resolution at endpoint boundary'
+          git push origin HEAD:fix/module025-origin-resolver-20260901
