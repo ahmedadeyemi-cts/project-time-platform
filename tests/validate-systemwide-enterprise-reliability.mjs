@@ -21,6 +21,7 @@ const enterpriseCss = read('src/frontend/project-time-web/src/enterprise-systemw
 const flowhive = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
 const costAlerts = read('src/frontend/project-time-web/src/CostOverrunAlertCenter.jsx');
 const sow = read('src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx');
+const sowWorkspace = read('src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx');
 const billing = read('src/frontend/project-time-web/src/BillingReadinessCenter.jsx');
 const help = read('src/frontend/project-time-web/src/HelpAssistant.jsx');
 const auditUi = read('src/frontend/project-time-web/src/AuditHistoryPanel.jsx');
@@ -86,10 +87,12 @@ for (const marker of [
 ]) requireText(costAlerts, marker, 'Module 022 financial alert contract');
 rejectText(costAlerts, 'completionPercentage) * 100', 'double-scaled project completion');
 
-requireText(sow, '/api/customers/overview', 'SOW Customer Directory');
-requireText(sow, '/api/opportunities?scope=all', 'SOW opportunity directory');
-requireText(sow, 'Select or type a customer', 'editable customer selector');
-requireText(sow, 'Select or type an opportunity', 'editable opportunity selector');
+requireText(sow, "import SowGsdWorkspace from '../module025/SowGsdWorkspace.jsx';", 'Module 025 live workspace import');
+requireText(sow, "module === '025' ? <SowGsdWorkspace />", 'Module 025 live workspace route');
+rejectText(sow, 'function SowGenerator()', 'legacy inline SOW Generator');
+requireText(sowWorkspace, '/api/module025/sow-gsd/bootstrap', 'SOW/GSD governed bootstrap');
+requireText(sowWorkspace, 'Customer not listed — enter manually', 'SOW/GSD manual customer option');
+requireText(sowWorkspace, 'SOW &amp; GSD Workspace', 'SOW/GSD workspace identity');
 
 requireText(billing, 'fulfilledSourceWarnings', 'partial Billing Readiness source handling');
 requireText(billing, 'supporting source condition(s) require attention', 'specific source status presentation');
