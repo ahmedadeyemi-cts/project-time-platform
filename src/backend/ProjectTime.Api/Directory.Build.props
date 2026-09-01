@@ -113,6 +113,8 @@
           AfterTargets="GenerateScopedRbacSources"
           BeforeTargets="CoreCompile">
     <Exec Command="grep -Fq 'app.MapModule025SowGsdEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot; || sed -i '/app.Run();/i app.MapModule025SowGsdEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'app.UseProjectPulsePublicOriginCompatibility();' &quot;$(ScopedRbacGeneratedProgram)&quot; || sed -i '/app.MapModule025SowGsdEndpoints();/i app.UseProjectPulsePublicOriginCompatibility();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'app.UseProjectPulsePublicOriginCompatibility();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
     <Exec Command="grep -Fq 'app.MapModule025SowGsdEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
   </Target>
 </Project>
