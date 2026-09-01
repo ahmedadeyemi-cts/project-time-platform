@@ -69,8 +69,7 @@ PROJECT_FACTS_SQL = r'''    private const string ProjectFactsScopeCte = """
             FROM projects project
             CROSS JOIN requester
             WHERE (
-               @can_view_lifecycle_portfolio = TRUE
-               OR @is_broad_scope = TRUE
+               @is_broad_scope = TRUE
                OR (@can_view_managed_projects = TRUE AND project.project_manager_user_id = @effective_user_id)
                OR project.account_executive_user_id = @effective_user_id
                OR project.solution_architect_user_id = @effective_user_id
@@ -326,9 +325,8 @@ LIFECYCLE_AUTH_HELPERS = r'''    // Keep this read boundary aligned with WorkLif
         CelarAiInternalDataQueryKind kind)
     {
         AddScopeParameters(command, effectiveUserId, access);
-        command.Parameters.AddWithValue(
-            "can_view_lifecycle_portfolio",
-            CanResolveProjectHistoryPortfolio(access, kind));
+        if (CanResolveProjectHistoryPortfolio(access, kind))
+            command.Parameters["is_broad_scope"].Value = true;
     }
 
     private static bool CanViewProjectHistory(
@@ -536,9 +534,9 @@ def transform(source: str) -> str:
         'COALESCE(project.account_executive_user_id = @person_user_id, FALSE)',
         'COALESCE(project.solution_architect_user_id = @person_user_id, FALSE)',
         'is_work_lifecycle_assigned_project_manager',
-        '@can_view_lifecycle_portfolio = TRUE',
         'CanResolveProjectHistoryPortfolio',
         'AddProjectFactsScopeParameters',
+        'command.Parameters["is_broad_scope"].Value = true',
         'query.ProjectReference,\n                    query.Kind,',
         'CanViewProjectHistory(access, projectResolution.Project.IsWorkLifecycleAssignedProjectManager)',
         'WorkLifecycleHistoryReadAllRoles',
