@@ -1,0 +1,72 @@
+name: Patch Protected-Test public origin contract 20260901
+
+on:
+  push:
+    branches:
+      - fix/protected-test-public-origin-contract-20260901
+    paths:
+      - '.github/workflows/patch-protected-test-public-origin-contract-20260901.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/protected-test-public-origin-contract-20260901
+          fetch-depth: 0
+
+      - name: Persist public-origin deployment contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/projectpulse-deploy-test.yml')
+          source = path.read_text()
+          expr = '${' + '{ vars.PUBLIC_URL }}'
+
+          old_env = '''            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true \\
+'''
+          new_env = f'''            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" PROJECTPULSE_PUBLIC_URL='{expr}' PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true \\
+'''
+          if source.count(old_env) != 1:
+              raise SystemExit(f'Expected one Protected-Test API env anchor; found {source.count(old_env)}')
+          source = source.replace(old_env, new_env, 1)
+
+          old_verify = '''          SOURCE_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          [[ "$SOURCE_AFTER" == "$TARGET_RELEASE_COMMIT" ]]
+'''
+          new_verify = f'''          SOURCE_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          PUBLIC_URL_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_PUBLIC_URL") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          [[ "$SOURCE_AFTER" == "$TARGET_RELEASE_COMMIT" ]]
+          [[ "$PUBLIC_URL_AFTER" == '{expr}' ]]
+'''
+          if source.count(old_verify) != 1:
+              raise SystemExit(f'Expected one Protected-Test post-deploy verification anchor; found {source.count(old_verify)}')
+          source = source.replace(old_verify, new_verify, 1)
+
+          path.write_text(source)
+          PY
+
+          grep -Fq 'PROJECTPULSE_PUBLIC_URL=' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'PUBLIC_URL_AFTER=' .github/workflows/projectpulse-deploy-test.yml
+          rm .github/workflows/patch-protected-test-public-origin-contract-20260901.yml
+          git diff --check
+
+      - name: Commit durable deployment repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Persist Protected-Test public origin in API deployment'
+          git push origin HEAD:fix/protected-test-public-origin-contract-20260901
