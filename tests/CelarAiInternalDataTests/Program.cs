@@ -32,10 +32,58 @@ AssertQuery(
     CelarAiInternalDataQueryKind.PersonTaskList,
     "Kevin Damisch",
     false);
+AssertQuery(
+    "What is Kevin Damisch working on?",
+    CelarAiInternalDataQueryKind.PersonTaskList,
+    "Kevin Damisch",
+    false);
+AssertQuery(
+    "How many active projects and how many tasks does Kevin Damisch have?",
+    CelarAiInternalDataQueryKind.PersonWorkSummary,
+    "Kevin Damisch",
+    true);
+AssertQuery(
+    "How many tasks and how many active projects does Kevin Damisch have?",
+    CelarAiInternalDataQueryKind.PersonWorkSummary,
+    "Kevin Damisch",
+    true);
+AssertProjectQuery(
+    "Who is the Account Executive for project P-D?",
+    CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
+    "P-D",
+    "account_executive");
+AssertProjectQuery(
+    "Who is the sales person for P-D?",
+    CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
+    "P-D",
+    "account_executive");
+AssertProjectQuery(
+    "Who is the Solution Architect assigned to project P-D?",
+    CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
+    "P-D",
+    "solution_architect");
+AssertProjectQuery(
+    "Who is the project manager for P-D?",
+    CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
+    "P-D",
+    "project_manager");
+AssertProjectQuery(
+    "Show me the historical context for project P-D",
+    CelarAiInternalDataQueryKind.ProjectHistory,
+    "P-D",
+    "");
+AssertProjectQuery(
+    "What happened with project P-D?",
+    CelarAiInternalDataQueryKind.ProjectHistory,
+    "P-D",
+    "");
 
 Require(
     PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("How many projects does Kevin Damisch have assigned to him?"),
     "named person project count remains internal");
+Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("How many active projects and how many tasks does Kevin Damisch have?"),
+    "combined named-person project/task count remains internal");
 Require(
     PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is Kevin Damisch?"),
     "ambiguous named-person question fails private/internal");
@@ -91,6 +139,12 @@ Require(
     PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the project manager for our project?"),
     "internal project-role question remains private");
 Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the Account Executive for project P-D?"),
+    "project Account Executive question remains internal");
+Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Show me the historical context for project P-D"),
+    "project history question remains internal");
+Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("What is zero trust?"),
     "generic definition without Pulse context is external eligible");
 Require(
@@ -138,6 +192,19 @@ static void AssertQuery(
     Require(actual!.Kind == expectedKind, $"query kind: {question}");
     Require(actual.PersonReference == expectedPerson, $"person reference: {question}");
     Require(actual.CountRequested == expectedCount, $"count/list mode: {question}");
+}
+
+static void AssertProjectQuery(
+    string question,
+    CelarAiInternalDataQueryKind expectedKind,
+    string expectedProject,
+    string expectedRole)
+{
+    var actual = CelarAiInternalDataService.ParseQuestion(question);
+    Require(actual is not null, $"project query parsed: {question}");
+    Require(actual!.Kind == expectedKind, $"project query kind: {question}");
+    Require(actual.ProjectReference == expectedProject, $"project reference: {question}");
+    Require(actual.RequestedProjectRole == expectedRole, $"project role: {question}");
 }
 
 static void Require(bool condition, string evidence)
@@ -197,10 +264,10 @@ static async Task AssertDatabaseResolverAsync(string connectionString)
         while (await reader.ReadAsync())
         {
             projectCodes.Add(reader.GetString(1));
-            projectTotal = reader.GetInt64(7);
+            projectTotal = reader.GetInt64(9);
         }
     }
-    Require(projectTotal == 4, "distinct Kevin project total across assignment authorities");
+    Require(projectTotal == 4, "distinct Kevin project total across assignment and project-role authorities");
     Require(projectCodes.SetEquals(new[] { "P-A", "P-B", "P-C", "P-D" }), "Kevin project identities and closed-project exclusion");
 
     var taskCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -225,6 +292,28 @@ static async Task AssertDatabaseResolverAsync(string connectionString)
     Require(taskProjectTotal == 2, "complete distinct project total for Kevin tasks");
     Require(taskCodes.SetEquals(new[] { "TASK-A", "TASK-B" }), "Kevin task identities and closed-project exclusion");
     Require(taskSources["TASK-A"] == "work_register_task_assignment_history", "Work Register row takes precedence over mirrored canonical assignment");
+
+    await using (var project = new NpgsqlCommand(PrivateSql("ExactProjectSql"), connection))
+    {
+        AddScope(project, effectiveUserId);
+        project.Parameters.AddWithValue("normalized_project", "pd");
+        await using var reader = await project.ExecuteReaderAsync();
+        Require(await reader.ReadAsync(), "P-D resolves inside authorized project scope");
+        Require(reader.GetString(1) == "P-D", "P-D project code returned");
+        Require(reader.GetString(9) == "Kevin Damish", "P-D project manager returned");
+        Require(reader.GetString(10) == "Sales Owner", "P-D Account Executive / Sales owner returned");
+        Require(reader.GetString(11) == "Solution Architect", "P-D Solution Architect returned");
+        Require(!await reader.ReadAsync(), "P-D exact project resolution is unambiguous");
+    }
+
+    await using (var history = new NpgsqlCommand(PrivateSql("ProjectHistorySql"), connection))
+    {
+        history.Parameters.AddWithValue("project_id", Guid.Parse("20000000-0000-0000-0000-000000000004"));
+        await using var reader = await history.ExecuteReaderAsync();
+        Require(await reader.ReadAsync(), "P-D immutable lifecycle history returned");
+        Require(reader.GetString(2) == "project_updated", "P-D lifecycle event type returned");
+        Require(reader.GetString(5).Contains("stakeholder", StringComparison.OrdinalIgnoreCase), "P-D lifecycle event summary returned");
+    }
 
     Console.WriteLine("CELAR_AI_INTERNAL_DATA_DATABASE_RESOLVER=PASS");
 }
