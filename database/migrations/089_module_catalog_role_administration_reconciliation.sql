@@ -104,7 +104,7 @@ VALUES
     ('022', 'Cost Alerts', 'cost-alerts', 'Reports & Workflow'),
     ('023', 'Time Compliance', 'time-compliance', 'Time Management'),
     ('024', 'Sales Intake', 'sales-intake', 'Sales & Opportunities'),
-    ('025', 'SOW Generator', 'sow-generator', 'Sales & Opportunities'),
+    ('025', 'SOW & GSD Workspace', 'sow-generator', 'Sales & Opportunities'),
     ('026', 'CRM / ERP Integration Center', 'crm-integration', 'Integrations'),
     ('027', 'Signed Handoff', 'signed-handoff', 'Project Delivery'),
     ('028', 'AI Time Entry', 'ai-time-entry', 'Time Management'),
