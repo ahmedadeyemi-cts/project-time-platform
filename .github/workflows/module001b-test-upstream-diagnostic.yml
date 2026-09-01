@@ -1,0 +1,54 @@
+name: Diagnose Protected Test Web API Upstream
+
+on:
+  push:
+    branches:
+      - diag/module001b-test-upstream-20260901
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  diagnose:
+    name: Read Protected Test web/API routing contract
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Sign in to protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Compare web API_UPSTREAM with active API app
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          API_FQDN="$(jq -r '.properties.configuration.ingress.fqdn // empty' <<<"$API_JSON")"
+          API_UPSTREAM="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "API_UPSTREAM") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$WEB_JSON")"
+          API_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_JSON")"
+          API_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$API_JSON")"
+          WEB_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$WEB_JSON")"
+          API_REVISION="$(jq -r '.properties.latestRevisionName // empty' <<<"$API_JSON")"
+          WEB_REVISION="$(jq -r '.properties.latestRevisionName // empty' <<<"$WEB_JSON")"
+          EXPECTED_UPSTREAM="https://$API_FQDN"
+
+          printf 'API_FQDN=%s\n' "$API_FQDN"
+          printf 'WEB_API_UPSTREAM=%s\n' "$API_UPSTREAM"
+          printf 'EXPECTED_API_UPSTREAM=%s\n' "$EXPECTED_UPSTREAM"
+          printf 'API_SOURCE_COMMIT=%s\n' "$API_SOURCE"
+          printf 'API_IMAGE=%s\n' "$API_IMAGE"
+          printf 'WEB_IMAGE=%s\n' "$WEB_IMAGE"
+          printf 'API_REVISION=%s\n' "$API_REVISION"
+          printf 'WEB_REVISION=%s\n' "$WEB_REVISION"
+          if [[ "$API_UPSTREAM" == "$EXPECTED_UPSTREAM" ]]; then
+            echo 'WEB_API_UPSTREAM_CONVERGED=true'
+          else
+            echo 'WEB_API_UPSTREAM_CONVERGED=false'
+          fi
+          echo 'PRODUCTION_MUTATION=NONE'
