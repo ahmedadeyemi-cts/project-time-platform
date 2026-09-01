@@ -8,41 +8,164 @@ on:
       - '.github/workflows/module025-protected-test-live-uat-environment-20260901.yml'
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
   module025-live-uat:
-    name: Inspect Module 025 Protected-Test generation failure
+    name: Verify Module 025 detailed-scope generation
     environment: test
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
+    env:
+      BASE: https://phd-west-test.onenecklab.com
+      TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
     steps:
-      - name: Sign in to Protected-Test subscription
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Inspect recent Module 025 API exceptions
+      - name: Run generation lifecycle probe
         shell: bash
         run: |
           set -Eeuo pipefail
-          raw="$(mktemp)"
-          az containerapp logs show \
-            --resource-group '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            --name '${{ vars.AZURE_API_APP }}' \
-            --type console \
-            --tail 300 \
-            --format text > "$raw" 2>&1 || true
-          echo '--- FILTERED MODULE025/CELAR/EXCEPTION LOGS ---'
-          grep -Ei 'Module 025|Module025|Celar AI enterprise composition|InvalidOperationException|Npgsql|security_configuration_unavailable|sow-gsd|exception' "$raw" \
-            | sed -E 's/(Bearer|X-ProjectPulse-Session:)[[:space:]]+[^[:space:]]+/\1 [REDACTED]/g' \
-            | tail -n 180 || true
-          echo '--- END FILTERED LOGS ---'
-          rm -f "$raw"
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || { echo 'Protected-Test credential unavailable.' >&2; exit 1; }
+          tmp="$(mktemp -d)"
+          engagement_id=''
+          token=''
+          cleanup() {
+            if [[ -n "$engagement_id" && -n "$token" ]]; then
+              curl -sS --http1.1 --connect-timeout 20 --max-time 90 -o /dev/null -X POST \
+                -H "Authorization: Bearer $token" \
+                -H "X-ProjectPulse-Session: $token" \
+                -H 'X-ProjectPulse-Module-Number: 025' \
+                -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+                "$BASE/api/module025/sow-gsd/$engagement_id/archive" || true
+            fi
+            rm -rf "$tmp"
+          }
+          trap cleanup EXIT
 
-      - name: Sign out
-        if: always()
-        run: az logout || true
+          login() {
+            local username="$1" output="$2" payload status
+            payload="$(mktemp)"
+            jq -n --arg username "$username" --arg password "$TEST_LOGIN_PASSWORD" '{username:$username,password:$password}' > "$payload"
+            status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+              -o "$output" -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              -H 'Content-Type: application/json' \
+              -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+              --data-binary @"$payload" "$BASE/api/auth/local/login" || true)"
+            rm -f "$payload"
+            printf '%s\n' "$status"
+          }
+
+          manager_response="$tmp/manager-login.json"
+          manager_status="$(login 'demo.manager@ussignal.local' "$manager_response")"
+          [[ "$manager_status" == 200 ]] || { echo "Manager login HTTP $manager_status" >&2; exit 1; }
+          manager_token="$(jq -r '.sessionToken // empty' "$manager_response")"
+          [[ -n "$manager_token" ]] || { echo 'Manager session unavailable.' >&2; exit 1; }
+          echo "::add-mask::$manager_token"
+
+          bootstrap_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$tmp/manager-bootstrap.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $manager_token" \
+            -H "X-ProjectPulse-Session: $manager_token" \
+            -H 'X-ProjectPulse-Module-Number: 025' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/module025/sow-gsd/bootstrap" || true)"
+          [[ "$bootstrap_status" == 200 ]] || { echo "Manager bootstrap HTTP $bootstrap_status" >&2; exit 1; }
+
+          mapfile -t candidates < <(jq -r '.solutionArchitects[]?.email // empty' "$tmp/manager-bootstrap.json" | awk 'NF' | sort -u)
+          echo "DISCOVERED_SOLUTION_ARCHITECTS=${#candidates[@]}"
+          selected=''
+          for candidate in "${candidates[@]}"; do
+            response="$tmp/candidate-login.json"
+            status="$(login "$candidate" "$response")"
+            [[ "$status" == 200 ]] || continue
+            candidate_token="$(jq -r '.sessionToken // empty' "$response")"
+            [[ -n "$candidate_token" ]] || continue
+            echo "::add-mask::$candidate_token"
+            candidate_bootstrap_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+              -o "$tmp/candidate-bootstrap.json" -w '%{http_code}' \
+              -H "Authorization: Bearer $candidate_token" \
+              -H "X-ProjectPulse-Session: $candidate_token" \
+              -H 'X-ProjectPulse-Module-Number: 025' \
+              -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+              "$BASE/api/module025/sow-gsd/bootstrap" || true)"
+            if [[ "$candidate_bootstrap_status" == 200 ]] && jq -e '.access.canCreate == true' "$tmp/candidate-bootstrap.json" >/dev/null; then
+              selected="$candidate"
+              token="$candidate_token"
+              break
+            fi
+          done
+
+          if [[ -z "$selected" ]]; then
+            echo 'NO_AUTHORIZED_SOLUTION_ARCHITECT_FIXTURE=TRUE'
+            echo 'MODULE025_GENERATION_AUTOMATION=BLOCKED_BY_TEST_IDENTITY'
+            exit 2
+          fi
+          echo "AUTHORIZED_SA_FIXTURE_FOUND=true"
+
+          jq -n --arg customer "Module 025 Generation UAT $GITHUB_RUN_ID" \
+            --arg overview 'Upgrade Cisco Unified Communications Manager from version 14.0 to 15.0, including readiness assessment, backups, upgrade planning, implementation sequencing, validation, rollback considerations, and post-upgrade verification.' \
+            '{customerId:null,customerName:$customer,customerEntryMode:"manual",commercialModel:"time_and_materials",customerProgram:"standard",accountExecutiveUserId:null,resaleUserId:null,serviceOverview:$overview}' \
+            > "$tmp/create.json"
+
+          create_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$tmp/created.json" -w '%{http_code}' -X POST \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $token" \
+            -H "X-ProjectPulse-Session: $token" \
+            -H 'X-ProjectPulse-Module-Number: 025' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            --data-binary @"$tmp/create.json" \
+            "$BASE/api/module025/sow-gsd" || true)"
+          [[ "$create_status" == 201 ]] || { echo "Create HTTP $create_status" >&2; cat "$tmp/created.json" >&2; exit 1; }
+          engagement_id="$(jq -r '.engagementId // empty' "$tmp/created.json")"
+          [[ -n "$engagement_id" ]] || { echo 'Create returned no engagementId.' >&2; exit 1; }
+          echo "CREATED_GENERATION_UAT_ENGAGEMENT=true"
+
+          start="$(date +%s)"
+          generate_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 240 \
+            -o "$tmp/generated.json" -w '%{http_code}' -X POST \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            -H "Authorization: Bearer $token" \
+            -H "X-ProjectPulse-Session: $token" \
+            -H 'X-ProjectPulse-Module-Number: 025' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/module025/sow-gsd/$engagement_id/generate" || true)"
+          elapsed="$(( $(date +%s) - start ))"
+          echo "GENERATE_HTTP_STATUS=$generate_status"
+          echo "GENERATE_ELAPSED_SECONDS=$elapsed"
+          generation_state="$(jq -r '.status // empty' "$tmp/generated.json" 2>/dev/null || true)"
+          echo "GENERATE_RESPONSE_STATUS=$generation_state"
+
+          if [[ "$generate_status" != 200 ]]; then
+            jq 'del(.engagement)' "$tmp/generated.json" >&2 2>/dev/null || cat "$tmp/generated.json" >&2
+            exit 1
+          fi
+          jq -e '.status == "module025_detailed_scope_generated" and .stateChanged == true and (.revision | type == "number")' "$tmp/generated.json" >/dev/null \
+            || { echo 'Generation response did not satisfy Module 025 success contract.' >&2; exit 1; }
+
+          get_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$tmp/readback.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            -H "X-ProjectPulse-Session: $token" \
+            -H 'X-ProjectPulse-Module-Number: 025' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/module025/sow-gsd/$engagement_id" || true)"
+          [[ "$get_status" == 200 ]] || { echo "Readback HTTP $get_status" >&2; exit 1; }
+          jq -e '.status == "review_ready" and (.lastGeneratedAt != null) and ([.phases[]?.aiGenerated] | any(. == true))' "$tmp/readback.json" >/dev/null \
+            || { echo 'Generated scope was not durably persisted for review.' >&2; exit 1; }
+
+          archive_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$tmp/archive.json" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $token" \
+            -H "X-ProjectPulse-Session: $token" \
+            -H 'X-ProjectPulse-Module-Number: 025' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/module025/sow-gsd/$engagement_id/archive" || true)"
+          [[ "$archive_status" == 200 ]] || { echo "Cleanup archive HTTP $archive_status" >&2; exit 1; }
+          engagement_id=''
+
+          echo 'MODULE025_GENERATION_UAT=PASS'
+          echo 'DURABLE_GENERATED_SCOPE=VERIFIED'
+          echo 'CLEANUP_ARCHIVE=PASS'
+          echo 'PRODUCTION_MUTATION=NONE'
