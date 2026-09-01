@@ -13,7 +13,9 @@ resolver:
 3. nullable project stakeholder role comparisons are normalized to FALSE so
    ordinary projects with unfilled AE/SA fields cannot break workload answers;
 4. lifecycle audit history is gated by the same Work-to-Cash read roles used by
-   WorkLifecycleModule before any audit rows are read.
+   WorkLifecycleModule before any audit rows are read; and
+5. portfolio-wide Work Lifecycle readers can resolve project history across the
+   same portfolio boundary that the canonical Work Lifecycle endpoint permits.
 
 Every replacement is anchor-checked and fails closed if the canonical source
 shape changes.
@@ -67,7 +69,8 @@ PROJECT_FACTS_SQL = r'''    private const string ProjectFactsScopeCte = """
             FROM projects project
             CROSS JOIN requester
             WHERE (
-               @is_broad_scope = TRUE
+               @can_view_lifecycle_portfolio = TRUE
+               OR @is_broad_scope = TRUE
                OR (@can_view_managed_projects = TRUE AND project.project_manager_user_id = @effective_user_id)
                OR project.account_executive_user_id = @effective_user_id
                OR project.solution_architect_user_id = @effective_user_id
@@ -308,6 +311,26 @@ LIFECYCLE_AUTH_HELPERS = r'''    // Keep this read boundary aligned with WorkLif
         "SALES_MANAGER"
     ];
 
+    private static bool CanResolveProjectHistoryPortfolio(
+        PulseAiSystemAccess access,
+        CelarAiInternalDataQueryKind kind) =>
+        kind == CelarAiInternalDataQueryKind.ProjectHistory
+        && (HasRole(access, WorkLifecycleHistoryReadAllRoles)
+            || HasRole(access, WorkLifecycleHistoryBillingRoles)
+            || HasRole(access, WorkLifecycleHistoryBroadReadRoles));
+
+    private static void AddProjectFactsScopeParameters(
+        NpgsqlCommand command,
+        Guid effectiveUserId,
+        PulseAiSystemAccess access,
+        CelarAiInternalDataQueryKind kind)
+    {
+        AddScopeParameters(command, effectiveUserId, access);
+        command.Parameters.AddWithValue(
+            "can_view_lifecycle_portfolio",
+            CanResolveProjectHistoryPortfolio(access, kind));
+    }
+
     private static bool CanViewProjectHistory(
         PulseAiSystemAccess access,
         bool isAssignedProjectManager) =>
@@ -435,6 +458,30 @@ def transform(source: str) -> str:
     )
     source = replace_once(
         source,
+        '                    query.ProjectReference,\n                    cancellationToken);\n',
+        '                    query.ProjectReference,\n                    query.Kind,\n                    cancellationToken);\n',
+        'project resolution query-kind argument',
+    )
+    source = replace_once(
+        source,
+        '        string projectReference,\n        CancellationToken cancellationToken)\n    {\n',
+        '        string projectReference,\n        CelarAiInternalDataQueryKind kind,\n        CancellationToken cancellationToken)\n    {\n',
+        'project resolver query-kind parameter',
+    )
+    source = replace_once(
+        source,
+        '        await using (var command = new NpgsqlCommand(ExactProjectSql, connection))\n        {\n            AddScopeParameters(command, effectiveUserId, access);\n',
+        '        await using (var command = new NpgsqlCommand(ExactProjectSql, connection))\n        {\n            AddProjectFactsScopeParameters(command, effectiveUserId, access, kind);\n',
+        'exact project lifecycle-aware scope parameters',
+    )
+    source = replace_once(
+        source,
+        '        await using (var command = new NpgsqlCommand(AuthorizedProjectsSql, connection))\n        {\n            AddScopeParameters(command, effectiveUserId, access);\n',
+        '        await using (var command = new NpgsqlCommand(AuthorizedProjectsSql, connection))\n        {\n            AddProjectFactsScopeParameters(command, effectiveUserId, access, kind);\n',
+        'project suggestions lifecycle-aware scope parameters',
+    )
+    source = replace_once(
+        source,
         '                    outcome = query.Kind == CelarAiInternalDataQueryKind.ProjectHistory\n                        ? await BuildProjectHistoryAnswerAsync(connection, query, projectResolution.Project, cancellationToken)\n                        : BuildProjectStakeholderAnswer(query, projectResolution.Project);\n',
         '                    if (query.Kind == CelarAiInternalDataQueryKind.ProjectHistory\n                        && !CanViewProjectHistory(access, projectResolution.Project.IsWorkLifecycleAssignedProjectManager))\n                    {\n                        outcome = BuildProjectHistoryAccessDeniedAnswer(query);\n                    }\n                    else\n                    {\n                        outcome = query.Kind == CelarAiInternalDataQueryKind.ProjectHistory\n                            ? await BuildProjectHistoryAnswerAsync(connection, query, projectResolution.Project, cancellationToken)\n                            : BuildProjectStakeholderAnswer(query, projectResolution.Project);\n                    }\n',
         'work-lifecycle history authorization gate',
@@ -489,6 +536,10 @@ def transform(source: str) -> str:
         'COALESCE(project.account_executive_user_id = @person_user_id, FALSE)',
         'COALESCE(project.solution_architect_user_id = @person_user_id, FALSE)',
         'is_work_lifecycle_assigned_project_manager',
+        '@can_view_lifecycle_portfolio = TRUE',
+        'CanResolveProjectHistoryPortfolio',
+        'AddProjectFactsScopeParameters',
+        'query.ProjectReference,\n                    query.Kind,',
         'CanViewProjectHistory(access, projectResolution.Project.IsWorkLifecycleAssignedProjectManager)',
         'WorkLifecycleHistoryReadAllRoles',
         'WorkLifecycleHistoryBillingRoles',
