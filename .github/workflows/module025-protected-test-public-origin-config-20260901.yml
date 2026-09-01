@@ -1,0 +1,85 @@
+name: Module 025 Protected-Test Public Origin Config 20260901
+
+on:
+  push:
+    branches:
+      - uat/module025-live-20260901
+    paths:
+      - '.github/workflows/module025-protected-test-public-origin-config-20260901.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  configure:
+    name: Configure governed Protected-Test public origin
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_PUBLIC_URL: https://phd-west-test.onenecklab.com
+    steps:
+      - name: Check out UAT control branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: uat/module025-live-20260901
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Sign in to Protected-Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure API public-origin authority
+        shell: bash
+        env:
+          CONFIGURED_PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$CONFIGURED_PUBLIC_URL" == "$EXPECTED_PUBLIC_URL" ]] || fail 'Test PUBLIC_URL is not the approved Protected-Test origin.'
+          current_subscription="$(az account show --query id -o tsv --only-show-errors)"
+          [[ "${current_subscription,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] || fail 'Azure login is outside the Protected-Test subscription.'
+
+          before="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$before")" == test ]] || fail 'Target API is not tagged Test.'
+          source_before="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$before")"
+          image_before="$(jq -r '.properties.template.containers[0].image // empty' <<<"$before")"
+          [[ "$source_before" =~ ^[0-9a-f]{40}$ ]] || fail 'Protected-Test source marker is missing.'
+          [[ -n "$image_before" ]] || fail 'Protected-Test API image is missing.'
+
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --set-env-vars PROJECTPULSE_PUBLIC_URL="$CONFIGURED_PUBLIC_URL" \
+            --revision-suffix "m025org-${GITHUB_RUN_ID}" \
+            --output none --only-show-errors
+
+          revision="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$revision" "$image_before" 60 10
+
+          after="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          public_after="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_PUBLIC_URL") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$after")"
+          source_after="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$after")"
+          image_after="$(jq -r '.properties.template.containers[0].image // empty' <<<"$after")"
+
+          [[ "$public_after" == "$EXPECTED_PUBLIC_URL" ]] || fail 'Protected-Test public-origin authority was not persisted.'
+          [[ "$source_after" == "$source_before" ]] || fail 'Source commit changed during public-origin configuration.'
+          [[ "$image_after" == "$image_before" ]] || fail 'API image changed during public-origin configuration.'
+
+          echo "MODULE025_PROTECTED_TEST_PUBLIC_ORIGIN=CONFIGURED"
+          echo "PUBLIC_ORIGIN=$public_after"
+          echo "SOURCE_COMMIT=$source_after"
+          echo "API_IMAGE_UNCHANGED=true"
+          echo "DATABASE_MUTATION=NONE"
+          echo "PRODUCTION_MUTATION=NONE"
+
+      - name: Post sign-out
+        if: always()
+        shell: bash
+        run: az logout || true
