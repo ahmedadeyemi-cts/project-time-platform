@@ -36,7 +36,10 @@ CREATE TABLE app_users(
 );
 CREATE TABLE projects(
  project_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),project_code TEXT NOT NULL UNIQUE,project_name TEXT NOT NULL,
- project_manager_user_id UUID REFERENCES app_users,status TEXT NOT NULL DEFAULT 'active'
+ project_description TEXT,project_manager_user_id UUID REFERENCES app_users,
+ account_executive_user_id UUID REFERENCES app_users,solution_architect_user_id UUID REFERENCES app_users,
+ status TEXT NOT NULL DEFAULT 'active',start_date DATE,end_date DATE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE TABLE project_tasks(
  task_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),project_id UUID NOT NULL REFERENCES projects,
@@ -71,9 +74,17 @@ CREATE TABLE work_register_task_assignment_history(
  task_name_snapshot TEXT NOT NULL DEFAULT '',assigned_user_id UUID,allocated_hours NUMERIC(12,2),
  assignment_status TEXT NOT NULL DEFAULT 'active',effective_start_date DATE NOT NULL DEFAULT CURRENT_DATE,effective_end_date DATE
 );
+CREATE TABLE work_lifecycle_audit_events(
+ work_lifecycle_audit_event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ project_id UUID NOT NULL REFERENCES projects,process_area TEXT NOT NULL,event_type TEXT NOT NULL,
+ prior_state TEXT NOT NULL DEFAULT '',new_state TEXT NOT NULL DEFAULT '',summary TEXT NOT NULL,
+ reason TEXT NOT NULL DEFAULT '',actor_user_id UUID REFERENCES app_users,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 INSERT INTO app_users(user_id,email,display_name) VALUES
  ('10000000-0000-0000-0000-000000000001','admin@example.test','Admin User'),
- ('10000000-0000-0000-0000-000000000002','kevin.damish@example.test','Kevin Damish');
+ ('10000000-0000-0000-0000-000000000002','kevin.damish@example.test','Kevin Damish'),
+ ('10000000-0000-0000-0000-000000000003','sales.owner@example.test','Sales Owner'),
+ ('10000000-0000-0000-0000-000000000004','solution.architect@example.test','Solution Architect');
 SQL
 
 psql_exec -f "$MIGRATION" >/dev/null
@@ -87,12 +98,12 @@ assert_eq ix_celar_ai_current_roster_person_project "$(value "SELECT to_regclass
 assert_eq 1 "$(value "SELECT COUNT(*) FROM celar_ai_identity_aliases WHERE alias_text='Kevin Damisch' AND is_verified=TRUE AND verification_source='migration_080_known_directory_correction' AND is_active=TRUE")" known_verified_alias_seeded
 
 psql_exec <<'SQL'
-INSERT INTO projects(project_id,project_code,project_name,project_manager_user_id,status) VALUES
- ('20000000-0000-0000-0000-000000000001','P-A','Canonical and roster project','10000000-0000-0000-0000-000000000001','active'),
- ('20000000-0000-0000-0000-000000000002','P-B','Roster-only project','10000000-0000-0000-0000-000000000001','active'),
- ('20000000-0000-0000-0000-000000000003','P-C','Resource-request project','10000000-0000-0000-0000-000000000001','active'),
- ('20000000-0000-0000-0000-000000000004','P-D','Kevin managed project','10000000-0000-0000-0000-000000000002','active'),
- ('20000000-0000-0000-0000-000000000005','P-E','Closed project','10000000-0000-0000-0000-000000000001','completed');
+INSERT INTO projects(project_id,project_code,project_name,project_description,project_manager_user_id,account_executive_user_id,solution_architect_user_id,status,start_date) VALUES
+ ('20000000-0000-0000-0000-000000000001','P-A','Canonical and roster project','Canonical assignment evidence','10000000-0000-0000-0000-000000000001',NULL,NULL,'active','2026-01-01'),
+ ('20000000-0000-0000-0000-000000000002','P-B','Roster-only project','Work Register roster evidence','10000000-0000-0000-0000-000000000001',NULL,NULL,'active','2026-01-01'),
+ ('20000000-0000-0000-0000-000000000003','P-C','Resource-request project','Resource request evidence','10000000-0000-0000-0000-000000000001',NULL,NULL,'active','2026-01-01'),
+ ('20000000-0000-0000-0000-000000000004','P-D','Kevin managed project','Stakeholder lookup and history evidence','10000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000004','active','2026-01-01'),
+ ('20000000-0000-0000-0000-000000000005','P-E','Closed project','Closed work excluded from active counts','10000000-0000-0000-0000-000000000001',NULL,NULL,'completed','2026-01-01');
 INSERT INTO project_tasks(task_id,project_id,task_code,task_name,is_active) VALUES
  ('30000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','TASK-A','Mirrored task',TRUE),
  ('30000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000002','TASK-B','Roster task',TRUE),
@@ -108,6 +119,8 @@ INSERT INTO engineering_resource_requests(engineering_resource_request_id,projec
  ('60000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000003','assigned','2026-01-01');
 INSERT INTO engineering_resource_request_assignments(engineering_resource_request_assignment_id,engineering_resource_request_id,user_id,assignment_status) VALUES
  ('70000000-0000-0000-0000-000000000003','60000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000002','assigned');
+INSERT INTO work_lifecycle_audit_events(work_lifecycle_audit_event_id,project_id,process_area,event_type,prior_state,new_state,summary,reason,actor_user_id,created_at) VALUES
+ ('80000000-0000-0000-0000-000000000004','20000000-0000-0000-0000-000000000004','work_edit','project_updated','draft','active','Project stakeholder assignments were updated.','Governed project setup','10000000-0000-0000-0000-000000000001','2026-02-01T12:00:00Z');
 SQL
 
 HOST_PORT="$(docker port "$CONTAINER" 5432/tcp | head -n 1)"
