@@ -22,6 +22,8 @@ const files = {
   app: path.join(sourceRoot, 'App.jsx'),
   salesDelivery: path.join(enterpriseRoot, 'SalesDeliveryWorkflowCenter.jsx'),
   intakeBackend: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs'),
+  module025Backend: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs'),
+  publicOriginCompatibility: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs'),
   securityHardening: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs'),
   documentation: path.join(repositoryRoot, 'docs/modules/group-6-enterprise-presentation/README.md')
 };
@@ -191,6 +193,8 @@ assert(
 if (fullRepositoryContext) {
   const documentation = read(files.documentation);
   const intakeBackend = read(files.intakeBackend);
+  const module025Backend = read(files.module025Backend);
+  const publicOriginCompatibility = read(files.publicOriginCompatibility);
   const securityHardening = read(files.securityHardening);
   contains(intakeBackend, 'ORDER BY uploaded_at, original_file_name', 'signed-handoff document chronology');
   assert(!intakeBackend.includes('ORDER BY created_at, original_file_name'), 'The signed-handoff query must use the real project_intake_documents uploaded_at column.');
@@ -199,6 +203,9 @@ if (fullRepositoryContext) {
   }
   contains(salesDelivery, "'purchase_order'", 'purchase-order upload category');
   contains(securityHardening, '"purchase_order"', 'purchase-order upload security allowlist');
+  contains(module025Backend, 'if (!SameOrigin(context)) return OriginRejected();', 'Module 025 strict mutation origin guard');
+  contains(publicOriginCompatibility, 'path.Equals("/api/module025/sow-gsd", StringComparison.OrdinalIgnoreCase)', 'Module 025 public-origin root compatibility');
+  contains(publicOriginCompatibility, 'path.StartsWith("/api/module025/sow-gsd/", StringComparison.OrdinalIgnoreCase)', 'Module 025 public-origin child-route compatibility');
   for (const moduleCode of Object.keys(targetModules)) {
     contains(documentation, `Module ${moduleCode}`, `Module ${moduleCode} documentation`);
   }
