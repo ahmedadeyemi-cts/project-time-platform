@@ -148,7 +148,33 @@ PROJECT_FACTS_SQL = r'''    private const string ProjectFactsScopeCte = """
 
 '''
 
-CONTEXT_HELPERS = r'''    private static CelarAiInternalDataQuery? MatchContextualQuestion(
+CONTEXT_HELPERS = r'''    private static CelarAiInternalDataQuery ApplyExplicitContext(
+        CelarAiInternalDataQuery query,
+        ExplicitQuestionContext context)
+    {
+        var personReference = query.PersonReference;
+        var projectReference = query.ProjectReference;
+        if (context.PersonOrTeam.Length > 0 && IsContextualPersonReference(personReference))
+            personReference = context.PersonOrTeam;
+        if (context.ProjectReference.Length > 0 && IsContextualProjectReference(projectReference))
+            projectReference = context.ProjectReference;
+        return query with { PersonReference = personReference, ProjectReference = projectReference };
+    }
+
+    private static bool IsContextualPersonReference(string value)
+    {
+        var normalized = NormalizeIdentity(value);
+        return normalized is "thisperson" or "thisuser" or "thisengineer" or "selectedperson"
+            or "they" or "them" or "he" or "she" or "him" or "her";
+    }
+
+    private static bool IsContextualProjectReference(string value)
+    {
+        var normalized = NormalizeIdentity(value);
+        return normalized is "thisproject" or "theproject" or "selectedproject" or "currentproject" or "ourproject";
+    }
+
+    private static CelarAiInternalDataQuery? MatchContextualQuestion(
         string question,
         ExplicitQuestionContext context)
     {
@@ -280,8 +306,14 @@ def transform(source: str) -> str:
     )
     source = replace_once(
         source,
+        '        return MatchPerson(value, PersonWorkSummaryPatterns, CelarAiInternalDataQueryKind.PersonWorkSummary, true)\n',
+        '        var parsed = MatchPerson(value, PersonWorkSummaryPatterns, CelarAiInternalDataQueryKind.PersonWorkSummary, true)\n',
+        'context-aware parse result variable',
+    )
+    source = replace_once(
+        source,
         '            ?? MatchProject(value, ProjectHistoryPatterns, CelarAiInternalDataQueryKind.ProjectHistory);\n',
-        '            ?? MatchProject(value, ProjectHistoryPatterns, CelarAiInternalDataQueryKind.ProjectHistory)\n            ?? MatchContextualQuestion(value, explicitContext);\n',
+        '            ?? MatchProject(value, ProjectHistoryPatterns, CelarAiInternalDataQueryKind.ProjectHistory);\n        if (parsed is not null) return ApplyExplicitContext(parsed, explicitContext);\n        return MatchContextualQuestion(value, explicitContext);\n',
         'contextual parser fallback',
     )
     source = replace_once(
@@ -318,6 +350,7 @@ def transform(source: str) -> str:
     required = [
         'ProjectFactsScopeCte',
         'ProjectFactsReadinessSql',
+        'ApplyExplicitContext',
         'MatchContextualQuestion',
         'ParseExplicitQuestionContext',
         'Explicit current-question context:',
