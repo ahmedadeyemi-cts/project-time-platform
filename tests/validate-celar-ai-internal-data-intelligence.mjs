@@ -26,6 +26,21 @@ requireText(resolver, 'total = reader.GetInt64(10);', 'task count reader ordinal
 requireText(resolver, 'database_schema_not_ready_', 'explicit source-readiness failure')
 rejectText(resolver, 'PersonResolutionOutcome.NotAuthorized', 'global-directory existence disclosure')
 
+const contextGenerator = read('src/backend/ProjectTime.Api/build/generate-celar-ai-internal-data-context-resilience.py')
+requireText(contextGenerator, 'ParseExplicitQuestionContext', 'explicit current-question context parser generator')
+requireText(contextGenerator, 'MatchContextualQuestion', 'context-selected deterministic resolver generator')
+requireText(contextGenerator, 'ProjectFactsScopeCte', 'project-fact isolated authorization scope generator')
+requireText(contextGenerator, 'ProjectFactsReadinessSql', 'project-fact isolated readiness generator')
+requireText(contextGenerator, 'ExactProjectSql = ProjectFactsScopeCte', 'project resolver isolated from workload scope')
+requireText(contextGenerator, 'AuthorizedProjectsSql = ProjectFactsScopeCte', 'project suggestions isolated from workload scope')
+requireText(contextGenerator, 'ValidateSourceReadinessAsync(connection, query.Kind, cancellationToken)', 'query-specific readiness dispatch')
+
+const buildProps = read('src/backend/ProjectTime.Api/Directory.Build.props')
+requireText(buildProps, 'GenerateCelarAiInternalDataContextResilience', 'internal-data compiler resilience target')
+requireText(buildProps, 'generate-celar-ai-internal-data-context-resilience.py', 'internal-data compiler generator invocation')
+requireText(buildProps, '<Compile Remove="Ai/CelarAiInternalDataService.cs" />', 'canonical internal-data compiler replacement')
+requireText(buildProps, '<Compile Include="$(CelarAiInternalDataResilienceGenerated)" />', 'generated internal-data compiler copy')
+
 const intelligence = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs')
 requireText(intelligence, 'plan.IntentCode, out var externalCapsulePurpose', 'intent-owned external purpose')
 requireText(intelligence, 'CelarAiExternalCapsuleCatalog.GeneralKnowledge', 'public external purpose')
@@ -47,6 +62,10 @@ rejectText(routing, '_health.RecordFailure(target, nonAnswerCode', 'semantic non
 const behavioralTests = read('tests/CelarAiInternalDataTests/Program.cs')
 requireText(behavioralTests, 'ExternalLooksLikeNonAnswer(', 'semantic non-answer behavioral tests')
 requireText(behavioralTests, 'first-person substantive access-control explanation remains an answer', 'substantive access-control negative case')
+requireText(behavioralTests, 'Explicit current-question context:', 'context-selected internal question regressions')
+requireText(behavioralTests, 'ProjectFactsReadinessSql', 'query-specific project readiness regression')
+requireText(behavioralTests, 'DROP TABLE engineering_resource_request_assignments;', 'unrelated supporting-source degradation regression')
+requireText(behavioralTests, 'Account Executive remains queryable after unrelated source degradation', 'project fact survives unrelated source outage')
 const intelligenceContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs')
 requireText(intelligenceContracts, 'celar-ai-system-intelligence-v3-20260807', 'system-intelligence contract version')
 for (const formerInternalCapsule of [

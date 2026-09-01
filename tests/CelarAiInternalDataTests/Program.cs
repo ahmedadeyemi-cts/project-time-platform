@@ -77,6 +77,31 @@ AssertProjectQuery(
     CelarAiInternalDataQueryKind.ProjectHistory,
     "P-D",
     "");
+AssertProjectQuery(
+    "Who is the Account Executive?\n\nExplicit current-question context:\n- Project code: P-D\n- Project name: Kevin managed project",
+    CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
+    "P-D",
+    "account_executive");
+AssertProjectQuery(
+    "Who is the Solution Architect for this project?\n\nExplicit current-question context:\n- Project code: P-D\n- Project name: Kevin managed project",
+    CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
+    "P-D",
+    "solution_architect");
+AssertProjectQuery(
+    "Show me the project history.\n\nExplicit current-question context:\n- Project code: P-D\n- Project name: Kevin managed project",
+    CelarAiInternalDataQueryKind.ProjectHistory,
+    "P-D",
+    "");
+AssertQuery(
+    "How many projects and tasks does this person have?\n\nExplicit current-question context:\n- Person or team: Kevin Damisch",
+    CelarAiInternalDataQueryKind.PersonWorkSummary,
+    "Kevin Damisch",
+    true);
+AssertQuery(
+    "What is this person working on?\n\nExplicit current-question context:\n- Person or team: Kevin Damisch",
+    CelarAiInternalDataQueryKind.PersonWorkSummary,
+    "Kevin Damisch",
+    false);
 
 Require(
     PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("How many projects does Kevin Damisch have assigned to him?"),
@@ -144,6 +169,12 @@ Require(
 Require(
     PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Show me the historical context for project P-D"),
     "project history question remains internal");
+Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the Account Executive?\n\nExplicit current-question context:\n- Project code: P-D"),
+    "context-selected project stakeholder remains internal");
+Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("How many projects and tasks does this person have?\n\nExplicit current-question context:\n- Person or team: Kevin Damisch"),
+    "context-selected person workload remains internal");
 Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("What is zero trust?"),
     "generic definition without Pulse context is external eligible");
@@ -313,6 +344,34 @@ static async Task AssertDatabaseResolverAsync(string connectionString)
         Require(await reader.ReadAsync(), "P-D immutable lifecycle history returned");
         Require(reader.GetString(2) == "project_updated", "P-D lifecycle event type returned");
         Require(reader.GetString(5).Contains("stakeholder", StringComparison.OrdinalIgnoreCase), "P-D lifecycle event summary returned");
+    }
+
+    await using (var degrade = new NpgsqlCommand("DROP TABLE engineering_resource_request_assignments;", connection))
+    {
+        await degrade.ExecuteNonQueryAsync();
+    }
+
+    await using (var fullReadiness = new NpgsqlCommand(PrivateSql("SourceReadinessSql"), connection))
+    {
+        var problems = await fullReadiness.ExecuteScalarAsync() as string[] ?? [];
+        Require(
+            problems.Contains("missing_relation_engineering_resource_request_assignments", StringComparer.Ordinal),
+            "workload readiness detects deliberately unavailable unrelated assignment source");
+    }
+
+    await using (var projectReadiness = new NpgsqlCommand(PrivateSql("ProjectFactsReadinessSql"), connection))
+    {
+        var problems = await projectReadiness.ExecuteScalarAsync() as string[] ?? [];
+        Require(problems.Length == 0, $"project-fact readiness remains healthy with unrelated source unavailable: {string.Join(",", problems)}");
+    }
+
+    await using (var projectAfterDegrade = new NpgsqlCommand(PrivateSql("ExactProjectSql"), connection))
+    {
+        AddScope(projectAfterDegrade, effectiveUserId);
+        projectAfterDegrade.Parameters.AddWithValue("normalized_project", "pd");
+        await using var reader = await projectAfterDegrade.ExecuteReaderAsync();
+        Require(await reader.ReadAsync(), "P-D still resolves after unrelated workload source is unavailable");
+        Require(reader.GetString(10) == "Sales Owner", "Account Executive remains queryable after unrelated source degradation");
     }
 
     Console.WriteLine("CELAR_AI_INTERNAL_DATA_DATABASE_RESOLVER=PASS");

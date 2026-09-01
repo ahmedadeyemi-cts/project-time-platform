@@ -63,6 +63,35 @@ The answer combines the authorized project record (status, description, schedule
 
 Closed/completed projects remain eligible for project stakeholder/history lookup when the requester is authorized to the project. Closed/completed projects remain excluded from active workload counts.
 
+## Explicit current-question context
+
+Celar AI Help & Search already lets a user select a project or a person/team before asking a question. The compiled internal-data resolver now understands that explicit current-question context instead of requiring the selected name to be repeated inside the natural-language sentence.
+
+Examples that are now deterministic internal queries:
+
+- Select project `P-D`, then ask `Who is the Account Executive?`
+- Select project `P-D`, then ask `Who is the Solution Architect for this project?`
+- Select project `P-D`, then ask `Show me the project history.`
+- Select Kevin Damisch, then ask `How many projects and tasks does this person have?`
+- Select Kevin Damisch, then ask `What is this person working on?`
+
+The Help & Search UI appends an `Explicit current-question context:` envelope to the current request. The internal resolver strips that envelope before ordinary parser matching and uses only the selected project/person value to complete otherwise incomplete internal questions. Context from a different conversation is not imported.
+
+If a selected person/team label does not resolve to one authorized person, the resolver still fails closed instead of guessing. If a selected project does not resolve to one authorized project, no stakeholder or history fact is returned.
+
+## Query-specific source readiness
+
+The original internal-data readiness check treated every supported source as mandatory for every internal question. That made direct project facts unnecessarily dependent on workload sources such as Engineering Resource Request assignments and Work Register roster history.
+
+The runtime now has two readiness boundaries:
+
+1. **Person/workload readiness** keeps the broader assignment authority because project/task workload calculations genuinely depend on those sources.
+2. **Project fact readiness** uses only the minimum project-fact authority required for project resolution and authorization: `app_users`, `projects`, and current `project_assignments`.
+
+Project stakeholder and project-history resolution therefore no longer references the Engineering Resource Request or Work Register task-assignment tables merely to answer a direct project fact. Project history continues to treat `work_lifecycle_audit_events` as optional evidence: if the audit source is unavailable, current project metadata is returned as a clearly partial history instead of a fabricated narrative.
+
+This is source isolation, not fail-open behavior. If a source required to establish the requester's project authorization is unavailable, the project fact still fails closed.
+
 ## Authorization model
 
 The implementation keeps the existing effective-user model:
@@ -73,6 +102,14 @@ The implementation keeps the existing effective-user model:
 - users can see projects on which they have an authorized recorded relationship;
 - project-level stakeholder/history lookup is restricted to authorized project scope;
 - View-As continues to use effective-user read scope and does not turn this resolver into an unrestricted database browser.
+
+The isolated project-fact scope uses current project role ownership, current project assignments, and same-team/department relationships for authorized manager/lead scope. It deliberately does not require unrelated resource-request or Work Register tables.
+
+## Build/runtime integration
+
+The canonical `CelarAiInternalDataService.cs` remains the reviewable enterprise-fact implementation. `Directory.Build.props` compiles a guarded generated copy under `obj/celar-ai-internal-data-resilience/` using `build/generate-celar-ai-internal-data-context-resilience.py`.
+
+The generator is anchor-checked. A canonical source-shape change causes generation to fail rather than silently producing a different runtime contract. The generated copy adds only the context parser, the isolated project-fact scope/readiness SQL, and query-kind readiness dispatch. Generated source remains untracked.
 
 ## Database and migration impact
 
@@ -91,11 +128,30 @@ The Module 080 integration test fixture is expanded only so its isolated test da
 - Solution Architect resolution;
 - Project Manager resolution;
 - project historical-context parsing;
+- context-selected project stakeholder/history queries;
+- context-selected person workload queries;
 - project history database evidence;
-- continued private/internal routing for these question families.
+- continued private/internal routing for these question families;
+- deliberate removal of an unrelated Engineering Resource Request assignment source while direct Account Executive project resolution remains healthy.
 
-`tests/test-celar-ai-internal-data-migration-080.sh` now builds an isolated source fixture that includes project stakeholder identities and one immutable lifecycle audit event, while preserving the existing migration idempotence, alias-integrity, privilege, and guarded-rollback assertions.
+`tests/test-celar-ai-internal-data-migration-080.sh` continues to build the isolated source fixture with project stakeholder identities and immutable lifecycle audit evidence while preserving the existing migration idempotence, alias-integrity, privilege, and guarded-rollback assertions.
+
+## Protected-Test acceptance before Production
+
+After merge, the governed Protected-Test release should prove the behavior against the real Pulse database, including:
+
+- Kevin Damisch combined active-project and active-task answer;
+- context-selected Kevin Damisch workload answer;
+- Account Executive/Sales owner lookup;
+- Solution Architect lookup;
+- Project Manager lookup;
+- project history with current immutable audit evidence;
+- a closed/completed project history lookup;
+- an unauthorized person/project request that fails closed;
+- direct project stakeholder lookup while an unrelated supporting workload source is deliberately unavailable or simulated as unavailable.
+
+Production should not be considered validated from CI alone.
 
 ## Release boundary
 
-This PR is source/test/documentation only. It does not deploy to Protected Test or Production and it does not change Module 025. A governed release should still require normal PR CI and the established Protected-Test acceptance path before Production is considered.
+This PR is source/test/documentation only. It does not deploy to Protected Test or Production and it does not change Module 025. A governed release still requires normal PR CI and the established Protected-Test acceptance path before Production is considered.

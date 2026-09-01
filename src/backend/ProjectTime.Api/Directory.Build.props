@@ -15,6 +15,8 @@
     <FlowHivePrivateExtractorGenerated>$(FlowHivePrivateExtractorGeneratedDirectory)/PulseAiPrivateDocumentExtractionService.g.cs</FlowHivePrivateExtractorGenerated>
     <CustomerSourceAuthorityGeneratedDirectory>$(MSBuildProjectDirectory)/obj/customer-source-authority</CustomerSourceAuthorityGeneratedDirectory>
     <CustomerSourceCommercialGenerated>$(CustomerSourceAuthorityGeneratedDirectory)/SellCommercialReadModelModule.CustomerSource.g.cs</CustomerSourceCommercialGenerated>
+    <CelarAiInternalDataResilienceGeneratedDirectory>$(MSBuildProjectDirectory)/obj/celar-ai-internal-data-resilience</CelarAiInternalDataResilienceGeneratedDirectory>
+    <CelarAiInternalDataResilienceGenerated>$(CelarAiInternalDataResilienceGeneratedDirectory)/CelarAiInternalDataService.ContextResilient.g.cs</CelarAiInternalDataResilienceGenerated>
   </PropertyGroup>
 
   <!--
@@ -79,6 +81,26 @@
     <ItemGroup>
       <Compile Remove="Modules/ModuleAvailabilityModule.cs" />
       <Compile Include="$(ModuleAvailabilityResilienceGenerated)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    Celar AI internal enterprise facts stay private and deterministic, but the
+    compiled resolver also needs to understand the explicit current-question
+    context emitted by Help & Search. Project stakeholder/history questions use
+    their own smaller authoritative readiness boundary so unrelated workload
+    sources cannot turn a direct project fact into a supporting-service outage.
+  -->
+  <Target Name="GenerateCelarAiInternalDataContextResilience"
+          BeforeTargets="CoreCompile">
+    <MakeDir Directories="$(CelarAiInternalDataResilienceGeneratedDirectory)" />
+    <Exec Command="python3 &quot;$(MSBuildProjectDirectory)/build/generate-celar-ai-internal-data-context-resilience.py&quot; --input &quot;$(MSBuildProjectDirectory)/Ai/CelarAiInternalDataService.cs&quot; --output &quot;$(CelarAiInternalDataResilienceGenerated)&quot;" />
+    <Exec Command="grep -Fq 'MatchContextualQuestion' &quot;$(CelarAiInternalDataResilienceGenerated)&quot;" />
+    <Exec Command="grep -Fq 'ProjectFactsReadinessSql' &quot;$(CelarAiInternalDataResilienceGenerated)&quot;" />
+    <Exec Command="grep -Fq 'ExactProjectSql = ProjectFactsScopeCte' &quot;$(CelarAiInternalDataResilienceGenerated)&quot;" />
+    <ItemGroup>
+      <Compile Remove="Ai/CelarAiInternalDataService.cs" />
+      <Compile Include="$(CelarAiInternalDataResilienceGenerated)" />
     </ItemGroup>
   </Target>
 
