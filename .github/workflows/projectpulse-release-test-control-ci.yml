@@ -182,6 +182,18 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-module001b-live-uat-repair-files" -o "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
 
+          cat > "$RUNNER_TEMP/exact-pr777-module025-workspace-files" <<'FILES'
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          database/migrations/089_module_catalog_role_administration_reconciliation.sql
+          src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs
+          src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs
+          src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx
+          src/frontend/project-time-web/src/module-availability-registry.js
+          tests/validate-systemwide-enterprise-reliability.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-pr777-module025-workspace-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-pr777-module025-workspace-files" -o "$RUNNER_TEMP/exact-pr777-module025-workspace-files"
+
           git fetch --no-tags origin main
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
@@ -211,6 +223,13 @@ jobs:
               exit 1
             }
             echo 'FLOWHIVE_PR734_GOVERNED_RELEASE_SCOPE=PASSED'
+          elif [[ "${{ github.event.pull_request.number }}" == '777' ]]; then
+            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-pr777-module025-workspace-files" || {
+              echo 'PR #777 Module 025 workspace repair differs from its exact governed file set.' >&2
+              diff -u "$RUNNER_TEMP/exact-pr777-module025-workspace-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_PR777_MODULE025_WORKSPACE_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
             echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-assigned-work-repair-files"; then
