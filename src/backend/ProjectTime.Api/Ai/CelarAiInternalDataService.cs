@@ -10,13 +10,18 @@ public enum CelarAiInternalDataQueryKind
     PersonProjectCount,
     PersonProjectList,
     PersonTaskCount,
-    PersonTaskList
+    PersonTaskList,
+    PersonWorkSummary,
+    ProjectStakeholderLookup,
+    ProjectHistory
 }
 
 public sealed record CelarAiInternalDataQuery(
     CelarAiInternalDataQueryKind Kind,
     string PersonReference,
-    bool CountRequested);
+    bool CountRequested,
+    string ProjectReference = "",
+    string RequestedProjectRole = "");
 
 /// <summary>
 /// Resolves structured Pulse facts locally from the authoritative database.
@@ -28,6 +33,14 @@ public sealed class CelarAiInternalDataService
 {
     public const string ContractVersion = "celar-ai-internal-data-v1-20260807";
     public const string IntentCode = "internal_data";
+    public const string EnterpriseFactsVersion = "celar-ai-enterprise-internal-facts-v1-20260901";
+
+    private static readonly Regex[] PersonWorkSummaryPatterns =
+    [
+        new(@"^\s*how\s+many\s+(?:active\s+)?projects?\s+(?:and|,)\s+(?:how\s+many\s+)?(?:active\s+)?tasks?\s+(?:does|do)\s+(?<person>.+?)\s+(?:have|has)(?:\s+assigned(?:\s+to\s+(?:him|her|them))?)?\s*[?.!]*\s*$", Options),
+        new(@"^\s*how\s+many\s+(?:active\s+)?tasks?\s+(?:and|,)\s+(?:how\s+many\s+)?(?:active\s+)?projects?\s+(?:does|do)\s+(?<person>.+?)\s+(?:have|has)(?:\s+assigned(?:\s+to\s+(?:him|her|them))?)?\s*[?.!]*\s*$", Options),
+        new(@"^\s*(?:show|give|tell)(?:\s+me)?\s+(?<person>.+?)(?:'s|’s)?\s+(?:current\s+|active\s+)?projects?\s+(?:and|,)\s+(?:current\s+|active\s+)?tasks?\s*[?.!]*\s*$", Options)
+    ];
 
     private static readonly Regex[] PersonProjectCountPatterns =
     [
@@ -40,7 +53,8 @@ public sealed class CelarAiInternalDataService
     [
         new(@"^\s*(?:which|what)\s+(?:active\s+)?projects?\s+(?:does|do)\s+(?<person>.+?)\s+(?:have|manage|work\s+on)\s*[?.!]*\s*$", Options),
         new(@"^\s*(?:which|what|list|show(?:\s+me)?)\s+(?:active\s+)?projects?\s+(?:are\s+)?(?:assigned\s+to|for)\s+(?<person>.+?)\s*[?.!]*\s*$", Options),
-        new(@"^\s*(?:list|show)\s+(?<person>.+?)(?:'s|’s)\s+(?:active\s+)?projects?\s*[?.!]*\s*$", Options)
+        new(@"^\s*(?:list|show)\s+(?<person>.+?)(?:'s|’s)\s+(?:active\s+)?projects?\s*[?.!]*\s*$", Options),
+        new(@"^\s*(?:what|which)\s+(?:projects?|work)\s+(?:is|are)\s+(?<person>.+?)\s+(?:assigned\s+to|working\s+on)\s*[?.!]*\s*$", Options)
     ];
 
     private static readonly Regex[] PersonTaskCountPatterns =
@@ -52,7 +66,23 @@ public sealed class CelarAiInternalDataService
     private static readonly Regex[] PersonTaskListPatterns =
     [
         new(@"^\s*(?:which|what)\s+(?:active\s+)?tasks?\s+(?:does|do)\s+(?<person>.+?)\s+(?:have|work\s+on)\s*[?.!]*\s*$", Options),
-        new(@"^\s*(?:which|what|list|show(?:\s+me)?)\s+(?:active\s+)?tasks?\s+(?:are\s+)?(?:assigned\s+to|for)\s+(?<person>.+?)\s*[?.!]*\s*$", Options)
+        new(@"^\s*(?:which|what|list|show(?:\s+me)?)\s+(?:active\s+)?tasks?\s+(?:are\s+)?(?:assigned\s+to|for)\s+(?<person>.+?)\s*[?.!]*\s*$", Options),
+        new(@"^\s*what\s+(?:is|are)\s+(?<person>.+?)\s+(?:working\s+on|doing|assigned\s+to)\s*[?.!]*\s*$", Options),
+        new(@"^\s*what\s+(?:does|do)\s+(?<person>.+?)\s+(?:work\s+on|have\s+assigned)\s*[?.!]*\s*$", Options)
+    ];
+
+    private static readonly Regex[] ProjectStakeholderPatterns =
+    [
+        new(@"^\s*who\s+(?:is|are)\s+(?:assigned\s+as\s+)?(?:the\s+)?(?<role>account\s+executive|ae|sales\s*person|sales\s+person|sales\s+rep(?:resentative)?|solution\s+architect|sa|project\s+manager|pm)\s*(?:assigned\s+)?(?:to|for|on)\s+(?:project\s+)?(?<project>.+?)\s*[?.!]*\s*$", Options),
+        new(@"^\s*who\s+is\s+assigned\s+as\s+(?:the\s+)?(?<role>account\s+executive|ae|sales\s*person|sales\s+person|sales\s+rep(?:resentative)?|solution\s+architect|sa|project\s+manager|pm)\s+(?:to|for|on)\s+(?:project\s+)?(?<project>.+?)\s*[?.!]*\s*$", Options),
+        new(@"^\s*(?:what|who)\s+(?:is\s+)?(?:the\s+)?(?<role>account\s+executive|ae|sales\s*person|sales\s+person|sales\s+rep(?:resentative)?|solution\s+architect|sa|project\s+manager|pm)\s+(?:for|on)\s+(?:project\s+)?(?<project>.+?)\s*[?.!]*\s*$", Options)
+    ];
+
+    private static readonly Regex[] ProjectHistoryPatterns =
+    [
+        new(@"^\s*(?:show|give|tell)(?:\s+me)?\s+(?:the\s+)?(?:project\s+)?(?:history|historical\s+context|timeline)\s+(?:for|of|on)\s+(?:project\s+)?(?<project>.+?)\s*[?.!]*\s*$", Options),
+        new(@"^\s*what\s+(?:is|was)\s+(?:the\s+)?(?:project\s+)?(?:history|historical\s+context|timeline)\s+(?:for|of|on)\s+(?:project\s+)?(?<project>.+?)\s*[?.!]*\s*$", Options),
+        new(@"^\s*what\s+happened\s+(?:on|with|to)\s+(?:project\s+)?(?<project>.+?)\s*[?.!]*\s*$", Options)
     ];
 
     private const RegexOptions Options = RegexOptions.IgnoreCase
@@ -212,14 +242,15 @@ public sealed class CelarAiInternalDataService
               AND COALESCE(request.target_start_date, CURRENT_DATE) <= CURRENT_DATE
               AND (request.target_end_date IS NULL OR request.target_end_date >= CURRENT_DATE)
         ),
-        scoped_projects AS (
+        scoped_projects_all AS (
             SELECT DISTINCT project.*
             FROM projects project
             CROSS JOIN requester
-            WHERE LOWER(COALESCE(project.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived')
-              AND (
+            WHERE (
                @is_broad_scope = TRUE
                OR (@can_view_managed_projects = TRUE AND project.project_manager_user_id = @effective_user_id)
+               OR project.account_executive_user_id = @effective_user_id
+               OR project.solution_architect_user_id = @effective_user_id
                OR EXISTS (
                     SELECT 1
                     FROM current_project_people own_assignment
@@ -230,6 +261,8 @@ public sealed class CelarAiInternalDataService
                     @can_view_team_scope = TRUE
                     AND (
                         project.project_manager_user_id IN (SELECT user_id FROM team_members)
+                        OR project.account_executive_user_id IN (SELECT user_id FROM team_members)
+                        OR project.solution_architect_user_id IN (SELECT user_id FROM team_members)
                         OR EXISTS (
                             SELECT 1
                             FROM current_project_people team_assignment
@@ -240,12 +273,25 @@ public sealed class CelarAiInternalDataService
                )
               )
         ),
+        scoped_projects AS (
+            SELECT *
+            FROM scoped_projects_all
+            WHERE LOWER(COALESCE(status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived')
+        ),
         authorized_people AS (
             SELECT user_id FROM requester
             UNION
             SELECT project_manager_user_id
             FROM scoped_projects
             WHERE project_manager_user_id IS NOT NULL
+            UNION
+            SELECT account_executive_user_id
+            FROM scoped_projects
+            WHERE account_executive_user_id IS NOT NULL
+            UNION
+            SELECT solution_architect_user_id
+            FROM scoped_projects
+            WHERE solution_architect_user_id IS NOT NULL
             UNION
             SELECT DISTINCT assignment.user_id
             FROM current_project_people assignment
@@ -296,6 +342,8 @@ public sealed class CelarAiInternalDataService
                 project.project_name,
                 project.status,
                 project.project_manager_user_id = @person_user_id AS is_project_manager,
+                project.account_executive_user_id = @person_user_id AS is_account_executive,
+                project.solution_architect_user_id = @person_user_id AS is_solution_architect,
                 EXISTS (
                     SELECT 1
                     FROM current_project_people assignment
@@ -312,6 +360,8 @@ public sealed class CelarAiInternalDataService
             WHERE LOWER(COALESCE(project.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived')
               AND (
                   project.project_manager_user_id = @person_user_id
+                  OR project.account_executive_user_id = @person_user_id
+                  OR project.solution_architect_user_id = @person_user_id
                   OR EXISTS (
                       SELECT 1
                       FROM current_project_people assignment
@@ -326,6 +376,8 @@ public sealed class CelarAiInternalDataService
             project_name,
             status,
             is_project_manager,
+            is_account_executive,
+            is_solution_architect,
             is_assigned_resource,
             active_task_assignment_count,
             COUNT(*) OVER ()::bigint AS total_count
@@ -371,6 +423,56 @@ public sealed class CelarAiInternalDataService
         LIMIT 100;
         """;
 
+    private static readonly string ExactProjectSql = ScopeCte + """
+        SELECT
+            project.project_id,
+            project.project_code,
+            project.project_name,
+            project.status,
+            COALESCE(project.project_description, ''),
+            project.start_date,
+            project.end_date,
+            project.created_at,
+            project.updated_at,
+            pm.display_name,
+            ae.display_name,
+            sa.display_name
+        FROM scoped_projects_all project
+        LEFT JOIN app_users pm ON pm.user_id = project.project_manager_user_id AND pm.is_active = TRUE
+        LEFT JOIN app_users ae ON ae.user_id = project.account_executive_user_id AND ae.is_active = TRUE
+        LEFT JOIN app_users sa ON sa.user_id = project.solution_architect_user_id AND sa.is_active = TRUE
+        WHERE regexp_replace(lower(trim(project.project_code)), '[^a-z0-9]+', '', 'g') = @normalized_project
+           OR regexp_replace(lower(trim(project.project_name)), '[^a-z0-9]+', '', 'g') = @normalized_project
+        ORDER BY
+            CASE WHEN regexp_replace(lower(trim(project.project_code)), '[^a-z0-9]+', '', 'g') = @normalized_project THEN 0 ELSE 1 END,
+            project.project_code,
+            project.project_name;
+        """;
+
+    private static readonly string AuthorizedProjectsSql = ScopeCte + """
+        SELECT project_id, project_code, project_name
+        FROM scoped_projects_all
+        ORDER BY project_code, project_name
+        LIMIT 500;
+        """;
+
+    private const string ProjectHistorySql = """
+        SELECT
+            audit.created_at,
+            audit.process_area,
+            audit.event_type,
+            audit.prior_state,
+            audit.new_state,
+            audit.summary,
+            audit.reason,
+            actor.display_name
+        FROM work_lifecycle_audit_events audit
+        LEFT JOIN app_users actor ON actor.user_id = audit.actor_user_id
+        WHERE audit.project_id = @project_id
+        ORDER BY audit.created_at DESC, audit.work_lifecycle_audit_event_id DESC
+        LIMIT 100;
+        """;
+
     private const string SourceReadinessSql = """
         WITH required_table(table_name) AS (
             VALUES
@@ -393,8 +495,15 @@ public sealed class CelarAiInternalDataService
                 ('app_users', 'is_active'),
                 ('projects', 'project_code'),
                 ('projects', 'project_name'),
+                ('projects', 'project_description'),
                 ('projects', 'project_manager_user_id'),
+                ('projects', 'account_executive_user_id'),
+                ('projects', 'solution_architect_user_id'),
                 ('projects', 'status'),
+                ('projects', 'start_date'),
+                ('projects', 'end_date'),
+                ('projects', 'created_at'),
+                ('projects', 'updated_at'),
                 ('project_tasks', 'project_id'),
                 ('project_tasks', 'task_code'),
                 ('project_tasks', 'task_name'),
@@ -477,11 +586,13 @@ public sealed class CelarAiInternalDataService
         var value = question?.Trim() ?? string.Empty;
         if (value.Length == 0) return null;
 
-        var parsed = Match(value, PersonProjectCountPatterns, CelarAiInternalDataQueryKind.PersonProjectCount, true)
-            ?? Match(value, PersonProjectListPatterns, CelarAiInternalDataQueryKind.PersonProjectList, false)
-            ?? Match(value, PersonTaskCountPatterns, CelarAiInternalDataQueryKind.PersonTaskCount, true)
-            ?? Match(value, PersonTaskListPatterns, CelarAiInternalDataQueryKind.PersonTaskList, false);
-        return parsed;
+        return MatchPerson(value, PersonWorkSummaryPatterns, CelarAiInternalDataQueryKind.PersonWorkSummary, true)
+            ?? MatchPerson(value, PersonProjectCountPatterns, CelarAiInternalDataQueryKind.PersonProjectCount, true)
+            ?? MatchPerson(value, PersonProjectListPatterns, CelarAiInternalDataQueryKind.PersonProjectList, false)
+            ?? MatchPerson(value, PersonTaskCountPatterns, CelarAiInternalDataQueryKind.PersonTaskCount, true)
+            ?? MatchPerson(value, PersonTaskListPatterns, CelarAiInternalDataQueryKind.PersonTaskList, false)
+            ?? MatchProjectStakeholder(value)
+            ?? MatchProject(value, ProjectHistoryPatterns, CelarAiInternalDataQueryKind.ProjectHistory);
     }
 
     public async Task<PulseAiSystemQuestionResult?> TryAnswerAsync(
@@ -514,39 +625,59 @@ public sealed class CelarAiInternalDataService
             await connection.OpenAsync(cancellationToken);
             await ValidateSourceReadinessAsync(connection, cancellationToken);
 
-            var resolution = await ResolvePersonAsync(
-                connection,
-                effectiveUserId,
-                access,
-                query.PersonReference,
-                cancellationToken);
-            if (resolution.Outcome != PersonResolutionOutcome.Resolved || resolution.Person is null)
+            AnswerOutcome outcome;
+            if (IsPersonQuery(query.Kind))
             {
-                var partial = BuildResolutionAnswer(query, resolution);
-                return await FinishAsync(
-                    persistence,
-                    partial.Answer,
-                    partial.Sources,
-                    partial.Status,
-                    detailLevel,
-                    correlationId,
-                    partial.Warnings,
+                var resolution = await ResolvePersonAsync(
+                    connection,
+                    effectiveUserId,
+                    access,
+                    query.PersonReference,
                     cancellationToken);
+                if (resolution.Outcome != PersonResolutionOutcome.Resolved || resolution.Person is null)
+                {
+                    outcome = BuildPersonResolutionAnswer(query, resolution);
+                }
+                else
+                {
+                    outcome = query.Kind switch
+                    {
+                        CelarAiInternalDataQueryKind.PersonProjectCount or CelarAiInternalDataQueryKind.PersonProjectList
+                            => await BuildProjectAnswerAsync(connection, effectiveUserId, access, query, resolution.Person, cancellationToken),
+                        CelarAiInternalDataQueryKind.PersonWorkSummary
+                            => await BuildWorkSummaryAnswerAsync(connection, effectiveUserId, access, query, resolution.Person, cancellationToken),
+                        _ => await BuildTaskAnswerAsync(connection, effectiveUserId, access, query, resolution.Person, cancellationToken)
+                    };
+                }
             }
-
-            var completed = query.Kind is CelarAiInternalDataQueryKind.PersonProjectCount
-                or CelarAiInternalDataQueryKind.PersonProjectList
-                ? await BuildProjectAnswerAsync(connection, effectiveUserId, access, query, resolution.Person, cancellationToken)
-                : await BuildTaskAnswerAsync(connection, effectiveUserId, access, query, resolution.Person, cancellationToken);
+            else
+            {
+                var projectResolution = await ResolveProjectAsync(
+                    connection,
+                    effectiveUserId,
+                    access,
+                    query.ProjectReference,
+                    cancellationToken);
+                if (projectResolution.Outcome != ProjectResolutionOutcome.Resolved || projectResolution.Project is null)
+                {
+                    outcome = BuildProjectResolutionAnswer(query, projectResolution);
+                }
+                else
+                {
+                    outcome = query.Kind == CelarAiInternalDataQueryKind.ProjectHistory
+                        ? await BuildProjectHistoryAnswerAsync(connection, query, projectResolution.Project, cancellationToken)
+                        : BuildProjectStakeholderAnswer(query, projectResolution.Project);
+                }
+            }
 
             return await FinishAsync(
                 persistence,
-                completed.Answer,
-                completed.Sources,
-                completed.Status,
+                outcome.Answer,
+                outcome.Sources,
+                outcome.Status,
                 detailLevel,
                 correlationId,
-                completed.Warnings,
+                outcome.Warnings,
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -572,7 +703,14 @@ public sealed class CelarAiInternalDataService
         }
     }
 
-    private static CelarAiInternalDataQuery? Match(
+    private static bool IsPersonQuery(CelarAiInternalDataQueryKind kind) =>
+        kind is CelarAiInternalDataQueryKind.PersonProjectCount
+            or CelarAiInternalDataQueryKind.PersonProjectList
+            or CelarAiInternalDataQueryKind.PersonTaskCount
+            or CelarAiInternalDataQueryKind.PersonTaskList
+            or CelarAiInternalDataQueryKind.PersonWorkSummary;
+
+    private static CelarAiInternalDataQuery? MatchPerson(
         string question,
         IReadOnlyList<Regex> patterns,
         CelarAiInternalDataQueryKind kind,
@@ -585,6 +723,42 @@ public sealed class CelarAiInternalDataService
             var person = CleanPersonReference(match.Groups["person"].Value);
             if (person.Length is < 2 or > 255) return null;
             return new CelarAiInternalDataQuery(kind, person, countRequested);
+        }
+        return null;
+    }
+
+    private static CelarAiInternalDataQuery? MatchProjectStakeholder(string question)
+    {
+        foreach (var pattern in ProjectStakeholderPatterns)
+        {
+            var match = pattern.Match(question);
+            if (!match.Success) continue;
+            var project = CleanProjectReference(match.Groups["project"].Value);
+            if (project.Length is < 2 or > 255) return null;
+            var role = NormalizeProjectRole(match.Groups["role"].Value);
+            if (role.Length == 0) return null;
+            return new CelarAiInternalDataQuery(
+                CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
+                string.Empty,
+                false,
+                project,
+                role);
+        }
+        return null;
+    }
+
+    private static CelarAiInternalDataQuery? MatchProject(
+        string question,
+        IReadOnlyList<Regex> patterns,
+        CelarAiInternalDataQueryKind kind)
+    {
+        foreach (var pattern in patterns)
+        {
+            var match = pattern.Match(question);
+            if (!match.Success) continue;
+            var project = CleanProjectReference(match.Groups["project"].Value);
+            if (project.Length is < 2 or > 255) return null;
+            return new CelarAiInternalDataQuery(kind, string.Empty, false, project);
         }
         return null;
     }
@@ -653,6 +827,72 @@ public sealed class CelarAiInternalDataService
         return new PersonResolution(PersonResolutionOutcome.NotFound, null, closest);
     }
 
+    private static async Task<ProjectResolution> ResolveProjectAsync(
+        NpgsqlConnection connection,
+        Guid effectiveUserId,
+        PulseAiSystemAccess access,
+        string projectReference,
+        CancellationToken cancellationToken)
+    {
+        var normalized = NormalizeIdentity(projectReference);
+        var exact = new List<ProjectCandidate>();
+        await using (var command = new NpgsqlCommand(ExactProjectSql, connection))
+        {
+            AddScopeParameters(command, effectiveUserId, access);
+            command.Parameters.AddWithValue("normalized_project", normalized);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                exact.Add(new ProjectCandidate(
+                    reader.GetGuid(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetFieldValue<DateOnly>(5),
+                    reader.IsDBNull(6) ? null : reader.GetFieldValue<DateOnly>(6),
+                    reader.GetFieldValue<DateTimeOffset>(7),
+                    reader.GetFieldValue<DateTimeOffset>(8),
+                    reader.IsDBNull(9) ? null : reader.GetString(9),
+                    reader.IsDBNull(10) ? null : reader.GetString(10),
+                    reader.IsDBNull(11) ? null : reader.GetString(11)));
+            }
+        }
+
+        if (exact.Count == 1)
+            return new ProjectResolution(ProjectResolutionOutcome.Resolved, exact[0], []);
+        if (exact.Count > 1)
+            return new ProjectResolution(
+                ProjectResolutionOutcome.Ambiguous,
+                null,
+                exact.Take(8).Select(project => $"{project.ProjectCode} — {project.ProjectName}").ToArray());
+
+        var suggestions = new List<(string Label, int Distance)>();
+        await using (var command = new NpgsqlCommand(AuthorizedProjectsSql, connection))
+        {
+            AddScopeParameters(command, effectiveUserId, access);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var code = reader.GetString(1);
+                var name = reader.GetString(2);
+                var distance = Math.Min(
+                    EditDistance(normalized, NormalizeIdentity(code)),
+                    EditDistance(normalized, NormalizeIdentity(name)));
+                if (distance <= Math.Max(1, normalized.Length / 7))
+                    suggestions.Add(($"{code} — {name}", distance));
+            }
+        }
+
+        var closest = suggestions
+            .OrderBy(value => value.Distance)
+            .ThenBy(value => value.Label, StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .Select(value => value.Label)
+            .ToArray();
+        return new ProjectResolution(ProjectResolutionOutcome.NotFound, null, closest);
+    }
+
     private static async Task<AnswerOutcome> BuildProjectAnswerAsync(
         NpgsqlConnection connection,
         Guid effectiveUserId,
@@ -661,54 +901,28 @@ public sealed class CelarAiInternalDataService
         PersonCandidate person,
         CancellationToken cancellationToken)
     {
-        var rows = new List<PersonProjectRow>();
-        long total = 0;
-        await using (var command = new NpgsqlCommand(PersonProjectsSql, connection))
-        {
-            AddScopeParameters(command, effectiveUserId, access);
-            command.Parameters.AddWithValue("person_user_id", person.UserId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                total = reader.GetInt64(7);
-                rows.Add(new PersonProjectRow(
-                    reader.GetGuid(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    reader.GetBoolean(4),
-                    reader.GetBoolean(5),
-                    reader.GetInt64(6)));
-            }
-        }
-
+        var (rows, total) = await LoadPersonProjectsAsync(connection, effectiveUserId, access, person.UserId, cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var source = new[]
         {
             Source(1, "authorized_person_directory", "Authorized Pulse person identity", "062", "internal:celar-ai/identity-resolution", now, "Exact active identity or verified alias within the effective user's authorized scope"),
-            Source(2, "authorized_person_projects", "Authorized project and assignment records", "019/055C", "internal:celar-ai/person-projects", now, "Distinct current projects after project, role, team, assignment-date, closeout, and status scope")
+            Source(2, "authorized_person_projects", "Authorized project, role, and assignment records", "019/053I/055C", "internal:celar-ai/person-projects", now, "Distinct current projects after project role, team, assignment-date, closeout, and status scope")
         };
         var plural = total == 1 ? "project" : "projects";
-        var details = rows.Select(row =>
-        {
-            var relationships = new List<string>();
-            if (row.IsProjectManager) relationships.Add("Project Manager");
-            if (row.IsAssignedResource) relationships.Add($"assigned resource ({row.ActiveTaskAssignmentCount} active task assignment{(row.ActiveTaskAssignmentCount == 1 ? string.Empty : "s")})");
-            return $"{row.ProjectCode} — {row.ProjectName}; status {row.Status}; relationship: {string.Join(" and ", relationships)}.";
-        }).ToArray();
-        var conclusion = $"{person.DisplayName} has {total} active {plural} assigned within your authorized Pulse scope.";
+        var details = rows.Select(ProjectRowDetail).ToArray();
+        var conclusion = $"{person.DisplayName} has {total} active {plural} within your authorized Pulse scope.";
         var answer = new PulseAiSystemDetailedAnswer(
             DirectConclusion: conclusion,
             ExecutiveSummary: total == 0
-                ? "The person was resolved to one active authorized Pulse identity, but no current Project Manager or active task-assignment relationship remained after the governed filters were applied."
-                : "The result is a deterministic distinct-project count. It combines Project Manager ownership and active task assignments without double-counting a project that contains multiple tasks.",
+                ? "The person was resolved to one active authorized Pulse identity, but no current Project Manager, Account Executive, Solution Architect, or active resource relationship remained after the governed filters were applied."
+                : "The result is a deterministic distinct-project count. It combines recorded project roles and current resource assignments without double-counting a project.",
             ScopeAndFilters:
             [
-                $"Person: {person.DisplayName}; identity resolution: {(person.MatchedVerifiedAlias ? "verified alias" : "exact active Pulse identity") }.",
-                "Project scope: current effective user's authorized project, PM, team, or assignment scope.",
+                $"Person: {person.DisplayName}; identity resolution: {(person.MatchedVerifiedAlias ? "verified alias" : "exact active Pulse identity")}.",
+                "Project scope: current effective user's authorized project, PM, AE, SA, team, or assignment scope.",
                 "Project statuses excluded: closed, completed, cancelled/canceled, and archived.",
                 "Assignment filters: effective start date reached, effective end date not passed, and Module 001A closeout status active.",
-                "Count rule: distinct project IDs across Project Manager ownership and active resource assignments."
+                "Count rule: distinct project IDs across Project Manager, Account Executive, Solution Architect, and active resource relationships."
             ],
             CurrentState:
             [
@@ -724,30 +938,30 @@ public sealed class CelarAiInternalDataService
             SourceEvidence:
             [
                 "Source 1: active app_users identity plus an active verified Celar AI identity alias when applicable.",
-                "Source 2: projects, project manager ownership, project_tasks, and current project_assignments inside the requester's server-authorized scope."
+                "Source 2: projects role ownership plus current project/task/resource assignments inside the requester's server-authorized scope."
             ],
             KnownUnknownAndStaleValues:
             [
-                "Known: the distinct current project count and the returned project relationships at the data-as-of timestamp.",
+                "Known: the distinct current project count and recorded project relationships at the data-as-of timestamp.",
                 "Excluded: projects outside the requester's authorization scope, inactive people, ended/closed assignments, inactive tasks, and closed/completed/cancelled/archived projects.",
-                "A zero means no qualifying assignment was found after these filters; it does not mean the person has never worked on a project."
+                "A zero means no qualifying current project relationship was found after these filters; it does not mean the person has never worked on a project."
             ],
             Assumptions: [],
             Conflicts: [],
             Limitations:
             [
-                "This answer reflects recorded Pulse ownership and assignments, not informal work or activity outside Pulse.",
+                "This answer reflects recorded Pulse roles and assignments, not informal work or activity outside Pulse.",
                 "At most 100 project detail rows are displayed, while the numeric count remains the complete distinct count."
             ],
             RisksAndImplications: [],
             RecommendedActions: total > 0
-                ? ["Open Module 019 or Module 055C to review the cited project and task-assignment records."]
-                : ["Confirm the person's identity and review Module 019/055C if an assignment was expected."],
+                ? ["Open Module 019 or Module 055C to review the cited project and assignment records."]
+                : ["Confirm the person's identity and review Module 019/055C if a project relationship was expected."],
             FutureEnhancementBlueprint: null,
             NavigationTargets: ["#project-workspace", "#work-register"],
             CitationIds: [1, 2],
             Confidence: 0.98m,
-            ConfidenceExplanation: "High confidence because an exact authorized identity was resolved and the value is a deterministic distinct count from current authoritative project and assignment records.",
+            ConfidenceExplanation: "High confidence because an exact authorized identity was resolved and the value is a deterministic distinct count from current authoritative project, role, and assignment records.",
             DataAsOf: now);
         return new AnswerOutcome("completed", answer, source, []);
     }
@@ -760,32 +974,7 @@ public sealed class CelarAiInternalDataService
         PersonCandidate person,
         CancellationToken cancellationToken)
     {
-        var rows = new List<PersonTaskRow>();
-        long total = 0;
-        long totalProjects = 0;
-        await using (var command = new NpgsqlCommand(PersonTasksSql, connection))
-        {
-            AddScopeParameters(command, effectiveUserId, access);
-            command.Parameters.AddWithValue("person_user_id", person.UserId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                total = reader.GetInt64(10);
-                totalProjects = reader.GetInt64(11);
-                rows.Add(new PersonTaskRow(
-                    reader.GetGuid(0),
-                    reader.GetGuid(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    reader.GetString(4),
-                    reader.GetString(5),
-                    reader.GetFieldValue<DateOnly>(6),
-                    reader.IsDBNull(7) ? null : reader.GetFieldValue<DateOnly>(7),
-                    reader.GetDecimal(8),
-                    reader.GetString(9)));
-            }
-        }
-
+        var (rows, total, totalProjects) = await LoadPersonTasksAsync(connection, effectiveUserId, access, person.UserId, cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var source = new[]
         {
@@ -797,12 +986,12 @@ public sealed class CelarAiInternalDataService
             ExecutiveSummary: "The result is calculated from distinct active task assignments after effective-date, project-status, assignment-closeout, task-active, and requester-scope filters.",
             ScopeAndFilters:
             [
-                $"Person: {person.DisplayName}; identity resolution: {(person.MatchedVerifiedAlias ? "verified alias" : "exact active Pulse identity") }.",
+                $"Person: {person.DisplayName}; identity resolution: {(person.MatchedVerifiedAlias ? "verified alias" : "exact active Pulse identity")}.",
                 "Only active tasks on non-closed projects and current non-closed assignments are included.",
                 "Projects and people outside the current effective user's scope are excluded."
             ],
-            CurrentState: [$"Active task assignments: {total}.", $"Distinct visible active projects: {totalProjects}.", $"Task detail rows returned: {rows.Count}{(total > rows.Count ? $" of {total}" : string.Empty)}.", "External providers called: none."],
-            DetailedAnalysis: rows.Select(row => $"{row.ProjectCode} — {row.ProjectName}; {row.TaskCode} — {row.TaskName}; assigned hours {row.AssignedHours:0.##}; effective {row.EffectiveStartDate:yyyy-MM-dd} through {(row.EffectiveEndDate?.ToString("yyyy-MM-dd") ?? "open")}; authority {row.SourceCode}.").ToArray(),
+            CurrentState: [$"Active task assignments: {total}.", $"Distinct visible active projects containing active task assignments: {totalProjects}.", $"Task detail rows returned: {rows.Count}{(total > rows.Count ? $" of {total}" : string.Empty)}.", "External providers called: none."],
+            DetailedAnalysis: rows.Select(TaskRowDetail).ToArray(),
             ApiFindings: [], TroubleshootingFindings: [], RootCauseHypotheses: [], DiagnosticSteps: [],
             SourceEvidence: ["Source 1: active app_users identity plus an active verified identity alias when applicable.", "Source 2: project_tasks joined to the deduplicated current assignment authority, with active Work Register roster rows taking precedence over mirrored project_assignments rows."],
             KnownUnknownAndStaleValues: ["A zero means no qualifying current task assignment was recorded after all filters; historical or out-of-scope work is not represented."],
@@ -819,13 +1008,318 @@ public sealed class CelarAiInternalDataService
         return new AnswerOutcome("completed", answer, source, []);
     }
 
-    private static AnswerOutcome BuildResolutionAnswer(
+    private static async Task<AnswerOutcome> BuildWorkSummaryAnswerAsync(
+        NpgsqlConnection connection,
+        Guid effectiveUserId,
+        PulseAiSystemAccess access,
+        CelarAiInternalDataQuery query,
+        PersonCandidate person,
+        CancellationToken cancellationToken)
+    {
+        var (projects, projectTotal) = await LoadPersonProjectsAsync(connection, effectiveUserId, access, person.UserId, cancellationToken);
+        var (tasks, taskTotal, taskProjectTotal) = await LoadPersonTasksAsync(connection, effectiveUserId, access, person.UserId, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var sources = new[]
+        {
+            Source(1, "authorized_person_directory", "Authorized Pulse person identity", "062", "internal:celar-ai/identity-resolution", now, "Exact active identity or verified alias within the effective user's authorized scope"),
+            Source(2, "authorized_person_projects", "Authorized project, role, and assignment records", "019/053I/055C", "internal:celar-ai/person-projects", now, "Distinct current project relationships inside the effective user's scope"),
+            Source(3, "authorized_person_tasks", "Authorized task assignment records", "001/019/055C", "internal:celar-ai/person-tasks", now, "Current deduplicated active task assignments inside the effective user's scope")
+        };
+        var details = projects.Select(ProjectRowDetail)
+            .Concat(tasks.Select(TaskRowDetail))
+            .Take(200)
+            .ToArray();
+        var answer = new PulseAiSystemDetailedAnswer(
+            DirectConclusion: $"{person.DisplayName} has {projectTotal} active project{(projectTotal == 1 ? string.Empty : "s")} and {taskTotal} active task assignment{(taskTotal == 1 ? string.Empty : "s")} within your authorized Pulse scope.",
+            ExecutiveSummary: "This answers the combined project-and-task question in one deterministic database pass family instead of routing the internal fact to a model or a generic supporting service.",
+            ScopeAndFilters:
+            [
+                $"Person: {person.DisplayName}; identity resolution: {(person.MatchedVerifiedAlias ? "verified alias" : "exact active Pulse identity")}.",
+                "Active project count includes recorded PM, Account Executive, Solution Architect, and current resource relationships.",
+                "Active task count includes current effective task assignments on non-closed projects after Work Register precedence and Module 001A closeout filters.",
+                "All rows are permission-scoped to the current effective user."
+            ],
+            CurrentState:
+            [
+                $"Distinct active projects: {projectTotal}.",
+                $"Active task assignments: {taskTotal}.",
+                $"Distinct active projects containing those task assignments: {taskProjectTotal}.",
+                $"Project detail rows returned: {projects.Count}; task detail rows returned: {tasks.Count}.",
+                "External providers called: none."
+            ],
+            DetailedAnalysis: details,
+            ApiFindings: [],
+            TroubleshootingFindings: [],
+            RootCauseHypotheses: [],
+            DiagnosticSteps: [],
+            SourceEvidence:
+            [
+                "Source 1: authorized active Pulse identity / verified alias.",
+                "Source 2: current projects and project-role/resource relationships.",
+                "Source 3: deduplicated current task-assignment authority."
+            ],
+            KnownUnknownAndStaleValues: ["Historical work and records outside the current effective user's authorization scope are intentionally excluded from the active counts."],
+            Assumptions: [],
+            Conflicts: [],
+            Limitations: ["Counts represent recorded Pulse relationships at the data-as-of timestamp; they do not infer informal work."],
+            RisksAndImplications: [],
+            RecommendedActions: ["Open Module 019/055C for project detail or Module 001 for the current task assignments."],
+            FutureEnhancementBlueprint: null,
+            NavigationTargets: ["#project-workspace", "#work-register", "#timesheet"],
+            CitationIds: [1, 2, 3],
+            Confidence: 0.99m,
+            ConfidenceExplanation: "Very high confidence because the person resolved exactly and both requested counts were computed deterministically from current permission-scoped Pulse records.",
+            DataAsOf: now);
+        return new AnswerOutcome("completed", answer, sources, []);
+    }
+
+    private static AnswerOutcome BuildProjectStakeholderAnswer(
+        CelarAiInternalDataQuery query,
+        ProjectCandidate project)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var (label, value, module) = query.RequestedProjectRole switch
+        {
+            "solution_architect" => ("Solution Architect", project.SolutionArchitectName, "019/053I/073"),
+            "project_manager" => ("Project Manager", project.ProjectManagerName, "019"),
+            _ => ("Account Executive / Sales owner", project.AccountExecutiveName, "019/053I/073")
+        };
+        var assigned = !string.IsNullOrWhiteSpace(value);
+        var direct = assigned
+            ? $"The recorded {label} for {project.ProjectCode} — {project.ProjectName} is {value}."
+            : $"No active {label} is currently recorded on {project.ProjectCode} — {project.ProjectName}.";
+        var sources = new[]
+        {
+            Source(1, "authorized_project_record", "Authorized project record", "019/055C", "internal:celar-ai/project", now, "Exact project code or name inside the effective user's authorized project scope"),
+            Source(2, "authorized_project_stakeholder", $"Recorded {label}", module, "internal:celar-ai/project-stakeholders", now, "Current projects role foreign key joined to active app_users identity")
+        };
+        var answer = new PulseAiSystemDetailedAnswer(
+            DirectConclusion: direct,
+            ExecutiveSummary: "The answer comes directly from the current project record and the referenced active Pulse user. No provider inferred the stakeholder.",
+            ScopeAndFilters:
+            [
+                $"Project: {project.ProjectCode} — {project.ProjectName}; status {project.Status}.",
+                "Project resolution is exact by normalized project code or project name and is restricted to the effective user's authorized project scope.",
+                query.RequestedProjectRole == "account_executive"
+                    ? "Natural-language terms such as sales person, sales rep, AE, and Account Executive resolve to the project's Account Executive / Sales owner field."
+                    : $"Requested role: {label}."
+            ],
+            CurrentState: [assigned ? $"{label}: {value}." : $"{label}: not currently assigned.", "External providers called: none."],
+            DetailedAnalysis: [],
+            ApiFindings: [], TroubleshootingFindings: [], RootCauseHypotheses: [], DiagnosticSteps: [],
+            SourceEvidence: ["Source 1: current authorized projects row.", $"Source 2: current {label} reference joined to active app_users."],
+            KnownUnknownAndStaleValues: assigned ? [] : [$"The {label} field is currently empty or does not reference an active user; no person was guessed."],
+            Assumptions: [], Conflicts: [],
+            Limitations: ["This returns the stakeholder recorded on the current Pulse project record; it does not infer unofficial coverage outside Pulse."],
+            RisksAndImplications: [],
+            RecommendedActions: assigned ? ["Open the Project Workspace or Work Register to verify the project team record."] : ["Update the authoritative project record in the owning workflow if this role should be assigned."],
+            FutureEnhancementBlueprint: null,
+            NavigationTargets: ["#project-workspace", "#work-register"],
+            CitationIds: [1, 2],
+            Confidence: 0.99m,
+            ConfidenceExplanation: assigned
+                ? "Very high confidence because the project resolved exactly and the current stakeholder is a direct foreign-key relationship to one active Pulse user."
+                : "Very high confidence that no active stakeholder is currently recorded in the authoritative field; no substitute identity was inferred.",
+            DataAsOf: now);
+        return new AnswerOutcome("completed", answer, sources, []);
+    }
+
+    private static async Task<AnswerOutcome> BuildProjectHistoryAnswerAsync(
+        NpgsqlConnection connection,
+        CelarAiInternalDataQuery query,
+        ProjectCandidate project,
+        CancellationToken cancellationToken)
+    {
+        var events = new List<ProjectHistoryRow>();
+        var auditAvailable = false;
+        var auditDiagnostic = string.Empty;
+        try
+        {
+            await using (var exists = new NpgsqlCommand("SELECT to_regclass('public.work_lifecycle_audit_events') IS NOT NULL;", connection))
+            {
+                auditAvailable = Convert.ToBoolean(await exists.ExecuteScalarAsync(cancellationToken));
+            }
+            if (auditAvailable)
+            {
+                await using var command = new NpgsqlCommand(ProjectHistorySql, connection);
+                command.Parameters.AddWithValue("project_id", project.ProjectId);
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    events.Add(new ProjectHistoryRow(
+                        reader.GetFieldValue<DateTimeOffset>(0),
+                        reader.GetString(1),
+                        reader.GetString(2),
+                        reader.GetString(3),
+                        reader.GetString(4),
+                        reader.GetString(5),
+                        reader.GetString(6),
+                        reader.IsDBNull(7) ? null : reader.GetString(7)));
+                }
+            }
+        }
+        catch (PostgresException postgres) when (postgres.SqlState is "42P01" or "42501")
+        {
+            auditAvailable = false;
+            auditDiagnostic = postgres.SqlState == "42501" ? "audit_read_not_authorized" : "audit_relation_unavailable";
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var sources = new List<PulseAiSystemSourceEvidence>
+        {
+            Source(1, "authorized_project_record", "Authorized project record", "019/055C", "internal:celar-ai/project", now, "Exact project inside the effective user's authorized project scope")
+        };
+        if (auditAvailable)
+            sources.Add(Source(2, "work_lifecycle_audit_history", "Immutable work lifecycle audit history", "038/039/040/042/055C/055D", "internal:celar-ai/project-history", now, "Immutable project lifecycle events ordered by recorded event time"));
+
+        var timeline = new List<string>
+        {
+            $"Project created: {project.CreatedAt:O}.",
+            $"Project last updated: {project.UpdatedAt:O}.",
+            $"Recorded schedule: {(project.StartDate?.ToString("yyyy-MM-dd") ?? "start date not recorded")} through {(project.EndDate?.ToString("yyyy-MM-dd") ?? "open/no end date recorded")}.",
+            $"Current status: {project.Status}."
+        };
+        if (!string.IsNullOrWhiteSpace(project.Description))
+            timeline.Add($"Recorded project description: {project.Description}");
+        timeline.AddRange(events.Select(row =>
+            $"{row.OccurredAt:O} — {row.ProcessArea}/{row.EventType}: {row.Summary}{(string.IsNullOrWhiteSpace(row.ActorName) ? string.Empty : $"; actor {row.ActorName}")}{(string.IsNullOrWhiteSpace(row.Reason) ? string.Empty : $"; reason {row.Reason}")}{(string.IsNullOrWhiteSpace(row.PriorState) && string.IsNullOrWhiteSpace(row.NewState) ? string.Empty : $"; state {row.PriorState} → {row.NewState}")}."));
+
+        var status = auditAvailable ? "completed" : "partial";
+        var answer = new PulseAiSystemDetailedAnswer(
+            DirectConclusion: auditAvailable
+                ? $"{project.ProjectCode} — {project.ProjectName} is currently {project.Status}. Celar AI found {events.Count} immutable work-lifecycle event{(events.Count == 1 ? string.Empty : "s")} plus the authoritative project timestamps for historical context."
+                : $"{project.ProjectCode} — {project.ProjectName} is currently {project.Status}. Core project timestamps are available, but immutable work-lifecycle audit evidence could not be read, so the historical context is incomplete.",
+            ExecutiveSummary: auditAvailable
+                ? "The history combines the current permission-scoped project record with immutable work-to-cash lifecycle audit evidence. It does not reconstruct or invent events that were never recorded."
+                : "The request remains evidence-limited rather than substituting a generic project story. Only current project metadata and recorded timestamps are returned.",
+            ScopeAndFilters:
+            [
+                $"Project: {project.ProjectCode} — {project.ProjectName}.",
+                "Project access is restricted to the current effective user's authorized project scope.",
+                "History source: immutable work_lifecycle_audit_events when present and readable.",
+                "At most the 100 most recent lifecycle audit events are returned."
+            ],
+            CurrentState:
+            [
+                $"Current status: {project.Status}.",
+                $"Project created: {project.CreatedAt:O}.",
+                $"Project updated: {project.UpdatedAt:O}.",
+                $"Lifecycle audit events returned: {events.Count}.",
+                $"Lifecycle audit evidence available: {auditAvailable}.",
+                "External providers called: none."
+            ],
+            DetailedAnalysis: timeline,
+            ApiFindings: [], TroubleshootingFindings: auditAvailable ? [] : ["The immutable lifecycle audit adapter was unavailable or unreadable for this request."],
+            RootCauseHypotheses: [], DiagnosticSteps: [],
+            SourceEvidence: auditAvailable
+                ? ["Source 1: current authorized projects row.", "Source 2: immutable work_lifecycle_audit_events rows for the resolved project."]
+                : ["Source 1: current authorized projects row. No audit source was treated as successful."],
+            KnownUnknownAndStaleValues: auditAvailable
+                ? ["This source covers work-lifecycle events captured by the unified lifecycle audit. Other module-specific audit families may contain additional context and are not silently merged here."]
+                : [$"Full change history remains unknown because the lifecycle audit source was unavailable{(auditDiagnostic.Length == 0 ? string.Empty : $" ({auditDiagnostic})")}."],
+            Assumptions: [], Conflicts: [],
+            Limitations:
+            [
+                "Historical context is limited to facts recorded by the authoritative project record and the available immutable lifecycle audit source.",
+                "Celar AI does not infer missing events from conversation history or external model knowledge."
+            ],
+            RisksAndImplications: auditAvailable ? [] : ["Do not treat this partial history as a complete audit trail."],
+            RecommendedActions: auditAvailable ? ["Open Audit History or the project workspace for module-specific detail when needed."] : ["Check Module 038/997 audit readiness and permissions, then retry the history question."],
+            FutureEnhancementBlueprint: null,
+            NavigationTargets: ["#project-workspace", "#audit-history", "#work-register"],
+            CitationIds: auditAvailable ? [1, 2] : [1],
+            Confidence: auditAvailable ? 0.95m : 0.55m,
+            ConfidenceExplanation: auditAvailable
+                ? "High confidence for the returned project and lifecycle events because both are direct permission-scoped database evidence."
+                : "Moderate confidence in the current project metadata, but the requested historical context is incomplete without the immutable audit source.",
+            DataAsOf: now);
+        return new AnswerOutcome(status, answer, sources, auditAvailable ? [] : ["Project history is partial because immutable lifecycle audit evidence was unavailable."]);
+    }
+
+    private static async Task<(List<PersonProjectRow> Rows, long Total)> LoadPersonProjectsAsync(
+        NpgsqlConnection connection,
+        Guid effectiveUserId,
+        PulseAiSystemAccess access,
+        Guid personUserId,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<PersonProjectRow>();
+        long total = 0;
+        await using var command = new NpgsqlCommand(PersonProjectsSql, connection);
+        AddScopeParameters(command, effectiveUserId, access);
+        command.Parameters.AddWithValue("person_user_id", personUserId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            total = reader.GetInt64(9);
+            rows.Add(new PersonProjectRow(
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetBoolean(4),
+                reader.GetBoolean(5),
+                reader.GetBoolean(6),
+                reader.GetBoolean(7),
+                reader.GetInt64(8)));
+        }
+        return (rows, total);
+    }
+
+    private static async Task<(List<PersonTaskRow> Rows, long Total, long ProjectTotal)> LoadPersonTasksAsync(
+        NpgsqlConnection connection,
+        Guid effectiveUserId,
+        PulseAiSystemAccess access,
+        Guid personUserId,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<PersonTaskRow>();
+        long total = 0;
+        long totalProjects = 0;
+        await using var command = new NpgsqlCommand(PersonTasksSql, connection);
+        AddScopeParameters(command, effectiveUserId, access);
+        command.Parameters.AddWithValue("person_user_id", personUserId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            total = reader.GetInt64(10);
+            totalProjects = reader.GetInt64(11);
+            rows.Add(new PersonTaskRow(
+                reader.GetGuid(0),
+                reader.GetGuid(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetFieldValue<DateOnly>(6),
+                reader.IsDBNull(7) ? null : reader.GetFieldValue<DateOnly>(7),
+                reader.GetDecimal(8),
+                reader.GetString(9)));
+        }
+        return (rows, total, totalProjects);
+    }
+
+    private static string ProjectRowDetail(PersonProjectRow row)
+    {
+        var relationships = new List<string>();
+        if (row.IsProjectManager) relationships.Add("Project Manager");
+        if (row.IsAccountExecutive) relationships.Add("Account Executive / Sales owner");
+        if (row.IsSolutionArchitect) relationships.Add("Solution Architect");
+        if (row.IsAssignedResource) relationships.Add($"assigned resource ({row.ActiveTaskAssignmentCount} active task assignment{(row.ActiveTaskAssignmentCount == 1 ? string.Empty : "s")})");
+        return $"{row.ProjectCode} — {row.ProjectName}; status {row.Status}; relationship: {(relationships.Count == 0 ? "recorded project relationship" : string.Join(" and ", relationships))}.";
+    }
+
+    private static string TaskRowDetail(PersonTaskRow row) =>
+        $"{row.ProjectCode} — {row.ProjectName}; {row.TaskCode} — {row.TaskName}; assigned hours {row.AssignedHours:0.##}; effective {row.EffectiveStartDate:yyyy-MM-dd} through {(row.EffectiveEndDate?.ToString("yyyy-MM-dd") ?? "open")}; authority {row.SourceCode}.";
+
+    private static AnswerOutcome BuildPersonResolutionAnswer(
         CelarAiInternalDataQuery query,
         PersonResolution resolution)
     {
         var now = DateTimeOffset.UtcNow;
         var countQuestion = query.Kind is CelarAiInternalDataQueryKind.PersonProjectCount
-            or CelarAiInternalDataQueryKind.PersonTaskCount;
+            or CelarAiInternalDataQueryKind.PersonTaskCount
+            or CelarAiInternalDataQueryKind.PersonWorkSummary;
         var subject = countQuestion ? "the requested count" : "the requested list";
         var (status, direct, confidence, sourceStatus, sourceCode, warning) = resolution.Outcome switch
         {
@@ -869,6 +1363,42 @@ public sealed class CelarAiInternalDataService
             ConfidenceExplanation: "The requested internal fact is not answered because one authorized identity was not resolved.",
             DataAsOf: now);
         return new AnswerOutcome(status, answer, source, [warning]);
+    }
+
+    private static AnswerOutcome BuildProjectResolutionAnswer(
+        CelarAiInternalDataQuery query,
+        ProjectResolution resolution)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var subject = query.Kind == CelarAiInternalDataQueryKind.ProjectHistory ? "project history" : "project stakeholder";
+        var ambiguous = resolution.Outcome == ProjectResolutionOutcome.Ambiguous;
+        var direct = ambiguous
+            ? $"Celar AI found more than one authorized project matching “{query.ProjectReference}.” Use the exact project code before the {subject} can be returned."
+            : $"Celar AI could not resolve “{query.ProjectReference}” to one project within your authorized Pulse scope. Use the exact project code or project name.";
+        var suggestions = resolution.Suggestions.Count > 0
+            ? resolution.Suggestions.Select(value => $"Authorized near match: {value}.").ToArray()
+            : [];
+        var source = new[]
+        {
+            new PulseAiSystemSourceEvidence(1, "governed_project_resolution", ambiguous ? "ambiguous_project_identity" : "project_not_found", "Authorized Pulse project resolution", "019/055C", "INTERNAL", "internal:celar-ai/project-resolution", "not_resolved", ambiguous ? 409 : 404, now, "current_request", "Exact project-code/project-name resolution inside the effective user's scope")
+        };
+        var answer = new PulseAiSystemDetailedAnswer(
+            DirectConclusion: direct,
+            ExecutiveSummary: "No project-level role or history query was executed until one authorized project resolved exactly.",
+            ScopeAndFilters: ["Project resolution is permission-scoped and fails closed before project facts are returned."],
+            CurrentState: suggestions,
+            DetailedAnalysis: [], ApiFindings: [], TroubleshootingFindings: [], RootCauseHypotheses: [], DiagnosticSteps: [],
+            SourceEvidence: ["Source 1: current authorized project resolver."],
+            KnownUnknownAndStaleValues: [$"The requested {subject} remains unknown; Celar AI did not guess a project."],
+            Assumptions: [], Conflicts: [], Limitations: ["Near matches are suggestions only and are never treated as the requested project."],
+            RisksAndImplications: [],
+            RecommendedActions: ["Retry using the exact project code shown in the Project Workspace or Work Register."],
+            FutureEnhancementBlueprint: null,
+            NavigationTargets: ["#project-workspace", "#work-register"],
+            CitationIds: [1], Confidence: 0.25m,
+            ConfidenceExplanation: "The internal fact is withheld because exactly one authorized project did not resolve.",
+            DataAsOf: now);
+        return new AnswerOutcome("partial", answer, source, ["No project fact was inferred from an ambiguous, missing, or unauthorized project reference."]);
     }
 
     private static AnswerOutcome BuildSourceUnavailableAnswer(
@@ -916,7 +1446,7 @@ public sealed class CelarAiInternalDataService
         {
             var saved = await _repository.AppendMessageAsync(
                 conversationId, effectiveUserId, "user", "completed", request.Question ?? string.Empty,
-                new { contractVersion = ContractVersion, intentCode = IntentCode, previousConversationMessagesInjected = false, externalProviderEligible = false },
+                new { contractVersion = ContractVersion, enterpriseFactsVersion = EnterpriseFactsVersion, intentCode = IntentCode, previousConversationMessagesInjected = false, externalProviderEligible = false },
                 null, null, correlationId, string.Empty, string.Empty, [], new { }, DateTimeOffset.UtcNow, cancellationToken);
             if (saved.MessageId != Guid.Empty) userMessageId = saved.MessageId;
         }
@@ -991,6 +1521,18 @@ public sealed class CelarAiInternalDataService
     private static string CleanPersonReference(string value) =>
         Regex.Replace(value.Trim().Trim('?', '.', '!', ',', ';', ':'), @"\s+", " ", Options);
 
+    private static string CleanProjectReference(string value) =>
+        Regex.Replace(value.Trim().Trim('?', '.', '!', ',', ';', ':', '"', '\''), @"\s+", " ", Options);
+
+    private static string NormalizeProjectRole(string value)
+    {
+        var normalized = Regex.Replace(value.Trim().ToLowerInvariant(), @"\s+", " ", Options);
+        if (normalized is "solution architect" or "sa") return "solution_architect";
+        if (normalized is "project manager" or "pm") return "project_manager";
+        if (normalized is "account executive" or "ae" || normalized.StartsWith("sales", StringComparison.Ordinal)) return "account_executive";
+        return string.Empty;
+    }
+
     private static string NormalizeIdentity(string value) =>
         Regex.Replace(value.Trim().ToLowerInvariant(), "[^a-z0-9]+", string.Empty, Options);
 
@@ -1041,14 +1583,41 @@ public sealed class CelarAiInternalDataService
     };
 
     private enum PersonResolutionOutcome { Resolved, NotFound, Ambiguous }
+    private enum ProjectResolutionOutcome { Resolved, NotFound, Ambiguous }
+
     private sealed class CelarAiInternalDataSourceException(string diagnostic) : Exception(diagnostic)
     {
         public string Diagnostic { get; } = diagnostic;
     }
+
     private sealed record PersonCandidate(Guid UserId, string DisplayName, string Email, bool MatchedVerifiedAlias);
     private sealed record PersonResolution(PersonResolutionOutcome Outcome, PersonCandidate? Person, IReadOnlyList<string> Suggestions);
-    private sealed record PersonProjectRow(Guid ProjectId, string ProjectCode, string ProjectName, string Status, bool IsProjectManager, bool IsAssignedResource, long ActiveTaskAssignmentCount);
+    private sealed record ProjectCandidate(
+        Guid ProjectId,
+        string ProjectCode,
+        string ProjectName,
+        string Status,
+        string Description,
+        DateOnly? StartDate,
+        DateOnly? EndDate,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset UpdatedAt,
+        string? ProjectManagerName,
+        string? AccountExecutiveName,
+        string? SolutionArchitectName);
+    private sealed record ProjectResolution(ProjectResolutionOutcome Outcome, ProjectCandidate? Project, IReadOnlyList<string> Suggestions);
+    private sealed record PersonProjectRow(
+        Guid ProjectId,
+        string ProjectCode,
+        string ProjectName,
+        string Status,
+        bool IsProjectManager,
+        bool IsAccountExecutive,
+        bool IsSolutionArchitect,
+        bool IsAssignedResource,
+        long ActiveTaskAssignmentCount);
     private sealed record PersonTaskRow(Guid TaskId, Guid ProjectId, string ProjectCode, string ProjectName, string TaskCode, string TaskName, DateOnly EffectiveStartDate, DateOnly? EffectiveEndDate, decimal AssignedHours, string SourceCode);
+    private sealed record ProjectHistoryRow(DateTimeOffset OccurredAt, string ProcessArea, string EventType, string PriorState, string NewState, string Summary, string Reason, string? ActorName);
     private sealed record AnswerOutcome(string Status, PulseAiSystemDetailedAnswer Answer, IReadOnlyList<PulseAiSystemSourceEvidence> Sources, IReadOnlyList<string> Warnings);
     private sealed record PersistenceContext(Guid ConversationId, Guid UserMessageId, Guid InquiryRunId, Guid EffectiveUserId, bool Persisted);
 }
