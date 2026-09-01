@@ -154,11 +154,20 @@ CONTEXT_HELPERS = r'''    private static CelarAiInternalDataQuery ApplyExplicitC
     {
         var personReference = query.PersonReference;
         var projectReference = query.ProjectReference;
-        if (context.PersonOrTeam.Length > 0 && IsContextualPersonReference(personReference))
+        var kind = query.Kind;
+        var contextualPerson = context.PersonOrTeam.Length > 0 && IsContextualPersonReference(personReference);
+        if (contextualPerson)
+        {
             personReference = context.PersonOrTeam;
+            if (kind == CelarAiInternalDataQueryKind.PersonTaskList
+                && !Regex.IsMatch(context.Question, @"\btasks?\b", Options))
+            {
+                kind = CelarAiInternalDataQueryKind.PersonWorkSummary;
+            }
+        }
         if (context.ProjectReference.Length > 0 && IsContextualProjectReference(projectReference))
             projectReference = context.ProjectReference;
-        return query with { PersonReference = personReference, ProjectReference = projectReference };
+        return query with { Kind = kind, PersonReference = personReference, ProjectReference = projectReference };
     }
 
     private static bool IsContextualPersonReference(string value)
