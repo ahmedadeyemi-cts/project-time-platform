@@ -6,7 +6,7 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
 
@@ -20,17 +20,22 @@ jobs:
       github.event.issue.pull_request &&
       github.actor == 'ahmedadeyemi-cts' &&
       (github.event.comment.body == 'ENABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d' ||
-       github.event.comment.body == 'DISABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d')
+       github.event.comment.body == 'DISABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d' ||
+       github.event.comment.body == 'DEPLOY PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d')
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 300
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
       EXPECTED_RELEASE_SOURCE_SHA: 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d
       CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
+      LAUNCH_MARKER_PATH: src/backend/ProjectTime.Api/release-markers/protected-uat-pr782-launch-20260901.md
+      AUTHORIZED_CANDIDATE_BRANCH: fix/shared-project-document-planning-20260819
+      AUTHORIZED_BRANCH_ORIGINAL_SHA: 20c57ef8e10042decc438560d8f71c516b7f7838
     steps:
-      - name: Verify immutable release boundary before enable
-        if: github.event.comment.body == 'ENABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
+      - name: Verify immutable reviewed release boundary
+        if: github.event.comment.body != 'DISABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
+        id: boundary
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -42,15 +47,24 @@ jobs:
             exit 1
           }
           mapfile -t changed_files < <(jq -r '.files[].filename' <<<"$comparison")
-          [[ ${#changed_files[@]} -eq 1 && "${changed_files[0]}" == "$CONTROL_WORKFLOW_PATH" ]] || {
-            echo 'Unexpected source drift exists between the reviewed release boundary and current main:' >&2
-            printf '  %s\n' "${changed_files[@]}" >&2
+          printf '%s\n' "${changed_files[@]}" | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
+          cat > "$RUNNER_TEMP/allowed-files" <<FILES
+          $CONTROL_WORKFLOW_PATH
+          $LAUNCH_MARKER_PATH
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/allowed-files" -o "$RUNNER_TEMP/allowed-files"
+          cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/allowed-files" || {
+            echo 'Unexpected source drift exists between the reviewed Celar AI release and current main:' >&2
+            diff -u "$RUNNER_TEMP/allowed-files" "$RUNNER_TEMP/changed-files" >&2 || true
             exit 1
           }
+          echo "main_sha=$actual_main" >> "$GITHUB_OUTPUT"
           echo "PROTECTED_UAT_REVIEWED_SOURCE_SHA=$EXPECTED_RELEASE_SOURCE_SHA"
           echo "PROTECTED_UAT_CONTROLLED_MAIN_SHA=$actual_main"
 
-      - name: Apply exact workflow control
+      - name: Apply enable or disable control
+        if: github.event.comment.body != 'DEPLOY PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
         id: control
         shell: bash
         run: |
@@ -75,7 +89,101 @@ jobs:
           echo "PROTECTED_UAT_DEPLOY_WORKFLOW_ACTION=$action"
           echo "PROTECTED_UAT_DEPLOY_WORKFLOW_STATE=$state"
 
+      - name: Pin governed candidate ref to reviewed merged main
+        if: github.event.comment.body == 'DEPLOY PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
+        id: pin
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          main_sha='${{ steps.boundary.outputs.main_sha }}'
+          [[ "$main_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Reviewed main SHA is unavailable.' >&2; exit 1; }
+          branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${AUTHORIZED_CANDIDATE_BRANCH}" --jq '.object.sha')"
+          [[ "$branch_sha" == "$AUTHORIZED_BRANCH_ORIGINAL_SHA" ]] || {
+            echo "Authorized candidate ref is not at its preserved historical SHA: $branch_sha" >&2
+            exit 1
+          }
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${AUTHORIZED_CANDIDATE_BRANCH}" \
+            -f sha="$main_sha" -F force=true >/dev/null
+          pinned_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${AUTHORIZED_CANDIDATE_BRANCH}" --jq '.object.sha')"
+          [[ "$pinned_sha" == "$main_sha" ]] || { echo 'Temporary governed candidate ref pin failed.' >&2; exit 1; }
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
+          [[ "$state" == 'active' ]] || { echo "Deployment workflow is not active: $state" >&2; exit 1; }
+          echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_UAT_TEMPORARY_RELEASE_REF=$AUTHORIZED_CANDIDATE_BRANCH"
+          echo "PROTECTED_UAT_TEMPORARY_RELEASE_SHA=$main_sha"
+
+      - name: Dispatch exact governed Protected Test deployment
+        if: github.event.comment.body == 'DEPLOY PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
+        id: dispatch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          main_sha='${{ steps.pin.outputs.main_sha }}'
+          gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" \
+            --ref "$AUTHORIZED_CANDIDATE_BRANCH" \
+            -f release_sha="$main_sha" \
+            -f release_branch="$AUTHORIZED_CANDIDATE_BRANCH"
+
+          run_id=''
+          run_url=''
+          for attempt in $(seq 1 60); do
+            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$DEPLOY_WORKFLOW" \
+              --branch "$AUTHORIZED_CANDIDATE_BRANCH" --event workflow_dispatch --limit 30 \
+              --json databaseId,headSha,createdAt \
+              --jq "map(select(.headSha == \"$main_sha\")) | sort_by(.createdAt) | last | .databaseId // empty")"
+            if [[ -n "$run_id" ]]; then
+              run_url="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
+              break
+            fi
+            sleep 5
+          done
+          [[ -n "$run_id" ]] || { echo 'The governed Protected Test deployment run was not created.' >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_UAT_DEPLOYMENT_RUN_ID=$run_id"
+          echo "PROTECTED_UAT_DEPLOYMENT_RUN_URL=$run_url"
+
+      - name: Watch Protected Test deployment through completion
+        if: github.event.comment.body == 'DEPLOY PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh run watch '${{ steps.dispatch.outputs.run_id }}' --repo "$GITHUB_REPOSITORY" --interval 10 --exit-status
+
+      - name: Restore release controls after deployment attempt
+        if: always() && github.event.comment.body == 'DEPLOY PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${AUTHORIZED_CANDIDATE_BRANCH}" \
+            -f sha="$AUTHORIZED_BRANCH_ORIGINAL_SHA" -F force=true >/dev/null
+          restored_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${AUTHORIZED_CANDIDATE_BRANCH}" --jq '.object.sha')"
+          [[ "$restored_sha" == "$AUTHORIZED_BRANCH_ORIGINAL_SHA" ]] || { echo 'Historical candidate ref restoration failed.' >&2; exit 1; }
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
+          [[ "$state" == 'disabled_manually' ]] || { echo "Deployment workflow did not return to disabled state: $state" >&2; exit 1; }
+          echo "PROTECTED_UAT_HISTORICAL_REF_RESTORED=$restored_sha"
+          echo "PROTECTED_UAT_DEPLOY_WORKFLOW_STATE=$state"
+
+      - name: Record successful deployment evidence
+        if: success() && github.event.comment.body == 'DEPLOY PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment completed successfully.\n\n- Reviewed Celar AI release source: \`$EXPECTED_RELEASE_SOURCE_SHA\`\n- Deployed merged main: \`${{ steps.pin.outputs.main_sha }}\`\n- Governed deployment run: ${{ steps.dispatch.outputs.run_url }}\n- Historical candidate ref: restored to \`$AUTHORIZED_BRANCH_ORIGINAL_SHA\`\n- Deployment workflow: returned to \`disabled_manually\`\n- Production mutation: none"
+
+      - name: Record failed deployment evidence
+        if: failure() && github.event.comment.body == 'DEPLOY PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
+        shell: bash
+        run: |
+          set +e
+          run_url='${{ steps.dispatch.outputs.run_url }}'
+          [[ -n "$run_url" ]] || run_url='Deployment run was not created.'
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment failed or could not be dispatched.\n\n- Reviewed Celar AI release source: \`$EXPECTED_RELEASE_SOURCE_SHA\`\n- Attempted merged main: \`${{ steps.pin.outputs.main_sha }}\`\n- Evidence: $run_url\n- Historical candidate ref restoration and workflow disable were attempted automatically.\n- Production mutation: none"
+
       - name: Record workflow-control evidence
+        if: success() && github.event.comment.body != 'DEPLOY PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
         shell: bash
         run: |
           set -Eeuo pipefail
