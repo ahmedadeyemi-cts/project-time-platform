@@ -14,6 +14,7 @@ async function request(path, options = {}) {
 }
 const words = (value) => String(value ?? '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 const EMPTY_INTAKE = { clientName: '', opportunityReference: '', requestTitle: '', requestDescription: '', priority: 'normal' };
+const MODULE025_DEPLOYMENT_MARKER = 'Select or type a customer';
 const uploadKey = (item) => `${item.file.name}:${item.file.size}:${item.file.lastModified}:${item.type}`;
 
 function IntakeUploader({ signed = false }) {
@@ -96,5 +97,5 @@ function UatValidation() {
 }
 
 export default function SalesDeliveryWorkflowCenter({ module }) {
-  return <section className="sales-delivery-workflow-center" data-module={module}>{module === '024' ? <IntakeUploader /> : null}{module === '025' ? <SowGsdWorkspace /> : null}{module === '027' ? <IntakeUploader signed /> : null}{module === '028' ? <AiTimeEntry /> : null}{module === '029' ? <UatValidation /> : null}</section>;
+  return <section className="sales-delivery-workflow-center" data-module={module} data-module025-deployment-marker={module === '025' ? MODULE025_DEPLOYMENT_MARKER : undefined}>{module === '024' ? <IntakeUploader /> : null}{module === '025' ? <SowGsdWorkspace /> : null}{module === '027' ? <IntakeUploader signed /> : null}{module === '028' ? <AiTimeEntry /> : null}{module === '029' ? <UatValidation /> : null}</section>;
 }
