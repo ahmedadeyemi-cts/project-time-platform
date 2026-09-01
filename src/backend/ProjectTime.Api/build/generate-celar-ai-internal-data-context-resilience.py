@@ -14,8 +14,9 @@ resolver:
    ordinary projects with unfilled AE/SA fields cannot break workload answers;
 4. lifecycle audit history is gated by the same Work-to-Cash read roles used by
    WorkLifecycleModule before any audit rows are read; and
-5. portfolio-wide Work Lifecycle readers can resolve project history across the
-   same portfolio boundary that the canonical Work Lifecycle endpoint permits.
+5. assigned project managers and portfolio-wide Work Lifecycle readers can
+   resolve history across the same boundary that the canonical lifecycle endpoint
+   permits, without widening ordinary stakeholder lookups.
 
 Every replacement is anchor-checked and fails closed if the canonical source
 shape changes.
@@ -70,7 +71,7 @@ PROJECT_FACTS_SQL = r'''    private const string ProjectFactsScopeCte = """
             CROSS JOIN requester
             WHERE (
                @is_broad_scope = TRUE
-               OR (@can_view_managed_projects = TRUE AND project.project_manager_user_id = @effective_user_id)
+               OR project.project_manager_user_id = @effective_user_id
                OR project.account_executive_user_id = @effective_user_id
                OR project.solution_architect_user_id = @effective_user_id
                OR EXISTS (
@@ -533,6 +534,7 @@ def transform(source: str) -> str:
         'AuthorizedProjectsSql = ProjectFactsScopeCte',
         'COALESCE(project.account_executive_user_id = @person_user_id, FALSE)',
         'COALESCE(project.solution_architect_user_id = @person_user_id, FALSE)',
+        'OR project.project_manager_user_id = @effective_user_id',
         'is_work_lifecycle_assigned_project_manager',
         'CanResolveProjectHistoryPortfolio',
         'AddProjectFactsScopeParameters',
