@@ -3,6 +3,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+// Module 025 route assertions intentionally guard the governed SOW/GSD workspace rather than the retired inline generator.
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
 const repositoryRoot = path.resolve(webRoot, '../../..');
