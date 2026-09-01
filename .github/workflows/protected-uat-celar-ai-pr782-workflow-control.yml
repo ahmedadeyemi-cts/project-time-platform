@@ -1,0 +1,70 @@
+name: One-Time Protected UAT Workflow Control for Celar AI PR782
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: protected-uat-celar-ai-pr782-workflow-control
+  cancel-in-progress: false
+
+jobs:
+  control:
+    if: >-
+      github.event.issue.pull_request &&
+      github.actor == 'ahmedadeyemi-cts' &&
+      (github.event.comment.body == 'ENABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d' ||
+       github.event.comment.body == 'DISABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+      EXPECTED_MAIN_SHA: 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d
+    steps:
+      - name: Verify immutable release boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$actual_main" == "$EXPECTED_MAIN_SHA" ]] || {
+            echo "Main moved before Protected UAT workflow control: expected $EXPECTED_MAIN_SHA, found $actual_main" >&2
+            exit 1
+          }
+
+      - name: Apply exact workflow control
+        id: control
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          command='${{ github.event.comment.body }}'
+          if [[ "$command" == ENABLE\ PROTECTED\ UAT\ PR782\ "$EXPECTED_MAIN_SHA" ]]; then
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
+            expected_state='active'
+            action='enabled'
+          else
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
+            expected_state='disabled_manually'
+            action='disabled'
+          fi
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
+          [[ "$state" == "$expected_state" ]] || {
+            echo "Protected UAT workflow state mismatch: expected $expected_state, found $state" >&2
+            exit 1
+          }
+          echo "action=$action" >> "$GITHUB_OUTPUT"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_UAT_DEPLOY_WORKFLOW_ACTION=$action"
+          echo "PROTECTED_UAT_DEPLOY_WORKFLOW_STATE=$state"
+
+      - name: Record workflow-control evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment workflow control completed.\n\n- Release boundary: \`$EXPECTED_MAIN_SHA\`\n- Workflow: \`$DEPLOY_WORKFLOW\`\n- Action: \`${{ steps.control.outputs.action }}\`\n- Verified state: \`${{ steps.control.outputs.state }}\`\n- Production mutation: none"
