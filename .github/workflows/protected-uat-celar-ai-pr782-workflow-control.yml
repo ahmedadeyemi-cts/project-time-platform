@@ -26,17 +26,29 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
-      EXPECTED_MAIN_SHA: 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d
+      EXPECTED_RELEASE_SOURCE_SHA: 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d
+      CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
     steps:
-      - name: Verify immutable release boundary
+      - name: Verify immutable release boundary before enable
+        if: github.event.comment.body == 'ENABLE PROTECTED UAT PR782 9494bdaf00c1e9d99144ca9ab9f11fbd29772a7d'
         shell: bash
         run: |
           set -Eeuo pipefail
           actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          [[ "$actual_main" == "$EXPECTED_MAIN_SHA" ]] || {
-            echo "Main moved before Protected UAT workflow control: expected $EXPECTED_MAIN_SHA, found $actual_main" >&2
+          comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${EXPECTED_RELEASE_SOURCE_SHA}...${actual_main}")"
+          status="$(jq -r '.status' <<<"$comparison")"
+          [[ "$status" == 'ahead' || "$status" == 'identical' ]] || {
+            echo "Main no longer descends from the reviewed release source: $status" >&2
             exit 1
           }
+          mapfile -t changed_files < <(jq -r '.files[].filename' <<<"$comparison")
+          [[ ${#changed_files[@]} -eq 1 && "${changed_files[0]}" == "$CONTROL_WORKFLOW_PATH" ]] || {
+            echo 'Unexpected source drift exists between the reviewed release boundary and current main:' >&2
+            printf '  %s\n' "${changed_files[@]}" >&2
+            exit 1
+          }
+          echo "PROTECTED_UAT_REVIEWED_SOURCE_SHA=$EXPECTED_RELEASE_SOURCE_SHA"
+          echo "PROTECTED_UAT_CONTROLLED_MAIN_SHA=$actual_main"
 
       - name: Apply exact workflow control
         id: control
@@ -44,7 +56,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           command='${{ github.event.comment.body }}'
-          if [[ "$command" == ENABLE\ PROTECTED\ UAT\ PR782\ "$EXPECTED_MAIN_SHA" ]]; then
+          if [[ "$command" == ENABLE\ PROTECTED\ UAT\ PR782\ "$EXPECTED_RELEASE_SOURCE_SHA" ]]; then
             gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
             expected_state='active'
             action='enabled'
@@ -67,4 +79,4 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment workflow control completed.\n\n- Release boundary: \`$EXPECTED_MAIN_SHA\`\n- Workflow: \`$DEPLOY_WORKFLOW\`\n- Action: \`${{ steps.control.outputs.action }}\`\n- Verified state: \`${{ steps.control.outputs.state }}\`\n- Production mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment workflow control completed.\n\n- Reviewed release source: \`$EXPECTED_RELEASE_SOURCE_SHA\`\n- Workflow: \`$DEPLOY_WORKFLOW\`\n- Action: \`${{ steps.control.outputs.action }}\`\n- Verified state: \`${{ steps.control.outputs.state }}\`\n- Production mutation: none"
