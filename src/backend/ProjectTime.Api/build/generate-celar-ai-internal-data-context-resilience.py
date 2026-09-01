@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a guarded Celar AI internal-data compiler copy.
 
-The canonical service remains the reviewable source. This generator adds two
+The canonical service remains the reviewable source. This generator adds
 runtime-hardening layers that are intentionally local to the private internal-data
 resolver:
 
@@ -9,7 +9,11 @@ resolver:
    deterministic questions without forcing users to repeat the selected name;
 2. project stakeholder/history queries use a smaller project-fact authorization
    scope and readiness contract so unrelated workload sources do not take down
-   otherwise authoritative project facts.
+   otherwise authoritative project facts;
+3. nullable project stakeholder role comparisons are normalized to FALSE so
+   ordinary projects with unfilled AE/SA fields cannot break workload answers;
+4. lifecycle audit history is gated by the same Work-to-Cash read roles used by
+   WorkLifecycleModule before any audit rows are read.
 
 Every replacement is anchor-checked and fails closed if the canonical source
 shape changes.
@@ -279,6 +283,80 @@ CONTEXT_HELPERS = r'''    private static CelarAiInternalDataQuery ApplyExplicitC
 
 '''
 
+LIFECYCLE_AUTH_HELPERS = r'''    // Keep this read boundary aligned with WorkLifecycleModule.BuildCapabilities().
+    private static readonly string[] WorkLifecycleHistoryReadAllRoles =
+    [
+        "SUPER_ADMINISTRATOR",
+        "ADMINISTRATOR",
+        "PROJECT_TEAM_COORDINATOR"
+    ];
+
+    private static readonly string[] WorkLifecycleHistoryBillingRoles =
+    [
+        "ACCOUNTING",
+        "ACCOUNTING_BILLING",
+        "BILLING",
+        "FINANCE"
+    ];
+
+    private static readonly string[] WorkLifecycleHistoryBroadReadRoles =
+    [
+        "EXECUTIVE",
+        "SALES",
+        "INSIDE_SALES",
+        "ACCOUNT_EXECUTIVE",
+        "SALES_MANAGER"
+    ];
+
+    private static bool CanViewProjectHistory(
+        PulseAiSystemAccess access,
+        bool isAssignedProjectManager) =>
+        isAssignedProjectManager
+        || HasRole(access, WorkLifecycleHistoryReadAllRoles)
+        || HasRole(access, WorkLifecycleHistoryBillingRoles)
+        || HasRole(access, WorkLifecycleHistoryBroadReadRoles);
+
+    private static AnswerOutcome BuildProjectHistoryAccessDeniedAnswer(
+        CelarAiInternalDataQuery query)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var answer = new PulseAiSystemDetailedAnswer(
+            DirectConclusion: "Celar AI cannot return Work-to-Cash lifecycle history for this project because the current effective user does not have the lifecycle read authority required for audit history.",
+            ExecutiveSummary: "The project may be visible for delivery work, but lifecycle audit states, reasons, and actor history use the narrower Work Lifecycle read boundary. No lifecycle audit rows were read for this request.",
+            ScopeAndFilters:
+            [
+                $"Requested project reference: {query.ProjectReference}.",
+                "History authorization mirrors WorkLifecycleModule: Administrator/PTC, assigned Project Manager, Accounting/Billing/Finance, Executive, Sales, Account Executive, or Sales Manager read authority.",
+                "Ordinary project resource assignment alone does not grant lifecycle audit history."
+            ],
+            CurrentState: ["Lifecycle audit rows returned: 0.", "External providers called: none."],
+            DetailedAnalysis: [],
+            ApiFindings: [],
+            TroubleshootingFindings: [],
+            RootCauseHypotheses: [],
+            DiagnosticSteps: [],
+            SourceEvidence: ["Authorization gate only; the lifecycle audit source was not read."],
+            KnownUnknownAndStaleValues: ["Lifecycle history remains intentionally withheld under the current effective user's Work-to-Cash scope."],
+            Assumptions: [],
+            Conflicts: [],
+            Limitations: ["Project-level delivery visibility does not imply lifecycle-audit visibility."],
+            RisksAndImplications: [],
+            RecommendedActions: ["Use the Work Lifecycle project view with an authorized role if lifecycle audit history is required."],
+            FutureEnhancementBlueprint: null,
+            NavigationTargets: ["#work-lifecycle", "#project-workspace"],
+            CitationIds: [],
+            Confidence: 0.99m,
+            ConfidenceExplanation: "Very high confidence because the lifecycle authorization gate was evaluated before any audit rows were read.",
+            DataAsOf: now);
+        return new AnswerOutcome(
+            "partial",
+            answer,
+            [],
+            ["Project history was withheld by Work-to-Cash lifecycle authorization."]);
+    }
+
+'''
+
 READINESS_METHOD = r'''    private static async Task ValidateSourceReadinessAsync(
         NpgsqlConnection connection,
         CelarAiInternalDataQueryKind kind,
@@ -297,9 +375,33 @@ READINESS_METHOD = r'''    private static async Task ValidateSourceReadinessAsyn
 def transform(source: str) -> str:
     source = replace_once(
         source,
+        '                project.project_manager_user_id = @person_user_id AS is_project_manager,\n',
+        '                COALESCE(project.project_manager_user_id = @person_user_id, FALSE) AS is_project_manager,\n',
+        'nullable project-manager role flag',
+    )
+    source = replace_once(
+        source,
+        '                project.account_executive_user_id = @person_user_id AS is_account_executive,\n',
+        '                COALESCE(project.account_executive_user_id = @person_user_id, FALSE) AS is_account_executive,\n',
+        'nullable account-executive role flag',
+    )
+    source = replace_once(
+        source,
+        '                project.solution_architect_user_id = @person_user_id AS is_solution_architect,\n',
+        '                COALESCE(project.solution_architect_user_id = @person_user_id, FALSE) AS is_solution_architect,\n',
+        'nullable solution-architect role flag',
+    )
+    source = replace_once(
+        source,
         '    private static readonly string ExactProjectSql = ScopeCte + """\n',
         PROJECT_FACTS_SQL + '    private static readonly string ExactProjectSql = ProjectFactsScopeCte + """\n',
         'project-fact scope insertion',
+    )
+    source = replace_once(
+        source,
+        '            sa.display_name\n        FROM scoped_projects_all project\n',
+        '            sa.display_name,\n            COALESCE(project.project_manager_user_id = @effective_user_id, FALSE) AS is_work_lifecycle_assigned_project_manager\n        FROM scoped_projects_all project\n',
+        'work-lifecycle assigned-PM projection',
     )
     source = replace_once(
         source,
@@ -333,9 +435,21 @@ def transform(source: str) -> str:
     )
     source = replace_once(
         source,
+        '                    outcome = query.Kind == CelarAiInternalDataQueryKind.ProjectHistory\n                        ? await BuildProjectHistoryAnswerAsync(connection, query, projectResolution.Project, cancellationToken)\n                        : BuildProjectStakeholderAnswer(query, projectResolution.Project);\n',
+        '                    if (query.Kind == CelarAiInternalDataQueryKind.ProjectHistory\n                        && !CanViewProjectHistory(access, projectResolution.Project.IsWorkLifecycleAssignedProjectManager))\n                    {\n                        outcome = BuildProjectHistoryAccessDeniedAnswer(query);\n                    }\n                    else\n                    {\n                        outcome = query.Kind == CelarAiInternalDataQueryKind.ProjectHistory\n                            ? await BuildProjectHistoryAnswerAsync(connection, query, projectResolution.Project, cancellationToken)\n                            : BuildProjectStakeholderAnswer(query, projectResolution.Project);\n                    }\n',
+        'work-lifecycle history authorization gate',
+    )
+    source = replace_once(
+        source,
+        '                    reader.IsDBNull(11) ? null : reader.GetString(11)));\n',
+        '                    reader.IsDBNull(11) ? null : reader.GetString(11),\n                    reader.GetBoolean(12)));\n',
+        'work-lifecycle assigned-PM reader flag',
+    )
+    source = replace_once(
+        source,
         '    private static async Task ValidateSourceReadinessAsync(\n',
-        CONTEXT_HELPERS + '    private static async Task ValidateSourceReadinessAsync(\n',
-        'context helper insertion',
+        CONTEXT_HELPERS + LIFECYCLE_AUTH_HELPERS + '    private static async Task ValidateSourceReadinessAsync(\n',
+        'context and lifecycle helper insertion',
     )
     old_readiness = r'''    private static async Task ValidateSourceReadinessAsync(
         NpgsqlConnection connection,
@@ -349,6 +463,12 @@ def transform(source: str) -> str:
     }
 '''
     source = replace_once(source, old_readiness, READINESS_METHOD, 'query-specific readiness method')
+    source = replace_once(
+        source,
+        '        string? SolutionArchitectName);\n',
+        '        string? SolutionArchitectName,\n        bool IsWorkLifecycleAssignedProjectManager);\n',
+        'project candidate lifecycle-PM flag',
+    )
     source = replace_once(
         source,
         '    private enum PersonResolutionOutcome { Resolved, NotFound, Ambiguous }\n',
@@ -366,6 +486,14 @@ def transform(source: str) -> str:
         'ValidateSourceReadinessAsync(connection, query.Kind, cancellationToken)',
         'ExactProjectSql = ProjectFactsScopeCte',
         'AuthorizedProjectsSql = ProjectFactsScopeCte',
+        'COALESCE(project.account_executive_user_id = @person_user_id, FALSE)',
+        'COALESCE(project.solution_architect_user_id = @person_user_id, FALSE)',
+        'is_work_lifecycle_assigned_project_manager',
+        'CanViewProjectHistory(access, projectResolution.Project.IsWorkLifecycleAssignedProjectManager)',
+        'WorkLifecycleHistoryReadAllRoles',
+        'WorkLifecycleHistoryBillingRoles',
+        'WorkLifecycleHistoryBroadReadRoles',
+        'BuildProjectHistoryAccessDeniedAnswer',
     ]
     missing = [marker for marker in required if marker not in source]
     if missing:
