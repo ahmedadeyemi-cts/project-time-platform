@@ -6,90 +6,43 @@ on:
       - uat/module025-live-20260901
     paths:
       - '.github/workflows/module025-protected-test-live-uat-environment-20260901.yml'
-      - 'scripts/release-test/run-module025-protected-test-live-uat.sh'
 
 permissions:
+  id-token: write
   contents: read
 
 jobs:
   module025-live-uat:
-    name: Exercise Module 025 in Protected Test
+    name: Inspect Module 025 Protected-Test generation failure
     environment: test
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    env:
-      BASE: https://phd-west-test.onenecklab.com
-      TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
-      EVIDENCE_DIR: /tmp/module025-protected-test-live-evidence
-      EXPECTED_DEPLOYED_SOURCE: 0906e7c0a30d724bb6099860ac46da6eb50f18f6
+    timeout-minutes: 10
     steps:
-      - name: Check out isolated UAT branch
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Sign in to Protected-Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
         with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
-          persist-credentials: false
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Require Test environment credential
+      - name: Inspect recent Module 025 API exceptions
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || {
-            echo 'ERROR: Test environment secret PROJECTPULSE_M087_PASSWORD is unavailable.' >&2
-            exit 1
-          }
-          echo 'PROTECTED_TEST_LOGIN_SECRET=AVAILABLE'
+          raw="$(mktemp)"
+          az containerapp logs show \
+            --resource-group '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            --name '${{ vars.AZURE_API_APP }}' \
+            --type console \
+            --tail 300 \
+            --format text > "$raw" 2>&1 || true
+          echo '--- FILTERED MODULE025/CELAR/EXCEPTION LOGS ---'
+          grep -Ei 'Module 025|Module025|Celar AI enterprise composition|InvalidOperationException|Npgsql|security_configuration_unavailable|sow-gsd|exception' "$raw" \
+            | sed -E 's/(Bearer|X-ProjectPulse-Session:)[[:space:]]+[^[:space:]]+/\1 [REDACTED]/g' \
+            | tail -n 180 || true
+          echo '--- END FILTERED LOGS ---'
+          rm -f "$raw"
 
-      - name: Discover manager-visible Solution Architect fixtures
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          install -d -m 0700 "$EVIDENCE_DIR"
-          payload="$(mktemp)"
-          login="$(mktemp)"
-          jq -n --arg username 'demo.manager@ussignal.local' --arg password "$TEST_LOGIN_PASSWORD" '{username:$username,password:$password}' > "$payload"
-          login_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 -o "$login" -w '%{http_code}' -H 'Cache-Control: no-cache, no-store, max-age=0' -H 'Content-Type: application/json' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' --data-binary @"$payload" "$BASE/api/auth/local/login" || true)"
-          rm -f "$payload"
-          [[ "$login_status" == 200 ]] || { rm -f "$login"; echo "ERROR: demo.manager login returned HTTP $login_status" >&2; exit 1; }
-          token="$(jq -r '.sessionToken // empty' "$login")"
-          rm -f "$login"
-          [[ -n "$token" ]] || { echo 'ERROR: demo.manager session token missing.' >&2; exit 1; }
-          echo "::add-mask::$token"
-          bootstrap="$EVIDENCE_DIR/demo-manager-module025-bootstrap.json"
-          bootstrap_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 120 -o "$bootstrap" -w '%{http_code}' -H 'Cache-Control: no-cache, no-store, max-age=0' -H "Authorization: Bearer $token" -H "X-ProjectPulse-Session: $token" -H 'X-ProjectPulse-Module-Number: 025' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE/api/module025/sow-gsd/bootstrap" || true)"
-          [[ "$bootstrap_status" == 200 ]] || { echo "ERROR: demo.manager Module 025 bootstrap returned HTTP $bootstrap_status" >&2; exit 1; }
-          jq '{status,module,migration,contract,currentUser,access,solutionArchitects}' "$bootstrap" > "$EVIDENCE_DIR/demo-manager-module025-bootstrap-redacted.json"
-          jq -r '.solutionArchitects[]?.email // empty' "$bootstrap" | awk 'NF' | sort -u > "$RUNNER_TEMP/module025-extra-candidates.txt"
-          count="$(wc -l < "$RUNNER_TEMP/module025-extra-candidates.txt" | tr -d '[:space:]')"
-          echo "MODULE025_MANAGER_VISIBLE_SA_COUNT=$count"
-          while IFS= read -r email; do [[ -n "$email" ]] && echo "MODULE025_VISIBLE_SA=$email"; done < "$RUNNER_TEMP/module025-extra-candidates.txt"
-          if (( count > 0 )); then
-            python3 - "$RUNNER_TEMP/module025-extra-candidates.txt" scripts/release-test/run-module025-protected-test-live-uat.sh <<'PY'
-from pathlib import Path
-import sys
-candidates = [line.strip() for line in Path(sys.argv[1]).read_text().splitlines() if line.strip()]
-path = Path(sys.argv[2])
-text = path.read_text()
-needle = "  'ahmed.adeyemi@onenecklab.com'\n)"
-if needle not in text:
-    raise SystemExit('Module 025 candidate insertion point not found.')
-extra = ''.join(f"  '{email}'\n" for email in candidates)
-path.write_text(text.replace(needle, "  'ahmed.adeyemi@onenecklab.com'\n" + extra + ")", 1))
-PY
-          fi
-          curl -sS --http1.1 --connect-timeout 20 --max-time 60 -o /dev/null -X POST -H "Authorization: Bearer $token" -H "X-ProjectPulse-Session: $token" -H 'X-ProjectPulse-Module-Number: 025' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE/api/auth/session/logout" || true
-
-      - name: Run live Module 025 acceptance
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          bash scripts/release-test/run-module025-protected-test-live-uat.sh
-
-      - name: Upload Module 025 live evidence
+      - name: Sign out
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: module025-protected-test-live-uat-${{ github.run_id }}-${{ github.run_attempt }}
-          path: /tmp/module025-protected-test-live-evidence
-          if-no-files-found: warn
-          retention-days: 14
+        run: az logout || true
