@@ -32,25 +32,23 @@ jobs:
           source = path.read_text()
           expr = '${' + '{ vars.PUBLIC_URL }}'
 
-          old_env = '''            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true \\
-'''
-          new_env = f'''            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" PROJECTPULSE_PUBLIC_URL='{expr}' PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true \\
-'''
+          old_env = 'PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true'
+          new_env = 'PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" PROJECTPULSE_PUBLIC_URL=\'' + expr + '\' PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true'
           if source.count(old_env) != 1:
               raise SystemExit(f'Expected one Protected-Test API env anchor; found {source.count(old_env)}')
           source = source.replace(old_env, new_env, 1)
 
-          old_verify = '''          SOURCE_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
-          [[ "$SOURCE_AFTER" == "$TARGET_RELEASE_COMMIT" ]]
-'''
-          new_verify = f'''          SOURCE_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
-          PUBLIC_URL_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_PUBLIC_URL") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
-          [[ "$SOURCE_AFTER" == "$TARGET_RELEASE_COMMIT" ]]
-          [[ "$PUBLIC_URL_AFTER" == '{expr}' ]]
-'''
-          if source.count(old_verify) != 1:
-              raise SystemExit(f'Expected one Protected-Test post-deploy verification anchor; found {source.count(old_verify)}')
-          source = source.replace(old_verify, new_verify, 1)
+          source_line = '          SOURCE_AFTER="$(jq -r \'[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end\' <<<"$AFTER_JSON")"'
+          public_line = '          PUBLIC_URL_AFTER="$(jq -r \'[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_PUBLIC_URL") | .value // empty] | if length == 1 then .[0] else empty end\' <<<"$AFTER_JSON")"'
+          if source.count(source_line) != 1:
+              raise SystemExit(f'Expected one Protected-Test source verification line; found {source.count(source_line)}')
+          source = source.replace(source_line, source_line + '\n' + public_line, 1)
+
+          source_assert = '          [[ "$SOURCE_AFTER" == "$TARGET_RELEASE_COMMIT" ]]'
+          public_assert = '          [[ "$PUBLIC_URL_AFTER" == \'' + expr + '\' ]]'
+          if source.count(source_assert) != 1:
+              raise SystemExit(f'Expected one Protected-Test source assertion; found {source.count(source_assert)}')
+          source = source.replace(source_assert, source_assert + '\n' + public_assert, 1)
 
           path.write_text(source)
           PY
