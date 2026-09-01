@@ -37,6 +37,8 @@ requireText(contextGenerator, 'ValidateSourceReadinessAsync(connection, query.Ki
 requireText(contextGenerator, 'COALESCE(project.project_manager_user_id = @person_user_id, FALSE)', 'nullable PM workload role flag is total boolean')
 requireText(contextGenerator, 'COALESCE(project.account_executive_user_id = @person_user_id, FALSE)', 'nullable AE workload role flag is total boolean')
 requireText(contextGenerator, 'COALESCE(project.solution_architect_user_id = @person_user_id, FALSE)', 'nullable SA workload role flag is total boolean')
+requireText(contextGenerator, 'OR project.project_manager_user_id = @effective_user_id', 'recorded project manager can resolve owned project independent of role code')
+rejectText(contextGenerator, 'OR (@can_view_managed_projects = TRUE AND project.project_manager_user_id = @effective_user_id)', 'project-fact assigned-PM resolution must not depend on project-management role code')
 requireText(contextGenerator, 'is_work_lifecycle_assigned_project_manager', 'project resolver carries lifecycle PM authority')
 requireText(contextGenerator, 'CanViewProjectHistory(access, projectResolution.Project.IsWorkLifecycleAssignedProjectManager)', 'history authorization runs before audit read')
 requireText(contextGenerator, 'WorkLifecycleHistoryReadAllRoles', 'Work Lifecycle administrator/PTC read roles')
