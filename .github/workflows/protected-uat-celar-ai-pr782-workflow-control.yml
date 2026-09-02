@@ -173,7 +173,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          set -Euo pipefail
+          set -Eeuo pipefail
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
           echo 'FINALIZED_PROTECTED_UAT_FINAL_WORKFLOW_STATE=disabled_manually'
@@ -194,6 +194,6 @@ jobs:
           if [[ "$final_workflow_state" == 'disabled_manually' ]]; then
             sealing_status='verified `disabled_manually`'
           else
-            sealing_status="NOT VERIFIED (observed `${final_workflow_state:-unavailable}`); manual sealing required immediately"
+            sealing_status="NOT VERIFIED (observed \`${final_workflow_state:-unavailable}\`); manual sealing required immediately"
           fi
           gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT finalization failed.\n\n- Successful deployment under verification: \`$SUCCESSFUL_RUN_ID\`\n- Ghost under retirement: \`$RETIRED_RUN_ID\`\n- Deployment workflow sealing: $sealing_status\n- Production mutation: none\n- Module 025 mutation: none"
