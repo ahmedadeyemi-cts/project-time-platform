@@ -21,6 +21,9 @@ jobs:
       github.event.issue.number == 794 &&
       github.actor == 'ahmedadeyemi-cts' &&
       github.event.comment.body == 'FINALIZE PROTECTED UAT RUN 33666500248 RETIRE RUN 33654881418 SHA 2e257966dd51eab8d9f6431cf9b8fbded7ae458a'
+    concurrency:
+      group: projectpulse-deploy-test
+      cancel-in-progress: true
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -43,7 +46,18 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+          workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
+          case "$workflow_state" in
+            active)
+              gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+              ;;
+            disabled_manually)
+              ;;
+            *)
+              echo "Unexpected deployment workflow state before finalization: $workflow_state" >&2
+              exit 1
+              ;;
+          esac
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
 
           actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
@@ -125,24 +139,32 @@ jobs:
           jq -e --arg path "$DEPLOY_WORKFLOW_PATH" --arg sha "$RETIRED_RELEASE_SHA" --arg branch "$RETIRED_RELEASE_BRANCH" --arg created "$RETIRED_RUN_CREATED_AT" --argjson id "$RETIRED_RUN_ID" --argjson attempt "$RETIRED_RUN_ATTEMPT" --argjson workflow "$DEPLOY_WORKFLOW_ID" '
             .id == $id and .run_attempt == $attempt and .workflow_id == $workflow and .path == $path
             and .event == "workflow_dispatch" and .head_branch == $branch and .head_sha == $sha and .created_at == $created
-            and .status == "queued" and .conclusion == null
           ' <<<"$run_json" >/dev/null || { echo 'Ghost run identity mismatch.' >&2; exit 1; }
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=latest&per_page=100" --jq '.total_count')" == '0' ]]
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/cancel" >/dev/null || true
           cancelled=false
-          for attempt in $(seq 1 60); do
-            run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
-            [[ "$(jq -r '.run_attempt' <<<"$run_json")" == "$RETIRED_RUN_ATTEMPT" ]] || exit 1
-            status="$(jq -r '.status' <<<"$run_json")"
-            conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
-            if [[ "$status" == 'completed' ]]; then
-              [[ "$conclusion" == 'cancelled' ]] || exit 1
-              cancelled=true
-              break
-            fi
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/force-cancel" >/dev/null || true
-            sleep 2
-          done
+          status="$(jq -r '.status' <<<"$run_json")"
+          conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
+          if [[ "$status" == 'completed' && "$conclusion" == 'cancelled' ]]; then
+            cancelled=true
+          elif [[ "$status" == 'queued' && -z "$conclusion" ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/cancel" >/dev/null || true
+            for attempt in $(seq 1 60); do
+              run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
+              [[ "$(jq -r '.run_attempt' <<<"$run_json")" == "$RETIRED_RUN_ATTEMPT" ]] || exit 1
+              status="$(jq -r '.status' <<<"$run_json")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
+              if [[ "$status" == 'completed' ]]; then
+                [[ "$conclusion" == 'cancelled' ]] || exit 1
+                cancelled=true
+                break
+              fi
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/force-cancel" >/dev/null || true
+              sleep 2
+            done
+          else
+            echo "Ghost run entered an unexpected terminal state: status=$status conclusion=${conclusion:-null}" >&2
+            exit 1
+          fi
           [[ "$cancelled" == true ]] || { echo 'Ghost cancellation was not verified.' >&2; exit 1; }
           post_cancel_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"
           jq -e '.total_count == 0 and (.jobs | length) == 0' <<<"$post_cancel_jobs_json" >/dev/null || {
@@ -175,7 +197,18 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+          workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
+          case "$workflow_state" in
+            active)
+              gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+              ;;
+            disabled_manually)
+              ;;
+            *)
+              echo "Unexpected deployment workflow state during final sealing: $workflow_state" >&2
+              exit 1
+              ;;
+          esac
           unexpected_active_seen=false
           for sweep in $(seq 1 5); do
             pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
