@@ -37,7 +37,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: governed-protected-test-controller-${{ github.event.pull_request.number }}
+  group: governed-protected-test-controller-reregistered-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
