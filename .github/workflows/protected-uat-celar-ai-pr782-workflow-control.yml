@@ -121,6 +121,19 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          gh_api_retry() {
+            local retry output
+            for retry in $(seq 1 12); do
+              if output="$(gh api "$@" 2>&1)"; then
+                printf '%s' "$output"
+                return 0
+              fi
+              echo "GitHub API attempt $retry/12 failed; retrying restoration-critical operation." >&2
+              sleep "$((retry < 6 ? retry : 6))"
+            done
+            echo "$output" >&2
+            return 1
+          }
           source_terminal=false
           source_authorization_timeout_minutes=10
           source_finalizer_timeout_minutes=20
@@ -131,7 +144,7 @@ jobs:
             / watchdog_poll_interval_seconds
           ))
           for attempt in $(seq 1 "$watchdog_poll_attempts"); do
-            source_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}")"
+            source_run_json="$(gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}")"
             [[ "$(jq -r '.run_attempt' <<<"$source_run_json")" == "$SOURCE_RUN_ATTEMPT" ]] || exit 1
             if [[ "$(jq -r '.status' <<<"$source_run_json")" == 'completed' ]]; then
               source_terminal=true
@@ -143,7 +156,7 @@ jobs:
             echo 'Source finalizer exceeded the durable fence deadline; cancelling it before restoration.' >&2
             gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/cancel" >/dev/null || true
             for attempt in $(seq 1 60); do
-              source_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}")"
+              source_run_json="$(gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}")"
               if [[ "$(jq -r '.status' <<<"$source_run_json")" == 'completed' ]]; then
                 source_terminal=true
                 break
@@ -157,10 +170,10 @@ jobs:
             exit 1
           }
 
-          workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
+          workflow_state="$(gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
           case "$workflow_state" in
             active)
-              gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+              gh_api_retry --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
               ;;
             disabled_manually)
               ;;
@@ -175,18 +188,18 @@ jobs:
             [[ -n "$workflow_id" ]] || continue
             [[ "$workflow_id" =~ ^[0-9]+$ && "$workflow_id" != "$DEPLOY_WORKFLOW_ID" ]] || exit 1
             jq -e --argjson id "$workflow_id" 'any(.[]; .id == $id)' "$RUNNER_TEMP/watchdog-protected-test-workflow-metadata.json" >/dev/null
-            gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/enable" >/dev/null
+            gh_api_retry --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/enable" >/dev/null
             restored_count=$((restored_count + 1))
           done
           for workflow_id in "${workflow_ids[@]}"; do
             [[ -n "$workflow_id" ]] || continue
-            [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}" --jq '.state')" == 'active' ]] || {
+            [[ "$(gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}" --jq '.state')" == 'active' ]] || {
               echo "Durable watchdog failed to restore shared-group workflow $workflow_id." >&2
               exit 1
             }
           done
-          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
-          source_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}")"
+          [[ "$(gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          source_run_json="$(gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}")"
           source_status="$(jq -r '.status' <<<"$source_run_json")"
           source_conclusion="$(jq -r '.conclusion // "unavailable"' <<<"$source_run_json")"
           source_url="$(jq -r '.html_url' <<<"$source_run_json")"
