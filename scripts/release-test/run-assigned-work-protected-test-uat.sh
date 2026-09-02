@@ -334,14 +334,25 @@ module001b_wait_single_revision_converged() {
       -n "$MODULE001B_API_APP" \
       -o json --only-show-errors 2>/dev/null || true)"
 
-    mode="$(jq -r '.properties.configuration.activeRevisionsMode // empty' <<<"${app_json:-{}}")"
-    latest="$(jq -r '.properties.latestRevisionName // empty' <<<"${app_json:-{}}")"
-    latest_ready="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"${app_json:-{}}")"
-    active_count="$(jq '[.[]? | select(.properties.active == true)] | length' <<<"${revisions_json:-[]}" 2>/dev/null || printf '0')"
-    active_name="$(jq -r '[.[]? | select(.properties.active == true) | .name] | if length == 1 then .[0] else empty end' <<<"${revisions_json:-[]}" 2>/dev/null || true)"
-    revision_json="$(jq -c --arg name "$expected_revision" '[.[]? | select(.name == $name)] | if length == 1 then .[0] else {} end' <<<"${revisions_json:-[]}" 2>/dev/null || printf '{}')"
-    revision_image="$(jq -r '.properties.template.containers[0].image // empty' <<<"${revision_json:-{}}" 2>/dev/null || true)"
-    revision_active="$(jq -r '.properties.active // false' <<<"${revision_json:-{}}" 2>/dev/null || printf 'false')"
+    # Do not use ${value:-{}} here. Bash parses the first closing brace as the
+    # end of the parameter expansion and appends the second one to non-empty
+    # JSON, turning a valid Azure response into `<json>}`. Normalize transient
+    # or malformed CLI output before extracting the convergence fields instead.
+    if ! jq -e 'type == "object"' <<<"$app_json" >/dev/null 2>&1; then
+      app_json='{}'
+    fi
+    if ! jq -e 'type == "array"' <<<"$revisions_json" >/dev/null 2>&1; then
+      revisions_json='[]'
+    fi
+
+    mode="$(jq -r '.properties.configuration.activeRevisionsMode // empty' <<<"$app_json")"
+    latest="$(jq -r '.properties.latestRevisionName // empty' <<<"$app_json")"
+    latest_ready="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"$app_json")"
+    active_count="$(jq '[.[]? | select(.properties.active == true)] | length' <<<"$revisions_json")"
+    active_name="$(jq -r '[.[]? | select(.properties.active == true) | .name] | if length == 1 then .[0] else empty end' <<<"$revisions_json")"
+    revision_json="$(jq -c --arg name "$expected_revision" '[.[]? | select(.name == $name)] | if length == 1 then .[0] else {} end' <<<"$revisions_json")"
+    revision_image="$(jq -r '.properties.template.containers[0].image // empty' <<<"$revision_json")"
+    revision_active="$(jq -r '.properties.active // false' <<<"$revision_json")"
 
     printf 'MODULE001B_SINGLE_REVISION_WAIT label=%s attempt=%s expected=%s mode=%s latest=%s latestReady=%s activeCount=%s activeName=%s revisionActive=%s imageMatch=%s\n' \
       "$label" "$attempt" "$expected_revision" "${mode:-none}" "${latest:-none}" "${latest_ready:-none}" \
@@ -353,8 +364,7 @@ module001b_wait_single_revision_converged() {
       && "$latest_ready" == "$expected_revision" \
       && "$active_count" == 1 \
       && "$active_name" == "$expected_revision" \
-      && "$revision_active" == true \
-      && "$revision_image" == "$MODULE001B_API_IMAGE" ]]; then
+      && "$revision_active" == true ]]; then
       ready=true
       break
     fi
@@ -363,7 +373,7 @@ module001b_wait_single_revision_converged() {
   done
 
   [[ "$ready" == true ]] || return 1
-  echo "MODULE001B_SINGLE_REVISION_CONVERGED label=$label revision=$expected_revision activeCount=1" >&2
+  echo "MODULE001B_SINGLE_REVISION_CONVERGED label=$label revision=$expected_revision activeCount=1 imageAuthority=wait-containerapp-ready-revision.sh" >&2
 }
 
 module001b_disable_gate() {

@@ -335,6 +335,7 @@ jobs:
           grep -Fq 'MODULE001B_LIVE_REALLOCATION_UAT=PASS' "$ASSIGNED_WORK_UAT"
           grep -Fq 'currentEmployeeWeekMutation:false' "$ASSIGNED_WORK_UAT"
           grep -Fq 'productionMutation:false' "$ASSIGNED_WORK_UAT"
+          grep -Fq 'RELIABILITY_RELEASE_COMMIT: ${{ env.TARGET_RELEASE_COMMIT }}' "$CONTROLLER"
           grep -Fq 'MODULE001B_PROTECTED_TEST_RECONCILE=false' "$MODULE001B_REVISION_WAIT"
           grep -Fq 'MODULE001B_STALE_REVISION_DEACTIVATE' "$MODULE001B_REVISION_WAIT"
           ! grep -Fq 'if [[ "$ACTIVE" == true ]]; then' "$MODULE001B_REVISION_WAIT"

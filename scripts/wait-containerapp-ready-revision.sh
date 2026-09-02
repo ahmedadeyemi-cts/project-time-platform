@@ -75,11 +75,17 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
     --query '{image:properties.template.containers[0].image,provisioningState:properties.provisioningState,healthState:properties.healthState,active:properties.active,trafficWeight:properties.trafficWeight}' \
     --output json --only-show-errors 2>/dev/null || true)"
 
-  IMAGE="$(jq -r '.image // empty' <<<"${REVISION_JSON:-{}}" 2>/dev/null || true)"
-  PROVISIONING_STATE="$(jq -r '.provisioningState // empty' <<<"${REVISION_JSON:-{}}" 2>/dev/null || true)"
-  HEALTH_STATE="$(jq -r '.healthState // empty' <<<"${REVISION_JSON:-{}}" 2>/dev/null || true)"
-  ACTIVE="$(jq -r '.active // empty' <<<"${REVISION_JSON:-{}}" 2>/dev/null || true)"
-  TRAFFIC_WEIGHT="$(jq -r '.trafficWeight // empty' <<<"${REVISION_JSON:-{}}" 2>/dev/null || true)"
+  # `${value:-{}}` appends a literal `}` when value is non-empty because the
+  # first brace terminates Bash's parameter expansion. Normalize the Azure CLI
+  # response once, then pass the valid object to every jq extraction.
+  if ! jq -e 'type == "object"' <<<"$REVISION_JSON" >/dev/null 2>&1; then
+    REVISION_JSON='{}'
+  fi
+  IMAGE="$(jq -r '.image // empty' <<<"$REVISION_JSON")"
+  PROVISIONING_STATE="$(jq -r '.provisioningState // empty' <<<"$REVISION_JSON")"
+  HEALTH_STATE="$(jq -r '.healthState // empty' <<<"$REVISION_JSON")"
+  ACTIVE="$(jq -r '.active // empty' <<<"$REVISION_JSON")"
+  TRAFFIC_WEIGHT="$(jq -r '.trafficWeight // empty' <<<"$REVISION_JSON")"
   ACTIVE_REVISION_NAMES_JSON='[]'
 
   printf 'REVISION_WAIT app=%s attempt=%s expected=%s latestReady=%s image=%s provisioning=%s health=%s active=%s traffic=%s\n' \
