@@ -258,6 +258,28 @@ jobs:
             }
           fi
 
+      - name: Validate governed protected-Test controller contracts
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+          RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+          RETIRED_MODULE001B_UAT='.github/workflows/module001b-live-reallocation-protected-test-uat.yml'
+          UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+          ASSIGNED_WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
+          MODULE001B_REVISION_WAIT='scripts/wait-containerapp-ready-revision.sh'
+          MODULE001B_FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
+          DOCUMENT_AUTHORITY_MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+          SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
+          git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
+
           test -f "$CONTROLLER" || fail 'The governed protected-Test controller is missing.'
           test ! -e "$RETIRED_CONTROLLER" || fail 'The unregistered duplicate protected-Test controller was not retired.'
           test ! -e "$RETIRED_MODULE001B_UAT" || fail 'The parallel Module 001B protected-Test mutator was not retired.'
