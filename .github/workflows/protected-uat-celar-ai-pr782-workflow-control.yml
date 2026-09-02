@@ -73,7 +73,8 @@ jobs:
             echo "Could not resolve the governed deployment workflow ID: $expected_workflow_id" >&2
             exit 1
           }
-          workflow_runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+          workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
           mapfile -t preexisting_active_run_ids < <(
             jq -r --argjson expected_run_id "$EXPECTED_RUN_ID" '
               .workflow_runs[]
@@ -131,7 +132,8 @@ jobs:
           set -Eeuo pipefail
           materialized=false
           for attempt in $(seq 1 24); do
-            workflow_runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+            workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
             mapfile -t unexpected_run_ids < <(
               jq -r \
                 --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
@@ -223,7 +225,8 @@ jobs:
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
           state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
           [[ "$state" == 'disabled_manually' ]] || { echo "Deployment workflow did not seal after recovery: $state" >&2; exit 1; }
-          workflow_runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+          workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
           mapfile -t unexpected_run_ids < <(
             jq -r \
               --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
@@ -292,7 +295,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           for monitor_attempt in $(seq 1 1440); do
-            workflow_runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+            workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
             mapfile -t unexpected_run_ids < <(
               jq -r \
                 --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
@@ -366,7 +370,8 @@ jobs:
 
           if [[ -f "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" ]]; then
             for audit_attempt in $(seq 1 3); do
-              if ! workflow_runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"; then
+              if ! workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"; then
                 cleanup_failed=true
                 echo "Could not list deployment runs during cleanup audit ${audit_attempt}." >&2
                 sleep 2
