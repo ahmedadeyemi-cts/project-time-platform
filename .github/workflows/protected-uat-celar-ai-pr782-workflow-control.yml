@@ -46,7 +46,7 @@ jobs:
       CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
       RETIRED_RELEASE_BRANCH: fix/shared-project-document-planning-20260819
     steps:
-      - name: Verify reviewed runtime and exact controller-only main advance
+      - name: Verify reviewed runtime and exact release-governance main advance
         id: boundary
         shell: bash
         run: |
@@ -59,12 +59,16 @@ jobs:
           comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${REVIEWED_RUNTIME_BASE_SHA}...${actual_main}")"
           status="$(jq -r '.status' <<<"$comparison")"
           [[ "$status" == 'ahead' ]] || {
-            echo "Main is not an exact controller-only descendant of the reviewed runtime base: $status" >&2
+            echo "Main is not an exact release-governance descendant of the reviewed runtime base: $status" >&2
             exit 1
           }
           mapfile -t changed_files < <(jq -r '.files[].filename' <<<"$comparison")
           printf '%s\n' "${changed_files[@]}" | sed '/^$/d' | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
-          printf '%s\n' "$CONTROL_WORKFLOW_PATH" | LC_ALL=C sort -u > "$RUNNER_TEMP/allowed-files"
+          printf '%s\n' \
+            "$CONTROL_WORKFLOW_PATH" \
+            '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml' \
+            '.github/workflows/projectpulse-release-test-control-ci.yml' \
+            | LC_ALL=C sort -u > "$RUNNER_TEMP/allowed-files"
           cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/allowed-files" || {
             echo 'Unexpected source drift exists between the reviewed Protected-UAT runtime and current main:' >&2
             diff -u "$RUNNER_TEMP/allowed-files" "$RUNNER_TEMP/changed-files" >&2 || true
