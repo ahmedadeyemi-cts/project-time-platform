@@ -395,6 +395,7 @@ jobs:
           grep -Fq '  workflow_dispatch:' "$FINALIZER"
           grep -Fq 'group: protected-uat-pr794-merged-main-relaunch' "$FINALIZER"
           grep -Fq '  restore_fence_watchdog:' "$FINALIZER"
+          grep -A12 -F '  restore_fence_watchdog:' "$FINALIZER" | grep -Fq 'timeout-minutes: 180'
           grep -Fq 'Arm durable fence restoration watchdog' "$FINALIZER"
           grep -Fq 'Restore Protected-Test fences after source finalizer terminates' "$FINALIZER"
           grep -Fq 'actions/workflows/${finalizer_workflow_id}/dispatches' "$FINALIZER"
