@@ -134,6 +134,63 @@ jobs:
       RETIRED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
       RETIRED_RELEASE_BRANCH: fix/shared-project-document-planning-20260819
     steps:
+      - name: Check out exact current main for post-lock inventory
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Revalidate every shared-group owner after concurrency acquisition
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$GITHUB_SHA" == "$actual_main" ]] || { echo 'Post-lock inventory is not on exact current main.' >&2; exit 1; }
+
+          find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
+            | while IFS= read -r -d '' workflow; do
+                if grep -Eq '^  group:[[:space:]]*projectpulse-deploy-test[[:space:]]*$' "$workflow"; then
+                  printf '%s\n' "${workflow#./}"
+                fi
+              done \
+            | LC_ALL=C sort -u > "$RUNNER_TEMP/protected-test-workflows"
+          jq -Rn '[inputs | select(length > 0)]' < "$RUNNER_TEMP/protected-test-workflows" > "$RUNNER_TEMP/protected-test-workflows.json"
+
+          workflow_pages="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows?per_page=100")"
+          jq -c '[.[].workflows[]] | unique_by(.id)' <<<"$workflow_pages" > "$RUNNER_TEMP/repository-workflows.json"
+          jq --argjson protected "$(cat "$RUNNER_TEMP/protected-test-workflows.json")" \
+            'map(select(.path as $path | $protected | index($path)))' \
+            "$RUNNER_TEMP/repository-workflows.json" > "$RUNNER_TEMP/protected-test-workflow-metadata.json"
+          expected_workflow_count="$(jq -r 'length' "$RUNNER_TEMP/protected-test-workflows.json")"
+          actual_workflow_count="$(jq -r 'length' "$RUNNER_TEMP/protected-test-workflow-metadata.json")"
+          [[ "$expected_workflow_count" -gt 0 && "$actual_workflow_count" == "$expected_workflow_count" ]] || {
+            echo "Shared-group workflow inventory mismatch: expected=$expected_workflow_count actual=$actual_workflow_count" >&2
+            exit 1
+          }
+
+          : > "$RUNNER_TEMP/shared-group-runs.ndjson"
+          while IFS= read -r workflow_id; do
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=100" \
+              --jq '.workflow_runs[]' >> "$RUNNER_TEMP/shared-group-runs.ndjson"
+          done < <(jq -r '.[].id' "$RUNNER_TEMP/protected-test-workflow-metadata.json")
+          if [[ -s "$RUNNER_TEMP/shared-group-runs.ndjson" ]]; then
+            jq -s 'unique_by(.id)' "$RUNNER_TEMP/shared-group-runs.ndjson" > "$RUNNER_TEMP/shared-group-runs.json"
+          else
+            printf '[]\n' > "$RUNNER_TEMP/shared-group-runs.json"
+          fi
+          jq -e --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
+            ([.[] | select(.id != $success and .id != $retired and (
+              .created_at >= $created or ((.run_started_at // .created_at) >= $created)
+            ))] | length) == 0
+            and ([.[] | select(.status != "completed" and .id != $retired)] | length) == 0
+          ' "$RUNNER_TEMP/shared-group-runs.json" >/dev/null || {
+            echo 'Another shared-group Protected-Test workflow ran or remained active after the successful UAT.' >&2
+            jq --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" \
+              '[.[] | select((.status != "completed" and .id != $retired) or (.id != $success and .id != $retired and (.created_at >= $created or ((.run_started_at // .created_at) >= $created)))) | {id,path,status,conclusion,created_at,run_started_at,run_attempt}]' \
+              "$RUNNER_TEMP/shared-group-runs.json" >&2
+            exit 1
+          }
+          echo 'FINALIZED_PROTECTED_UAT_POST_LOCK_SHARED_GROUP=exact_success_and_ghost_only'
+
       - name: Seal workflow and verify exact successful UAT evidence
         id: evidence
         shell: bash
@@ -273,16 +330,21 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
-          pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
-          runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$pages_json")"
+          : > "$RUNNER_TEMP/shared-group-runs.ndjson"
+          while IFS= read -r workflow_id; do
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=100" \
+              --jq '.workflow_runs[]' >> "$RUNNER_TEMP/shared-group-runs.ndjson"
+          done < <(jq -r '.[].id' "$RUNNER_TEMP/protected-test-workflow-metadata.json")
+          jq -s 'unique_by(.id)' "$RUNNER_TEMP/shared-group-runs.ndjson" > "$RUNNER_TEMP/shared-group-runs.json"
+          runs_json="$(jq -c '{workflow_runs: .}' "$RUNNER_TEMP/shared-group-runs.json")"
           [[ "$(jq -r '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$runs_json")" == '0' ]]
-          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson id "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.created_at >= $created and .id != $id)] | length' <<<"$runs_json")" == '0' ]]
-          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.id != $success and ((.run_started_at // .created_at) >= $created))] | length' <<<"$runs_json")" == '0' ]]
+          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '[.workflow_runs[] | select(.id != $success and .id != $retired and (.created_at >= $created or ((.run_started_at // .created_at) >= $created)))] | length' <<<"$runs_json")" == '0' ]]
           jq -e --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
             ([.workflow_runs[] | select(.id == $success and .run_attempt == 1 and .status == "completed" and .conclusion == "success")] | length) == 1
             and ([.workflow_runs[] | select(.id == $retired and .run_attempt == 1 and .status == "completed" and .conclusion == "cancelled")] | length) == 1
           ' <<<"$runs_json" >/dev/null
           echo 'FINALIZED_PROTECTED_UAT_WORKFLOW_STATE=disabled_manually'
+          echo 'FINALIZED_PROTECTED_UAT_SHARED_GROUP_POST_SUCCESS_DEPLOYMENTS=none'
           echo 'FINALIZED_PROTECTED_UAT_POST_SUCCESS_DEPLOYMENTS=none'
 
       - name: Reassert disabled Protected-Test workflow
