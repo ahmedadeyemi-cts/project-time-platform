@@ -1,4 +1,4 @@
-name: One-Time Protected UAT Merged-Main Relaunch for PR794
+name: Finalize Successful Protected UAT for PR794
 
 on:
   issue_comment:
@@ -15,755 +15,225 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  control:
+  finalize:
     if: >-
       github.event.issue.pull_request &&
       github.event.issue.number == 794 &&
       github.actor == 'ahmedadeyemi-cts' &&
-      github.event.comment.body == 'RELAUNCH PROTECTED UAT PR794 REVIEWED BASE 2e257966dd51eab8d9f6431cf9b8fbded7ae458a RETIRE RUN 33654881418'
+      github.event.comment.body == 'FINALIZE PROTECTED UAT RUN 33666500248 RETIRE RUN 33654881418 SHA 2e257966dd51eab8d9f6431cf9b8fbded7ae458a'
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 20
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
-      REVIEWED_RUNTIME_BASE_SHA: 2e257966dd51eab8d9f6431cf9b8fbded7ae458a
-      RETIRED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
-      EXPECTED_RELEASE_BRANCH: main
+      DEPLOY_WORKFLOW_ID: '315562561'
+      DEPLOY_WORKFLOW_PATH: .github/workflows/projectpulse-deploy-test.yml
+      SUCCESSFUL_RUN_ID: '33666500248'
+      SUCCESSFUL_RUN_ATTEMPT: '1'
+      SUCCESSFUL_RUN_CREATED_AT: '2026-09-02T18:19:31Z'
+      SUCCESSFUL_RELEASE_SHA: 2e257966dd51eab8d9f6431cf9b8fbded7ae458a
+      SUCCESSFUL_ARTIFACT_NAME: systemwide-enterprise-reliability-test-evidence-33666500248-1
       RETIRED_RUN_ID: '33654881418'
       RETIRED_RUN_ATTEMPT: '1'
       RETIRED_RUN_CREATED_AT: '2026-09-02T16:26:03Z'
-      ORIGINAL_CONTROLLER_RUN_ID: '33654869597'
-      ORIGINAL_CONTROLLER_HEAD_SHA: 6b5633e7bfcc4f9d413f5a9e57c79bfe6576eee3
-      ORIGINAL_CONTROLLER_CREATED_AT: '2026-09-02T16:25:56Z'
-      RECOVERY_CONTROLLER_RUN_ID: '33661863766'
-      RECOVERY_CONTROLLER_HEAD_SHA: 26b03f0a58007875f01d1e4a182cf251ca025058
-      RECOVERY_CONTROLLER_CREATED_AT: '2026-09-02T17:33:56Z'
-      RELAUNCH_CONTROLLER_RUN_ID: '33665282080'
-      RELAUNCH_CONTROLLER_HEAD_SHA: 156180c459d86481d5dafefc93de8bbeffa7aa5f
-      RELAUNCH_CONTROLLER_CREATED_AT: '2026-09-02T18:07:28Z'
-      EXPECTED_RUN_ID: '0'
-      EXPECTED_RUN_ATTEMPT: '0'
-      CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
+      RETIRED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
       RETIRED_RELEASE_BRANCH: fix/shared-project-document-planning-20260819
     steps:
-      - name: Verify reviewed runtime and exact release-governance main advance
-        id: boundary
+      - name: Seal workflow and verify exact successful UAT evidence
+        id: evidence
         shell: bash
         run: |
           set -Eeuo pipefail
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+
           actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          [[ "$GITHUB_SHA" == "$actual_main" ]] || {
-            echo "The issue-comment workflow is not executing the exact current main commit. Event SHA $GITHUB_SHA, main $actual_main" >&2
-            exit 1
-          }
-          comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${REVIEWED_RUNTIME_BASE_SHA}...${actual_main}")"
-          status="$(jq -r '.status' <<<"$comparison")"
-          [[ "$status" == 'ahead' ]] || {
-            echo "Main is not an exact release-governance descendant of the reviewed runtime base: $status" >&2
-            exit 1
-          }
-          mapfile -t changed_files < <(jq -r '.files[].filename' <<<"$comparison")
-          printf '%s\n' "${changed_files[@]}" | sed '/^$/d' | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
-          printf '%s\n' \
-            "$CONTROL_WORKFLOW_PATH" \
-            '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml' \
-            '.github/workflows/projectpulse-release-test-control-ci.yml' \
-            | LC_ALL=C sort -u > "$RUNNER_TEMP/allowed-files"
-          cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/allowed-files" || {
-            echo 'Unexpected source drift exists between the reviewed Protected-UAT runtime and current main:' >&2
+          [[ "$GITHUB_SHA" == "$actual_main" ]] || { echo 'Finalizer is not on exact current main.' >&2; exit 1; }
+          comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${SUCCESSFUL_RELEASE_SHA}...${actual_main}")"
+          [[ "$(jq -r '.status' <<<"$comparison")" == 'ahead' ]] || { echo 'Successful runtime is not an ancestor of main.' >&2; exit 1; }
+          jq -r '.files[].filename' <<<"$comparison" | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
+          cat > "$RUNNER_TEMP/allowed-files" <<'FILES'
+          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/allowed-files" -o "$RUNNER_TEMP/allowed-files"
+          cmp -s "$RUNNER_TEMP/allowed-files" "$RUNNER_TEMP/changed-files" || {
+            echo 'Unexpected runtime drift exists after the successful release.' >&2
             diff -u "$RUNNER_TEMP/allowed-files" "$RUNNER_TEMP/changed-files" >&2 || true
             exit 1
           }
-          echo "EXPECTED_RELEASE_SHA=$actual_main" >> "$GITHUB_ENV"
-          echo "controller_main_sha=$actual_main" >> "$GITHUB_OUTPUT"
-          echo "release_sha=$actual_main" >> "$GITHUB_OUTPUT"
-          echo "PROTECTED_UAT_RELAUNCH_REVIEWED_RUNTIME_BASE_SHA=$REVIEWED_RUNTIME_BASE_SHA"
-          echo "PROTECTED_UAT_RELAUNCH_RUNTIME_SHA=$actual_main"
-          echo "PROTECTED_UAT_RELAUNCH_CONTROLLER_MAIN_SHA=$actual_main"
-      - name: Verify unchanged legacy candidate and exact inert deployment
+
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SUCCESSFUL_RUN_ID}")"
+          jq -e --arg path "$DEPLOY_WORKFLOW_PATH" --arg sha "$SUCCESSFUL_RELEASE_SHA" --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson id "$SUCCESSFUL_RUN_ID" --argjson attempt "$SUCCESSFUL_RUN_ATTEMPT" --argjson workflow "$DEPLOY_WORKFLOW_ID" '
+            .id == $id and .run_attempt == $attempt and .workflow_id == $workflow and .path == $path
+            and .event == "push" and .head_branch == "main" and .head_sha == $sha and .created_at == $created
+            and .status == "completed" and .conclusion == "success"
+          ' <<<"$run_json" >/dev/null || { echo 'Successful run identity mismatch.' >&2; exit 1; }
+
+          jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SUCCESSFUL_RUN_ID}/jobs?filter=latest&per_page=100")"
+          jq -e '
+            .total_count == 1 and .jobs[0].name == "Validate, migrate, deploy, and verify protected Test"
+            and .jobs[0].status == "completed" and .jobs[0].conclusion == "success"
+          ' <<<"$jobs_json" >/dev/null || { echo 'Successful job identity mismatch.' >&2; exit 1; }
+          required_steps=(
+            'Guard exact source and validate release'
+            'Sign in to protected Test subscription'
+            'Snapshot protected Test and preserve rollback contract'
+            'Build immutable API, web, and migration images'
+            'Apply and verify Migrations 086, 088, 093, 094, 095, 096, and 097 inside Test private network'
+            'Deploy immutable Test API image'
+            'Deploy immutable Test web image'
+            'Run protected-Test authenticated functional UAT'
+            'Run protected-Test assigned-work visibility UAT'
+            'Run protected-Test utilization role-scoping UAT'
+            'Upload protected-Test deployment evidence'
+            'Publish protected-Test release summary'
+          )
+          for step_name in "${required_steps[@]}"; do
+            jq -e --arg name "$step_name" '([.jobs[0].steps[] | select(.name == $name and .status == "completed" and .conclusion == "success")] | length) == 1' <<<"$jobs_json" >/dev/null || {
+              echo "Missing successful step: $step_name" >&2
+              exit 1
+            }
+          done
+          jq -e '([.jobs[0].steps[] | select(.name == "Restore exact prior Test images after application failure" and .conclusion == "skipped")] | length) == 1' <<<"$jobs_json" >/dev/null
+
+          artifacts_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SUCCESSFUL_RUN_ID}/artifacts?per_page=100")"
+          jq -e --arg name "$SUCCESSFUL_ARTIFACT_NAME" --arg sha "$SUCCESSFUL_RELEASE_SHA" --argjson id "$SUCCESSFUL_RUN_ID" '
+            .total_count == 1 and ([.artifacts[] | select(
+              .name == $name and .expired == false and .size_in_bytes > 0 and (.digest | startswith("sha256:"))
+              and .workflow_run.id == $id and .workflow_run.head_sha == $sha
+            )] | length) == 1
+          ' <<<"$artifacts_json" >/dev/null || { echo 'Evidence artifact mismatch.' >&2; exit 1; }
+          run_url="$(jq -r '.html_url' <<<"$run_json")"
+          artifact_id="$(jq -r '.artifacts[0].id' <<<"$artifacts_json")"
+          artifact_digest="$(jq -r '.artifacts[0].digest' <<<"$artifacts_json")"
+          echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "FINALIZED_PROTECTED_UAT_RUN_ID=$SUCCESSFUL_RUN_ID"
+          echo "FINALIZED_PROTECTED_UAT_ARTIFACT_DIGEST=$artifact_digest"
+
+      - name: Force-retire exact zero-job ghost deployment
         id: retired
         shell: bash
         run: |
           set -Eeuo pipefail
           branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${RETIRED_RELEASE_BRANCH}" --jq '.object.sha')"
-          [[ "$branch_sha" == "$RETIRED_RELEASE_SHA" ]] || {
-            echo "The legacy candidate ref changed before inert-run retirement. Expected $RETIRED_RELEASE_SHA, found $branch_sha" >&2
-            exit 1
-          }
-
-          expected_workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.id')"
-          [[ "$expected_workflow_id" =~ ^[0-9]+$ ]] || {
-            echo "Could not resolve the governed deployment workflow ID: $expected_workflow_id" >&2
-            exit 1
-          }
+          [[ "$branch_sha" == "$RETIRED_RELEASE_SHA" ]] || { echo 'Legacy candidate changed.' >&2; exit 1; }
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
-          jq -e \
-            --arg expected_sha "$RETIRED_RELEASE_SHA" \
-            --arg expected_branch "$RETIRED_RELEASE_BRANCH" \
-            --arg created_at "$RETIRED_RUN_CREATED_AT" \
-            --argjson expected_run_id "$RETIRED_RUN_ID" \
-            --argjson expected_run_attempt "$RETIRED_RUN_ATTEMPT" \
-            --argjson expected_workflow_id "$expected_workflow_id" \
-            '.id == $expected_run_id
-             and .run_attempt == $expected_run_attempt
-             and .workflow_id == $expected_workflow_id
-             and .event == "workflow_dispatch"
-             and .head_sha == $expected_sha
-             and .head_branch == $expected_branch
-             and .created_at == $created_at
-             and .status == "queued"
-             and .conclusion == null' <<<"$run_json" >/dev/null || {
-            echo 'The inert deployment no longer matches the exact governed retirement boundary.' >&2
-            jq '{id, workflow_id, event, head_sha, head_branch, created_at, status, conclusion, html_url}' <<<"$run_json" >&2 || true
-            exit 1
-          }
-          jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=latest&per_page=100")"
-          job_count="$(jq -r '.total_count' <<<"$jobs_json")"
-          [[ "$job_count" == '0' ]] || {
-            echo "The inert deployment unexpectedly has $job_count materialized jobs; refusing retirement." >&2
-            exit 1
-          }
-          run_url="$(jq -r '.html_url' <<<"$run_json")"
-          [[ "$run_url" == "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}" ]] || {
-            echo "Unexpected inert run URL: $run_url" >&2
-            exit 1
-          }
-          echo "workflow_id=$expected_workflow_id" >> "$GITHUB_OUTPUT"
-          echo "retired_run_url=$run_url" >> "$GITHUB_OUTPUT"
-          echo "PROTECTED_UAT_RELAUNCH_INERT_RUN_ID=$RETIRED_RUN_ID"
-          echo "PROTECTED_UAT_RELAUNCH_INERT_RUN_URL=$run_url"
-
-      - name: Retire inert deployment and await previous controller cleanup
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          if gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/cancel" >/dev/null; then
-            echo "Normal cancellation was accepted for inert run $RETIRED_RUN_ID."
-          else
-            echo "Normal cancellation was rejected for inert run $RETIRED_RUN_ID; using force-cancel." >&2
-          fi
-
-          run_cancelled=false
-          for cancel_attempt in $(seq 1 60); do
+          jq -e --arg path "$DEPLOY_WORKFLOW_PATH" --arg sha "$RETIRED_RELEASE_SHA" --arg branch "$RETIRED_RELEASE_BRANCH" --arg created "$RETIRED_RUN_CREATED_AT" --argjson id "$RETIRED_RUN_ID" --argjson attempt "$RETIRED_RUN_ATTEMPT" --argjson workflow "$DEPLOY_WORKFLOW_ID" '
+            .id == $id and .run_attempt == $attempt and .workflow_id == $workflow and .path == $path
+            and .event == "workflow_dispatch" and .head_branch == $branch and .head_sha == $sha and .created_at == $created
+            and .status == "queued" and .conclusion == null
+          ' <<<"$run_json" >/dev/null || { echo 'Ghost run identity mismatch.' >&2; exit 1; }
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=latest&per_page=100" --jq '.total_count')" == '0' ]]
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/cancel" >/dev/null || true
+          cancelled=false
+          for attempt in $(seq 1 60); do
             run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
-            run_attempt="$(jq -r '.run_attempt' <<<"$run_json")"
-            [[ "$run_attempt" == "$RETIRED_RUN_ATTEMPT" ]] || {
-              echo "The inert run attempt changed from $RETIRED_RUN_ATTEMPT to $run_attempt." >&2
-              exit 1
-            }
-            run_status="$(jq -r '.status' <<<"$run_json")"
-            run_conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
-            if [[ "$run_status" == 'completed' ]]; then
-              [[ "$run_conclusion" == 'cancelled' ]] || {
-                echo "The inert run completed as ${run_conclusion:-unknown}, not cancelled." >&2
-                exit 1
-              }
-              run_cancelled=true
+            [[ "$(jq -r '.run_attempt' <<<"$run_json")" == "$RETIRED_RUN_ATTEMPT" ]] || exit 1
+            status="$(jq -r '.status' <<<"$run_json")"
+            conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
+            if [[ "$status" == 'completed' ]]; then
+              [[ "$conclusion" == 'cancelled' ]] || exit 1
+              cancelled=true
               break
             fi
-            if gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/force-cancel" >/dev/null; then
-              echo "Force-cancellation request ${cancel_attempt} accepted for inert run $RETIRED_RUN_ID."
-            else
-              echo "Force-cancellation request ${cancel_attempt} for inert run $RETIRED_RUN_ID failed; retrying." >&2
-            fi
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/force-cancel" >/dev/null || true
             sleep 2
           done
-          [[ "$run_cancelled" == true ]] || {
-            echo "Could not verify force-cancelled inert run $RETIRED_RUN_ID." >&2
+          [[ "$cancelled" == true ]] || { echo 'Ghost cancellation was not verified.' >&2; exit 1; }
+          post_cancel_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"
+          jq -e '.total_count == 0 and (.jobs | length) == 0' <<<"$post_cancel_jobs_json" >/dev/null || {
+            echo 'Ghost materialized one or more jobs during cancellation; finalization failed closed.' >&2
             exit 1
           }
-          echo "PROTECTED_UAT_RELAUNCH_INERT_RUN_CONCLUSION=cancelled"
+          retired_url="$(jq -r '.html_url' <<<"$run_json")"
+          echo "retired_url=$retired_url" >> "$GITHUB_OUTPUT"
+          echo 'FINALIZED_PROTECTED_UAT_GHOST_CONCLUSION=cancelled'
 
-          wait_for_terminal_controller() {
-            local controller_run_id="$1"
-            local expected_head_sha="$2"
-            local expected_created_at="$3"
-            local expected_cleanup_step="$4"
-            local controller_json
-            local controller_jobs_json
-            controller_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${controller_run_id}")"
-            jq -e \
-              --arg path "$CONTROL_WORKFLOW_PATH" \
-              --arg expected_head_sha "$expected_head_sha" \
-              --arg expected_created_at "$expected_created_at" \
-              --argjson expected_run_id "$controller_run_id" \
-              '.id == $expected_run_id
-               and .path == $path
-               and .event == "issue_comment"
-               and .head_branch == "main"
-               and .head_sha == $expected_head_sha
-               and .created_at == $expected_created_at
-               and .run_attempt == 1' <<<"$controller_json" >/dev/null || {
-              echo "Prior controller $controller_run_id does not match its immutable identity." >&2
-              exit 1
-            }
-            for controller_attempt in $(seq 1 120); do
-              controller_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${controller_run_id}")"
-              controller_status="$(jq -r '.status' <<<"$controller_json")"
-              controller_conclusion="$(jq -r '.conclusion // ""' <<<"$controller_json")"
-              if [[ "$controller_status" == 'completed' ]]; then
-                [[ "$controller_conclusion" == 'failure' || "$controller_conclusion" == 'cancelled' ]] || {
-                  echo "Prior controller $controller_run_id completed as ${controller_conclusion:-unknown}, not a fail-closed terminal result." >&2
-                  exit 1
-                }
-                controller_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${controller_run_id}/jobs?filter=latest&per_page=100")"
-                jq -e \
-                  --arg expected_cleanup_step "$expected_cleanup_step" '
-                    .total_count == 1
-                    and ([.jobs[].steps[]
-                      | select(
-                          .name == $expected_cleanup_step
-                          and .status == "completed"
-                          and .conclusion == "success"
-                        )] | length) == 1
-                  ' <<<"$controller_jobs_json" >/dev/null || {
-                  echo "Prior controller $controller_run_id did not prove successful workflow cleanup." >&2
-                  exit 1
-                }
-                echo "PROTECTED_UAT_RELAUNCH_PRIOR_CONTROLLER run_id=$controller_run_id conclusion=$controller_conclusion cleanup=success"
-                return 0
-              fi
-              sleep 2
-            done
-            echo "Prior controller $controller_run_id did not finish cleanup within four minutes." >&2
-            exit 1
-          }
-
-          wait_for_terminal_controller \
-            "$ORIGINAL_CONTROLLER_RUN_ID" \
-            "$ORIGINAL_CONTROLLER_HEAD_SHA" \
-            "$ORIGINAL_CONTROLLER_CREATED_AT" \
-            'Reassert disabled Protected Test workflow after attempt'
-          wait_for_terminal_controller \
-            "$RECOVERY_CONTROLLER_RUN_ID" \
-            "$RECOVERY_CONTROLLER_HEAD_SHA" \
-            "$RECOVERY_CONTROLLER_CREATED_AT" \
-            'Reassert disabled Protected Test workflow and reject all non-target attempts'
-          wait_for_terminal_controller \
-            "$RELAUNCH_CONTROLLER_RUN_ID" \
-            "$RELAUNCH_CONTROLLER_HEAD_SHA" \
-            "$RELAUNCH_CONTROLLER_CREATED_AT" \
-            'Reassert disabled Protected Test workflow and reject all non-target attempts'
-
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
-          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
-          [[ "$state" == 'disabled_manually' ]] || {
-            echo "Deployment workflow is not sealed after prior cleanup: $state" >&2
-            exit 1
-          }
-          echo "PROTECTED_UAT_RELAUNCH_PRIOR_CLEANUP_STATE=$state"
-
-      - name: Establish post-retirement deployment baseline
+      - name: Verify sealed exhaustive deployment ledger
         shell: bash
         run: |
           set -Eeuo pipefail
-          workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
-          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
-          mapfile -t active_run_ids < <(
-            jq -r '.workflow_runs[] | select(.status != "completed") | .id' <<<"$workflow_runs_json"
-          )
-          (( ${#active_run_ids[@]} == 0 )) || {
-            echo "Active deployment runs remain after inert-run retirement: ${active_run_ids[*]}" >&2
-            exit 1
-          }
-          jq -c '[.workflow_runs[] | {id, run_attempt}]' <<<"$workflow_runs_json" \
-            > "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json"
-          page_count="$(jq -r 'length' <<<"$workflow_run_pages_json")"
-          echo "PROTECTED_UAT_RELAUNCH_BASELINE_PAGES=$page_count"
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
+          runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$pages_json")"
+          [[ "$(jq -r '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$runs_json")" == '0' ]]
+          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson id "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.created_at >= $created and .id != $id)] | length' <<<"$runs_json")" == '0' ]]
+          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.id != $success and ((.run_started_at // .created_at) >= $created))] | length' <<<"$runs_json")" == '0' ]]
+          jq -e --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
+            ([.workflow_runs[] | select(.id == $success and .run_attempt == 1 and .status == "completed" and .conclusion == "success")] | length) == 1
+            and ([.workflow_runs[] | select(.id == $retired and .run_attempt == 1 and .status == "completed" and .conclusion == "cancelled")] | length) == 1
+          ' <<<"$runs_json" >/dev/null
+          echo 'FINALIZED_PROTECTED_UAT_WORKFLOW_STATE=disabled_manually'
+          echo 'FINALIZED_PROTECTED_UAT_POST_SUCCESS_DEPLOYMENTS=none'
 
-      - name: Re-enable deployment workflow for exact relaunch
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
-          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
-          [[ "$state" == 'active' ]] || { echo "Deployment workflow is not active: $state" >&2; exit 1; }
-          echo "PROTECTED_UAT_RELAUNCH_WORKFLOW_STATE=$state"
-
-      - name: Dispatch one exact replacement deployment
-        id: dispatch
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          expected_workflow_id='${{ steps.retired.outputs.workflow_id }}'
-          [[ "$expected_workflow_id" =~ ^[0-9]+$ ]] || {
-            echo "Missing governed deployment workflow ID: $expected_workflow_id" >&2
-            exit 1
-          }
-          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          [[ "$current_main" == "$EXPECTED_RELEASE_SHA" ]] || {
-            echo "Main changed after the reviewed relaunch boundary. Expected $EXPECTED_RELEASE_SHA, found $current_main" >&2
-            exit 1
-          }
-          dispatch_started_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          dispatch_output="$(gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" \
-            --ref "$EXPECTED_RELEASE_BRANCH" \
-            -f release_sha="$EXPECTED_RELEASE_SHA" \
-            -f release_branch="$EXPECTED_RELEASE_BRANCH" 2>&1)"
-          printf '%s\n' "$dispatch_output"
-
-          run_id=''
-          run_url=''
-          mapfile -t returned_run_urls < <(grep -Eo 'https://github\.com/[^[:space:]]+/actions/runs/[0-9]+' <<<"$dispatch_output" || true)
-          if (( ${#returned_run_urls[@]} == 1 )) &&
-             [[ "${returned_run_urls[0]}" =~ ^https://github\.com/${GITHUB_REPOSITORY}/actions/runs/([0-9]+)$ ]]; then
-            run_url="${returned_run_urls[0]}"
-            run_id="${BASH_REMATCH[1]}"
-            echo "GitHub returned the replacement run URL directly."
-          else
-            echo "GitHub returned ${#returned_run_urls[@]} usable run URLs; discovering the sole exact post-baseline run through the API."
-            discovery_deadline_epoch="$(( $(date -u +%s) + 2 * 60 ))"
-            while (( $(date -u +%s) < discovery_deadline_epoch )); do
-              workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
-              workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
-              mapfile -t candidate_rows < <(
-                jq -r \
-                  --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
-                  --arg expected_sha "$EXPECTED_RELEASE_SHA" \
-                  --arg expected_branch "$EXPECTED_RELEASE_BRANCH" \
-                  --arg started_at "$dispatch_started_at" \
-                  --argjson expected_workflow_id "$expected_workflow_id" '
-                    .workflow_runs[]
-                    | . as $run
-                    | select(
-                        .workflow_id == $expected_workflow_id
-                        and .event == "workflow_dispatch"
-                        and .head_sha == $expected_sha
-                        and .head_branch == $expected_branch
-                        and .created_at >= $started_at
-                        and .run_attempt == 1
-                        and ($baseline[0]
-                          | map(select(.id == $run.id and .run_attempt == $run.run_attempt))
-                          | length) == 0
-                      )
-                    | [.id, .html_url]
-                    | @tsv
-                  ' <<<"$workflow_runs_json"
-              )
-              if (( ${#candidate_rows[@]} == 1 )); then
-                IFS=$'\t' read -r run_id run_url <<<"${candidate_rows[0]}"
-                break
-              fi
-              if (( ${#candidate_rows[@]} > 1 )); then
-                echo "Dispatch ownership is ambiguous across ${#candidate_rows[@]} exact post-baseline runs." >&2
-                printf '%s\n' "${candidate_rows[@]}" >&2
-                exit 1
-              fi
-              remaining_seconds=$((discovery_deadline_epoch - $(date -u +%s)))
-              (( remaining_seconds > 0 )) || break
-              (( remaining_seconds >= 5 )) || {
-                sleep "$remaining_seconds"
-                break
-              }
-              sleep 5
-            done
-            [[ "$run_id" =~ ^[0-9]+$ ]] &&
-            [[ "$run_url" == "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${run_id}" ]] || {
-              echo 'A successful dispatch did not yield exactly one discoverable post-baseline replacement run.' >&2
-              exit 1
-            }
-          fi
-          [[ "$run_id" != "$RETIRED_RUN_ID" ]] || {
-            echo "Replacement dispatch unexpectedly reused inert run ID $RETIRED_RUN_ID." >&2
-            exit 1
-          }
-
-          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
-          jq -e \
-            --arg expected_sha "$EXPECTED_RELEASE_SHA" \
-            --arg expected_branch "$EXPECTED_RELEASE_BRANCH" \
-            --arg started_at "$dispatch_started_at" \
-            --argjson expected_run_id "$run_id" \
-            --argjson expected_workflow_id "$expected_workflow_id" \
-            '.id == $expected_run_id
-             and .run_attempt == 1
-             and .workflow_id == $expected_workflow_id
-             and .event == "workflow_dispatch"
-             and .head_sha == $expected_sha
-             and .head_branch == $expected_branch
-             and .created_at >= $started_at
-             and (.status == "queued" or .status == "in_progress")' <<<"$run_json" >/dev/null || {
-            echo 'The replacement run does not match the exact governed dispatch boundary.' >&2
-            jq '{id, run_attempt, workflow_id, event, head_sha, head_branch, created_at, status, conclusion, html_url}' <<<"$run_json" >&2 || true
-            exit 1
-          }
-          verified_run_url="$(jq -r '.html_url' <<<"$run_json")"
-          [[ "$verified_run_url" == "$run_url" ]] || {
-            echo "GitHub run URL mismatch: dispatched=$run_url verified=$verified_run_url" >&2
-            exit 1
-          }
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-          echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
-          echo "EXPECTED_RUN_ID=$run_id" >> "$GITHUB_ENV"
-          echo "EXPECTED_RUN_ATTEMPT=1" >> "$GITHUB_ENV"
-          echo "PROTECTED_UAT_RELAUNCH_RUN_ID=$run_id"
-          echo "PROTECTED_UAT_RELAUNCH_RUN_URL=$run_url"
-
-      - name: Wait for exact relaunched deployment job to materialize
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          materialized=false
-          materialize_deadline_epoch="$(( $(date -u +%s) + 2 * 60 ))"
-          attempt=0
-          while (( $(date -u +%s) < materialize_deadline_epoch )); do
-            attempt=$((attempt + 1))
-            workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
-          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
-            mapfile -t unexpected_run_ids < <(
-              jq -r \
-                --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
-                --argjson expected_run_id "$EXPECTED_RUN_ID" \
-                --argjson expected_run_attempt "$EXPECTED_RUN_ATTEMPT" '
-                  .workflow_runs[]
-                  | . as $run
-                  | select(
-                      if $run.id == $expected_run_id then
-                        $run.run_attempt != $expected_run_attempt
-                      else
-                        ($baseline[0]
-                          | map(select(.id == $run.id and .run_attempt == $run.run_attempt))
-                          | length) == 0
-                      end
-                    )
-                  | .id
-                ' <<<"$workflow_runs_json"
-            )
-            if (( ${#unexpected_run_ids[@]} > 0 )); then
-              gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
-              for unexpected_run_id in "${unexpected_run_ids[@]}"; do
-                if gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
-                  echo "Cancellation requested for unexpected run ${unexpected_run_id}."
-                else
-                  echo "Initial cancellation request failed for unexpected run ${unexpected_run_id}; verification will retry." >&2
-                fi
-              done
-              cancellation_verified=true
-              for unexpected_run_id in "${unexpected_run_ids[@]}"; do
-                run_cancelled=false
-                for cancel_attempt in $(seq 1 30); do
-                  if ! unexpected_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}")"; then
-                    echo "Could not inspect unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
-                  else
-                    unexpected_status="$(jq -r '.status' <<<"$unexpected_run_json")"
-                    unexpected_conclusion="$(jq -r '.conclusion // ""' <<<"$unexpected_run_json")"
-                    if [[ "$unexpected_status" == 'completed' ]]; then
-                      if [[ "$unexpected_conclusion" == 'cancelled' ]]; then
-                        run_cancelled=true
-                      else
-                        echo "Unexpected run ${unexpected_run_id} completed as ${unexpected_conclusion:-unknown}, not cancelled." >&2
-                      fi
-                      break
-                    fi
-                    if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
-                      echo "Cancellation retry failed for unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
-                    fi
-                  fi
-                  sleep 2
-                done
-                if [[ "$run_cancelled" != true ]]; then
-                  cancellation_verified=false
-                fi
-              done
-              [[ "$cancellation_verified" == true ]] || {
-                echo "One or more unexpected deployment runs could not be verified as cancelled: ${unexpected_run_ids[*]}" >&2
-                exit 1
-              }
-              echo "Unexpected deployment runs appeared during recovery and were verified cancelled: ${unexpected_run_ids[*]}" >&2
-              exit 1
-            fi
-            run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}")"
-            run_status="$(jq -r '.status' <<<"$run_json")"
-            run_conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
-            jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}/jobs?filter=latest&per_page=100")"
-            job_count="$(jq -r '.total_count' <<<"$jobs_json")"
-            echo "PROTECTED_UAT_RECOVERY_POLL attempt=$attempt status=$run_status conclusion=${run_conclusion:-none} jobs=$job_count"
-            if [[ "$job_count" =~ ^[0-9]+$ ]] && (( job_count > 0 )); then
-              materialized=true
-              break
-            fi
-            [[ "$run_status" != 'completed' ]] || {
-              echo "The exact deployment completed without materializing a job: ${run_conclusion:-unknown}" >&2
-              exit 1
-            }
-            remaining_seconds=$((materialize_deadline_epoch - $(date -u +%s)))
-            (( remaining_seconds > 0 )) || break
-            (( remaining_seconds >= 5 )) || {
-              sleep "$remaining_seconds"
-              break
-            }
-            sleep 5
-          done
-          [[ "$materialized" == true ]] || {
-            echo 'The exact replacement deployment did not materialize a job within two wall-clock minutes.' >&2
-            exit 1
-          }
-          echo 'PROTECTED_UAT_RELAUNCH_JOB_MATERIALIZED=true'
-
-      - name: Seal deployment workflow after replacement job materialization
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
-          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
-          [[ "$state" == 'disabled_manually' ]] || { echo "Deployment workflow did not seal after recovery: $state" >&2; exit 1; }
-          workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
-          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
-          mapfile -t unexpected_run_ids < <(
-            jq -r \
-              --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
-              --argjson expected_run_id "$EXPECTED_RUN_ID" \
-              --argjson expected_run_attempt "$EXPECTED_RUN_ATTEMPT" '
-                .workflow_runs[]
-                | . as $run
-                | select(
-                    if $run.id == $expected_run_id then
-                      $run.run_attempt != $expected_run_attempt
-                    else
-                      ($baseline[0]
-                        | map(select(.id == $run.id and .run_attempt == $run.run_attempt))
-                        | length) == 0
-                    end
-                  )
-                | .id
-              ' <<<"$workflow_runs_json"
-          )
-          if (( ${#unexpected_run_ids[@]} > 0 )); then
-            for unexpected_run_id in "${unexpected_run_ids[@]}"; do
-              if gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
-                echo "Cancellation requested for unexpected run ${unexpected_run_id}."
-              else
-                echo "Initial cancellation request failed for unexpected run ${unexpected_run_id}; verification will retry." >&2
-              fi
-            done
-            cancellation_verified=true
-            for unexpected_run_id in "${unexpected_run_ids[@]}"; do
-              run_cancelled=false
-              for cancel_attempt in $(seq 1 30); do
-                if ! unexpected_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}")"; then
-                  echo "Could not inspect unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
-                else
-                  unexpected_status="$(jq -r '.status' <<<"$unexpected_run_json")"
-                  unexpected_conclusion="$(jq -r '.conclusion // ""' <<<"$unexpected_run_json")"
-                  if [[ "$unexpected_status" == 'completed' ]]; then
-                    if [[ "$unexpected_conclusion" == 'cancelled' ]]; then
-                      run_cancelled=true
-                    else
-                      echo "Unexpected run ${unexpected_run_id} completed as ${unexpected_conclusion:-unknown}, not cancelled." >&2
-                    fi
-                    break
-                  fi
-                  if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
-                    echo "Cancellation retry failed for unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
-                  fi
-                fi
-                sleep 2
-              done
-              if [[ "$run_cancelled" != true ]]; then
-                cancellation_verified=false
-              fi
-            done
-            [[ "$cancellation_verified" == true ]] || {
-              echo "One or more unexpected deployment runs could not be verified as cancelled: ${unexpected_run_ids[*]}" >&2
-              exit 1
-            }
-            echo "Unexpected deployment runs appeared before the recovery window sealed and were verified cancelled: ${unexpected_run_ids[*]}" >&2
-            exit 1
-          fi
-          echo "PROTECTED_UAT_RECOVERY_WORKFLOW_SEALED=$state"
-
-      - name: Monitor exact replacement deployment through completion
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          monitor_deadline_epoch="$(( $(date -u +%s) + 4 * 60 * 60 ))"
-          monitor_attempt=0
-          while (( $(date -u +%s) < monitor_deadline_epoch )); do
-            monitor_attempt=$((monitor_attempt + 1))
-            workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
-            workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
-            page_count="$(jq -r 'length' <<<"$workflow_run_pages_json")"
-            [[ "$page_count" =~ ^[1-9][0-9]*$ ]] || {
-              echo "Could not determine the exhaustive workflow-run page count: $page_count" >&2
-              exit 1
-            }
-            mapfile -t unexpected_run_ids < <(
-              jq -r \
-                --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
-                --argjson expected_run_id "$EXPECTED_RUN_ID" \
-                --argjson expected_run_attempt "$EXPECTED_RUN_ATTEMPT" '
-                  .workflow_runs[]
-                  | . as $run
-                  | select(
-                      if $run.id == $expected_run_id then
-                        $run.run_attempt != $expected_run_attempt
-                      else
-                        ($baseline[0]
-                          | map(select(.id == $run.id and .run_attempt == $run.run_attempt))
-                          | length) == 0
-                      end
-                    )
-                  | .id
-                ' <<<"$workflow_runs_json"
-            )
-            (( ${#unexpected_run_ids[@]} == 0 )) || {
-              gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
-              echo "Unexpected deployment run or rerun detected during the governed watch: ${unexpected_run_ids[*]}" >&2
-              exit 1
-            }
-
-            run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}")"
-            run_attempt="$(jq -r '.run_attempt' <<<"$run_json")"
-            [[ "$run_attempt" == "$EXPECTED_RUN_ATTEMPT" ]] || {
-              echo "The governed deployment run attempt changed from $EXPECTED_RUN_ATTEMPT to $run_attempt." >&2
-              exit 1
-            }
-            run_status="$(jq -r '.status' <<<"$run_json")"
-            run_conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
-            echo "PROTECTED_UAT_RECOVERY_WATCH attempt=$monitor_attempt status=$run_status conclusion=${run_conclusion:-none}"
-            if [[ "$run_status" == 'completed' ]]; then
-              [[ "$run_conclusion" == 'success' ]] || {
-                echo "The exact replacement deployment completed as ${run_conclusion:-unknown}." >&2
-                exit 1
-              }
-              echo 'PROTECTED_UAT_RELAUNCH_DEPLOYMENT_COMPLETED=success'
-              exit 0
-            fi
-            now_epoch="$(date -u +%s)"
-            remaining_seconds=$((monitor_deadline_epoch - now_epoch))
-            (( remaining_seconds > 0 )) || break
-            scan_request_count=$((page_count + 1))
-            monitor_sleep_seconds=$((scan_request_count * 10))
-            (( monitor_sleep_seconds >= 30 )) || monitor_sleep_seconds=30
-            (( monitor_sleep_seconds <= remaining_seconds )) || monitor_sleep_seconds=$remaining_seconds
-            echo "PROTECTED_UAT_RECOVERY_RATE_BUDGET pages=$page_count requests_per_poll=$scan_request_count sleep_seconds=$monitor_sleep_seconds max_scan_requests_per_hour=360"
-            sleep "$monitor_sleep_seconds"
-          done
-          echo 'The exact replacement deployment exceeded the four-hour governed watch.' >&2
-          exit 1
-
-      - name: Reassert disabled Protected Test workflow and reject all non-target attempts
+      - name: Reassert disabled Protected-Test workflow
         if: always()
         shell: bash
         run: |
-          set -Euo pipefail
-          cleanup_failed=false
-          unexpected_seen=false
-          sealed=false
-          for seal_attempt in $(seq 1 5); do
-            if gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null; then
-              if state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')" \
-                 && [[ "$state" == 'disabled_manually' ]]; then
-                sealed=true
-                break
-              fi
+          set -Eeuo pipefail
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+          unexpected_active_seen=false
+          for sweep in $(seq 1 5); do
+            pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
+            runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$pages_json")"
+            mapfile -t active_run_ids < <(jq -r '.workflow_runs[] | select(.status != "completed") | .id' <<<"$runs_json")
+            if (( ${#active_run_ids[@]} == 0 )); then
+              break
             fi
-            echo "Deployment workflow seal attempt ${seal_attempt} failed; retrying." >&2
-            sleep 2
-          done
-          if [[ "$sealed" != true ]]; then
-            cleanup_failed=true
-            echo 'Deployment workflow could not be verified as disabled.' >&2
-          fi
-
-          if [[ -f "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" ]]; then
-            for audit_attempt in $(seq 1 3); do
-              if ! workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")" \
-                 || ! workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"; then
-                cleanup_failed=true
-                echo "Could not list deployment runs during cleanup audit ${audit_attempt}." >&2
-                sleep 2
-                continue
-              fi
-              unexpected_file="$RUNNER_TEMP/unexpected-runs-${audit_attempt}"
-              if ! jq -r \
-                --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
-                --argjson expected_run_id "$EXPECTED_RUN_ID" \
-                --argjson expected_run_attempt "$EXPECTED_RUN_ATTEMPT" '
-                  .workflow_runs[]
-                  | . as $run
-                  | select(
-                      if $run.id == $expected_run_id then
-                        $run.run_attempt != $expected_run_attempt
-                      else
-                        ($baseline[0]
-                          | map(select(.id == $run.id and .run_attempt == $run.run_attempt))
-                          | length) == 0
-                      end
-                    )
-                  | .id
-                ' <<<"$workflow_runs_json" > "$unexpected_file"; then
-                cleanup_failed=true
-                echo "Could not evaluate deployment-run baseline during cleanup audit ${audit_attempt}." >&2
-                sleep 2
-                continue
-              fi
-              mapfile -t unexpected_run_ids < "$unexpected_file"
-              if (( ${#unexpected_run_ids[@]} > 0 )); then
-                unexpected_seen=true
-                for unexpected_run_id in "${unexpected_run_ids[@]}"; do
-                  if gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
-                    echo "Cancellation requested for unexpected run ${unexpected_run_id}."
-                  else
-                    echo "Initial cancellation request failed for unexpected run ${unexpected_run_id}; verification will retry." >&2
-                  fi
-                done
-                cancellation_verified=true
-                for unexpected_run_id in "${unexpected_run_ids[@]}"; do
-                  run_cancelled=false
-                  for cancel_attempt in $(seq 1 30); do
-                    if ! unexpected_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}")"; then
-                      echo "Could not inspect unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
-                    else
-                      unexpected_status="$(jq -r '.status' <<<"$unexpected_run_json")"
-                      unexpected_conclusion="$(jq -r '.conclusion // ""' <<<"$unexpected_run_json")"
-                      if [[ "$unexpected_status" == 'completed' ]]; then
-                        if [[ "$unexpected_conclusion" == 'cancelled' ]]; then
-                          run_cancelled=true
-                        else
-                          echo "Unexpected run ${unexpected_run_id} completed as ${unexpected_conclusion:-unknown}, not cancelled." >&2
-                        fi
-                        break
-                      fi
-                      if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
-                        echo "Cancellation retry failed for unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
-                      fi
-                    fi
-                    sleep 2
-                  done
-                  if [[ "$run_cancelled" != true ]]; then
-                    cancellation_verified=false
-                  fi
-                done
-                if [[ "$cancellation_verified" != true ]]; then
-                  cleanup_failed=true
-                  echo "One or more unexpected deployment runs could not be verified as cancelled: ${unexpected_run_ids[*]}" >&2
+            unexpected_active_seen=true
+            for active_run_id in "${active_run_ids[@]}"; do
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${active_run_id}/cancel" >/dev/null || true
+              terminal=false
+              for attempt in $(seq 1 60); do
+                active_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${active_run_id}")"
+                if [[ "$(jq -r '.status' <<<"$active_run_json")" == 'completed' ]]; then
+                  terminal=true
+                  break
                 fi
-              fi
-              sleep 2
+                gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${active_run_id}/force-cancel" >/dev/null || true
+                sleep 2
+              done
+              [[ "$terminal" == true ]] || { echo "Active deployment $active_run_id did not reach a terminal state." >&2; exit 1; }
             done
-          fi
-
-          [[ "$cleanup_failed" == false ]] || exit 1
-          [[ "$unexpected_seen" == false ]] || {
-            echo 'Unexpected deployment attempts were detected and cancelled; the recovery boundary is failed closed.' >&2
+          done
+          pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
+          runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$pages_json")"
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          [[ "$(jq -r '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$runs_json")" == '0' ]]
+          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson id "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.created_at >= $created and .id != $id)] | length' <<<"$runs_json")" == '0' ]]
+          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.id != $success and ((.run_started_at // .created_at) >= $created))] | length' <<<"$runs_json")" == '0' ]]
+          jq -e --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
+            ([.workflow_runs[] | select(.id == $success and .run_attempt == 1 and .status == "completed" and .conclusion == "success")] | length) == 1
+            and ([.workflow_runs[] | select(.id == $retired and .run_attempt == 1 and .status == "completed" and .conclusion == "cancelled")] | length) == 1
+          ' <<<"$runs_json" >/dev/null
+          if [[ "$unexpected_active_seen" == true ]]; then
+            echo 'Unexpected active deployments were terminally cancelled; finalization refuses success.' >&2
             exit 1
-          }
-          echo 'PROTECTED_UAT_RECOVERY_FINAL_WORKFLOW_STATE=disabled_manually'
-          echo 'PROTECTED_UAT_RECOVERY_NON_TARGET_ATTEMPTS=none'
+          fi
+          echo 'FINALIZED_PROTECTED_UAT_FINAL_WORKFLOW_STATE=disabled_manually'
+          echo 'FINALIZED_PROTECTED_UAT_FINAL_ACTIVE_DEPLOYMENTS=none'
 
-      - name: Record successful relaunch evidence
+      - name: Record successful finalization evidence
         if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT merged-main exact-SHA relaunch completed successfully.\n\n- Reviewed runtime base: \`$REVIEWED_RUNTIME_BASE_SHA\`\n- Exact deployed main commit: \`$EXPECTED_RELEASE_SHA\`\n- Relaunch controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Retired inert deployment source: \`$RETIRED_RELEASE_SHA\`\n- Retired inert deployment: ${{ steps.retired.outputs.retired_run_url }}\n- Replacement governed deployment: ${{ steps.dispatch.outputs.run_url }}\n- Replacement deployments dispatched: exactly one\n- Deployment workflow: active only through replacement job materialization, then sealed as \`disabled_manually\`\n- Legacy candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none\n- Module 025 mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT completed and finalization succeeded.\n\n- Successful deployment: ${{ steps.evidence.outputs.run_url }}\n- Release SHA: \`$SUCCESSFUL_RELEASE_SHA\`\n- Evidence artifact: \`$SUCCESSFUL_ARTIFACT_NAME\` (ID ${{ steps.evidence.outputs.artifact_id }}, digest \`${{ steps.evidence.outputs.artifact_digest }}\`)\n- Module 001B assigned-work/live-reallocation UAT: passed\n- Utilization role-scoping UAT: passed\n- Retired zero-job ghost: ${{ steps.retired.outputs.retired_url }}\n- Deployment workflow: \`disabled_manually\`\n- Legacy candidate ref restoration: pending\n- Production mutation: none\n- Module 025 mutation: none"
 
-      - name: Record failed relaunch evidence
+      - name: Record failed finalization evidence
         if: failure()
         shell: bash
         run: |
           set +e
-          run_url='${{ steps.dispatch.outputs.run_url }}'
-          [[ -n "$run_url" ]] || run_url='not-created-or-not-verified'
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT merged-main exact-SHA relaunch failed.\n\n- Reviewed runtime base: \`$REVIEWED_RUNTIME_BASE_SHA\`\n- Exact intended main commit: \`${EXPECTED_RELEASE_SHA:-not-established}\`\n- Relaunch controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Retired inert deployment source: \`$RETIRED_RELEASE_SHA\`\n- Retired inert deployment: ${{ steps.retired.outputs.retired_run_url }}\n- Replacement governed deployment: $run_url\n- Deployment workflow disable and non-target cancellation were attempted automatically.\n- Legacy candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none\n- Module 025 mutation: none"
+          final_workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state' 2>/dev/null || true)"
+          final_active_count="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100" 2>/dev/null | jq -r '[.[].workflow_runs[] | select(.status != "completed")] | length' 2>/dev/null || true)"
+          if [[ "$final_workflow_state" == 'disabled_manually' && "$final_active_count" == '0' ]]; then
+            sealing_status='verified disabled_manually with zero active deployments'
+          else
+            sealing_status="NOT VERIFIED (workflow state ${final_workflow_state:-unavailable}, active deployments ${final_active_count:-unavailable}); manual sealing required immediately; active-run cancellation required immediately"
+          fi
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT finalization failed.\n\n- Successful deployment under verification: \`$SUCCESSFUL_RUN_ID\`\n- Ghost under retirement: \`$RETIRED_RUN_ID\`\n- Deployment workflow sealing: $sealing_status\n- Production mutation: none\n- Module 025 mutation: none"

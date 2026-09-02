@@ -6,10 +6,13 @@ on:
     paths:
       - '.github/workflows/module-loading-assignment-propagation-ci.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
+      - '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
+      - '.github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml'
       - '.github/workflows/runtime-navigation-work-register-responsive-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+      - 'database/migrations/040_scoped_role_policy_versions/00_schema.sql'
       - 'database/migrations/097_project_planning_identity_safe_admission.sql'
       - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
       - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
@@ -68,6 +71,7 @@ jobs:
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+          FINALIZER='.github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml'
           RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
           RETIRED_MODULE001B_UAT='.github/workflows/module001b-live-reallocation-protected-test-uat.yml'
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
@@ -84,10 +88,13 @@ jobs:
           cat > "$RUNNER_TEMP/allowed-release-files" <<'FILES'
           .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
+          .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
           .github/workflows/runtime-navigation-work-register-responsive-ci.yml
           .github/workflows/systemwide-enterprise-reliability-ci.yml
           .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+          database/migrations/040_scoped_role_policy_versions/00_schema.sql
           database/migrations/097_project_planning_identity_safe_admission.sql
           database/rollback/097_project_planning_identity_safe_admission_rollback.sql
           scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
@@ -106,9 +113,9 @@ jobs:
           src/frontend/project-time-web/src/module-availability-bridge.js
           tests/test-project-planning-identity-safe-admission-migration-097.sh
           tests/test-pulse-ai-runtime-job-query-shape.sh
-          tests/validate-utilization-role-scoping.mjs
-          tests/validate-systemwide-image-build-controller.mjs
           tests/validate-systemwide-enterprise-reliability.mjs
+          tests/validate-systemwide-image-build-controller.mjs
+          tests/validate-utilization-role-scoping.mjs
           FILES
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-release-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
@@ -258,7 +265,31 @@ jobs:
             }
           fi
 
+      - name: Validate governed protected-Test controller contracts
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+          FINALIZER='.github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml'
+          RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+          RETIRED_MODULE001B_UAT='.github/workflows/module001b-live-reallocation-protected-test-uat.yml'
+          UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+          ASSIGNED_WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
+          MODULE001B_REVISION_WAIT='scripts/wait-containerapp-ready-revision.sh'
+          MODULE001B_FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
+          DOCUMENT_AUTHORITY_MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+          SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
+          git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
+
           test -f "$CONTROLLER" || fail 'The governed protected-Test controller is missing.'
+          test -f "$FINALIZER" || fail 'The successful Protected-Test UAT finalizer is missing.'
           test ! -e "$RETIRED_CONTROLLER" || fail 'The unregistered duplicate protected-Test controller was not retired.'
           test ! -e "$RETIRED_MODULE001B_UAT" || fail 'The parallel Module 001B protected-Test mutator was not retired.'
           test -f "$UTILIZATION_UAT" || fail 'The utilization role-scoping UAT script is missing.'
@@ -347,7 +378,9 @@ jobs:
           grep -Fq 'productionMutation:false' "$ASSIGNED_WORK_UAT"
           TARGET_MAIN_BRANCH_CONDITION="if [[ \"\$TARGET_RELEASE_BRANCH\" == 'main' ]]; then"
           grep -Fq "$TARGET_MAIN_BRANCH_CONDITION" "$CONTROLLER"
-          grep -Fq 'RELIABILITY_RELEASE_COMMIT: ${{ env.TARGET_RELEASE_COMMIT }}' "$CONTROLLER"
+          RELIABILITY_RELEASE_MARKER='RELIABILITY_RELEASE_COMMIT: $'
+          RELIABILITY_RELEASE_MARKER+="{{ env.TARGET_RELEASE_COMMIT }}"
+          grep -Fq "$RELIABILITY_RELEASE_MARKER" "$CONTROLLER"
           grep -Fq 'MODULE001B_PROTECTED_TEST_RECONCILE=false' "$MODULE001B_REVISION_WAIT"
           grep -Fq 'MODULE001B_STALE_REVISION_DEACTIVATE' "$MODULE001B_REVISION_WAIT"
           ! grep -Fq 'if [[ "$ACTIVE" == true ]]; then' "$MODULE001B_REVISION_WAIT"
@@ -357,7 +390,26 @@ jobs:
           grep -Fq 'protected_test_uat_route_unavailable' "$MODULE001B_FIXTURE"
           ! grep -Fq 'DELETE FROM scoped_time_management_events' "$MODULE001B_FIXTURE"
           grep -Fq 'Scoped RBAC audit evidence is immutable' database/migrations/040_scoped_role_policy_versions/00_schema.sql
-          grep -Fq 'event_record.timesheet_id = t.timesheet_id' "$MODULE001B_FIXTURE"
+          grep -Fq 'WHERE audit.timesheet_id = t.timesheet_id' "$MODULE001B_FIXTURE"
+          grep -Fq 'post_cancel_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"' "$FINALIZER"
+          grep -Fq 'group: protected-uat-pr794-merged-main-relaunch' "$FINALIZER"
+          grep -Fq 'unexpected_active_seen=false' "$FINALIZER"
+          grep -Fq 'mapfile -t active_run_ids' "$FINALIZER"
+          grep -Fq 'actions/runs/${active_run_id}/cancel' "$FINALIZER"
+          grep -Fq 'actions/runs/${active_run_id}/force-cancel' "$FINALIZER"
+          grep -Fq 'Unexpected active deployments were terminally cancelled; finalization refuses success.' "$FINALIZER"
+          grep -Fq 'FINALIZED_PROTECTED_UAT_FINAL_ACTIVE_DEPLOYMENTS=none' "$FINALIZER"
+          grep -Fq 'final_active_count="$(gh api --paginate --slurp' "$FINALIZER"
+          grep -Fq '.total_count == 0 and (.jobs | length) == 0' "$FINALIZER"
+          grep -Fq '.created_at >= $created and .id != $id' "$FINALIZER"
+          grep -Fq '(.run_started_at // .created_at) >= $created' "$FINALIZER"
+          grep -Fq '.id != $success and ((.run_started_at // .created_at) >= $created)' "$FINALIZER"
+          grep -Fq '.id == $success and .run_attempt == 1' "$FINALIZER"
+          grep -Fq '.id == $retired and .run_attempt == 1' "$FINALIZER"
+          grep -Fq 'final_workflow_state="$(gh api' "$FINALIZER"
+          grep -Fq 'manual sealing required immediately' "$FINALIZER"
+          grep -A5 -F -- '- name: Reassert disabled Protected-Test workflow' "$FINALIZER" | grep -Fq 'set -Eeuo pipefail'
+          grep -Fq 'sealing_status="NOT VERIFIED (workflow state ${final_workflow_state:-unavailable}, active deployments ${final_active_count:-unavailable}); manual sealing required immediately; active-run cancellation required immediately"' "$FINALIZER"
 
           ! grep -Fq 'full_imae' "$CONTROLLER"
           ! grep -Eq 'local[[:space:]]+repository="\$1".*image="\$repository:' "$CONTROLLER"
