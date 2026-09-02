@@ -294,9 +294,17 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          for monitor_attempt in $(seq 1 1440); do
+          monitor_deadline_epoch="$(( $(date -u +%s) + 4 * 60 * 60 ))"
+          monitor_attempt=0
+          while (( $(date -u +%s) < monitor_deadline_epoch )); do
+            monitor_attempt=$((monitor_attempt + 1))
             workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
-          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
+            workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"
+            page_count="$(jq -r 'length' <<<"$workflow_run_pages_json")"
+            [[ "$page_count" =~ ^[1-9][0-9]*$ ]] || {
+              echo "Could not determine the exhaustive workflow-run page count: $page_count" >&2
+              exit 1
+            }
             mapfile -t unexpected_run_ids < <(
               jq -r \
                 --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
@@ -339,7 +347,15 @@ jobs:
               echo 'PROTECTED_UAT_RECOVERY_DEPLOYMENT_COMPLETED=success'
               exit 0
             fi
-            sleep 10
+            now_epoch="$(date -u +%s)"
+            remaining_seconds=$((monitor_deadline_epoch - now_epoch))
+            (( remaining_seconds > 0 )) || break
+            scan_request_count=$((page_count + 1))
+            monitor_sleep_seconds=$((scan_request_count * 10))
+            (( monitor_sleep_seconds >= 30 )) || monitor_sleep_seconds=30
+            (( monitor_sleep_seconds <= remaining_seconds )) || monitor_sleep_seconds=$remaining_seconds
+            echo "PROTECTED_UAT_RECOVERY_RATE_BUDGET pages=$page_count requests_per_poll=$scan_request_count sleep_seconds=$monitor_sleep_seconds max_scan_requests_per_hour=360"
+            sleep "$monitor_sleep_seconds"
           done
           echo 'The exact recovered deployment exceeded the four-hour governed watch.' >&2
           exit 1
