@@ -11,12 +11,14 @@ const apiBuildPropsPath = 'src/backend/ProjectTime.Api/Directory.Build.props';
 const sourceRevisionPath = 'src/backend/ProjectTime.Api/.projectpulse-source-revision';
 const revisionWaitPath = 'scripts/wait-containerapp-ready-revision.sh';
 const assignedWorkUatPath = 'scripts/release-test/run-assigned-work-protected-test-uat.sh';
+const module001bFixturePath = 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs';
 const documentAuthorityMigrationBuilderPath = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
 const apiProject = fs.readFileSync(apiProjectPath, 'utf8');
 const apiBuildProps = fs.readFileSync(apiBuildPropsPath, 'utf8');
 const revisionWait = fs.readFileSync(revisionWaitPath, 'utf8');
 const assignedWorkUat = fs.readFileSync(assignedWorkUatPath, 'utf8');
+const module001bFixture = fs.readFileSync(module001bFixturePath, 'utf8');
 const documentAuthorityMigrationBuilder = fs.readFileSync(documentAuthorityMigrationBuilderPath, 'utf8');
 
 assert.equal(
@@ -145,6 +147,36 @@ assert.match(
   assignedWorkUat,
   /jq -e 'type == "array"' <<<"\$revisions_json"/,
   'the Module 001B convergence waiter must normalize the revision array'
+);
+assert.doesNotMatch(
+  module001bFixture,
+  /DELETE FROM scoped_time_management_events/,
+  'Module 001B fixture cleanup must preserve immutable time-management audit evidence'
+);
+assert.doesNotMatch(
+  module001bFixture,
+  /DELETE FROM module001_timesheet_entry_associations/,
+  'Module 001B fixture cleanup must rely on the entry-association ON DELETE CASCADE contract'
+);
+assert.match(
+  module001bFixture,
+  /entry-association foreign key is ON DELETE CASCADE[\s\S]*?immutable steward events are deliberately[\s\S]*?retained/,
+  'Module 001B fixture cleanup must document its immutable-evidence and cascading-association contract'
+);
+assert.match(
+  module001bFixture,
+  /NOT EXISTS \(\s*SELECT 1\s*FROM scoped_time_management_events audit\s*WHERE audit\.timesheet_id = t\.timesheet_id\s*\)/,
+  'Module 001B fixture cleanup must retain an empty fixture timesheet while immutable audit evidence references it'
+);
+assert.match(
+  module001bFixture,
+  /FROM module001a_engineer_task_closeouts closeout[\s\S]*?closeout\.engineer_user_id = @target_user_id[\s\S]*?closeout\.closeout_status IN \('engineer_closed', 'ptc_final_closed'\)/,
+  'Module 001B fixture creation must not select a source task closed for the target engineer'
+);
+assert.match(
+  module001bFixture,
+  /source\.Parameters\.AddWithValue\("target_user_id", targetUserId\.Value\)/,
+  'Module 001B fixture source selection must bind the protected-Test target user explicitly'
 );
 
 const convergenceFunctionStart = assignedWorkUat.indexOf('module001b_wait_single_revision_converged() {');
@@ -352,4 +384,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097+098+099 utilization-uat=registered module001b-single-revision-reconcile=ready-inactive-safe module025-migration099=registered');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097+098+099 utilization-uat=registered module001b-single-revision-reconcile=ready-inactive-safe module001b-fixture-audit=immutable module025-migration099=registered');

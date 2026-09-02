@@ -98,24 +98,9 @@ public static partial class ScopedRolePolicyModule
 
         foreach (var id in ids)
         {
-            await using (var audit = new NpgsqlCommand("""
-                DELETE FROM scoped_time_management_events
-                WHERE time_entry_id = @time_entry_id;
-                """, connection, transaction))
-            {
-                audit.Parameters.AddWithValue("time_entry_id", id);
-                await audit.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            await using (var association = new NpgsqlCommand("""
-                DELETE FROM module001_timesheet_entry_associations
-                WHERE time_entry_id = @time_entry_id;
-                """, connection, transaction))
-            {
-                association.Parameters.AddWithValue("time_entry_id", id);
-                await association.ExecuteNonQueryAsync(cancellationToken);
-            }
-
+            // The entry-association foreign key is ON DELETE CASCADE. Delete only
+            // the disposable entry here; immutable steward events are deliberately
+            // retained and continue to anchor the otherwise-empty Timesheet row.
             await using (var entry = new NpgsqlCommand("""
                 DELETE FROM time_entries
                 WHERE time_entry_id = @time_entry_id
@@ -141,6 +126,11 @@ public static partial class ScopedRolePolicyModule
                   SELECT 1
                   FROM time_entries te
                   WHERE te.timesheet_id = t.timesheet_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM scoped_time_management_events audit
+                  WHERE audit.timesheet_id = t.timesheet_id
               );
             """, connection, transaction);
         timesheet.Parameters.AddWithValue("user_id", targetUserId);
@@ -228,10 +218,19 @@ public static partial class ScopedRolePolicyModule
                   ON pt.project_id = p.project_id
                  AND pt.is_active = TRUE
                 WHERE p.status IN ('active', 'on_hold')
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM module001a_engineer_task_closeouts closeout
+                      WHERE closeout.engineer_user_id = @target_user_id
+                        AND closeout.project_id = p.project_id
+                        AND closeout.task_id = pt.task_id
+                        AND closeout.closeout_status IN ('engineer_closed', 'ptc_final_closed')
+                  )
                 ORDER BY p.project_code, pt.task_code
                 LIMIT 1;
                 """, connection, transaction))
             {
+                source.Parameters.AddWithValue("target_user_id", targetUserId.Value);
                 await using var reader = await source.ExecuteReaderAsync(context.RequestAborted);
                 if (!await reader.ReadAsync(context.RequestAborted))
                 {
