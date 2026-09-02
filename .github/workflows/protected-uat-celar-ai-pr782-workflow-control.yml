@@ -1,4 +1,4 @@
-name: One-Time Protected UAT Force-Retirement Relaunch for PR794
+name: One-Time Protected UAT Merged-Main Relaunch for PR794
 
 on:
   issue_comment:
@@ -11,7 +11,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: protected-uat-pr794-force-retirement-relaunch
+  group: protected-uat-pr794-merged-main-relaunch
   cancel-in-progress: false
 
 jobs:
@@ -20,13 +20,15 @@ jobs:
       github.event.issue.pull_request &&
       github.event.issue.number == 794 &&
       github.actor == 'ahmedadeyemi-cts' &&
-      github.event.comment.body == 'RELAUNCH PROTECTED UAT PR794 SHA 3d02b4cb62683b96554186f9d3a782fc1f21ca54 RETIRE RUN 33654881418'
+      github.event.comment.body == 'RELAUNCH PROTECTED UAT PR794 REVIEWED BASE 2e257966dd51eab8d9f6431cf9b8fbded7ae458a RETIRE RUN 33654881418'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
-      EXPECTED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
+      REVIEWED_RUNTIME_BASE_SHA: 2e257966dd51eab8d9f6431cf9b8fbded7ae458a
+      RETIRED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
+      EXPECTED_RELEASE_BRANCH: main
       RETIRED_RUN_ID: '33654881418'
       RETIRED_RUN_ATTEMPT: '1'
       RETIRED_RUN_CREATED_AT: '2026-09-02T16:26:03Z'
@@ -42,40 +44,46 @@ jobs:
       EXPECTED_RUN_ID: '0'
       EXPECTED_RUN_ATTEMPT: '0'
       CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
-      AUTHORIZED_CANDIDATE_BRANCH: fix/shared-project-document-planning-20260819
+      RETIRED_RELEASE_BRANCH: fix/shared-project-document-planning-20260819
     steps:
-      - name: Verify immutable reviewed PR794 relaunch boundary
+      - name: Verify reviewed runtime and exact controller-only main advance
         id: boundary
         shell: bash
         run: |
           set -Eeuo pipefail
           actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${EXPECTED_RELEASE_SHA}...${actual_main}")"
+          [[ "$GITHUB_SHA" == "$actual_main" ]] || {
+            echo "The issue-comment workflow is not executing the exact current main commit. Event SHA $GITHUB_SHA, main $actual_main" >&2
+            exit 1
+          }
+          comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${REVIEWED_RUNTIME_BASE_SHA}...${actual_main}")"
           status="$(jq -r '.status' <<<"$comparison")"
-          [[ "$status" == 'ahead' || "$status" == 'identical' ]] || {
-            echo "Main no longer descends from the reviewed PR794 release source: $status" >&2
+          [[ "$status" == 'ahead' ]] || {
+            echo "Main is not an exact controller-only descendant of the reviewed runtime base: $status" >&2
             exit 1
           }
           mapfile -t changed_files < <(jq -r '.files[].filename' <<<"$comparison")
           printf '%s\n' "${changed_files[@]}" | sed '/^$/d' | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
           printf '%s\n' "$CONTROL_WORKFLOW_PATH" | LC_ALL=C sort -u > "$RUNNER_TEMP/allowed-files"
           cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/allowed-files" || {
-            echo 'Unexpected source drift exists between the reviewed PR794 runtime and current main:' >&2
+            echo 'Unexpected source drift exists between the reviewed Protected-UAT runtime and current main:' >&2
             diff -u "$RUNNER_TEMP/allowed-files" "$RUNNER_TEMP/changed-files" >&2 || true
             exit 1
           }
+          echo "EXPECTED_RELEASE_SHA=$actual_main" >> "$GITHUB_ENV"
           echo "controller_main_sha=$actual_main" >> "$GITHUB_OUTPUT"
-          echo "PROTECTED_UAT_RELAUNCH_RUNTIME_SHA=$EXPECTED_RELEASE_SHA"
+          echo "release_sha=$actual_main" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_UAT_RELAUNCH_REVIEWED_RUNTIME_BASE_SHA=$REVIEWED_RUNTIME_BASE_SHA"
+          echo "PROTECTED_UAT_RELAUNCH_RUNTIME_SHA=$actual_main"
           echo "PROTECTED_UAT_RELAUNCH_CONTROLLER_MAIN_SHA=$actual_main"
-
-      - name: Verify pinned ref and exact inert deployment
+      - name: Verify unchanged legacy candidate and exact inert deployment
         id: retired
         shell: bash
         run: |
           set -Eeuo pipefail
-          branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${AUTHORIZED_CANDIDATE_BRANCH}" --jq '.object.sha')"
-          [[ "$branch_sha" == "$EXPECTED_RELEASE_SHA" ]] || {
-            echo "Governed candidate ref is not pinned to reviewed PR794 runtime. Expected $EXPECTED_RELEASE_SHA, found $branch_sha" >&2
+          branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${RETIRED_RELEASE_BRANCH}" --jq '.object.sha')"
+          [[ "$branch_sha" == "$RETIRED_RELEASE_SHA" ]] || {
+            echo "The legacy candidate ref changed before inert-run retirement. Expected $RETIRED_RELEASE_SHA, found $branch_sha" >&2
             exit 1
           }
 
@@ -86,8 +94,8 @@ jobs:
           }
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
           jq -e \
-            --arg expected_sha "$EXPECTED_RELEASE_SHA" \
-            --arg expected_branch "$AUTHORIZED_CANDIDATE_BRANCH" \
+            --arg expected_sha "$RETIRED_RELEASE_SHA" \
+            --arg expected_branch "$RETIRED_RELEASE_BRANCH" \
             --arg created_at "$RETIRED_RUN_CREATED_AT" \
             --argjson expected_run_id "$RETIRED_RUN_ID" \
             --argjson expected_run_attempt "$RETIRED_RUN_ATTEMPT" \
@@ -278,11 +286,16 @@ jobs:
             echo "Missing governed deployment workflow ID: $expected_workflow_id" >&2
             exit 1
           }
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$current_main" == "$EXPECTED_RELEASE_SHA" ]] || {
+            echo "Main changed after the reviewed relaunch boundary. Expected $EXPECTED_RELEASE_SHA, found $current_main" >&2
+            exit 1
+          }
           dispatch_started_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           dispatch_output="$(gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" \
-            --ref "$AUTHORIZED_CANDIDATE_BRANCH" \
+            --ref "$EXPECTED_RELEASE_BRANCH" \
             -f release_sha="$EXPECTED_RELEASE_SHA" \
-            -f release_branch="$AUTHORIZED_CANDIDATE_BRANCH" 2>&1)"
+            -f release_branch="$EXPECTED_RELEASE_BRANCH" 2>&1)"
           printf '%s\n' "$dispatch_output"
 
           run_id=''
@@ -303,7 +316,7 @@ jobs:
                 jq -r \
                   --slurpfile baseline "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" \
                   --arg expected_sha "$EXPECTED_RELEASE_SHA" \
-                  --arg expected_branch "$AUTHORIZED_CANDIDATE_BRANCH" \
+                  --arg expected_branch "$EXPECTED_RELEASE_BRANCH" \
                   --arg started_at "$dispatch_started_at" \
                   --argjson expected_workflow_id "$expected_workflow_id" '
                     .workflow_runs[]
@@ -354,7 +367,7 @@ jobs:
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
           jq -e \
             --arg expected_sha "$EXPECTED_RELEASE_SHA" \
-            --arg expected_branch "$AUTHORIZED_CANDIDATE_BRANCH" \
+            --arg expected_branch "$EXPECTED_RELEASE_BRANCH" \
             --arg started_at "$dispatch_started_at" \
             --argjson expected_run_id "$run_id" \
             --argjson expected_workflow_id "$expected_workflow_id" \
@@ -740,7 +753,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT exact-SHA relaunch completed successfully.\n\n- Reviewed PR794 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Relaunch controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Retired inert deployment: ${{ steps.retired.outputs.retired_run_url }}\n- Replacement governed deployment: ${{ steps.dispatch.outputs.run_url }}\n- Replacement deployments dispatched: exactly one\n- Deployment workflow: active only through replacement job materialization, then sealed as \`disabled_manually\`\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT merged-main exact-SHA relaunch completed successfully.\n\n- Reviewed runtime base: \`$REVIEWED_RUNTIME_BASE_SHA\`\n- Exact deployed main commit: \`$EXPECTED_RELEASE_SHA\`\n- Relaunch controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Retired inert deployment source: \`$RETIRED_RELEASE_SHA\`\n- Retired inert deployment: ${{ steps.retired.outputs.retired_run_url }}\n- Replacement governed deployment: ${{ steps.dispatch.outputs.run_url }}\n- Replacement deployments dispatched: exactly one\n- Deployment workflow: active only through replacement job materialization, then sealed as \`disabled_manually\`\n- Legacy candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none\n- Module 025 mutation: none"
 
       - name: Record failed relaunch evidence
         if: failure()
@@ -749,4 +762,4 @@ jobs:
           set +e
           run_url='${{ steps.dispatch.outputs.run_url }}'
           [[ -n "$run_url" ]] || run_url='not-created-or-not-verified'
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT exact-SHA relaunch failed.\n\n- Reviewed PR794 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Relaunch controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Retired inert deployment: ${{ steps.retired.outputs.retired_run_url }}\n- Replacement governed deployment: $run_url\n- Deployment workflow disable and non-target cancellation were attempted automatically.\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT merged-main exact-SHA relaunch failed.\n\n- Reviewed runtime base: \`$REVIEWED_RUNTIME_BASE_SHA\`\n- Exact intended main commit: \`${EXPECTED_RELEASE_SHA:-not-established}\`\n- Relaunch controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Retired inert deployment source: \`$RETIRED_RELEASE_SHA\`\n- Retired inert deployment: ${{ steps.retired.outputs.retired_run_url }}\n- Replacement governed deployment: $run_url\n- Deployment workflow disable and non-target cancellation were attempted automatically.\n- Legacy candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none\n- Module 025 mutation: none"
