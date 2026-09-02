@@ -144,9 +144,44 @@ jobs:
             if (( ${#unexpected_run_ids[@]} > 0 )); then
               gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
               for unexpected_run_id in "${unexpected_run_ids[@]}"; do
-                gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null 2>&1 || true
+                if gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
+                  echo "Cancellation requested for unexpected run ${unexpected_run_id}."
+                else
+                  echo "Initial cancellation request failed for unexpected run ${unexpected_run_id}; verification will retry." >&2
+                fi
               done
-              echo "Unexpected deployment runs appeared during recovery and were rejected: ${unexpected_run_ids[*]}" >&2
+              cancellation_verified=true
+              for unexpected_run_id in "${unexpected_run_ids[@]}"; do
+                run_cancelled=false
+                for cancel_attempt in $(seq 1 30); do
+                  if ! unexpected_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}")"; then
+                    echo "Could not inspect unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
+                  else
+                    unexpected_status="$(jq -r '.status' <<<"$unexpected_run_json")"
+                    unexpected_conclusion="$(jq -r '.conclusion // ""' <<<"$unexpected_run_json")"
+                    if [[ "$unexpected_status" == 'completed' ]]; then
+                      if [[ "$unexpected_conclusion" == 'cancelled' ]]; then
+                        run_cancelled=true
+                      else
+                        echo "Unexpected run ${unexpected_run_id} completed as ${unexpected_conclusion:-unknown}, not cancelled." >&2
+                      fi
+                      break
+                    fi
+                    if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
+                      echo "Cancellation retry failed for unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
+                    fi
+                  fi
+                  sleep 2
+                done
+                if [[ "$run_cancelled" != true ]]; then
+                  cancellation_verified=false
+                fi
+              done
+              [[ "$cancellation_verified" == true ]] || {
+                echo "One or more unexpected deployment runs could not be verified as cancelled: ${unexpected_run_ids[*]}" >&2
+                exit 1
+              }
+              echo "Unexpected deployment runs appeared during recovery and were verified cancelled: ${unexpected_run_ids[*]}" >&2
               exit 1
             fi
             run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}")"
@@ -192,9 +227,44 @@ jobs:
           )
           if (( ${#unexpected_run_ids[@]} > 0 )); then
             for unexpected_run_id in "${unexpected_run_ids[@]}"; do
-              gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null 2>&1 || true
+              if gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
+                echo "Cancellation requested for unexpected run ${unexpected_run_id}."
+              else
+                echo "Initial cancellation request failed for unexpected run ${unexpected_run_id}; verification will retry." >&2
+              fi
             done
-            echo "Unexpected deployment runs appeared before the recovery window sealed and were rejected: ${unexpected_run_ids[*]}" >&2
+            cancellation_verified=true
+            for unexpected_run_id in "${unexpected_run_ids[@]}"; do
+              run_cancelled=false
+              for cancel_attempt in $(seq 1 30); do
+                if ! unexpected_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}")"; then
+                  echo "Could not inspect unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
+                else
+                  unexpected_status="$(jq -r '.status' <<<"$unexpected_run_json")"
+                  unexpected_conclusion="$(jq -r '.conclusion // ""' <<<"$unexpected_run_json")"
+                  if [[ "$unexpected_status" == 'completed' ]]; then
+                    if [[ "$unexpected_conclusion" == 'cancelled' ]]; then
+                      run_cancelled=true
+                    else
+                      echo "Unexpected run ${unexpected_run_id} completed as ${unexpected_conclusion:-unknown}, not cancelled." >&2
+                    fi
+                    break
+                  fi
+                  if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null; then
+                    echo "Cancellation retry failed for unexpected run ${unexpected_run_id} on attempt ${cancel_attempt}." >&2
+                  fi
+                fi
+                sleep 2
+              done
+              if [[ "$run_cancelled" != true ]]; then
+                cancellation_verified=false
+              fi
+            done
+            [[ "$cancellation_verified" == true ]] || {
+              echo "One or more unexpected deployment runs could not be verified as cancelled: ${unexpected_run_ids[*]}" >&2
+              exit 1
+            }
+            echo "Unexpected deployment runs appeared before the recovery window sealed and were verified cancelled: ${unexpected_run_ids[*]}" >&2
             exit 1
           fi
           echo "PROTECTED_UAT_RECOVERY_WORKFLOW_SEALED=$state"
