@@ -398,9 +398,8 @@ jobs:
           grep -Fq "The exact ghost is not the sole active owner of the Protected-Test concurrency group." "$FINALIZER"
           grep -Fq "echo 'exact_ghost_only=true' >> \"\$GITHUB_OUTPUT\"" "$FINALIZER"
           grep -A18 -F '  finalize:' "$FINALIZER" | grep -Fq 'group: projectpulse-deploy-test'
-          RETIREMENT_CANCEL_MARKER='cancel-in-progress: $'
-          RETIREMENT_CANCEL_MARKER+="{{ needs.authorize_ghost_retirement.outputs.exact_ghost_only == 'true' }}"
-          grep -A18 -F '  finalize:' "$FINALIZER" | grep -Fq "$RETIREMENT_CANCEL_MARKER"
+          grep -A18 -F '  finalize:' "$FINALIZER" | grep -Fq 'queue: single'
+          grep -A18 -F '  finalize:' "$FINALIZER" | grep -Fq 'cancel-in-progress: false'
           [[ "$(grep -Fc 'case "$workflow_state" in' "$FINALIZER")" == '2' ]]
           [[ "$(grep -Fc 'disabled_manually)' "$FINALIZER")" == '2' ]]
           grep -Fq "if [[ \"\$status\" == 'completed' && \"\$conclusion\" == 'cancelled' ]]; then" "$FINALIZER"
