@@ -87,11 +87,13 @@ jobs:
             -f release_branch="$AUTHORIZED_CANDIDATE_BRANCH" 2>&1)"
           printf '%s\n' "$dispatch_output"
 
-          run_url="$(grep -Eo 'https://github\.com/[^[:space:]]+/actions/runs/[0-9]+' <<<"$dispatch_output" | tail -n 1 || true)"
-          if [[ "$run_url" =~ ^https://github\.com/${GITHUB_REPOSITORY}/actions/runs/([0-9]+)$ ]]; then
+          mapfile -t returned_run_urls < <(grep -Eo 'https://github\.com/[^[:space:]]+/actions/runs/[0-9]+' <<<"$dispatch_output" || true)
+          if (( ${#returned_run_urls[@]} == 1 )) &&
+             [[ "${returned_run_urls[0]}" =~ ^https://github\.com/${GITHUB_REPOSITORY}/actions/runs/([0-9]+)$ ]]; then
+            run_url="${returned_run_urls[0]}"
             run_id="${BASH_REMATCH[1]}"
           else
-            echo 'GitHub did not return an unambiguous created-run URL for this dispatch; refusing to infer run ownership.' >&2
+            echo "GitHub returned ${#returned_run_urls[@]} valid-looking run URLs; refusing to infer dispatch ownership." >&2
             exit 1
           fi
 
