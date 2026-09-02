@@ -405,6 +405,9 @@ jobs:
           grep -Fq 'actions/workflows/${workflow_id}/runs?per_page=100' "$FINALIZER"
           grep -Fq 'Another shared-group Protected-Test workflow ran or remained active after the successful UAT.' "$FINALIZER"
           grep -Fq 'FINALIZED_PROTECTED_UAT_SHARED_GROUP_POST_SUCCESS_DEPLOYMENTS=none' "$FINALIZER"
+          grep -Fq 'shared-group-runs-final.ndjson' "$FINALIZER"
+          grep -Fq 'Shared-group Protected-Test ledger changed immediately before success reporting.' "$FINALIZER"
+          grep -Fq 'FINALIZED_PROTECTED_UAT_PRE_COMMENT_SHARED_GROUP=quiescent' "$FINALIZER"
           [[ "$(grep -Fc 'case "$workflow_state" in' "$FINALIZER")" == '2' ]]
           [[ "$(grep -Fc 'disabled_manually)' "$FINALIZER")" == '2' ]]
           grep -Fq "if [[ \"\$status\" == 'completed' && \"\$conclusion\" == 'cancelled' ]]; then" "$FINALIZER"
