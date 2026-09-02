@@ -15,15 +15,107 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  finalize:
+  authorize_ghost_retirement:
     if: >-
+      github.event.issue.pull_request &&
+      github.event.issue.number == 794 &&
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.comment.body == 'FINALIZE PROTECTED UAT RUN 33666500248 RETIRE RUN 33654881418 SHA 2e257966dd51eab8d9f6431cf9b8fbded7ae458a'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      exact_ghost_only: ${{ steps.preflight.outputs.exact_ghost_only }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DEPLOY_WORKFLOW_ID: '315562561'
+      DEPLOY_WORKFLOW_PATH: .github/workflows/projectpulse-deploy-test.yml
+      RETIRED_RUN_ID: '33654881418'
+      RETIRED_RUN_ATTEMPT: '1'
+      RETIRED_RUN_CREATED_AT: '2026-09-02T16:26:03Z'
+      RETIRED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
+      RETIRED_RELEASE_BRANCH: fix/shared-project-document-planning-20260819
+    steps:
+      - name: Check out exact current main for concurrency inventory
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Authorize only the exact pending ghost for concurrency retirement
+        id: preflight
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$GITHUB_SHA" == "$actual_main" ]] || { echo 'Retirement preflight is not on exact current main.' >&2; exit 1; }
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]] || {
+            echo 'Protected-Test deployment workflow is not disabled.' >&2
+            exit 1
+          }
+          branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${RETIRED_RELEASE_BRANCH}" --jq '.object.sha')"
+          [[ "$branch_sha" == "$RETIRED_RELEASE_SHA" ]] || { echo 'Legacy candidate changed.' >&2; exit 1; }
+
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
+          jq -e --arg path "$DEPLOY_WORKFLOW_PATH" --arg sha "$RETIRED_RELEASE_SHA" --arg branch "$RETIRED_RELEASE_BRANCH" --arg created "$RETIRED_RUN_CREATED_AT" --argjson id "$RETIRED_RUN_ID" --argjson attempt "$RETIRED_RUN_ATTEMPT" --argjson workflow "$DEPLOY_WORKFLOW_ID" '
+            .id == $id and .run_attempt == $attempt and .workflow_id == $workflow and .path == $path
+            and .event == "workflow_dispatch" and .head_branch == $branch and .head_sha == $sha and .created_at == $created
+            and .status == "queued" and .conclusion == null
+          ' <<<"$run_json" >/dev/null || { echo 'Ghost run identity mismatch before concurrency retirement.' >&2; exit 1; }
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100" --jq '.total_count')" == '0' ]] || {
+            echo 'Ghost materialized a job before concurrency retirement.' >&2
+            exit 1
+          }
+
+          find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
+            | while IFS= read -r -d '' workflow; do
+                if grep -Eq '^  group:[[:space:]]*projectpulse-deploy-test[[:space:]]*$' "$workflow"; then
+                  printf '%s\n' "${workflow#./}"
+                fi
+              done \
+            | LC_ALL=C sort -u > "$RUNNER_TEMP/protected-test-workflows"
+          grep -Fxq "$DEPLOY_WORKFLOW_PATH" "$RUNNER_TEMP/protected-test-workflows" || {
+            echo 'Protected-Test deployment workflow was absent from the concurrency inventory.' >&2
+            exit 1
+          }
+          jq -Rn '[inputs | select(length > 0)]' < "$RUNNER_TEMP/protected-test-workflows" > "$RUNNER_TEMP/protected-test-workflows.json"
+
+          : > "$RUNNER_TEMP/active-runs.ndjson"
+          for run_status in queued in_progress waiting requested pending; do
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?status=${run_status}&per_page=100" \
+              --jq '.workflow_runs[]' >> "$RUNNER_TEMP/active-runs.ndjson"
+          done
+          if [[ -s "$RUNNER_TEMP/active-runs.ndjson" ]]; then
+            jq -s 'unique_by(.id)' "$RUNNER_TEMP/active-runs.ndjson" > "$RUNNER_TEMP/active-runs.json"
+          else
+            printf '[]\n' > "$RUNNER_TEMP/active-runs.json"
+          fi
+          jq --argjson protected "$(cat "$RUNNER_TEMP/protected-test-workflows.json")" \
+            'map(select(.path as $path | $protected | index($path)))' \
+            "$RUNNER_TEMP/active-runs.json" > "$RUNNER_TEMP/active-protected-test-runs.json"
+          jq -e --arg path "$DEPLOY_WORKFLOW_PATH" --arg sha "$RETIRED_RELEASE_SHA" --arg branch "$RETIRED_RELEASE_BRANCH" --arg created "$RETIRED_RUN_CREATED_AT" --argjson id "$RETIRED_RUN_ID" --argjson attempt "$RETIRED_RUN_ATTEMPT" --argjson workflow "$DEPLOY_WORKFLOW_ID" '
+            length == 1
+            and .[0].id == $id and .[0].run_attempt == $attempt and .[0].workflow_id == $workflow and .[0].path == $path
+            and .[0].event == "workflow_dispatch" and .[0].head_branch == $branch and .[0].head_sha == $sha and .[0].created_at == $created
+            and .[0].status == "queued" and .[0].conclusion == null
+          ' "$RUNNER_TEMP/active-protected-test-runs.json" >/dev/null || {
+            echo 'The exact ghost is not the sole active owner of the Protected-Test concurrency group.' >&2
+            cat "$RUNNER_TEMP/active-protected-test-runs.json" >&2
+            exit 1
+          }
+          echo 'exact_ghost_only=true' >> "$GITHUB_OUTPUT"
+          echo 'FINALIZED_PROTECTED_UAT_CONCURRENCY_PREFLIGHT=exact_ghost_only'
+
+  finalize:
+    needs: authorize_ghost_retirement
+    if: >-
+      needs.authorize_ghost_retirement.result == 'success' &&
+      needs.authorize_ghost_retirement.outputs.exact_ghost_only == 'true' &&
       github.event.issue.pull_request &&
       github.event.issue.number == 794 &&
       github.actor == 'ahmedadeyemi-cts' &&
       github.event.comment.body == 'FINALIZE PROTECTED UAT RUN 33666500248 RETIRE RUN 33654881418 SHA 2e257966dd51eab8d9f6431cf9b8fbded7ae458a'
     concurrency:
       group: projectpulse-deploy-test
-      cancel-in-progress: true
+      cancel-in-progress: ${{ needs.authorize_ghost_retirement.outputs.exact_ghost_only == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
