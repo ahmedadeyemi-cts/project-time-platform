@@ -43,7 +43,9 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.mode == 'restore-protected-uat-fences'
     runs-on: ubuntu-24.04
-    timeout-minutes: 80
+    # Covers the 50-minute source/cancellation window, the 68.4-minute maximum
+    # retry backoff for 36 enable-and-verify pairs, and API/inventory overhead.
+    timeout-minutes: 180
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SOURCE_RUN_ID: ${{ inputs.source_run_id }}
