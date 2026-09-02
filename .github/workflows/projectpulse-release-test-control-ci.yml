@@ -392,7 +392,63 @@ jobs:
           grep -Fq 'Scoped RBAC audit evidence is immutable' database/migrations/040_scoped_role_policy_versions/00_schema.sql
           grep -Fq 'WHERE audit.timesheet_id = t.timesheet_id' "$MODULE001B_FIXTURE"
           grep -Fq 'post_cancel_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"' "$FINALIZER"
+          grep -Fq '  workflow_dispatch:' "$FINALIZER"
           grep -Fq 'group: protected-uat-pr794-merged-main-relaunch' "$FINALIZER"
+          grep -Fq '  restore_fence_watchdog:' "$FINALIZER"
+          grep -A12 -F '  restore_fence_watchdog:' "$FINALIZER" | grep -Fq 'timeout-minutes: 180'
+          grep -Fq 'Arm durable fence restoration watchdog' "$FINALIZER"
+          grep -Fq 'Restore Protected-Test fences after source finalizer terminates' "$FINALIZER"
+          grep -Fq 'actions/workflows/${finalizer_workflow_id}/dispatches' "$FINALIZER"
+          grep -Fq 'DURABLE_PROTECTED_UAT_FENCE_WATCHDOG=armed' "$FINALIZER"
+          grep -Fq 'steps.arm.outcome == '\''success'\''' "$FINALIZER"
+          grep -Fq 'actions/runs/${SOURCE_RUN_ID}/force-cancel' "$FINALIZER"
+          [[ "$(grep -Fc 'actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}' "$FINALIZER")" -ge 4 ]]
+          grep -Fq 'gh_api_retry() {' "$FINALIZER"
+          grep -Fq 'GitHub API attempt $retry/12 failed; retrying restoration-critical operation.' "$FINALIZER"
+          [[ "$(grep -Fc 'gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}"' "$FINALIZER")" -ge 3 ]]
+          grep -Fq 'gh_api_retry --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/enable"' "$FINALIZER"
+          grep -Fq 'Source finalizer is not terminal; watchdog refuses to reopen Protected-Test admissions.' "$FINALIZER"
+          grep -Fq 'source_authorization_timeout_minutes=10' "$FINALIZER"
+          grep -Fq 'source_finalizer_timeout_minutes=20' "$FINALIZER"
+          grep -Fq 'source_cleanup_margin_minutes=10' "$FINALIZER"
+          grep -Fq 'source_cancellation_budget_minutes=10' "$FINALIZER"
+          grep -Fq 'watchdog_wait_deadline_epoch=$((' "$FINALIZER"
+          grep -Fq 'source_cancel_deadline_epoch=$((' "$FINALIZER"
+          ! grep -Fq 'watchdog_poll_attempts=$((' "$FINALIZER"
+          grep -Fq '  authorize_ghost_retirement:' "$FINALIZER"
+          grep -Fq "for run_status in queued in_progress waiting requested pending; do" "$FINALIZER"
+          grep -Fq "The exact ghost is not the sole active owner of the Protected-Test concurrency group." "$FINALIZER"
+          grep -Fq "echo 'exact_ghost_only=true' >> \"\$GITHUB_OUTPUT\"" "$FINALIZER"
+          grep -A18 -F '  finalize:' "$FINALIZER" | grep -Fq 'group: projectpulse-deploy-test'
+          grep -A18 -F '  finalize:' "$FINALIZER" | grep -Fq 'queue: single'
+          grep -A18 -F '  finalize:' "$FINALIZER" | grep -Fq 'cancel-in-progress: false'
+          grep -Fq 'Revalidate every shared-group owner after concurrency acquisition' "$FINALIZER"
+          grep -Fq 'protected-test-workflow-metadata.json' "$FINALIZER"
+          grep -Fq 'actions/workflows/${workflow_id}/runs?per_page=100' "$FINALIZER"
+          grep -Fq 'Another shared-group Protected-Test workflow ran or remained active after the successful UAT.' "$FINALIZER"
+          grep -Fq 'FINALIZED_PROTECTED_UAT_SHARED_GROUP_POST_SUCCESS_DEPLOYMENTS=none' "$FINALIZER"
+          grep -Fq 'shared-group-runs-final.ndjson' "$FINALIZER"
+          grep -Fq 'Shared-group Protected-Test ledger changed immediately before success reporting.' "$FINALIZER"
+          grep -Fq 'restore_fenced_workflows_on_exit' "$FINALIZER"
+          RESTORE_OUTPUT_MARKER='restore_workflow_ids: $'
+          RESTORE_OUTPUT_MARKER+="{{ steps.preflight.outputs.restore_workflow_ids }}"
+          grep -Fq "$RESTORE_OUTPUT_MARKER" "$FINALIZER"
+          WATCHDOG_OUTPUT_MARKER='watchdog_run_id: $'
+          WATCHDOG_OUTPUT_MARKER+="{{ steps.preflight.outputs.watchdog_run_id }}"
+          grep -Fq "$WATCHDOG_OUTPUT_MARKER" "$FINALIZER"
+          grep -Fq 'One or more shared-group workflows escaped the preflight admission fence.' "$FINALIZER"
+          grep -Fq 'Reinventory current main and record atomic success while fenced' "$FINALIZER"
+          grep -Fq 'protected-test-workflow-metadata-final.json' "$FINALIZER"
+          grep -Fq 'Current-main shared-group owner inventory changed during finalization.' "$FINALIZER"
+          grep -Fq 'actual_main_start' "$FINALIZER"
+          grep -Fq 'actual_main_end' "$FINALIZER"
+          grep -Fq 'FINALIZED_PROTECTED_UAT_ATOMIC_FENCED_LEDGER=quiescent' "$FINALIZER"
+          ! grep -Fq 'Record atomic successful finalization before reopening admissions' "$FINALIZER"
+          ! grep -Fq 'Restore fenced shared-group workflow states' "$FINALIZER"
+          grep -Fq 'FINALIZED_PROTECTED_UAT_SHARED_GROUP_FENCES_RESTORED=' "$FINALIZER"
+          [[ "$(grep -Fc 'case "$workflow_state" in' "$FINALIZER")" -ge 5 ]]
+          [[ "$(grep -Fc 'disabled_manually)' "$FINALIZER")" -ge 4 ]]
+          grep -Fq "if [[ \"\$status\" == 'completed' && \"\$conclusion\" == 'cancelled' ]]; then" "$FINALIZER"
           grep -Fq 'unexpected_active_seen=false' "$FINALIZER"
           grep -Fq 'mapfile -t active_run_ids' "$FINALIZER"
           grep -Fq 'actions/runs/${active_run_id}/cancel' "$FINALIZER"
