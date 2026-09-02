@@ -6,10 +6,13 @@ on:
     paths:
       - '.github/workflows/module-loading-assignment-propagation-ci.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
+      - '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
+      - '.github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml'
       - '.github/workflows/runtime-navigation-work-register-responsive-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+      - 'database/migrations/040_scoped_role_policy_versions/00_schema.sql'
       - 'database/migrations/097_project_planning_identity_safe_admission.sql'
       - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
       - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
