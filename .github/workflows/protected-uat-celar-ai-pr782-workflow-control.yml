@@ -1,4 +1,4 @@
-name: One-Time Protected UAT Workflow Control for PR794
+name: One-Time Protected UAT Queue Recovery for PR794
 
 on:
   issue_comment:
@@ -11,7 +11,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: protected-uat-pr794-workflow-control
+  group: protected-uat-pr794-queue-recovery
   cancel-in-progress: false
 
 jobs:
@@ -20,17 +20,19 @@ jobs:
       github.event.issue.pull_request &&
       github.event.issue.number == 794 &&
       github.actor == 'ahmedadeyemi-cts' &&
-      github.event.comment.body == 'DEPLOY PROTECTED UAT PR794 3d02b4cb62683b96554186f9d3a782fc1f21ca54'
+      github.event.comment.body == 'RESUME PROTECTED UAT PR794 RUN 33654881418 SHA 3d02b4cb62683b96554186f9d3a782fc1f21ca54'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
       EXPECTED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
+      EXPECTED_RUN_ID: '33654881418'
+      EXPECTED_RUN_CREATED_AT: '2026-09-02T16:26:03Z'
       CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
       AUTHORIZED_CANDIDATE_BRANCH: fix/shared-project-document-planning-20260819
     steps:
-      - name: Verify immutable reviewed PR794 release boundary
+      - name: Verify immutable reviewed PR794 recovery boundary
         id: boundary
         shell: bash
         run: |
@@ -51,11 +53,11 @@ jobs:
             exit 1
           }
           echo "controller_main_sha=$actual_main" >> "$GITHUB_OUTPUT"
-          echo "PROTECTED_UAT_REVIEWED_PR794_RUNTIME_SHA=$EXPECTED_RELEASE_SHA"
-          echo "PROTECTED_UAT_CONTROLLER_MAIN_SHA=$actual_main"
+          echo "PROTECTED_UAT_RECOVERY_RUNTIME_SHA=$EXPECTED_RELEASE_SHA"
+          echo "PROTECTED_UAT_RECOVERY_CONTROLLER_MAIN_SHA=$actual_main"
 
-      - name: Verify externally pinned governed candidate ref
-        id: pin
+      - name: Verify pinned ref and exact queued deployment
+        id: target
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -64,78 +66,90 @@ jobs:
             echo "Governed candidate ref is not pinned to reviewed PR794 runtime. Expected $EXPECTED_RELEASE_SHA, found $branch_sha" >&2
             exit 1
           }
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
-          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
-          [[ "$state" == 'active' ]] || { echo "Deployment workflow is not active: $state" >&2; exit 1; }
-          echo "PROTECTED_UAT_EXTERNALLY_PINNED_RELEASE_REF=$AUTHORIZED_CANDIDATE_BRANCH"
-          echo "PROTECTED_UAT_EXTERNALLY_PINNED_RELEASE_SHA=$EXPECTED_RELEASE_SHA"
 
-      - name: Dispatch exact governed Protected Test deployment
-        id: dispatch
-        shell: bash
-        run: |
-          set -Eeuo pipefail
           expected_workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.id')"
           [[ "$expected_workflow_id" =~ ^[0-9]+$ ]] || {
             echo "Could not resolve the governed deployment workflow ID: $expected_workflow_id" >&2
             exit 1
           }
-          dispatch_started_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          dispatch_output="$(gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" \
-            --ref "$AUTHORIZED_CANDIDATE_BRANCH" \
-            -f release_sha="$EXPECTED_RELEASE_SHA" \
-            -f release_branch="$AUTHORIZED_CANDIDATE_BRANCH" 2>&1)"
-          printf '%s\n' "$dispatch_output"
-
-          mapfile -t returned_run_urls < <(grep -Eo 'https://github\.com/[^[:space:]]+/actions/runs/[0-9]+' <<<"$dispatch_output" || true)
-          if (( ${#returned_run_urls[@]} == 1 )) &&
-             [[ "${returned_run_urls[0]}" =~ ^https://github\.com/${GITHUB_REPOSITORY}/actions/runs/([0-9]+)$ ]]; then
-            run_url="${returned_run_urls[0]}"
-            run_id="${BASH_REMATCH[1]}"
-          else
-            echo "GitHub returned ${#returned_run_urls[@]} valid-looking run URLs; refusing to infer dispatch ownership." >&2
-            exit 1
-          fi
-
-          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}")"
           jq -e \
             --arg expected_sha "$EXPECTED_RELEASE_SHA" \
             --arg expected_branch "$AUTHORIZED_CANDIDATE_BRANCH" \
-            --arg started_at "$dispatch_started_at" \
+            --arg created_at "$EXPECTED_RUN_CREATED_AT" \
+            --argjson expected_run_id "$EXPECTED_RUN_ID" \
             --argjson expected_workflow_id "$expected_workflow_id" \
-            '.workflow_id == $expected_workflow_id
+            '.id == $expected_run_id
+             and .workflow_id == $expected_workflow_id
              and .event == "workflow_dispatch"
              and .head_sha == $expected_sha
              and .head_branch == $expected_branch
-             and .created_at >= $started_at' <<<"$run_json" >/dev/null || {
-            echo 'The run returned by GitHub does not match the exact governed dispatch boundary.' >&2
-            jq '{id, workflow_id, event, head_sha, head_branch, created_at, html_url}' <<<"$run_json" >&2 || true
+             and .created_at == $created_at
+             and (.status == "queued" or .status == "in_progress")' <<<"$run_json" >/dev/null || {
+            echo 'The recovery target no longer matches the exact governed queued deployment.' >&2
+            jq '{id, workflow_id, event, head_sha, head_branch, created_at, status, conclusion, html_url}' <<<"$run_json" >&2 || true
             exit 1
           }
-          verified_run_url="$(jq -r '.html_url' <<<"$run_json")"
-          [[ "$verified_run_url" == "$run_url" ]] || {
-            echo "GitHub run URL mismatch: dispatched=$run_url verified=$verified_run_url" >&2
+          run_url="$(jq -r '.html_url' <<<"$run_json")"
+          [[ "$run_url" == "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}" ]] || {
+            echo "Unexpected recovery run URL: $run_url" >&2
             exit 1
           }
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
-          echo "PROTECTED_UAT_DEPLOYMENT_RUN_ID=$run_id"
-          echo "PROTECTED_UAT_DEPLOYMENT_RUN_URL=$run_url"
+          echo "PROTECTED_UAT_RECOVERY_RUN_ID=$EXPECTED_RUN_ID"
+          echo "PROTECTED_UAT_RECOVERY_RUN_URL=$run_url"
 
-      - name: Disable Protected Test deployment workflow after exact dispatch
+      - name: Re-enable deployment workflow for queued job materialization
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
+          [[ "$state" == 'active' ]] || { echo "Deployment workflow is not active: $state" >&2; exit 1; }
+          echo "PROTECTED_UAT_RECOVERY_WORKFLOW_STATE=$state"
+
+      - name: Wait for exact queued deployment job to materialize
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          materialized=false
+          for attempt in $(seq 1 120); do
+            run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}")"
+            run_status="$(jq -r '.status' <<<"$run_json")"
+            run_conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
+            jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}/jobs?filter=latest&per_page=100")"
+            job_count="$(jq -r '.total_count' <<<"$jobs_json")"
+            echo "PROTECTED_UAT_RECOVERY_POLL attempt=$attempt status=$run_status conclusion=${run_conclusion:-none} jobs=$job_count"
+            if [[ "$job_count" =~ ^[0-9]+$ ]] && (( job_count > 0 )); then
+              materialized=true
+              break
+            fi
+            [[ "$run_status" != 'completed' ]] || {
+              echo "The exact deployment completed without materializing a job: ${run_conclusion:-unknown}" >&2
+              exit 1
+            }
+            sleep 5
+          done
+          [[ "$materialized" == true ]] || {
+            echo 'The exact queued deployment did not materialize a job within ten minutes.' >&2
+            exit 1
+          }
+          echo 'PROTECTED_UAT_RECOVERY_JOB_MATERIALIZED=true'
+
+      - name: Seal deployment workflow after job materialization
         shell: bash
         run: |
           set -Eeuo pipefail
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
           state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
-          [[ "$state" == 'disabled_manually' ]] || { echo "Deployment workflow did not seal after dispatch: $state" >&2; exit 1; }
-          echo "PROTECTED_UAT_DEPLOY_WORKFLOW_SEALED_BEFORE_WATCH=$state"
+          [[ "$state" == 'disabled_manually' ]] || { echo "Deployment workflow did not seal after recovery: $state" >&2; exit 1; }
+          echo "PROTECTED_UAT_RECOVERY_WORKFLOW_SEALED=$state"
 
-      - name: Watch Protected Test deployment through completion
+      - name: Watch exact recovered deployment through completion
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh run watch '${{ steps.dispatch.outputs.run_id }}' --repo "$GITHUB_REPOSITORY" --interval 10 --exit-status
+          gh run watch "$EXPECTED_RUN_ID" --repo "$GITHUB_REPOSITORY" --interval 10 --exit-status
 
       - name: Reassert disabled Protected Test workflow after attempt
         if: always()
@@ -145,20 +159,20 @@ jobs:
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
           state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
           [[ "$state" == 'disabled_manually' ]] || { echo "Deployment workflow did not return to disabled state: $state" >&2; exit 1; }
-          echo "PROTECTED_UAT_DEPLOY_WORKFLOW_STATE=$state"
+          echo "PROTECTED_UAT_RECOVERY_FINAL_WORKFLOW_STATE=$state"
 
-      - name: Record successful deployment evidence
+      - name: Record successful recovery evidence
         if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment completed successfully.\n\n- Reviewed PR794 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Governed deployment run: ${{ steps.dispatch.outputs.run_url }}\n- Deployment workflow: sealed as \`disabled_manually\` before the long watch and reverified afterward\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT queue recovery completed successfully.\n\n- Reviewed PR794 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Recovery controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Adopted governed deployment run: ${{ steps.target.outputs.run_url }}\n- Duplicate deployment dispatched: no\n- Deployment workflow: re-enabled only for job materialization, then sealed as \`disabled_manually\`\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
 
-      - name: Record failed deployment evidence
+      - name: Record failed recovery evidence
         if: failure()
         shell: bash
         run: |
           set +e
-          run_url='${{ steps.dispatch.outputs.run_url }}'
-          [[ -n "$run_url" ]] || run_url='Deployment run was not created.'
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment failed or could not be dispatched.\n\n- Reviewed PR794 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Evidence: $run_url\n- Deployment workflow disable was attempted automatically.\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
+          run_url='${{ steps.target.outputs.run_url }}'
+          [[ -n "$run_url" ]] || run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT queue recovery failed.\n\n- Reviewed PR794 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Recovery controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Adopted governed deployment run: $run_url\n- Duplicate deployment dispatched: no\n- Deployment workflow disable was attempted automatically.\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
