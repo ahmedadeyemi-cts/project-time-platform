@@ -392,7 +392,15 @@ jobs:
           grep -Fq 'Scoped RBAC audit evidence is immutable' database/migrations/040_scoped_role_policy_versions/00_schema.sql
           grep -Fq 'WHERE audit.timesheet_id = t.timesheet_id' "$MODULE001B_FIXTURE"
           grep -Fq 'post_cancel_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"' "$FINALIZER"
+          grep -Fq '  workflow_dispatch:' "$FINALIZER"
           grep -Fq 'group: protected-uat-pr794-merged-main-relaunch' "$FINALIZER"
+          grep -Fq '  restore_fence_watchdog:' "$FINALIZER"
+          grep -Fq 'Arm durable fence restoration watchdog' "$FINALIZER"
+          grep -Fq 'Restore Protected-Test fences after source finalizer terminates' "$FINALIZER"
+          grep -Fq 'actions/workflows/${finalizer_workflow_id}/dispatches' "$FINALIZER"
+          grep -Fq 'DURABLE_PROTECTED_UAT_FENCE_WATCHDOG=armed' "$FINALIZER"
+          grep -Fq 'steps.arm.outcome == '\''success'\''' "$FINALIZER"
+          grep -Fq 'actions/runs/${SOURCE_RUN_ID}/force-cancel' "$FINALIZER"
           grep -Fq '  authorize_ghost_retirement:' "$FINALIZER"
           grep -Fq "for run_status in queued in_progress waiting requested pending; do" "$FINALIZER"
           grep -Fq "The exact ghost is not the sole active owner of the Protected-Test concurrency group." "$FINALIZER"
@@ -411,13 +419,17 @@ jobs:
           RESTORE_OUTPUT_MARKER='restore_workflow_ids: $'
           RESTORE_OUTPUT_MARKER+="{{ steps.preflight.outputs.restore_workflow_ids }}"
           grep -Fq "$RESTORE_OUTPUT_MARKER" "$FINALIZER"
+          WATCHDOG_OUTPUT_MARKER='watchdog_run_id: $'
+          WATCHDOG_OUTPUT_MARKER+="{{ steps.preflight.outputs.watchdog_run_id }}"
+          grep -Fq "$WATCHDOG_OUTPUT_MARKER" "$FINALIZER"
           grep -Fq 'One or more shared-group workflows escaped the preflight admission fence.' "$FINALIZER"
           grep -Fq 'Verify atomic fenced ledger before success reporting' "$FINALIZER"
           grep -Fq 'FINALIZED_PROTECTED_UAT_ATOMIC_FENCED_LEDGER=quiescent' "$FINALIZER"
-          grep -Fq 'Restore fenced shared-group workflow states' "$FINALIZER"
+          grep -Fq 'Record atomic successful finalization before reopening admissions' "$FINALIZER"
+          ! grep -Fq 'Restore fenced shared-group workflow states' "$FINALIZER"
           grep -Fq 'FINALIZED_PROTECTED_UAT_SHARED_GROUP_FENCES_RESTORED=' "$FINALIZER"
-          [[ "$(grep -Fc 'case "$workflow_state" in' "$FINALIZER")" == '3' ]]
-          [[ "$(grep -Fc 'disabled_manually)' "$FINALIZER")" == '2' ]]
+          [[ "$(grep -Fc 'case "$workflow_state" in' "$FINALIZER")" -ge 5 ]]
+          [[ "$(grep -Fc 'disabled_manually)' "$FINALIZER")" -ge 4 ]]
           grep -Fq "if [[ \"\$status\" == 'completed' && \"\$conclusion\" == 'cancelled' ]]; then" "$FINALIZER"
           grep -Fq 'unexpected_active_seen=false' "$FINALIZER"
           grep -Fq 'mapfile -t active_run_ids' "$FINALIZER"
