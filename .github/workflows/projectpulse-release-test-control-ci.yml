@@ -68,6 +68,7 @@ jobs:
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+          FINALIZER='.github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml'
           RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
           RETIRED_MODULE001B_UAT='.github/workflows/module001b-live-reallocation-protected-test-uat.yml'
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
@@ -267,6 +268,7 @@ jobs:
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+          FINALIZER='.github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml'
           RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
           RETIRED_MODULE001B_UAT='.github/workflows/module001b-live-reallocation-protected-test-uat.yml'
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
@@ -281,6 +283,7 @@ jobs:
           git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
 
           test -f "$CONTROLLER" || fail 'The governed protected-Test controller is missing.'
+          test -f "$FINALIZER" || fail 'The successful Protected-Test UAT finalizer is missing.'
           test ! -e "$RETIRED_CONTROLLER" || fail 'The unregistered duplicate protected-Test controller was not retired.'
           test ! -e "$RETIRED_MODULE001B_UAT" || fail 'The parallel Module 001B protected-Test mutator was not retired.'
           test -f "$UTILIZATION_UAT" || fail 'The utilization role-scoping UAT script is missing.'
@@ -382,6 +385,8 @@ jobs:
           ! grep -Fq 'DELETE FROM scoped_time_management_events' "$MODULE001B_FIXTURE"
           grep -Fq 'Scoped RBAC audit evidence is immutable' database/migrations/040_scoped_role_policy_versions/00_schema.sql
           grep -Fq 'WHERE audit.timesheet_id = t.timesheet_id' "$MODULE001B_FIXTURE"
+          grep -Fq 'post_cancel_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"' "$FINALIZER"
+          grep -Fq '.total_count == 0 and (.jobs | length) == 0' "$FINALIZER"
 
           ! grep -Fq 'full_imae' "$CONTROLLER"
           ! grep -Eq 'local[[:space:]]+repository="\$1".*image="\$repository:' "$CONTROLLER"
