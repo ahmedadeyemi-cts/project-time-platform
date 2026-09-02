@@ -43,7 +43,7 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.mode == 'restore-protected-uat-fences'
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 80
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SOURCE_RUN_ID: ${{ inputs.source_run_id }}
@@ -138,12 +138,13 @@ jobs:
           source_authorization_timeout_minutes=10
           source_finalizer_timeout_minutes=20
           source_cleanup_margin_minutes=10
+          source_cancellation_budget_minutes=10
           watchdog_poll_interval_seconds=5
-          watchdog_poll_attempts=$((
-            (source_authorization_timeout_minutes + source_finalizer_timeout_minutes + source_cleanup_margin_minutes) * 60
-            / watchdog_poll_interval_seconds
+          watchdog_wait_deadline_epoch=$((
+            $(date +%s)
+            + (source_authorization_timeout_minutes + source_finalizer_timeout_minutes + source_cleanup_margin_minutes) * 60
           ))
-          for attempt in $(seq 1 "$watchdog_poll_attempts"); do
+          while (( $(date +%s) < watchdog_wait_deadline_epoch )); do
             source_run_json="$(gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}")"
             [[ "$(jq -r '.run_attempt' <<<"$source_run_json")" == "$SOURCE_RUN_ATTEMPT" ]] || exit 1
             if [[ "$(jq -r '.status' <<<"$source_run_json")" == 'completed' ]]; then
@@ -155,7 +156,8 @@ jobs:
           if [[ "$source_terminal" != true ]]; then
             echo 'Source finalizer exceeded the durable fence deadline; cancelling it before restoration.' >&2
             gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/cancel" >/dev/null || true
-            for attempt in $(seq 1 60); do
+            source_cancel_deadline_epoch=$(( $(date +%s) + source_cancellation_budget_minutes * 60 ))
+            while (( $(date +%s) < source_cancel_deadline_epoch )); do
               source_run_json="$(gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}")"
               if [[ "$(jq -r '.status' <<<"$source_run_json")" == 'completed' ]]; then
                 source_terminal=true
