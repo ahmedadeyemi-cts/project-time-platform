@@ -1,4 +1,4 @@
-name: One-Time Protected UAT Workflow Control for PR790
+name: One-Time Protected UAT Workflow Control for PR791
 
 on:
   issue_comment:
@@ -11,25 +11,26 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: protected-uat-pr790-workflow-control
+  group: protected-uat-pr791-workflow-control
   cancel-in-progress: false
 
 jobs:
   control:
     if: >-
       github.event.issue.pull_request &&
+      github.event.issue.number == 791 &&
       github.actor == 'ahmedadeyemi-cts' &&
-      github.event.comment.body == 'DEPLOY PROTECTED UAT PR790 cb4dbe53371120239a9aa1bcb7f8467df5643e55'
+      github.event.comment.body == 'DEPLOY PROTECTED UAT PR791 3b7d534a57820f27e3a44bc89f740a09ba512cac'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
-      EXPECTED_RELEASE_SHA: cb4dbe53371120239a9aa1bcb7f8467df5643e55
+      EXPECTED_RELEASE_SHA: 3b7d534a57820f27e3a44bc89f740a09ba512cac
       CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
       AUTHORIZED_CANDIDATE_BRANCH: fix/shared-project-document-planning-20260819
     steps:
-      - name: Verify immutable repaired release boundary
+      - name: Verify immutable reviewed PR791 release boundary
         id: boundary
         shell: bash
         run: |
@@ -38,19 +39,19 @@ jobs:
           comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${EXPECTED_RELEASE_SHA}...${actual_main}")"
           status="$(jq -r '.status' <<<"$comparison")"
           [[ "$status" == 'ahead' || "$status" == 'identical' ]] || {
-            echo "Main no longer descends from the repaired release source: $status" >&2
+            echo "Main no longer descends from the reviewed PR791 release source: $status" >&2
             exit 1
           }
           mapfile -t changed_files < <(jq -r '.files[].filename' <<<"$comparison")
           printf '%s\n' "${changed_files[@]}" | sed '/^$/d' | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
           printf '%s\n' "$CONTROL_WORKFLOW_PATH" | LC_ALL=C sort -u > "$RUNNER_TEMP/allowed-files"
           cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/allowed-files" || {
-            echo 'Unexpected source drift exists between the repaired runtime and current main:' >&2
+            echo 'Unexpected source drift exists between the reviewed PR791 runtime and current main:' >&2
             diff -u "$RUNNER_TEMP/allowed-files" "$RUNNER_TEMP/changed-files" >&2 || true
             exit 1
           }
           echo "controller_main_sha=$actual_main" >> "$GITHUB_OUTPUT"
-          echo "PROTECTED_UAT_REPAIRED_RUNTIME_SHA=$EXPECTED_RELEASE_SHA"
+          echo "PROTECTED_UAT_REVIEWED_PR791_RUNTIME_SHA=$EXPECTED_RELEASE_SHA"
           echo "PROTECTED_UAT_CONTROLLER_MAIN_SHA=$actual_main"
 
       - name: Verify externally pinned governed candidate ref
@@ -60,7 +61,7 @@ jobs:
           set -Eeuo pipefail
           branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${AUTHORIZED_CANDIDATE_BRANCH}" --jq '.object.sha')"
           [[ "$branch_sha" == "$EXPECTED_RELEASE_SHA" ]] || {
-            echo "Governed candidate ref is not pinned to repaired runtime. Expected $EXPECTED_RELEASE_SHA, found $branch_sha" >&2
+            echo "Governed candidate ref is not pinned to reviewed PR791 runtime. Expected $EXPECTED_RELEASE_SHA, found $branch_sha" >&2
             exit 1
           }
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
@@ -74,29 +75,61 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" \
+          expected_workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.id')"
+          [[ "$expected_workflow_id" =~ ^[0-9]+$ ]] || {
+            echo "Could not resolve the governed deployment workflow ID: $expected_workflow_id" >&2
+            exit 1
+          }
+          dispatch_started_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          dispatch_output="$(gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" \
             --ref "$AUTHORIZED_CANDIDATE_BRANCH" \
             -f release_sha="$EXPECTED_RELEASE_SHA" \
-            -f release_branch="$AUTHORIZED_CANDIDATE_BRANCH"
+            -f release_branch="$AUTHORIZED_CANDIDATE_BRANCH" 2>&1)"
+          printf '%s\n' "$dispatch_output"
 
-          run_id=''
-          run_url=''
-          for attempt in $(seq 1 60); do
-            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$DEPLOY_WORKFLOW" \
-              --branch "$AUTHORIZED_CANDIDATE_BRANCH" --event workflow_dispatch --limit 30 \
-              --json databaseId,headSha,createdAt \
-              --jq "map(select(.headSha == \"$EXPECTED_RELEASE_SHA\")) | sort_by(.createdAt) | last | .databaseId // empty")"
-            if [[ -n "$run_id" ]]; then
-              run_url="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
-              break
-            fi
-            sleep 5
-          done
-          [[ -n "$run_id" ]] || { echo 'The governed Protected Test deployment run was not created.' >&2; exit 1; }
+          mapfile -t returned_run_urls < <(grep -Eo 'https://github\.com/[^[:space:]]+/actions/runs/[0-9]+' <<<"$dispatch_output" || true)
+          if (( ${#returned_run_urls[@]} == 1 )) &&
+             [[ "${returned_run_urls[0]}" =~ ^https://github\.com/${GITHUB_REPOSITORY}/actions/runs/([0-9]+)$ ]]; then
+            run_url="${returned_run_urls[0]}"
+            run_id="${BASH_REMATCH[1]}"
+          else
+            echo "GitHub returned ${#returned_run_urls[@]} valid-looking run URLs; refusing to infer dispatch ownership." >&2
+            exit 1
+          fi
+
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+          jq -e \
+            --arg expected_sha "$EXPECTED_RELEASE_SHA" \
+            --arg expected_branch "$AUTHORIZED_CANDIDATE_BRANCH" \
+            --arg started_at "$dispatch_started_at" \
+            --argjson expected_workflow_id "$expected_workflow_id" \
+            '.workflow_id == $expected_workflow_id
+             and .event == "workflow_dispatch"
+             and .head_sha == $expected_sha
+             and .head_branch == $expected_branch
+             and .created_at >= $started_at' <<<"$run_json" >/dev/null || {
+            echo 'The run returned by GitHub does not match the exact governed dispatch boundary.' >&2
+            jq '{id, workflow_id, event, head_sha, head_branch, created_at, html_url}' <<<"$run_json" >&2 || true
+            exit 1
+          }
+          verified_run_url="$(jq -r '.html_url' <<<"$run_json")"
+          [[ "$verified_run_url" == "$run_url" ]] || {
+            echo "GitHub run URL mismatch: dispatched=$run_url verified=$verified_run_url" >&2
+            exit 1
+          }
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
           echo "PROTECTED_UAT_DEPLOYMENT_RUN_ID=$run_id"
           echo "PROTECTED_UAT_DEPLOYMENT_RUN_URL=$run_url"
+
+      - name: Disable Protected Test deployment workflow after exact dispatch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
+          [[ "$state" == 'disabled_manually' ]] || { echo "Deployment workflow did not seal after dispatch: $state" >&2; exit 1; }
+          echo "PROTECTED_UAT_DEPLOY_WORKFLOW_SEALED_BEFORE_WATCH=$state"
 
       - name: Watch Protected Test deployment through completion
         shell: bash
@@ -104,7 +137,7 @@ jobs:
           set -Eeuo pipefail
           gh run watch '${{ steps.dispatch.outputs.run_id }}' --repo "$GITHUB_REPOSITORY" --interval 10 --exit-status
 
-      - name: Disable Protected Test deployment workflow after attempt
+      - name: Reassert disabled Protected Test workflow after attempt
         if: always()
         shell: bash
         run: |
@@ -119,7 +152,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment completed successfully.\n\n- Repaired runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Governed deployment run: ${{ steps.dispatch.outputs.run_url }}\n- Deployment workflow: returned to \`disabled_manually\`\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment completed successfully.\n\n- Reviewed PR791 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Governed deployment run: ${{ steps.dispatch.outputs.run_url }}\n- Deployment workflow: sealed as \`disabled_manually\` before the long watch and reverified afterward\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
 
       - name: Record failed deployment evidence
         if: failure()
@@ -128,4 +161,4 @@ jobs:
           set +e
           run_url='${{ steps.dispatch.outputs.run_url }}'
           [[ -n "$run_url" ]] || run_url='Deployment run was not created.'
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment failed or could not be dispatched.\n\n- Repaired runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Evidence: $run_url\n- Deployment workflow disable was attempted automatically.\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment failed or could not be dispatched.\n\n- Reviewed PR791 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Evidence: $run_url\n- Deployment workflow disable was attempted automatically.\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
