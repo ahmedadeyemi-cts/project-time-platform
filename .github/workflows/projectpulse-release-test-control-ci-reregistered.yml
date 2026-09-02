@@ -392,6 +392,7 @@ jobs:
           grep -Fq 'Scoped RBAC audit evidence is immutable' database/migrations/040_scoped_role_policy_versions/00_schema.sql
           grep -Fq 'WHERE audit.timesheet_id = t.timesheet_id' "$MODULE001B_FIXTURE"
           grep -Fq 'post_cancel_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"' "$FINALIZER"
+          grep -Fq 'group: protected-uat-pr794-merged-main-relaunch' "$FINALIZER"
           grep -Fq '.total_count == 0 and (.jobs | length) == 0' "$FINALIZER"
           grep -Fq '.created_at >= $created and .id != $id' "$FINALIZER"
           grep -Fq '(.run_started_at // .created_at) >= $created' "$FINALIZER"
