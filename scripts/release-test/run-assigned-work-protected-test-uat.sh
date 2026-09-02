@@ -353,8 +353,7 @@ module001b_wait_single_revision_converged() {
       && "$latest_ready" == "$expected_revision" \
       && "$active_count" == 1 \
       && "$active_name" == "$expected_revision" \
-      && "$revision_active" == true \
-      && "$revision_image" == "$MODULE001B_API_IMAGE" ]]; then
+      && "$revision_active" == true ]]; then
       ready=true
       break
     fi
@@ -363,7 +362,7 @@ module001b_wait_single_revision_converged() {
   done
 
   [[ "$ready" == true ]] || return 1
-  echo "MODULE001B_SINGLE_REVISION_CONVERGED label=$label revision=$expected_revision activeCount=1" >&2
+  echo "MODULE001B_SINGLE_REVISION_CONVERGED label=$label revision=$expected_revision activeCount=1 imageAuthority=wait-containerapp-ready-revision.sh" >&2
 }
 
 module001b_disable_gate() {
