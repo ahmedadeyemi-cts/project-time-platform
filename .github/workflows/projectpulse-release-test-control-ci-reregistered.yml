@@ -393,6 +393,8 @@ jobs:
           grep -Fq '.created_at >= $created and .id != $id' "$FINALIZER"
           grep -Fq 'final_workflow_state="$(gh api' "$FINALIZER"
           grep -Fq 'manual sealing required immediately' "$FINALIZER"
+          grep -A5 -F -- '- name: Reassert disabled Protected-Test workflow' "$FINALIZER" | grep -Fq 'set -Eeuo pipefail'
+          grep -Fq 'sealing_status="NOT VERIFIED (observed \`${final_workflow_state:-unavailable}\`); manual sealing required immediately"' "$FINALIZER"
 
           ! grep -Fq 'full_imae' "$CONTROLLER"
           ! grep -Eq 'local[[:space:]]+repository="\$1".*image="\$repository:' "$CONTROLLER"
