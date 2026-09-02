@@ -401,6 +401,7 @@ jobs:
           grep -Fq 'DURABLE_PROTECTED_UAT_FENCE_WATCHDOG=armed' "$FINALIZER"
           grep -Fq 'steps.arm.outcome == '\''success'\''' "$FINALIZER"
           grep -Fq 'actions/runs/${SOURCE_RUN_ID}/force-cancel' "$FINALIZER"
+          [[ "$(grep -Fc 'actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}' "$FINALIZER")" -ge 4 ]]
           grep -Fq 'Source finalizer is not terminal; watchdog refuses to reopen Protected-Test admissions.' "$FINALIZER"
           grep -Fq 'source_authorization_timeout_minutes=10' "$FINALIZER"
           grep -Fq 'source_finalizer_timeout_minutes=20' "$FINALIZER"
