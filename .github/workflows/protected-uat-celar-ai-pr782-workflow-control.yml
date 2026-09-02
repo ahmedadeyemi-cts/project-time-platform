@@ -3,6 +3,33 @@ name: Finalize Successful Protected UAT for PR794
 on:
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Internal durable cleanup mode
+        required: true
+        type: string
+      source_run_id:
+        description: Authorized source finalizer run
+        required: true
+        type: string
+      source_run_attempt:
+        description: Authorized source finalizer attempt
+        required: true
+        type: string
+      source_head_sha:
+        description: Exact main SHA of the source finalizer
+        required: true
+        type: string
+      restore_workflow_ids:
+        description: Exact comma-separated originally active shared-group owners
+        required: false
+        type: string
+
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch'
+      && format('Restore Protected-Test fences for finalizer {0}', inputs.source_run_id)
+      || format('Finalize Protected UAT from PR #{0}', github.event.issue.number) }}
 
 permissions:
   actions: write
@@ -10,11 +37,152 @@ permissions:
   issues: write
   pull-requests: write
 
-concurrency:
-  group: protected-uat-pr794-merged-main-relaunch
-  cancel-in-progress: false
-
 jobs:
+  restore_fence_watchdog:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.mode == 'restore-protected-uat-fences'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+      SOURCE_HEAD_SHA: ${{ inputs.source_head_sha }}
+      RESTORE_WORKFLOW_IDS: ${{ inputs.restore_workflow_ids }}
+      DEPLOY_WORKFLOW_ID: '315562561'
+      DEPLOY_WORKFLOW_PATH: .github/workflows/projectpulse-deploy-test.yml
+    steps:
+      - name: Check out exact current main for durable fence restoration
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Arm durable fence restoration watchdog
+        id: arm
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ && "$SOURCE_RUN_ATTEMPT" =~ ^[0-9]+$ && "$SOURCE_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Invalid source-finalizer restoration identity.' >&2
+            exit 1
+          }
+          actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$GITHUB_SHA" == "$actual_main" && "$SOURCE_HEAD_SHA" == "$actual_main" ]] || {
+            echo 'Fence restoration watchdog is not pinned to exact current main.' >&2
+            exit 1
+          }
+          current_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")"
+          source_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")"
+          current_workflow_id="$(jq -r '.workflow_id' <<<"$current_run_json")"
+          jq -e --arg sha "$SOURCE_HEAD_SHA" --arg actor 'ahmedadeyemi-cts' --argjson id "$SOURCE_RUN_ID" --argjson attempt "$SOURCE_RUN_ATTEMPT" --argjson workflow "$current_workflow_id" '
+            .id == $id and .run_attempt == $attempt and .workflow_id == $workflow
+            and .event == "issue_comment" and .head_branch == "main" and .head_sha == $sha
+            and .actor.login == $actor and (.status == "queued" or .status == "in_progress")
+          ' <<<"$source_run_json" >/dev/null || {
+            echo 'Fence restoration watchdog source run is not the exact active authorized finalizer.' >&2
+            exit 1
+          }
+
+          find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
+            | while IFS= read -r -d '' workflow; do
+                if grep -Eq '^  group:[[:space:]]*projectpulse-deploy-test[[:space:]]*$' "$workflow"; then
+                  printf '%s\n' "${workflow#./}"
+                fi
+              done \
+            | LC_ALL=C sort -u > "$RUNNER_TEMP/watchdog-protected-test-workflows"
+          jq -Rn '[inputs | select(length > 0)]' < "$RUNNER_TEMP/watchdog-protected-test-workflows" > "$RUNNER_TEMP/watchdog-protected-test-workflows.json"
+          workflow_pages="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows?per_page=100")"
+          jq -c '[.[].workflows[]] | unique_by(.id)' <<<"$workflow_pages" > "$RUNNER_TEMP/watchdog-repository-workflows.json"
+          jq --argjson protected "$(cat "$RUNNER_TEMP/watchdog-protected-test-workflows.json")" \
+            'map(select(.path as $path | $protected | index($path)))' \
+            "$RUNNER_TEMP/watchdog-repository-workflows.json" > "$RUNNER_TEMP/watchdog-protected-test-workflow-metadata.json"
+          expected_workflow_count="$(jq -r 'length' "$RUNNER_TEMP/watchdog-protected-test-workflows.json")"
+          actual_workflow_count="$(jq -r 'length' "$RUNNER_TEMP/watchdog-protected-test-workflow-metadata.json")"
+          [[ "$expected_workflow_count" -gt 0 && "$actual_workflow_count" == "$expected_workflow_count" ]] || {
+            echo "Watchdog shared-group inventory mismatch: expected=$expected_workflow_count actual=$actual_workflow_count" >&2
+            exit 1
+          }
+          jq -e 'all(.[]; .state == "active" or .state == "disabled_manually" or .state == "disabled_inactivity")' \
+            "$RUNNER_TEMP/watchdog-protected-test-workflow-metadata.json" >/dev/null
+          jq -r --argjson deploy "$DEPLOY_WORKFLOW_ID" '.[] | select(.id != $deploy and .state == "active") | .id' \
+            "$RUNNER_TEMP/watchdog-protected-test-workflow-metadata.json" | LC_ALL=C sort -n -u > "$RUNNER_TEMP/watchdog-expected-restore-workflow-ids"
+          expected_restore_workflow_ids="$(paste -sd, "$RUNNER_TEMP/watchdog-expected-restore-workflow-ids")"
+          [[ "$RESTORE_WORKFLOW_IDS" == "$expected_restore_workflow_ids" ]] || {
+            echo 'Watchdog restoration set differs from the exact originally active shared-group owners.' >&2
+            echo "expected=$expected_restore_workflow_ids actual=$RESTORE_WORKFLOW_IDS" >&2
+            exit 1
+          }
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          echo "DURABLE_PROTECTED_UAT_FENCE_WATCHDOG=armed source_run=$SOURCE_RUN_ID owners=$actual_workflow_count"
+
+      - name: Restore Protected-Test fences after source finalizer terminates
+        if: always() && steps.arm.outcome == 'success'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source_terminal=false
+          for attempt in $(seq 1 300); do
+            source_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")"
+            [[ "$(jq -r '.run_attempt' <<<"$source_run_json")" == "$SOURCE_RUN_ATTEMPT" ]] || exit 1
+            if [[ "$(jq -r '.status' <<<"$source_run_json")" == 'completed' ]]; then
+              source_terminal=true
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$source_terminal" != true ]]; then
+            echo 'Source finalizer exceeded the durable fence deadline; cancelling it before restoration.' >&2
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/cancel" >/dev/null || true
+            for attempt in $(seq 1 60); do
+              source_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")"
+              if [[ "$(jq -r '.status' <<<"$source_run_json")" == 'completed' ]]; then
+                source_terminal=true
+                break
+              fi
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/force-cancel" >/dev/null || true
+              sleep 2
+            done
+          fi
+
+          workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
+          case "$workflow_state" in
+            active)
+              gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+              ;;
+            disabled_manually)
+              ;;
+            *)
+              echo "Unexpected deployment workflow state during watchdog restoration: $workflow_state" >&2
+              exit 1
+              ;;
+          esac
+          restored_count=0
+          IFS=',' read -r -a workflow_ids <<<"$RESTORE_WORKFLOW_IDS"
+          for workflow_id in "${workflow_ids[@]}"; do
+            [[ -n "$workflow_id" ]] || continue
+            [[ "$workflow_id" =~ ^[0-9]+$ && "$workflow_id" != "$DEPLOY_WORKFLOW_ID" ]] || exit 1
+            jq -e --argjson id "$workflow_id" 'any(.[]; .id == $id)' "$RUNNER_TEMP/watchdog-protected-test-workflow-metadata.json" >/dev/null
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/enable" >/dev/null
+            restored_count=$((restored_count + 1))
+          done
+          for workflow_id in "${workflow_ids[@]}"; do
+            [[ -n "$workflow_id" ]] || continue
+            [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}" --jq '.state')" == 'active' ]] || {
+              echo "Durable watchdog failed to restore shared-group workflow $workflow_id." >&2
+              exit 1
+            }
+          done
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          source_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")"
+          source_status="$(jq -r '.status' <<<"$source_run_json")"
+          source_conclusion="$(jq -r '.conclusion // "unavailable"' <<<"$source_run_json")"
+          source_url="$(jq -r '.html_url' <<<"$source_run_json")"
+          watchdog_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh pr comment 794 --repo "$GITHUB_REPOSITORY" --body "Protected-Test admission-fence cleanup completed by the independently armed watchdog.\n\n- Source finalizer: $source_url (status \`$source_status\`, conclusion \`$source_conclusion\`)\n- Watchdog: $watchdog_url\n- Originally active shared-group workflows restored: \`$restored_count\`\n- Protected-Test deployment workflow: \`disabled_manually\`\n- Atomic finalization evidence, when present, was recorded before admissions reopened\n- Production mutation: none\n- Module 025 mutation: none"
+          echo "FINALIZED_PROTECTED_UAT_SHARED_GROUP_FENCES_RESTORED=$restored_count"
+          echo "DURABLE_PROTECTED_UAT_FENCE_WATCHDOG=completed source_terminal=$source_terminal"
+
   authorize_ghost_retirement:
     if: >-
       github.event.issue.pull_request &&
@@ -23,9 +191,13 @@ jobs:
       github.event.comment.body == 'FINALIZE PROTECTED UAT RUN 33666500248 RETIRE RUN 33654881418 SHA 2e257966dd51eab8d9f6431cf9b8fbded7ae458a'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    concurrency:
+      group: protected-uat-pr794-merged-main-relaunch
+      cancel-in-progress: false
     outputs:
       exact_ghost_only: ${{ steps.preflight.outputs.exact_ghost_only }}
       restore_workflow_ids: ${{ steps.preflight.outputs.restore_workflow_ids }}
+      watchdog_run_id: ${{ steps.preflight.outputs.watchdog_run_id }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DEPLOY_WORKFLOW_ID: '315562561'
@@ -92,6 +264,69 @@ jobs:
           }
 
           : > "$RUNNER_TEMP/restore-workflow-ids"
+          while IFS=$'\t' read -r workflow_id workflow_state workflow_path; do
+            case "$workflow_state" in
+              active)
+                [[ "$workflow_id" != "$DEPLOY_WORKFLOW_ID" ]] || {
+                  echo 'Protected-Test deployment workflow unexpectedly became active before fencing.' >&2
+                  exit 1
+                }
+                printf '%s\n' "$workflow_id" >> "$RUNNER_TEMP/restore-workflow-ids"
+                ;;
+              disabled_manually|disabled_inactivity)
+                ;;
+              *)
+                echo "Unexpected shared-group workflow state before watchdog arming: id=$workflow_id path=$workflow_path state=$workflow_state" >&2
+                exit 1
+                ;;
+            esac
+          done < <(jq -r '.[] | [.id, .state, .path] | @tsv' "$RUNNER_TEMP/protected-test-workflow-metadata.json")
+          LC_ALL=C sort -n -u "$RUNNER_TEMP/restore-workflow-ids" -o "$RUNNER_TEMP/restore-workflow-ids"
+          restore_workflow_ids="$(paste -sd, "$RUNNER_TEMP/restore-workflow-ids")"
+
+          current_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")"
+          finalizer_workflow_id="$(jq -r '.workflow_id' <<<"$current_run_json")"
+          [[ "$finalizer_workflow_id" =~ ^[0-9]+$ ]]
+          watchdog_title="Restore Protected-Test fences for finalizer ${GITHUB_RUN_ID}"
+          watchdog_dispatch_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          jq -n \
+            --arg ref main \
+            --arg mode restore-protected-uat-fences \
+            --arg source_run_id "$GITHUB_RUN_ID" \
+            --arg source_run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg source_head_sha "$GITHUB_SHA" \
+            --arg restore_workflow_ids "$restore_workflow_ids" \
+            '{ref: $ref, inputs: {mode: $mode, source_run_id: $source_run_id, source_run_attempt: $source_run_attempt, source_head_sha: $source_head_sha, restore_workflow_ids: $restore_workflow_ids}}' \
+            > "$RUNNER_TEMP/watchdog-dispatch.json"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/${finalizer_workflow_id}/dispatches" \
+            --input "$RUNNER_TEMP/watchdog-dispatch.json" >/dev/null
+          watchdog_run_id=''
+          watchdog_armed=false
+          for attempt in $(seq 1 90); do
+            watchdog_runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${finalizer_workflow_id}/runs?event=workflow_dispatch&per_page=100")"
+            watchdog_run_id="$(jq -r --arg title "$watchdog_title" --arg sha "$GITHUB_SHA" --arg dispatched "$watchdog_dispatch_at" '
+              [.workflow_runs[] | select(.display_title == $title and .head_sha == $sha and .created_at >= $dispatched)]
+              | sort_by(.created_at) | last | .id // empty
+            ' <<<"$watchdog_runs_json")"
+            if [[ "$watchdog_run_id" =~ ^[0-9]+$ ]]; then
+              watchdog_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${watchdog_run_id}/jobs?filter=latest&per_page=100")"
+              if jq -e '([.jobs[].steps[]? | select(.name == "Arm durable fence restoration watchdog" and .status == "completed" and .conclusion == "success")] | length) == 1' <<<"$watchdog_jobs_json" >/dev/null; then
+                watchdog_armed=true
+                break
+              fi
+              watchdog_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${watchdog_run_id}")"
+              if [[ "$(jq -r '.status' <<<"$watchdog_run_json")" == 'completed' ]]; then
+                echo "Durable fence watchdog terminated before arming: run=$watchdog_run_id conclusion=$(jq -r '.conclusion' <<<"$watchdog_run_json")" >&2
+                exit 1
+              fi
+            fi
+            sleep 2
+          done
+          [[ "$watchdog_armed" == true ]] || {
+            echo 'Durable fence watchdog did not arm before the admission fence deadline.' >&2
+            exit 1
+          }
+
           fence_handoff=false
           restore_fenced_workflows_on_exit() {
             local exit_code=$?
@@ -104,20 +339,20 @@ jobs:
             return "$exit_code"
           }
           trap restore_fenced_workflows_on_exit EXIT
-          while IFS=$'\t' read -r workflow_id workflow_state workflow_path; do
+          while IFS= read -r workflow_id; do
+            workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}" --jq '.state')"
             case "$workflow_state" in
               active)
-                printf '%s\n' "$workflow_id" >> "$RUNNER_TEMP/restore-workflow-ids"
                 gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/disable" >/dev/null
                 ;;
-              disabled_manually|disabled_inactivity)
+              disabled_manually)
                 ;;
               *)
-                echo "Unexpected shared-group workflow state before fencing: id=$workflow_id path=$workflow_path state=$workflow_state" >&2
+                echo "Unexpected originally-active workflow state during fencing: id=$workflow_id state=$workflow_state" >&2
                 exit 1
                 ;;
             esac
-          done < <(jq -r '.[] | [.id, .state, .path] | @tsv' "$RUNNER_TEMP/protected-test-workflow-metadata.json")
+          done < "$RUNNER_TEMP/restore-workflow-ids"
           while IFS= read -r workflow_id; do
             [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}" --jq '.state')" == 'disabled_manually' ]] || {
               echo "Failed to fence shared-group workflow $workflow_id." >&2
@@ -125,6 +360,12 @@ jobs:
             }
           done < "$RUNNER_TEMP/restore-workflow-ids"
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          while IFS= read -r workflow_id; do
+            [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}" --jq '.state')" == disabled_* ]] || {
+              echo "Shared-group workflow $workflow_id remained open after atomic admission fencing." >&2
+              exit 1
+            }
+          done < <(jq -r '.[].id' "$RUNNER_TEMP/protected-test-workflow-metadata.json")
 
           : > "$RUNNER_TEMP/active-runs.ndjson"
           for run_status in queued in_progress waiting requested pending; do
@@ -149,11 +390,11 @@ jobs:
             cat "$RUNNER_TEMP/active-protected-test-runs.json" >&2
             exit 1
           }
-          restore_workflow_ids="$(paste -sd, "$RUNNER_TEMP/restore-workflow-ids")"
           echo 'exact_ghost_only=true' >> "$GITHUB_OUTPUT"
           echo "restore_workflow_ids=$restore_workflow_ids" >> "$GITHUB_OUTPUT"
+          echo "watchdog_run_id=$watchdog_run_id" >> "$GITHUB_OUTPUT"
           fence_handoff=true
-          echo "FINALIZED_PROTECTED_UAT_CONCURRENCY_PREFLIGHT=exact_ghost_only fenced=$actual_workflow_count"
+          echo "FINALIZED_PROTECTED_UAT_CONCURRENCY_PREFLIGHT=exact_ghost_only fenced=$actual_workflow_count watchdog=$watchdog_run_id"
 
   finalize:
     needs: authorize_ghost_retirement
@@ -495,42 +736,13 @@ jobs:
           echo "shared_owner_count=$shared_owner_count" >> "$GITHUB_OUTPUT"
           echo "FINALIZED_PROTECTED_UAT_ATOMIC_FENCED_LEDGER=quiescent owners=$shared_owner_count"
 
-      - name: Restore fenced shared-group workflow states
-        id: restore_fences
-        if: always()
-        shell: bash
-        env:
-          RESTORE_WORKFLOW_IDS: ${{ needs.authorize_ghost_retirement.outputs.restore_workflow_ids }}
-        run: |
-          set -Eeuo pipefail
-          restored_count=0
-          IFS=',' read -r -a workflow_ids <<<"$RESTORE_WORKFLOW_IDS"
-          for workflow_id in "${workflow_ids[@]}"; do
-            [[ -n "$workflow_id" ]] || continue
-            [[ "$workflow_id" =~ ^[0-9]+$ && "$workflow_id" != "$DEPLOY_WORKFLOW_ID" ]] || {
-              echo "Invalid workflow restoration identity: $workflow_id" >&2
-              exit 1
-            }
-            gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/enable" >/dev/null
-            restored_count=$((restored_count + 1))
-          done
-          for workflow_id in "${workflow_ids[@]}"; do
-            [[ -n "$workflow_id" ]] || continue
-            [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}" --jq '.state')" == 'active' ]] || {
-              echo "Failed to restore shared-group workflow $workflow_id." >&2
-              exit 1
-            }
-          done
-          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
-          echo "restored_count=$restored_count" >> "$GITHUB_OUTPUT"
-          echo "FINALIZED_PROTECTED_UAT_SHARED_GROUP_FENCES_RESTORED=$restored_count"
-
-      - name: Record successful finalization evidence
+      - name: Record atomic successful finalization before reopening admissions
         if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT completed and finalization succeeded.\n\n- Successful deployment: ${{ steps.evidence.outputs.run_url }}\n- Release SHA: \`$SUCCESSFUL_RELEASE_SHA\`\n- Evidence artifact: \`$SUCCESSFUL_ARTIFACT_NAME\` (ID ${{ steps.evidence.outputs.artifact_id }}, digest \`${{ steps.evidence.outputs.artifact_digest }}\`)\n- Module 001B assigned-work/live-reallocation UAT: passed\n- Utilization role-scoping UAT: passed\n- Retired zero-job ghost: ${{ steps.retired.outputs.retired_url }}\n- Deployment workflow: \`disabled_manually\`\n- Atomic shared-group ledger owners verified: \`${{ steps.atomic_ledger.outputs.shared_owner_count }}\`\n- Temporarily fenced workflow states restored: \`${{ steps.restore_fences.outputs.restored_count }}\`\n- Legacy candidate ref restoration: pending\n- Production mutation: none\n- Module 025 mutation: none"
+          watchdog_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${{ needs.authorize_ghost_retirement.outputs.watchdog_run_id }}"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT evidence and zero-job ghost retirement were atomically sealed while every shared-group admission remained fenced.\n\n- Successful deployment: ${{ steps.evidence.outputs.run_url }}\n- Release SHA: \`$SUCCESSFUL_RELEASE_SHA\`\n- Evidence artifact: \`$SUCCESSFUL_ARTIFACT_NAME\` (ID ${{ steps.evidence.outputs.artifact_id }}, digest \`${{ steps.evidence.outputs.artifact_digest }}\`)\n- Module 001B assigned-work/live-reallocation UAT: passed\n- Utilization role-scoping UAT: passed\n- Retired zero-job ghost: ${{ steps.retired.outputs.retired_url }}\n- Deployment workflow: \`disabled_manually\`\n- Atomic shared-group ledger owners verified: \`${{ steps.atomic_ledger.outputs.shared_owner_count }}\`\n- Independently armed fence-restoration watchdog: $watchdog_url\n- Admission fences: held until this source finalizer reaches a terminal state; the watchdog then restores exactly the originally active owners\n- Legacy candidate ref restoration: pending\n- Production mutation: none\n- Module 025 mutation: none"
 
       - name: Record failed finalization evidence
         if: failure()
