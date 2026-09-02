@@ -410,7 +410,26 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT completed and finalization succeeded.\n\n- Successful deployment: ${{ steps.evidence.outputs.run_url }}\n- Release SHA: \`$SUCCESSFUL_RELEASE_SHA\`\n- Evidence artifact: \`$SUCCESSFUL_ARTIFACT_NAME\` (ID ${{ steps.evidence.outputs.artifact_id }}, digest \`${{ steps.evidence.outputs.artifact_digest }}\`)\n- Module 001B assigned-work/live-reallocation UAT: passed\n- Utilization role-scoping UAT: passed\n- Retired zero-job ghost: ${{ steps.retired.outputs.retired_url }}\n- Deployment workflow: \`disabled_manually\`\n- Legacy candidate ref restoration: pending\n- Production mutation: none\n- Module 025 mutation: none"
+          : > "$RUNNER_TEMP/shared-group-runs-final.ndjson"
+          while IFS= read -r workflow_id; do
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=100" \
+              --jq '.workflow_runs[]' >> "$RUNNER_TEMP/shared-group-runs-final.ndjson"
+          done < <(jq -r '.[].id' "$RUNNER_TEMP/protected-test-workflow-metadata.json")
+          jq -s 'unique_by(.id)' "$RUNNER_TEMP/shared-group-runs-final.ndjson" > "$RUNNER_TEMP/shared-group-runs-final.json"
+          jq -e --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
+            ([.[] | select(.status != "completed")] | length) == 0
+            and ([.[] | select(.id != $success and .id != $retired and (
+              .created_at >= $created or ((.run_started_at // .created_at) >= $created)
+            ))] | length) == 0
+            and ([.[] | select(.id == $success and .run_attempt == 1 and .status == "completed" and .conclusion == "success")] | length) == 1
+            and ([.[] | select(.id == $retired and .run_attempt == 1 and .status == "completed" and .conclusion == "cancelled")] | length) == 1
+          ' "$RUNNER_TEMP/shared-group-runs-final.json" >/dev/null || {
+            echo 'Shared-group Protected-Test ledger changed immediately before success reporting.' >&2
+            exit 1
+          }
+          shared_owner_count="$(jq -r 'length' "$RUNNER_TEMP/protected-test-workflow-metadata.json")"
+          echo "FINALIZED_PROTECTED_UAT_PRE_COMMENT_SHARED_GROUP=quiescent owners=$shared_owner_count"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT completed and finalization succeeded.\n\n- Successful deployment: ${{ steps.evidence.outputs.run_url }}\n- Release SHA: \`$SUCCESSFUL_RELEASE_SHA\`\n- Evidence artifact: \`$SUCCESSFUL_ARTIFACT_NAME\` (ID ${{ steps.evidence.outputs.artifact_id }}, digest \`${{ steps.evidence.outputs.artifact_digest }}\`)\n- Module 001B assigned-work/live-reallocation UAT: passed\n- Utilization role-scoping UAT: passed\n- Retired zero-job ghost: ${{ steps.retired.outputs.retired_url }}\n- Deployment workflow: \`disabled_manually\`\n- Shared Protected-Test concurrency owners verified quiescent: \`$shared_owner_count\`\n- Legacy candidate ref restoration: pending\n- Production mutation: none\n- Module 025 mutation: none"
 
       - name: Record failed finalization evidence
         if: failure()
