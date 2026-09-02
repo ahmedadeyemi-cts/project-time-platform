@@ -115,7 +115,8 @@ jobs:
       github.event.comment.body == 'FINALIZE PROTECTED UAT RUN 33666500248 RETIRE RUN 33654881418 SHA 2e257966dd51eab8d9f6431cf9b8fbded7ae458a'
     concurrency:
       group: projectpulse-deploy-test
-      cancel-in-progress: ${{ needs.authorize_ghost_retirement.outputs.exact_ghost_only == 'true' }}
+      queue: single
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
