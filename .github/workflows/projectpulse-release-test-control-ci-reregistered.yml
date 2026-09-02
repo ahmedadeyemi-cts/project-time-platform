@@ -113,6 +113,14 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-release-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
 
+          cat > "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files" <<'FILES'
+          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files" -o "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files"
+
           cat > "$RUNNER_TEMP/exact-runtime-repair-files" <<'FILES'
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/runtime-navigation-work-register-responsive-ci.yml
@@ -239,6 +247,8 @@ jobs:
             echo 'EXACT_MODULES_DIRECTORY_AUTHORITY_STARVATION_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"; then
             echo 'EXACT_MODULE001B_LIVE_UAT_REPAIR_SCOPE=PASSED'
+          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files"; then
+            echo 'EXACT_PROTECTED_UAT_MERGED_MAIN_RELAUNCH_GOVERNANCE_SCOPE=PASSED'
           else
             comm -23 "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
             [[ ! -s "$RUNNER_TEMP/unexpected-release-files" ]] || {
@@ -270,7 +280,7 @@ jobs:
           TARGET_BRANCH_MARKER='TARGET_RELEASE_BRANCH: $'
           TARGET_BRANCH_MARKER+="{{ github.event_name == 'workflow_dispatch' && inputs.release_branch || 'main' }}"
           grep -Fq "$TARGET_BRANCH_MARKER" "$CONTROLLER"
-          grep -Fq 'Only the authorized FlowHive V2 candidate branch may use pre-merge Protected-Test deployment.' "$CONTROLLER"
+          grep -Fq 'Only the authorized FlowHive V2 candidate branch or exact merged main may use manual Protected-Test deployment.' "$CONTROLLER"
           grep -Fq 'environment: test' "$CONTROLLER"
           grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
           grep -Fq 'queue: max' "$CONTROLLER"
@@ -335,6 +345,8 @@ jobs:
           grep -Fq 'MODULE001B_LIVE_REALLOCATION_UAT=PASS' "$ASSIGNED_WORK_UAT"
           grep -Fq 'currentEmployeeWeekMutation:false' "$ASSIGNED_WORK_UAT"
           grep -Fq 'productionMutation:false' "$ASSIGNED_WORK_UAT"
+          TARGET_MAIN_BRANCH_CONDITION="if [[ \"\$TARGET_RELEASE_BRANCH\" == 'main' ]]; then"
+          grep -Fq "$TARGET_MAIN_BRANCH_CONDITION" "$CONTROLLER"
           grep -Fq 'MODULE001B_PROTECTED_TEST_RECONCILE=false' "$MODULE001B_REVISION_WAIT"
           grep -Fq 'MODULE001B_STALE_REVISION_DEACTIVATE' "$MODULE001B_REVISION_WAIT"
           ! grep -Fq 'if [[ "$ACTIVE" == true ]]; then' "$MODULE001B_REVISION_WAIT"
