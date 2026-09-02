@@ -11,7 +11,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: protected-uat-pr794-success-finalization
+  group: protected-uat-pr794-merged-main-relaunch
   cancel-in-progress: false
 
 jobs:
