@@ -370,8 +370,8 @@ jobs:
 
           if [[ -f "$RUNNER_TEMP/protected-uat-deployment-run-baseline.json" ]]; then
             for audit_attempt in $(seq 1 3); do
-              if ! workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
-          workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"; then
+              if ! workflow_run_pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")" \
+                 || ! workflow_runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$workflow_run_pages_json")"; then
                 cleanup_failed=true
                 echo "Could not list deployment runs during cleanup audit ${audit_attempt}." >&2
                 sleep 2
