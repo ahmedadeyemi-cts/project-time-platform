@@ -1,4 +1,4 @@
-name: One-Time Protected UAT Workflow Control for PR791
+name: One-Time Protected UAT Workflow Control for PR794
 
 on:
   issue_comment:
@@ -11,26 +11,26 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: protected-uat-pr791-workflow-control
+  group: protected-uat-pr794-workflow-control
   cancel-in-progress: false
 
 jobs:
   control:
     if: >-
       github.event.issue.pull_request &&
-      github.event.issue.number == 791 &&
+      github.event.issue.number == 794 &&
       github.actor == 'ahmedadeyemi-cts' &&
-      github.event.comment.body == 'DEPLOY PROTECTED UAT PR791 3b7d534a57820f27e3a44bc89f740a09ba512cac'
+      github.event.comment.body == 'DEPLOY PROTECTED UAT PR794 3d02b4cb62683b96554186f9d3a782fc1f21ca54'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
-      EXPECTED_RELEASE_SHA: 3b7d534a57820f27e3a44bc89f740a09ba512cac
+      EXPECTED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
       CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
       AUTHORIZED_CANDIDATE_BRANCH: fix/shared-project-document-planning-20260819
     steps:
-      - name: Verify immutable reviewed PR791 release boundary
+      - name: Verify immutable reviewed PR794 release boundary
         id: boundary
         shell: bash
         run: |
@@ -39,19 +39,19 @@ jobs:
           comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${EXPECTED_RELEASE_SHA}...${actual_main}")"
           status="$(jq -r '.status' <<<"$comparison")"
           [[ "$status" == 'ahead' || "$status" == 'identical' ]] || {
-            echo "Main no longer descends from the reviewed PR791 release source: $status" >&2
+            echo "Main no longer descends from the reviewed PR794 release source: $status" >&2
             exit 1
           }
           mapfile -t changed_files < <(jq -r '.files[].filename' <<<"$comparison")
           printf '%s\n' "${changed_files[@]}" | sed '/^$/d' | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
           printf '%s\n' "$CONTROL_WORKFLOW_PATH" | LC_ALL=C sort -u > "$RUNNER_TEMP/allowed-files"
           cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/allowed-files" || {
-            echo 'Unexpected source drift exists between the reviewed PR791 runtime and current main:' >&2
+            echo 'Unexpected source drift exists between the reviewed PR794 runtime and current main:' >&2
             diff -u "$RUNNER_TEMP/allowed-files" "$RUNNER_TEMP/changed-files" >&2 || true
             exit 1
           }
           echo "controller_main_sha=$actual_main" >> "$GITHUB_OUTPUT"
-          echo "PROTECTED_UAT_REVIEWED_PR791_RUNTIME_SHA=$EXPECTED_RELEASE_SHA"
+          echo "PROTECTED_UAT_REVIEWED_PR794_RUNTIME_SHA=$EXPECTED_RELEASE_SHA"
           echo "PROTECTED_UAT_CONTROLLER_MAIN_SHA=$actual_main"
 
       - name: Verify externally pinned governed candidate ref
@@ -61,7 +61,7 @@ jobs:
           set -Eeuo pipefail
           branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${AUTHORIZED_CANDIDATE_BRANCH}" --jq '.object.sha')"
           [[ "$branch_sha" == "$EXPECTED_RELEASE_SHA" ]] || {
-            echo "Governed candidate ref is not pinned to reviewed PR791 runtime. Expected $EXPECTED_RELEASE_SHA, found $branch_sha" >&2
+            echo "Governed candidate ref is not pinned to reviewed PR794 runtime. Expected $EXPECTED_RELEASE_SHA, found $branch_sha" >&2
             exit 1
           }
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
@@ -152,7 +152,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment completed successfully.\n\n- Reviewed PR791 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Governed deployment run: ${{ steps.dispatch.outputs.run_url }}\n- Deployment workflow: sealed as \`disabled_manually\` before the long watch and reverified afterward\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment completed successfully.\n\n- Reviewed PR794 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Governed deployment run: ${{ steps.dispatch.outputs.run_url }}\n- Deployment workflow: sealed as \`disabled_manually\` before the long watch and reverified afterward\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
 
       - name: Record failed deployment evidence
         if: failure()
@@ -161,4 +161,4 @@ jobs:
           set +e
           run_url='${{ steps.dispatch.outputs.run_url }}'
           [[ -n "$run_url" ]] || run_url='Deployment run was not created.'
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment failed or could not be dispatched.\n\n- Reviewed PR791 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Evidence: $run_url\n- Deployment workflow disable was attempted automatically.\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected UAT deployment failed or could not be dispatched.\n\n- Reviewed PR794 runtime source: \`$EXPECTED_RELEASE_SHA\`\n- Controller main: \`${{ steps.boundary.outputs.controller_main_sha }}\`\n- Evidence: $run_url\n- Deployment workflow disable was attempted automatically.\n- Governed candidate ref restoration: pending external release-supervisor restoration\n- Production mutation: none"
