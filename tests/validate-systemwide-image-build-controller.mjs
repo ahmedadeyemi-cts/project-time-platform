@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 const retiredWorkflowPath = '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml';
@@ -8,11 +10,13 @@ const apiProjectPath = 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj';
 const apiBuildPropsPath = 'src/backend/ProjectTime.Api/Directory.Build.props';
 const sourceRevisionPath = 'src/backend/ProjectTime.Api/.projectpulse-source-revision';
 const revisionWaitPath = 'scripts/wait-containerapp-ready-revision.sh';
+const assignedWorkUatPath = 'scripts/release-test/run-assigned-work-protected-test-uat.sh';
 const documentAuthorityMigrationBuilderPath = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
 const apiProject = fs.readFileSync(apiProjectPath, 'utf8');
 const apiBuildProps = fs.readFileSync(apiBuildPropsPath, 'utf8');
 const revisionWait = fs.readFileSync(revisionWaitPath, 'utf8');
+const assignedWorkUat = fs.readFileSync(assignedWorkUatPath, 'utf8');
 const documentAuthorityMigrationBuilder = fs.readFileSync(documentAuthorityMigrationBuilderPath, 'utf8');
 
 assert.equal(
@@ -116,6 +120,120 @@ assert.doesNotMatch(
 );
 const revisionWaitSyntax = spawnSync('bash', ['-n', revisionWaitPath], { encoding: 'utf8' });
 assert.equal(revisionWaitSyntax.status, 0, revisionWaitSyntax.stderr);
+
+for (const [label, source] of [
+  ['generic revision waiter', revisionWait],
+  ['Module 001B convergence waiter', assignedWorkUat]
+]) {
+  assert.doesNotMatch(
+    source,
+    /<<<"\$\{[A-Za-z_][A-Za-z0-9_]*:-\{\}\}"/,
+    `${label} must not append a closing brace to non-empty Azure JSON through an ambiguous Bash object fallback`
+  );
+}
+assert.match(
+  revisionWait,
+  /jq -e 'type == "object"' <<<"\$REVISION_JSON"/,
+  'the generic revision waiter must normalize Azure revision JSON before extracting fields'
+);
+assert.match(
+  assignedWorkUat,
+  /jq -e 'type == "object"' <<<"\$app_json"/,
+  'the Module 001B convergence waiter must normalize the Container App object'
+);
+assert.match(
+  assignedWorkUat,
+  /jq -e 'type == "array"' <<<"\$revisions_json"/,
+  'the Module 001B convergence waiter must normalize the revision array'
+);
+
+const convergenceFunctionStart = assignedWorkUat.indexOf('module001b_wait_single_revision_converged() {');
+const convergenceFunctionEnd = assignedWorkUat.indexOf('\nmodule001b_disable_gate() {', convergenceFunctionStart);
+assert.ok(convergenceFunctionStart >= 0, 'the Module 001B convergence function must exist');
+assert.ok(convergenceFunctionEnd > convergenceFunctionStart, 'the Module 001B convergence function boundary must remain testable');
+const convergenceFunction = assignedWorkUat.slice(convergenceFunctionStart, convergenceFunctionEnd);
+
+const mockRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'module001b-convergence-'));
+try {
+  const mockAzPath = path.join(mockRoot, 'az');
+  fs.writeFileSync(mockAzPath, [
+    '#!/usr/bin/env bash',
+    'set -Eeuo pipefail',
+    'case "$*" in',
+    '  *"--query properties.latestReadyRevisionName"*) printf "%s\\n" "$MOCK_EXPECTED_REVISION" ;;',
+    '  *"containerapp revision show"*) printf "%s\\n" "$MOCK_REVISION_SHOW_JSON" ;;',
+    '  *"containerapp revision list"*) printf "%s\\n" "$MOCK_REVISION_LIST_JSON" ;;',
+    '  *"containerapp show"*) printf "%s\\n" "$MOCK_APP_JSON" ;;',
+    '  *"containerapp revision activate"*|*"containerapp revision deactivate"*) exit 0 ;;',
+    '  *) printf "unexpected mock az invocation: %s\\n" "$*" >&2; exit 64 ;;',
+    'esac',
+    ''
+  ].join('\n'), { encoding: 'utf8', mode: 0o755 });
+
+  const expectedRevision = 'ca-protected-test-api--m1be-regression-1';
+  const expectedImage = 'acr.example.invalid/project-time-api@sha256:1234567890abcdef';
+  const mockEnv = {
+    ...process.env,
+    PATH: `${mockRoot}:${process.env.PATH ?? ''}`,
+    MOCK_EXPECTED_REVISION: expectedRevision,
+    MOCK_EXPECTED_IMAGE: expectedImage,
+    MOCK_APP_JSON: JSON.stringify({
+      tags: { environment: 'test' },
+      properties: {
+        configuration: { activeRevisionsMode: 'Single' },
+        latestRevisionName: expectedRevision,
+        latestReadyRevisionName: expectedRevision
+      }
+    }),
+    MOCK_REVISION_LIST_JSON: JSON.stringify([{
+      name: expectedRevision,
+      properties: {
+        active: true,
+        provisioningState: 'Provisioned',
+        healthState: 'Healthy',
+        trafficWeight: 100,
+        template: { containers: [{ image: expectedImage }] }
+      }
+    }]),
+    MOCK_REVISION_SHOW_JSON: JSON.stringify({
+      image: expectedImage,
+      provisioningState: 'Provisioned',
+      healthState: 'Healthy',
+      active: true,
+      trafficWeight: 100
+    })
+  };
+
+  const genericWaitBehavior = spawnSync(
+    'bash',
+    [revisionWaitPath, 'protected-test-rg', 'protected-test-api', expectedRevision, expectedImage, '1', '1'],
+    { encoding: 'utf8', env: mockEnv }
+  );
+  assert.equal(genericWaitBehavior.status, 0, genericWaitBehavior.stderr);
+  assert.match(genericWaitBehavior.stdout, /CONTAINERAPP_CANDIDATE_READY[\s\S]*singleRevisionConverged=true/);
+  assert.doesNotMatch(genericWaitBehavior.stderr, /jq: (?:parse )?error/i);
+
+  const convergenceHarness = [
+    'set -Eeuo pipefail',
+    'MODULE001B_API_RG=protected-test-rg',
+    'MODULE001B_API_APP=protected-test-api',
+    'MODULE001B_API_IMAGE="$MOCK_EXPECTED_IMAGE"',
+    convergenceFunction,
+    'module001b_wait_single_revision_converged enabled "$MOCK_EXPECTED_REVISION"',
+    ''
+  ].join('\n');
+  const module001bWaitBehavior = spawnSync('bash', ['-c', convergenceHarness], {
+    encoding: 'utf8',
+    env: mockEnv
+  });
+  assert.equal(module001bWaitBehavior.status, 0, module001bWaitBehavior.stderr);
+  assert.match(module001bWaitBehavior.stderr, /revisionActive=true imageMatch=true/);
+  assert.match(module001bWaitBehavior.stderr, /MODULE001B_SINGLE_REVISION_CONVERGED label=enabled/);
+  assert.doesNotMatch(module001bWaitBehavior.stderr, /jq: (?:parse )?error/i);
+  assert.doesNotMatch(module001bWaitBehavior.stderr, /revisionActive=true\s+false imageMatch=true/);
+} finally {
+  fs.rmSync(mockRoot, { recursive: true, force: true });
+}
 
 assert.match(
   documentAuthorityMigrationBuilder,
