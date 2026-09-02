@@ -118,6 +118,10 @@ public static partial class ScopedRolePolicyModule
             }
         }
 
+        // scoped_time_management_events is immutable by design. A successful
+        // Module 001B move retains its audit row, which also references the
+        // fixture Timesheet. Remove only the disposable entry/association data;
+        // keep an empty Timesheet whenever it is needed as the audit anchor.
         await using var timesheet = new NpgsqlCommand("""
             DELETE FROM timesheets t
             WHERE t.user_id = @user_id

@@ -514,7 +514,7 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
           PROJECTPULSE_TEST_DATABASE_USER: ${{ vars.PROJECTPULSE_TEST_DATABASE_USER }}
           RELIABILITY_CONTROL_SHA: ${{ github.sha }}
-          RELIABILITY_RELEASE_COMMIT: ${{ github.sha }}
+          RELIABILITY_RELEASE_COMMIT: ${{ env.TARGET_RELEASE_COMMIT }}
           RELIABILITY_MIGRATION_SCOPE: systemwide-enterprise-reliability-test
         run: |
           set -Eeuo pipefail
