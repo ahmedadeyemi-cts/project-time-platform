@@ -369,7 +369,9 @@ jobs:
           grep -Fq 'productionMutation:false' "$ASSIGNED_WORK_UAT"
           TARGET_MAIN_BRANCH_CONDITION="if [[ \"\$TARGET_RELEASE_BRANCH\" == 'main' ]]; then"
           grep -Fq "$TARGET_MAIN_BRANCH_CONDITION" "$CONTROLLER"
-          grep -Fq 'RELIABILITY_RELEASE_COMMIT: ${{ env.TARGET_RELEASE_COMMIT }}' "$CONTROLLER"
+          RELIABILITY_RELEASE_MARKER='RELIABILITY_RELEASE_COMMIT: $'
+          RELIABILITY_RELEASE_MARKER+="{{ env.TARGET_RELEASE_COMMIT }}"
+          grep -Fq "$RELIABILITY_RELEASE_MARKER" "$CONTROLLER"
           grep -Fq 'MODULE001B_PROTECTED_TEST_RECONCILE=false' "$MODULE001B_REVISION_WAIT"
           grep -Fq 'MODULE001B_STALE_REVISION_DEACTIVATE' "$MODULE001B_REVISION_WAIT"
           ! grep -Fq 'if [[ "$ACTIVE" == true ]]; then' "$MODULE001B_REVISION_WAIT"
@@ -379,7 +381,7 @@ jobs:
           grep -Fq 'protected_test_uat_route_unavailable' "$MODULE001B_FIXTURE"
           ! grep -Fq 'DELETE FROM scoped_time_management_events' "$MODULE001B_FIXTURE"
           grep -Fq 'Scoped RBAC audit evidence is immutable' database/migrations/040_scoped_role_policy_versions/00_schema.sql
-          grep -Fq 'event_record.timesheet_id = t.timesheet_id' "$MODULE001B_FIXTURE"
+          grep -Fq 'WHERE audit.timesheet_id = t.timesheet_id' "$MODULE001B_FIXTURE"
 
           ! grep -Fq 'full_imae' "$CONTROLLER"
           ! grep -Eq 'local[[:space:]]+repository="\$1".*image="\$repository:' "$CONTROLLER"
