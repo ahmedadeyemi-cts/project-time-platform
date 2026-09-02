@@ -402,6 +402,10 @@ jobs:
           grep -Fq 'steps.arm.outcome == '\''success'\''' "$FINALIZER"
           grep -Fq 'actions/runs/${SOURCE_RUN_ID}/force-cancel' "$FINALIZER"
           [[ "$(grep -Fc 'actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}' "$FINALIZER")" -ge 4 ]]
+          grep -Fq 'gh_api_retry() {' "$FINALIZER"
+          grep -Fq 'GitHub API attempt $retry/12 failed; retrying restoration-critical operation.' "$FINALIZER"
+          [[ "$(grep -Fc 'gh_api_retry "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/attempts/${SOURCE_RUN_ATTEMPT}"' "$FINALIZER")" -ge 3 ]]
+          grep -Fq 'gh_api_retry --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/enable"' "$FINALIZER"
           grep -Fq 'Source finalizer is not terminal; watchdog refuses to reopen Protected-Test admissions.' "$FINALIZER"
           grep -Fq 'source_authorization_timeout_minutes=10' "$FINALIZER"
           grep -Fq 'source_finalizer_timeout_minutes=20' "$FINALIZER"
