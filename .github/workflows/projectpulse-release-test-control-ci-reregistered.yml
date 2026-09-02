@@ -395,7 +395,9 @@ jobs:
           grep -Fq '.total_count == 0 and (.jobs | length) == 0' "$FINALIZER"
           grep -Fq '.created_at >= $created and .id != $id' "$FINALIZER"
           grep -Fq '(.run_started_at // .created_at) >= $created' "$FINALIZER"
-          grep -Fq '.id != $success and .id != $retired' "$FINALIZER"
+          grep -Fq '.id != $success and ((.run_started_at // .created_at) >= $created)' "$FINALIZER"
+          grep -Fq '.id == $success and .run_attempt == 1' "$FINALIZER"
+          grep -Fq '.id == $retired and .run_attempt == 1' "$FINALIZER"
           grep -Fq 'final_workflow_state="$(gh api' "$FINALIZER"
           grep -Fq 'manual sealing required immediately' "$FINALIZER"
           grep -A5 -F -- '- name: Reassert disabled Protected-Test workflow' "$FINALIZER" | grep -Fq 'set -Eeuo pipefail'
