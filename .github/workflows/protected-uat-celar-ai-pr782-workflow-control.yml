@@ -162,10 +162,10 @@ jobs:
           runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$pages_json")"
           [[ "$(jq -r '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$runs_json")" == '0' ]]
           [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson id "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.created_at >= $created and .id != $id)] | length' <<<"$runs_json")" == '0' ]]
-          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '[.workflow_runs[] | select(.id != $success and .id != $retired and ((.run_started_at // .created_at) >= $created))] | length' <<<"$runs_json")" == '0' ]]
+          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.id != $success and ((.run_started_at // .created_at) >= $created))] | length' <<<"$runs_json")" == '0' ]]
           jq -e --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
-            ([.workflow_runs[] | select(.id == $success and .status == "completed" and .conclusion == "success")] | length) == 1
-            and ([.workflow_runs[] | select(.id == $retired and .status == "completed" and .conclusion == "cancelled")] | length) == 1
+            ([.workflow_runs[] | select(.id == $success and .run_attempt == 1 and .status == "completed" and .conclusion == "success")] | length) == 1
+            and ([.workflow_runs[] | select(.id == $retired and .run_attempt == 1 and .status == "completed" and .conclusion == "cancelled")] | length) == 1
           ' <<<"$runs_json" >/dev/null
           echo 'FINALIZED_PROTECTED_UAT_WORKFLOW_STATE=disabled_manually'
           echo 'FINALIZED_PROTECTED_UAT_POST_SUCCESS_DEPLOYMENTS=none'
