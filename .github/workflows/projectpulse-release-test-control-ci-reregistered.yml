@@ -407,8 +407,16 @@ jobs:
           grep -Fq 'FINALIZED_PROTECTED_UAT_SHARED_GROUP_POST_SUCCESS_DEPLOYMENTS=none' "$FINALIZER"
           grep -Fq 'shared-group-runs-final.ndjson' "$FINALIZER"
           grep -Fq 'Shared-group Protected-Test ledger changed immediately before success reporting.' "$FINALIZER"
-          grep -Fq 'FINALIZED_PROTECTED_UAT_PRE_COMMENT_SHARED_GROUP=quiescent' "$FINALIZER"
-          [[ "$(grep -Fc 'case "$workflow_state" in' "$FINALIZER")" == '2' ]]
+          grep -Fq 'restore_fenced_workflows_on_exit' "$FINALIZER"
+          RESTORE_OUTPUT_MARKER='restore_workflow_ids: $'
+          RESTORE_OUTPUT_MARKER+="{{ steps.preflight.outputs.restore_workflow_ids }}"
+          grep -Fq "$RESTORE_OUTPUT_MARKER" "$FINALIZER"
+          grep -Fq 'One or more shared-group workflows escaped the preflight admission fence.' "$FINALIZER"
+          grep -Fq 'Verify atomic fenced ledger before success reporting' "$FINALIZER"
+          grep -Fq 'FINALIZED_PROTECTED_UAT_ATOMIC_FENCED_LEDGER=quiescent' "$FINALIZER"
+          grep -Fq 'Restore fenced shared-group workflow states' "$FINALIZER"
+          grep -Fq 'FINALIZED_PROTECTED_UAT_SHARED_GROUP_FENCES_RESTORED=' "$FINALIZER"
+          [[ "$(grep -Fc 'case "$workflow_state" in' "$FINALIZER")" == '3' ]]
           [[ "$(grep -Fc 'disabled_manually)' "$FINALIZER")" == '2' ]]
           grep -Fq "if [[ \"\$status\" == 'completed' && \"\$conclusion\" == 'cancelled' ]]; then" "$FINALIZER"
           grep -Fq 'unexpected_active_seen=false' "$FINALIZER"
