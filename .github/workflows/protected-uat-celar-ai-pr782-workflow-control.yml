@@ -72,6 +72,18 @@ jobs:
             echo "Could not resolve the governed deployment workflow ID: $expected_workflow_id" >&2
             exit 1
           }
+          workflow_runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+          mapfile -t preexisting_active_run_ids < <(
+            jq -r --argjson expected_run_id "$EXPECTED_RUN_ID" '
+              .workflow_runs[]
+              | select(.id != $expected_run_id and .status != "completed")
+              | .id
+            ' <<<"$workflow_runs_json"
+          )
+          (( ${#preexisting_active_run_ids[@]} == 0 )) || {
+            echo "Unrelated active deployment runs already exist: ${preexisting_active_run_ids[*]}" >&2
+            exit 1
+          }
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}")"
           jq -e \
             --arg expected_sha "$EXPECTED_RELEASE_SHA" \
@@ -100,20 +112,43 @@ jobs:
           echo "PROTECTED_UAT_RECOVERY_RUN_URL=$run_url"
 
       - name: Re-enable deployment workflow for queued job materialization
+        id: window
         shell: bash
         run: |
           set -Eeuo pipefail
+          started_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "started_at=$started_at" >> "$GITHUB_OUTPUT"
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/enable" >/dev/null
           state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
           [[ "$state" == 'active' ]] || { echo "Deployment workflow is not active: $state" >&2; exit 1; }
           echo "PROTECTED_UAT_RECOVERY_WORKFLOW_STATE=$state"
 
       - name: Wait for exact queued deployment job to materialize
+        env:
+          RECOVERY_ENABLE_STARTED_AT: ${{ steps.window.outputs.started_at }}
         shell: bash
         run: |
           set -Eeuo pipefail
           materialized=false
-          for attempt in $(seq 1 120); do
+          for attempt in $(seq 1 24); do
+            workflow_runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+            mapfile -t unexpected_run_ids < <(
+              jq -r \
+                --arg started_at "$RECOVERY_ENABLE_STARTED_AT" \
+                --argjson expected_run_id "$EXPECTED_RUN_ID" '
+                  .workflow_runs[]
+                  | select(.id != $expected_run_id and .created_at >= $started_at)
+                  | .id
+                ' <<<"$workflow_runs_json"
+            )
+            if (( ${#unexpected_run_ids[@]} > 0 )); then
+              gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
+              for unexpected_run_id in "${unexpected_run_ids[@]}"; do
+                gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null 2>&1 || true
+              done
+              echo "Unexpected deployment runs appeared during recovery and were rejected: ${unexpected_run_ids[*]}" >&2
+              exit 1
+            fi
             run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EXPECTED_RUN_ID}")"
             run_status="$(jq -r '.status' <<<"$run_json")"
             run_conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
@@ -131,18 +166,37 @@ jobs:
             sleep 5
           done
           [[ "$materialized" == true ]] || {
-            echo 'The exact queued deployment did not materialize a job within ten minutes.' >&2
+            echo 'The exact queued deployment did not materialize a job within two minutes.' >&2
             exit 1
           }
           echo 'PROTECTED_UAT_RECOVERY_JOB_MATERIALIZED=true'
 
       - name: Seal deployment workflow after job materialization
+        env:
+          RECOVERY_ENABLE_STARTED_AT: ${{ steps.window.outputs.started_at }}
         shell: bash
         run: |
           set -Eeuo pipefail
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
           state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
           [[ "$state" == 'disabled_manually' ]] || { echo "Deployment workflow did not seal after recovery: $state" >&2; exit 1; }
+          workflow_runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?per_page=100")"
+          mapfile -t unexpected_run_ids < <(
+            jq -r \
+              --arg started_at "$RECOVERY_ENABLE_STARTED_AT" \
+              --argjson expected_run_id "$EXPECTED_RUN_ID" '
+                .workflow_runs[]
+                | select(.id != $expected_run_id and .created_at >= $started_at)
+                | .id
+              ' <<<"$workflow_runs_json"
+          )
+          if (( ${#unexpected_run_ids[@]} > 0 )); then
+            for unexpected_run_id in "${unexpected_run_ids[@]}"; do
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${unexpected_run_id}/cancel" >/dev/null 2>&1 || true
+            done
+            echo "Unexpected deployment runs appeared before the recovery window sealed and were rejected: ${unexpected_run_ids[*]}" >&2
+            exit 1
+          fi
           echo "PROTECTED_UAT_RECOVERY_WORKFLOW_SEALED=$state"
 
       - name: Watch exact recovered deployment through completion
