@@ -144,6 +144,10 @@ jobs:
               sleep 2
             done
           fi
+          [[ "$source_terminal" == true ]] || {
+            echo 'Source finalizer is not terminal; watchdog refuses to reopen Protected-Test admissions.' >&2
+            exit 1
+          }
 
           workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
           case "$workflow_state" in
@@ -702,24 +706,59 @@ jobs:
           echo 'FINALIZED_PROTECTED_UAT_FINAL_WORKFLOW_STATE=disabled_manually'
           echo 'FINALIZED_PROTECTED_UAT_FINAL_ACTIVE_DEPLOYMENTS=none'
 
-      - name: Verify atomic fenced ledger before success reporting
+      - name: Reinventory current main and record atomic success while fenced
         id: atomic_ledger
         if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
+          actual_main_start="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$actual_main_start" == "$GITHUB_SHA" ]] || {
+            echo "Main advanced before atomic success reporting: expected=$GITHUB_SHA actual=$actual_main_start" >&2
+            exit 1
+          }
+          find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
+            | while IFS= read -r -d '' workflow; do
+                if grep -Eq '^  group:[[:space:]]*projectpulse-deploy-test[[:space:]]*$' "$workflow"; then
+                  printf '%s\n' "${workflow#./}"
+                fi
+              done \
+            | LC_ALL=C sort -u > "$RUNNER_TEMP/protected-test-workflows-final"
+          jq -Rn '[inputs | select(length > 0)]' < "$RUNNER_TEMP/protected-test-workflows-final" > "$RUNNER_TEMP/protected-test-workflows-final.json"
+          final_workflow_pages="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows?per_page=100")"
+          jq -c '[.[].workflows[]] | unique_by(.id)' <<<"$final_workflow_pages" > "$RUNNER_TEMP/repository-workflows-final.json"
+          jq --argjson protected "$(cat "$RUNNER_TEMP/protected-test-workflows-final.json")" \
+            'map(select(.path as $path | $protected | index($path)))' \
+            "$RUNNER_TEMP/repository-workflows-final.json" > "$RUNNER_TEMP/protected-test-workflow-metadata-final.json"
+          final_expected_workflow_count="$(jq -r 'length' "$RUNNER_TEMP/protected-test-workflows-final.json")"
+          final_actual_workflow_count="$(jq -r 'length' "$RUNNER_TEMP/protected-test-workflow-metadata-final.json")"
+          [[ "$final_expected_workflow_count" -gt 0 && "$final_actual_workflow_count" == "$final_expected_workflow_count" ]] || {
+            echo "Final current-main shared-group inventory mismatch: expected=$final_expected_workflow_count actual=$final_actual_workflow_count" >&2
+            exit 1
+          }
+          jq -S '[.[] | {id,path}] | sort_by(.id)' "$RUNNER_TEMP/protected-test-workflow-metadata.json" > "$RUNNER_TEMP/protected-test-owner-identities-initial.json"
+          jq -S '[.[] | {id,path}] | sort_by(.id)' "$RUNNER_TEMP/protected-test-workflow-metadata-final.json" > "$RUNNER_TEMP/protected-test-owner-identities-final.json"
+          cmp -s "$RUNNER_TEMP/protected-test-owner-identities-initial.json" "$RUNNER_TEMP/protected-test-owner-identities-final.json" || {
+            echo 'Current-main shared-group owner inventory changed during finalization.' >&2
+            diff -u "$RUNNER_TEMP/protected-test-owner-identities-initial.json" "$RUNNER_TEMP/protected-test-owner-identities-final.json" >&2 || true
+            exit 1
+          }
+          jq -e 'all(.[]; (.state | startswith("disabled_")))' "$RUNNER_TEMP/protected-test-workflow-metadata-final.json" >/dev/null || {
+            echo 'A freshly reinventoried shared-group owner escaped the admission fence.' >&2
+            exit 1
+          }
           while IFS= read -r workflow_id; do
             workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}" --jq '.state')"
             [[ "$workflow_state" == disabled_* ]] || {
               echo "Shared-group workflow $workflow_id escaped the admission fence before final ledger verification." >&2
               exit 1
             }
-          done < <(jq -r '.[].id' "$RUNNER_TEMP/protected-test-workflow-metadata.json")
+          done < <(jq -r '.[].id' "$RUNNER_TEMP/protected-test-workflow-metadata-final.json")
           : > "$RUNNER_TEMP/shared-group-runs-final.ndjson"
           while IFS= read -r workflow_id; do
             gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs?per_page=100" \
               --jq '.workflow_runs[]' >> "$RUNNER_TEMP/shared-group-runs-final.ndjson"
-          done < <(jq -r '.[].id' "$RUNNER_TEMP/protected-test-workflow-metadata.json")
+          done < <(jq -r '.[].id' "$RUNNER_TEMP/protected-test-workflow-metadata-final.json")
           jq -s 'unique_by(.id)' "$RUNNER_TEMP/shared-group-runs-final.ndjson" > "$RUNNER_TEMP/shared-group-runs-final.json"
           jq -e --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
             ([.[] | select(.status != "completed")] | length) == 0
@@ -732,17 +771,22 @@ jobs:
             echo 'Shared-group Protected-Test ledger changed immediately before success reporting.' >&2
             exit 1
           }
-          shared_owner_count="$(jq -r 'length' "$RUNNER_TEMP/protected-test-workflow-metadata.json")"
+          while IFS= read -r workflow_id; do
+            [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}" --jq '.state')" == disabled_* ]] || {
+              echo "Fresh shared-group owner $workflow_id reopened before atomic success reporting." >&2
+              exit 1
+            }
+          done < <(jq -r '.[].id' "$RUNNER_TEMP/protected-test-workflow-metadata-final.json")
+          actual_main_end="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$actual_main_end" == "$GITHUB_SHA" ]] || {
+            echo "Main advanced during atomic success verification: expected=$GITHUB_SHA actual=$actual_main_end" >&2
+            exit 1
+          }
+          shared_owner_count="$(jq -r 'length' "$RUNNER_TEMP/protected-test-workflow-metadata-final.json")"
           echo "shared_owner_count=$shared_owner_count" >> "$GITHUB_OUTPUT"
           echo "FINALIZED_PROTECTED_UAT_ATOMIC_FENCED_LEDGER=quiescent owners=$shared_owner_count"
-
-      - name: Record atomic successful finalization before reopening admissions
-        if: success()
-        shell: bash
-        run: |
-          set -Eeuo pipefail
           watchdog_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${{ needs.authorize_ghost_retirement.outputs.watchdog_run_id }}"
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT evidence and zero-job ghost retirement were atomically sealed while every shared-group admission remained fenced.\n\n- Successful deployment: ${{ steps.evidence.outputs.run_url }}\n- Release SHA: \`$SUCCESSFUL_RELEASE_SHA\`\n- Evidence artifact: \`$SUCCESSFUL_ARTIFACT_NAME\` (ID ${{ steps.evidence.outputs.artifact_id }}, digest \`${{ steps.evidence.outputs.artifact_digest }}\`)\n- Module 001B assigned-work/live-reallocation UAT: passed\n- Utilization role-scoping UAT: passed\n- Retired zero-job ghost: ${{ steps.retired.outputs.retired_url }}\n- Deployment workflow: \`disabled_manually\`\n- Atomic shared-group ledger owners verified: \`${{ steps.atomic_ledger.outputs.shared_owner_count }}\`\n- Independently armed fence-restoration watchdog: $watchdog_url\n- Admission fences: held until this source finalizer reaches a terminal state; the watchdog then restores exactly the originally active owners\n- Legacy candidate ref restoration: pending\n- Production mutation: none\n- Module 025 mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT evidence and zero-job ghost retirement were atomically sealed while every shared-group admission remained fenced.\n\n- Successful deployment: ${{ steps.evidence.outputs.run_url }}\n- Release SHA: \`$SUCCESSFUL_RELEASE_SHA\`\n- Evidence artifact: \`$SUCCESSFUL_ARTIFACT_NAME\` (ID ${{ steps.evidence.outputs.artifact_id }}, digest \`${{ steps.evidence.outputs.artifact_digest }}\`)\n- Module 001B assigned-work/live-reallocation UAT: passed\n- Utilization role-scoping UAT: passed\n- Retired zero-job ghost: ${{ steps.retired.outputs.retired_url }}\n- Deployment workflow: \`disabled_manually\`\n- Exact current main: \`$actual_main_end\`\n- Fresh atomic shared-group ledger owners verified: \`$shared_owner_count\`\n- Independently armed fence-restoration watchdog: $watchdog_url\n- Admission fences: held until this source finalizer reaches a terminal state; the watchdog then restores exactly the originally active owners\n- Legacy candidate ref restoration: pending\n- Production mutation: none\n- Module 025 mutation: none"
 
       - name: Record failed finalization evidence
         if: failure()
