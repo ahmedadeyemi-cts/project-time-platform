@@ -176,8 +176,46 @@ jobs:
         run: |
           set -Eeuo pipefail
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+          unexpected_active_seen=false
+          for sweep in $(seq 1 5); do
+            pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
+            runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$pages_json")"
+            mapfile -t active_run_ids < <(jq -r '.workflow_runs[] | select(.status != "completed") | .id' <<<"$runs_json")
+            if (( ${#active_run_ids[@]} == 0 )); then
+              break
+            fi
+            unexpected_active_seen=true
+            for active_run_id in "${active_run_ids[@]}"; do
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${active_run_id}/cancel" >/dev/null || true
+              terminal=false
+              for attempt in $(seq 1 60); do
+                active_run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${active_run_id}")"
+                if [[ "$(jq -r '.status' <<<"$active_run_json")" == 'completed' ]]; then
+                  terminal=true
+                  break
+                fi
+                gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${active_run_id}/force-cancel" >/dev/null || true
+                sleep 2
+              done
+              [[ "$terminal" == true ]] || { echo "Active deployment $active_run_id did not reach a terminal state." >&2; exit 1; }
+            done
+          done
+          pages_json="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
+          runs_json="$(jq -c '{workflow_runs: [.[].workflow_runs[]]}' <<<"$pages_json")"
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          [[ "$(jq -r '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$runs_json")" == '0' ]]
+          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson id "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.created_at >= $created and .id != $id)] | length' <<<"$runs_json")" == '0' ]]
+          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.id != $success and ((.run_started_at // .created_at) >= $created))] | length' <<<"$runs_json")" == '0' ]]
+          jq -e --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
+            ([.workflow_runs[] | select(.id == $success and .run_attempt == 1 and .status == "completed" and .conclusion == "success")] | length) == 1
+            and ([.workflow_runs[] | select(.id == $retired and .run_attempt == 1 and .status == "completed" and .conclusion == "cancelled")] | length) == 1
+          ' <<<"$runs_json" >/dev/null
+          if [[ "$unexpected_active_seen" == true ]]; then
+            echo 'Unexpected active deployments were terminally cancelled; finalization refuses success.' >&2
+            exit 1
+          fi
           echo 'FINALIZED_PROTECTED_UAT_FINAL_WORKFLOW_STATE=disabled_manually'
+          echo 'FINALIZED_PROTECTED_UAT_FINAL_ACTIVE_DEPLOYMENTS=none'
 
       - name: Record successful finalization evidence
         if: success()
@@ -192,9 +230,10 @@ jobs:
         run: |
           set +e
           final_workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state' 2>/dev/null || true)"
-          if [[ "$final_workflow_state" == 'disabled_manually' ]]; then
-            sealing_status='verified `disabled_manually`'
+          final_active_count="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100" 2>/dev/null | jq -r '[.[].workflow_runs[] | select(.status != "completed")] | length' 2>/dev/null || true)"
+          if [[ "$final_workflow_state" == 'disabled_manually' && "$final_active_count" == '0' ]]; then
+            sealing_status='verified disabled_manually with zero active deployments'
           else
-            sealing_status="NOT VERIFIED (observed \`${final_workflow_state:-unavailable}\`); manual sealing required immediately"
+            sealing_status="NOT VERIFIED (workflow state ${final_workflow_state:-unavailable}, active deployments ${final_active_count:-unavailable}); manual sealing required immediately; active-run cancellation required immediately"
           fi
           gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT finalization failed.\n\n- Successful deployment under verification: \`$SUCCESSFUL_RUN_ID\`\n- Ghost under retirement: \`$RETIRED_RUN_ID\`\n- Deployment workflow sealing: $sealing_status\n- Production mutation: none\n- Module 025 mutation: none"
