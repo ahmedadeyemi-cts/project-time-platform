@@ -98,15 +98,6 @@ public static partial class ScopedRolePolicyModule
 
         foreach (var id in ids)
         {
-            await using (var audit = new NpgsqlCommand("""
-                DELETE FROM scoped_time_management_events
-                WHERE time_entry_id = @time_entry_id;
-                """, connection, transaction))
-            {
-                audit.Parameters.AddWithValue("time_entry_id", id);
-                await audit.ExecuteNonQueryAsync(cancellationToken);
-            }
-
             await using (var association = new NpgsqlCommand("""
                 DELETE FROM module001_timesheet_entry_associations
                 WHERE time_entry_id = @time_entry_id;
@@ -133,6 +124,10 @@ public static partial class ScopedRolePolicyModule
             }
         }
 
+        // scoped_time_management_events is immutable by design. A successful
+        // Module 001B move retains its audit row, which also references the
+        // fixture Timesheet. Remove only the disposable entry/association data;
+        // keep an empty Timesheet whenever it is needed as the audit anchor.
         await using var timesheet = new NpgsqlCommand("""
             DELETE FROM timesheets t
             WHERE t.user_id = @user_id
@@ -141,6 +136,11 @@ public static partial class ScopedRolePolicyModule
                   SELECT 1
                   FROM time_entries te
                   WHERE te.timesheet_id = t.timesheet_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM scoped_time_management_events event_record
+                  WHERE event_record.timesheet_id = t.timesheet_id
               );
             """, connection, transaction);
         timesheet.Parameters.AddWithValue("user_id", targetUserId);

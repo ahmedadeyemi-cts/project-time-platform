@@ -342,6 +342,9 @@ jobs:
           ! grep -Fq -- '--revision-weight' "$MODULE001B_REVISION_WAIT"
           grep -Fq 'PROJECTPULSE_MODULE001B_PROTECTED_TEST_UAT_ENABLED' "$MODULE001B_FIXTURE"
           grep -Fq 'protected_test_uat_route_unavailable' "$MODULE001B_FIXTURE"
+          ! grep -Fq 'DELETE FROM scoped_time_management_events' "$MODULE001B_FIXTURE"
+          grep -Fq 'Scoped RBAC audit evidence is immutable' database/migrations/040_scoped_role_policy_versions/00_schema.sql
+          grep -Fq 'event_record.timesheet_id = t.timesheet_id' "$MODULE001B_FIXTURE"
 
           ! grep -Fq 'full_imae' "$CONTROLLER"
           ! grep -Eq 'local[[:space:]]+repository="\$1".*image="\$repository:' "$CONTROLLER"
