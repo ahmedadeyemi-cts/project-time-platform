@@ -1,4 +1,4 @@
-name: One-Time Protected UAT Fresh Relaunch for PR794
+name: One-Time Protected UAT Force-Retirement Relaunch for PR794
 
 on:
   issue_comment:
@@ -11,7 +11,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: protected-uat-pr794-fresh-relaunch
+  group: protected-uat-pr794-force-retirement-relaunch
   cancel-in-progress: false
 
 jobs:
@@ -36,6 +36,9 @@ jobs:
       RECOVERY_CONTROLLER_RUN_ID: '33661863766'
       RECOVERY_CONTROLLER_HEAD_SHA: 26b03f0a58007875f01d1e4a182cf251ca025058
       RECOVERY_CONTROLLER_CREATED_AT: '2026-09-02T17:33:56Z'
+      RELAUNCH_CONTROLLER_RUN_ID: '33665282080'
+      RELAUNCH_CONTROLLER_HEAD_SHA: 156180c459d86481d5dafefc93de8bbeffa7aa5f
+      RELAUNCH_CONTROLLER_CREATED_AT: '2026-09-02T18:07:28Z'
       EXPECTED_RUN_ID: '0'
       EXPECTED_RUN_ATTEMPT: '0'
       CONTROL_WORKFLOW_PATH: .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
@@ -122,6 +125,12 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          if gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/cancel" >/dev/null; then
+            echo "Normal cancellation was accepted for inert run $RETIRED_RUN_ID."
+          else
+            echo "Normal cancellation was rejected for inert run $RETIRED_RUN_ID; using force-cancel." >&2
+          fi
+
           run_cancelled=false
           for cancel_attempt in $(seq 1 60); do
             run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
@@ -140,13 +149,15 @@ jobs:
               run_cancelled=true
               break
             fi
-            if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/cancel" >/dev/null; then
-              echo "Cancellation request ${cancel_attempt} for inert run $RETIRED_RUN_ID failed; retrying." >&2
+            if gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/force-cancel" >/dev/null; then
+              echo "Force-cancellation request ${cancel_attempt} accepted for inert run $RETIRED_RUN_ID."
+            else
+              echo "Force-cancellation request ${cancel_attempt} for inert run $RETIRED_RUN_ID failed; retrying." >&2
             fi
             sleep 2
           done
           [[ "$run_cancelled" == true ]] || {
-            echo "Could not verify inert run $RETIRED_RUN_ID as cancelled." >&2
+            echo "Could not verify force-cancelled inert run $RETIRED_RUN_ID." >&2
             exit 1
           }
           echo "PROTECTED_UAT_RELAUNCH_INERT_RUN_CONCLUSION=cancelled"
@@ -215,6 +226,11 @@ jobs:
             "$RECOVERY_CONTROLLER_RUN_ID" \
             "$RECOVERY_CONTROLLER_HEAD_SHA" \
             "$RECOVERY_CONTROLLER_CREATED_AT" \
+            'Reassert disabled Protected Test workflow and reject all non-target attempts'
+          wait_for_terminal_controller \
+            "$RELAUNCH_CONTROLLER_RUN_ID" \
+            "$RELAUNCH_CONTROLLER_HEAD_SHA" \
+            "$RELAUNCH_CONTROLLER_CREATED_AT" \
             'Reassert disabled Protected Test workflow and reject all non-target attempts'
 
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
