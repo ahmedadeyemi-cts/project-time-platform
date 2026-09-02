@@ -151,11 +151,13 @@ jobs:
           }
           echo "PROTECTED_UAT_RELAUNCH_INERT_RUN_CONCLUSION=cancelled"
 
-          wait_for_failed_controller() {
+          wait_for_terminal_controller() {
             local controller_run_id="$1"
             local expected_head_sha="$2"
             local expected_created_at="$3"
+            local expected_cleanup_step="$4"
             local controller_json
+            local controller_jobs_json
             controller_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${controller_run_id}")"
             jq -e \
               --arg path "$CONTROL_WORKFLOW_PATH" \
@@ -177,11 +179,25 @@ jobs:
               controller_status="$(jq -r '.status' <<<"$controller_json")"
               controller_conclusion="$(jq -r '.conclusion // ""' <<<"$controller_json")"
               if [[ "$controller_status" == 'completed' ]]; then
-                [[ "$controller_conclusion" == 'failure' ]] || {
-                  echo "Prior controller $controller_run_id completed as ${controller_conclusion:-unknown}, not the expected fail-closed result." >&2
+                [[ "$controller_conclusion" == 'failure' || "$controller_conclusion" == 'cancelled' ]] || {
+                  echo "Prior controller $controller_run_id completed as ${controller_conclusion:-unknown}, not a fail-closed terminal result." >&2
                   exit 1
                 }
-                echo "PROTECTED_UAT_RELAUNCH_PRIOR_CONTROLLER run_id=$controller_run_id conclusion=$controller_conclusion"
+                controller_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${controller_run_id}/jobs?filter=latest&per_page=100")"
+                jq -e \
+                  --arg expected_cleanup_step "$expected_cleanup_step" '
+                    .total_count == 1
+                    and ([.jobs[].steps[]
+                      | select(
+                          .name == $expected_cleanup_step
+                          and .status == "completed"
+                          and .conclusion == "success"
+                        )] | length) == 1
+                  ' <<<"$controller_jobs_json" >/dev/null || {
+                  echo "Prior controller $controller_run_id did not prove successful workflow cleanup." >&2
+                  exit 1
+                }
+                echo "PROTECTED_UAT_RELAUNCH_PRIOR_CONTROLLER run_id=$controller_run_id conclusion=$controller_conclusion cleanup=success"
                 return 0
               fi
               sleep 2
@@ -190,8 +206,16 @@ jobs:
             exit 1
           }
 
-          wait_for_failed_controller "$ORIGINAL_CONTROLLER_RUN_ID" "$ORIGINAL_CONTROLLER_HEAD_SHA" "$ORIGINAL_CONTROLLER_CREATED_AT"
-          wait_for_failed_controller "$RECOVERY_CONTROLLER_RUN_ID" "$RECOVERY_CONTROLLER_HEAD_SHA" "$RECOVERY_CONTROLLER_CREATED_AT"
+          wait_for_terminal_controller \
+            "$ORIGINAL_CONTROLLER_RUN_ID" \
+            "$ORIGINAL_CONTROLLER_HEAD_SHA" \
+            "$ORIGINAL_CONTROLLER_CREATED_AT" \
+            'Reassert disabled Protected Test workflow after attempt'
+          wait_for_terminal_controller \
+            "$RECOVERY_CONTROLLER_RUN_ID" \
+            "$RECOVERY_CONTROLLER_HEAD_SHA" \
+            "$RECOVERY_CONTROLLER_CREATED_AT" \
+            'Reassert disabled Protected Test workflow and reject all non-target attempts'
 
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/disable" >/dev/null
           state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.state')"
