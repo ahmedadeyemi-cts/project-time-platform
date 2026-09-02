@@ -190,4 +190,10 @@ jobs:
         shell: bash
         run: |
           set +e
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT finalization failed closed.\n\n- Successful deployment under verification: \`$SUCCESSFUL_RUN_ID\`\n- Ghost under retirement: \`$RETIRED_RUN_ID\`\n- Deployment workflow disable was reasserted automatically.\n- Production mutation: none\n- Module 025 mutation: none"
+          final_workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state' 2>/dev/null || true)"
+          if [[ "$final_workflow_state" == 'disabled_manually' ]]; then
+            sealing_status='verified `disabled_manually`'
+          else
+            sealing_status="NOT VERIFIED (observed `${final_workflow_state:-unavailable}`); manual sealing required immediately"
+          fi
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT finalization failed.\n\n- Successful deployment under verification: \`$SUCCESSFUL_RUN_ID\`\n- Ghost under retirement: \`$RETIRED_RUN_ID\`\n- Deployment workflow sealing: $sealing_status\n- Production mutation: none\n- Module 025 mutation: none"
