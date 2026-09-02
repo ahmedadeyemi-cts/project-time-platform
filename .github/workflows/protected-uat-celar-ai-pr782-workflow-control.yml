@@ -75,33 +75,46 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          before_max_run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$DEPLOY_WORKFLOW" \
-            --branch "$AUTHORIZED_CANDIDATE_BRANCH" --event workflow_dispatch --limit 100 \
-            --json databaseId --jq 'map(.databaseId) | max // 0')"
-          [[ "$before_max_run_id" =~ ^[0-9]+$ ]] || {
-            echo "Could not establish the pre-dispatch workflow-run boundary: $before_max_run_id" >&2
+          expected_workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}" --jq '.id')"
+          [[ "$expected_workflow_id" =~ ^[0-9]+$ ]] || {
+            echo "Could not resolve the governed deployment workflow ID: $expected_workflow_id" >&2
             exit 1
           }
           dispatch_started_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" \
+          dispatch_output="$(gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" \
             --ref "$AUTHORIZED_CANDIDATE_BRANCH" \
             -f release_sha="$EXPECTED_RELEASE_SHA" \
-            -f release_branch="$AUTHORIZED_CANDIDATE_BRANCH"
+            -f release_branch="$AUTHORIZED_CANDIDATE_BRANCH" 2>&1)"
+          printf '%s\n' "$dispatch_output"
 
-          run_id=''
-          run_url=''
-          for attempt in $(seq 1 60); do
-            run_row="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$DEPLOY_WORKFLOW" \
-              --branch "$AUTHORIZED_CANDIDATE_BRANCH" --event workflow_dispatch --limit 30 \
-              --json databaseId,headSha,createdAt,url \
-              --jq "map(select(.headSha == \"$EXPECTED_RELEASE_SHA\" and .databaseId > $before_max_run_id and .createdAt >= \"$dispatch_started_at\")) | sort_by(.databaseId) | first // {} | [(.databaseId // \"\"), (.url // \"\")] | @tsv")"
-            IFS=$'\t' read -r run_id run_url <<<"$run_row"
-            if [[ -n "$run_id" ]]; then
-              break
-            fi
-            sleep 5
-          done
-          [[ -n "$run_id" ]] || { echo 'The governed Protected Test deployment run was not created.' >&2; exit 1; }
+          run_url="$(grep -Eo 'https://github\.com/[^[:space:]]+/actions/runs/[0-9]+' <<<"$dispatch_output" | tail -n 1 || true)"
+          if [[ "$run_url" =~ ^https://github\.com/${GITHUB_REPOSITORY}/actions/runs/([0-9]+)$ ]]; then
+            run_id="${BASH_REMATCH[1]}"
+          else
+            echo 'GitHub did not return an unambiguous created-run URL for this dispatch; refusing to infer run ownership.' >&2
+            exit 1
+          fi
+
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+          jq -e \
+            --arg expected_sha "$EXPECTED_RELEASE_SHA" \
+            --arg expected_branch "$AUTHORIZED_CANDIDATE_BRANCH" \
+            --arg started_at "$dispatch_started_at" \
+            --argjson expected_workflow_id "$expected_workflow_id" \
+            '.workflow_id == $expected_workflow_id
+             and .event == "workflow_dispatch"
+             and .head_sha == $expected_sha
+             and .head_branch == $expected_branch
+             and .created_at >= $started_at' <<<"$run_json" >/dev/null || {
+            echo 'The run returned by GitHub does not match the exact governed dispatch boundary.' >&2
+            jq '{id, workflow_id, event, head_sha, head_branch, created_at, html_url}' <<<"$run_json" >&2 || true
+            exit 1
+          }
+          verified_run_url="$(jq -r '.html_url' <<<"$run_json")"
+          [[ "$verified_run_url" == "$run_url" ]] || {
+            echo "GitHub run URL mismatch: dispatched=$run_url verified=$verified_run_url" >&2
+            exit 1
+          }
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
           echo "PROTECTED_UAT_DEPLOYMENT_RUN_ID=$run_id"
