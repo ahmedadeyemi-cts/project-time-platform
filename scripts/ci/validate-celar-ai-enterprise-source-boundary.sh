@@ -181,7 +181,29 @@ if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]
     ! grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
     ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
   else
-    if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-tolerant-cited-scope-* ]]; then
+    if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-readback-metadata-case-* ]]; then
+      cat > "${TMPDIR:-/tmp}/module025-readback-metadata-case-expected-files" <<'FILES'
+      scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+      scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+      tests/validate-systemwide-image-build-controller.mjs
+FILES
+      sed -i 's/^[[:space:]]*//' "${TMPDIR:-/tmp}/module025-readback-metadata-case-expected-files"
+      LC_ALL=C sort -u "${TMPDIR:-/tmp}/module025-readback-metadata-case-expected-files" \
+        -o "${TMPDIR:-/tmp}/module025-readback-metadata-case-expected-files"
+      printf '%s\n' "$CHANGED" | LC_ALL=C sort -u > "${TMPDIR:-/tmp}/module025-readback-metadata-case-actual-files"
+      cmp -s \
+        "${TMPDIR:-/tmp}/module025-readback-metadata-case-expected-files" \
+        "${TMPDIR:-/tmp}/module025-readback-metadata-case-actual-files" || {
+        echo 'The Module 025 readback metadata-case repair differs from its governed file set.' >&2
+        diff -u \
+          "${TMPDIR:-/tmp}/module025-readback-metadata-case-expected-files" \
+          "${TMPDIR:-/tmp}/module025-readback-metadata-case-actual-files" >&2 || true
+        exit 1
+      }
+      grep -Fq '.engagement.aiMetadata.CorrelationId // .engagement.aiMetadata.correlationId' \
+        scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+      echo 'CELAR_AI_MODULE025_READBACK_METADATA_CASE_BOUNDARY=PASSED'
+    elif [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-tolerant-cited-scope-* ]]; then
       cat > "${TMPDIR:-/tmp}/module025-tolerant-cited-scope-expected-files" <<'FILES'
       scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
       src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
