@@ -5,6 +5,8 @@ on:
     paths:
       - 'database/migrations/092_module_loading_assignment_visibility_repair.sql'
       - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'
+      - 'database/migrations/100_module001b_catalog_ownership_reconciliation.sql'
+      - 'database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql'
       - 'tests/test-module-catalog-owner-repair-migration-093.sh'
       - 'tests/validate-module-management-owner-drawer.mjs'
       - 'src/backend/ProjectTime.Api/Program.cs'
@@ -27,6 +29,7 @@ on:
       - 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
       - 'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs'
       - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/module-loading-assignment-propagation-ci.yml'
   workflow_dispatch:
@@ -60,7 +63,7 @@ jobs:
       - name: Validate focused source contracts
         run: node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
 
-      - name: Execute Migration 093 owner-catalog regression
+      - name: Execute Migrations 093 and 100 owner-catalog regression
         shell: bash
         run: bash tests/test-module-catalog-owner-repair-migration-093.sh
 

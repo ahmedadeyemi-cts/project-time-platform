@@ -334,6 +334,28 @@ public sealed class CelarAiInternalDataService
         LIMIT 500;
         """;
 
+    private static readonly string ExactNamePartPersonSql = ScopeCte + """
+        , exact_name_part_people AS (
+            SELECT DISTINCT person.user_id, person.display_name, person.email
+            FROM app_users person
+            JOIN authorized_people allowed ON allowed.user_id = person.user_id
+            CROSS JOIN LATERAL regexp_split_to_table(
+                lower(trim(person.display_name)),
+                '[^a-z0-9]+'
+            ) name_part(value)
+            WHERE person.is_active = TRUE
+              AND name_part.value = @name_part
+        )
+        SELECT
+            person.user_id,
+            person.display_name,
+            person.email,
+            COUNT(*) OVER () AS authorized_match_count
+        FROM exact_name_part_people person
+        ORDER BY person.display_name, person.email
+        LIMIT 8;
+        """;
+
     private static readonly string PersonProjectsSql = ScopeCte + """
         , person_projects AS (
             SELECT
@@ -803,6 +825,38 @@ public sealed class CelarAiInternalDataService
             return new PersonResolution(PersonResolutionOutcome.Resolved, exact[0], []);
         if (exact.Count > 1)
             return new PersonResolution(PersonResolutionOutcome.Ambiguous, null, exact.Take(8).Select(candidate => candidate.DisplayName).ToArray());
+
+        var exactNamePart = ExactNamePartReference(personReference);
+        if (exactNamePart.Length > 0)
+        {
+            var partialNameMatches = new List<PersonCandidate>();
+            long authorizedMatchCount = 0;
+            await using var command = new NpgsqlCommand(ExactNamePartPersonSql, connection);
+            AddScopeParameters(command, effectiveUserId, access);
+            command.Parameters.AddWithValue("name_part", exactNamePart);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                authorizedMatchCount = reader.GetInt64(3);
+                partialNameMatches.Add(new PersonCandidate(
+                    reader.GetGuid(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    false));
+            }
+
+            if (authorizedMatchCount == 1 && partialNameMatches.Count == 1)
+                return new PersonResolution(PersonResolutionOutcome.Resolved, partialNameMatches[0], []);
+            if (authorizedMatchCount > 1)
+                return new PersonResolution(
+                    PersonResolutionOutcome.Ambiguous,
+                    null,
+                    partialNameMatches
+                        .Select(candidate => candidate.DisplayName)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(8)
+                        .ToArray());
+        }
 
         var suggestions = new List<(string Name, int Distance)>();
         await using (var command = new NpgsqlCommand(AuthorizedPeopleSql, connection))
@@ -1535,6 +1589,27 @@ public sealed class CelarAiInternalDataService
 
     private static string NormalizeIdentity(string value) =>
         Regex.Replace(value.Trim().ToLowerInvariant(), "[^a-z0-9]+", string.Empty, Options);
+
+    private static string ExactNamePartReference(string reference)
+    {
+        if (reference.Contains('@')) return string.Empty;
+        var referenceParts = Regex.Matches(reference.ToLowerInvariant(), "[a-z0-9]+", Options)
+            .Cast<Match>()
+            .Select(match => match.Value)
+            .Where(value => value.Length >= 2)
+            .ToArray();
+        return referenceParts.Length == 1 ? referenceParts[0] : string.Empty;
+    }
+
+    private static bool IsExactNamePartReference(string reference, string displayName)
+    {
+        var exactNamePart = ExactNamePartReference(reference);
+        if (exactNamePart.Length == 0) return false;
+        return Regex.Matches(displayName.ToLowerInvariant(), "[a-z0-9]+", Options)
+            .Cast<Match>()
+            .Select(match => match.Value)
+            .Any(value => string.Equals(value, exactNamePart, StringComparison.Ordinal));
+    }
 
     private static string DetailLevel(string? value) =>
         PulseAiSystemIntelligencePolicy.DetailLevels.Contains(value ?? string.Empty, StringComparer.OrdinalIgnoreCase)

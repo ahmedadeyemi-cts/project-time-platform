@@ -506,7 +506,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           jq -n --arg api "$API_IMAGE" --arg web "$WEB_IMAGE" --arg migration "$MIGRATION_IMAGE" '{apiImage:$api,webImage:$web,migrationImage:$migration}' > "$EVIDENCE_DIR/immutable-images.json"
 
-      - name: Apply and verify Migrations 086, 088, 093, 094, 095, 096, and 097 inside Test private network
+      # Compatibility contract: Apply and verify Migrations 086, 088, 093, 094, 095, 096, and 097 inside Test private network.
+      - name: Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network
         id: migration
         shell: bash
         working-directory: release
@@ -530,7 +531,7 @@ jobs:
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
-          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
+          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
         id: deploy_api
@@ -1027,6 +1028,19 @@ jobs:
           [[ "$CEO" != *Matt*Rosenberg* ]] || fail 'Celar AI returned the known incorrect US Signal CEO answer.'
           jq -e '.trust.authoritativeSourceCount >= 1' "$EVIDENCE_DIR/celar-us-signal-ceo.json" >/dev/null || fail 'US Signal CEO answer did not expose authoritative-source trust evidence.'
 
+          ask_public_fact 'How many projects does Kevin have assigned to him?' "$EVIDENCE_DIR/celar-kevin-project-count.json"
+          KEVIN_PROJECT_COUNT_ANSWER="$(jq -r '.result.answer.directConclusion // empty' "$EVIDENCE_DIR/celar-kevin-project-count.json")"
+          [[ "$KEVIN_PROJECT_COUNT_ANSWER" == *Kevin* ]] || fail "Celar AI did not resolve the unique authorized short-name identity Kevin: $KEVIN_PROJECT_COUNT_ANSWER"
+          [[ "$KEVIN_PROJECT_COUNT_ANSWER" =~ [0-9]+ ]] || fail "Celar AI did not return a numeric project count for Kevin: $KEVIN_PROJECT_COUNT_ANSWER"
+          [[ "${KEVIN_PROJECT_COUNT_ANSWER,,}" != *"could not verify"* && "${KEVIN_PROJECT_COUNT_ANSWER,,}" != *"could not resolve"* ]] \
+            || fail "Celar AI returned an unresolved or unverified answer for the unique Kevin identity: $KEVIN_PROJECT_COUNT_ANSWER"
+          jq -e '
+            .status == "completed"
+            and .trust.authoritativeSourceCount >= 1
+            and ((.result.answer.citationIds // []) | length >= 1)
+          ' "$EVIDENCE_DIR/celar-kevin-project-count.json" >/dev/null || fail 'Kevin project-count answer did not expose completed authoritative internal-source evidence.'
+          echo "CELAR_AI_KEVIN_PROJECT_COUNT_UAT=PASSED answer=$KEVIN_PROJECT_COUNT_ANSWER"
+
           for stability_attempt in $(seq 1 5); do
             ask_public_fact 'What is the purpose of Project FlowHive?' "$EVIDENCE_DIR/celar-stability-$stability_attempt.json"
             jq -e '((.result.answer.directConclusion // "") | length) > 0' "$EVIDENCE_DIR/celar-stability-$stability_attempt.json" >/dev/null || fail "Celar AI stability attempt $stability_attempt returned no answer."
@@ -1078,7 +1092,11 @@ jobs:
                     'Project Cost Alerts' \
                     'Data incomplete' \
                     'Select or type a customer' \
+                    'Inside Sales Representative' \
                     'FlowHive enterprise controls are temporarily unavailable.' \
+                    'This private generation phase can take several minutes' \
+                    'flowhive-ai-progress-explanation' \
+                    'background:var(--flowhive-surface)' \
                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1' \
                     'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSHOT_V1' \
                     '--project-workload-responsive-metrics:1' \
@@ -1144,6 +1162,10 @@ jobs:
               migration095:"applied_and_verified",
               migration096:"applied_and_verified",
               migration097:"applied_and_verified",
+              migration098OwnerStorage:"applied_and_verified",
+              migration098CustomerSource:"applied_and_verified",
+              migration099:"applied_and_verified",
+              migration100:"applied_and_verified",
               projectManagementSummary:true,
               projectIntake:true,
               opportunityDirectory:true,
@@ -1167,6 +1189,8 @@ jobs:
               logoutAudited:true,
               presidentOfficiallyVerified:true,
               usSignalCeoOfficiallyVerified:true,
+              kevinShortNameResolved:true,
+              kevinProjectCountAnswered:true,
               enterpriseResponsiveMarkers:true,
               projectManagerModules:true,
               projectManagerWorkRegister:true,
@@ -1312,7 +1336,7 @@ jobs:
             echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
             echo '- Environment: protected Test only'
             echo '- Target: https://phd-west-test.onenecklab.com'
-            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, 093, 094, 095, 096, and 097: applied and verified' || echo '- Migrations 086, 088, 093, 094, 095, 096, and 097: not completed'
+            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, and 093 through 100: applied and verified' || echo '- Migrations 086, 088, and 093 through 100: not completed'
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: passed' || echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: not completed'
             [[ -f "$EVIDENCE_DIR/module025-sow-gsd-protected-test-uat.json" ]] && echo '- Module 025 authorized Solution Architect generation, review-ready P/D/I/V/R readback, and archive cleanup UAT: passed' || echo '- Module 025 SOW/GSD generation lifecycle UAT: not completed'
             [[ -f "$EVIDENCE_DIR/utilization-role-scoping-uat.json" ]] && echo '- Kevin utilization role-scoping UAT: passed' || echo '- Kevin utilization role-scoping UAT: not completed'

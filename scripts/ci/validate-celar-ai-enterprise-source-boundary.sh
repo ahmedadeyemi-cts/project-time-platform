@@ -19,7 +19,10 @@ publish_mode() {
   printf 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=%s\n' "$mode"
 }
 
-if [[ "$HEAD_BRANCH" == security/celar-ai-production-readiness-* ]]; then
+if [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
+  ALLOWED_DATABASE='^(database/migrations/100_module001b_catalog_ownership_reconciliation\.sql|database/rollback/100_module001b_catalog_ownership_reconciliation_rollback\.sql)$'
+  publish_mode PROTECTED_UAT_VALIDATION_DEFECTS
+elif [[ "$HEAD_BRANCH" == security/celar-ai-production-readiness-* ]]; then
   ALLOWED_DATABASE='^(database/migrations/071_ai_runtime_production_hardening\.sql|database/rollback/071_ai_runtime_production_hardening_rollback\.sql)$'
   publish_mode PRODUCTION_HARDENING
 elif [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
@@ -163,6 +166,59 @@ elif [[ "$HEAD_BRANCH" == release/test-b1335bd2-timesheet-ai-* ]]; then
     ! grep -Eq 'id-token:[[:space:]]+[w]rite' "$deferred"
   ! grep -Eq '^[[:space:]]{2}push:' "$deferred"
   done
+fi
+
+if [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
+  CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+  PROHIBITED="$(grep -Fvx "$CONTROLLER" <<<"$PROHIBITED" || true)"
+  cat > "${TMPDIR:-/tmp}/protected-uat-validation-defects-expected-files" <<'FILES'
+  .github/workflows/module-loading-assignment-propagation-ci.yml
+  .github/workflows/module-management-owner-drawer-ci.yml
+  .github/workflows/projectpulse-deploy-test.yml
+  .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+  .github/workflows/projectpulse-release-test-control-ci.yml
+  database/migrations/100_module001b_catalog_ownership_reconciliation.sql
+  database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql
+  scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+  scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+  scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+  src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs
+  src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+  src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs
+  src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+  src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs
+  src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+  src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+  src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx
+  src/frontend/project-time-web/src/project-flowhive-center.css
+  tests/CelarAiInternalDataTests/Program.cs
+  tests/test-module-catalog-owner-repair-migration-093.sh
+  tests/validate-celar-ai-pr630-consolidated.mjs
+  tests/validate-flowhive-sow-evidence-autoadmission.mjs
+  tests/validate-module-management-owner-drawer.mjs
+  tests/validate-systemwide-image-build-controller.mjs
+FILES
+  sed -i 's/^[[:space:]]*//' "${TMPDIR:-/tmp}/protected-uat-validation-defects-expected-files"
+  LC_ALL=C sort -u "${TMPDIR:-/tmp}/protected-uat-validation-defects-expected-files" \
+    -o "${TMPDIR:-/tmp}/protected-uat-validation-defects-expected-files"
+  printf '%s\n' "$CHANGED" | LC_ALL=C sort -u > "${TMPDIR:-/tmp}/protected-uat-validation-defects-actual-files"
+  cmp -s \
+    "${TMPDIR:-/tmp}/protected-uat-validation-defects-expected-files" \
+    "${TMPDIR:-/tmp}/protected-uat-validation-defects-actual-files" || {
+    echo 'The Protected-UAT validation-defect repair differs from its governed file set.' >&2
+    diff -u \
+      "${TMPDIR:-/tmp}/protected-uat-validation-defects-expected-files" \
+      "${TMPDIR:-/tmp}/protected-uat-validation-defects-actual-files" >&2 || true
+    exit 1
+  }
+  grep -Fq 'Module025SowMaximumOutputTokens = 12_000' src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+  grep -Fq 'ParseModule025DetailedPlan' src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+  grep -Fq 'insideSalesRepresentatives' src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+  grep -Fq 'CELAR_AI_KEVIN_PROJECT_COUNT_UAT=PASSED' "$CONTROLLER"
+  grep -Fq 'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+  grep -Fq 'MaximumAiRouteRetries = 2' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+  ! grep -Eq 'environment:[[:space:]]+production' "$CONTROLLER"
+  echo 'CELAR_AI_PROTECTED_UAT_VALIDATION_DEFECTS_BOUNDARY=PASSED'
 fi
 
 if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]; then

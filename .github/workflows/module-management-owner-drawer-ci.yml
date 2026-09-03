@@ -14,6 +14,10 @@ on:
       - 'tests/validate-module-management-owner-drawer.mjs'
       - 'database/migrations/091_module_management_owner_storage_repair.sql'
       - 'database/rollback/091_module_management_owner_storage_repair_rollback.sql'
+      - 'database/migrations/100_module001b_catalog_ownership_reconciliation.sql'
+      - 'database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+      - 'tests/test-module-catalog-owner-repair-migration-093.sh'
   workflow_dispatch:
 
 permissions:
@@ -42,6 +46,47 @@ jobs:
           set -Eeuo pipefail
           git fetch origin main --no-tags
           git diff --name-only origin/main...HEAD | LC_ALL=C sort -u > "$RUNNER_TEMP/module-management-actual.txt"
+
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
+            cat > "$RUNNER_TEMP/protected-uat-validation-defects.txt" <<'EOF'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
+          .github/workflows/module-management-owner-drawer-ci.yml
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          database/migrations/100_module001b_catalog_ownership_reconciliation.sql
+          database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql
+          scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+          scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+          src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+          src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs
+          src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+          src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx
+          src/frontend/project-time-web/src/project-flowhive-center.css
+          tests/CelarAiInternalDataTests/Program.cs
+          tests/test-module-catalog-owner-repair-migration-093.sh
+          tests/validate-celar-ai-pr630-consolidated.mjs
+          tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          tests/validate-module-management-owner-drawer.mjs
+          tests/validate-systemwide-image-build-controller.mjs
+          EOF
+            sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/protected-uat-validation-defects.txt"
+            LC_ALL=C sort -u "$RUNNER_TEMP/protected-uat-validation-defects.txt" \
+              -o "$RUNNER_TEMP/protected-uat-validation-defects.txt"
+            cmp -s "$RUNNER_TEMP/module-management-actual.txt" "$RUNNER_TEMP/protected-uat-validation-defects.txt" || {
+              echo 'Protected-UAT validation-defect repair differs from the exact governed Module Management source set.' >&2
+              diff -u "$RUNNER_TEMP/protected-uat-validation-defects.txt" "$RUNNER_TEMP/module-management-actual.txt" >&2 || true
+              exit 1
+            }
+            echo 'MODULE_MANAGEMENT_PROTECTED_UAT_VALIDATION_DEFECTS_SOURCE_BOUNDARY=PASS'
+            exit 0
+          fi
 
           cat > "$RUNNER_TEMP/module-management-focused.txt" <<'EOF'
           .github/workflows/module-management-owner-drawer-ci.yml

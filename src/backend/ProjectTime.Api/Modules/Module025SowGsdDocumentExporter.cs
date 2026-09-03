@@ -27,7 +27,7 @@ internal static class Module025SowGsdDocumentExporter
             ("Commercial Model", CommercialLabel(engagement.CommercialModel)),
             ("Solution Architect", engagement.OwnerDisplayName),
             ("Account Executive", EmptyAsTbd(engagement.AccountExecutiveName)),
-            ("Resale", EmptyAsTbd(engagement.ResaleName)),
+            ("Inside Sales Representative", EmptyAsTbd(engagement.ResaleName)),
             ("GSD Profile", GsdProfileLabel(engagement.GsdTemplateKey)),
             ("Revision", engagement.Revision.ToString(CultureInfo.InvariantCulture))
         });
@@ -151,7 +151,7 @@ internal static class Module025SowGsdDocumentExporter
         summary.Cell("B7").Value = engagement.OwnerDisplayName;
         summary.Cell("A8").Value = "Account Executive";
         summary.Cell("B8").Value = engagement.AccountExecutiveName;
-        summary.Cell("A9").Value = "Resale";
+        summary.Cell("A9").Value = "Inside Sales Representative";
         summary.Cell("B9").Value = engagement.ResaleName;
         summary.Cell("A10").Value = "GSD Template Profile";
         summary.Cell("B10").Value = GsdProfileLabel(engagement.GsdTemplateKey);

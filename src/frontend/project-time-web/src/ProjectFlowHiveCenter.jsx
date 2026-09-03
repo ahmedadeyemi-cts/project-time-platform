@@ -33,6 +33,8 @@ const defaultControls = { contractType: 'unknown', currencyCode: 'USD', approved
 const defaultRaid = { planId: null, itemType: 'risk', title: '', description: '', status: 'open', priority: 'medium', probability: null, impact: null, ownerUserId: null, dueDate: null, mitigation: '', sourceKind: 'manual', sourceReference: '' };
 const defaultStatusDraft = { overallHealth: 'green', scheduleHealth: 'green', financialHealth: 'unknown', scopeHealth: 'green', executiveSummary: '', accomplishments: [], nextSteps: [], decisionsNeeded: [], keyRisks: [], generatedSource: 'deterministic' };
 const defaultShareDraft = { planId: '', versionNumber: null, expirationDays: 30, customerLabel: '', shareNote: '', allowedArtifacts: ['view', 'pdf'] };
+const AI_PLANNER_POLL_INTERVAL_MS = 1500;
+const AI_PLANNER_POLL_ATTEMPTS = 800;
 
 function storedSession() {
   try {
@@ -874,8 +876,8 @@ export default function ProjectFlowHiveCenter() {
     });
     setAiPreview(result);
     setActiveView('ai');
-    for (let attempt = 0; attempt < 240 && !result.terminal; attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    for (let attempt = 0; attempt < AI_PLANNER_POLL_ATTEMPTS && !result.terminal; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, AI_PLANNER_POLL_INTERVAL_MS));
       result = await getJson(`/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs/${result.runId}`);
       setAiPreview(result);
     }
@@ -909,6 +911,9 @@ export default function ProjectFlowHiveCenter() {
         setNotice(result.status === 'completed_with_schedule_overrun'
           ? `AI Planner created and saved the working draft. The calculated finish is ${result.scheduleAssessment?.calculatedFinishDate || 'after the requested date'}; review the critical path and options without compressing estimates.`
           : 'AI Planner created and saved the detailed Plan, Design, Implement, Validate, and Release working draft. Review it before creating an immutable version or baseline.');
+      } else if (!result.terminal) {
+        setNotice('AI Planner is still running in the governed background worker. Its latest phase and progress remain visible in the AI Planning Workspace; no working draft has been changed yet.');
+        setActiveView('ai');
       } else {
         const details = [...(result.blockers || []), ...(result.warnings || [])].filter(Boolean).slice(0, 6);
         setError(`AI Planner needs attention. ${details.join(' ') || 'Review the AI Planning Workspace for evidence progress and open questions.'}`);
@@ -1169,9 +1174,11 @@ export default function ProjectFlowHiveCenter() {
             <h3>AI Planning Workspace</h3>
             <p>This evidence-only workspace shows the server-owned AI Planner operation, private-processing progress, authority, citations, warnings, open questions, and generation logs. The editable plan exists only in Planner.</p>
             <ol><li>The exact stored Module 064 order is followed for this capability.</li><li>Private SOW, GSD, design, task, and assignment evidence stays inside the governed boundary.</li><li>A citation-ready private plan is required; an uncited generic template is never substituted.</li><li>Each task keeps its evidence citations, duration, estimated hours, dependencies, start date, and finish date in the review plan.</li><li>Every output requires PM and Engineering review before baseline approval or customer delivery.</li></ol>
-            {aiPreview ? <section className="flowhive-ai-operation-progress" aria-label="AI Planner operation progress">
+            {aiPreview ? <section className="flowhive-ai-operation-progress" aria-label="AI Planner operation progress" aria-live="polite">
               <header><div><span>Operation phase</span><strong>{labelFrom(aiPreview.phase || aiPreview.status)}</strong></div><div><span>Progress</span><strong>{Number(aiPreview.progressPercent || 0)}%</strong></div><div><span>Run</span><strong>{aiPreview.runId ? String(aiPreview.runId).slice(0, 8) : 'Not started'}</strong></div></header>
               <progress max="100" value={Number(aiPreview.progressPercent || 0)}>{Number(aiPreview.progressPercent || 0)}%</progress>
+              {!aiPreview.terminal && aiPreview.phase === 'extract_and_expand_work_packages' ? <p className="flowhive-ai-progress-explanation">Celar AI is reading the authorized SOW/GSD evidence and expanding it into detailed work packages. This private generation phase can take several minutes; the page continues polling the durable run.</p> : null}
+              {!aiPreview.terminal && aiPreview.phase === 'ai_route_retry' ? <p className="flowhive-ai-progress-explanation">The private generation route returned a temporary failure. FlowHive is performing a bounded automatic retry and will finish with a clear result instead of remaining indefinitely in progress.</p> : null}
               <div className="flowhive-ai-evidence-grid">
                 <article><h4>Authority and evidence</h4><p>{aiPreview.planningEvidence?.sourceGrounded ? 'Current authoritative SOW citations are grounded.' : 'FlowHive is resolving private SOW/GSD evidence.'}</p><small>Private processing: {aiPreview.planningEvidence?.automaticPrivateProcessing ? 'Automatic' : 'Pending'}</small></article>
                 <article><h4>Schedule</h4><p>{aiPreview.scheduleAssessment?.exceedsRequestedFinish ? `Calculated finish ${aiPreview.scheduleAssessment.calculatedFinishDate} exceeds the requested finish.` : 'The requested and calculated delivery window is under review.'}</p><small>Estimates compressed: {aiPreview.scheduleAssessment?.estimatesCompressed ? 'Yes' : 'No'}</small></article>

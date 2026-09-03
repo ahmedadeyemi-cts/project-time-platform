@@ -256,6 +256,7 @@ public static class ModuleCatalogOwnershipModule
 
             Guid? previousOwnerId = null;
             var previousRevision = 0;
+            var moduleFound = false;
             await using (var currentCommand = new NpgsqlCommand("""
                 SELECT owner_user_id, COALESCE(owner_revision_number, 0)
                 FROM scoped_role_policy_modules
@@ -266,13 +267,17 @@ public static class ModuleCatalogOwnershipModule
             {
                 currentCommand.Parameters.AddWithValue("module_number", normalizedModule);
                 await using var reader = await currentCommand.ExecuteReaderAsync(context.RequestAborted);
-                if (!await reader.ReadAsync(context.RequestAborted))
+                if (await reader.ReadAsync(context.RequestAborted))
                 {
-                    await transaction.RollbackAsync(context.RequestAborted);
-                    return Results.NotFound(new { status = "module_not_found", message = $"Module {normalizedModule} is not registered." });
+                    moduleFound = true;
+                    previousOwnerId = reader.IsDBNull(0) ? null : reader.GetGuid(0);
+                    previousRevision = reader.GetInt32(1);
                 }
-                previousOwnerId = reader.IsDBNull(0) ? null : reader.GetGuid(0);
-                previousRevision = reader.GetInt32(1);
+            }
+            if (!moduleFound)
+            {
+                await transaction.RollbackAsync(context.RequestAborted);
+                return Results.NotFound(new { status = "module_not_found", message = $"Module {normalizedModule} is not registered." });
             }
 
             if (previousRevision != request.ExpectedRevision)
@@ -286,9 +291,10 @@ public static class ModuleCatalogOwnershipModule
                 }, statusCode: StatusCodes.Status409Conflict);
             }
 
-            Guid ownerUserId;
-            string ownerDisplayName;
-            string ownerEmail;
+            var ownerUserId = Guid.Empty;
+            var ownerDisplayName = string.Empty;
+            var ownerEmail = string.Empty;
+            var ownerFound = false;
             await using (var ownerCommand = new NpgsqlCommand("""
                 SELECT
                     app_user.user_id,
@@ -337,38 +343,45 @@ public static class ModuleCatalogOwnershipModule
                 ownerCommand.Parameters.AddWithValue("owner_email", (request.OwnerEmail ?? string.Empty).Trim());
                 AddDeveloperOwnerRoleCodes(ownerCommand);
                 await using var reader = await ownerCommand.ExecuteReaderAsync(context.RequestAborted);
-                if (!await reader.ReadAsync(context.RequestAborted))
+                if (await reader.ReadAsync(context.RequestAborted))
                 {
-                    await transaction.RollbackAsync(context.RequestAborted);
-                    return Results.BadRequest(new
-                    {
-                        status = "owner_not_found",
-                        message = "The selected owner must be an active developer Super Administrator."
-                    });
+                    ownerFound = true;
+                    ownerUserId = reader.GetGuid(0);
+                    ownerDisplayName = reader.GetString(1);
+                    ownerEmail = reader.GetString(2);
                 }
-                ownerUserId = reader.GetGuid(0);
-                ownerDisplayName = reader.GetString(1);
-                ownerEmail = reader.GetString(2);
+            }
+            if (!ownerFound)
+            {
+                await transaction.RollbackAsync(context.RequestAborted);
+                return Results.BadRequest(new
+                {
+                    status = "owner_not_found",
+                    message = "The selected owner must be an active developer Super Administrator."
+                });
             }
 
             var nextRevision = previousRevision + 1;
-            var updatedAt = DateTimeOffset.UtcNow;
+            DateTimeOffset updatedAt;
             await using (var updateCommand = new NpgsqlCommand("""
                 UPDATE scoped_role_policy_modules
                 SET owner_user_id = @owner_user_id,
                     owner_revision_number = @next_revision,
-                    owner_updated_at = @updated_at,
+                    owner_updated_at = NOW(),
                     owner_updated_by_user_id = @actor_user_id
                 WHERE upper(module_code) = @module_number
-                  AND is_active = TRUE;
+                  AND is_active = TRUE
+                RETURNING owner_updated_at;
                 """, connection, transaction))
             {
                 updateCommand.Parameters.AddWithValue("owner_user_id", ownerUserId);
                 updateCommand.Parameters.AddWithValue("next_revision", nextRevision);
-                updateCommand.Parameters.AddWithValue("updated_at", updatedAt);
                 updateCommand.Parameters.AddWithValue("actor_user_id", actualUserId.Value);
                 updateCommand.Parameters.AddWithValue("module_number", normalizedModule);
-                await updateCommand.ExecuteNonQueryAsync(context.RequestAborted);
+                await using var reader = await updateCommand.ExecuteReaderAsync(context.RequestAborted);
+                if (!await reader.ReadAsync(context.RequestAborted))
+                    throw new InvalidOperationException("The module owner update did not return its committed timestamp.");
+                updatedAt = reader.GetFieldValue<DateTimeOffset>(0);
             }
 
             await using (var auditCommand = new NpgsqlCommand("""
@@ -442,7 +455,30 @@ public static class ModuleCatalogOwnershipModule
             exception.SqlState == PostgresErrorCodes.UndefinedColumn
             || exception.SqlState == PostgresErrorCodes.UndefinedTable)
         {
+            context.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("ModuleCatalogOwnershipModule")
+                .LogWarning(
+                    "Module ownership storage is incomplete. SqlState={SqlState} Constraint={ConstraintName}",
+                    exception.SqlState,
+                    exception.ConstraintName ?? string.Empty);
             return DependencyUnavailable();
+        }
+        catch (PostgresException exception)
+        {
+            context.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("ModuleCatalogOwnershipModule")
+                .LogWarning(
+                    "Module ownership database update failed. SqlState={SqlState} Constraint={ConstraintName}",
+                    exception.SqlState,
+                    exception.ConstraintName ?? string.Empty);
+            return Results.Json(new
+            {
+                status = "owner_update_failed",
+                message = "Module ownership could not be updated. No access permissions were changed.",
+                diagnosticCode = $"postgres_{exception.SqlState}"
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         catch (Exception exception)
         {

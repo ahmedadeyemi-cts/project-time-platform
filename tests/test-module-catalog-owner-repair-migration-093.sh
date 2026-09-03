@@ -7,6 +7,7 @@ DB_USER="projectpulse"
 DB_NAME="projectpulse"
 DB_PASSWORD="projectpulse-test-only"
 MIGRATION="/workspace/database/migrations/093_assigned_work_canonical_visibility_repair.sql"
+MIGRATION_100="/workspace/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 
 cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -108,6 +109,19 @@ CREATE TABLE scoped_role_policy_modules (
     owner_updated_by_user_id UUID NULL
 );
 
+CREATE TABLE scoped_role_policy_audit_events (
+    scoped_role_policy_audit_event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    policy_version_id UUID NULL,
+    event_code TEXT NOT NULL,
+    actor_user_id UUID NULL REFERENCES app_users(user_id),
+    actor_email TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '',
+    previous_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+    new_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+    event_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 INSERT INTO app_users (user_id, email, display_name, is_active)
 VALUES
     ('10000000-0000-0000-0000-000000000001', 'default.owner@example.test', 'Default Owner', TRUE),
@@ -152,4 +166,18 @@ assert_eq '10000000-0000-0000-0000-000000000001|1' "$(value "SELECT repaired_own
 assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='093_assigned_work_canonical_visibility_repair'")" migration_registered_once
 assert_eq 3 "$(value "SELECT COUNT(*) FROM module_catalog_reconciliation_093_owner_repair_evidence")" repair_evidence_exact_scope
 
+psql_exec -qc "INSERT INTO schema_migrations(migration_id,description) VALUES('098_module_management_owner_storage_reconciliation','fixture prerequisite')"
+psql_exec -f "$MIGRATION_100" >/dev/null
+
+assert_eq 'Time Reallocation & Corrections|time-reallocation|Installed|true' "$(value "SELECT module_name || '|' || route_scope || '|' || current_state || '|' || is_active::TEXT FROM scoped_role_policy_modules WHERE module_code='001B'")" module001b_canonical_catalog_row
+assert_eq '10000000-0000-0000-0000-000000000001|1' "$(value "SELECT owner_user_id::TEXT || '|' || owner_revision_number::TEXT FROM scoped_role_policy_modules WHERE module_code='001B'")" module001b_inherits_existing_catalog_owner
+assert_eq 'false|10000000-0000-0000-0000-000000000001|1' "$(value "SELECT was_present::TEXT || '|' || reconciled_owner_user_id::TEXT || '|' || reconciled_owner_revision_number::TEXT FROM module_catalog_reconciliation_100_module001b_evidence WHERE module_code='001B'")" module001b_reconciliation_evidence
+assert_eq 1 "$(value "SELECT COUNT(*) FROM scoped_role_policy_audit_events WHERE event_code='MODULE_001B_CATALOG_RECONCILED' AND event_metadata->>'ownershipDoesNotGrantAccess'='true'")" module001b_immutable_catalog_audit
+assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='100_module001b_catalog_ownership_reconciliation'")" module001b_migration_registered
+
+psql_exec -qc "UPDATE scoped_role_policy_modules SET owner_user_id='10000000-0000-0000-0000-000000000002', owner_revision_number=2, owner_updated_at=NOW(), owner_updated_by_user_id='10000000-0000-0000-0000-000000000002' WHERE module_code='001B'"
+psql_exec -f "$MIGRATION_100" >/dev/null
+assert_eq '10000000-0000-0000-0000-000000000002|2' "$(value "SELECT owner_user_id::TEXT || '|' || owner_revision_number::TEXT FROM scoped_role_policy_modules WHERE module_code='001B'")" module001b_rerun_preserves_later_owner_change
+
 echo 'MODULE_CATALOG_OWNER_REPAIR_MIGRATION_093=PASS'
+echo 'MODULE001B_CATALOG_OWNERSHIP_RECONCILIATION_100=PASS'

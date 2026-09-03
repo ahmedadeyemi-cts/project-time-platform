@@ -32,6 +32,8 @@ const releaseControllerReregisteredValidatorPath = '.github/workflows/projectpul
 const celarPr630ValidatorPath = 'tests/validate-celar-ai-pr630-consolidated.mjs';
 const module001bFixturePath = 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs';
 const documentAuthorityMigrationBuilderPath = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh';
+const module001bCatalogMigrationPath = 'database/migrations/100_module001b_catalog_ownership_reconciliation.sql';
+const module001bCatalogRollbackPath = 'database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
 const apiProject = fs.readFileSync(apiProjectPath, 'utf8');
 const apiBuildProps = fs.readFileSync(apiBuildPropsPath, 'utf8');
@@ -58,6 +60,8 @@ const releaseControllerReregisteredValidator = fs.readFileSync(releaseController
 const celarPr630Validator = fs.readFileSync(celarPr630ValidatorPath, 'utf8');
 const module001bFixture = fs.readFileSync(module001bFixturePath, 'utf8');
 const documentAuthorityMigrationBuilder = fs.readFileSync(documentAuthorityMigrationBuilderPath, 'utf8');
+const module001bCatalogMigration = fs.readFileSync(module001bCatalogMigrationPath, 'utf8');
+const module001bCatalogRollback = fs.readFileSync(module001bCatalogRollbackPath, 'utf8');
 
 assert.equal(
   fs.existsSync(retiredWorkflowPath),
@@ -126,6 +130,15 @@ assert.match(module025Uat, /generationPollAttempts/);
 assert.match(module025Uat, /generationResponseServer/);
 assert.match(module025Uat, /seq 1 180/);
 assert.match(module025Uat, /terminal state within 15 minutes/);
+assert.match(module025Uat, /Cisco Unified Communications Manager \(Cisco CallManager \/ CUCM\) from version 14\.0 to version 15\.0/);
+assert.match(module025Uat, /\.insideSalesRepresentatives \| type == "array" and length > 0/);
+assert.match(module025Uat, /\.resalePeople == \.insideSalesRepresentatives/);
+assert.match(module025Uat, /mike beck/);
+assert.match(module025Uat, /jessica shaffer/);
+assert.match(module025Uat, /\.detailedActivities \| type == "array" and length >= 2/);
+assert.match(module025Uat, /\.technicalTasks \| type == "array" and length >= 4/);
+assert.match(module025Uat, /minimumDetailedWorkPackages:10/);
+assert.match(module025Uat, /genericCitedScopeBoilerplateRejected:true/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_SOURCE_COMMIT/);
@@ -180,28 +193,41 @@ assert.doesNotMatch(
   /SowGsdPlanning/,
   'Module 025 SOW generation must fail closed when the approved private model does not complete'
 );
-assert.match(privateRagService, /Module025SowMaximumOutputTokens = 1_000/);
+assert.match(privateRagService, /Module025SowMaximumOutputTokens = 12_000/);
+assert.match(privateRagService, /Module025SowMaximumAnswerCharacters = 96_000/);
 assert.match(
   privateRagService,
-  /Math\.Min\(options\.MaximumOutputTokens, Module025SowMaximumOutputTokens\)/
+  /Math\.Max\(options\.MaximumOutputTokens, Module025SowMaximumOutputTokens\)/
 );
-assert.match(privateRagService, /Return between one and three cited scope work packages in scopeItems/);
-assert.match(privateRagService, /Keep the complete JSON below 3,500 characters/);
-assert.match(privateRagService, /[Dd]o not repeat or restate the incoming request/);
-assert.match(privateRagService, /ExpandModule025CitedScopeTasks/);
-assert.match(privateRagService, /ParseModule025CitedScopePlan/);
-assert.match(privateRagService, /PulseAiPrivateModule025Scope/);
-assert.match(privateRagService, /expandModule025CitedPhases: authoritativeSource is not null/);
-assert.match(privateRagService, /A deterministic, citation-preserving composer expands/);
+assert.match(privateRagService, /ParseModule025DetailedPlan/);
+assert.match(privateRagService, /validateModule025DetailedPlan: authoritativeSource is not null/);
+assert.match(privateRagService, /normally 10 to 20 tasks, with multiple tasks per phase/);
+assert.match(privateRagService, /at least ten detailed delivery work packages/);
+assert.match(privateRagService, /at least two work packages in the \{phase\} phase/);
+assert.match(privateRagService, /at least four distinct execution steps in the \{phase\} phase/);
+assert.match(privateRagService, /at least two distinct deliverables in the \{phase\} phase/);
+assert.match(privateRagService, /task\.Description\.Length < 80/);
+assert.match(privateRagService, /\(task\.DetailedSteps\?\.Count \?\? 0\) < 2/);
+assert.match(privateRagService, /\(task\.Risks\?\.Count \?\? 0\) == 0/);
+assert.match(privateRagService, /ContainsCannedModule025ScopeLanguage/);
+assert.match(privateRagService, /value\.Contains\("cited scope"/);
+assert.match(privateRagService, /value\.Contains\("source-backed scope"/);
+assert.match(privateRagService, /Apply professional technical knowledge to determine the real sequence of work/);
+assert.match(privateRagService, /Determine the technology-specific work that must actually occur/);
 assert.match(
   privateRagService,
-  /catch \(Exception\) when \(expandModule025CitedPhases\)[\s\S]*?private_module025_scope_schema_invalid/,
-  'Module 025 schema failures must fail closed instead of returning the shared one-phase deterministic scaffold'
+  /MaximumAnswerCharacters = Math\.Max\([\s\S]*?options\.MaximumAnswerCharacters,[\s\S]*?Module025SowMaximumAnswerCharacters/,
+  'Module 025 must allow the larger exhaustive JSON plan through the private-model response-size gate'
 );
 assert.match(
   privateRagService,
-  /Name = "Plan"[\s\S]*?Name = "Design"[\s\S]*?Name = "Implement"[\s\S]*?Name = "Validate"[\s\S]*?Name = "Release"/,
-  'the governed Module 025 composer must expand cited scope through exact P/D/I/V/R order'
+  /catch \(Exception\) when \(validateModule025DetailedPlan\)[\s\S]*?private_module025_detailed_plan_invalid/,
+  'Module 025 schema and detail failures must fail closed instead of saving generic work packages'
+);
+assert.match(
+  privateRagService,
+  /Module025DeliveryPhases[\s\S]*?"Plan"[\s\S]*?"Design"[\s\S]*?"Implement"[\s\S]*?"Validate"[\s\S]*?"Release"/,
+  'the governed Module 025 parser must enforce exact P/D/I/V/R coverage'
 );
 assert.match(
   privateRagService,
@@ -268,9 +294,13 @@ assert.match(workflow, /097_project_planning_identity_safe_admission\.sql/);
 assert.match(workflow, /097_project_planning_identity_safe_admission_rollback\.sql/);
 assert.match(workflow, /test-project-planning-identity-safe-admission-migration-097\.sh/);
 assert.match(workflow, /test-pulse-ai-runtime-job-query-shape\.sh/);
-assert.match(workflow, /Apply and verify Migrations 086, 088, 093, 094, 095, 096, and 097 inside Test private network/);
+assert.match(workflow, /Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network/);
 assert.match(workflow, /MIGRATION_093=APPLIED_AND_VERIFIED/);
 assert.match(workflow, /migration097:"applied_and_verified"/);
+assert.match(workflow, /migration098OwnerStorage:"applied_and_verified"/);
+assert.match(workflow, /migration098CustomerSource:"applied_and_verified"/);
+assert.match(workflow, /migration099:"applied_and_verified"/);
+assert.match(workflow, /migration100:"applied_and_verified"/);
 assert.match(
   workflow,
   /\(NOT EXISTS \(\s*SELECT 1\s*FROM work_register_task_assignment_history history[\s\S]*?\)\)::text;/,
@@ -514,6 +544,24 @@ assert.match(
   /migration-099\.json/,
   'the governed migration job must emit migration 099 release evidence'
 );
+assert.match(
+  documentAuthorityMigrationBuilder,
+  /100_module001b_catalog_ownership_reconciliation\.sql/,
+  'the governed private-network migration image must carry Module 001B catalog migration 100'
+);
+assert.match(
+  documentAuthorityMigrationBuilder,
+  /psql -X -v ON_ERROR_STOP=1 --file "\$MODULE001B_CATALOG_MIGRATION"/,
+  'the governed private-network migration job must execute Module 001B catalog migration 100'
+);
+assert.match(documentAuthorityMigrationBuilder, /MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED/);
+assert.match(documentAuthorityMigrationBuilder, /migration-100\.json/);
+assert.match(module001bCatalogMigration, /'001B'/);
+assert.match(module001bCatalogMigration, /'Time Reallocation & Corrections'/);
+assert.match(module001bCatalogMigration, /ownershipDoesNotGrantAccess/);
+assert.match(module001bCatalogMigration, /100_module001b_catalog_ownership_reconciliation/);
+assert.match(module001bCatalogRollback, /Rollback 100 refused: Module 001B ownership changed after reconciliation/);
+assert.match(module001bCatalogRollback, /migration_id = '100_module001b_catalog_ownership_reconciliation'/);
 
 assert.match(
   apiProject,
@@ -601,4 +649,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097+098+099 utilization-uat=registered module001b-single-revision-reconcile=ready-inactive-safe module001b-fixture-audit=immutable module025-migration099=registered module025-generation-uat=registered');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097+098+099+100 utilization-uat=registered module001b-single-revision-reconcile=ready-inactive-safe module001b-fixture-audit=immutable module001b-catalog-migration100=registered module025-migration099=registered module025-generation-detail-uat=registered');

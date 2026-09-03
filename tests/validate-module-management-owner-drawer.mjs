@@ -8,7 +8,11 @@ const files = {
   authority: path.join(root, 'src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs'),
   ownership: path.join(root, 'src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs'),
   migration: path.join(root, 'database/migrations/091_module_management_owner_storage_repair.sql'),
-  rollback: path.join(root, 'database/rollback/091_module_management_owner_storage_repair_rollback.sql')
+  rollback: path.join(root, 'database/rollback/091_module_management_owner_storage_repair_rollback.sql'),
+  module001bMigration: path.join(root, 'database/migrations/100_module001b_catalog_ownership_reconciliation.sql'),
+  module001bRollback: path.join(root, 'database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql'),
+  migrationBuilder: path.join(root, 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'),
+  migrationTest: path.join(root, 'tests/test-module-catalog-owner-repair-migration-093.sh')
 };
 
 function fail(message) {
@@ -36,6 +40,10 @@ const authority = requireFile('Actual-session authority resolver', files.authori
 const ownership = requireFile('Module ownership API', files.ownership);
 const migration = requireFile('Migration 091', files.migration);
 const rollback = requireFile('Rollback 091', files.rollback);
+const module001bMigration = requireFile('Module 001B catalog migration 100', files.module001bMigration);
+const module001bRollback = requireFile('Module 001B catalog rollback 100', files.module001bRollback);
+const migrationBuilder = requireFile('Protected-Test migration builder', files.migrationBuilder);
+const migrationTest = requireFile('Module ownership migration regression', files.migrationTest);
 
 requireMarkers('Enterprise Module Management view', view, [
   "import IdentityAvatar from './identity/IdentityAvatar.jsx'",
@@ -124,7 +132,15 @@ requireMarkers('Module ownership API', ownership, [
   'developer_super_administrator_only',
   'DeveloperOwnerRoleCodes',
   'IsDeveloperModuleOwnerAsync',
-  'The selected owner must be an active developer Super Administrator.'
+  'The selected owner must be an active developer Super Administrator.',
+  'var moduleFound = false',
+  'if (!moduleFound)',
+  'var ownerFound = false',
+  'if (!ownerFound)',
+  'owner_updated_at = NOW()',
+  'RETURNING owner_updated_at',
+  'GetFieldValue<DateTimeOffset>',
+  'diagnosticCode = $"postgres_{exception.SqlState}"'
 ]);
 
 requireMarkers('Migration 091', migration, [
@@ -143,6 +159,32 @@ requireMarkers('Rollback 091', rollback, [
   'assigned_owner_revision_number',
   'refusing an unprovable owner rollback',
   "migration_id = '091_module_management_owner_storage_repair'"
+]);
+
+requireMarkers('Module 001B catalog migration 100', module001bMigration, [
+  "'001B'",
+  "'Time Reallocation & Corrections'",
+  "'time-reallocation'",
+  'module_catalog_reconciliation_100_module001b_evidence',
+  'MODULE_001B_CATALOG_RECONCILED',
+  'ownershipDoesNotGrantAccess',
+  '100_module001b_catalog_ownership_reconciliation',
+  'ON CONFLICT (module_code) DO UPDATE'
+]);
+requireMarkers('Module 001B catalog rollback 100', module001bRollback, [
+  'IF NOT FOUND THEN',
+  'Rollback 100 refused: Module 001B ownership changed after reconciliation.',
+  "migration_id = '100_module001b_catalog_ownership_reconciliation'"
+]);
+requireMarkers('Protected-Test migration builder', migrationBuilder, [
+  '100_module001b_catalog_ownership_reconciliation.sql',
+  'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED',
+  'migration-100.json'
+]);
+requireMarkers('Module ownership migration regression', migrationTest, [
+  '100_module001b_catalog_ownership_reconciliation.sql',
+  'module001b_rerun_preserves_later_owner_change',
+  'MODULE001B_CATALOG_OWNERSHIP_RECONCILIATION_100=PASS'
 ]);
 
 if (/Ahmed Adeyemi/.test(view) || /Ahmed\.Adeyemi@ussignal\.local/i.test(view)) {

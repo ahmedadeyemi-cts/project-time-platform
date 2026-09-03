@@ -15,6 +15,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
 {
     private const string MigrationId = "095_project_planning_collaboration_access";
     private const string RunTable = "project_flowhive_ai_planner_runs";
+    private const int MaximumAiRouteRetries = 2;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -223,6 +224,35 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 await AdvanceWorkerAsync(connection, stored, services, cancellationToken);
                 return true;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                services.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("ProjectFlowHiveAiPlannerOrchestrationModule")
+                    .LogError(
+                        exception,
+                        "FlowHive AI Planner run stopped after a bounded background failure. RunId={RunId} Diagnostic={Diagnostic}",
+                        candidate.RunId,
+                        exception.GetType().Name);
+                await UpdateRunAsync(
+                    connection,
+                    candidate.RunId,
+                    "failed",
+                    "background_generation_failed",
+                    100,
+                    ["The background AI Planner operation stopped safely. Start AI Planner again to retry."],
+                    ["No working draft, immutable version, or baseline was created by the failed operation."],
+                    ["Background generation stopped after a bounded internal failure; the run will not remain indefinitely at an in-progress percentage."],
+                    null,
+                    null,
+                    null,
+                    cancellationToken,
+                    completed: true);
+                return true;
+            }
             finally
             {
                 await UnlockRunAsync(connection, candidate.RunId);
@@ -343,20 +373,28 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             || generation.Schedule is null)
         {
             var transient = generation.Status == "project_planning_ai_temporarily_unavailable";
+            var priorRetryCount = stored.Logs.Count(log =>
+                log.StartsWith("AI route retry ", StringComparison.Ordinal));
+            var retry = transient && priorRetryCount < MaximumAiRouteRetries;
+            var retryLog = retry
+                ? $"AI route retry {priorRetryCount + 1} of {MaximumAiRouteRetries} is scheduled after a transient private-generation failure."
+                : transient
+                    ? "The bounded AI route retry limit was reached. Review the evidence status and start AI Planner again when private generation is available."
+                    : generation.Message;
             await UpdateRunAsync(
                 connection,
                 stored.RunId,
-                transient ? "processing" : "needs_attention",
-                transient ? "ai_route_retry" : "evidence_review",
-                transient ? 70 : 60,
+                retry ? "processing" : "needs_attention",
+                retry ? "ai_route_retry" : "evidence_review",
+                retry ? 70 : 100,
                 generation.MissingEvidence,
                 generation.Warnings,
-                [generation.Message],
+                [retryLog],
                 null,
                 null,
                 null,
                 cancellationToken,
-                completed: !transient);
+                completed: !retry);
             return;
         }
 
@@ -487,8 +525,14 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         IReadOnlyList<string> sourceWarnings,
         CancellationToken cancellationToken)
     {
+        // The mutable working copy and the terminal run state are one durable
+        // outcome. If either write fails, roll both back so a retry cannot
+        // overwrite a saved draft that the operation incorrectly reported as
+        // absent or failed.
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var workingCopy = await SaveWorkingCopyAsync(
             connection,
+            transaction,
             projectId,
             generated,
             actor,
@@ -517,7 +561,9 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             schedule,
             validation,
             cancellationToken,
-            completed: true);
+            completed: true,
+            transaction: transaction);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     private static string FinalStatus(ProjectFlowHiveScheduleResult schedule) =>
@@ -671,6 +717,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
 
     private static async Task<WorkingCopyResult> SaveWorkingCopyAsync(
         NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
         Guid projectId,
         ProjectFlowHivePlanRequest plan,
         Guid actor,
@@ -678,7 +725,6 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         ProjectFlowHiveScheduleResult schedule,
         CancellationToken cancellationToken)
     {
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             WITH upsert AS (
                 INSERT INTO project_flowhive_working_copies(
@@ -714,7 +760,6 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             validation.Valid,
             schedule.Valid);
         await reader.CloseAsync();
-        await transaction.CommitAsync(cancellationToken);
         return result;
     }
 
@@ -731,7 +776,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         ProjectFlowHiveScheduleResult? schedule,
         ProjectFlowHivePlanValidationResult? validation,
         CancellationToken cancellationToken,
-        bool completed = false)
+        bool completed = false,
+        NpgsqlTransaction? transaction = null)
     {
         await using var command = new NpgsqlCommand($"""
             UPDATE {RunTable}
@@ -748,7 +794,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 completed_at=CASE WHEN @completed THEN NOW() ELSE completed_at END,
                 row_version=gen_random_uuid()
             WHERE run_id=@run_id;
-            """, connection);
+            """, connection, transaction);
         command.Parameters.AddWithValue("status", status);
         command.Parameters.AddWithValue("phase", phase);
         command.Parameters.AddWithValue("progress", Math.Clamp(progress, 0, 100));
