@@ -26,6 +26,8 @@ const aiServicesPath = 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceColl
 const webProxyPath = 'deployment/containers/web/default.conf.template';
 const module033WorkflowPath = '.github/workflows/module033-project-forge-ci.yml';
 const celarSourceBoundaryPath = 'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh';
+const releaseControllerValidatorPath = '.github/workflows/projectpulse-release-test-control-ci.yml';
+const releaseControllerReregisteredValidatorPath = '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml';
 const celarPr630ValidatorPath = 'tests/validate-celar-ai-pr630-consolidated.mjs';
 const module001bFixturePath = 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs';
 const documentAuthorityMigrationBuilderPath = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh';
@@ -49,6 +51,8 @@ const aiServices = fs.readFileSync(aiServicesPath, 'utf8');
 const webProxy = fs.readFileSync(webProxyPath, 'utf8');
 const module033Workflow = fs.readFileSync(module033WorkflowPath, 'utf8');
 const celarSourceBoundary = fs.readFileSync(celarSourceBoundaryPath, 'utf8');
+const releaseControllerValidator = fs.readFileSync(releaseControllerValidatorPath, 'utf8');
+const releaseControllerReregisteredValidator = fs.readFileSync(releaseControllerReregisteredValidatorPath, 'utf8');
 const celarPr630Validator = fs.readFileSync(celarPr630ValidatorPath, 'utf8');
 const module001bFixture = fs.readFileSync(module001bFixturePath, 'utf8');
 const documentAuthorityMigrationBuilder = fs.readFileSync(documentAuthorityMigrationBuilderPath, 'utf8');
@@ -184,7 +188,12 @@ for (const source of [module033Workflow, celarSourceBoundary, celarPr630Validato
   );
 }
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_PROTECTED_UAT_BOUNDARY=PASSED/);
+assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_DURABLE_WORKER_REPAIR_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
+for (const controllerValidator of [releaseControllerValidator, releaseControllerReregisteredValidator]) {
+  assert.match(controllerValidator, /src\/backend\/ProjectTime\.Api\/Ai\/ProjectPulseAiServiceCollectionExtensions\.cs/);
+  assert.match(controllerValidator, /src\/backend\/ProjectTime\.Api\/Ai\/PulseAiPrivateModelClient\.cs/);
+}
 assert.match(module033Workflow, /MODULE_033_MODULE025_ASYNC_PROXY_REGRESSION_BOUNDARY=PASSED/);
 assert.match(celarPr630Validator, /CELAR_PR630_MODULE025_PROTECTED_UAT_COMPATIBILITY=PASS/);
 assert.match(workflow, /093_assigned_work_canonical_visibility_repair\.sql/);
