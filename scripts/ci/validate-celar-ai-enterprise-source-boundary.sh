@@ -182,6 +182,7 @@ if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]
     ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
   else
     cat > "${TMPDIR:-/tmp}/module025-worker-repair-expected-files" <<'FILES'
+    .github/workflows/deep-intelligence-read-contract-ci.yml
     .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
     .github/workflows/projectpulse-release-test-control-ci.yml
     scripts/ci/validate-celar-ai-enterprise-source-boundary.sh

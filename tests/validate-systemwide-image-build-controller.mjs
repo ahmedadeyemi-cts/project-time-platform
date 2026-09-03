@@ -25,6 +25,7 @@ const privateModelClientPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateMod
 const aiServicesPath = 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs';
 const webProxyPath = 'deployment/containers/web/default.conf.template';
 const module033WorkflowPath = '.github/workflows/module033-project-forge-ci.yml';
+const deepIntelligenceWorkflowPath = '.github/workflows/deep-intelligence-read-contract-ci.yml';
 const celarSourceBoundaryPath = 'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh';
 const releaseControllerValidatorPath = '.github/workflows/projectpulse-release-test-control-ci.yml';
 const releaseControllerReregisteredValidatorPath = '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml';
@@ -50,6 +51,7 @@ const privateModelClient = fs.readFileSync(privateModelClientPath, 'utf8');
 const aiServices = fs.readFileSync(aiServicesPath, 'utf8');
 const webProxy = fs.readFileSync(webProxyPath, 'utf8');
 const module033Workflow = fs.readFileSync(module033WorkflowPath, 'utf8');
+const deepIntelligenceWorkflow = fs.readFileSync(deepIntelligenceWorkflowPath, 'utf8');
 const celarSourceBoundary = fs.readFileSync(celarSourceBoundaryPath, 'utf8');
 const releaseControllerValidator = fs.readFileSync(releaseControllerValidatorPath, 'utf8');
 const releaseControllerReregisteredValidator = fs.readFileSync(releaseControllerReregisteredValidatorPath, 'utf8');
@@ -191,9 +193,13 @@ assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_PROTECTED_UAT_BOUNDARY=PAS
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_DURABLE_WORKER_REPAIR_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
 for (const controllerValidator of [releaseControllerValidator, releaseControllerReregisteredValidator]) {
+  assert.match(controllerValidator, /\.github\/workflows\/deep-intelligence-read-contract-ci\.yml/);
   assert.match(controllerValidator, /src\/backend\/ProjectTime\.Api\/Ai\/ProjectPulseAiServiceCollectionExtensions\.cs/);
   assert.match(controllerValidator, /src\/backend\/ProjectTime\.Api\/Ai\/PulseAiPrivateModelClient\.cs/);
 }
+assert.match(deepIntelligenceWorkflow, /'\/api\/project-flowhive\/projects\/'/);
+assert.match(deepIntelligenceWorkflow, /'\/ai-planner\/runs'/);
+assert.doesNotMatch(deepIntelligenceWorkflow, /assert_js_marker[\s\S]{0,1200}'\/api\/project-flowhive\/ai\/production-generate'/);
 assert.match(module033Workflow, /MODULE_033_MODULE025_ASYNC_PROXY_REGRESSION_BOUNDARY=PASSED/);
 assert.match(celarPr630Validator, /CELAR_PR630_MODULE025_PROTECTED_UAT_COMPATIBILITY=PASS/);
 assert.match(workflow, /093_assigned_work_canonical_visibility_repair\.sql/);
