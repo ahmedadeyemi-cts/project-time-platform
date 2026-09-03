@@ -234,6 +234,17 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-module001b-live-uat-repair-files" -o "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
 
+          cat > "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files" <<'FILES'
+          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs
+          src/backend/ProjectTime.Api/Modules/ScopedRolePolicyRules.cs
+          tests/ProjectTime.Api.AuthorizationTests/Program.cs
+          tests/validate-utilization-role-scoping.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files" -o "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files"
+
           cat > "$RUNNER_TEMP/exact-pr777-module025-workspace-files" <<'FILES'
           database/migrations/089_module_catalog_role_administration_reconciliation.sql
           src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs
@@ -291,6 +302,13 @@ jobs:
             echo 'EXACT_MODULES_DIRECTORY_AUTHORITY_STARVATION_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"; then
             echo 'EXACT_MODULE001B_LIVE_UAT_REPAIR_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'fix/utilization-manager-team-summary-authorization-20260903' ]]; then
+            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files" || {
+              echo 'Manager utilization authorization repair differs from its exact governed file set.' >&2
+              diff -u "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_UTILIZATION_MANAGER_AUTHORIZATION_REPAIR_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files"; then
             echo 'EXACT_PROTECTED_UAT_MERGED_MAIN_RELAUNCH_GOVERNANCE_SCOPE=PASSED'
           else

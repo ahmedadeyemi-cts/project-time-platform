@@ -88,6 +88,16 @@ public static class ScopedAuthorizationEvaluator
             }
         }
 
+        var grants = rows.Where(row =>
+            string.Equals(row.GrantEffect, "GRANT", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(row.ActionCode, normalizedAction, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var hasManagerUtilizationGrant = grants.Any(row =>
+            string.Equals(
+                ScopedRolePolicyModule.CanonicalRole(row.RoleCode),
+                "MANAGER",
+                StringComparison.OrdinalIgnoreCase));
+
         var explicitDenies = rows.Where(row =>
             string.Equals(row.GrantEffect, "DENY", StringComparison.OrdinalIgnoreCase)
             && (string.Equals(row.ActionCode, "MODULE_ACCESS", StringComparison.OrdinalIgnoreCase)
@@ -100,7 +110,15 @@ public static class ScopedAuthorizationEvaluator
                 normalizedModule,
                 normalizedAction,
                 row.ActionCode,
-                isWrite));
+                isWrite)
+            && !ScopedRolePolicyRules.IsCompositeManagerUtilizationReadCompatibilityDeny(
+                row.RoleCode,
+                normalizedModule,
+                normalizedAction,
+                row.ActionCode,
+                isWrite,
+                actor.RoleCodes,
+                hasManagerUtilizationGrant));
         if (blockingExplicitDeny is not null)
         {
             return new ScopedAuthorizationDecision(
@@ -125,11 +143,6 @@ public static class ScopedAuthorizationEvaluator
                 normalizedAction,
                 row.ActionCode,
                 isWrite));
-
-        var grants = rows.Where(row =>
-            string.Equals(row.GrantEffect, "GRANT", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(row.ActionCode, normalizedAction, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
 
         foreach (var grant in grants)
         {

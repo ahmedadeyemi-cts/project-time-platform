@@ -231,6 +231,63 @@ Expect(
         authoritativeScope with { ServiceOverview = "too short" }) is null,
     "an incomplete Service Overview must not be admitted as authoritative private evidence");
 
+var managerAndProjectManagementRoles = new[] { "MANAGER", "PROJECT_MANAGEMENT" };
+Expect(
+    "MODULE_003_UTILIZATION:COMPOSITE_MANAGER_READ_COMPATIBILITY",
+    ScopedRolePolicyRules.IsCompositeManagerUtilizationReadCompatibilityDeny(
+        "PROJECT_MANAGEMENT",
+        "003",
+        "UTILIZATION_VIEW",
+        "MODULE_ACCESS",
+        false,
+        managerAndProjectManagementRoles,
+        true),
+    "a published Manager utilization grant must remain usable when the same user also has the legacy Project Management role");
+Expect(
+    "MODULE_003_UTILIZATION:STANDALONE_PROJECT_MANAGEMENT_DENY_REMAINS",
+    !ScopedRolePolicyRules.IsCompositeManagerUtilizationReadCompatibilityDeny(
+        "PROJECT_MANAGEMENT",
+        "003",
+        "UTILIZATION_VIEW",
+        "MODULE_ACCESS",
+        false,
+        new[] { "PROJECT_MANAGEMENT" },
+        true),
+    "standalone Project Management must retain its explicit Module 003 denial");
+Expect(
+    "MODULE_003_UTILIZATION:MANAGER_GRANT_REQUIRED",
+    !ScopedRolePolicyRules.IsCompositeManagerUtilizationReadCompatibilityDeny(
+        "PROJECT_MANAGEMENT",
+        "003",
+        "UTILIZATION_VIEW",
+        "MODULE_ACCESS",
+        false,
+        managerAndProjectManagementRoles,
+        false),
+    "the compatibility must fail closed if the published policy does not contain a Manager utilization grant");
+Expect(
+    "MODULE_003_UTILIZATION:OTHER_ROLE_DENY_REMAINS",
+    !ScopedRolePolicyRules.IsCompositeManagerUtilizationReadCompatibilityDeny(
+        "ACCOUNTING",
+        "003",
+        "UTILIZATION_VIEW",
+        "MODULE_ACCESS",
+        false,
+        new[] { "MANAGER", "ACCOUNTING" },
+        true),
+    "an unrelated role's explicit Module 003 denial must continue to block a composite Manager identity");
+Expect(
+    "MODULE_003_UTILIZATION:WRITE_DENY_REMAINS_NON_BYPASSABLE",
+    !ScopedRolePolicyRules.IsCompositeManagerUtilizationReadCompatibilityDeny(
+        "PROJECT_MANAGEMENT",
+        "003",
+        "UTILIZATION_EDIT",
+        "MODULE_ACCESS",
+        true,
+        managerAndProjectManagementRoles,
+        true),
+    "the read-only compatibility must never relax a utilization write denial");
+
 var roleAssignmentRoute = ScopedRolePolicyRules.RouteContract(
     "/api/admin/users/roles",
     HttpMethods.Post);

@@ -7,6 +7,8 @@ const teamPanel = read('src/frontend/project-time-web/src/EngineeringTeamLeadUti
 const drawer = read('src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx');
 const app = read('src/frontend/project-time-web/src/App.jsx');
 const protectedTestUat = read('scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh');
+const scopedRules = read('src/backend/ProjectTime.Api/Modules/ScopedRolePolicyRules.cs');
+const scopedEvaluator = read('src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs');
 
 assert.match(program, /calculationStatus = "calculated"/);
 assert.doesNotMatch(program, /calculationStatus = "placeholder"/);
@@ -20,6 +22,15 @@ assert.match(program, /SELECT @user_id/);
 assert.match(program, /'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD'/);
 assert.match(program, /else\s*\{\s*effectiveEngineerUserId = sessionUserId\.Value;\s*scope = "own_engineer_scope";\s*\}/);
 assert.match(program, /Selected engineer is not available within your utilization scope\./);
+assert.match(scopedRules, /IsCompositeManagerUtilizationReadCompatibilityDeny/);
+assert.match(scopedRules, /!hasManagerUtilizationGrant/);
+assert.match(scopedRules, /string\.Equals\(moduleCode, "003"/);
+assert.match(scopedRules, /string\.Equals\(actionCode, "UTILIZATION_VIEW"/);
+assert.match(scopedRules, /string\.Equals\(denyActionCode, "MODULE_ACCESS"/);
+assert.match(scopedRules, /CanonicalRole\(deniedRoleCode\)[\s\S]*?"PROJECT_MANAGEMENT"/);
+assert.match(scopedRules, /Contains\("MANAGER", StringComparer\.OrdinalIgnoreCase\)/);
+assert.match(scopedEvaluator, /var hasManagerUtilizationGrant = grants\.Any/);
+assert.match(scopedEvaluator, /IsCompositeManagerUtilizationReadCompatibilityDeny\([\s\S]*?actor\.RoleCodes,[\s\S]*?hasManagerUtilizationGrant/);
 
 for (const marker of [
   'KEVIN_USER_ID=',
