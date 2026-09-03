@@ -312,7 +312,7 @@ jq -e --arg id "$ENGAGEMENT_ID" --arg owner "$SA_USER_ID" --argjson revision "$G
   and (.engagement.lastGeneratedAt | type == "string" and length > 0)
   and .engagement.sowSections.reviewRequired == true
   and .engagement.sowSections.contractuallyBinding == false
-  and (.engagement.aiMetadata.correlationId | type == "string" and length > 0)
+  and ((.engagement.aiMetadata.CorrelationId // .engagement.aiMetadata.correlationId) | type == "string" and length > 0)
   and (.engagement.phases | type == "array" and length == 5)
   and ([.engagement.phases | sort_by(.sortOrder)[] | .phaseCode] == ["plan","design","implement","validate","release"])
   and all(.engagement.phases[];
