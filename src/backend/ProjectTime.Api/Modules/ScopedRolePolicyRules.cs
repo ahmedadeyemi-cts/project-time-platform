@@ -58,6 +58,37 @@ public static class ScopedRolePolicyRules
             "PROJECT_MANAGEMENT",
             StringComparison.OrdinalIgnoreCase);
 
+    // Some established Manager identities also carry PROJECT_MANAGEMENT for
+    // project workflow duties. Reconcile only that role's module-level read
+    // deny when the published policy still has the Manager-specific view grant;
+    // the utilization endpoint retains the assigned-team resource boundary.
+    public static bool IsCompositeManagerUtilizationReadCompatibilityDeny(
+        string deniedRoleCode,
+        string moduleCode,
+        string actionCode,
+        string denyActionCode,
+        bool isWrite,
+        IEnumerable<string>? actorRoleCodes,
+        bool hasManagerUtilizationGrant)
+    {
+        if (isWrite
+            || !hasManagerUtilizationGrant
+            || !string.Equals(moduleCode, "003", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(actionCode, "UTILIZATION_VIEW", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(denyActionCode, "MODULE_ACCESS", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(
+                ScopedRolePolicyModule.CanonicalRole(deniedRoleCode),
+                "PROJECT_MANAGEMENT",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return (actorRoleCodes ?? Array.Empty<string>())
+            .Select(ScopedRolePolicyModule.CanonicalRole)
+            .Contains("MANAGER", StringComparer.OrdinalIgnoreCase);
+    }
+
     public static ScopedRouteContract? RouteContract(string path, string method)
     {
         var normalized = NormalizeRoutePath(path);
