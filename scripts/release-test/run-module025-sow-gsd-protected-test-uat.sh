@@ -32,6 +32,7 @@ login() {
   local username="$1" output="$2" payload="$3"
   jq -n --arg username "$username" --arg password "$TEST_LOGIN_PASSWORD" \
     '{username:$username,password:$password}' > "$payload"
+  : > "$output"
   chmod 0600 "$payload" "$output"
   local status curl_exit
   set +e
@@ -51,6 +52,7 @@ login() {
 
 auth_request() {
   local method="$1" path="$2" output="$3" session="$4" max_time="${5:-120}" body="${6:-}"
+  local headers="${7:-}"
   local status curl_exit
   local args=(
     -sS --http1.1 --connect-timeout 30 --max-time "$max_time"
@@ -67,6 +69,11 @@ auth_request() {
   )
   if [[ -n "$body" ]]; then
     args+=( -H 'Content-Type: application/json' --data-binary @"$body" )
+  fi
+  if [[ -n "$headers" ]]; then
+    : > "$headers"
+    chmod 0600 "$headers"
+    args+=( --dump-header "$headers" )
   fi
   set +e
   status="$(curl "${args[@]}" "$BASE$path")"
@@ -215,14 +222,28 @@ ENGAGEMENT_NUMBER="$(jq -r '.engagement.engagementNumber // empty' "$CREATE_RESP
 [[ -n "$ENGAGEMENT_NUMBER" ]] || fail 'Module 025 temporary SOW creation did not return an engagement number.'
 
 GENERATE_RESPONSE="$EVIDENCE_DIR/module025-generate-response.json"
-GENERATE_RESULT="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/generate" "$GENERATE_RESPONSE" "$SA_SESSION" 900)"
+GENERATE_HEADERS="$EVIDENCE_DIR/module025-generate-response-headers.txt"
+GENERATE_STARTED_AT="$(date +%s)"
+GENERATE_RESULT="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/generate" "$GENERATE_RESPONSE" "$SA_SESSION" 900 '' "$GENERATE_HEADERS")"
+GENERATE_ELAPSED_SECONDS="$(( $(date +%s) - GENERATE_STARTED_AT ))"
 IFS='|' read -r GENERATE_CURL_EXIT GENERATE_STATUS <<<"$GENERATE_RESULT"
+GENERATE_RESPONSE_SERVER="$(awk '
+  BEGIN { IGNORECASE=1 }
+  /^server:/ {
+    sub(/\r$/, "")
+    value=$0
+    sub(/^[^:]+:[[:space:]]*/, "", value)
+  }
+  END { print value }
+' "$GENERATE_HEADERS")"
 jq -n \
   --argjson curlExit "$GENERATE_CURL_EXIT" \
   --arg httpStatus "$GENERATE_STATUS" \
+  --argjson elapsedSeconds "$GENERATE_ELAPSED_SECONDS" \
+  --arg responseServer "$GENERATE_RESPONSE_SERVER" \
   --arg apiStatus "$(jq -r '.status // empty' "$GENERATE_RESPONSE" 2>/dev/null || true)" \
   --arg correlationId "$(jq -r '.correlationId // empty' "$GENERATE_RESPONSE" 2>/dev/null || true)" \
-  '{curlExit:$curlExit,httpStatus:$httpStatus,apiStatus:$apiStatus,correlationId:$correlationId}' \
+  '{curlExit:$curlExit,httpStatus:$httpStatus,elapsedSeconds:$elapsedSeconds,responseServer:$responseServer,apiStatus:$apiStatus,correlationId:$correlationId}' \
   > "$EVIDENCE_DIR/module025-generate-http-result.json"
 [[ "$GENERATE_CURL_EXIT" == 0 && "$GENERATE_STATUS" == 200 ]] \
   || fail "Module 025 detailed-scope generation returned curl exit $GENERATE_CURL_EXIT and HTTP $GENERATE_STATUS (status $(jq -r '.status // "not-json"' "$GENERATE_RESPONSE" 2>/dev/null || true))."
@@ -297,6 +318,8 @@ jq -n \
   --arg engagementId "$ENGAGEMENT_ID" \
   --arg engagementNumber "$ENGAGEMENT_NUMBER" \
   --argjson generatedRevision "$GENERATED_REVISION" \
+  --argjson generationElapsedSeconds "$GENERATE_ELAPSED_SECONDS" \
+  --arg generationResponseServer "$GENERATE_RESPONSE_SERVER" \
   --arg correlationId "$(jq -r '.correlationId' "$GENERATE_RESPONSE")" \
   --argjson suggestedHours "$(jq -r '[.engagement.phases[].suggestedHours] | add' "$READBACK_RESPONSE")" \
   '{
@@ -313,6 +336,8 @@ jq -n \
     generateStatus:"module025_detailed_scope_generated",
     readbackStatus:"review_ready",
     generatedRevision:$generatedRevision,
+    generationElapsedSeconds:$generationElapsedSeconds,
+    generationResponseServer:$generationResponseServer,
     phaseCodes:["plan","design","implement","validate","release"],
     suggestedHours:$suggestedHours,
     correlationId:$correlationId,

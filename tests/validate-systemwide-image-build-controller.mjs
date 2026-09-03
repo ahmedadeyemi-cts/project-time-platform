@@ -73,6 +73,13 @@ assert.match(workflow, /run-utilization-role-scoping-protected-test-uat\.sh/);
 assert.match(workflow, /Run protected-Test Module 025 SOW\/GSD generation lifecycle UAT/);
 assert.match(workflow, /Enable exact-run Module 025 protected-Test authorization fixture/);
 assert.match(workflow, /Disable exact-run Module 025 protected-Test authorization fixture/);
+assert.match(workflow, /Enforce protected-Test Application Gateway timeout for Module 025/);
+assert.match(workflow, /TEST_APPLICATION_GATEWAY_RESOURCE_GROUP: rg-project-health-dashboard-test-network-westus3/);
+assert.match(workflow, /TEST_APPLICATION_GATEWAY_NAME: agw-phd-test-westus3/);
+assert.match(workflow, /az network application-gateway http-settings update/);
+assert.match(workflow, /application-gateway-timeout\.json/);
+assert.match(workflow, /PROTECTED_TEST_APPLICATION_GATEWAY_TIMEOUT=VERIFIED/);
+assert.match(workflow, /productionMutation:false/);
 assert.match(workflow, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED=true/);
 assert.match(workflow, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED=false/);
 assert.match(workflow, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID="\$\{GITHUB_RUN_ID\}-\$\{GITHUB_RUN_ATTEMPT\}"/);
@@ -89,6 +96,9 @@ assert.match(module025Uat, /productionMutation:false/);
 assert.match(module025Uat, /demo\.manager@ussignal\.local/);
 assert.match(module025Uat, /X-ProjectPulse-Module025-Uat-Run/);
 assert.match(module025Uat, /protectedTestUatRoleFixture == true/);
+assert.match(module025Uat, /module025-generate-response-headers\.txt/);
+assert.match(module025Uat, /generationElapsedSeconds/);
+assert.match(module025Uat, /generationResponseServer/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_SOURCE_COMMIT/);
@@ -139,6 +149,21 @@ assert.match(
   webProxy,
   /location \/api\/ \{[\s\S]*?proxy_read_timeout 60s;/,
   'the longer Module 025 window must not extend the generic API timeout'
+);
+const gatewayTimeoutSeconds = Number(
+  workflow.match(/TEST_APPLICATION_GATEWAY_TIMEOUT_SECONDS: '(\d+)'/)?.[1]
+);
+const module025ProxyTimeoutSeconds = Number(
+  webProxy.match(/location ~ "\^\/api\/module025\/sow-gsd\/[\s\S]*?proxy_read_timeout (\d+)s;/)?.[1]
+);
+assert.equal(module025ProxyTimeoutSeconds, 230);
+assert.ok(
+  gatewayTimeoutSeconds > module025ProxyTimeoutSeconds,
+  'the protected Test Application Gateway must outwait the Module 025 web proxy'
+);
+assert.ok(
+  gatewayTimeoutSeconds < 240,
+  'the protected Test Application Gateway timeout must remain below the Container Apps ingress limit'
 );
 for (const source of [module033Workflow, celarSourceBoundary, celarPr630Validator]) {
   assert.match(
