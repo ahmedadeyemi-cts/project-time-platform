@@ -702,10 +702,11 @@ public static class Module025SowGsdModule
                 .ToArray();
             if (missingPhaseCodes.Length > 0)
             {
+                var missingPhases = string.Join(", ", missingPhaseCodes.Select(PhaseLabel));
                 return new(
                     StatusCodes.Status422UnprocessableEntity,
                     "module025_ai_evidence_limited",
-                    "Celar AI did not return complete Plan, Design, Implement, Validate, and Release coverage. The saved SOW/GSD draft was not changed.",
+                    $"Celar AI did not return complete Plan, Design, Implement, Validate, and Release coverage. Missing phase coverage: {missingPhases}. The saved SOW/GSD draft was not changed.",
                     Clean(composition.CorrelationId, 160),
                     false,
                     "private_sow_phase_coverage_incomplete");
@@ -1630,6 +1631,12 @@ public static class Module025SowGsdModule
 
     private static string ClassifyPhase(string? phase, string? name, string? description)
     {
+        var normalizedPhase = phase?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (PhaseCodes.Contains(normalizedPhase, StringComparer.OrdinalIgnoreCase)) return normalizedPhase;
+
+        // The model's governed phase field is authoritative when valid. Text
+        // heuristics apply only to legacy or malformed output; otherwise a Plan
+        // description that mentions validation could be reassigned incorrectly.
         var value = $"{phase} {name} {description}".ToLowerInvariant();
         if (value.Contains("release") || value.Contains("handoff") || value.Contains("closeout") || value.Contains("transition")) return "release";
         if (value.Contains("validat") || value.Contains("test") || value.Contains("acceptance") || value.Contains("verify")) return "validate";

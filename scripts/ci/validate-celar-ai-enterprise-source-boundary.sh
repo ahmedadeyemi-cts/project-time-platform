@@ -181,7 +181,31 @@ if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]
     ! grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
     ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
   else
-    if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-substantive-phase-tasks-* ]]; then
+    if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-phase-authority-* ]]; then
+      cat > "${TMPDIR:-/tmp}/module025-phase-authority-expected-files" <<'FILES'
+      scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+      src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+      tests/validate-systemwide-image-build-controller.mjs
+FILES
+      sed -i 's/^[[:space:]]*//' "${TMPDIR:-/tmp}/module025-phase-authority-expected-files"
+      LC_ALL=C sort -u "${TMPDIR:-/tmp}/module025-phase-authority-expected-files" \
+        -o "${TMPDIR:-/tmp}/module025-phase-authority-expected-files"
+      printf '%s\n' "$CHANGED" | LC_ALL=C sort -u > "${TMPDIR:-/tmp}/module025-phase-authority-actual-files"
+      cmp -s \
+        "${TMPDIR:-/tmp}/module025-phase-authority-expected-files" \
+        "${TMPDIR:-/tmp}/module025-phase-authority-actual-files" || {
+        echo 'The Module 025 exact phase-authority repair differs from its governed file set.' >&2
+        diff -u \
+          "${TMPDIR:-/tmp}/module025-phase-authority-expected-files" \
+          "${TMPDIR:-/tmp}/module025-phase-authority-actual-files" >&2 || true
+        exit 1
+      }
+      grep -Fq 'PhaseCodes.Contains(normalizedPhase' \
+        src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+      grep -Fq 'Missing phase coverage:' \
+        src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+      echo 'CELAR_AI_MODULE025_EXACT_PHASE_AUTHORITY_BOUNDARY=PASSED'
+    elif [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-substantive-phase-tasks-* ]]; then
       cat > "${TMPDIR:-/tmp}/module025-substantive-phase-tasks-expected-files" <<'FILES'
       scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
       src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs

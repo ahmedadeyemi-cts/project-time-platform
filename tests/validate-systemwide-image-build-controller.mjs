@@ -192,6 +192,12 @@ assert.match(privateModelClient, /ReadFinishReason/);
 assert.match(module025Module, /CompositionDiagnosticCode/);
 assert.match(module025Module, /private_sow_work_packages_missing/);
 assert.match(module025Module, /private_sow_phase_coverage_incomplete/);
+assert.match(module025Module, /Missing phase coverage:/);
+assert.match(
+  module025Module,
+  /var normalizedPhase = phase\?\.Trim\(\)\.ToLowerInvariant\(\)[\s\S]*?PhaseCodes\.Contains\(normalizedPhase[\s\S]*?return normalizedPhase;[\s\S]*?var value = \$"\{phase\} \{name\} \{description\}"/,
+  'an exact governed phase value must win before description heuristics are considered'
+);
 assert.match(privateRagRepository, /citation\.SourceType,[\s\S]*?"module025_saved_service_overview"/);
 assert.match(privateRagRepository, /@answer_run_id,NULL,NULL,NULL,NULL,@source_type,@source_module/);
 assert.doesNotMatch(webProxy, /proxy_read_timeout 230s;/);
@@ -212,6 +218,7 @@ assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_PROTECTED_UAT_BOUNDARY=PAS
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_DURABLE_WORKER_REPAIR_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_COMPACT_PRIVATE_PLAN_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_SUBSTANTIVE_PHASE_TASK_BOUNDARY=PASSED/);
+assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_EXACT_PHASE_AUTHORITY_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
 for (const controllerValidator of [releaseControllerValidator, releaseControllerReregisteredValidator]) {
   assert.match(controllerValidator, /\.github\/workflows\/deep-intelligence-read-contract-ci\.yml/);
