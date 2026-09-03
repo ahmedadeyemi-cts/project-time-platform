@@ -267,8 +267,12 @@ jq -e '
   and (.resalePeople == .insideSalesRepresentatives)
   and any(.accountExecutives[]?; ((.displayName // "") | ascii_downcase) == "mike beck")
   and any(.insideSalesRepresentatives[]?; ((.displayName // "") | ascii_downcase) == "jessica shaffer")
-  and all(.accountExecutives[]? as $accountExecutive;
-    all(.insideSalesRepresentatives[]?; .userId != $accountExecutive.userId))
+  and (
+    . as $bootstrap
+    | all($bootstrap.accountExecutives[]?;
+        .userId as $accountExecutiveUserId
+        | all($bootstrap.insideSalesRepresentatives[]?; .userId != $accountExecutiveUserId))
+  )
 ' "$SA_BOOTSTRAP" >/dev/null \
   || fail 'Module 025 did not activate the exact-run Solution Architect fixture with separate Account Executive and Inside Sales Representative directories.'
 SA_USER_ID="$(jq -r '.currentUser.userId // empty' "$SA_BOOTSTRAP")"

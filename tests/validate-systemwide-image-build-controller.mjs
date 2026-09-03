@@ -135,6 +135,16 @@ assert.match(module025Uat, /\.insideSalesRepresentatives \| type == "array" and 
 assert.match(module025Uat, /\.resalePeople == \.insideSalesRepresentatives/);
 assert.match(module025Uat, /mike beck/);
 assert.match(module025Uat, /jessica shaffer/);
+assert.match(
+  module025Uat,
+  /\. as \$bootstrap[\s\S]*?all\(\$bootstrap\.accountExecutives\[\]\?;[\s\S]*?all\(\$bootstrap\.insideSalesRepresentatives\[\]\?;/,
+  'Module 025 role-directory separation must use valid jq all(generator; condition) binding syntax'
+);
+assert.doesNotMatch(
+  module025Uat,
+  /all\(\.accountExecutives\[\]\? as \$accountExecutive;/,
+  'Module 025 UAT must not reintroduce the invalid jq generator-as-variable form'
+);
 assert.match(module025Uat, /\.detailedActivities \| type == "array" and length >= 2/);
 assert.match(module025Uat, /\.technicalTasks \| type == "array" and length >= 4/);
 assert.match(module025Uat, /minimumDetailedWorkPackages:10/);
