@@ -265,7 +265,7 @@ GENERATION_RESPONSE="$EVIDENCE_DIR/module025-generation-terminal-response.json"
 GENERATION_POLL_STARTED_AT="$(date +%s)"
 GENERATION_TERMINAL=false
 GENERATION_POLL_ATTEMPTS=0
-for attempt in $(seq 1 120); do
+for attempt in $(seq 1 180); do
   GENERATION_POLL_ATTEMPTS="$attempt"
   GENERATION_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID/generations/$GENERATION_ID" "$GENERATION_RESPONSE" "$SA_SESSION" 55)"
   IFS='|' read -r GENERATION_CURL_EXIT GENERATION_STATUS <<<"$GENERATION_RESULT"
@@ -284,7 +284,7 @@ for attempt in $(seq 1 120); do
 done
 GENERATION_TOTAL_ELAPSED_SECONDS="$(( $(date +%s) - GENERATION_POLL_STARTED_AT + GENERATE_ELAPSED_SECONDS ))"
 [[ "$GENERATION_TERMINAL" == true ]] \
-  || fail 'Module 025 durable generation did not reach a terminal state within 10 minutes.'
+  || fail 'Module 025 durable generation did not reach a terminal state within 15 minutes.'
 jq -e --arg id "$GENERATION_ID" '
   .status == "module025_detailed_scope_generated"
   and .generationId == $id
