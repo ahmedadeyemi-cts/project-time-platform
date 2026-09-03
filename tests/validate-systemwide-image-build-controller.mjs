@@ -175,12 +175,19 @@ assert.match(
   privateRagService,
   /Math\.Min\(options\.MaximumOutputTokens, Module025SowMaximumOutputTokens\)/
 );
-assert.match(privateRagService, /Return between one and three cited scope work-package tasks/);
+assert.match(privateRagService, /Return between one and three cited scope work packages in scopeItems/);
 assert.match(privateRagService, /Keep the complete JSON below 3,500 characters/);
 assert.match(privateRagService, /[Dd]o not repeat or restate the incoming request/);
 assert.match(privateRagService, /ExpandModule025CitedScopeTasks/);
+assert.match(privateRagService, /ParseModule025CitedScopePlan/);
+assert.match(privateRagService, /PulseAiPrivateModule025Scope/);
 assert.match(privateRagService, /expandModule025CitedPhases: authoritativeSource is not null/);
 assert.match(privateRagService, /A deterministic, citation-preserving composer expands/);
+assert.match(
+  privateRagService,
+  /catch \(Exception\) when \(expandModule025CitedPhases\)[\s\S]*?private_module025_scope_schema_invalid/,
+  'Module 025 schema failures must fail closed instead of returning the shared one-phase deterministic scaffold'
+);
 assert.match(
   privateRagService,
   /Name = "Plan"[\s\S]*?Name = "Design"[\s\S]*?Name = "Implement"[\s\S]*?Name = "Validate"[\s\S]*?Name = "Release"/,
@@ -233,6 +240,7 @@ assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_SUBSTANTIVE_PHASE_TASK_BOU
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_EXACT_PHASE_AUTHORITY_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_BOUNDED_PRIVATE_OUTPUT_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_CITED_PHASE_EXPANSION_BOUNDARY=PASSED/);
+assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_TOLERANT_CITED_SCOPE_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
 for (const controllerValidator of [releaseControllerValidator, releaseControllerReregisteredValidator]) {
   assert.match(controllerValidator, /\.github\/workflows\/deep-intelligence-read-contract-ci\.yml/);

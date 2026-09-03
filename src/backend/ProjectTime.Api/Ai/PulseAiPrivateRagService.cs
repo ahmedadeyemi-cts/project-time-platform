@@ -394,7 +394,9 @@ public sealed class PulseAiPrivateRagService
             query,
             DetailLevel(request.DetailLevel, "comprehensive"),
             directKnowledge: null,
-            modelSchema: "PulseAiPrivateFlowHivePlan",
+            modelSchema: authoritativeSource is null
+                ? "PulseAiPrivateFlowHivePlan"
+                : "PulseAiPrivateModule025Scope",
             systemInstruction: FlowHiveSystemInstruction(
                 feature,
                 hasModule025AuthoritativeScope: authoritativeSource is not null),
@@ -717,35 +719,36 @@ public sealed class PulseAiPrivateRagService
     {
         try
         {
-            var dto = JsonSerializer.Deserialize<PulseAiPrivateModelFlowHiveDto>(
-                model.Content,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (dto is null) throw new JsonException("FlowHive plan JSON was empty.");
-            var planCitationIds = ValidCitationIds(dto.CitationIds, retrieval.Chunks.Count);
-            var parsedTasks = asTasks(dto.Tasks, retrieval.Chunks.Count)
-                .Where(task => !IsPhaseSummaryTask(task))
-                .ToArray();
+            PulseAiPrivateFlowHivePlan plan;
             if (expandModule025CitedPhases)
             {
-                parsedTasks = ExpandModule025CitedScopeTasks(
-                    parsedTasks,
-                    planCitationIds,
-                    retrieval.Chunks.Count);
+                plan = ParseModule025CitedScopePlan(model.Content, retrieval);
             }
-            var plan = new PulseAiPrivateFlowHivePlan(
-                Objective: Limit(dto.Objective, 4_000, "Prepare a reviewable project plan from the authorized project evidence."),
-                Tasks: parsedTasks,
-                Milestones: asMilestones(dto.Milestones, retrieval.Chunks.Count),
-                Dependencies: List(dto.Dependencies, 100, 2_000),
-                RequiredRoles: List(dto.RequiredRoles, 60, 1_000),
-                Assumptions: List(dto.Assumptions, 80, 2_000),
-                Risks: List(dto.Risks, 80, 2_000),
-                OutOfScopeItems: List(dto.OutOfScopeItems, 80, 2_000),
-                OpenQuestions: List(dto.OpenQuestions, 80, 2_000),
-                Conflicts: List(dto.Conflicts, 80, 2_000),
-                CitationIds: planCitationIds,
-                Confidence: Math.Clamp(dto.Confidence ?? retrieval.CoverageScore, 0m, 1m),
-                ConfidenceExplanation: Limit(dto.ConfidenceExplanation, 2_000, "Confidence reflects private source coverage. Dates and dependencies require deterministic FlowHive scheduling and Engineering review."));
+            else
+            {
+                var dto = JsonSerializer.Deserialize<PulseAiPrivateModelFlowHiveDto>(
+                    model.Content,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (dto is null) throw new JsonException("FlowHive plan JSON was empty.");
+                var planCitationIds = ValidCitationIds(dto.CitationIds, retrieval.Chunks.Count);
+                var parsedTasks = asTasks(dto.Tasks, retrieval.Chunks.Count)
+                    .Where(task => !IsPhaseSummaryTask(task))
+                    .ToArray();
+                plan = new PulseAiPrivateFlowHivePlan(
+                    Objective: Limit(dto.Objective, 4_000, "Prepare a reviewable project plan from the authorized project evidence."),
+                    Tasks: parsedTasks,
+                    Milestones: asMilestones(dto.Milestones, retrieval.Chunks.Count),
+                    Dependencies: List(dto.Dependencies, 100, 2_000),
+                    RequiredRoles: List(dto.RequiredRoles, 60, 1_000),
+                    Assumptions: List(dto.Assumptions, 80, 2_000),
+                    Risks: List(dto.Risks, 80, 2_000),
+                    OutOfScopeItems: List(dto.OutOfScopeItems, 80, 2_000),
+                    OpenQuestions: List(dto.OpenQuestions, 80, 2_000),
+                    Conflicts: List(dto.Conflicts, 80, 2_000),
+                    CitationIds: planCitationIds,
+                    Confidence: Math.Clamp(dto.Confidence ?? retrieval.CoverageScore, 0m, 1m),
+                    ConfidenceExplanation: Limit(dto.ConfidenceExplanation, 2_000, "Confidence reflects private source coverage. Dates and dependencies require deterministic FlowHive scheduling and Engineering review."));
+            }
 
             // The shared planning orchestrator requires every executable model task
             // to cite current authorized evidence. Keep that contract aligned here:
@@ -821,6 +824,31 @@ public sealed class PulseAiPrivateRagService
                 retrieval.DataAsOf,
                 query.CorrelationId,
                 completed ? string.Empty : "private_plan_below_evidence_quality_gate");
+        }
+        catch (Exception) when (expandModule025CitedPhases)
+        {
+            return new PulseAiPrivateRagAnswer(
+                AnswerRunId: answerRunId,
+                Status: "partial",
+                FeatureCode: query.FeatureCode,
+                PurposeCode: query.PurposeCode,
+                RetrievalMode: retrieval.RetrievalMode,
+                ModelProvider: string.Empty,
+                ModelName: string.Empty,
+                ProjectId: retrieval.ResolvedProjectId,
+                ProjectCode: retrieval.ResolvedProjectCode,
+                ProjectName: retrieval.ResolvedProjectName,
+                Answer: null,
+                FlowHivePlan: null,
+                Citations: Citations(retrieval.Chunks),
+                Warnings: ["The private Module 025 scope response did not match the bounded cited-scope contract. The saved SOW/GSD draft was not changed."],
+                MissingEvidence: retrieval.MissingEvidence,
+                Conflicts: retrieval.Conflicts,
+                CoverageScore: retrieval.CoverageScore,
+                CitationCoverageScore: 0m,
+                DataAsOf: retrieval.DataAsOf,
+                CorrelationId: query.CorrelationId,
+                DiagnosticCode: "private_module025_scope_schema_invalid");
         }
         catch (Exception)
         {
@@ -1463,6 +1491,264 @@ public sealed class PulseAiPrivateRagService
         return Math.Clamp(ceiling, 0m, 0.95m);
     }
 
+    private static PulseAiPrivateFlowHivePlan ParseModule025CitedScopePlan(
+        string content,
+        PulseAiPrivateRetrievalResult retrieval)
+    {
+        if (retrieval.Chunks.Count != 1)
+            throw new JsonException("Module 025 requires exactly one server-authorized source citation.");
+
+        using var document = JsonDocument.Parse(content, new JsonDocumentOptions { MaxDepth = 64 });
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Module 025 cited scope must be a JSON object.");
+
+        var objective = ModelJsonString(root, "objective", "summary", "scope");
+        var topLevelRoles = ModelJsonStrings(root, "requiredRoles", "roles");
+        var scopeItems = ModelJsonItems(root, "scopeItems", "tasks", "workPackages");
+        var sourceTasks = new List<PulseAiPrivateFlowHiveTask>(3);
+
+        foreach (var item in scopeItems.Take(3))
+        {
+            var itemNumber = sourceTasks.Count + 1;
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                var description = Limit(item.GetString(), 3_000, string.Empty);
+                if (description.Length == 0) continue;
+                sourceTasks.Add(new PulseAiPrivateFlowHiveTask(
+                    Wbs: $"S{itemNumber}",
+                    Name: $"Cited scope work package {itemNumber}",
+                    Description: description,
+                    EstimatedDurationDays: 1m,
+                    RequiredRoles: topLevelRoles.Count > 0
+                        ? topLevelRoles
+                        : ["Solution Architect", "Project Manager", "Engineering reviewer"],
+                    Predecessors: [],
+                    CitationIds: [1],
+                    IsAssumption: false,
+                    Phase: "Scope",
+                    DetailedSteps: [],
+                    EstimatedHours: 8m));
+                continue;
+            }
+            if (item.ValueKind != JsonValueKind.Object) continue;
+
+            var name = ModelJsonString(item, "name", "title", "workPackage");
+            var descriptionValue = ModelJsonString(item, "description", "scope", "objective", "outcome");
+            if (descriptionValue.Length == 0) descriptionValue = objective;
+            if (name.Length == 0 && descriptionValue.Length == 0) continue;
+            var roles = ModelJsonStrings(item, "requiredRoles", "roles");
+            if (roles.Count == 0) roles = topLevelRoles;
+            if (roles.Count == 0)
+                roles = ["Solution Architect", "Project Manager", "Engineering reviewer"];
+            var durationDays = Math.Max(
+                1m,
+                ModelJsonDecimal(item, "estimatedDurationDays", "estimatedDays", "durationDays") ?? 1m);
+            var estimatedHours = Math.Max(
+                1m,
+                ModelJsonDecimal(item, "estimatedHours", "hours", "effortHours") ?? durationDays * 8m);
+
+            sourceTasks.Add(new PulseAiPrivateFlowHiveTask(
+                Wbs: Limit(ModelJsonString(item, "wbs", "wbsNumber"), 80, $"S{itemNumber}"),
+                Name: Limit(name, 300, $"Cited scope work package {itemNumber}"),
+                Description: Limit(
+                    descriptionValue,
+                    3_000,
+                    $"Complete the cited scope represented by work package {itemNumber}."),
+                EstimatedDurationDays: durationDays,
+                RequiredRoles: roles,
+                Predecessors: [],
+                CitationIds: [1],
+                IsAssumption: ModelJsonBoolean(item, "isAssumption", "assumption") ?? false,
+                Phase: "Scope",
+                DetailedSteps: ModelJsonStrings(item, "detailedSteps", "steps", "activities"),
+                Inputs: ModelJsonStrings(item, "inputs"),
+                Outputs: ModelJsonStrings(item, "outputs", "deliverables", "deliverable"),
+                AcceptanceCriteria: ModelJsonStrings(item, "acceptanceCriteria", "acceptance"),
+                ValidationSteps: ModelJsonStrings(item, "validationSteps", "validation", "tests"),
+                CustomerResponsibilities: ModelJsonStrings(item, "customerResponsibilities"),
+                UsSignalResponsibilities: ModelJsonStrings(item, "usSignalResponsibilities", "providerResponsibilities"),
+                Prerequisites: ModelJsonStrings(item, "prerequisites"),
+                Risks: ModelJsonStrings(item, "risks"),
+                OpenQuestions: ModelJsonStrings(item, "openQuestions", "questions"),
+                EstimatedHours: estimatedHours,
+                Priority: PlanningPriority(ModelJsonString(item, "priority")),
+                Products: ModelJsonStrings(item, "products"),
+                Platforms: ModelJsonStrings(item, "platforms"),
+                Manufacturers: ModelJsonStrings(item, "manufacturers", "vendors"),
+                Models: ModelJsonStrings(item, "models"),
+                SoftwareVersions: ModelJsonStrings(item, "softwareVersions"),
+                FirmwareVersions: ModelJsonStrings(item, "firmwareVersions"),
+                LicensingRequirements: ModelJsonStrings(item, "licensingRequirements", "licensing"),
+                Quantities: ModelJsonStrings(item, "quantities"),
+                Tools: ModelJsonStrings(item, "tools"),
+                Systems: ModelJsonStrings(item, "systems"),
+                Interfaces: ModelJsonStrings(item, "interfaces"),
+                IntegrationPoints: ModelJsonStrings(item, "integrationPoints", "integrations"),
+                AccessRequirements: ModelJsonStrings(item, "accessRequirements", "access"),
+                RollbackSteps: ModelJsonStrings(item, "rollbackSteps", "rollback"),
+                Assumptions: ModelJsonStrings(item, "assumptions")));
+        }
+
+        if (sourceTasks.Count == 0 && objective.Length > 0)
+        {
+            sourceTasks.Add(new PulseAiPrivateFlowHiveTask(
+                Wbs: "S1",
+                Name: "Cited Service Overview scope",
+                Description: objective,
+                EstimatedDurationDays: 1m,
+                RequiredRoles: topLevelRoles.Count > 0
+                    ? topLevelRoles
+                    : ["Solution Architect", "Project Manager", "Engineering reviewer"],
+                Predecessors: [],
+                CitationIds: [1],
+                IsAssumption: false,
+                Phase: "Scope",
+                DetailedSteps: [],
+                EstimatedHours: 8m));
+        }
+        if (sourceTasks.Count == 0)
+            throw new JsonException("Module 025 private output contained no recoverable cited scope item.");
+
+        var expandedTasks = ExpandModule025CitedScopeTasks(sourceTasks, [1], 1);
+        if (expandedTasks.Length == 0)
+            throw new JsonException("Module 025 cited scope could not be expanded into review phases.");
+
+        var requiredRoles = topLevelRoles
+            .Concat(expandedTasks.SelectMany(task => task.RequiredRoles))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(30)
+            .ToArray();
+        return new PulseAiPrivateFlowHivePlan(
+            Objective: Limit(
+                objective,
+                4_000,
+                sourceTasks[0].Description),
+            Tasks: expandedTasks,
+            Milestones: [],
+            Dependencies: ModelJsonStrings(root, "dependencies"),
+            RequiredRoles: requiredRoles,
+            Assumptions: ModelJsonStrings(root, "assumptions"),
+            Risks: ModelJsonStrings(root, "risks"),
+            OutOfScopeItems: ModelJsonStrings(root, "outOfScopeItems", "outOfScope"),
+            OpenQuestions: ModelJsonStrings(root, "openQuestions", "questions"),
+            Conflicts: ModelJsonStrings(root, "conflicts"),
+            CitationIds: [1],
+            Confidence: Math.Clamp(
+                ModelJsonDecimal(root, "confidence") ?? retrieval.CoverageScore,
+                0m,
+                1m),
+            ConfidenceExplanation: Limit(
+                ModelJsonString(root, "confidenceExplanation"),
+                2_000,
+                "Confidence reflects the single server-authorized saved Service Overview; Solution Architect review remains mandatory."));
+    }
+
+    private static IReadOnlyList<JsonElement> ModelJsonItems(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!TryModelJsonProperty(element, propertyName, out var value)) continue;
+            if (value.ValueKind == JsonValueKind.Array) return value.EnumerateArray().Take(10).ToArray();
+            if (value.ValueKind is JsonValueKind.Object or JsonValueKind.String) return [value];
+        }
+        return [];
+    }
+
+    private static string ModelJsonString(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!TryModelJsonProperty(element, propertyName, out var value)) continue;
+            if (value.ValueKind == JsonValueKind.String)
+                return Limit(value.GetString(), 4_000, string.Empty);
+            if (value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)
+                return Limit(value.GetRawText(), 4_000, string.Empty);
+        }
+        return string.Empty;
+    }
+
+    private static IReadOnlyList<string> ModelJsonStrings(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!TryModelJsonProperty(element, propertyName, out var value)) continue;
+            if (value.ValueKind == JsonValueKind.String)
+            {
+                var item = Limit(value.GetString(), 2_000, string.Empty);
+                return item.Length == 0 ? [] : [item];
+            }
+            if (value.ValueKind != JsonValueKind.Array) continue;
+            return value.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => Limit(item.GetString(), 2_000, string.Empty))
+                .Where(item => item.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(20)
+                .ToArray();
+        }
+        return [];
+    }
+
+    private static decimal? ModelJsonDecimal(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!TryModelJsonProperty(element, propertyName, out var value)) continue;
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number))
+                return number;
+            if (value.ValueKind == JsonValueKind.String
+                && decimal.TryParse(
+                    value.GetString(),
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out number))
+                return number;
+        }
+        return null;
+    }
+
+    private static bool? ModelJsonBoolean(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!TryModelJsonProperty(element, propertyName, out var value)) continue;
+            if (value.ValueKind is JsonValueKind.True or JsonValueKind.False) return value.GetBoolean();
+            if (value.ValueKind == JsonValueKind.String && bool.TryParse(value.GetString(), out var flag))
+                return flag;
+        }
+        return null;
+    }
+
+    private static bool TryModelJsonProperty(
+        JsonElement element,
+        string propertyName,
+        out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            if (element.TryGetProperty(propertyName, out value)) return true;
+            foreach (var property in element.EnumerateObject())
+            {
+                if (!string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase)) continue;
+                value = property.Value;
+                return true;
+            }
+        }
+        value = default;
+        return false;
+    }
+
     private static PulseAiPrivateFlowHiveTask[] ExpandModule025CitedScopeTasks(
         IReadOnlyList<PulseAiPrivateFlowHiveTask> sourceTasks,
         IReadOnlyList<int> planCitationIds,
@@ -1795,11 +2081,11 @@ public sealed class PulseAiPrivateRagService
             return $"""
                 You are Celar AI preparing a private, cited, review-only SOW/GSD draft for capability {feature}.
                 The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
-                Return only one valid compact JSON object matching PulseAiPrivateFlowHivePlan, with no markdown, commentary, or code fence. Keep the complete JSON below 3,500 characters so it closes well before the governed response limit.
-                Return between one and three cited scope work-package tasks, not lifecycle phase rows. A deterministic, citation-preserving composer expands every returned scope work package into Plan, Design, Implement, Validate, and Release after private inference completes.
-                Every task must include only wbs, name, description, estimatedDurationDays, estimatedHours, requiredRoles, predecessors, citationIds:[1], isAssumption, phase:"Scope", detailedSteps, outputs, acceptanceCriteria, and validationSteps. Optional task fields may be omitted.
+                Return only one valid compact JSON object matching PulseAiPrivateModule025Scope, with no markdown, commentary, or code fence. Keep the complete JSON below 3,500 characters so it closes well before the governed response limit.
+                Return between one and three cited scope work packages in scopeItems, not lifecycle phase rows. A deterministic, citation-preserving composer expands every returned scope work package into Plan, Design, Implement, Validate, and Release after private inference completes.
+                Every scopeItems object must include only name, description, estimatedDurationDays, estimatedHours, requiredRoles, detailedSteps, outputs, acceptanceCriteria, validationSteps, and isAssumption. Optional scope-item fields may be omitted.
                 Use at most two concise sentences in detailedSteps and one concise sentence in each other task list. Estimated duration and hours are non-binding assumptions until Solution Architect review, but both numeric values must be greater than zero.
-                Include top-level objective, tasks, milestones:[], dependencies:[], requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. Use at most one concise item in each top-level list.
+                Include top-level objective, scopeItems, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. Use at most one concise item in each top-level list.
                 Preserve missing technical detail as a labeled assumption or open question. The Solution Architect must modify and validate the draft before any separately authorized approval or baseline.
                 """;
         }
@@ -1830,7 +2116,7 @@ public sealed class PulseAiPrivateRagService
             return $"""
                 Extract the concise source-backed scope work packages required for {feature} from citation 1.
                 Do not repeat or restate the incoming request, and do not create Plan, Design, Implement, Validate, or Release rows.
-                Keep every task traceable to citation 1. Use assumptions and openQuestions for unsupported implementation specifics. Remain below 3,500 JSON characters and close the JSON object.
+                Keep every scopeItems object traceable to citation 1. Use assumptions and openQuestions for unsupported implementation specifics. Remain below 3,500 JSON characters and close the JSON object.
                 """;
         }
 
