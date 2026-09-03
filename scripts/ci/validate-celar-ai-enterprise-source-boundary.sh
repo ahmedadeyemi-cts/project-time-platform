@@ -19,7 +19,10 @@ publish_mode() {
   printf 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=%s\n' "$mode"
 }
 
-if [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
+if [[ "$HEAD_BRANCH" == 'fix/module025-protected-uat-generation-verification-detailed-plan-parser-20260903' ]]; then
+  ALLOWED_DATABASE='^(database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
+  publish_mode MODULE025_DETAILED_PLAN_PARSER
+elif [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
   ALLOWED_DATABASE='^(database/migrations/100_module001b_catalog_ownership_reconciliation\.sql|database/rollback/100_module001b_catalog_ownership_reconciliation_rollback\.sql)$'
   publish_mode PROTECTED_UAT_VALIDATION_DEFECTS
 elif [[ "$HEAD_BRANCH" == security/celar-ai-production-readiness-* ]]; then
@@ -237,7 +240,36 @@ if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]
     ! grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
     ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
   else
-    if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-readback-metadata-case-* ]]; then
+    if [[ "$HEAD_BRANCH" == 'fix/module025-protected-uat-generation-verification-detailed-plan-parser-20260903' ]]; then
+      cat > "${TMPDIR:-/tmp}/module025-detailed-plan-parser-expected-files" <<'FILES'
+      .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+      .github/workflows/projectpulse-release-test-control-ci.yml
+      scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+      src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      tests/FlowHiveDetailedPlannerTests/Program.cs
+      tests/validate-systemwide-image-build-controller.mjs
+FILES
+      sed -i 's/^[[:space:]]*//' "${TMPDIR:-/tmp}/module025-detailed-plan-parser-expected-files"
+      LC_ALL=C sort -u "${TMPDIR:-/tmp}/module025-detailed-plan-parser-expected-files" \
+        -o "${TMPDIR:-/tmp}/module025-detailed-plan-parser-expected-files"
+      printf '%s\n' "$CHANGED" | LC_ALL=C sort -u > "${TMPDIR:-/tmp}/module025-detailed-plan-parser-actual-files"
+      cmp -s \
+        "${TMPDIR:-/tmp}/module025-detailed-plan-parser-expected-files" \
+        "${TMPDIR:-/tmp}/module025-detailed-plan-parser-actual-files" || {
+        echo 'The Module 025 detailed-plan parser repair differs from its exact governed file set.' >&2
+        diff -u \
+          "${TMPDIR:-/tmp}/module025-detailed-plan-parser-expected-files" \
+          "${TMPDIR:-/tmp}/module025-detailed-plan-parser-actual-files" >&2 || true
+        exit 1
+      }
+      grep -Fq 'Module025ModelTaskItems' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      grep -Fq 'Use the exact top-level property name tasks' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      grep -Fq 'module025_grouped_work_packages_parse' \
+        tests/FlowHiveDetailedPlannerTests/Program.cs
+      echo 'CELAR_AI_MODULE025_DETAILED_PLAN_PARSER_BOUNDARY=PASSED'
+    elif [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-readback-metadata-case-* ]]; then
       cat > "${TMPDIR:-/tmp}/module025-readback-metadata-case-expected-files" <<'FILES'
       scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
       scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh

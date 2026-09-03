@@ -842,7 +842,7 @@ public sealed class PulseAiPrivateRagService
                 query.CorrelationId,
                 completed ? string.Empty : "private_plan_below_evidence_quality_gate");
         }
-        catch (Exception) when (validateModule025DetailedPlan)
+        catch (Exception exception) when (validateModule025DetailedPlan)
         {
             return new PulseAiPrivateRagAnswer(
                 AnswerRunId: answerRunId,
@@ -865,7 +865,7 @@ public sealed class PulseAiPrivateRagService
                 CitationCoverageScore: 0m,
                 DataAsOf: retrieval.DataAsOf,
                 CorrelationId: query.CorrelationId,
-                DiagnosticCode: "private_module025_detailed_plan_invalid");
+                DiagnosticCode: Module025DetailedPlanDiagnosticCode(exception));
         }
         catch (Exception)
         {
@@ -1515,15 +1515,33 @@ public sealed class PulseAiPrivateRagService
         if (retrieval.Chunks.Count != 1)
             throw new JsonException("Module 025 requires exactly one server-authorized Service Overview citation.");
 
-        var dto = JsonSerializer.Deserialize<PulseAiPrivateModelFlowHiveDto>(
-            content,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        if (dto is null) throw new JsonException("Module 025 detailed plan JSON was empty.");
+        using var document = JsonDocument.Parse(content, new JsonDocumentOptions { MaxDepth = 128 });
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Module 025 detailed plan must be one JSON object.");
+        if (TryModelJsonProperty(root, "plan", out var nestedPlan)
+            && nestedPlan.ValueKind == JsonValueKind.Object
+            && ModelJsonArrayItems(root, 1, "tasks", "workPackages", "work_packages", "scopeItems").Count == 0
+            && ModelJsonArrayItems(root, 1, "phases", "deliveryPhases", "lifecyclePhases").Count == 0)
+        {
+            root = nestedPlan;
+        }
 
-        var tasks = asTasks(dto.Tasks, retrieval.Chunks.Count)
-            .Where(task => !IsPhaseSummaryTask(task))
-            .Select(task => task with { Phase = CanonicalModule025Phase(task.Phase) })
-            .ToArray();
+        var topLevelRoles = Module025JsonStrings(root, "requiredRoles", "roles");
+        var parsedTasks = new List<PulseAiPrivateFlowHiveTask>();
+        foreach (var (item, phaseGroup, inheritedPhase) in Module025ModelTaskItems(root))
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            var task = ParseModule025DetailedTask(
+                item,
+                phaseGroup,
+                inheritedPhase,
+                parsedTasks.Count,
+                topLevelRoles);
+            if (!IsPhaseSummaryTask(task)) parsedTasks.Add(task);
+        }
+
+        var tasks = asTasks(parsedTasks, retrieval.Chunks.Count).ToArray();
 
         if (tasks.Length < 10)
             throw new JsonException("Module 025 requires at least ten detailed delivery work packages.");
@@ -1552,6 +1570,20 @@ public sealed class PulseAiPrivateRagService
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count() < 2)
                 throw new JsonException($"Module 025 detailed plan requires at least two distinct deliverables in the {phase} phase.");
+            if (!phaseTasks.SelectMany(task => task.CustomerResponsibilities ?? []).Any())
+                throw new JsonException($"Module 025 detailed plan requires customer responsibilities in the {phase} phase.");
+            if (!phaseTasks.SelectMany(task => task.UsSignalResponsibilities ?? []).Any())
+                throw new JsonException($"Module 025 detailed plan requires US Signal responsibilities in the {phase} phase.");
+            if (!phaseTasks.SelectMany(task => task.Prerequisites ?? []).Any())
+                throw new JsonException($"Module 025 detailed plan requires prerequisites in the {phase} phase.");
+            if (!phaseTasks.SelectMany(task => task.AcceptanceCriteria ?? []).Any())
+                throw new JsonException($"Module 025 detailed plan requires measurable acceptance criteria in the {phase} phase.");
+            if (!phaseTasks.SelectMany(task => task.ValidationSteps ?? []).Any())
+                throw new JsonException($"Module 025 detailed plan requires validation steps in the {phase} phase.");
+            if (!phaseTasks.SelectMany(task => task.Risks ?? []).Any())
+                throw new JsonException($"Module 025 detailed plan requires delivery risks in the {phase} phase.");
+            if (phaseTasks.Sum(task => task.EstimatedHours ?? 0m) <= 0m)
+                throw new JsonException($"Module 025 detailed plan requires positive estimated effort in the {phase} phase.");
         }
 
         foreach (var task in tasks)
@@ -1579,44 +1611,399 @@ public sealed class PulseAiPrivateRagService
             }
         }
 
-        var planCitationIds = ValidCitationIds(dto.CitationIds, retrieval.Chunks.Count);
-        if (planCitationIds.Count != 1 || planCitationIds[0] != 1)
-            throw new JsonException("Module 025 detailed plan must cite the saved Service Overview as citation 1.");
-        if (ContainsCannedModule025ScopeLanguage(dto.Objective ?? string.Empty))
+        var objective = ModelJsonString(root, "objective", "executiveSummary", "summary");
+        if (objective.Length < 120 || ContainsCannedModule025ScopeLanguage(objective))
+        {
+            objective = Limit(
+                string.Join(" ", tasks
+                    .Select(task => task.Description)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(3)),
+                4_000,
+                string.Empty);
+        }
+        if (objective.Length < 120 || ContainsCannedModule025ScopeLanguage(objective))
             throw new JsonException("Module 025 detailed plan used prohibited generic scope boilerplate.");
 
-        var requiredRoles = List(dto.RequiredRoles, 60, 1_000)
+        var requiredRoles = topLevelRoles
             .Concat(tasks.SelectMany(task => task.RequiredRoles))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(60)
             .ToArray();
         return new PulseAiPrivateFlowHivePlan(
-            Objective: Limit(
-                dto.Objective,
-                4_000,
-                "Prepare the requested technology service through a detailed, reviewed Plan, Design, Implement, Validate, and Release lifecycle."),
+            Objective: objective,
             Tasks: tasks,
-            Milestones: asMilestones(dto.Milestones, retrieval.Chunks.Count),
-            Dependencies: List(dto.Dependencies, 100, 2_000),
+            Milestones: ParseModule025DetailedMilestones(root),
+            Dependencies: Module025JsonStrings(root, "dependencies")
+                .Concat(tasks.SelectMany(task => task.Predecessors))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(100)
+                .ToArray(),
             RequiredRoles: requiredRoles,
-            Assumptions: List(dto.Assumptions, 80, 2_000),
-            Risks: List(dto.Risks, 80, 2_000),
-            OutOfScopeItems: List(dto.OutOfScopeItems, 80, 2_000),
-            OpenQuestions: List(dto.OpenQuestions, 80, 2_000),
-            Conflicts: List(dto.Conflicts, 80, 2_000),
-            CitationIds: planCitationIds,
-            Confidence: Math.Clamp(dto.Confidence ?? retrieval.CoverageScore, 0m, 1m),
+            Assumptions: Module025JsonStrings(root, "assumptions")
+                .Concat(tasks.SelectMany(task => task.Assumptions ?? []))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(80)
+                .ToArray(),
+            Risks: Module025JsonStrings(root, "risks")
+                .Concat(tasks.SelectMany(task => task.Risks ?? []))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(80)
+                .ToArray(),
+            OutOfScopeItems: Module025JsonStrings(root, "outOfScopeItems", "outOfScope"),
+            OpenQuestions: Module025JsonStrings(root, "openQuestions", "questions")
+                .Concat(tasks.SelectMany(task => task.OpenQuestions ?? []))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(80)
+                .ToArray(),
+            Conflicts: Module025JsonStrings(root, "conflicts"),
+            CitationIds: [1],
+            Confidence: Math.Clamp(ModelJsonDecimal(root, "confidence") ?? retrieval.CoverageScore, 0m, 1m),
             ConfidenceExplanation: Limit(
-                dto.ConfidenceExplanation,
+                ModelJsonString(root, "confidenceExplanation"),
                 2_000,
                 "The saved Service Overview establishes the requested scope; proposed technical procedures and estimates require Solution Architect validation."));
     }
 
-    private static string CanonicalModule025Phase(string? value)
+    private static string Module025DetailedPlanDiagnosticCode(Exception exception)
     {
-        var phase = Module025DeliveryPhases.FirstOrDefault(candidate =>
-            string.Equals(candidate, value?.Trim(), StringComparison.OrdinalIgnoreCase));
-        return phase ?? string.Empty;
+        var message = exception.Message;
+        var reason = message switch
+        {
+            var value when value.Contains("exactly one server-authorized", StringComparison.OrdinalIgnoreCase) => "source_authority",
+            var value when value.Contains("at least ten", StringComparison.OrdinalIgnoreCase) => "task_count",
+            var value when value.Contains("WBS", StringComparison.OrdinalIgnoreCase) => "wbs",
+            var value when value.Contains("at least two work packages", StringComparison.OrdinalIgnoreCase) => "phase_coverage",
+            var value when value.Contains("distinct customer-ready outcomes", StringComparison.OrdinalIgnoreCase) => "phase_outcomes",
+            var value when value.Contains("execution steps", StringComparison.OrdinalIgnoreCase) => "phase_steps",
+            var value when value.Contains("deliverables", StringComparison.OrdinalIgnoreCase) => "phase_deliverables",
+            var value when value.Contains("customer responsibilities", StringComparison.OrdinalIgnoreCase) => "phase_customer_responsibility",
+            var value when value.Contains("US Signal responsibilities", StringComparison.OrdinalIgnoreCase) => "phase_provider_responsibility",
+            var value when value.Contains("prerequisites", StringComparison.OrdinalIgnoreCase) => "phase_prerequisite",
+            var value when value.Contains("acceptance criteria", StringComparison.OrdinalIgnoreCase) => "phase_acceptance",
+            var value when value.Contains("validation steps", StringComparison.OrdinalIgnoreCase) => "phase_validation",
+            var value when value.Contains("delivery risks", StringComparison.OrdinalIgnoreCase) => "phase_risk",
+            var value when value.Contains("estimated effort", StringComparison.OrdinalIgnoreCase) => "phase_effort",
+            var value when value.Contains("customer-ready detail contract", StringComparison.OrdinalIgnoreCase) => "task_detail",
+            var value when value.Contains("generic scope boilerplate", StringComparison.OrdinalIgnoreCase) => "generic_scope",
+            _ => "schema"
+        };
+        return $"private_module025_detailed_plan_invalid_{reason}";
+    }
+
+    private static PulseAiPrivateFlowHiveTask ParseModule025DetailedTask(
+        JsonElement item,
+        JsonElement phaseGroup,
+        string inheritedPhase,
+        int index,
+        IReadOnlyList<string> topLevelRoles)
+    {
+        var wbs = Limit(
+            ModelJsonString(item, "wbs", "wbsNumber", "workPackageId", "id"),
+            80,
+            $"{index + 1}.0");
+        var name = Limit(
+            ModelJsonString(item, "name", "title", "workPackage"),
+            300,
+            $"Detailed delivery work package {index + 1}");
+        var detailedSteps = Module025JsonStrings(
+            item,
+            phaseGroup,
+            "detailedSteps",
+            "steps",
+            "activities",
+            "technicalTasks",
+            "procedure");
+        var prerequisites = Module025JsonStrings(item, phaseGroup, "prerequisites", "readinessRequirements", "preconditions");
+        var inputs = Module025JsonStrings(item, phaseGroup, "inputs", "requiredInputs", "sourceInputs");
+        if (inputs.Count == 0) inputs = prerequisites;
+        var outputs = Module025JsonStrings(item, phaseGroup, "outputs", "deliverables", "deliverable", "results");
+        var description = ModelJsonString(item, "description", "objective", "outcome", "scope");
+        if (description.Length < 80)
+        {
+            description = Limit(
+                string.Join(" ", new[] { description, name }
+                    .Concat(detailedSteps.Take(2))
+                    .Concat(outputs.Take(1))
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)),
+                4_000,
+                string.Empty);
+        }
+
+        var estimatedHours = ModelJsonDecimal(item, "estimatedHours", "hours", "effortHours", "levelOfEffortHours");
+        var estimatedDurationDays = ModelJsonDecimal(
+            item,
+            "estimatedDurationDays",
+            "estimatedDays",
+            "durationDays");
+        if (estimatedHours is null && estimatedDurationDays is > 0m)
+            estimatedHours = Math.Max(0.1m, estimatedDurationDays.Value * 8m);
+        if (estimatedDurationDays is null && estimatedHours is > 0m)
+            estimatedDurationDays = Math.Max(0.1m, estimatedHours.Value / 8m);
+
+        var roles = Module025JsonStrings(item, phaseGroup, "requiredRoles", "roles", "deliveryRoles");
+        if (roles.Count == 0) roles = topLevelRoles;
+        var phase = CanonicalModule025Phase(
+            ModelJsonString(item, "phase", "lifecyclePhase", "deliveryPhase", "stage"),
+            inheritedPhase,
+            name,
+            wbs);
+
+        // Citation 1 is the sole server-authorized Saved Service Overview. Binding
+        // every accepted model work package to that scope anchor is deterministic;
+        // procedures and estimates remain explicitly review-only assumptions.
+        return new PulseAiPrivateFlowHiveTask(
+            Wbs: wbs,
+            Name: name,
+            Description: Limit(description, 4_000, string.Empty),
+            EstimatedDurationDays: estimatedDurationDays ?? 0m,
+            RequiredRoles: roles,
+            Predecessors: Module025JsonStrings(item, phaseGroup, "predecessors", "dependencies", "dependsOn"),
+            CitationIds: [1],
+            IsAssumption: ModelJsonBoolean(item, "isAssumption", "assumption") ?? true,
+            Phase: phase,
+            DetailedSteps: detailedSteps,
+            Inputs: inputs,
+            Outputs: outputs,
+            AcceptanceCriteria: Module025JsonStrings(item, phaseGroup, "acceptanceCriteria", "acceptance", "completionCriteria"),
+            ValidationSteps: Module025JsonStrings(item, phaseGroup, "validationSteps", "validation", "tests", "testSteps"),
+            CustomerResponsibilities: Module025JsonStrings(item, phaseGroup, "customerResponsibilities", "customerActions", "clientResponsibilities"),
+            UsSignalResponsibilities: Module025JsonStrings(item, phaseGroup, "usSignalResponsibilities", "providerResponsibilities", "deliveryTeamResponsibilities"),
+            Prerequisites: prerequisites,
+            Risks: Module025JsonStrings(item, phaseGroup, "risks", "riskConsiderations"),
+            OpenQuestions: Module025JsonStrings(item, phaseGroup, "openQuestions", "questions", "customerDecisions"),
+            EstimatedHours: estimatedHours,
+            Priority: ModelJsonString(item, "priority"),
+            Products: Module025JsonStrings(item, phaseGroup, "products", "technologies"),
+            Platforms: Module025JsonStrings(item, phaseGroup, "platforms"),
+            Manufacturers: Module025JsonStrings(item, phaseGroup, "manufacturers", "vendors"),
+            Models: Module025JsonStrings(item, phaseGroup, "models", "hardwareModels"),
+            SoftwareVersions: Module025JsonStrings(item, phaseGroup, "softwareVersions", "versions"),
+            FirmwareVersions: Module025JsonStrings(item, phaseGroup, "firmwareVersions"),
+            LicensingRequirements: Module025JsonStrings(item, phaseGroup, "licensingRequirements", "licensing"),
+            Quantities: Module025JsonStrings(item, phaseGroup, "quantities"),
+            Tools: Module025JsonStrings(item, phaseGroup, "tools"),
+            Systems: Module025JsonStrings(item, phaseGroup, "systems", "components"),
+            Interfaces: Module025JsonStrings(item, phaseGroup, "interfaces"),
+            IntegrationPoints: Module025JsonStrings(item, phaseGroup, "integrationPoints", "integrations"),
+            AccessRequirements: Module025JsonStrings(item, phaseGroup, "accessRequirements", "access"),
+            RollbackSteps: Module025JsonStrings(item, phaseGroup, "rollbackSteps", "rollback"),
+            Assumptions: Module025JsonStrings(item, phaseGroup, "assumptions"));
+    }
+
+    private static IReadOnlyList<(JsonElement Item, JsonElement PhaseGroup, string InheritedPhase)> Module025ModelTaskItems(
+        JsonElement root)
+    {
+        var direct = ModelJsonArrayItems(root, 100, "tasks", "workPackages", "work_packages", "scopeItems");
+        if (direct.Count > 0)
+            return direct.Select(item => (item, default(JsonElement), string.Empty)).ToArray();
+
+        var grouped = new List<(JsonElement Item, JsonElement PhaseGroup, string InheritedPhase)>();
+        JsonElement phaseContainer = default;
+        foreach (var propertyName in new[] { "phases", "deliveryPhases", "lifecyclePhases" })
+        {
+            if (TryModelJsonProperty(root, propertyName, out phaseContainer)) break;
+        }
+        if (phaseContainer.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var phaseGroup in phaseContainer.EnumerateArray().Take(20))
+            {
+                AppendModule025TaskGroup(grouped, phaseGroup, string.Empty);
+                if (grouped.Count >= 100) break;
+            }
+        }
+        else if (phaseContainer.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in phaseContainer.EnumerateObject().Take(20))
+            {
+                AppendModule025TaskGroup(grouped, property.Value, property.Name);
+                if (grouped.Count >= 100) break;
+            }
+        }
+        return grouped;
+    }
+
+    private static void AppendModule025TaskGroup(
+        List<(JsonElement Item, JsonElement PhaseGroup, string InheritedPhase)> target,
+        JsonElement phaseGroup,
+        string fallbackPhase)
+    {
+        var inheritedPhase = phaseGroup.ValueKind == JsonValueKind.Object
+            ? ModelJsonString(phaseGroup, "phase", "phaseName", "name", "label")
+            : string.Empty;
+        if (inheritedPhase.Length == 0) inheritedPhase = fallbackPhase;
+        var items = phaseGroup.ValueKind == JsonValueKind.Array
+            ? phaseGroup.EnumerateArray().Take(40).ToArray()
+            : ModelJsonArrayItems(
+                phaseGroup,
+                40,
+                "tasks",
+                "workPackages",
+                "work_packages",
+                "scopeItems");
+        foreach (var item in items)
+        {
+            target.Add((item, phaseGroup, inheritedPhase));
+            if (target.Count >= 100) return;
+        }
+    }
+
+    private static IReadOnlyList<JsonElement> ModelJsonArrayItems(
+        JsonElement element,
+        int maximumItems,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!TryModelJsonProperty(element, propertyName, out var value)) continue;
+            if (value.ValueKind == JsonValueKind.Array)
+                return value.EnumerateArray().Take(maximumItems).ToArray();
+            if (value.ValueKind is JsonValueKind.Object or JsonValueKind.String) return [value];
+        }
+        return [];
+    }
+
+    private static IReadOnlyList<string> Module025JsonStrings(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!TryModelJsonProperty(element, propertyName, out var value)) continue;
+            if (value.ValueKind == JsonValueKind.String)
+            {
+                var item = Limit(value.GetString(), 2_000, string.Empty);
+                return item.Length == 0 ? [] : [item];
+            }
+            if (value.ValueKind != JsonValueKind.Array) continue;
+            var items = new List<string>();
+            foreach (var arrayItem in value.EnumerateArray().Take(60))
+            {
+                var text = arrayItem.ValueKind switch
+                {
+                    JsonValueKind.String => Limit(arrayItem.GetString(), 2_000, string.Empty),
+                    JsonValueKind.Object => Module025JsonObjectText(
+                        arrayItem,
+                        "text",
+                        "description",
+                        "step",
+                        "name",
+                        "value"),
+                    _ => throw new JsonException(
+                        "Module 025 detailed-plan list fields must contain strings or text-bearing objects.")
+                };
+                if (text.Length == 0)
+                    throw new JsonException(
+                        "Module 025 detailed-plan list objects must contain usable text.");
+                if (!items.Contains(text, StringComparer.OrdinalIgnoreCase)) items.Add(text);
+            }
+            return items;
+        }
+        return [];
+    }
+
+    private static string Module025JsonObjectText(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!TryModelJsonProperty(element, propertyName, out var value)) continue;
+            if (value.ValueKind != JsonValueKind.String)
+                throw new JsonException(
+                    "Module 025 detailed-plan text-bearing objects must contain a JSON string value.");
+            return Limit(value.GetString(), 2_000, string.Empty);
+        }
+        return string.Empty;
+    }
+
+    private static IReadOnlyList<string> Module025JsonStrings(
+        JsonElement element,
+        JsonElement fallbackElement,
+        params string[] propertyNames)
+    {
+        var values = Module025JsonStrings(element, propertyNames);
+        if (fallbackElement.ValueKind != JsonValueKind.Object) return values;
+        return values
+            .Concat(Module025JsonStrings(fallbackElement, propertyNames))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(60)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<PulseAiPrivateFlowHiveMilestone> ParseModule025DetailedMilestones(
+        JsonElement root)
+    {
+        var milestones = new List<PulseAiPrivateFlowHiveMilestone>();
+        foreach (var item in ModelJsonArrayItems(root, 100, "milestones", "deliveryMilestones"))
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                throw new JsonException("Module 025 detailed-plan milestones must be JSON objects.");
+            var name = Module025JsonObjectText(item, "name", "title", "milestone");
+            var description = Module025JsonObjectText(item, "description", "objective", "outcome");
+            var proposedTiming = Module025JsonObjectText(item, "proposedTiming", "timing", "targetTiming");
+            var acceptanceEvidence = Module025JsonStrings(
+                item,
+                "acceptanceEvidence",
+                "acceptanceCriteria",
+                "evidence");
+            if (name.Length == 0
+                || description.Length < 40
+                || proposedTiming.Length == 0
+                || acceptanceEvidence.Count == 0
+                || ContainsCannedModule025ScopeLanguage(name)
+                || ContainsCannedModule025ScopeLanguage(description)
+                || ContainsCannedModule025ScopeLanguage(proposedTiming)
+                || acceptanceEvidence.Any(ContainsCannedModule025ScopeLanguage))
+            {
+                throw new JsonException(
+                    "Module 025 detailed-plan milestone did not meet the customer-ready evidence contract.");
+            }
+            milestones.Add(new PulseAiPrivateFlowHiveMilestone(
+                Name: name,
+                Description: description,
+                ProposedTiming: proposedTiming,
+                AcceptanceEvidence: acceptanceEvidence,
+                CitationIds: [1],
+                IsAssumption: ModelJsonBoolean(item, "isAssumption", "assumption") ?? true));
+        }
+        return asMilestones(milestones, 1);
+    }
+
+    private static string CanonicalModule025Phase(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            var normalized = new string((value ?? string.Empty)
+                .Trim()
+                .Where(char.IsLetterOrDigit)
+                .Select(char.ToLowerInvariant)
+                .ToArray());
+            if (normalized.Length == 0) continue;
+            if (normalized.StartsWith("plan", StringComparison.Ordinal)
+                || normalized.StartsWith("discover", StringComparison.Ordinal)
+                || normalized == "1") return "Plan";
+            if (normalized.StartsWith("design", StringComparison.Ordinal)
+                || normalized.StartsWith("architect", StringComparison.Ordinal)
+                || normalized == "2") return "Design";
+            if (normalized.StartsWith("implement", StringComparison.Ordinal)
+                || normalized.StartsWith("execute", StringComparison.Ordinal)
+                || normalized.StartsWith("execution", StringComparison.Ordinal)
+                || normalized == "3") return "Implement";
+            if (normalized.StartsWith("valid", StringComparison.Ordinal)
+                || normalized.StartsWith("test", StringComparison.Ordinal)
+                || normalized.StartsWith("verify", StringComparison.Ordinal)
+                || normalized == "4") return "Validate";
+            if (normalized.StartsWith("release", StringComparison.Ordinal)
+                || normalized.Contains("handoff", StringComparison.Ordinal)
+                || normalized.StartsWith("closeout", StringComparison.Ordinal)
+                || normalized.StartsWith("transition", StringComparison.Ordinal)
+                || normalized == "5") return "Release";
+            if (normalized[0] is >= '1' and <= '5')
+                return Module025DeliveryPhases[normalized[0] - '1'];
+        }
+        return string.Empty;
     }
 
     private static bool ContainsCannedModule025ScopeLanguage(string value) =>
@@ -1632,6 +2019,11 @@ public sealed class PulseAiPrivateRagService
             .Concat(task.Outputs ?? [])
             .Concat(task.AcceptanceCriteria ?? [])
             .Concat(task.ValidationSteps ?? [])
+            .Concat(task.CustomerResponsibilities ?? [])
+            .Concat(task.UsSignalResponsibilities ?? [])
+            .Concat(task.Prerequisites ?? [])
+            .Concat(task.Risks ?? [])
+            .Concat(task.OpenQuestions ?? [])
             .Any(ContainsCannedModule025ScopeLanguage);
 
     private static PulseAiPrivateFlowHivePlan ParseModule025CitedScopePlan(
@@ -2221,13 +2613,14 @@ public sealed class PulseAiPrivateRagService
     {
         if (hasModule025AuthoritativeScope)
         {
-            return $"""
-                You are Celar AI preparing a private, exhaustive, customer-understandable, review-only SOW/GSD delivery plan for capability {feature}.
+            return $$"""
+                You are Celar AI preparing a private, exhaustive, customer-understandable, review-only SOW/GSD delivery plan for capability {{feature}}.
                 The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. It establishes the requested service boundary but may be intentionally brief. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
                 Use professional technical knowledge to expand the requested technology service into the real work normally required for successful delivery. This includes discovery and inventory, compatibility and readiness checks, architecture and change design, prerequisites and backups, controlled implementation sequencing, rollback preparation, functional and operational validation, documentation, knowledge transfer, handoff, and closeout when applicable to the requested service.
                 Return only one valid JSON object matching PulseAiPrivateFlowHivePlan, with no markdown, commentary, or code fence. Classify every executable work package under exactly one phase using the exact phase value Plan, Design, Implement, Validate, or Release, and preserve that lifecycle order.
                 Produce enough distinct work packages to explain the full delivery sequence to a customer—normally 10 to 20 tasks, with multiple tasks per phase where the work requires them. Do not mechanically repeat the Service Overview across phases, create phase-summary rows, pad the plan, or use phrases such as "cited scope", "source-backed scope", "prepare the cited scope", or "translate the cited scope" in customer-facing content.
                 Every task must include a unique wbs; specific name and description; estimatedDurationDays and estimatedHours greater than zero; requiredRoles; predecessors; citationIds:[1]; isAssumption; phase; two or more ordered detailedSteps; inputs; outputs; measurable acceptanceCriteria; validationSteps; customerResponsibilities; usSignalResponsibilities; prerequisites; task-specific risks; and openQuestions when a customer decision or environment fact is missing. Populate applicable product, platform, manufacturer, version, licensing, system, interface, integration, access, tool, rollback, and assumption fields.
+                Use the exact top-level property name tasks, not workPackages or scopeItems. Return at least two tasks for every phase and at least ten tasks total. JSON list fields must be arrays of strings, citationIds must be an array of integers, estimatedDurationDays and estimatedHours must be JSON numbers, and isAssumption must be a JSON boolean. Use this exact task property contract for every item: {"wbs":"1.1","name":"...","description":"...","estimatedDurationDays":1,"estimatedHours":8,"requiredRoles":["..."],"predecessors":[],"citationIds":[1],"isAssumption":true,"phase":"Plan","detailedSteps":["...","..."],"inputs":["..."],"outputs":["..."],"acceptanceCriteria":["..."],"validationSteps":["..."],"customerResponsibilities":["..."],"usSignalResponsibilities":["..."],"prerequisites":["..."],"risks":["..."],"openQuestions":["..."]}.
                 Each detailed step must identify what is checked or changed, the prerequisite or input, the expected result or evidence, and the completion condition. Use technical terminology that a delivery engineer can execute and explanatory wording that a customer can understand.
                 Citation 1 supports the requested service boundary. Treat model-derived implementation procedures, durations, hours, dependencies, and technical recommendations as reviewable proposals—not as facts proven by the citation. Never invent the customer's topology, node count, hardware model, installed options, licensing entitlement, maintenance window, credentials, backup state, interoperability, or acceptance decision; put those unknowns in assumptions or openQuestions.
                 Include top-level objective, milestones where useful, dependencies, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. The Solution Architect must modify and validate the draft before any separately authorized approval or baseline.

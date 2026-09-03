@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
 
@@ -8,6 +9,175 @@ static void Assert(bool condition, string label)
     if (!condition) throw new InvalidOperationException($"ASSERTION_FAILED {label}");
     Console.WriteLine($"ASSERTION_PASSED {label}");
 }
+
+var module025Parser = typeof(PulseAiPrivateRagService).GetMethod(
+    "ParseModule025DetailedPlan",
+    BindingFlags.NonPublic | BindingFlags.Static);
+Assert(module025Parser is not null, "module025_detailed_parser_available");
+
+var module025Source = new PulseAiPrivateRetrievedChunk(
+    ChunkId: "module025-service-overview",
+    DocumentVersionId: Guid.NewGuid(),
+    DocumentId: Guid.NewGuid(),
+    ProjectId: null,
+    ProjectCode: "SOW-TEST-025",
+    ProjectName: "Module 025 detailed parser test",
+    CustomerName: "Test customer",
+    DocumentCategory: "module025_service_overview",
+    DocumentVersion: "revision-1",
+    Classification: "internal",
+    OriginalFileName: "Saved Service Overview",
+    CitationAnchor: "Module 025 Service Overview",
+    PageNumber: null,
+    SheetName: null,
+    SectionTitle: "Service Overview",
+    Text: "Upgrade Cisco Unified Communications Manager from version 14.0 to version 15.0.",
+    SourceSha256: new string('a', 64),
+    TextSha256: new string('b', 64),
+    LexicalScore: 1m,
+    SemanticScore: 1m,
+    CombinedScore: 1m,
+    ProcessedAt: DateTimeOffset.UtcNow,
+    RankOrder: 1,
+    SourceType: "module025_saved_service_overview",
+    SourceModule: "025");
+var module025Retrieval = new PulseAiPrivateRetrievalResult(
+    Status: "completed",
+    RetrievalMode: "module025_saved_service_overview",
+    ResolvedProjectId: null,
+    ResolvedProjectCode: "SOW-TEST-025",
+    ResolvedProjectName: "Module 025 detailed parser test",
+    CandidateCount: 1,
+    AuthorizedCandidateCount: 1,
+    Chunks: [module025Source],
+    MissingEvidence: [],
+    Conflicts: [],
+    CoverageScore: 1m,
+    DataAsOf: DateTimeOffset.UtcNow,
+    DiagnosticCode: string.Empty);
+
+var module025Phases = new[] { "Planning", "Architecture and Design", "Implementation", "Testing and Validation", "Operational Handoff" };
+var module025Payload = JsonSerializer.Serialize(new
+{
+    summary = "Upgrade Cisco Unified Communications Manager from version 14.0 to 15.0 through a controlled readiness, architecture, implementation, validation, and operational transition that keeps customer decisions and unknown environment facts explicit.",
+    phases = module025Phases.Select((phase, phaseIndex) => new
+    {
+        name = phase,
+        acceptance = new[] { $"The customer and delivery reviewers can trace the {phase.ToLowerInvariant()} phase to retained evidence and its completion decision." },
+        tests = new[] { $"Review the retained {phase.ToLowerInvariant()} evidence and confirm that the expected result and decision gate are recorded." },
+        customerActions = new[] { "Provide environment facts, authorized access, decisions, and acceptance participation through the approved project process." },
+        providerResponsibilities = new[] { "Perform the reviewed technical procedure, protect credentials, retain evidence, and escalate deviations before expanding scope." },
+        readinessRequirements = new[] { "Required approvals, inputs, access, backup or rollback evidence, and customer contacts are available before work begins." },
+        riskConsiderations = new[] { "Unsupported compatibility, missing entitlement, unavailable access, or an unapproved change condition can pause delivery and require replanning." },
+        customerDecisions = new[] { "Confirm the actual CUCM topology, installed options, target compatibility, licensing entitlement, and approved change window." },
+        workPackages = Enumerable.Range(1, 2).Select(packageIndex => new
+        {
+            wbsNumber = $"{phaseIndex + 1}.{packageIndex}",
+            title = $"{phase} CUCM work package {packageIndex}",
+            outcome = $"Complete technology-specific {phase.ToLowerInvariant()} work package {packageIndex} for Cisco Unified Communications Manager 14.0 to 15.0, record the customer-visible evidence, and stop at the documented decision gate when a customer topology, compatibility, licensing, access, or maintenance-window fact remains unresolved.",
+            hours = 8 + phaseIndex + packageIndex,
+            roles = new[] { "Cisco Collaboration Engineer", "Solution Architect" },
+            dependsOn = phaseIndex == 0 && packageIndex == 1 ? Array.Empty<string>() : new[] { $"{Math.Max(1, phaseIndex)}.{packageIndex}" },
+            assumption = true,
+            steps = new object[]
+            {
+                new { text = $"Inspect the approved CUCM inputs for {phase.ToLowerInvariant()} work package {packageIndex}, record the observed result, and resolve or document every blocking discrepancy before proceeding." },
+                $"Execute the reviewed {phase.ToLowerInvariant()} procedure for work package {packageIndex}, retain objective before-and-after evidence, and verify the stated completion condition."
+            },
+            requiredInputs = new[] { "Customer-approved CUCM inventory, compatibility evidence, access plan, and change constraints." },
+            deliverables = new[] { $"Documented {phase.ToLowerInvariant()} output and evidence package {packageIndex}." },
+            acceptance = packageIndex == 1
+                ? new[] { $"Record the task-specific completion decision for {phase.ToLowerInvariant()} work package {packageIndex}." }
+                : Array.Empty<string>(),
+            customerActions = packageIndex == 1
+                ? new[] { $"Confirm the task-specific customer decision for {phase.ToLowerInvariant()} work package {packageIndex}." }
+                : Array.Empty<string>()
+        })
+    }),
+    milestones = new[]
+    {
+        new
+        {
+            name = "CUCM production upgrade decision gate",
+            description = "Confirm that the Cisco Unified Communications Manager production cluster is ready for the approved upgrade window and that every blocking readiness condition has a documented disposition.",
+            proposedTiming = "After readiness and design approval, before production implementation begins.",
+            acceptanceEvidence = new[] { "Approved readiness record, implementation decision, rollback authority, and customer change-window confirmation are retained." },
+            assumption = true
+        }
+    },
+    roles = new[] { "Solution Architect", "Cisco Collaboration Engineer", "Project Manager" },
+    assumptions = new[] { "Technical procedures and effort remain proposals until the Solution Architect validates the customer environment." },
+    risks = new[] { "Unsupported components or unresolved customer prerequisites can prevent a safe upgrade." },
+    outOfScope = new[] { "Work outside the confirmed CUCM upgrade boundary requires separate review and approval." },
+    questions = new[] { "What is the confirmed customer topology, node count, licensing state, integration inventory, and maintenance window?" },
+    conflicts = Array.Empty<string>(),
+    confidence = 0.82m,
+    confidenceExplanation = "The saved Service Overview establishes the requested upgrade boundary; customer-specific facts still require validation."
+});
+
+var parsedModule025 = module025Parser!.Invoke(
+    null,
+    new object?[] { module025Payload, module025Retrieval }) as PulseAiPrivateFlowHivePlan;
+Assert(parsedModule025 is not null, "module025_grouped_work_packages_parse");
+Assert(parsedModule025!.Tasks.Count == 10, "module025_ten_detailed_work_packages_preserved");
+foreach (var phase in new[] { "Plan", "Design", "Implement", "Validate", "Release" })
+{
+    Assert(parsedModule025.Tasks.Count(task => task.Phase == phase) == 2, $"module025_{phase.ToLowerInvariant()}_coverage");
+}
+Assert(parsedModule025.Tasks.All(task => task.CitationIds.SequenceEqual(new[] { 1 })), "module025_server_authorized_citation_bound");
+Assert(parsedModule025.Tasks.All(task => task.EstimatedDurationDays > 0m && task.EstimatedHours is > 0m), "module025_duration_and_effort_normalized");
+Assert(parsedModule025.Tasks.All(task => (task.DetailedSteps?.Count ?? 0) >= 2), "module025_structured_and_string_steps_preserved");
+Assert(parsedModule025.Tasks.All(task => (task.CustomerResponsibilities?.Count ?? 0) > 0), "module025_phase_level_responsibilities_inherited");
+Assert(parsedModule025.Tasks.All(task => (task.AcceptanceCriteria?.Count ?? 0) > 0), "module025_phase_level_acceptance_inherited");
+Assert(parsedModule025.Tasks.First().CustomerResponsibilities!.Count == 2, "module025_task_and_phase_responsibilities_merged");
+Assert(parsedModule025.Tasks.First().AcceptanceCriteria!.Count == 2, "module025_task_and_phase_acceptance_merged");
+Assert(parsedModule025.Tasks.All(task => (task.ValidationSteps?.Count ?? 0) > 0), "module025_every_task_has_validation");
+Assert(parsedModule025.Tasks.All(task => (task.Prerequisites?.Count ?? 0) > 0), "module025_every_task_has_prerequisites");
+Assert(parsedModule025.Tasks.All(task => (task.Risks?.Count ?? 0) > 0), "module025_every_task_has_risks");
+Assert(parsedModule025.Tasks.All(task => task.Description.Length >= 80), "module025_customer_ready_descriptions_preserved");
+Assert(parsedModule025.Milestones.Count == 1, "module025_model_milestone_preserved");
+Assert(parsedModule025.Milestones[0].CitationIds.SequenceEqual(new[] { 1 }), "module025_milestone_citation_bound");
+Assert(parsedModule025.Milestones[0].Name.Contains("CUCM", StringComparison.Ordinal), "module025_milestone_content_preserved");
+
+var rejectedGenericModule025 = false;
+try
+{
+    _ = module025Parser.Invoke(
+        null,
+        new object?[]
+        {
+            module025Payload.Replace(
+                "Complete technology-specific",
+                "Prepare the cited scope for the",
+                StringComparison.Ordinal),
+            module025Retrieval
+        });
+}
+catch (TargetInvocationException exception) when (exception.InnerException is JsonException)
+{
+    rejectedGenericModule025 = true;
+}
+Assert(rejectedGenericModule025, "module025_generic_cited_scope_language_rejected");
+
+var rejectedNonTextModule025 = false;
+try
+{
+    _ = module025Parser.Invoke(
+        null,
+        new object?[]
+        {
+            module025Payload.Replace(
+                "\"Cisco Collaboration Engineer\"",
+                "{\"text\":true}",
+                StringComparison.Ordinal),
+            module025Retrieval
+        });
+}
+catch (TargetInvocationException exception) when (exception.InnerException is JsonException)
+{
+    rejectedNonTextModule025 = true;
+}
+Assert(rejectedNonTextModule025, "module025_non_string_text_object_rejected");
 
 var sourcePlan = new ProjectFlowHivePlanRequest(
     ProjectId: Guid.NewGuid(),

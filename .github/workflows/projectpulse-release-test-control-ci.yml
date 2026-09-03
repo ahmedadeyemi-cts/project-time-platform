@@ -56,6 +56,7 @@ on:
       - 'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx'
       - 'src/frontend/project-time-web/src/project-flowhive-center.css'
       - 'tests/CelarAiInternalDataTests/Program.cs'
+      - 'tests/FlowHiveDetailedPlannerTests/Program.cs'
       - 'tests/test-module-catalog-owner-repair-migration-093.sh'
       - 'tests/test-project-planning-identity-safe-admission-migration-097.sh'
       - 'tests/test-pulse-ai-runtime-job-query-shape.sh'
@@ -171,6 +172,7 @@ jobs:
           src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
           src/frontend/project-time-web/src/project-flowhive-center.css
           tests/CelarAiInternalDataTests/Program.cs
+          tests/FlowHiveDetailedPlannerTests/Program.cs
           tests/test-module-catalog-owner-repair-migration-093.sh
           tests/test-project-planning-identity-safe-admission-migration-097.sh
           tests/test-pulse-ai-runtime-job-query-shape.sh
@@ -322,11 +324,29 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files" -o "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files"
 
+          cat > "$RUNNER_TEMP/exact-module025-detailed-plan-parser-files" <<'FILES'
+          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+          tests/FlowHiveDetailedPlannerTests/Program.cs
+          tests/validate-systemwide-image-build-controller.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-module025-detailed-plan-parser-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-module025-detailed-plan-parser-files" -o "$RUNNER_TEMP/exact-module025-detailed-plan-parser-files"
+
           git fetch --no-tags origin main
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
-          if [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
+          if [[ "$HEAD_BRANCH" == 'fix/module025-protected-uat-generation-verification-detailed-plan-parser-20260903' ]]; then
+            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-module025-detailed-plan-parser-files" || {
+              echo 'Module 025 detailed-plan parser repair differs from its exact governed file set.' >&2
+              diff -u "$RUNNER_TEMP/exact-module025-detailed-plan-parser-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_MODULE025_DETAILED_PLAN_PARSER_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
             cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" || {
               echo 'Protected-UAT validation-defect repair differs from its exact governed file set.' >&2
               diff -u "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
