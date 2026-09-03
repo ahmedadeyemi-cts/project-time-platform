@@ -82,6 +82,91 @@ auth_request() {
   printf '%s|%s\n' "$curl_exit" "${status:-000}"
 }
 
+auth_get_with_transient_retry() {
+  local path="$1" output="$2" session="$3" label="$4"
+  local max_attempts="${5:-12}" max_time="${6:-30}"
+  local result='1|000' curl_exit=1 status=000 attempt
+
+  for attempt in $(seq 1 "$max_attempts"); do
+    result="$(auth_request GET "$path" "$output" "$session" "$max_time")"
+    IFS='|' read -r curl_exit status <<<"$result"
+    if [[ "$curl_exit" == 0 && "$status" == 200 ]]; then
+      printf '%s|%s\n' "$curl_exit" "$status"
+      return 0
+    fi
+
+    if [[ "$curl_exit" != 0 ]]; then
+      printf 'request=%s attempt=%s curlExit=%s httpStatus=%s\n' \
+        "$label" "$attempt" "$curl_exit" "$status" \
+        >> "$EVIDENCE_DIR/module025-transient-gateway-retries.log"
+      sleep 5
+      continue
+    fi
+
+    case "$status" in
+      000|502|503|504)
+        printf 'request=%s attempt=%s curlExit=%s httpStatus=%s\n' \
+          "$label" "$attempt" "$curl_exit" "$status" \
+          >> "$EVIDENCE_DIR/module025-transient-gateway-retries.log"
+        sleep 5
+        ;;
+      *)
+        printf '%s|%s\n' "$curl_exit" "$status"
+        return 0
+        ;;
+    esac
+  done
+
+  printf '%s|%s\n' "$curl_exit" "$status"
+}
+
+wait_for_fixture_public_revision() {
+  local response="$EVIDENCE_DIR/module025-fixture-public-health.json"
+  local poll_log="$EVIDENCE_DIR/module025-fixture-public-health-polls.log"
+  local status curl_exit attempt consecutive_healthy=0
+  : > "$poll_log"
+
+  # Azure can report the Container Apps revision healthy before Application Gateway
+  # has refreshed its backend pool. Require three consecutive live-origin responses
+  # so the exact-run fixture is exercised only after public ingress has converged.
+  for attempt in $(seq 1 36); do
+    set +e
+    status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 30 \
+      -o "$response" -w '%{http_code}' \
+      -H 'Cache-Control: no-cache, no-store, max-age=0' \
+      "$BASE/health?module025-fixture=$MODULE025_UAT_RUN_ID-$attempt")"
+    curl_exit=$?
+    set -e
+    status="${status:-000}"
+
+    if [[ "$curl_exit" == 0 && "$status" == 200 ]] \
+      && jq -e '.status == "healthy"' "$response" >/dev/null 2>&1; then
+      (( consecutive_healthy += 1 ))
+    else
+      consecutive_healthy=0
+    fi
+    printf 'attempt=%s curlExit=%s httpStatus=%s consecutiveHealthy=%s\n' \
+      "$attempt" "$curl_exit" "$status" "$consecutive_healthy" >> "$poll_log"
+
+    if (( consecutive_healthy >= 3 )); then
+      jq -n \
+        --argjson attempts "$attempt" \
+        --argjson consecutiveHealthy "$consecutive_healthy" \
+        --arg runId "$MODULE025_UAT_RUN_ID" \
+        '{status:"public_revision_ready",attempts:$attempts,consecutiveHealthy:$consecutiveHealthy,runId:$runId,productionMutation:false}' \
+        > "$EVIDENCE_DIR/module025-fixture-public-revision-ready.json"
+      return 0
+    fi
+
+    case "$status" in
+      000|502|503|504) sleep 5 ;;
+      *) sleep 3 ;;
+    esac
+  done
+
+  fail 'Module 025 fixture revision did not converge through the protected-Test public gateway.'
+}
+
 logout_session() {
   local session="$1" label="$2"
   [[ -n "$session" ]] || return 0
@@ -131,6 +216,8 @@ on_exit() {
 }
 trap on_exit EXIT
 
+wait_for_fixture_public_revision
+
 SA_LOGIN="$WORK_DIR/sa-login.json"
 SA_LOGIN_PAYLOAD="$WORK_DIR/sa-login-payload.json"
 SA_LOGIN_RESULT="$(login "$SA_EMAIL" "$SA_LOGIN" "$SA_LOGIN_PAYLOAD")"
@@ -146,7 +233,7 @@ jq 'del(.sessionToken,.token,.password)' "$SA_LOGIN" \
   > "$EVIDENCE_DIR/module025-solution-architect-login-redacted.json"
 
 SA_SECURITY="$EVIDENCE_DIR/module025-solution-architect-security-context.json"
-SA_SECURITY_RESULT="$(auth_request GET '/api/security/context' "$SA_SECURITY" "$SA_SESSION" 120)"
+SA_SECURITY_RESULT="$(auth_get_with_transient_retry '/api/security/context' "$SA_SECURITY" "$SA_SESSION" 'security-context')"
 IFS='|' read -r SA_SECURITY_CURL_EXIT SA_SECURITY_STATUS <<<"$SA_SECURITY_RESULT"
 [[ "$SA_SECURITY_CURL_EXIT" == 0 && "$SA_SECURITY_STATUS" == 200 ]] \
   || fail "Module 025 role-fixture security context returned curl exit $SA_SECURITY_CURL_EXIT and HTTP $SA_SECURITY_STATUS."
@@ -163,7 +250,7 @@ jq -e '
   || fail 'The protected-Test role fixture must begin as Manager-only and must not alter persistent role assignments.'
 
 SA_BOOTSTRAP="$EVIDENCE_DIR/module025-solution-architect-bootstrap.json"
-SA_BOOTSTRAP_RESULT="$(auth_request GET '/api/module025/sow-gsd/bootstrap' "$SA_BOOTSTRAP" "$SA_SESSION" 120)"
+SA_BOOTSTRAP_RESULT="$(auth_get_with_transient_retry '/api/module025/sow-gsd/bootstrap' "$SA_BOOTSTRAP" "$SA_SESSION" 'bootstrap')"
 IFS='|' read -r SA_BOOTSTRAP_CURL_EXIT SA_BOOTSTRAP_STATUS <<<"$SA_BOOTSTRAP_RESULT"
 [[ "$SA_BOOTSTRAP_CURL_EXIT" == 0 && "$SA_BOOTSTRAP_STATUS" == 200 ]] \
   || fail "Module 025 Solution Architect bootstrap returned curl exit $SA_BOOTSTRAP_CURL_EXIT and HTTP $SA_BOOTSTRAP_STATUS."
@@ -269,8 +356,27 @@ for attempt in $(seq 1 180); do
   GENERATION_POLL_ATTEMPTS="$attempt"
   GENERATION_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID/generations/$GENERATION_ID" "$GENERATION_RESPONSE" "$SA_SESSION" 55)"
   IFS='|' read -r GENERATION_CURL_EXIT GENERATION_STATUS <<<"$GENERATION_RESULT"
-  [[ "$GENERATION_CURL_EXIT" == 0 && "$GENERATION_STATUS" == 200 ]] \
-    || fail "Module 025 generation status poll $attempt returned curl exit $GENERATION_CURL_EXIT and HTTP $GENERATION_STATUS."
+  if [[ "$GENERATION_CURL_EXIT" != 0 || "$GENERATION_STATUS" != 200 ]]; then
+    if [[ "$GENERATION_CURL_EXIT" != 0 ]]; then
+      printf 'request=generation-status attempt=%s curlExit=%s httpStatus=%s\n' \
+        "$attempt" "$GENERATION_CURL_EXIT" "$GENERATION_STATUS" \
+        >> "$EVIDENCE_DIR/module025-transient-gateway-retries.log"
+      sleep 5
+      continue
+    fi
+    case "$GENERATION_STATUS" in
+      000|502|503|504)
+        printf 'request=generation-status attempt=%s curlExit=%s httpStatus=%s\n' \
+          "$attempt" "$GENERATION_CURL_EXIT" "$GENERATION_STATUS" \
+          >> "$EVIDENCE_DIR/module025-transient-gateway-retries.log"
+        sleep 5
+        continue
+        ;;
+      *)
+        fail "Module 025 generation status poll $attempt returned curl exit $GENERATION_CURL_EXIT and HTTP $GENERATION_STATUS."
+        ;;
+    esac
+  fi
   if jq -e '.terminal == true' "$GENERATION_RESPONSE" >/dev/null; then
     GENERATION_TERMINAL=true
     break
@@ -297,7 +403,7 @@ jq -e --arg id "$GENERATION_ID" '
 GENERATED_REVISION="$(jq -r '.revision' "$GENERATION_RESPONSE")"
 
 READBACK_RESPONSE="$EVIDENCE_DIR/module025-review-ready-readback.json"
-READBACK_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID" "$READBACK_RESPONSE" "$SA_SESSION" 120)"
+READBACK_RESULT="$(auth_get_with_transient_retry "/api/module025/sow-gsd/$ENGAGEMENT_ID" "$READBACK_RESPONSE" "$SA_SESSION" 'generated-readback')"
 IFS='|' read -r READBACK_CURL_EXIT READBACK_STATUS <<<"$READBACK_RESULT"
 [[ "$READBACK_CURL_EXIT" == 0 && "$READBACK_STATUS" == 200 ]] \
   || fail "Module 025 generated-scope readback returned curl exit $READBACK_CURL_EXIT and HTTP $READBACK_STATUS."
@@ -326,7 +432,7 @@ jq -e --arg id "$ENGAGEMENT_ID" --arg owner "$SA_USER_ID" --argjson revision "$G
   || fail 'Module 025 persisted readback did not contain the exact review_ready P/D/I/V/R contract.'
 
 ACTIVE_LIST="$EVIDENCE_DIR/module025-active-list-readback.json"
-ACTIVE_LIST_RESULT="$(auth_request GET "/api/module025/sow-gsd?state=active&ownerUserId=$SA_USER_ID" "$ACTIVE_LIST" "$SA_SESSION" 120)"
+ACTIVE_LIST_RESULT="$(auth_get_with_transient_retry "/api/module025/sow-gsd?state=active&ownerUserId=$SA_USER_ID" "$ACTIVE_LIST" "$SA_SESSION" 'active-list-readback')"
 IFS='|' read -r ACTIVE_LIST_CURL_EXIT ACTIVE_LIST_STATUS <<<"$ACTIVE_LIST_RESULT"
 [[ "$ACTIVE_LIST_CURL_EXIT" == 0 && "$ACTIVE_LIST_STATUS" == 200 ]] \
   || fail "Module 025 active-list readback returned curl exit $ACTIVE_LIST_CURL_EXIT and HTTP $ACTIVE_LIST_STATUS."
@@ -341,7 +447,7 @@ archive_fixture
 [[ "$ARCHIVED" == true ]] || fail 'Module 025 generated fixture was not archived.'
 
 ARCHIVED_LIST="$EVIDENCE_DIR/module025-archived-list-readback.json"
-ARCHIVED_LIST_RESULT="$(auth_request GET "/api/module025/sow-gsd?state=archived&ownerUserId=$SA_USER_ID" "$ARCHIVED_LIST" "$SA_SESSION" 120)"
+ARCHIVED_LIST_RESULT="$(auth_get_with_transient_retry "/api/module025/sow-gsd?state=archived&ownerUserId=$SA_USER_ID" "$ARCHIVED_LIST" "$SA_SESSION" 'archived-list-readback')"
 IFS='|' read -r ARCHIVED_LIST_CURL_EXIT ARCHIVED_LIST_STATUS <<<"$ARCHIVED_LIST_RESULT"
 [[ "$ARCHIVED_LIST_CURL_EXIT" == 0 && "$ARCHIVED_LIST_STATUS" == 200 ]] \
   || fail "Module 025 archived-list verification returned curl exit $ARCHIVED_LIST_CURL_EXIT and HTTP $ARCHIVED_LIST_STATUS."

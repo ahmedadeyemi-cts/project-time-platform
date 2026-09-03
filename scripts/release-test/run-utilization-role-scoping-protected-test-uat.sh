@@ -296,7 +296,7 @@ resolve_live_engineer_identity() {
   local email="$1" label="$2"
   local slug login_payload login_response security_response logout_response
   local login_status security_status logout_status candidate_session=''
-  local previous_err_trap=''
+  local previous_err_trap='' candidate_cleanup_armed=false
 
   slug="$(printf '%s' "$label" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9_-')"
   login_payload="$(mktemp)"
@@ -325,10 +325,12 @@ resolve_live_engineer_identity() {
   }
 
   restore_candidate_err_trap() {
+    [[ "$candidate_cleanup_armed" == true ]] || return 0
     trap - ERR
     if [[ -n "$previous_err_trap" ]]; then
       eval "$previous_err_trap"
     fi
+    candidate_cleanup_armed=false
   }
 
   jq -n \
@@ -352,6 +354,11 @@ resolve_live_engineer_identity() {
 
   candidate_session="$(jq -r '.sessionToken // empty' "$login_response" 2>/dev/null || true)"
   if [[ -n "$candidate_session" ]]; then
+    # Arm fail-clean handling before even masking the credential. From this point,
+    # every implicit shell failure must revoke the live session and remove raw files.
+    previous_err_trap="$(trap -p ERR || true)"
+    trap 'candidate_cleanup' ERR
+    candidate_cleanup_armed=true
     echo "::add-mask::$candidate_session"
   fi
   if ! jq -e '
@@ -360,13 +367,9 @@ resolve_live_engineer_identity() {
     and (.sessionToken | type == "string" and length > 0)
   ' "$login_response" >/dev/null; then
     candidate_cleanup
+    restore_candidate_err_trap
     fail "$label live identity login did not satisfy the session contract."
   fi
-
-  # From this point until successful logout, every unhandled shell error must revoke
-  # the candidate session and remove raw-token temp files before errexit terminates.
-  previous_err_trap="$(trap -p ERR || true)"
-  trap 'candidate_cleanup' ERR
 
   jq 'del(.sessionToken,.token,.password)' "$login_response" \
     > "$EVIDENCE_DIR/manager-outsider-candidate-$slug-login-redacted.json"

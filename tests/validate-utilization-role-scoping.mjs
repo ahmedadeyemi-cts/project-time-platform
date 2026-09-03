@@ -71,6 +71,13 @@ assert.ok(
   !protectedTestUat.includes('[[ \"$OTHER_ENGINEER_STATUS\" == 403 ]]'),
   'Protected-Test utilization UAT must not require a 403 where the backend securely normalizes Engineer scope.'
 );
+const candidateSessionExtraction = protectedTestUat.indexOf('candidate_session="$(jq -r');
+const candidateErrTrap = protectedTestUat.indexOf("trap 'candidate_cleanup' ERR", candidateSessionExtraction);
+const candidateMask = protectedTestUat.indexOf('echo "::add-mask::$candidate_session"', candidateSessionExtraction);
+assert.ok(
+  candidateSessionExtraction >= 0 && candidateErrTrap > candidateSessionExtraction && candidateErrTrap < candidateMask,
+  'Candidate cleanup must be armed immediately after session extraction and before the credential mask is emitted.'
+);
 assert.match(teamPanel, /canLoadEngineeringTeamSummary/);
 assert.match(teamPanel, /fetchJson\('\/api\/security\/context'\)/);
 assert.match(teamPanel, /ENGINEERING_TEAM_SCOPE_ROLE_CODES/);
