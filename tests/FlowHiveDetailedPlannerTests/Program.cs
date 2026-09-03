@@ -74,7 +74,7 @@ var module025Payload = JsonSerializer.Serialize(new
         {
             wbsNumber = $"{phaseIndex + 1}.{packageIndex}",
             title = $"{phase} CUCM work package {packageIndex}",
-            outcome = $"Complete the technology-specific {phase.ToLowerInvariant()} activities for Cisco Unified Communications Manager 14.0 to 15.0, record the customer-visible evidence, and stop at the documented decision gate when a customer topology, compatibility, licensing, access, or maintenance-window fact remains unresolved.",
+            outcome = $"Complete technology-specific {phase.ToLowerInvariant()} work package {packageIndex} for Cisco Unified Communications Manager 14.0 to 15.0, record the customer-visible evidence, and stop at the documented decision gate when a customer topology, compatibility, licensing, access, or maintenance-window fact remains unresolved.",
             hours = 8 + phaseIndex + packageIndex,
             roles = new[] { "Cisco Collaboration Engineer", "Solution Architect" },
             dependsOn = phaseIndex == 0 && packageIndex == 1 ? Array.Empty<string>() : new[] { $"{Math.Max(1, phaseIndex)}.{packageIndex}" },
