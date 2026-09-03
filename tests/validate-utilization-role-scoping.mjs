@@ -43,6 +43,9 @@ for (const marker of [
   '.access.canUseTeamScope == true',
   '.access.canSelectEngineer == true',
   'resolve_live_engineer_identity()',
+  'candidate_cleanup()',
+  'candidate_session=\'\'',
+  '$BASE/api/auth/session/logout',
   'jason.mosier@ussignal.local|Jason Mosier',
   'jeremy.holt@ussignal.local|Jeremy Holt',
   'demo.engineer@ussignal.local|Demo Engineer',
@@ -79,4 +82,4 @@ assert.doesNotMatch(drawer, /addEventListener\('hashchange', loadUsers\)/);
 assert.match(app, /Legacy DOM View-As preview disabled/);
 assert.doesNotMatch(app, /^installProjectPulseGlobalViewAsPreview\(\);$/m);
 
-console.log('UTILIZATION_ROLE_SCOPING_VALIDATION=PASS engineer=self lead=self+team managerDirector=team executive=all viewAs=capability-gated liveManagerBoundary=required liveOutsiderIdentity=required');
+console.log('UTILIZATION_ROLE_SCOPING_VALIDATION=PASS engineer=self lead=self+team managerDirector=team executive=all viewAs=capability-gated liveManagerBoundary=required liveOutsiderIdentity=required failCleanCandidateSessions=required');
