@@ -35,7 +35,18 @@ for (const marker of [
   '.access.canUseOwnScope == true',
   '([.members[]?.userId] == [$kevinUserId])',
   'crossEngineerRequestOutcome:\"normalized_to_authenticated_engineer\"',
-  '[[ \"$VIEW_AS_STATUS\" == 403 ]]'
+  '[[ \"$VIEW_AS_STATUS\" == 403 ]]',
+  "MANAGER_EMAIL='demo.manager@ussignal.local'",
+  'manager-utilization-security-context.json',
+  '.scope == \"engineering_team_scope\"',
+  '.access.canViewAll == false',
+  '.access.canUseTeamScope == true',
+  '.access.canSelectEngineer == true',
+  'MANAGER_OUTSIDER_ID=',
+  '[[ \"$MANAGER_OUTSIDER_STATUS\" == 403 ]]',
+  'Selected engineer is not available within your utilization scope.',
+  'managerRoleScope:\"assigned_team_only\"',
+  'managerCrossTeamOutcome:\"denied_outside_assigned_team\"'
 ]) {
   assert.ok(protectedTestUat.includes(marker), `Protected-Test utilization UAT is missing: ${marker}`);
 }
@@ -57,4 +68,4 @@ assert.doesNotMatch(drawer, /addEventListener\('hashchange', loadUsers\)/);
 assert.match(app, /Legacy DOM View-As preview disabled/);
 assert.doesNotMatch(app, /^installProjectPulseGlobalViewAsPreview\(\);$/m);
 
-console.log('UTILIZATION_ROLE_SCOPING_VALIDATION=PASS engineer=self lead=self+team managerDirector=team executive=all viewAs=capability-gated');
+console.log('UTILIZATION_ROLE_SCOPING_VALIDATION=PASS engineer=self lead=self+team managerDirector=team executive=all viewAs=capability-gated liveManagerBoundary=required');

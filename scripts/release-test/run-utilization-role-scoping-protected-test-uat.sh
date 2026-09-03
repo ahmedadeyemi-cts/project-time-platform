@@ -173,10 +173,166 @@ LOGOUT_STATUS="$(curl -sS --max-time 60 \
 [[ "$LOGOUT_STATUS" == 200 ]] \
   || fail "Kevin logout returned HTTP $LOGOUT_STATUS."
 
+# Prove a non-admin Manager cannot expand utilization beyond the backend-returned team scope.
+MANAGER_EMAIL='demo.manager@ussignal.local'
+MANAGER_LOGIN_RESPONSE="$(mktemp)"
+MANAGER_LOGIN_PAYLOAD="$(mktemp)"
+chmod 0600 "$MANAGER_LOGIN_RESPONSE" "$MANAGER_LOGIN_PAYLOAD"
+manager_login_cleanup() {
+  rm -f "$MANAGER_LOGIN_RESPONSE" "$MANAGER_LOGIN_PAYLOAD"
+}
+trap manager_login_cleanup EXIT
+
+jq -n \
+  --arg username "$MANAGER_EMAIL" \
+  --arg password "$TEST_LOGIN_PASSWORD" \
+  '{username:$username,password:$password}' > "$MANAGER_LOGIN_PAYLOAD"
+
+MANAGER_LOGIN_STATUS="$(curl -sS --max-time 90 \
+  -o "$MANAGER_LOGIN_RESPONSE" -w '%{http_code}' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Content-Type: application/json' \
+  -H "Origin: $BASE" \
+  -H 'Sec-Fetch-Site: same-origin' \
+  --data-binary @"$MANAGER_LOGIN_PAYLOAD" \
+  "$BASE/api/auth/local/login" || true)"
+[[ "$MANAGER_LOGIN_STATUS" == 200 ]] \
+  || fail "Demo Manager protected-Test login returned HTTP $MANAGER_LOGIN_STATUS."
+
+jq -e '
+  .provider == "LOCAL"
+  and .mustChangePassword == false
+  and (.sessionToken | type == "string" and length > 0)
+' "$MANAGER_LOGIN_RESPONSE" >/dev/null \
+  || fail "Demo Manager login response did not satisfy the authenticated session contract."
+
+MANAGER_SESSION_TOKEN="$(jq -r '.sessionToken' "$MANAGER_LOGIN_RESPONSE")"
+echo "::add-mask::$MANAGER_SESSION_TOKEN"
+jq 'del(.sessionToken,.token,.password)' "$MANAGER_LOGIN_RESPONSE" \
+  > "$EVIDENCE_DIR/manager-utilization-login-redacted.json"
+rm -f "$MANAGER_LOGIN_PAYLOAD" "$MANAGER_LOGIN_RESPONSE"
+trap - EXIT
+
+MANAGER_AUTH_HEADERS=(
+  -H 'Cache-Control: no-cache'
+  -H "Authorization: Bearer $MANAGER_SESSION_TOKEN"
+  -H "X-ProjectPulse-Session: $MANAGER_SESSION_TOKEN"
+  -H 'X-ProjectPulse-Module-Number: 003'
+  -H "Origin: $BASE"
+  -H 'Sec-Fetch-Site: same-origin'
+)
+
+manager_auth_get() {
+  local path="$1" output="$2"
+  curl -sS --max-time 120 \
+    -o "$output" -w '%{http_code}' \
+    "${MANAGER_AUTH_HEADERS[@]}" \
+    "$BASE$path" || true
+}
+
+MANAGER_SECURITY="$EVIDENCE_DIR/manager-utilization-security-context.json"
+MANAGER_SECURITY_STATUS="$(manager_auth_get '/api/security/context' "$MANAGER_SECURITY")"
+[[ "$MANAGER_SECURITY_STATUS" == 200 ]] \
+  || fail "Demo Manager security context returned HTTP $MANAGER_SECURITY_STATUS."
+jq -e . "$MANAGER_SECURITY" >/dev/null \
+  || fail "Demo Manager security context did not return JSON."
+
+jq -e '
+  [
+    .roles[]?
+    | if type == "object"
+      then (.roleCode // .roleName // "")
+      else tostring
+      end
+    | tostring
+    | ascii_upcase
+    | gsub("[ -]+"; "_")
+  ] as $roles
+  | [
+      .permissions[]?
+      | tostring
+      | ascii_upcase
+    ] as $permissions
+  | (($roles | index("MANAGER")) != null or ($roles | index("ENGINEERING_MANAGER")) != null)
+  and (($roles | index("EXECUTIVE")) == null)
+  and (($roles | index("EXECUTIVE_LEADERSHIP")) == null)
+  and (($roles | index("ADMINISTRATOR")) == null)
+  and (($roles | index("SUPER_ADMINISTRATOR")) == null)
+  and (($roles | index("GLOBAL_ADMINISTRATOR")) == null)
+  and (($permissions | index("VIEW_TEAM_UTILIZATION")) != null)
+  and (($permissions | index("VIEW_ORGANIZATION_UTILIZATION")) == null)
+  and (($permissions | index("VIEW_ALL_UTILIZATION")) == null)
+  and (($permissions | index("SYSTEM_ADMINISTRATION")) == null)
+  and (($permissions | index("MANAGE_ALL")) == null)
+' "$MANAGER_SECURITY" >/dev/null \
+  || fail "Demo Manager is not the expected non-admin team-scoped utilization identity."
+
+MANAGER_USER_ID="$(jq -r '.userId // empty' "$MANAGER_SECURITY")"
+[[ "$MANAGER_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+  || fail "Demo Manager security context did not expose a valid authenticated user ID."
+
+MANAGER_SUMMARY="$EVIDENCE_DIR/manager-utilization-team-scope.json"
+MANAGER_SUMMARY_STATUS="$(manager_auth_get '/api/utilization/engineering-team-summary?year=2026' "$MANAGER_SUMMARY")"
+[[ "$MANAGER_SUMMARY_STATUS" == 200 ]] \
+  || fail "Demo Manager utilization team summary returned HTTP $MANAGER_SUMMARY_STATUS."
+jq -e . "$MANAGER_SUMMARY" >/dev/null \
+  || fail "Demo Manager utilization team summary did not return JSON."
+
+jq -e '
+  .canViewEngineeringTeamUtilization == true
+  and .scope == "engineering_team_scope"
+  and .access.canViewAll == false
+  and .access.canUseTeamScope == true
+  and .access.canSelectEngineer == true
+  and (.selectableEngineers | type == "array")
+  and (.members | type == "array")
+' "$MANAGER_SUMMARY" >/dev/null \
+  || fail "Demo Manager utilization response is not constrained to engineering_team_scope."
+
+JASON_USER_ID='73e58088-c70a-4a4f-a856-a38c0e43b089'
+MANAGER_OUTSIDER_ID=''
+for candidate_user_id in "$KEVIN_USER_ID" "$JASON_USER_ID"; do
+  if ! jq -e --arg candidateUserId "$candidate_user_id" \
+    '([.selectableEngineers[]?.userId] | index($candidateUserId)) != null' \
+    "$MANAGER_SUMMARY" >/dev/null; then
+    MANAGER_OUTSIDER_ID="$candidate_user_id"
+    break
+  fi
+done
+[[ -n "$MANAGER_OUTSIDER_ID" ]] \
+  || fail "Protected Test does not expose a known engineer outside Demo Manager's assigned utilization team scope."
+
+MANAGER_OUTSIDER_RESPONSE="$EVIDENCE_DIR/manager-utilization-cross-team-denied.json"
+MANAGER_OUTSIDER_STATUS="$(manager_auth_get "/api/utilization/engineering-team-summary?year=2026&engineerUserId=$MANAGER_OUTSIDER_ID" "$MANAGER_OUTSIDER_RESPONSE")"
+[[ "$MANAGER_OUTSIDER_STATUS" == 403 ]] \
+  || fail "Demo Manager cross-team utilization probe returned HTTP $MANAGER_OUTSIDER_STATUS instead of 403."
+jq -e '
+  .message == "Selected engineer is not available within your utilization scope."
+' "$MANAGER_OUTSIDER_RESPONSE" >/dev/null \
+  || fail "Demo Manager cross-team denial did not return the governed utilization-scope message."
+
+MANAGER_SECURITY_AFTER="$EVIDENCE_DIR/manager-utilization-security-context-after-denial.json"
+MANAGER_SECURITY_AFTER_STATUS="$(manager_auth_get '/api/security/context' "$MANAGER_SECURITY_AFTER")"
+[[ "$MANAGER_SECURITY_AFTER_STATUS" == 200 ]] \
+  || fail "Demo Manager identity was not preserved after the expected cross-team 403."
+jq -e --arg managerUserId "$MANAGER_USER_ID" '.userId == $managerUserId' "$MANAGER_SECURITY_AFTER" >/dev/null \
+  || fail "Demo Manager security identity changed after the expected cross-team denial."
+
+MANAGER_LOGOUT_STATUS="$(curl -sS --max-time 60 \
+  -o "$EVIDENCE_DIR/manager-utilization-logout.json" -w '%{http_code}' \
+  -X POST \
+  "${MANAGER_AUTH_HEADERS[@]}" \
+  "$BASE/api/auth/session/logout" || true)"
+[[ "$MANAGER_LOGOUT_STATUS" == 200 ]] \
+  || fail "Demo Manager logout returned HTTP $MANAGER_LOGOUT_STATUS."
+
 jq -n \
   --arg identity "$KEVIN_EMAIL" \
   --arg requestedUserId "$OTHER_ENGINEER_ID" \
   --arg effectiveUserId "$KEVIN_USER_ID" \
+  --arg managerIdentity "$MANAGER_EMAIL" \
+  --arg managerUserId "$MANAGER_USER_ID" \
+  --arg managerOutsiderId "$MANAGER_OUTSIDER_ID" \
   '{
     status:"passed",
     identity:$identity,
@@ -193,9 +349,19 @@ jq -n \
     crossEngineerEffectiveUserId:$effectiveUserId,
     viewAsRequestStatus:403,
     identityPreservedAfterSecurityProbes:true,
+    managerIdentity:$managerIdentity,
+    managerUserId:$managerUserId,
+    managerRoleScope:"assigned_team_only",
+    managerSummaryStatus:200,
+    managerCanViewAll:false,
+    managerCanUseTeamScope:true,
+    managerCrossTeamRequestStatus:403,
+    managerCrossTeamRequestedUserId:$managerOutsiderId,
+    managerCrossTeamOutcome:"denied_outside_assigned_team",
+    managerIdentityPreservedAfterDenial:true,
     productionMutation:false
   }' > "$EVIDENCE_DIR/utilization-role-scoping-uat.json"
 
-unset SESSION_TOKEN TEST_LOGIN_PASSWORD
+unset SESSION_TOKEN MANAGER_SESSION_TOKEN TEST_LOGIN_PASSWORD
 
-echo 'UTILIZATION_ROLE_SCOPING_PROTECTED_TEST_UAT=PASS identity=Kevin.damisch@ussignal.local role=Engineer scope=self-only crossEngineer=normalized-to-self annualHours=572 annualPercent=29.67'
+echo 'UTILIZATION_ROLE_SCOPING_PROTECTED_TEST_UAT=PASS engineer=Kevin.damisch@ussignal.local engineerScope=self-only manager=demo.manager@ussignal.local managerScope=assigned-team-only managerCrossTeam=denied annualHours=572 annualPercent=29.67'
