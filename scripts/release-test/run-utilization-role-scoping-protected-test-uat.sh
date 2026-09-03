@@ -296,6 +296,7 @@ resolve_live_engineer_identity() {
   local email="$1" label="$2"
   local slug login_payload login_response security_response logout_response
   local login_status security_status logout_status candidate_session=''
+  local previous_err_trap=''
 
   slug="$(printf '%s' "$label" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9_-')"
   login_payload="$(mktemp)"
@@ -303,12 +304,11 @@ resolve_live_engineer_identity() {
   chmod 0600 "$login_payload" "$login_response"
 
   candidate_cleanup() {
-    local cleanup_output cleanup_status
-    rm -f "$login_payload" "$login_response"
+    local cleanup_status=''
+    rm -f "$login_payload" "$login_response" || true
     if [[ -n "$candidate_session" ]]; then
-      cleanup_output="$(mktemp)"
       cleanup_status="$(curl -sS --max-time 60 \
-        -o "$cleanup_output" -w '%{http_code}' \
+        -o /dev/null -w '%{http_code}' \
         -X POST \
         -H 'Cache-Control: no-cache' \
         -H "Authorization: Bearer $candidate_session" \
@@ -317,11 +317,17 @@ resolve_live_engineer_identity() {
         -H "Origin: $BASE" \
         -H 'Sec-Fetch-Site: same-origin' \
         "$BASE/api/auth/session/logout" || true)"
-      rm -f "$cleanup_output"
       if [[ "$cleanup_status" != 200 ]]; then
         echo "WARN: $label candidate-session cleanup returned HTTP $cleanup_status." >&2
       fi
       candidate_session=''
+    fi
+  }
+
+  restore_candidate_err_trap() {
+    trap - ERR
+    if [[ -n "$previous_err_trap" ]]; then
+      eval "$previous_err_trap"
     fi
   }
 
@@ -357,6 +363,11 @@ resolve_live_engineer_identity() {
     fail "$label live identity login did not satisfy the session contract."
   fi
 
+  # From this point until successful logout, every unhandled shell error must revoke
+  # the candidate session and remove raw-token temp files before errexit terminates.
+  previous_err_trap="$(trap -p ERR || true)"
+  trap 'candidate_cleanup' ERR
+
   jq 'del(.sessionToken,.token,.password)' "$login_response" \
     > "$EVIDENCE_DIR/manager-outsider-candidate-$slug-login-redacted.json"
   rm -f "$login_response"
@@ -373,6 +384,7 @@ resolve_live_engineer_identity() {
     "$BASE/api/security/context" || true)"
   if [[ "$security_status" != 200 ]]; then
     candidate_cleanup
+    restore_candidate_err_trap
     fail "$label live identity security context returned HTTP $security_status."
   fi
   if ! jq -e '
@@ -389,12 +401,14 @@ resolve_live_engineer_identity() {
     | (($roles | index("ENGINEER")) != null or ($roles | index("ENGINEERING")) != null)
   ' "$security_response" >/dev/null; then
     candidate_cleanup
+    restore_candidate_err_trap
     fail "$label is not a live Engineer identity in Protected Test."
   fi
 
   RESOLVED_ENGINEER_USER_ID="$(jq -r '.userId // empty' "$security_response")"
   if [[ ! "$RESOLVED_ENGINEER_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
     candidate_cleanup
+    restore_candidate_err_trap
     fail "$label live security context did not expose a valid user ID."
   fi
 
@@ -411,10 +425,13 @@ resolve_live_engineer_identity() {
     "$BASE/api/auth/session/logout" || true)"
   if [[ "$logout_status" != 200 ]]; then
     candidate_cleanup
+    restore_candidate_err_trap
     fail "$label live identity logout returned HTTP $logout_status."
   fi
+
   candidate_session=''
-  rm -f "$login_payload" "$login_response"
+  rm -f "$login_payload" "$login_response" || true
+  restore_candidate_err_trap
 }
 
 MANAGER_OUTSIDER_ID=''
