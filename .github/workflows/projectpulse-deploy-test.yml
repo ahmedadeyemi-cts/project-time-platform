@@ -68,6 +68,9 @@ jobs:
       TARGET_RELEASE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.release_branch || 'main' }}
       EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
       MIGRATION_SCOPE: systemwide-enterprise-reliability-test
+      TEST_APPLICATION_GATEWAY_RESOURCE_GROUP: rg-project-health-dashboard-test-network-westus3
+      TEST_APPLICATION_GATEWAY_NAME: agw-phd-test-westus3
+      TEST_APPLICATION_GATEWAY_TIMEOUT_SECONDS: '235'
 
     steps:
       - name: Check out exact authorized release
@@ -215,6 +218,7 @@ jobs:
           jq -n \
             --arg releaseCommit "$RELEASE_COMMIT" \
             --arg migrationScope "$MIGRATION_SCOPE" \
+            --argjson gatewayTimeout "$TEST_APPLICATION_GATEWAY_TIMEOUT_SECONDS" \
             '{
               environment:"test",
               applicationRelease:$releaseCommit,
@@ -227,6 +231,7 @@ jobs:
               flowHiveAiPlannerUat:true,
               projectForgeAiPlannerUat:true,
               celarStabilityUat:true,
+              protectedTestApplicationGatewayTimeoutSeconds:$gatewayTimeout,
               applicationOnlyAfterMigration:true,
               productionMutation:false,
               privateRuntimeConfigurationMutation:false
@@ -266,6 +271,40 @@ jobs:
 
           CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
           [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] || fail 'Azure login is outside the protected Test subscription.'
+
+          GATEWAY_JSON="$(az network application-gateway show \
+            -g "$TEST_APPLICATION_GATEWAY_RESOURCE_GROUP" \
+            -n "$TEST_APPLICATION_GATEWAY_NAME" \
+            -o json --only-show-errors)"
+          [[ "$(jq -r '.name // empty' <<<"$GATEWAY_JSON")" == "$TEST_APPLICATION_GATEWAY_NAME" ]] \
+            || fail 'Protected Test Application Gateway identity did not match.'
+          [[ "$(jq -r '.tags.environment // empty' <<<"$GATEWAY_JSON" | tr '[:upper:]' '[:lower:]')" == test ]] \
+            || fail 'Application Gateway is not tagged Test.'
+          [[ "$(jq -r '.sku.name // empty' <<<"$GATEWAY_JSON")" == WAF_v2 ]] \
+            || fail 'Protected Test Application Gateway is not WAF_v2.'
+
+          GATEWAY_HTTP_SETTINGS_JSON="$(az network application-gateway http-settings list \
+            -g "$TEST_APPLICATION_GATEWAY_RESOURCE_GROUP" \
+            --gateway-name "$TEST_APPLICATION_GATEWAY_NAME" \
+            -o json --only-show-errors)"
+          GATEWAY_HTTP_SETTINGS_COUNT="$(jq '[.[] | select(
+            ((.protocol // .properties.protocol // "") | ascii_downcase) == "https"
+            and (.port // .properties.port // 0) == 443
+          )] | length' <<<"$GATEWAY_HTTP_SETTINGS_JSON")"
+          [[ "$GATEWAY_HTTP_SETTINGS_COUNT" == 1 ]] \
+            || fail "Expected exactly one protected Test HTTPS backend setting; found $GATEWAY_HTTP_SETTINGS_COUNT."
+          GATEWAY_HTTP_SETTINGS_NAME="$(jq -r '[.[] | select(
+            ((.protocol // .properties.protocol // "") | ascii_downcase) == "https"
+            and (.port // .properties.port // 0) == 443
+          )][0].name // empty' <<<"$GATEWAY_HTTP_SETTINGS_JSON")"
+          OLD_GATEWAY_TIMEOUT="$(jq -r '[.[] | select(
+            ((.protocol // .properties.protocol // "") | ascii_downcase) == "https"
+            and (.port // .properties.port // 0) == 443
+          )][0] | (.requestTimeout // .properties.requestTimeout // empty)' <<<"$GATEWAY_HTTP_SETTINGS_JSON")"
+          [[ "$GATEWAY_HTTP_SETTINGS_NAME" =~ ^[A-Za-z0-9._-]+$ ]] \
+            || fail 'Protected Test Application Gateway HTTPS backend setting name is invalid.'
+          [[ "$OLD_GATEWAY_TIMEOUT" =~ ^[0-9]+$ ]] \
+            || fail 'Protected Test Application Gateway timeout is unavailable.'
 
           API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
           WEB_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
@@ -309,9 +348,87 @@ jobs:
             echo "old_source=$OLD_SOURCE"
             echo "old_api_image=$OLD_API_IMAGE"
             echo "old_web_image=$OLD_WEB_IMAGE"
+            echo "gateway_http_settings_name=$GATEWAY_HTTP_SETTINGS_NAME"
+            echo "old_gateway_timeout=$OLD_GATEWAY_TIMEOUT"
           } >> "$GITHUB_OUTPUT"
 
-          jq -n --arg base "$BASE" --arg oldSource "$OLD_SOURCE" --arg oldApiImage "$OLD_API_IMAGE" --arg oldWebImage "$OLD_WEB_IMAGE" '{base:$base,oldSource:$oldSource,oldApiImage:$oldApiImage,oldWebImage:$oldWebImage,preDeploymentHealthValidated:true,runtimeContractCaptured:true}' > "$EVIDENCE_DIR/test-contract.json"
+          jq -n \
+            --arg base "$BASE" \
+            --arg oldSource "$OLD_SOURCE" \
+            --arg oldApiImage "$OLD_API_IMAGE" \
+            --arg oldWebImage "$OLD_WEB_IMAGE" \
+            --arg gateway "$TEST_APPLICATION_GATEWAY_NAME" \
+            --arg httpSettings "$GATEWAY_HTTP_SETTINGS_NAME" \
+            --argjson oldGatewayTimeout "$OLD_GATEWAY_TIMEOUT" \
+            '{base:$base,oldSource:$oldSource,oldApiImage:$oldApiImage,oldWebImage:$oldWebImage,applicationGateway:$gateway,applicationGatewayHttpSettings:$httpSettings,oldApplicationGatewayTimeoutSeconds:$oldGatewayTimeout,preDeploymentHealthValidated:true,runtimeContractCaptured:true}' \
+            > "$EVIDENCE_DIR/test-contract.json"
+
+      - name: Enforce protected-Test Application Gateway timeout for Module 025
+        id: gateway_timeout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          HTTP_SETTINGS_NAME='${{ steps.contract.outputs.gateway_http_settings_name }}'
+          PREVIOUS_TIMEOUT='${{ steps.contract.outputs.old_gateway_timeout }}'
+          TARGET_TIMEOUT="$TEST_APPLICATION_GATEWAY_TIMEOUT_SECONDS"
+          [[ "$HTTP_SETTINGS_NAME" =~ ^[A-Za-z0-9._-]+$ ]] \
+            || fail 'The snapshotted Test gateway HTTPS backend setting name is invalid.'
+          [[ "$PREVIOUS_TIMEOUT" =~ ^[0-9]+$ && "$TARGET_TIMEOUT" =~ ^[0-9]+$ ]] \
+            || fail 'The protected Test gateway timeout contract is invalid.'
+          (( TARGET_TIMEOUT > 230 && TARGET_TIMEOUT < 240 )) \
+            || fail 'The Test gateway timeout must exceed the 230-second Module 025 web proxy and remain below 240 seconds.'
+
+          ACTION=unchanged
+          if [[ "$PREVIOUS_TIMEOUT" != "$TARGET_TIMEOUT" ]]; then
+            az network application-gateway http-settings update \
+              -g "$TEST_APPLICATION_GATEWAY_RESOURCE_GROUP" \
+              --gateway-name "$TEST_APPLICATION_GATEWAY_NAME" \
+              -n "$HTTP_SETTINGS_NAME" \
+              --timeout "$TARGET_TIMEOUT" \
+              --output none --only-show-errors
+            ACTION=updated
+          fi
+
+          READY=false
+          for attempt in $(seq 1 80); do
+            state="$(az network application-gateway show \
+              -g "$TEST_APPLICATION_GATEWAY_RESOURCE_GROUP" \
+              -n "$TEST_APPLICATION_GATEWAY_NAME" \
+              --query provisioningState -o tsv --only-show-errors)"
+            case "$state" in
+              Succeeded) READY=true; break ;;
+              Failed|Canceled|Cancelled) fail "Protected Test Application Gateway provisioning entered $state." ;;
+            esac
+            sleep 15
+          done
+          [[ "$READY" == true ]] || fail 'Protected Test Application Gateway did not converge.'
+
+          EFFECTIVE_TIMEOUT="$(az network application-gateway http-settings show \
+            -g "$TEST_APPLICATION_GATEWAY_RESOURCE_GROUP" \
+            --gateway-name "$TEST_APPLICATION_GATEWAY_NAME" \
+            -n "$HTTP_SETTINGS_NAME" \
+            --query requestTimeout -o tsv --only-show-errors)"
+          [[ "$EFFECTIVE_TIMEOUT" == "$TARGET_TIMEOUT" ]] \
+            || fail "Protected Test Application Gateway timeout is $EFFECTIVE_TIMEOUT, expected $TARGET_TIMEOUT."
+
+          HEALTH_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/gateway-timeout-health.json" \
+            -w '%{http_code}' -H 'Cache-Control: no-cache' \
+            '${{ steps.contract.outputs.base }}/health?gateway-timeout=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}' || true)"
+          [[ "$HEALTH_STATUS" == 200 ]] || fail "Protected Test health returned HTTP $HEALTH_STATUS after the gateway timeout check."
+          jq -e '.status == "healthy"' "$EVIDENCE_DIR/gateway-timeout-health.json" >/dev/null \
+            || fail 'Protected Test was not healthy after the gateway timeout check.'
+
+          jq -n \
+            --arg action "$ACTION" \
+            --arg gateway "$TEST_APPLICATION_GATEWAY_NAME" \
+            --arg httpSettings "$HTTP_SETTINGS_NAME" \
+            --argjson previousTimeout "$PREVIOUS_TIMEOUT" \
+            --argjson effectiveTimeout "$EFFECTIVE_TIMEOUT" \
+            '{status:"verified",action:$action,environment:"test",applicationGateway:$gateway,httpSettings:$httpSettings,previousTimeoutSeconds:$previousTimeout,effectiveTimeoutSeconds:$effectiveTimeout,module025WebProxyTimeoutSeconds:230,genericApiWebProxyTimeoutSeconds:60,productionMutation:false}' \
+            > "$EVIDENCE_DIR/application-gateway-timeout.json"
+          echo "PROTECTED_TEST_APPLICATION_GATEWAY_TIMEOUT=VERIFIED seconds=$EFFECTIVE_TIMEOUT action=$ACTION"
 
       - name: Build immutable API, web, and migration images
         id: build
