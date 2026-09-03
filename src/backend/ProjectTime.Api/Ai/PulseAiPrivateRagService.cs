@@ -6,7 +6,16 @@ namespace ProjectTime.Api.Ai;
 
 public sealed class PulseAiPrivateRagService
 {
-    private const int Module025SowMaximumOutputTokens = 1_000;
+    private const int Module025SowMaximumOutputTokens = 12_000;
+    private const int Module025SowMaximumAnswerCharacters = 96_000;
+    private static readonly string[] Module025DeliveryPhases =
+    [
+        "Plan",
+        "Design",
+        "Implement",
+        "Validate",
+        "Release"
+    ];
 
     private readonly PulseAiPrivateRagRepository _repository;
     private readonly PulseAiPrivateRetrievalService _retrieval;
@@ -369,10 +378,10 @@ public sealed class PulseAiPrivateRagService
                 Automatically fill every supported section. For each work package or task, provide ordered execution steps, inputs, outputs, validation, measurable acceptance criteria, prerequisites, responsibilities, risks, open questions, estimated duration and hours, priority, dependencies, required roles, and source citations.
                 """
             : $"""
-                Extract between one and three concise, cited, review-only scope work packages from the saved Service Overview.
+                Create an exhaustive, customer-understandable, review-only delivery plan from the saved Service Overview.
                 Project: {projectCode} {projectName}
-                Describe only the source-backed delivery scope. Do not create lifecycle phase rows; the governed composer expands each cited scope work package into Plan, Design, Implement, Validate, and Release.
-                Use only citation 1, the server-authorized saved Service Overview. Keep unsupported technical detail in assumptions or open questions.
+                Use citation 1 as the authority for the requested service boundary. Apply professional technical knowledge to determine the real sequence of work normally required to deliver that request, and organize the detailed work packages under Plan, Design, Implement, Validate, and Release.
+                Treat implementation procedures that are not explicitly stated in citation 1 as proposed technical assumptions requiring Solution Architect validation. Put unknown customer-specific topology, compatibility, access, licensing, maintenance-window, backup, dependency, and acceptance facts in assumptions or openQuestions instead of inventing them.
                 """;
         var query = BuildQuery(
             actualUserId: actualUserId,
@@ -394,9 +403,7 @@ public sealed class PulseAiPrivateRagService
             query,
             DetailLevel(request.DetailLevel, "comprehensive"),
             directKnowledge: null,
-            modelSchema: authoritativeSource is null
-                ? "PulseAiPrivateFlowHivePlan"
-                : "PulseAiPrivateModule025Scope",
+            modelSchema: "PulseAiPrivateFlowHivePlan",
             systemInstruction: FlowHiveSystemInstruction(
                 feature,
                 hasModule025AuthoritativeScope: authoritativeSource is not null),
@@ -521,14 +528,24 @@ public sealed class PulseAiPrivateRagService
                 Sources: retrieval.Chunks,
                 OutputSchemaName: modelSchema,
                 MaximumOutputTokens: query.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
-                    ? Math.Min(options.MaximumOutputTokens, Module025SowMaximumOutputTokens)
+                    ? Math.Max(options.MaximumOutputTokens, Module025SowMaximumOutputTokens)
                     : options.MaximumOutputTokens,
                 Temperature: query.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
                     ? 0.05m
                     : flowHive ? 0.15m : query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature ? 0.05m : 0.10m,
                 CorrelationId: query.CorrelationId);
             var model = usePrivateModelWhenAvailable
-                ? await _model.GenerateAsync(modelRequest, options, cancellationToken)
+                ? await _model.GenerateAsync(
+                    modelRequest,
+                    query.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
+                        ? options with
+                        {
+                            MaximumAnswerCharacters = Math.Max(
+                                options.MaximumAnswerCharacters,
+                                Module025SowMaximumAnswerCharacters)
+                        }
+                        : options,
+                    cancellationToken)
                 : EmptyModel("private_model_disabled_by_request");
 
             PulseAiPrivateRagAnswer answer;
@@ -541,7 +558,7 @@ public sealed class PulseAiPrivateRagService
                         retrieval,
                         model,
                         options,
-                        expandModule025CitedPhases: authoritativeSource is not null)
+                        validateModule025DetailedPlan: authoritativeSource is not null)
                     : ParseDetailedAnswer(answerRunId, query, retrieval, model, options);
             }
             else if ((flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode))
@@ -715,14 +732,14 @@ public sealed class PulseAiPrivateRagService
         PulseAiPrivateRetrievalResult retrieval,
         PulseAiPrivateModelResult model,
         PulseAiPrivateRagOptions options,
-        bool expandModule025CitedPhases = false)
+        bool validateModule025DetailedPlan = false)
     {
         try
         {
             PulseAiPrivateFlowHivePlan plan;
-            if (expandModule025CitedPhases)
+            if (validateModule025DetailedPlan)
             {
-                plan = ParseModule025CitedScopePlan(model.Content, retrieval);
+                plan = ParseModule025DetailedPlan(model.Content, retrieval);
             }
             else
             {
@@ -825,7 +842,7 @@ public sealed class PulseAiPrivateRagService
                 query.CorrelationId,
                 completed ? string.Empty : "private_plan_below_evidence_quality_gate");
         }
-        catch (Exception) when (expandModule025CitedPhases)
+        catch (Exception) when (validateModule025DetailedPlan)
         {
             return new PulseAiPrivateRagAnswer(
                 AnswerRunId: answerRunId,
@@ -841,14 +858,14 @@ public sealed class PulseAiPrivateRagService
                 Answer: null,
                 FlowHivePlan: null,
                 Citations: Citations(retrieval.Chunks),
-                Warnings: ["The private Module 025 scope response did not match the bounded cited-scope contract. The saved SOW/GSD draft was not changed."],
+                Warnings: ["The private Module 025 response did not meet the detailed five-phase delivery-plan contract. The saved SOW/GSD draft was not changed."],
                 MissingEvidence: retrieval.MissingEvidence,
                 Conflicts: retrieval.Conflicts,
                 CoverageScore: retrieval.CoverageScore,
                 CitationCoverageScore: 0m,
                 DataAsOf: retrieval.DataAsOf,
                 CorrelationId: query.CorrelationId,
-                DiagnosticCode: "private_module025_scope_schema_invalid");
+                DiagnosticCode: "private_module025_detailed_plan_invalid");
         }
         catch (Exception)
         {
@@ -1491,6 +1508,132 @@ public sealed class PulseAiPrivateRagService
         return Math.Clamp(ceiling, 0m, 0.95m);
     }
 
+    private static PulseAiPrivateFlowHivePlan ParseModule025DetailedPlan(
+        string content,
+        PulseAiPrivateRetrievalResult retrieval)
+    {
+        if (retrieval.Chunks.Count != 1)
+            throw new JsonException("Module 025 requires exactly one server-authorized Service Overview citation.");
+
+        var dto = JsonSerializer.Deserialize<PulseAiPrivateModelFlowHiveDto>(
+            content,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (dto is null) throw new JsonException("Module 025 detailed plan JSON was empty.");
+
+        var tasks = asTasks(dto.Tasks, retrieval.Chunks.Count)
+            .Where(task => !IsPhaseSummaryTask(task))
+            .Select(task => task with { Phase = CanonicalModule025Phase(task.Phase) })
+            .ToArray();
+
+        if (tasks.Length < 10)
+            throw new JsonException("Module 025 requires at least ten detailed delivery work packages.");
+        if (tasks.Select(task => task.Wbs).Distinct(StringComparer.OrdinalIgnoreCase).Count() != tasks.Length)
+            throw new JsonException("Module 025 work-package WBS values must be unique.");
+
+        foreach (var phase in Module025DeliveryPhases)
+        {
+            var phaseTasks = tasks
+                .Where(task => string.Equals(task.Phase, phase, StringComparison.Ordinal))
+                .ToArray();
+            if (phaseTasks.Length < 2)
+                throw new JsonException($"Module 025 detailed plan requires at least two work packages in the {phase} phase.");
+            if (phaseTasks
+                    .Select(task => task.Description)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count() < 2)
+                throw new JsonException($"Module 025 detailed plan requires distinct customer-ready outcomes in the {phase} phase.");
+            if (phaseTasks
+                    .SelectMany(task => task.DetailedSteps ?? [])
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count() < 4)
+                throw new JsonException($"Module 025 detailed plan requires at least four distinct execution steps in the {phase} phase.");
+            if (phaseTasks
+                    .SelectMany(task => task.Outputs ?? [])
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count() < 2)
+                throw new JsonException($"Module 025 detailed plan requires at least two distinct deliverables in the {phase} phase.");
+        }
+
+        foreach (var task in tasks)
+        {
+            if (task.Phase.Length == 0
+                || task.CitationIds.Count != 1
+                || task.CitationIds[0] != 1
+                || task.Description.Length < 80
+                || (task.DetailedSteps?.Count ?? 0) < 2
+                || (task.Inputs?.Count ?? 0) == 0
+                || (task.Outputs?.Count ?? 0) == 0
+                || (task.AcceptanceCriteria?.Count ?? 0) == 0
+                || (task.ValidationSteps?.Count ?? 0) == 0
+                || (task.CustomerResponsibilities?.Count ?? 0) == 0
+                || (task.UsSignalResponsibilities?.Count ?? 0) == 0
+                || (task.Prerequisites?.Count ?? 0) == 0
+                || (task.Risks?.Count ?? 0) == 0
+                || task.RequiredRoles.Count == 0
+                || task.EstimatedHours is null
+                || task.EstimatedHours <= 0m
+                || TaskContainsCannedModule025ScopeLanguage(task))
+            {
+                throw new JsonException(
+                    $"Module 025 work package {task.Wbs} did not meet the customer-ready detail contract.");
+            }
+        }
+
+        var planCitationIds = ValidCitationIds(dto.CitationIds, retrieval.Chunks.Count);
+        if (planCitationIds.Count != 1 || planCitationIds[0] != 1)
+            throw new JsonException("Module 025 detailed plan must cite the saved Service Overview as citation 1.");
+        if (ContainsCannedModule025ScopeLanguage(dto.Objective ?? string.Empty))
+            throw new JsonException("Module 025 detailed plan used prohibited generic scope boilerplate.");
+
+        var requiredRoles = List(dto.RequiredRoles, 60, 1_000)
+            .Concat(tasks.SelectMany(task => task.RequiredRoles))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(60)
+            .ToArray();
+        return new PulseAiPrivateFlowHivePlan(
+            Objective: Limit(
+                dto.Objective,
+                4_000,
+                "Prepare the requested technology service through a detailed, reviewed Plan, Design, Implement, Validate, and Release lifecycle."),
+            Tasks: tasks,
+            Milestones: asMilestones(dto.Milestones, retrieval.Chunks.Count),
+            Dependencies: List(dto.Dependencies, 100, 2_000),
+            RequiredRoles: requiredRoles,
+            Assumptions: List(dto.Assumptions, 80, 2_000),
+            Risks: List(dto.Risks, 80, 2_000),
+            OutOfScopeItems: List(dto.OutOfScopeItems, 80, 2_000),
+            OpenQuestions: List(dto.OpenQuestions, 80, 2_000),
+            Conflicts: List(dto.Conflicts, 80, 2_000),
+            CitationIds: planCitationIds,
+            Confidence: Math.Clamp(dto.Confidence ?? retrieval.CoverageScore, 0m, 1m),
+            ConfidenceExplanation: Limit(
+                dto.ConfidenceExplanation,
+                2_000,
+                "The saved Service Overview establishes the requested scope; proposed technical procedures and estimates require Solution Architect validation."));
+    }
+
+    private static string CanonicalModule025Phase(string? value)
+    {
+        var phase = Module025DeliveryPhases.FirstOrDefault(candidate =>
+            string.Equals(candidate, value?.Trim(), StringComparison.OrdinalIgnoreCase));
+        return phase ?? string.Empty;
+    }
+
+    private static bool ContainsCannedModule025ScopeLanguage(string value) =>
+        value.Contains("cited scope", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("source-backed scope", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("prepare the cited", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("translate the cited", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TaskContainsCannedModule025ScopeLanguage(PulseAiPrivateFlowHiveTask task) =>
+        new[] { task.Name, task.Description }
+            .Concat(task.DetailedSteps ?? [])
+            .Concat(task.Inputs ?? [])
+            .Concat(task.Outputs ?? [])
+            .Concat(task.AcceptanceCriteria ?? [])
+            .Concat(task.ValidationSteps ?? [])
+            .Any(ContainsCannedModule025ScopeLanguage);
+
     private static PulseAiPrivateFlowHivePlan ParseModule025CitedScopePlan(
         string content,
         PulseAiPrivateRetrievalResult retrieval)
@@ -2079,14 +2222,15 @@ public sealed class PulseAiPrivateRagService
         if (hasModule025AuthoritativeScope)
         {
             return $"""
-                You are Celar AI preparing a private, cited, review-only SOW/GSD draft for capability {feature}.
-                The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
-                Return only one valid compact JSON object matching PulseAiPrivateModule025Scope, with no markdown, commentary, or code fence. Keep the complete JSON below 3,500 characters so it closes well before the governed response limit.
-                Return between one and three cited scope work packages in scopeItems, not lifecycle phase rows. A deterministic, citation-preserving composer expands every returned scope work package into Plan, Design, Implement, Validate, and Release after private inference completes.
-                Every scopeItems object must include only name, description, estimatedDurationDays, estimatedHours, requiredRoles, detailedSteps, outputs, acceptanceCriteria, validationSteps, and isAssumption. Optional scope-item fields may be omitted.
-                Use at most two concise sentences in detailedSteps and one concise sentence in each other task list. Estimated duration and hours are non-binding assumptions until Solution Architect review, but both numeric values must be greater than zero.
-                Include top-level objective, scopeItems, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. Use at most one concise item in each top-level list.
-                Preserve missing technical detail as a labeled assumption or open question. The Solution Architect must modify and validate the draft before any separately authorized approval or baseline.
+                You are Celar AI preparing a private, exhaustive, customer-understandable, review-only SOW/GSD delivery plan for capability {feature}.
+                The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. It establishes the requested service boundary but may be intentionally brief. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
+                Use professional technical knowledge to expand the requested technology service into the real work normally required for successful delivery. This includes discovery and inventory, compatibility and readiness checks, architecture and change design, prerequisites and backups, controlled implementation sequencing, rollback preparation, functional and operational validation, documentation, knowledge transfer, handoff, and closeout when applicable to the requested service.
+                Return only one valid JSON object matching PulseAiPrivateFlowHivePlan, with no markdown, commentary, or code fence. Classify every executable work package under exactly one phase using the exact phase value Plan, Design, Implement, Validate, or Release, and preserve that lifecycle order.
+                Produce enough distinct work packages to explain the full delivery sequence to a customer—normally 10 to 20 tasks, with multiple tasks per phase where the work requires them. Do not mechanically repeat the Service Overview across phases, create phase-summary rows, pad the plan, or use phrases such as "cited scope", "source-backed scope", "prepare the cited scope", or "translate the cited scope" in customer-facing content.
+                Every task must include a unique wbs; specific name and description; estimatedDurationDays and estimatedHours greater than zero; requiredRoles; predecessors; citationIds:[1]; isAssumption; phase; two or more ordered detailedSteps; inputs; outputs; measurable acceptanceCriteria; validationSteps; customerResponsibilities; usSignalResponsibilities; prerequisites; task-specific risks; and openQuestions when a customer decision or environment fact is missing. Populate applicable product, platform, manufacturer, version, licensing, system, interface, integration, access, tool, rollback, and assumption fields.
+                Each detailed step must identify what is checked or changed, the prerequisite or input, the expected result or evidence, and the completion condition. Use technical terminology that a delivery engineer can execute and explanatory wording that a customer can understand.
+                Citation 1 supports the requested service boundary. Treat model-derived implementation procedures, durations, hours, dependencies, and technical recommendations as reviewable proposals—not as facts proven by the citation. Never invent the customer's topology, node count, hardware model, installed options, licensing entitlement, maintenance window, credentials, backup state, interoperability, or acceptance decision; put those unknowns in assumptions or openQuestions.
+                Include top-level objective, milestones where useful, dependencies, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. The Solution Architect must modify and validate the draft before any separately authorized approval or baseline.
                 """;
         }
 
@@ -2114,9 +2258,9 @@ public sealed class PulseAiPrivateRagService
         if (hasModule025AuthoritativeScope)
         {
             return $"""
-                Extract the concise source-backed scope work packages required for {feature} from citation 1.
-                Do not repeat or restate the incoming request, and do not create Plan, Design, Implement, Validate, or Release rows.
-                Keep every scopeItems object traceable to citation 1. Use assumptions and openQuestions for unsupported implementation specifics. Remain below 3,500 JSON characters and close the JSON object.
+                Build the complete implementation-grade delivery plan required for {feature} from citation 1 and the requested outcome.
+                Determine the technology-specific work that must actually occur, then divide it into detailed Plan, Design, Implement, Validate, and Release work packages. Explain the sequence, dependencies, evidence, acceptance conditions, responsibilities, safeguards, rollback approach, and handoff in customer-ready language.
+                Keep every task traceable to citation 1 as its scope anchor. Explicitly label inferred procedures and estimates as assumptions and preserve unsupported customer-environment facts as openQuestions. Do not return generic phase boilerplate or simply restate the Service Overview.
                 """;
         }
 

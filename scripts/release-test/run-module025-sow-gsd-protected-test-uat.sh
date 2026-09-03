@@ -262,8 +262,15 @@ jq -e '
   and .access.protectedTestUatRoleFixture == true
   and .access.canCreate == true
   and .access.isViewAs == false
+  and (.accountExecutives | type == "array" and length > 0)
+  and (.insideSalesRepresentatives | type == "array" and length > 0)
+  and (.resalePeople == .insideSalesRepresentatives)
+  and any(.accountExecutives[]?; ((.displayName // "") | ascii_downcase) == "mike beck")
+  and any(.insideSalesRepresentatives[]?; ((.displayName // "") | ascii_downcase) == "jessica shaffer")
+  and all(.accountExecutives[]? as $accountExecutive;
+    all(.insideSalesRepresentatives[]?; .userId != $accountExecutive.userId))
 ' "$SA_BOOTSTRAP" >/dev/null \
-  || fail 'Module 025 did not activate the exact-run Solution Architect authorization fixture.'
+  || fail 'Module 025 did not activate the exact-run Solution Architect fixture with separate Account Executive and Inside Sales Representative directories.'
 SA_USER_ID="$(jq -r '.currentUser.userId // empty' "$SA_BOOTSTRAP")"
 [[ "$SA_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
   || fail 'The selected Solution Architect bootstrap did not expose a valid user ID.'
@@ -272,7 +279,7 @@ FIXTURE_SUFFIX="${GITHUB_RUN_ID:-manual}-${GITHUB_RUN_ATTEMPT:-1}-$(date -u +%Y%
 CREATE_PAYLOAD="$WORK_DIR/module025-create.json"
 jq -n \
   --arg customerName "Protected UAT Module 025 $FIXTURE_SUFFIX" \
-  --arg serviceOverview 'Plan, design, implement, validate, and release a secure two-site network modernization. Discover the existing routing, switching, firewall, addressing, circuit, monitoring, and change-control requirements. Produce a reviewable architecture and migration plan, configure the approved network and security changes, validate connectivity, resiliency, observability, rollback, and acceptance criteria, then complete a controlled production handoff with documentation and knowledge transfer.' \
+  --arg serviceOverview 'Upgrade Cisco Unified Communications Manager (Cisco CallManager / CUCM) from version 14.0 to version 15.0. Determine and document the complete customer-facing Plan, Design, Implement, Validate, and Release work required for a safe production upgrade, including readiness, compatibility, licensing, backups, sequencing, rollback, testing, operational handoff, and any customer-specific facts that must be confirmed.' \
   '{
     customerId:null,
     customerName:$customerName,
@@ -422,14 +429,27 @@ jq -e --arg id "$ENGAGEMENT_ID" --arg owner "$SA_USER_ID" --argjson revision "$G
   and (.engagement.phases | type == "array" and length == 5)
   and ([.engagement.phases | sort_by(.sortOrder)[] | .phaseCode] == ["plan","design","implement","validate","release"])
   and all(.engagement.phases[];
-    (.objective | type == "string" and length > 0)
+    (.objective | type == "string" and length >= 120)
+    and ((.objective | ascii_downcase) | test("cisco|callmanager|cucm|unified communications manager"))
+    and (((.objective | ascii_downcase) | contains("cited scope")) | not)
+    and (((.objective | ascii_downcase) | contains("source-backed scope")) | not)
+    and (.detailedActivities | type == "array" and length >= 2)
+    and (.technicalTasks | type == "array" and length >= 4)
+    and (.deliverables | type == "array" and length >= 2)
+    and (.customerResponsibilities | type == "array" and length > 0)
+    and (.usSignalResponsibilities | type == "array" and length > 0)
+    and (.prerequisites | type == "array" and length > 0)
+    and (.acceptanceCriteria | type == "array" and length > 0)
+    and (.validationSteps | type == "array" and length > 0)
+    and (.risks | type == "array" and length > 0)
     and .aiGenerated == true
-    and (.suggestedHours | type == "number" and . >= 0)
+    and (.suggestedHours | type == "number" and . > 0)
     and (.finalHours | type == "number" and . >= 0)
   )
+  and ([.engagement.phases[].detailedActivities | length] | add) >= 10
   and ([.engagement.phases[].suggestedHours] | add) > 0
 ' "$READBACK_RESPONSE" >/dev/null \
-  || fail 'Module 025 persisted readback did not contain the exact review_ready P/D/I/V/R contract.'
+  || fail 'Module 025 persisted readback did not contain the exhaustive Cisco CallManager 14-to-15 P/D/I/V/R contract.'
 
 ACTIVE_LIST="$EVIDENCE_DIR/module025-active-list-readback.json"
 ACTIVE_LIST_RESULT="$(auth_get_with_transient_retry "/api/module025/sow-gsd?state=active&ownerUserId=$SA_USER_ID" "$ACTIVE_LIST" "$SA_SESSION" 'active-list-readback')"
@@ -492,6 +512,11 @@ jq -n \
     generationPollAttempts:$generationPollAttempts,
     generationResponseServer:$generationResponseServer,
     phaseCodes:["plan","design","implement","validate","release"],
+    technologyExample:"Cisco Unified Communications Manager 14.0 to 15.0",
+    minimumDetailedWorkPackages:10,
+    genericCitedScopeBoilerplateRejected:true,
+    accountExecutiveDirectoryRole:"SALES",
+    insideSalesRepresentativeDirectoryRole:"INSIDE_SALES",
     suggestedHours:$suggestedHours,
     correlationId:$correlationId,
     cleanupStatus:"archived",
@@ -500,4 +525,4 @@ jq -n \
     privateRuntimeConfigurationMutation:false
   }' > "$EVIDENCE_DIR/module025-sow-gsd-protected-test-uat.json"
 
-echo "MODULE025_SOW_GSD_PROTECTED_TEST_UAT=PASS identity=$SA_EMAIL authorization=exact-run-non-persistent-solution-architect-fixture engagement=$ENGAGEMENT_NUMBER phases=plan,design,implement,validate,release state=review_ready cleanup=archived"
+echo "MODULE025_SOW_GSD_PROTECTED_TEST_UAT=PASS identity=$SA_EMAIL authorization=exact-run-non-persistent-solution-architect-fixture engagement=$ENGAGEMENT_NUMBER example=cisco-callmanager-14-to-15 minimumWorkPackages=10 phases=plan,design,implement,validate,release state=review_ready cleanup=archived"

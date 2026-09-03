@@ -44,8 +44,20 @@ public static class Module025SowGsdModule
     };
 
     private static readonly string[] PhaseCodes = { "plan", "design", "implement", "validate", "release" };
-    private static readonly string[] AccountExecutiveRoles = { "ACCOUNT_EXECUTIVE", "SALES_ACCOUNT_EXECUTIVE", "ACCOUNT_EXECUTIVES" };
-    private static readonly string[] ResaleRoles = { "RESALE", "INSIDE_SALES", "SALES", "SALES_SUPPORT", "ACCOUNT_EXECUTIVE" };
+    private static readonly string[] AccountExecutiveRoles =
+    [
+        "SALES",
+        "ACCOUNT_EXECUTIVE",
+        "SALES_ACCOUNT_EXECUTIVE",
+        "ACCOUNT_EXECUTIVES"
+    ];
+    private static readonly string[] InsideSalesRepresentativeRoles =
+    [
+        "INSIDE_SALES",
+        "INSIDE_SALES_REPRESENTATIVE",
+        "SALES_SUPPORT",
+        "RESALE"
+    ];
 
     public static WebApplication MapModule025SowGsdEndpoints(this WebApplication app)
     {
@@ -80,7 +92,10 @@ public static class Module025SowGsdModule
 
         var customers = await LoadCustomersAsync(connection, cancellationToken);
         var accountExecutives = await LoadPeopleByRoleAsync(connection, AccountExecutiveRoles, cancellationToken);
-        var resalePeople = await LoadPeopleByRoleAsync(connection, ResaleRoles, cancellationToken);
+        var insideSalesRepresentatives = await LoadPeopleByRoleAsync(
+            connection,
+            InsideSalesRepresentativeRoles,
+            cancellationToken);
         var solutionArchitects = await LoadVisibleSolutionArchitectsAsync(connection, access, cancellationToken);
 
         return Results.Ok(new
@@ -110,7 +125,10 @@ public static class Module025SowGsdModule
             },
             customers,
             accountExecutives,
-            resalePeople,
+            insideSalesRepresentatives,
+            // Preserve the stored/API field name while existing clients move to
+            // the customer-facing Inside Sales Representative terminology.
+            resalePeople = insideSalesRepresentatives,
             solutionArchitects,
             commercialModels = new[]
             {
@@ -211,8 +229,8 @@ public static class Module025SowGsdModule
         if (customer.Error is not null) return customer.Error;
         var accountExecutive = await ResolvePersonAsync(connection, request.AccountExecutiveUserId, AccountExecutiveRoles, cancellationToken);
         if (request.AccountExecutiveUserId.HasValue && !accountExecutive.UserId.HasValue) return Results.BadRequest(new { status = "account_executive_not_found", message = "Select an active Account Executive." });
-        var resale = await ResolvePersonAsync(connection, request.ResaleUserId, ResaleRoles, cancellationToken);
-        if (request.ResaleUserId.HasValue && !resale.UserId.HasValue) return Results.BadRequest(new { status = "resale_not_found", message = "Select an active Resale person." });
+        var resale = await ResolvePersonAsync(connection, request.ResaleUserId, InsideSalesRepresentativeRoles, cancellationToken);
+        if (request.ResaleUserId.HasValue && !resale.UserId.HasValue) return Results.BadRequest(new { status = "resale_not_found", message = "Select an active Inside Sales Representative." });
 
         var commercialModel = NormalizeCommercialModel(request.CommercialModel);
         var customerProgram = NormalizeCustomerProgram(request.CustomerProgram);
@@ -281,8 +299,8 @@ public static class Module025SowGsdModule
         if (customer.Error is not null) return customer.Error;
         var accountExecutive = await ResolvePersonAsync(connection, request.AccountExecutiveUserId, AccountExecutiveRoles, cancellationToken);
         if (request.AccountExecutiveUserId.HasValue && !accountExecutive.UserId.HasValue) return Results.BadRequest(new { status = "account_executive_not_found", message = "Select an active Account Executive." });
-        var resale = await ResolvePersonAsync(connection, request.ResaleUserId, ResaleRoles, cancellationToken);
-        if (request.ResaleUserId.HasValue && !resale.UserId.HasValue) return Results.BadRequest(new { status = "resale_not_found", message = "Select an active Resale person." });
+        var resale = await ResolvePersonAsync(connection, request.ResaleUserId, InsideSalesRepresentativeRoles, cancellationToken);
+        if (request.ResaleUserId.HasValue && !resale.UserId.HasValue) return Results.BadRequest(new { status = "resale_not_found", message = "Select an active Inside Sales Representative." });
 
         var serviceOverview = Clean(request.ServiceOverview, 30_000);
         var overviewChanged = !string.Equals(current.ServiceOverview, serviceOverview, StringComparison.Ordinal);
@@ -928,7 +946,7 @@ public static class Module025SowGsdModule
         if (!engagement.LastGeneratedAt.HasValue) return StateConflict("generation_required", "Generate and review the detailed P/D/I/V/R scope before confirmation.");
         if (engagement.CustomerName.Length == 0) return StateConflict("customer_required", "Select or manually enter the customer before confirmation.");
         if (!engagement.AccountExecutiveUserId.HasValue) return StateConflict("account_executive_required", "Select the Account Executive before confirmation.");
-        if (!engagement.ResaleUserId.HasValue) return StateConflict("resale_required", "Select the Resale person before confirmation.");
+        if (!engagement.ResaleUserId.HasValue) return StateConflict("resale_required", "Select the Inside Sales Representative before confirmation.");
         if (engagement.Phases.Count != 5 || engagement.Phases.Any(phase => string.IsNullOrWhiteSpace(phase.Objective))) return StateConflict("phase_review_incomplete", "Review all five Plan, Design, Implement, Validate, and Release sections before confirmation.");
         if (engagement.Phases.Sum(phase => phase.FinalHours) <= 0) return StateConflict("level_of_effort_required", "The reviewed GSD must contain a positive total level of effort before confirmation.");
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);

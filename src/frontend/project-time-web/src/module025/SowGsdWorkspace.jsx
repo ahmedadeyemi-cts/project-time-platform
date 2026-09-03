@@ -618,10 +618,10 @@ export default function SowGsdWorkspace() {
                     </select>
                   </Field>
 
-                  <Field label="Resale person">
+                  <Field label="Inside Sales Representative">
                     <select value={engagement.resaleUserId || ''} disabled={readOnly} onChange={(event) => updateTopLevel('resaleUserId', event.target.value || null)}>
-                      <option value="">Select Resale…</option>
-                      {(bootstrap?.resalePeople || []).map((person) => <option key={person.userId} value={person.userId}>{person.displayName}</option>)}
+                      <option value="">Select Inside Sales Representative…</option>
+                      {(bootstrap?.insideSalesRepresentatives || bootstrap?.resalePeople || []).map((person) => <option key={person.userId} value={person.userId}>{person.displayName}</option>)}
                     </select>
                   </Field>
                 </div>

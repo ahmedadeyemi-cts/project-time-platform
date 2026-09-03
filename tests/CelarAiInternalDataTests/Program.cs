@@ -8,6 +8,11 @@ AssertQuery(
     "Kevin Damisch",
     true);
 AssertQuery(
+    "How many projects does Kevin have assigned to him?",
+    CelarAiInternalDataQueryKind.PersonProjectCount,
+    "Kevin",
+    true);
+AssertQuery(
     "How many active projects are assigned to kevin.damisch@example.com?",
     CelarAiInternalDataQueryKind.PersonProjectCount,
     "kevin.damisch@example.com",
@@ -106,6 +111,25 @@ AssertQuery(
 Require(
     PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("How many projects does Kevin Damisch have assigned to him?"),
     "named person project count remains internal");
+Require(
+    PrivateBool("IsExactNamePartReference", "Kevin", "Kevin Damisch"),
+    "a unique authorized first name can resolve to the matching person");
+Require(
+    PrivateBool("IsExactNamePartReference", "Damisch", "Kevin Damisch"),
+    "a unique authorized last name can resolve to the matching person");
+Require(
+    !PrivateBool("IsExactNamePartReference", "Kev", "Kevin Damisch"),
+    "a partial token cannot silently resolve to a person");
+Require(
+    !PrivateBool("IsExactNamePartReference", "kevin@example.com", "Kevin Damisch"),
+    "email resolution remains on the verified exact-identity path");
+var exactNamePartSql = PrivateSql("ExactNamePartPersonSql");
+Require(
+    exactNamePartSql.Contains("COUNT(*) OVER () AS authorized_match_count", StringComparison.Ordinal),
+    "short-name ambiguity is counted across the complete authorized population before display limiting");
+Require(
+    exactNamePartSql.Contains("LIMIT 8", StringComparison.Ordinal),
+    "short-name ambiguity suggestions remain response-bounded after the complete count");
 Require(
     PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("How many active projects and how many tasks does Kevin Damisch have?"),
     "combined named-person project/task count remains internal");
@@ -257,6 +281,16 @@ static bool ExternalLooksLikeNonAnswer(string content)
         ?? throw new InvalidOperationException("Celar AI external answer-quality method returned no result."));
 }
 
+static bool PrivateBool(string methodName, params object[] arguments)
+{
+    var method = typeof(CelarAiInternalDataService).GetMethod(
+        methodName,
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException($"Celar AI private method {methodName} was not found.");
+    return (bool)(method.Invoke(null, arguments)
+        ?? throw new InvalidOperationException($"Celar AI private method {methodName} returned no result."));
+}
+
 static async Task AssertDatabaseResolverAsync(string connectionString)
 {
     var effectiveUserId = Guid.Parse("10000000-0000-0000-0000-000000000001");
@@ -283,6 +317,17 @@ static async Task AssertDatabaseResolverAsync(string connectionString)
         Require(personId == expectedPersonId, "known Kevin alias resolves to expected identity");
         Require(reader.GetBoolean(3), "known Kevin match is a verified alias");
         Require(!await reader.ReadAsync(), "known Kevin alias is unambiguous");
+    }
+
+    await using (var shortName = new NpgsqlCommand(PrivateSql("ExactNamePartPersonSql"), connection))
+    {
+        AddScope(shortName, effectiveUserId);
+        shortName.Parameters.AddWithValue("name_part", "kevin");
+        await using var reader = await shortName.ExecuteReaderAsync();
+        Require(await reader.ReadAsync(), "unique authorized Kevin first name resolves");
+        Require(reader.GetGuid(0) == expectedPersonId, "unique authorized Kevin first name resolves to expected identity");
+        Require(reader.GetInt64(3) == 1, "unique authorized Kevin count is evaluated before result limiting");
+        Require(!await reader.ReadAsync(), "unique authorized Kevin first name remains unambiguous");
     }
 
     var projectCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

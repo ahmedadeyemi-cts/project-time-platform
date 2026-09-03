@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/module-loading-assignment-propagation-ci.yml'
+      - '.github/workflows/module-management-owner-drawer-ci.yml'
       - '.github/workflows/module025-protected-uat-control.yml'
       - '.github/workflows/module033-project-forge-ci.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
@@ -16,7 +17,9 @@ on:
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
       - 'database/migrations/040_scoped_role_policy_versions/00_schema.sql'
       - 'database/migrations/097_project_planning_identity_safe_admission.sql'
+      - 'database/migrations/100_module001b_catalog_ownership_reconciliation.sql'
       - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
+      - 'database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql'
       - 'deployment/containers/web/default.conf.template'
       - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
       - 'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh'
@@ -26,6 +29,7 @@ on:
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'scripts/wait-containerapp-ready-revision.sh'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs'
@@ -36,6 +40,9 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs'
       - 'src/backend/ProjectTime.Api/Program.cs'
       - 'tests/ProjectTime.Api.AuthorizationTests/Program.cs'
       - 'tests/validate-celar-ai-pr630-consolidated.mjs'
@@ -46,11 +53,17 @@ on:
       - 'src/frontend/project-time-web/src/background-request-role-gate.js'
       - 'src/frontend/project-time-web/src/module-availability-bridge.js'
       - 'src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx'
+      - 'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx'
+      - 'src/frontend/project-time-web/src/project-flowhive-center.css'
+      - 'tests/CelarAiInternalDataTests/Program.cs'
+      - 'tests/test-module-catalog-owner-repair-migration-093.sh'
       - 'tests/test-project-planning-identity-safe-admission-migration-097.sh'
       - 'tests/test-pulse-ai-runtime-job-query-shape.sh'
       - 'tests/validate-utilization-role-scoping.mjs'
       - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
+      - 'tests/validate-flowhive-sow-evidence-autoadmission.mjs'
+      - 'tests/validate-module-management-owner-drawer.mjs'
 
 permissions:
   contents: read
@@ -105,6 +118,7 @@ jobs:
 
           cat > "$RUNNER_TEMP/allowed-release-files" <<'FILES'
           .github/workflows/module-loading-assignment-propagation-ci.yml
+          .github/workflows/module-management-owner-drawer-ci.yml
           .github/workflows/module025-protected-uat-control.yml
           .github/workflows/module033-project-forge-ci.yml
           .github/workflows/deep-intelligence-read-contract-ci.yml
@@ -117,7 +131,9 @@ jobs:
           .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
           database/migrations/040_scoped_role_policy_versions/00_schema.sql
           database/migrations/097_project_planning_identity_safe_admission.sql
+          database/migrations/100_module001b_catalog_ownership_reconciliation.sql
           database/rollback/097_project_planning_identity_safe_admission_rollback.sql
+          database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql
           deployment/containers/web/default.conf.template
           scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
           scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
@@ -127,6 +143,7 @@ jobs:
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
           scripts/wait-containerapp-ready-revision.sh
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs
           src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
           src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs
@@ -138,6 +155,9 @@ jobs:
           src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs
           src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs
           src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs
+          src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs
+          src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
           src/backend/ProjectTime.Api/Program.cs
           tests/ProjectTime.Api.AuthorizationTests/Program.cs
           tests/validate-celar-ai-pr630-consolidated.mjs
@@ -148,9 +168,15 @@ jobs:
           src/frontend/project-time-web/src/background-request-role-gate.js
           src/frontend/project-time-web/src/module-availability-bridge.js
           src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx
+          src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          src/frontend/project-time-web/src/project-flowhive-center.css
+          tests/CelarAiInternalDataTests/Program.cs
+          tests/test-module-catalog-owner-repair-migration-093.sh
           tests/test-project-planning-identity-safe-admission-migration-097.sh
           tests/test-pulse-ai-runtime-job-query-shape.sh
           tests/validate-systemwide-enterprise-reliability.mjs
+          tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          tests/validate-module-management-owner-drawer.mjs
           tests/validate-systemwide-image-build-controller.mjs
           tests/validate-utilization-role-scoping.mjs
           FILES
@@ -256,11 +282,48 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-pr777-module025-workspace-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-pr777-module025-workspace-files" -o "$RUNNER_TEMP/exact-pr777-module025-workspace-files"
 
+          cat > "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" <<'FILES'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
+          .github/workflows/module-management-owner-drawer-ci.yml
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          database/migrations/100_module001b_catalog_ownership_reconciliation.sql
+          database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql
+          scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+          scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+          src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+          src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs
+          src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+          src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx
+          src/frontend/project-time-web/src/project-flowhive-center.css
+          tests/CelarAiInternalDataTests/Program.cs
+          tests/test-module-catalog-owner-repair-migration-093.sh
+          tests/validate-celar-ai-pr630-consolidated.mjs
+          tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          tests/validate-module-management-owner-drawer.mjs
+          tests/validate-systemwide-image-build-controller.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-protected-uat-validation-defects-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" -o "$RUNNER_TEMP/exact-protected-uat-validation-defects-files"
+
           git fetch --no-tags origin main
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
-          if [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
+          if [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
+            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" || {
+              echo 'Protected-UAT validation-defect repair differs from its exact governed file set.' >&2
+              diff -u "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_PROTECTED_UAT_VALIDATION_DEFECTS_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
             test -s "$SHARED_PLANNING_MANIFEST" || fail 'The shared project-document planning release manifest is missing.'
             grep -Ev '^[[:space:]]*(#|$)' "$SHARED_PLANNING_MANIFEST" | LC_ALL=C sort -u > "$RUNNER_TEMP/shared-project-document-planning-files"
             cmp -s "$SHARED_PLANNING_MANIFEST" "$RUNNER_TEMP/shared-project-document-planning-files" \
@@ -385,7 +448,7 @@ jobs:
           grep -Fq 'https://phd-west-test.onenecklab.com' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_M087_PASSWORD' "$CONTROLLER"
           grep -Fq 'Build immutable API, web, and migration images' "$CONTROLLER"
-          grep -Fq 'Apply and verify Migrations 086, 088, 093, 094, 095, 096, and 097 inside Test private network' "$CONTROLLER"
+          grep -Fq 'Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network' "$CONTROLLER"
           grep -Fq 'database/migrations/093_assigned_work_canonical_visibility_repair.sql' "$CONTROLLER"
           grep -Fq 'database/migrations/097_project_planning_identity_safe_admission.sql' "$CONTROLLER"
           grep -Fq 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql' "$CONTROLLER"
@@ -403,10 +466,13 @@ jobs:
           grep -Fq '098_module_management_owner_storage_reconciliation.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           grep -Fq '098_customer_directory_source_authority.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           grep -Fq '099_module025_sow_gsd_workspace.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq '100_module001b_catalog_ownership_reconciliation.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           grep -Fq 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           grep -Fq 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           grep -Fq 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           grep -Fq 'migration-099.json' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq 'migration-100.json' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs' "$CONTROLLER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' "$CONTROLLER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' "$CONTROLLER"
@@ -414,6 +480,7 @@ jobs:
           grep -Fq 'FLOWHIVE_AI_PLANNER_UAT=PASSED' "$CONTROLLER"
           grep -Fq 'PROJECT_FORGE_AI_PLANNER_UAT=PASSED' "$CONTROLLER"
           grep -Fq 'CELAR_AI_STABILITY_UAT=PASSED' "$CONTROLLER"
+          grep -Fq 'CELAR_AI_KEVIN_PROJECT_COUNT_UAT=PASSED' "$CONTROLLER"
           grep -Fq 'migration094:"applied_and_verified"' "$CONTROLLER"
           grep -Fq 'migration095:"applied_and_verified"' "$CONTROLLER"
           grep -Fq 'migration096:"applied_and_verified"' "$CONTROLLER"
@@ -443,6 +510,9 @@ jobs:
           grep -Fq '.engagement.status == "review_ready"' "$MODULE025_UAT"
           grep -Fq '["plan","design","implement","validate","release"]' "$MODULE025_UAT"
           grep -Fq 'module025_archived' "$MODULE025_UAT"
+          grep -Fq 'insideSalesRepresentatives' "$MODULE025_UAT"
+          grep -Fq 'minimumDetailedWorkPackages:10' "$MODULE025_UAT"
+          grep -Fq 'genericCitedScopeBoilerplateRejected:true' "$MODULE025_UAT"
           grep -Fq 'DEPLOY MODULE025 PROTECTED UAT SHA ' "$MODULE025_SUPERVISOR"
           grep -Fq "github.actor == 'ahmedadeyemi-cts'" "$MODULE025_SUPERVISOR"
           grep -Fq 'git merge-base --is-ancestor "$REPAIRED_MODULE025_SHA" HEAD' "$MODULE025_SUPERVISOR"
