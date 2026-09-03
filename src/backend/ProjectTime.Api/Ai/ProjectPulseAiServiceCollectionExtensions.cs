@@ -115,6 +115,7 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<CelarAiExternalReasoningService>();
         services.AddSingleton<CelarAiEnterprisePlatformService>();
         services.AddHostedService<ProjectFlowHiveAiPlannerWorker>();
+        services.AddHostedService<Module025SowGsdGenerationWorker>();
         services.AddSingleton<IProjectFlowHivePlanRepository, PostgresProjectFlowHivePlanRepository>();
         services.AddSingleton<ProjectPulseAiTimesheetContextResolver>();
         services.AddSingleton<ProjectPulseAiTimeEntrySuggestionService>();

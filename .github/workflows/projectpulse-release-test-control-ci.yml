@@ -26,6 +26,7 @@ on:
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'scripts/wait-containerapp-ready-revision.sh'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs'
@@ -126,6 +127,7 @@ jobs:
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
           scripts/wait-containerapp-ready-revision.sh
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
           src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs
           src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
