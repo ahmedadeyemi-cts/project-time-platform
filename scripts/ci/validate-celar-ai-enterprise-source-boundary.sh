@@ -181,7 +181,37 @@ if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]
     ! grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
     ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
   else
-    if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-bounded-output-* ]]; then
+    if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-cited-phase-expansion-* ]]; then
+      cat > "${TMPDIR:-/tmp}/module025-cited-phase-expansion-expected-files" <<'FILES'
+      scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+      src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      tests/validate-systemwide-image-build-controller.mjs
+FILES
+      sed -i 's/^[[:space:]]*//' "${TMPDIR:-/tmp}/module025-cited-phase-expansion-expected-files"
+      LC_ALL=C sort -u "${TMPDIR:-/tmp}/module025-cited-phase-expansion-expected-files" \
+        -o "${TMPDIR:-/tmp}/module025-cited-phase-expansion-expected-files"
+      printf '%s\n' "$CHANGED" | LC_ALL=C sort -u > "${TMPDIR:-/tmp}/module025-cited-phase-expansion-actual-files"
+      cmp -s \
+        "${TMPDIR:-/tmp}/module025-cited-phase-expansion-expected-files" \
+        "${TMPDIR:-/tmp}/module025-cited-phase-expansion-actual-files" || {
+        echo 'The Module 025 cited phase-expansion repair differs from its governed file set.' >&2
+        diff -u \
+          "${TMPDIR:-/tmp}/module025-cited-phase-expansion-expected-files" \
+          "${TMPDIR:-/tmp}/module025-cited-phase-expansion-actual-files" >&2 || true
+        exit 1
+      }
+      grep -Fq 'Module025SowMaximumOutputTokens = 1_000' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      grep -Fq 'ExpandModule025CitedScopeTasks' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      grep -Fq 'expandModule025CitedPhases: authoritativeSource is not null' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      grep -Fq 'below 3,500 characters' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      grep -Fq 'A deterministic, citation-preserving composer expands' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      echo 'CELAR_AI_MODULE025_CITED_PHASE_EXPANSION_BOUNDARY=PASSED'
+    elif [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-bounded-output-* ]]; then
       cat > "${TMPDIR:-/tmp}/module025-bounded-output-expected-files" <<'FILES'
       scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
       src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
