@@ -489,6 +489,8 @@ public static class Module025SowGsdModule
 
         var correlationId = JsonString(latest.Evidence, "correlationId");
         if (correlationId.Length == 0) correlationId = JsonString(first.Evidence, "correlationId");
+        var diagnosticCode = terminal ? JsonString(latest.Evidence, "diagnosticCode") : string.Empty;
+        var failureStage = terminal ? JsonString(latest.Evidence, "failureStage") : string.Empty;
         return Results.Ok(new
         {
             status,
@@ -500,38 +502,103 @@ public static class Module025SowGsdModule
             revision = latest.Revision,
             currentRevision = engagement.Revision,
             correlationId,
+            diagnosticCode,
+            failureStage,
             message,
             queuedAt = first.CreatedAt,
             updatedAt = latest.CreatedAt
         });
     }
 
-    private static async Task<IResult> ExecuteGenerationAsync(Guid engagementId, int expectedRevision, Guid generationId, Module025AccessContext access, HttpContext context, CancellationToken cancellationToken)
+    private static async Task<Module025GenerationExecutionOutcome> ExecuteGenerationAsync(Guid engagementId, int expectedRevision, Guid generationId, Module025AccessContext access, HttpContext context, CancellationToken cancellationToken)
     {
         var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Module025SowGsd");
+        var queueCorrelationId = Clean(context.TraceIdentifier, 160);
 
         Module025EngagementRow current;
         try
         {
             var opened = await OpenConnectionAsync(context, cancellationToken);
-            if (opened.Error is not null) return opened.Error;
+            if (opened.Error is not null)
+            {
+                return new(
+                    StatusCodes.Status503ServiceUnavailable,
+                    "module025_storage_unavailable",
+                    "The Module 025 workspace storage is temporarily unavailable. The saved draft was not changed.",
+                    queueCorrelationId,
+                    false);
+            }
             await using (var snapshotConnection = opened.Connection!)
             {
-                if (!await WorkspaceSchemaReadyAsync(snapshotConnection, cancellationToken)) return MigrationRequired();
+                if (!await WorkspaceSchemaReadyAsync(snapshotConnection, cancellationToken))
+                {
+                    return new(
+                        StatusCodes.Status503ServiceUnavailable,
+                        "module025_migration_required",
+                        "Apply the Module 025 SOW/GSD workspace migration before using this workflow.",
+                        queueCorrelationId,
+                        false);
+                }
                 current = await LoadEngagementAsync(snapshotConnection, engagementId, cancellationToken)
                     ?? throw new InvalidOperationException("The queued Module 025 engagement no longer exists.");
-                if (!access.CanWriteOwned(current.OwnerUserId)) return Forbidden("module025_generation_queue_authority");
-                if (!current.IsActive || current.Status == "archived") return StateConflict("archived_record", "Unarchive this SOW/GSD before changing it.");
-                if (current.Revision != expectedRevision) return RevisionConflict(current.Revision);
-                if (current.Status == "confirmed") return StateConflict("confirmed_record", "Reopen this confirmed SOW/GSD before generating a new scope.");
-                if (current.ServiceOverview.Trim().Length < 20) return Results.BadRequest(new { status = "service_overview_required", message = "Enter a meaningful Service Overview before asking Celar AI to build the detailed P/D/I/V/R scope and level of effort." });
+                if (!access.CanWriteOwned(current.OwnerUserId))
+                {
+                    return new(
+                        StatusCodes.Status403Forbidden,
+                        "module025_forbidden",
+                        "The queued identity no longer has authority to generate this SOW/GSD.",
+                        queueCorrelationId,
+                        false);
+                }
+                if (!current.IsActive || current.Status == "archived")
+                {
+                    return new(
+                        StatusCodes.Status409Conflict,
+                        "archived_record",
+                        "Unarchive this SOW/GSD before changing it.",
+                        queueCorrelationId,
+                        false);
+                }
+                if (current.Revision != expectedRevision)
+                {
+                    return new(
+                        StatusCodes.Status409Conflict,
+                        "module025_revision_conflict",
+                        "This SOW/GSD changed after generation was queued. Reload the latest revision before generating again.",
+                        queueCorrelationId,
+                        false);
+                }
+                if (current.Status == "confirmed")
+                {
+                    return new(
+                        StatusCodes.Status409Conflict,
+                        "confirmed_record",
+                        "Reopen this confirmed SOW/GSD before generating a new scope.",
+                        queueCorrelationId,
+                        false);
+                }
+                if (current.ServiceOverview.Trim().Length < 20)
+                {
+                    return new(
+                        StatusCodes.Status400BadRequest,
+                        "service_overview_required",
+                        "Enter a meaningful Service Overview before asking Celar AI to build the detailed P/D/I/V/R scope and level of effort.",
+                        queueCorrelationId,
+                        false);
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Module 025 generation state could not be loaded. EngagementId={EngagementId} Diagnostic={Diagnostic}", engagementId, exception.GetType().Name.ToLowerInvariant());
-            return Results.Json(new { status = "module025_generation_state_unavailable", message = "The SOW/GSD generation state is temporarily unavailable. The saved draft was not changed.", stateChanged = false }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            return new(
+                StatusCodes.Status503ServiceUnavailable,
+                "module025_generation_state_unavailable",
+                "The SOW/GSD generation state is temporarily unavailable. The saved draft was not changed.",
+                queueCorrelationId,
+                false,
+                exception.GetType().Name.ToLowerInvariant());
         }
 
         CelarAiComposeResult composition;
@@ -566,12 +633,24 @@ public static class Module025SowGsdModule
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Module 025 detailed SOW/GSD generation failed without logging customer or Service Overview content. EngagementId={EngagementId} Diagnostic={Diagnostic}", engagementId, exception.GetType().Name.ToLowerInvariant());
-            return Results.Json(new { status = "module025_ai_temporarily_unavailable", message = "The governed Celar AI route did not complete. The saved SOW/GSD draft was not changed.", stateChanged = false }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            return new(
+                StatusCodes.Status503ServiceUnavailable,
+                "module025_ai_temporarily_unavailable",
+                "The governed Celar AI route did not complete. The saved SOW/GSD draft was not changed.",
+                queueCorrelationId,
+                false,
+                exception.GetType().Name.ToLowerInvariant());
         }
 
         if (composition.SowDraft is null)
         {
-            return Results.UnprocessableEntity(new { status = "module025_ai_evidence_limited", message = "Celar AI did not return a reviewable SOW draft. No generic scope or fabricated level of effort was substituted.", composition.Status, composition.Warnings, composition.MissingEvidence, composition.Conflicts, composition.Confidence, composition.ConfidenceExplanation, composition.CorrelationId });
+            return new(
+                StatusCodes.Status422UnprocessableEntity,
+                "module025_ai_evidence_limited",
+                "Celar AI did not return a reviewable SOW draft. No generic scope or fabricated level of effort was substituted.",
+                Clean(composition.CorrelationId, 160),
+                false,
+                Clean(composition.Status, 160));
         }
 
         Dictionary<string, GeneratedPhase> generated;
@@ -583,7 +662,13 @@ public static class Module025SowGsdModule
             var workPackages = JsonArray(sowDraft, "WorkPackages").ToArray();
             if (workPackages.Length == 0)
             {
-                return Results.UnprocessableEntity(new { status = "module025_ai_evidence_limited", message = "Celar AI returned no detailed work packages. No generic P/D/I/V/R scope was substituted.", composition.Status, composition.Warnings, composition.MissingEvidence, composition.Confidence, composition.CorrelationId });
+                return new(
+                    StatusCodes.Status422UnprocessableEntity,
+                    "module025_ai_evidence_limited",
+                    "Celar AI returned no detailed work packages. No generic P/D/I/V/R scope was substituted.",
+                    Clean(composition.CorrelationId, 160),
+                    false,
+                    Clean(composition.Status, 160));
             }
 
             generated = PhaseCodes.ToDictionary(code => code, code => new GeneratedPhase(code), StringComparer.OrdinalIgnoreCase);
@@ -653,27 +738,83 @@ public static class Module025SowGsdModule
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Module 025 Celar AI output could not be materialized. EngagementId={EngagementId} CorrelationId={CorrelationId} Diagnostic={Diagnostic}", engagementId, composition.CorrelationId, exception.GetType().Name.ToLowerInvariant());
-            return Results.Json(new { status = "module025_ai_output_unavailable", message = "Celar AI returned an output that could not be safely prepared for review. The saved SOW/GSD draft was not changed.", composition.CorrelationId, stateChanged = false }, statusCode: StatusCodes.Status502BadGateway);
+            return new(
+                StatusCodes.Status502BadGateway,
+                "module025_ai_output_unavailable",
+                "Celar AI returned an output that could not be safely prepared for review. The saved SOW/GSD draft was not changed.",
+                Clean(composition.CorrelationId, 160),
+                false,
+                exception.GetType().Name.ToLowerInvariant());
         }
 
         try
         {
             var opened = await OpenConnectionAsync(context, cancellationToken);
-            if (opened.Error is not null) return opened.Error;
+            if (opened.Error is not null)
+            {
+                return new(
+                    StatusCodes.Status503ServiceUnavailable,
+                    "module025_storage_unavailable",
+                    "The Module 025 workspace storage is temporarily unavailable. The generated scope was not saved.",
+                    Clean(composition.CorrelationId, 160),
+                    false);
+            }
             await using var connection = opened.Connection!;
-            if (!await WorkspaceSchemaReadyAsync(connection, cancellationToken)) return MigrationRequired();
+            if (!await WorkspaceSchemaReadyAsync(connection, cancellationToken))
+            {
+                return new(
+                    StatusCodes.Status503ServiceUnavailable,
+                    "module025_migration_required",
+                    "Apply the Module 025 SOW/GSD workspace migration before using this workflow.",
+                    Clean(composition.CorrelationId, 160),
+                    false);
+            }
             var latest = await LoadEngagementAsync(connection, engagementId, cancellationToken);
-            if (latest is null) return Results.NotFound(new { status = "module025_engagement_not_found" });
-            if (!access.CanWriteOwned(latest.OwnerUserId)) return Forbidden("module025_generation_queue_authority");
-            if (!latest.IsActive || latest.Status == "archived") return StateConflict("archived_record", "Unarchive this SOW/GSD before changing it.");
+            if (latest is null)
+            {
+                return new(
+                    StatusCodes.Status404NotFound,
+                    "module025_engagement_not_found",
+                    "The queued SOW/GSD no longer exists.",
+                    Clean(composition.CorrelationId, 160),
+                    false);
+            }
+            if (!access.CanWriteOwned(latest.OwnerUserId))
+            {
+                return new(
+                    StatusCodes.Status403Forbidden,
+                    "module025_forbidden",
+                    "The queued identity no longer has authority to generate this SOW/GSD.",
+                    Clean(composition.CorrelationId, 160),
+                    false);
+            }
+            if (!latest.IsActive || latest.Status == "archived")
+            {
+                return new(
+                    StatusCodes.Status409Conflict,
+                    "archived_record",
+                    "Unarchive this SOW/GSD before changing it.",
+                    Clean(composition.CorrelationId, 160),
+                    false);
+            }
 
             if (latest.Revision != current.Revision)
             {
-                return RevisionConflict(latest.Revision);
+                return new(
+                    StatusCodes.Status409Conflict,
+                    "module025_revision_conflict",
+                    "This SOW/GSD changed while Celar AI was generating. Reload the latest revision before generating again.",
+                    Clean(composition.CorrelationId, 160),
+                    false);
             }
             if (latest.Status == "confirmed")
             {
-                return StateConflict("confirmed_record", "This SOW/GSD was confirmed while Celar AI was generating. Reopen it before generating a new scope.");
+                return new(
+                    StatusCodes.Status409Conflict,
+                    "confirmed_record",
+                    "This SOW/GSD was confirmed while Celar AI was generating. Reopen it before generating a new scope.",
+                    Clean(composition.CorrelationId, 160),
+                    false);
             }
 
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -703,7 +844,12 @@ public static class Module025SowGsdModule
                 if (value is null)
                 {
                     await transaction.RollbackAsync(cancellationToken);
-                    return RevisionConflict(latest.Revision);
+                    return new(
+                        StatusCodes.Status409Conflict,
+                        "module025_revision_conflict",
+                        "This SOW/GSD changed while Celar AI was generating. Reload the latest revision before generating again.",
+                        Clean(composition.CorrelationId, 160),
+                        false);
                 }
                 revision = Convert.ToInt32(value, CultureInfo.InvariantCulture);
             }
@@ -731,13 +877,26 @@ public static class Module025SowGsdModule
                 logger.LogWarning(exception, "Module 025 generated scope committed but readback failed. EngagementId={EngagementId} CorrelationId={CorrelationId} Diagnostic={Diagnostic}", engagementId, composition.CorrelationId, exception.GetType().Name.ToLowerInvariant());
             }
 
-            return Results.Ok(new { status = "module025_detailed_scope_generated", generationId, revision, engagement = saved is null ? null : PublicEngagement(saved, access), warnings = composition.Warnings, missingEvidence = composition.MissingEvidence, conflicts = composition.Conflicts, confidence = composition.Confidence, confidenceExplanation = composition.ConfidenceExplanation, correlationId = composition.CorrelationId, message = saved is null ? "Detailed scope was generated and saved. Reload this SOW/GSD to view the latest revision." : completionMessage, stateChanged = true });
+            return new(
+                StatusCodes.Status200OK,
+                "module025_detailed_scope_generated",
+                saved is null
+                    ? "Detailed scope was generated and saved. Reload this SOW/GSD to view the latest revision."
+                    : completionMessage,
+                Clean(composition.CorrelationId, 160),
+                true);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Module 025 generated scope could not be persisted. EngagementId={EngagementId} CorrelationId={CorrelationId} Diagnostic={Diagnostic}", engagementId, composition.CorrelationId, exception.GetType().Name.ToLowerInvariant());
-            return Results.Json(new { status = "module025_generation_persistence_unavailable", message = "Celar AI completed, but the generated scope could not be saved. The existing SOW/GSD draft was preserved. Retry generation.", composition.CorrelationId, stateChanged = false }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            return new(
+                StatusCodes.Status503ServiceUnavailable,
+                "module025_generation_persistence_unavailable",
+                "Celar AI completed, but the generated scope could not be saved. The existing SOW/GSD draft was preserved. Retry generation.",
+                Clean(composition.CorrelationId, 160),
+                false,
+                exception.GetType().Name.ToLowerInvariant());
         }
     }
 
@@ -1148,9 +1307,12 @@ public static class Module025SowGsdModule
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString)) return false;
 
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        if (!await WorkspaceSchemaReadyAsync(connection, cancellationToken)) return false;
+        // The advisory lock connection intentionally lives for the complete
+        // private-model call. Keep it alive across that idle interval, but use
+        // short-lived connections for every durable event write.
+        await using var lockConnection = new NpgsqlConnection(WorkerLockConnectionString(connectionString));
+        await lockConnection.OpenAsync(cancellationToken);
+        if (!await WorkspaceSchemaReadyAsync(lockConnection, cancellationToken)) return false;
 
         const string candidateSql = """
             SELECT queued.event_id,queued.engagement_id,queued.actor_user_id,
@@ -1167,7 +1329,7 @@ public static class Module025SowGsdModule
             LIMIT 12;
             """;
         var candidates = new List<Module025QueuedGeneration>();
-        await using (var command = new NpgsqlCommand(candidateSql, connection))
+        await using (var command = new NpgsqlCommand(candidateSql, lockConnection))
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
             while (await reader.ReadAsync(cancellationToken))
@@ -1185,17 +1347,18 @@ public static class Module025SowGsdModule
         {
             var generationIdText = JsonString(candidate.Evidence, "generationId");
             if (!Guid.TryParse(generationIdText, out var generationId)) continue;
-            if (!await TryLockGenerationAsync(connection, generationId, cancellationToken)) continue;
+            if (!await TryLockGenerationAsync(lockConnection, generationId, cancellationToken)) continue;
+            var failureStage = "generation_lock_acquired";
 
             try
             {
-                if (await HasGenerationTerminalAsync(connection, candidate.EngagementId, generationId, cancellationToken)) return true;
+                if (await HasGenerationTerminalAsync(lockConnection, candidate.EngagementId, generationId, cancellationToken)) return true;
 
                 var effectiveUserIdText = JsonString(candidate.Evidence, "effectiveUserId");
                 if (!Guid.TryParse(effectiveUserIdText, out var effectiveUserId))
                 {
                     await RecordGenerationTerminalAsync(
-                        connection,
+                        connectionString,
                         candidate,
                         generationId,
                         "ai_generation_failed",
@@ -1203,6 +1366,8 @@ public static class Module025SowGsdModule
                         StatusCodes.Status422UnprocessableEntity,
                         "The queued generation identity is invalid. The existing SOW/GSD draft was preserved.",
                         string.Empty,
+                        "invalid_effective_user_id",
+                        "validate_queued_identity",
                         cancellationToken);
                     return true;
                 }
@@ -1224,8 +1389,10 @@ public static class Module025SowGsdModule
                     IsManager: JsonBoolean(candidate.Evidence, "isManager"),
                     VisibleSolutionArchitectIds: new HashSet<Guid> { effectiveUserId });
 
-                await RecordGenerationStartedAsync(connection, candidate, generationId, correlationId, cancellationToken);
+                failureStage = "record_generation_started";
+                await RecordGenerationStartedAsync(connectionString, candidate, generationId, correlationId, cancellationToken);
 
+                failureStage = "execute_generation";
                 var workerContext = new DefaultHttpContext
                 {
                     RequestServices = services,
@@ -1233,39 +1400,34 @@ public static class Module025SowGsdModule
                 };
                 workerContext.Request.Scheme = "https";
                 workerContext.Request.Host = new HostString("module025-background-worker");
-                var result = await ExecuteGenerationAsync(
+                var outcome = await ExecuteGenerationAsync(
                     candidate.EngagementId,
                     candidate.ExpectedRevision,
                     generationId,
                     access,
                     workerContext,
                     cancellationToken);
-                var httpStatus = (result as IStatusCodeHttpResult)?.StatusCode ?? StatusCodes.Status200OK;
-                var value = (result as IValueHttpResult)?.Value;
-                var payload = JsonSerializer.SerializeToElement(value ?? new { });
-                var apiStatus = Clean(JsonString(payload, "status"), 160);
-                var message = Clean(JsonString(payload, "message"), 800);
-                var resultCorrelationId = Clean(JsonString(payload, "correlationId"), 160);
-                if (resultCorrelationId.Length == 0) resultCorrelationId = correlationId;
 
-                if (httpStatus == StatusCodes.Status200OK
-                    && string.Equals(apiStatus, "module025_detailed_scope_generated", StringComparison.Ordinal))
+                if (outcome.Completed
+                    && outcome.HttpStatus == StatusCodes.Status200OK
+                    && string.Equals(outcome.ApiStatus, "module025_detailed_scope_generated", StringComparison.Ordinal))
                 {
                     // The generated scope and completed event commit atomically in ExecuteGenerationAsync.
                     return true;
                 }
 
-                if (apiStatus.Length == 0) apiStatus = "module025_generation_worker_failed";
-                if (message.Length == 0) message = "Detailed scope generation did not complete. The existing SOW/GSD draft was preserved.";
+                failureStage = "record_generation_terminal";
                 await RecordGenerationTerminalAsync(
-                    connection,
+                    connectionString,
                     candidate,
                     generationId,
-                    httpStatus == StatusCodes.Status409Conflict ? "ai_generation_obsolete" : "ai_generation_failed",
-                    apiStatus,
-                    httpStatus,
-                    message,
-                    resultCorrelationId,
+                    outcome.HttpStatus == StatusCodes.Status409Conflict ? "ai_generation_obsolete" : "ai_generation_failed",
+                    outcome.ApiStatus,
+                    outcome.HttpStatus,
+                    outcome.Message,
+                    outcome.CorrelationId.Length > 0 ? outcome.CorrelationId : correlationId,
+                    outcome.DiagnosticCode,
+                    "execute_generation",
                     cancellationToken);
                 return true;
             }
@@ -1284,7 +1446,7 @@ public static class Module025SowGsdModule
                         generationId,
                         exception.GetType().Name.ToLowerInvariant());
                 await RecordGenerationTerminalAsync(
-                    connection,
+                    connectionString,
                     candidate,
                     generationId,
                     "ai_generation_failed",
@@ -1292,12 +1454,14 @@ public static class Module025SowGsdModule
                     StatusCodes.Status503ServiceUnavailable,
                     "Detailed scope generation encountered a temporary failure. The existing SOW/GSD draft was preserved; retry generation.",
                     Clean(JsonString(candidate.Evidence, "correlationId"), 160),
+                    exception.GetType().Name.ToLowerInvariant(),
+                    failureStage,
                     cancellationToken);
                 return true;
             }
             finally
             {
-                await UnlockGenerationAsync(connection, generationId);
+                await UnlockGenerationAsync(lockConnection, generationId);
             }
         }
 
@@ -1346,8 +1510,10 @@ public static class Module025SowGsdModule
         return await command.ExecuteScalarAsync(cancellationToken) is true;
     }
 
-    private static async Task RecordGenerationStartedAsync(NpgsqlConnection connection, Module025QueuedGeneration candidate, Guid generationId, string correlationId, CancellationToken cancellationToken)
+    private static async Task RecordGenerationStartedAsync(string connectionString, Module025QueuedGeneration candidate, Guid generationId, string correlationId, CancellationToken cancellationToken)
     {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await InsertEventAsync(
             connection,
@@ -1369,8 +1535,10 @@ public static class Module025SowGsdModule
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static async Task RecordGenerationTerminalAsync(NpgsqlConnection connection, Module025QueuedGeneration candidate, Guid generationId, string eventType, string apiStatus, int httpStatus, string message, string correlationId, CancellationToken cancellationToken)
+    private static async Task RecordGenerationTerminalAsync(string connectionString, Module025QueuedGeneration candidate, Guid generationId, string eventType, string apiStatus, int httpStatus, string message, string correlationId, string diagnosticCode, string failureStage, CancellationToken cancellationToken)
     {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await InsertEventAsync(
             connection,
@@ -1387,6 +1555,8 @@ public static class Module025SowGsdModule
                 httpStatus,
                 correlationId,
                 message,
+                diagnosticCode = Clean(diagnosticCode, 160),
+                failureStage = Clean(failureStage, 160),
                 completedAt = DateTimeOffset.UtcNow
             },
             cancellationToken);
@@ -1479,6 +1649,18 @@ public static class Module025SowGsdModule
         return new NpgsqlConnectionStringBuilder { Host = host, Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432, Database = database, Username = username, Password = password, IncludeErrorDetail = false, Pooling = true, MaxPoolSize = 10 }.ConnectionString;
     }
 
+    private static string WorkerLockConnectionString(string connectionString)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            // Session advisory locks are held while private inference runs. A
+            // bounded keepalive prevents an infrastructure idle timeout from
+            // silently releasing the lock before the worker records its result.
+            KeepAlive = 30
+        };
+        return builder.ConnectionString;
+    }
+
     private static async Task<bool> WorkspaceSchemaReadyAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("SELECT to_regclass('public.module025_sow_gsd_engagements') IS NOT NULL AND to_regclass('public.module025_sow_gsd_phases') IS NOT NULL AND to_regclass('public.module025_sow_gsd_events') IS NOT NULL;", connection);
@@ -1545,6 +1727,7 @@ public static class Module025SowGsdModule
     private sealed record PersonSelection(Guid? UserId, string DisplayName);
     private sealed record Module025GenerationEvent(string EventType, int Revision, JsonElement Evidence, DateTimeOffset CreatedAt);
     private sealed record Module025QueuedGeneration(long EventId, Guid EngagementId, Guid ActorUserId, int ExpectedRevision, JsonElement Evidence);
+    private sealed record Module025GenerationExecutionOutcome(int HttpStatus, string ApiStatus, string Message, string CorrelationId, bool Completed, string DiagnosticCode = "");
 
     private sealed class GeneratedPhase
     {
