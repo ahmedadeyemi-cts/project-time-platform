@@ -760,10 +760,12 @@ jobs:
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
           branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${RETIRED_RELEASE_BRANCH}" --jq '.object.sha')"
           [[ "$branch_sha" == "$RESTORED_RELEASE_SHA" ]] || { echo 'Legacy candidate moved after quarantine classification.' >&2; exit 1; }
-          [[ "$QUARANTINE_ARTIFACT_ID" =~ ^[0-9]+$ && "$QUARANTINE_ARTIFACT_DIGEST" == sha256:* ]] || {
+          quarantine_artifact_digest="${QUARANTINE_ARTIFACT_DIGEST#sha256:}"
+          [[ "$QUARANTINE_ARTIFACT_ID" =~ ^[0-9]+$ && "$quarantine_artifact_digest" =~ ^[[:xdigit:]]{64}$ ]] || {
             echo 'Quarantine dossier upload outputs are invalid.' >&2
             exit 1
           }
+          quarantine_artifact_digest="sha256:${quarantine_artifact_digest,,}"
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
           jq -e --arg path "$DEPLOY_WORKFLOW_PATH" --arg sha "$RETIRED_RELEASE_SHA" --arg branch "$RETIRED_RELEASE_BRANCH" --arg created "$RETIRED_RUN_CREATED_AT" --arg updated "$RETIRED_RUN_UPDATED_AT" --argjson id "$RETIRED_RUN_ID" --argjson attempt "$RETIRED_RUN_ATTEMPT" --argjson workflow "$DEPLOY_WORKFLOW_ID" '
             .id == $id and .run_attempt == $attempt and .workflow_id == $workflow and .path == $path
@@ -802,7 +804,7 @@ jobs:
           [[ "$listed_count" == '1' ]] || { echo "Quarantined ghost ledger count changed: $listed_count" >&2; exit 1; }
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
           echo "quarantined_url=${{ steps.ghost_quarantine.outputs.ghost_url }}" >> "$GITHUB_OUTPUT"
-          echo 'FINALIZED_PROTECTED_UAT_GHOST_QUARANTINE=verified_non_executable_control_plane_orphan'
+          echo "FINALIZED_PROTECTED_UAT_GHOST_QUARANTINE=verified_non_executable_control_plane_orphan artifact_id=$QUARANTINE_ARTIFACT_ID artifact_digest=$quarantine_artifact_digest"
 
       - name: Verify sealed exhaustive deployment ledger
         shell: bash
