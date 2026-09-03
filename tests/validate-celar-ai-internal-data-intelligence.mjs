@@ -105,6 +105,12 @@ requireText(production, 'celar-ai-production-platform-v2-20260807', 'production 
 requireText(production, 'intent.Code == CelarAiInternalDataService.IntentCode', 'production internal-data branch')
 requireText(production, 'string.Equals(result.Status, "completed"', 'completed-only trust gate')
 requireText(production, '"internal_data" when answered && successful > 0', 'verified current-fact classification')
+requireText(production, 'status = result.Status', 'top-level response status compatibility')
+requireText(production, 'var currentInternalVerified = authoritativeSources.Any', 'current internal-source trust observation')
+requireText(production, 'var currentEvidenceVerified = intent.Code == "internal_data"', 'intent-specific current-evidence trust gate')
+requireText(production, '&& (!intent.RequiresCurrentEvidence || currentEvidenceVerified)', 'internal facts do not require public-web evidence')
+requireText(production, 'currentInternalEvidenceVerified = currentInternalVerified', 'visible internal-evidence trust receipt')
+rejectText(production, '&& (!intent.RequiresCurrentEvidence || currentPublicVerified)', 'public-web-only internal-data trust gate')
 
 const migration = read('database/migrations/080_celar_ai_internal_data_intelligence.sql')
 requireText(migration, 'migration_080_known_directory_correction', 'known verified identity correction')
