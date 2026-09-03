@@ -25535,19 +25535,42 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
     else if (canUseTeamScope)
     {
         await using var teamCommand = new NpgsqlCommand("""
-            WITH lead_profile AS (
+            WITH actor_profile AS (
                 SELECT
                     user_id,
-                    NULLIF(team_name, '') AS team_name,
-                    NULLIF(department_name, '') AS department_name,
-                    NULLIF(department, '') AS department
+                    email,
+                    NULLIF(team_name, '') AS team_name
                 FROM app_users
                 WHERE user_id = @user_id
+            ),
+            active_manager_teams AS (
+                SELECT DISTINCT NULLIF(trim(assignment.team_name), '') AS team_name
+                FROM user_admin_manager_team_assignments assignment
+                WHERE @is_manager = TRUE
+                  AND assignment.manager_user_id = @user_id
+                  AND assignment.is_active = TRUE
+            ),
+            manager_candidates AS (
+                SELECT DISTINCT u.user_id
+                FROM app_users u
+                CROSS JOIN actor_profile ap
+                WHERE @is_manager = TRUE
+                  AND u.is_active = TRUE
+                  AND (
+                        lower(COALESCE(u.manager_email, '')) = lower(ap.email)
+                     OR EXISTS (
+                            SELECT 1
+                            FROM active_manager_teams assignment
+                            WHERE assignment.team_name IS NOT NULL
+                              AND lower(COALESCE(u.team_name, '')) = lower(assignment.team_name)
+                        )
+                  )
             ),
             active_lead_teams AS (
                 SELECT DISTINCT tm.team_id
                 FROM team_memberships tm
-                WHERE tm.user_id = @user_id
+                WHERE @is_manager = FALSE
+                  AND tm.user_id = @user_id
                   AND tm.effective_start_date <= CURRENT_DATE
                   AND (tm.effective_end_date IS NULL OR tm.effective_end_date >= CURRENT_DATE)
             ),
@@ -25562,15 +25585,15 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
             profile_candidates AS (
                 SELECT DISTINCT u.user_id
                 FROM app_users u
-                CROSS JOIN lead_profile lp
-                WHERE u.is_active = TRUE
-                  AND (
-                        (lp.team_name IS NOT NULL AND lower(COALESCE(u.team_name, '')) = lower(lp.team_name))
-                     OR (lp.department_name IS NOT NULL AND lower(COALESCE(u.department_name, '')) = lower(lp.department_name))
-                     OR (lp.department IS NOT NULL AND lower(COALESCE(u.department, '')) = lower(lp.department))
-                  )
+                CROSS JOIN actor_profile ap
+                WHERE @is_manager = FALSE
+                  AND u.is_active = TRUE
+                  AND ap.team_name IS NOT NULL
+                  AND lower(COALESCE(u.team_name, '')) = lower(ap.team_name)
             ),
             eligible_engineers AS (
+                SELECT user_id FROM manager_candidates
+                UNION
                 SELECT user_id FROM membership_candidates
                 UNION
                 SELECT user_id FROM profile_candidates
@@ -25597,6 +25620,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
             """, connection);
 
         teamCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        teamCommand.Parameters.AddWithValue("is_manager", isManager);
 
         await using var reader = await teamCommand.ExecuteReaderAsync();
         while (await reader.ReadAsync())
