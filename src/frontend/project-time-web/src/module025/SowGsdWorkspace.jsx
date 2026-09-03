@@ -37,6 +37,28 @@ async function requestJson(url, options = {}) {
   return payload;
 }
 
+const GENERATION_POLL_INTERVAL_MS = 2000;
+const GENERATION_POLL_ATTEMPTS = 180;
+
+async function waitForDetailedScopeGeneration(engagementId, generationId, onProgress) {
+  for (let attempt = 1; attempt <= GENERATION_POLL_ATTEMPTS; attempt += 1) {
+    const payload = await requestJson(`/api/module025/sow-gsd/${engagementId}/generations/${generationId}`);
+    if (payload?.terminal === true) {
+      if (payload?.status === 'module025_detailed_scope_generated') return payload;
+      const error = new Error(payload?.message || 'Detailed scope generation did not complete. The saved draft was preserved.');
+      error.payload = payload;
+      throw error;
+    }
+
+    onProgress?.(payload);
+    if (attempt < GENERATION_POLL_ATTEMPTS) {
+      await new Promise((resolve) => window.setTimeout(resolve, GENERATION_POLL_INTERVAL_MS));
+    }
+  }
+
+  throw new Error('Detailed scope generation is still running. It remains safely queued; select Generate detailed scope again to resume checking its status.');
+}
+
 function toLines(value) {
   return Array.isArray(value) ? value.join('\n') : '';
 }
@@ -385,7 +407,22 @@ export default function SowGsdWorkspace() {
     if (dirtyRef.current) await saveNow();
     setActionState({ busy: action, message: '', error: '' });
     try {
-      const payload = await requestJson(`/api/module025/sow-gsd/${engagement.engagementId}/${action}`, { method: 'POST' });
+      let payload = await requestJson(`/api/module025/sow-gsd/${engagement.engagementId}/${action}`, { method: 'POST' });
+      if (action === 'generate') {
+        if (payload?.status !== 'module025_detailed_scope_generation_queued' || !payload?.generationId) {
+          throw new Error('Detailed scope generation did not return a durable queue identifier. The saved draft was preserved.');
+        }
+        setActionState({ busy: action, message: payload?.message || 'Detailed scope generation is queued.', error: '' });
+        payload = await waitForDetailedScopeGeneration(
+          engagement.engagementId,
+          payload.generationId,
+          (progress) => setActionState({
+            busy: action,
+            message: progress?.message || 'Celar AI is preparing the detailed P/D/I/V/R review draft.',
+            error: ''
+          })
+        );
+      }
       await openEngagement(engagement.engagementId);
       await loadList();
       setActionState({ busy: '', message: payload?.message || successMessage, error: '' });
@@ -489,7 +526,7 @@ export default function SowGsdWorkspace() {
       </section>
 
       {actionState.error ? <Notice tone="critical" title="Action needs attention"><p>{actionState.error}</p></Notice> : null}
-      {actionState.message ? <Notice tone="success" title="Completed"><p>{actionState.message}</p></Notice> : null}
+      {actionState.message ? <Notice tone={actionState.busy ? 'info' : 'success'} title={actionState.busy ? 'In progress' : 'Completed'}><p>{actionState.message}</p></Notice> : null}
 
       <div className="m025-layout">
         <aside className="m025-list-panel">

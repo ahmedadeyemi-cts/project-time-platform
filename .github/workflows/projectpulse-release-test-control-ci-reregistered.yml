@@ -45,6 +45,7 @@ on:
       - 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
       - 'src/frontend/project-time-web/src/background-request-role-gate.js'
       - 'src/frontend/project-time-web/src/module-availability-bridge.js'
+      - 'src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx'
       - 'tests/test-project-planning-identity-safe-admission-migration-097.sh'
       - 'tests/test-pulse-ai-runtime-job-query-shape.sh'
       - 'tests/validate-utilization-role-scoping.mjs'
@@ -143,6 +144,7 @@ jobs:
           src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
           src/frontend/project-time-web/src/background-request-role-gate.js
           src/frontend/project-time-web/src/module-availability-bridge.js
+          src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx
           tests/test-project-planning-identity-safe-admission-migration-097.sh
           tests/test-pulse-ai-runtime-job-query-shape.sh
           tests/validate-systemwide-enterprise-reliability.mjs

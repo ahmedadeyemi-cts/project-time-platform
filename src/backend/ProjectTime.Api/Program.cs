@@ -15,6 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddProblemDetails();
 builder.Services.AddProjectPulseAi();
+builder.Services.AddHostedService<Module025SowGsdGenerationWorker>();
 builder.Services
     .AddHttpClient("Module026", client => client.Timeout = TimeSpan.FromSeconds(12))
     .ConfigurePrimaryHttpMessageHandler(CrmErpIntegrationModule.CreateSecureHttpHandler);

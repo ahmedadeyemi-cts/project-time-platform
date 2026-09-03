@@ -55,6 +55,7 @@ public static class Module025SowGsdModule
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetAsync);
         app.MapPut("/api/module025/sow-gsd/{engagementId:guid}", (Func<Guid, Module025SowGsdSaveRequest, HttpContext, CancellationToken, Task<IResult>>)SaveAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/generate", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GenerateAsync);
+        app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/generations/{generationId:guid}", (Func<Guid, Guid, HttpContext, CancellationToken, Task<IResult>>)GetGenerationAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/confirm", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)ConfirmAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/reopen", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)ReopenAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/archive", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)ArchiveAsync);
@@ -336,18 +337,192 @@ public static class Module025SowGsdModule
     private static async Task<IResult> GenerateAsync(Guid engagementId, HttpContext context, CancellationToken cancellationToken)
     {
         if (!SameOrigin(context)) return OriginRejected();
+        var writable = await LoadWritableStateAsync(engagementId, context, cancellationToken);
+        if (writable.Error is not null) return writable.Error;
+        await using var connection = writable.Connection!;
+        var current = writable.Engagement!;
+        var access = writable.Access!;
+        if (current.Status == "confirmed") return StateConflict("confirmed_record", "Reopen this confirmed SOW/GSD before generating a new scope.");
+        if (current.ServiceOverview.Trim().Length < 20) return Results.BadRequest(new { status = "service_overview_required", message = "Enter a meaningful Service Overview before asking Celar AI to build the detailed P/D/I/V/R scope and level of effort." });
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var generationLock = new NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(hashtextextended(@engagement_id::text,725));",
+            connection,
+            transaction))
+        {
+            generationLock.Parameters.AddWithValue("engagement_id", engagementId);
+            await generationLock.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        const string activeGenerationSql = """
+            SELECT queued.evidence_json->>'generationId'
+            FROM module025_sow_gsd_events queued
+            WHERE queued.engagement_id=@engagement_id
+              AND queued.engagement_revision=@revision
+              AND queued.event_type='ai_generation_queued'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM module025_sow_gsd_events terminal
+                  WHERE terminal.engagement_id=queued.engagement_id
+                    AND terminal.event_type IN ('ai_generation_completed','ai_generation_failed','ai_generation_obsolete')
+                    AND terminal.evidence_json->>'generationId'=queued.evidence_json->>'generationId')
+            ORDER BY queued.event_id DESC
+            LIMIT 1;
+            """;
+        Guid? activeGenerationId = null;
+        await using (var activeGeneration = new NpgsqlCommand(activeGenerationSql, connection, transaction))
+        {
+            activeGeneration.Parameters.AddWithValue("engagement_id", engagementId);
+            activeGeneration.Parameters.AddWithValue("revision", current.Revision);
+            var value = await activeGeneration.ExecuteScalarAsync(cancellationToken);
+            if (value is string candidate && Guid.TryParse(candidate, out var parsed)) activeGenerationId = parsed;
+        }
+
+        if (activeGenerationId.HasValue)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return Results.Json(new
+            {
+                status = "module025_detailed_scope_generation_queued",
+                generationId = activeGenerationId.Value,
+                engagementId,
+                revision = current.Revision,
+                terminal = false,
+                stateChanged = false,
+                message = "Detailed scope generation is already queued or running. This page will continue checking its durable status."
+            }, statusCode: StatusCodes.Status202Accepted);
+        }
+
+        var generationId = Guid.NewGuid();
+        var correlationId = Clean(context.TraceIdentifier, 160);
+        if (correlationId.Length == 0) correlationId = Guid.NewGuid().ToString("N");
+        await InsertEventAsync(
+            connection,
+            transaction,
+            engagementId,
+            access.ActualUserId,
+            current.Revision,
+            "ai_generation_queued",
+            "Detailed P/D/I/V/R scope generation queued for governed background processing.",
+            new
+            {
+                generationId,
+                actualUserId = access.ActualUserId,
+                effectiveUserId = access.EffectiveUserId,
+                access.IsAdministrator,
+                access.IsSolutionArchitect,
+                access.IsProtectedTestUatRoleFixture,
+                access.IsManager,
+                expectedRevision = current.Revision,
+                correlationId,
+                queuedAt = DateTimeOffset.UtcNow
+            },
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return Results.Json(new
+        {
+            status = "module025_detailed_scope_generation_queued",
+            generationId,
+            engagementId,
+            revision = current.Revision,
+            terminal = false,
+            stateChanged = true,
+            correlationId,
+            message = "Detailed scope generation is queued. You may keep this page open while Celar AI prepares the review draft."
+        }, statusCode: StatusCodes.Status202Accepted);
+    }
+
+    private static async Task<IResult> GetGenerationAsync(Guid engagementId, Guid generationId, HttpContext context, CancellationToken cancellationToken)
+    {
+        var readable = await LoadReadableStateAsync(engagementId, context, cancellationToken);
+        if (readable.Error is not null) return readable.Error;
+        await using var connection = readable.Connection!;
+        var engagement = readable.Engagement!;
+
+        const string sql = """
+            SELECT event_type,engagement_revision,evidence_json::text,created_at
+            FROM module025_sow_gsd_events
+            WHERE engagement_id=@engagement_id
+              AND evidence_json->>'generationId'=@generation_id
+            ORDER BY event_id;
+            """;
+        var events = new List<Module025GenerationEvent>();
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("engagement_id", engagementId);
+            command.Parameters.AddWithValue("generation_id", generationId.ToString());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                events.Add(new Module025GenerationEvent(
+                    reader.GetString(0),
+                    reader.GetInt32(1),
+                    ParseJson(reader.GetString(2), JsonValueKind.Object),
+                    reader.GetFieldValue<DateTimeOffset>(3)));
+            }
+        }
+
+        if (events.Count == 0) return Results.NotFound(new { status = "module025_generation_not_found", generationId, engagementId });
+        var first = events[0];
+        var latest = events[^1];
+        var terminal = latest.EventType is "ai_generation_completed" or "ai_generation_failed" or "ai_generation_obsolete";
+        var completed = latest.EventType == "ai_generation_completed";
+        var apiStatus = JsonString(latest.Evidence, "apiStatus");
+        var status = terminal && apiStatus.Length > 0
+            ? apiStatus
+            : latest.EventType == "ai_generation_started"
+                ? "module025_detailed_scope_generation_running"
+                : "module025_detailed_scope_generation_queued";
+        var message = JsonString(latest.Evidence, "message");
+        if (message.Length == 0)
+        {
+            message = terminal
+                ? completed
+                    ? "Detailed P/D/I/V/R scope is ready for Solution Architect review."
+                    : "Detailed scope generation did not complete. The existing SOW/GSD draft was preserved."
+                : latest.EventType == "ai_generation_started"
+                    ? "Celar AI is preparing the detailed P/D/I/V/R review draft."
+                    : "Detailed scope generation is waiting for the governed background worker.";
+        }
+
+        var correlationId = JsonString(latest.Evidence, "correlationId");
+        if (correlationId.Length == 0) correlationId = JsonString(first.Evidence, "correlationId");
+        return Results.Ok(new
+        {
+            status,
+            generationId,
+            engagementId,
+            phase = latest.EventType == "ai_generation_started" ? "generating" : completed ? "completed" : terminal ? "failed" : "queued",
+            terminal,
+            stateChanged = completed,
+            revision = latest.Revision,
+            currentRevision = engagement.Revision,
+            correlationId,
+            message,
+            queuedAt = first.CreatedAt,
+            updatedAt = latest.CreatedAt
+        });
+    }
+
+    private static async Task<IResult> ExecuteGenerationAsync(Guid engagementId, int expectedRevision, Guid generationId, Module025AccessContext access, HttpContext context, CancellationToken cancellationToken)
+    {
         var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Module025SowGsd");
 
         Module025EngagementRow current;
-        Module025AccessContext access;
         try
         {
-            var writable = await LoadWritableStateAsync(engagementId, context, cancellationToken);
-            if (writable.Error is not null) return writable.Error;
-            await using (var snapshotConnection = writable.Connection!)
+            var opened = await OpenConnectionAsync(context, cancellationToken);
+            if (opened.Error is not null) return opened.Error;
+            await using (var snapshotConnection = opened.Connection!)
             {
-                current = writable.Engagement!;
-                access = writable.Access!;
+                if (!await WorkspaceSchemaReadyAsync(snapshotConnection, cancellationToken)) return MigrationRequired();
+                current = await LoadEngagementAsync(snapshotConnection, engagementId, cancellationToken)
+                    ?? throw new InvalidOperationException("The queued Module 025 engagement no longer exists.");
+                if (!access.CanWriteOwned(current.OwnerUserId)) return Forbidden("module025_generation_queue_authority");
+                if (!current.IsActive || current.Status == "archived") return StateConflict("archived_record", "Unarchive this SOW/GSD before changing it.");
+                if (current.Revision != expectedRevision) return RevisionConflict(current.Revision);
                 if (current.Status == "confirmed") return StateConflict("confirmed_record", "Reopen this confirmed SOW/GSD before generating a new scope.");
                 if (current.ServiceOverview.Trim().Length < 20) return Results.BadRequest(new { status = "service_overview_required", message = "Enter a meaningful Service Overview before asking Celar AI to build the detailed P/D/I/V/R scope and level of effort." });
             }
@@ -483,11 +658,14 @@ public static class Module025SowGsdModule
 
         try
         {
-            var persistence = await LoadWritableStateAsync(engagementId, context, cancellationToken);
-            if (persistence.Error is not null) return persistence.Error;
-            await using var connection = persistence.Connection!;
-            var latest = persistence.Engagement!;
-            var latestAccess = persistence.Access!;
+            var opened = await OpenConnectionAsync(context, cancellationToken);
+            if (opened.Error is not null) return opened.Error;
+            await using var connection = opened.Connection!;
+            if (!await WorkspaceSchemaReadyAsync(connection, cancellationToken)) return MigrationRequired();
+            var latest = await LoadEngagementAsync(connection, engagementId, cancellationToken);
+            if (latest is null) return Results.NotFound(new { status = "module025_engagement_not_found" });
+            if (!access.CanWriteOwned(latest.OwnerUserId)) return Forbidden("module025_generation_queue_authority");
+            if (!latest.IsActive || latest.Status == "archived") return StateConflict("archived_record", "Unarchive this SOW/GSD before changing it.");
 
             if (latest.Revision != current.Revision)
             {
@@ -529,7 +707,18 @@ public static class Module025SowGsdModule
                 }
                 revision = Convert.ToInt32(value, CultureInfo.InvariantCulture);
             }
-            await InsertEventAsync(connection, transaction, engagementId, latestAccess.ActualUserId, revision, "ai_generated", "Detailed P/D/I/V/R scope and suggested LOE generated for Solution Architect review.", new { composition.CorrelationId, composition.Confidence, missingPhaseCodes = generated.Values.Where(value => value.PackageCount == 0).Select(value => value.PhaseCode).ToArray() }, cancellationToken);
+            await InsertEventAsync(connection, transaction, engagementId, access.ActualUserId, revision, "ai_generated", "Detailed P/D/I/V/R scope and suggested LOE generated for Solution Architect review.", new { composition.CorrelationId, composition.Confidence, missingPhaseCodes = generated.Values.Where(value => value.PackageCount == 0).Select(value => value.PhaseCode).ToArray() }, cancellationToken);
+            var completionMessage = "Detailed Plan, Design, Implement, Validate, and Release scope is ready for Solution Architect review. AI-suggested hours remain separate from editable final hours.";
+            await InsertEventAsync(connection, transaction, engagementId, access.ActualUserId, revision, "ai_generation_completed", "Durable detailed-scope generation completed and committed.", new
+            {
+                generationId,
+                apiStatus = "module025_detailed_scope_generated",
+                httpStatus = StatusCodes.Status200OK,
+                revision,
+                correlationId = composition.CorrelationId,
+                message = completionMessage,
+                completedAt = DateTimeOffset.UtcNow
+            }, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
             Module025EngagementRow? saved = null;
@@ -542,7 +731,7 @@ public static class Module025SowGsdModule
                 logger.LogWarning(exception, "Module 025 generated scope committed but readback failed. EngagementId={EngagementId} CorrelationId={CorrelationId} Diagnostic={Diagnostic}", engagementId, composition.CorrelationId, exception.GetType().Name.ToLowerInvariant());
             }
 
-            return Results.Ok(new { status = "module025_detailed_scope_generated", revision, engagement = saved is null ? null : PublicEngagement(saved, latestAccess), warnings = composition.Warnings, missingEvidence = composition.MissingEvidence, conflicts = composition.Conflicts, confidence = composition.Confidence, confidenceExplanation = composition.ConfidenceExplanation, correlationId = composition.CorrelationId, message = saved is null ? "Detailed scope was generated and saved. Reload this SOW/GSD to view the latest revision." : "Detailed Plan, Design, Implement, Validate, and Release scope is ready for Solution Architect review. AI-suggested hours remain separate from editable final hours.", stateChanged = true });
+            return Results.Ok(new { status = "module025_detailed_scope_generated", generationId, revision, engagement = saved is null ? null : PublicEngagement(saved, access), warnings = composition.Warnings, missingEvidence = composition.MissingEvidence, conflicts = composition.Conflicts, confidence = composition.Confidence, confidenceExplanation = composition.ConfidenceExplanation, correlationId = composition.CorrelationId, message = saved is null ? "Detailed scope was generated and saved. Reload this SOW/GSD to view the latest revision." : completionMessage, stateChanged = true });
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
@@ -954,6 +1143,256 @@ public static class Module025SowGsdModule
         return value is string displayName ? new PersonSelection(userId, displayName) : new PersonSelection(null, string.Empty);
     }
 
+    internal static async Task<bool> ProcessNextQueuedGenerationAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        var connectionString = BuildConnectionString();
+        if (string.IsNullOrWhiteSpace(connectionString)) return false;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        if (!await WorkspaceSchemaReadyAsync(connection, cancellationToken)) return false;
+
+        const string candidateSql = """
+            SELECT queued.event_id,queued.engagement_id,queued.actor_user_id,
+                   queued.engagement_revision,queued.evidence_json::text
+            FROM module025_sow_gsd_events queued
+            WHERE queued.event_type='ai_generation_queued'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM module025_sow_gsd_events terminal
+                  WHERE terminal.engagement_id=queued.engagement_id
+                    AND terminal.event_type IN ('ai_generation_completed','ai_generation_failed','ai_generation_obsolete')
+                    AND terminal.evidence_json->>'generationId'=queued.evidence_json->>'generationId')
+            ORDER BY queued.event_id
+            LIMIT 12;
+            """;
+        var candidates = new List<Module025QueuedGeneration>();
+        await using (var command = new NpgsqlCommand(candidateSql, connection))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                candidates.Add(new Module025QueuedGeneration(
+                    reader.GetInt64(0),
+                    reader.GetGuid(1),
+                    reader.GetGuid(2),
+                    reader.GetInt32(3),
+                    ParseJson(reader.GetString(4), JsonValueKind.Object)));
+            }
+        }
+
+        foreach (var candidate in candidates)
+        {
+            var generationIdText = JsonString(candidate.Evidence, "generationId");
+            if (!Guid.TryParse(generationIdText, out var generationId)) continue;
+            if (!await TryLockGenerationAsync(connection, generationId, cancellationToken)) continue;
+
+            try
+            {
+                if (await HasGenerationTerminalAsync(connection, candidate.EngagementId, generationId, cancellationToken)) return true;
+
+                var effectiveUserIdText = JsonString(candidate.Evidence, "effectiveUserId");
+                if (!Guid.TryParse(effectiveUserIdText, out var effectiveUserId))
+                {
+                    await RecordGenerationTerminalAsync(
+                        connection,
+                        candidate,
+                        generationId,
+                        "ai_generation_failed",
+                        "module025_generation_queue_invalid",
+                        StatusCodes.Status422UnprocessableEntity,
+                        "The queued generation identity is invalid. The existing SOW/GSD draft was preserved.",
+                        string.Empty,
+                        cancellationToken);
+                    return true;
+                }
+
+                var correlationId = Clean(JsonString(candidate.Evidence, "correlationId"), 160);
+                if (correlationId.Length == 0) correlationId = $"module025-{generationId:N}";
+                var access = new Module025AccessContext(
+                    candidate.ActorUserId,
+                    effectiveUserId,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                    IsViewAs: false,
+                    IsAdministrator: JsonBoolean(candidate.Evidence, "isAdministrator"),
+                    IsSolutionArchitect: JsonBoolean(candidate.Evidence, "isSolutionArchitect"),
+                    IsProtectedTestUatRoleFixture: JsonBoolean(candidate.Evidence, "isProtectedTestUatRoleFixture"),
+                    IsManager: JsonBoolean(candidate.Evidence, "isManager"),
+                    VisibleSolutionArchitectIds: new HashSet<Guid> { effectiveUserId });
+
+                await RecordGenerationStartedAsync(connection, candidate, generationId, correlationId, cancellationToken);
+
+                var workerContext = new DefaultHttpContext
+                {
+                    RequestServices = services,
+                    TraceIdentifier = correlationId
+                };
+                workerContext.Request.Scheme = "https";
+                workerContext.Request.Host = new HostString("module025-background-worker");
+                var result = await ExecuteGenerationAsync(
+                    candidate.EngagementId,
+                    candidate.ExpectedRevision,
+                    generationId,
+                    access,
+                    workerContext,
+                    cancellationToken);
+                var httpStatus = (result as IStatusCodeHttpResult)?.StatusCode ?? StatusCodes.Status200OK;
+                var value = (result as IValueHttpResult)?.Value;
+                var payload = JsonSerializer.SerializeToElement(value ?? new { });
+                var apiStatus = Clean(JsonString(payload, "status"), 160);
+                var message = Clean(JsonString(payload, "message"), 800);
+                var resultCorrelationId = Clean(JsonString(payload, "correlationId"), 160);
+                if (resultCorrelationId.Length == 0) resultCorrelationId = correlationId;
+
+                if (httpStatus == StatusCodes.Status200OK
+                    && string.Equals(apiStatus, "module025_detailed_scope_generated", StringComparison.Ordinal))
+                {
+                    // The generated scope and completed event commit atomically in ExecuteGenerationAsync.
+                    return true;
+                }
+
+                if (apiStatus.Length == 0) apiStatus = "module025_generation_worker_failed";
+                if (message.Length == 0) message = "Detailed scope generation did not complete. The existing SOW/GSD draft was preserved.";
+                await RecordGenerationTerminalAsync(
+                    connection,
+                    candidate,
+                    generationId,
+                    httpStatus == StatusCodes.Status409Conflict ? "ai_generation_obsolete" : "ai_generation_failed",
+                    apiStatus,
+                    httpStatus,
+                    message,
+                    resultCorrelationId,
+                    cancellationToken);
+                return true;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                services.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("Module025SowGsdGenerationWorker")
+                    .LogWarning(
+                        exception,
+                        "Module 025 durable generation encountered a bounded failure. EngagementId={EngagementId} GenerationId={GenerationId} Diagnostic={Diagnostic}. No customer or Service Overview content was logged.",
+                        candidate.EngagementId,
+                        generationId,
+                        exception.GetType().Name.ToLowerInvariant());
+                await RecordGenerationTerminalAsync(
+                    connection,
+                    candidate,
+                    generationId,
+                    "ai_generation_failed",
+                    "module025_generation_worker_failed",
+                    StatusCodes.Status503ServiceUnavailable,
+                    "Detailed scope generation encountered a temporary failure. The existing SOW/GSD draft was preserved; retry generation.",
+                    Clean(JsonString(candidate.Evidence, "correlationId"), 160),
+                    cancellationToken);
+                return true;
+            }
+            finally
+            {
+                await UnlockGenerationAsync(connection, generationId);
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task<bool> TryLockGenerationAsync(NpgsqlConnection connection, Guid generationId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT pg_try_advisory_lock(hashtextextended(@generation_id::text,725));",
+            connection);
+        command.Parameters.AddWithValue("generation_id", generationId);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    private static async Task UnlockGenerationAsync(NpgsqlConnection connection, Guid generationId)
+    {
+        if (connection.State != System.Data.ConnectionState.Open) return;
+        try
+        {
+            await using var command = new NpgsqlCommand(
+                "SELECT pg_advisory_unlock(hashtextextended(@generation_id::text,725));",
+                connection);
+            command.Parameters.AddWithValue("generation_id", generationId);
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+        catch
+        {
+            // Closing the connection also releases the session advisory lock.
+        }
+    }
+
+    private static async Task<bool> HasGenerationTerminalAsync(NpgsqlConnection connection, Guid engagementId, Guid generationId, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT EXISTS(
+                SELECT 1
+                FROM module025_sow_gsd_events
+                WHERE engagement_id=@engagement_id
+                  AND event_type IN ('ai_generation_completed','ai_generation_failed','ai_generation_obsolete')
+                  AND evidence_json->>'generationId'=@generation_id);
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("engagement_id", engagementId);
+        command.Parameters.AddWithValue("generation_id", generationId.ToString());
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    private static async Task RecordGenerationStartedAsync(NpgsqlConnection connection, Module025QueuedGeneration candidate, Guid generationId, string correlationId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await InsertEventAsync(
+            connection,
+            transaction,
+            candidate.EngagementId,
+            candidate.ActorUserId,
+            candidate.ExpectedRevision,
+            "ai_generation_started",
+            "Governed background processing started for the detailed P/D/I/V/R scope.",
+            new
+            {
+                generationId,
+                apiStatus = "module025_detailed_scope_generation_running",
+                correlationId,
+                message = "Celar AI is preparing the detailed P/D/I/V/R review draft.",
+                startedAt = DateTimeOffset.UtcNow
+            },
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static async Task RecordGenerationTerminalAsync(NpgsqlConnection connection, Module025QueuedGeneration candidate, Guid generationId, string eventType, string apiStatus, int httpStatus, string message, string correlationId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await InsertEventAsync(
+            connection,
+            transaction,
+            candidate.EngagementId,
+            candidate.ActorUserId,
+            candidate.ExpectedRevision,
+            eventType,
+            "Durable detailed-scope generation stopped without changing the saved draft.",
+            new
+            {
+                generationId,
+                apiStatus,
+                httpStatus,
+                correlationId,
+                message,
+                completedAt = DateTimeOffset.UtcNow
+            },
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     private static async Task InsertEventAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid engagementId, Guid actorUserId, int revision, string eventType, string summary, object evidence, CancellationToken cancellationToken)
     {
         const string sql = "INSERT INTO module025_sow_gsd_events(engagement_id,event_type,actor_user_id,engagement_revision,summary,evidence_json) VALUES(@engagement_id,@event_type,@actor_user_id,@revision,@summary,@evidence_json::jsonb);";
@@ -1104,6 +1543,8 @@ public static class Module025SowGsdModule
 
     private sealed record CustomerSelection(Guid? CustomerId, string CustomerName, string Mode, IResult? Error);
     private sealed record PersonSelection(Guid? UserId, string DisplayName);
+    private sealed record Module025GenerationEvent(string EventType, int Revision, JsonElement Evidence, DateTimeOffset CreatedAt);
+    private sealed record Module025QueuedGeneration(long EventId, Guid EngagementId, Guid ActorUserId, int ExpectedRevision, JsonElement Evidence);
 
     private sealed class GeneratedPhase
     {
@@ -1125,5 +1566,62 @@ public static class Module025SowGsdModule
         internal List<string> ValidationSteps { get; } = new();
         internal List<string> Risks { get; } = new();
         internal HashSet<int> CitationIds { get; } = new();
+    }
+}
+
+/// <summary>
+/// Advances durable Module 025 generation requests outside the inbound HTTP
+/// lifetime. The event row is the queue and a PostgreSQL advisory lock prevents
+/// multiple API replicas from processing the same generation concurrently.
+/// </summary>
+internal sealed class Module025SowGsdGenerationWorker : BackgroundService
+{
+    private readonly IServiceProvider _services;
+    private readonly ILogger<Module025SowGsdGenerationWorker> _logger;
+
+    public Module025SowGsdGenerationWorker(
+        IServiceProvider services,
+        ILogger<Module025SowGsdGenerationWorker> logger)
+    {
+        _services = services;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var scope = _services.CreateScope();
+                var processed = await Module025SowGsdModule.ProcessNextQueuedGenerationAsync(
+                    scope.ServiceProvider,
+                    stoppingToken);
+                await DelayAsync(processed ? TimeSpan.FromSeconds(1) : TimeSpan.FromSeconds(3), stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(
+                    exception,
+                    "Module 025 durable generation worker encountered a bounded failure. No customer or Service Overview content was logged.");
+                await DelayAsync(TimeSpan.FromSeconds(10), stoppingToken);
+            }
+        }
+    }
+
+    private static async Task DelayAsync(TimeSpan duration, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(duration, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Application shutdown.
+        }
     }
 }

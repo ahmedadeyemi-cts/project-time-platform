@@ -110,9 +110,11 @@ jobs:
               'deployment/containers/web/default.conf.template' \
               <<<"$PROTECTED_DEPLOYMENT" || true)"
             grep -Fxq 'deployment/containers/web/default.conf.template' <<<"$CHANGED"
-            grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
+            ! grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
+            ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
             grep -Fq 'location /api/ {' deployment/containers/web/default.conf.template
-            echo 'MODULE_033_MODULE025_PROXY_REGRESSION_BOUNDARY=PASSED'
+            grep -Fq 'proxy_read_timeout 60s;' deployment/containers/web/default.conf.template
+            echo 'MODULE_033_MODULE025_ASYNC_PROXY_REGRESSION_BOUNDARY=PASSED'
           fi
           if [[ -n "$PROTECTED_DEPLOYMENT" ]]; then
             echo 'Project Forge validation never authorizes deployment controls or the web Dockerfile.' >&2
