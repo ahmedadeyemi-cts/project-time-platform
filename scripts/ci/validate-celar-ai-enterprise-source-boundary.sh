@@ -176,7 +176,12 @@ if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]
   grep -Fxq 'deployment/containers/web/default.conf.template' <<<"$CHANGED"
   grep -Fq 'Run protected-Test Module 025 SOW/GSD generation lifecycle UAT' \
     .github/workflows/projectpulse-deploy-test.yml
-  grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
+  ! grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
+  ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
+  grep -Fq 'module025_detailed_scope_generation_queued' \
+    src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+  grep -Fq 'ProcessNextQueuedGenerationAsync' \
+    src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
   ! grep -Fq 'phd-west.onenecklab.com' \
     .github/workflows/projectpulse-deploy-test.yml \
     .github/workflows/module025-protected-uat-control.yml \

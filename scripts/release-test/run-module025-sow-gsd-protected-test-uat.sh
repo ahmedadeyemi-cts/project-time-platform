@@ -224,7 +224,7 @@ ENGAGEMENT_NUMBER="$(jq -r '.engagement.engagementNumber // empty' "$CREATE_RESP
 GENERATE_RESPONSE="$EVIDENCE_DIR/module025-generate-response.json"
 GENERATE_HEADERS="$EVIDENCE_DIR/module025-generate-response-headers.txt"
 GENERATE_STARTED_AT="$(date +%s)"
-GENERATE_RESULT="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/generate" "$GENERATE_RESPONSE" "$SA_SESSION" 900 '' "$GENERATE_HEADERS")"
+GENERATE_RESULT="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/generate" "$GENERATE_RESPONSE" "$SA_SESSION" 55 '' "$GENERATE_HEADERS")"
 GENERATE_ELAPSED_SECONDS="$(( $(date +%s) - GENERATE_STARTED_AT ))"
 IFS='|' read -r GENERATE_CURL_EXIT GENERATE_STATUS <<<"$GENERATE_RESULT"
 GENERATE_RESPONSE_SERVER="$(awk '
@@ -242,19 +242,59 @@ jq -n \
   --argjson elapsedSeconds "$GENERATE_ELAPSED_SECONDS" \
   --arg responseServer "$GENERATE_RESPONSE_SERVER" \
   --arg apiStatus "$(jq -r '.status // empty' "$GENERATE_RESPONSE" 2>/dev/null || true)" \
+  --arg generationId "$(jq -r '.generationId // empty' "$GENERATE_RESPONSE" 2>/dev/null || true)" \
   --arg correlationId "$(jq -r '.correlationId // empty' "$GENERATE_RESPONSE" 2>/dev/null || true)" \
-  '{curlExit:$curlExit,httpStatus:$httpStatus,elapsedSeconds:$elapsedSeconds,responseServer:$responseServer,apiStatus:$apiStatus,correlationId:$correlationId}' \
+  '{curlExit:$curlExit,httpStatus:$httpStatus,elapsedSeconds:$elapsedSeconds,responseServer:$responseServer,apiStatus:$apiStatus,generationId:$generationId,correlationId:$correlationId}' \
   > "$EVIDENCE_DIR/module025-generate-http-result.json"
-[[ "$GENERATE_CURL_EXIT" == 0 && "$GENERATE_STATUS" == 200 ]] \
-  || fail "Module 025 detailed-scope generation returned curl exit $GENERATE_CURL_EXIT and HTTP $GENERATE_STATUS (status $(jq -r '.status // "not-json"' "$GENERATE_RESPONSE" 2>/dev/null || true))."
+[[ "$GENERATE_CURL_EXIT" == 0 && "$GENERATE_STATUS" == 202 ]] \
+  || fail "Module 025 detailed-scope queue request returned curl exit $GENERATE_CURL_EXIT and HTTP $GENERATE_STATUS (status $(jq -r '.status // "not-json"' "$GENERATE_RESPONSE" 2>/dev/null || true))."
+(( GENERATE_ELAPSED_SECONDS < 55 )) \
+  || fail "Module 025 durable queue request exceeded the protected-Test gateway window ($GENERATE_ELAPSED_SECONDS seconds)."
 jq -e '
+  .status == "module025_detailed_scope_generation_queued"
+  and .stateChanged == true
+  and .terminal == false
+  and (.generationId | type == "string" and test("^[0-9a-fA-F-]{36}$"))
+  and (.revision | type == "number" and . == 1)
+  and (.correlationId | type == "string" and length > 0)
+' "$GENERATE_RESPONSE" >/dev/null \
+  || fail 'Module 025 generation response did not confirm a durable non-terminal queue operation.'
+GENERATION_ID="$(jq -r '.generationId' "$GENERATE_RESPONSE")"
+
+GENERATION_RESPONSE="$EVIDENCE_DIR/module025-generation-terminal-response.json"
+GENERATION_POLL_STARTED_AT="$(date +%s)"
+GENERATION_TERMINAL=false
+GENERATION_POLL_ATTEMPTS=0
+for attempt in $(seq 1 120); do
+  GENERATION_POLL_ATTEMPTS="$attempt"
+  GENERATION_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID/generations/$GENERATION_ID" "$GENERATION_RESPONSE" "$SA_SESSION" 55)"
+  IFS='|' read -r GENERATION_CURL_EXIT GENERATION_STATUS <<<"$GENERATION_RESULT"
+  [[ "$GENERATION_CURL_EXIT" == 0 && "$GENERATION_STATUS" == 200 ]] \
+    || fail "Module 025 generation status poll $attempt returned curl exit $GENERATION_CURL_EXIT and HTTP $GENERATION_STATUS."
+  if jq -e '.terminal == true' "$GENERATION_RESPONSE" >/dev/null; then
+    GENERATION_TERMINAL=true
+    break
+  fi
+  jq -e '
+    .terminal == false
+    and (.status == "module025_detailed_scope_generation_queued" or .status == "module025_detailed_scope_generation_running")
+  ' "$GENERATION_RESPONSE" >/dev/null \
+    || fail "Module 025 generation status poll $attempt returned an invalid non-terminal contract."
+  sleep 5
+done
+GENERATION_TOTAL_ELAPSED_SECONDS="$(( $(date +%s) - GENERATION_POLL_STARTED_AT + GENERATE_ELAPSED_SECONDS ))"
+[[ "$GENERATION_TERMINAL" == true ]] \
+  || fail 'Module 025 durable generation did not reach a terminal state within 10 minutes.'
+jq -e --arg id "$GENERATION_ID" '
   .status == "module025_detailed_scope_generated"
+  and .generationId == $id
+  and .terminal == true
   and .stateChanged == true
   and (.revision | type == "number" and . > 1)
   and (.correlationId | type == "string" and length > 0)
-' "$GENERATE_RESPONSE" >/dev/null \
-  || fail 'Module 025 generation response did not confirm a persisted detailed-scope state change.'
-GENERATED_REVISION="$(jq -r '.revision' "$GENERATE_RESPONSE")"
+' "$GENERATION_RESPONSE" >/dev/null \
+  || fail "Module 025 durable generation finished with status $(jq -r '.status // "not-json"' "$GENERATION_RESPONSE" 2>/dev/null || true): $(jq -r '.message // "no message"' "$GENERATION_RESPONSE" 2>/dev/null || true)"
+GENERATED_REVISION="$(jq -r '.revision' "$GENERATION_RESPONSE")"
 
 READBACK_RESPONSE="$EVIDENCE_DIR/module025-review-ready-readback.json"
 READBACK_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID" "$READBACK_RESPONSE" "$SA_SESSION" 120)"
@@ -317,10 +357,13 @@ jq -n \
   --arg userId "$SA_USER_ID" \
   --arg engagementId "$ENGAGEMENT_ID" \
   --arg engagementNumber "$ENGAGEMENT_NUMBER" \
+  --arg generationId "$GENERATION_ID" \
   --argjson generatedRevision "$GENERATED_REVISION" \
-  --argjson generationElapsedSeconds "$GENERATE_ELAPSED_SECONDS" \
+  --argjson generationQueueElapsedSeconds "$GENERATE_ELAPSED_SECONDS" \
+  --argjson generationTotalElapsedSeconds "$GENERATION_TOTAL_ELAPSED_SECONDS" \
+  --argjson generationPollAttempts "$GENERATION_POLL_ATTEMPTS" \
   --arg generationResponseServer "$GENERATE_RESPONSE_SERVER" \
-  --arg correlationId "$(jq -r '.correlationId' "$GENERATE_RESPONSE")" \
+  --arg correlationId "$(jq -r '.correlationId' "$GENERATION_RESPONSE")" \
   --argjson suggestedHours "$(jq -r '[.engagement.phases[].suggestedHours] | add' "$READBACK_RESPONSE")" \
   '{
     status:"passed",
@@ -332,11 +375,15 @@ jq -n \
     persistentRoleAssignmentMutation:false,
     engagementId:$engagementId,
     engagementNumber:$engagementNumber,
+    generationId:$generationId,
     createStatus:"draft",
+    queueStatus:"module025_detailed_scope_generation_queued",
     generateStatus:"module025_detailed_scope_generated",
     readbackStatus:"review_ready",
     generatedRevision:$generatedRevision,
-    generationElapsedSeconds:$generationElapsedSeconds,
+    generationQueueElapsedSeconds:$generationQueueElapsedSeconds,
+    generationTotalElapsedSeconds:$generationTotalElapsedSeconds,
+    generationPollAttempts:$generationPollAttempts,
     generationResponseServer:$generationResponseServer,
     phaseCodes:["plan","design","implement","validate","release"],
     suggestedHours:$suggestedHours,

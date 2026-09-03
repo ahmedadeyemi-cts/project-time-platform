@@ -14,6 +14,8 @@ const assignedWorkUatPath = 'scripts/release-test/run-assigned-work-protected-te
 const module025UatPath = 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh';
 const module025UatAccessPath = 'src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs';
 const module025ModulePath = 'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs';
+const apiProgramPath = 'src/backend/ProjectTime.Api/Program.cs';
+const module025WorkspacePath = 'src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx';
 const celarContractsPath = 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs';
 const celarServicePath = 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs';
 const privateRagContractsPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs';
@@ -33,6 +35,8 @@ const assignedWorkUat = fs.readFileSync(assignedWorkUatPath, 'utf8');
 const module025Uat = fs.readFileSync(module025UatPath, 'utf8');
 const module025UatAccess = fs.readFileSync(module025UatAccessPath, 'utf8');
 const module025Module = fs.readFileSync(module025ModulePath, 'utf8');
+const apiProgram = fs.readFileSync(apiProgramPath, 'utf8');
+const module025Workspace = fs.readFileSync(module025WorkspacePath, 'utf8');
 const celarContracts = fs.readFileSync(celarContractsPath, 'utf8');
 const celarService = fs.readFileSync(celarServicePath, 'utf8');
 const privateRagContracts = fs.readFileSync(privateRagContractsPath, 'utf8');
@@ -73,12 +77,8 @@ assert.match(workflow, /run-utilization-role-scoping-protected-test-uat\.sh/);
 assert.match(workflow, /Run protected-Test Module 025 SOW\/GSD generation lifecycle UAT/);
 assert.match(workflow, /Enable exact-run Module 025 protected-Test authorization fixture/);
 assert.match(workflow, /Disable exact-run Module 025 protected-Test authorization fixture/);
-assert.match(workflow, /Enforce protected-Test Application Gateway timeout for Module 025/);
-assert.match(workflow, /TEST_APPLICATION_GATEWAY_RESOURCE_GROUP: rg-project-health-dashboard-test-network-westus3/);
-assert.match(workflow, /TEST_APPLICATION_GATEWAY_NAME: agw-phd-test-westus3/);
-assert.match(workflow, /az network application-gateway http-settings update/);
-assert.match(workflow, /application-gateway-timeout\.json/);
-assert.match(workflow, /PROTECTED_TEST_APPLICATION_GATEWAY_TIMEOUT=VERIFIED/);
+assert.doesNotMatch(workflow, /TEST_APPLICATION_GATEWAY_/);
+assert.doesNotMatch(workflow, /az network application-gateway/);
 assert.match(workflow, /productionMutation:false/);
 assert.match(workflow, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED=true/);
 assert.match(workflow, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED=false/);
@@ -88,7 +88,10 @@ assert.match(workflow, /run-module025-sow-gsd-protected-test-uat\.sh/);
 assert.match(workflow, /module025-sow-gsd-protected-test-uat\.json/);
 assert.match(module025Uat, /https:\/\/phd-west-test\.onenecklab\.com/);
 assert.match(module025Uat, /\.access\.isSolutionArchitect == true/);
+assert.match(module025Uat, /module025_detailed_scope_generation_queued/);
 assert.match(module025Uat, /module025_detailed_scope_generated/);
+assert.match(module025Uat, /\/generations\/\$GENERATION_ID/);
+assert.match(module025Uat, /\.terminal == true/);
 assert.match(module025Uat, /\["plan","design","implement","validate","release"\]/);
 assert.match(module025Uat, /\.engagement\.status == "review_ready"/);
 assert.match(module025Uat, /module025_archived/);
@@ -97,7 +100,9 @@ assert.match(module025Uat, /demo\.manager@ussignal\.local/);
 assert.match(module025Uat, /X-ProjectPulse-Module025-Uat-Run/);
 assert.match(module025Uat, /protectedTestUatRoleFixture == true/);
 assert.match(module025Uat, /module025-generate-response-headers\.txt/);
-assert.match(module025Uat, /generationElapsedSeconds/);
+assert.match(module025Uat, /generationQueueElapsedSeconds/);
+assert.match(module025Uat, /generationTotalElapsedSeconds/);
+assert.match(module025Uat, /generationPollAttempts/);
 assert.match(module025Uat, /generationResponseServer/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID/);
@@ -118,6 +123,16 @@ assert.match(
 );
 assert.match(module025Module, /ComposeModule025SowAsync\(/);
 assert.match(module025Module, /new CelarAiAuthoritativeScopeEvidence\(/);
+assert.match(module025Module, /generations\/\{generationId:guid\}/);
+assert.match(module025Module, /ai_generation_queued/);
+assert.match(module025Module, /ai_generation_started/);
+assert.match(module025Module, /ai_generation_completed/);
+assert.match(module025Module, /ProcessNextQueuedGenerationAsync/);
+assert.match(module025Module, /pg_try_advisory_lock\(hashtextextended\(@generation_id::text,725\)\)/);
+assert.match(apiProgram, /AddHostedService<Module025SowGsdGenerationWorker>\(\)/);
+assert.match(module025Workspace, /waitForDetailedScopeGeneration/);
+assert.match(module025Workspace, /\/generations\/\$\{generationId\}/);
+assert.match(module025Workspace, /payload\?\.terminal === true/);
 assert.match(celarService, /authoritativeScopeEvidence: null/);
 assert.match(celarService, /internal Task<CelarAiComposeResult> ComposeModule025SowAsync/);
 assert.match(celarService, /GenerateModule025SowPlanAsync\(/);
@@ -140,30 +155,12 @@ assert.doesNotMatch(
 );
 assert.match(privateRagRepository, /citation\.SourceType,[\s\S]*?"module025_saved_service_overview"/);
 assert.match(privateRagRepository, /@answer_run_id,NULL,NULL,NULL,NULL,@source_type,@source_module/);
-assert.match(
-  webProxy,
-  /location ~ "\^\/api\/module025\/sow-gsd\/[\s\S]*?\/generate\$" \{[\s\S]*?proxy_read_timeout 230s;/,
-  'the synchronous Module 025 generation route must have a bounded proxy window below the 240-second Container Apps ingress limit'
-);
+assert.doesNotMatch(webProxy, /proxy_read_timeout 230s;/);
+assert.doesNotMatch(webProxy, /location ~ "\^\/api\/module025\/sow-gsd\/[\s\S]*?\/generate\$"/);
 assert.match(
   webProxy,
   /location \/api\/ \{[\s\S]*?proxy_read_timeout 60s;/,
-  'the longer Module 025 window must not extend the generic API timeout'
-);
-const gatewayTimeoutSeconds = Number(
-  workflow.match(/TEST_APPLICATION_GATEWAY_TIMEOUT_SECONDS: '(\d+)'/)?.[1]
-);
-const module025ProxyTimeoutSeconds = Number(
-  webProxy.match(/location ~ "\^\/api\/module025\/sow-gsd\/[\s\S]*?proxy_read_timeout (\d+)s;/)?.[1]
-);
-assert.equal(module025ProxyTimeoutSeconds, 230);
-assert.ok(
-  gatewayTimeoutSeconds > module025ProxyTimeoutSeconds,
-  'the protected Test Application Gateway must outwait the Module 025 web proxy'
-);
-assert.ok(
-  gatewayTimeoutSeconds < 240,
-  'the protected Test Application Gateway timeout must remain below the Container Apps ingress limit'
+  'durable Module 025 generation must use the bounded generic API proxy window'
 );
 for (const source of [module033Workflow, celarSourceBoundary, celarPr630Validator]) {
   assert.match(
@@ -174,7 +171,7 @@ for (const source of [module033Workflow, celarSourceBoundary, celarPr630Validato
 }
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_PROTECTED_UAT_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
-assert.match(module033Workflow, /MODULE_033_MODULE025_PROXY_REGRESSION_BOUNDARY=PASSED/);
+assert.match(module033Workflow, /MODULE_033_MODULE025_ASYNC_PROXY_REGRESSION_BOUNDARY=PASSED/);
 assert.match(celarPr630Validator, /CELAR_PR630_MODULE025_PROTECTED_UAT_COMPATIBILITY=PASS/);
 assert.match(workflow, /093_assigned_work_canonical_visibility_repair\.sql/);
 assert.match(workflow, /097_project_planning_identity_safe_admission\.sql/);
