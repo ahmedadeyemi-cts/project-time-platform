@@ -289,18 +289,130 @@ jq -e '
 ' "$MANAGER_SUMMARY" >/dev/null \
   || fail "Demo Manager utilization response is not constrained to engineering_team_scope."
 
-JASON_USER_ID='73e58088-c70a-4a4f-a856-a38c0e43b089'
+# Resolve candidate engineer UUIDs from live authenticated identities. Never use a
+# fabricated/static UUID for this least-privilege proof: the 403 must target a real user.
+RESOLVED_ENGINEER_USER_ID=''
+resolve_live_engineer_identity() {
+  local email="$1" label="$2"
+  local slug login_payload login_response security_response logout_response
+  local login_status security_status logout_status candidate_session
+
+  slug="$(printf '%s' "$label" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9_-')"
+  login_payload="$(mktemp)"
+  login_response="$(mktemp)"
+  chmod 0600 "$login_payload" "$login_response"
+
+  jq -n \
+    --arg username "$email" \
+    --arg password "$TEST_LOGIN_PASSWORD" \
+    '{username:$username,password:$password}' > "$login_payload"
+
+  login_status="$(curl -sS --max-time 90 \
+    -o "$login_response" -w '%{http_code}' \
+    -H 'Cache-Control: no-cache' \
+    -H 'Content-Type: application/json' \
+    -H "Origin: $BASE" \
+    -H 'Sec-Fetch-Site: same-origin' \
+    --data-binary @"$login_payload" \
+    "$BASE/api/auth/local/login" || true)"
+  rm -f "$login_payload"
+  [[ "$login_status" == 200 ]] \
+    || fail "$label live identity login returned HTTP $login_status."
+
+  jq -e '
+    .provider == "LOCAL"
+    and .mustChangePassword == false
+    and (.sessionToken | type == "string" and length > 0)
+  ' "$login_response" >/dev/null \
+    || fail "$label live identity login did not satisfy the session contract."
+
+  candidate_session="$(jq -r '.sessionToken' "$login_response")"
+  echo "::add-mask::$candidate_session"
+  jq 'del(.sessionToken,.token,.password)' "$login_response" \
+    > "$EVIDENCE_DIR/manager-outsider-candidate-$slug-login-redacted.json"
+  rm -f "$login_response"
+
+  security_response="$EVIDENCE_DIR/manager-outsider-candidate-$slug-security-context.json"
+  security_status="$(curl -sS --max-time 120 \
+    -o "$security_response" -w '%{http_code}' \
+    -H 'Cache-Control: no-cache' \
+    -H "Authorization: Bearer $candidate_session" \
+    -H "X-ProjectPulse-Session: $candidate_session" \
+    -H 'X-ProjectPulse-Module-Number: 003' \
+    -H "Origin: $BASE" \
+    -H 'Sec-Fetch-Site: same-origin' \
+    "$BASE/api/security/context" || true)"
+  [[ "$security_status" == 200 ]] \
+    || fail "$label live identity security context returned HTTP $security_status."
+  jq -e '
+    [
+      .roles[]?
+      | if type == "object"
+        then (.roleCode // .roleName // "")
+        else tostring
+        end
+      | tostring
+      | ascii_upcase
+      | gsub("[ -]+"; "_")
+    ] as $roles
+    | (($roles | index("ENGINEER")) != null or ($roles | index("ENGINEERING")) != null)
+  ' "$security_response" >/dev/null \
+    || fail "$label is not a live Engineer identity in Protected Test."
+
+  RESOLVED_ENGINEER_USER_ID="$(jq -r '.userId // empty' "$security_response")"
+  [[ "$RESOLVED_ENGINEER_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+    || fail "$label live security context did not expose a valid user ID."
+
+  logout_response="$EVIDENCE_DIR/manager-outsider-candidate-$slug-logout.json"
+  logout_status="$(curl -sS --max-time 60 \
+    -o "$logout_response" -w '%{http_code}' \
+    -X POST \
+    -H 'Cache-Control: no-cache' \
+    -H "Authorization: Bearer $candidate_session" \
+    -H "X-ProjectPulse-Session: $candidate_session" \
+    -H 'X-ProjectPulse-Module-Number: 003' \
+    -H "Origin: $BASE" \
+    -H 'Sec-Fetch-Site: same-origin' \
+    "$BASE/api/auth/session/logout" || true)"
+  [[ "$logout_status" == 200 ]] \
+    || fail "$label live identity logout returned HTTP $logout_status."
+  unset candidate_session
+}
+
 MANAGER_OUTSIDER_ID=''
-for candidate_user_id in "$KEVIN_USER_ID" "$JASON_USER_ID"; do
-  if ! jq -e --arg candidateUserId "$candidate_user_id" \
-    '([.selectableEngineers[]?.userId] | index($candidateUserId)) != null' \
-    "$MANAGER_SUMMARY" >/dev/null; then
-    MANAGER_OUTSIDER_ID="$candidate_user_id"
-    break
-  fi
-done
-[[ -n "$MANAGER_OUTSIDER_ID" ]] \
-  || fail "Protected Test does not expose a known engineer outside Demo Manager's assigned utilization team scope."
+MANAGER_OUTSIDER_EMAIL=''
+
+# Kevin's UUID already came from his live security context above. Try him first.
+if ! jq -e --arg candidateUserId "$KEVIN_USER_ID" \
+  '([.selectableEngineers[]?.userId] | index($candidateUserId)) != null' \
+  "$MANAGER_SUMMARY" >/dev/null; then
+  MANAGER_OUTSIDER_ID="$KEVIN_USER_ID"
+  MANAGER_OUTSIDER_EMAIL="$(printf '%s' "$KEVIN_EMAIL" | tr '[:upper:]' '[:lower:]')"
+fi
+
+# If Kevin is legitimately in scope, resolve other approved live Engineer accounts.
+if [[ -z "$MANAGER_OUTSIDER_ID" ]]; then
+  while IFS='|' read -r candidate_email candidate_label; do
+    [[ -n "$candidate_email" ]] || continue
+    resolve_live_engineer_identity "$candidate_email" "$candidate_label"
+    if ! jq -e --arg candidateUserId "$RESOLVED_ENGINEER_USER_ID" \
+      '([.selectableEngineers[]?.userId] | index($candidateUserId)) != null' \
+      "$MANAGER_SUMMARY" >/dev/null; then
+      MANAGER_OUTSIDER_ID="$RESOLVED_ENGINEER_USER_ID"
+      MANAGER_OUTSIDER_EMAIL="$candidate_email"
+      break
+    fi
+  done <<'ENGINEER_CANDIDATES'
+jason.mosier@ussignal.local|Jason Mosier
+jeremy.holt@ussignal.local|Jeremy Holt
+demo.engineer@ussignal.local|Demo Engineer
+ENGINEER_CANDIDATES
+fi
+
+[[ "$MANAGER_OUTSIDER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+  || fail "Protected Test did not expose a live Engineer identity outside Demo Manager's assigned utilization team scope."
+[[ -n "$MANAGER_OUTSIDER_EMAIL" ]] \
+  || fail "Manager outsider probe did not resolve a live Engineer email."
 
 MANAGER_OUTSIDER_RESPONSE="$EVIDENCE_DIR/manager-utilization-cross-team-denied.json"
 MANAGER_OUTSIDER_STATUS="$(manager_auth_get "/api/utilization/engineering-team-summary?year=2026&engineerUserId=$MANAGER_OUTSIDER_ID" "$MANAGER_OUTSIDER_RESPONSE")"
@@ -333,6 +445,7 @@ jq -n \
   --arg managerIdentity "$MANAGER_EMAIL" \
   --arg managerUserId "$MANAGER_USER_ID" \
   --arg managerOutsiderId "$MANAGER_OUTSIDER_ID" \
+  --arg managerOutsiderEmail "$MANAGER_OUTSIDER_EMAIL" \
   '{
     status:"passed",
     identity:$identity,
@@ -357,11 +470,13 @@ jq -n \
     managerCanUseTeamScope:true,
     managerCrossTeamRequestStatus:403,
     managerCrossTeamRequestedUserId:$managerOutsiderId,
+    managerCrossTeamRequestedEmail:$managerOutsiderEmail,
+    managerCrossTeamIdentitySource:"live_authenticated_security_context",
     managerCrossTeamOutcome:"denied_outside_assigned_team",
     managerIdentityPreservedAfterDenial:true,
     productionMutation:false
   }' > "$EVIDENCE_DIR/utilization-role-scoping-uat.json"
 
-unset SESSION_TOKEN MANAGER_SESSION_TOKEN TEST_LOGIN_PASSWORD
+unset SESSION_TOKEN MANAGER_SESSION_TOKEN RESOLVED_ENGINEER_USER_ID TEST_LOGIN_PASSWORD
 
-echo 'UTILIZATION_ROLE_SCOPING_PROTECTED_TEST_UAT=PASS engineer=Kevin.damisch@ussignal.local engineerScope=self-only manager=demo.manager@ussignal.local managerScope=assigned-team-only managerCrossTeam=denied annualHours=572 annualPercent=29.67'
+echo 'UTILIZATION_ROLE_SCOPING_PROTECTED_TEST_UAT=PASS engineer=Kevin.damisch@ussignal.local engineerScope=self-only manager=demo.manager@ussignal.local managerScope=assigned-team-only managerCrossTeam=denied liveOutsiderIdentity=true annualHours=572 annualPercent=29.67'
