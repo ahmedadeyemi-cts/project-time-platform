@@ -856,7 +856,16 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
 
     private static object ToResponse(PlannerRun run)
     {
-        var schedule = run.Schedule;
+        // Generated artifacts are checkpointed before the working-copy transaction
+        // so a restarted worker can resume without another model call. They are not
+        // a user-visible draft until that transaction commits both the working copy
+        // and the terminal run state.
+        var workingDraftPersisted = run.GeneratedPlan is not null
+            && run.Schedule is not null
+            && run.Validation is not null
+            && run.Phase == "working_draft_ready"
+            && run.Status is "completed" or "completed_with_schedule_overrun";
+        var schedule = workingDraftPersisted ? run.Schedule : null;
         var overrun = schedule?.ProjectTargetEndDate.HasValue == true
             && schedule.ProjectFinishDate.HasValue
             && schedule.ProjectFinishDate.Value > schedule.ProjectTargetEndDate.Value;
@@ -875,17 +884,16 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             phase = run.Phase,
             progressPercent = run.ProgressPercent,
             terminal = run.Terminal,
-            plan = run.GeneratedPlan,
+            plan = workingDraftPersisted ? run.GeneratedPlan : null,
             schedule,
-            validation = run.Validation,
+            validation = workingDraftPersisted ? run.Validation : null,
             blockers = run.Blockers,
             warnings = run.Warnings,
             generationLogs = run.Logs,
             correlationId = run.CorrelationId,
             workingDraft = new
             {
-                persisted = run.GeneratedPlan is not null
-                    && run.Phase == "working_draft_ready",
+                persisted = workingDraftPersisted,
                 immutableVersionCreated = false,
                 baselineCreated = false,
                 reviewRequired = true

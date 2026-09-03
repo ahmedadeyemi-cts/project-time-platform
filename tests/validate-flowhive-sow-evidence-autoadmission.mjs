@@ -42,6 +42,16 @@ assert.match(
   /PersistWorkingDraftAndCompleteAsync[\s\S]*?BeginTransactionAsync\(cancellationToken\)[\s\S]*?SaveWorkingCopyAsync\([\s\S]*?transaction,[\s\S]*?UpdateRunAsync\([\s\S]*?completed: true,[\s\S]*?transaction: transaction\)[\s\S]*?transaction\.CommitAsync\(cancellationToken\)/,
   'The mutable working draft and terminal run state must commit atomically so failure reporting cannot contradict persisted state.'
 );
+assert.match(
+  plannerOrchestration,
+  /var workingDraftPersisted = run\.GeneratedPlan is not null[\s\S]*?run\.Phase == "working_draft_ready"[\s\S]*?run\.Status is "completed" or "completed_with_schedule_overrun"[\s\S]*?plan = workingDraftPersisted \? run\.GeneratedPlan : null[\s\S]*?validation = workingDraftPersisted \? run\.Validation : null/,
+  'Checkpointed generation payloads must remain hidden until the atomic working-draft transaction reaches a successful terminal state.'
+);
+assert.match(
+  plannerWorkspace,
+  /if \(result\.workingDraft\?\.persisted && result\.plan\)/,
+  'The browser must only present a generated plan as saved after the server confirms durable working-draft persistence.'
+);
 assert.match(plannerOrchestration, /status is "completed" or "completed_with_schedule_overrun" or "needs_attention" or "failed"/);
 assert.match(plannerWorkspace, /AI_PLANNER_POLL_INTERVAL_MS = 1500/);
 assert.match(plannerWorkspace, /AI_PLANNER_POLL_ATTEMPTS = 800/);

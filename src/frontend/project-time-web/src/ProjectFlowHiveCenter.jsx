@@ -899,7 +899,7 @@ export default function ProjectFlowHiveCenter() {
     setNotice('AI Planner is resolving the project SOW and GSD, preparing private evidence, and building the working draft.');
     try {
       const result = await runAiPlannerOperation();
-      if (result.plan) {
+      if (result.workingDraft?.persisted && result.plan) {
         setDraftPlan(result.plan);
         setSchedule(result.schedule || null);
         setValidation(result.validation || null);
