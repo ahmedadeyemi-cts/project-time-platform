@@ -122,7 +122,7 @@ try
         new object?[]
         {
             module025Payload.Replace(
-                "Complete the technology-specific",
+                "Complete technology-specific",
                 "Prepare the cited scope for the",
                 StringComparison.Ordinal),
             module025Retrieval
