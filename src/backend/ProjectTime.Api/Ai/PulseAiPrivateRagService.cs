@@ -6,7 +6,7 @@ namespace ProjectTime.Api.Ai;
 
 public sealed class PulseAiPrivateRagService
 {
-    private const int Module025SowMaximumOutputTokens = 3_000;
+    private const int Module025SowMaximumOutputTokens = 1_800;
 
     private readonly PulseAiPrivateRagRepository _repository;
     private readonly PulseAiPrivateRetrievalService _retrieval;
@@ -371,7 +371,7 @@ public sealed class PulseAiPrivateRagService
             : $"""
                 Create one concise, cited, review-only work package for each phase in this exact order: Plan, Design, Implement, Validate, Release.
                 Project: {projectCode} {projectName}
-                Requested outcome: {(requestedOutcome.Length == 0 ? "Expand the saved Service Overview into the five required review phases." : requestedOutcome)}
+                Expand the saved Service Overview into the five required review phases.
                 Use only citation 1, the server-authorized saved Service Overview. Keep unsupported technical detail in assumptions or open questions.
                 """;
         var query = BuildQuery(
@@ -521,7 +521,9 @@ public sealed class PulseAiPrivateRagService
                 MaximumOutputTokens: query.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
                     ? Math.Min(options.MaximumOutputTokens, Module025SowMaximumOutputTokens)
                     : options.MaximumOutputTokens,
-                Temperature: flowHive ? 0.15m : query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature ? 0.05m : 0.10m,
+                Temperature: query.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
+                    ? 0.05m
+                    : flowHive ? 0.15m : query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature ? 0.05m : 0.10m,
                 CorrelationId: query.CorrelationId);
             var model = usePrivateModelWhenAvailable
                 ? await _model.GenerateAsync(modelRequest, options, cancellationToken)
@@ -1608,13 +1610,13 @@ public sealed class PulseAiPrivateRagService
             return $"""
                 You are Celar AI preparing a private, cited, review-only SOW/GSD draft for capability {feature}.
                 The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
-                Return only one valid compact JSON object matching PulseAiPrivateFlowHivePlan, with no markdown, commentary, or code fence. Keep the complete JSON below 10,000 characters so it closes before the governed response limit.
+                Return only one valid compact JSON object matching PulseAiPrivateFlowHivePlan, with no markdown, commentary, or code fence. Keep the complete JSON below 6,000 characters so it closes before the governed response limit.
                 Return exactly five executable tasks and no phase-summary tasks. Use one task for each phase in this exact order and spelling: Plan, Design, Implement, Validate, Release. Use WBS values 1.1, 2.1, 3.1, 4.1, and 5.1.
                 Use these exact task names in order: Scope and delivery readiness; Solution design and execution preparation; Controlled solution implementation; Technical and acceptance validation; Operational handoff and closeout. Never name a task only Plan, Design, Implement, Validate, or Release.
                 Every task must include wbs, name, description, estimatedDurationDays, estimatedHours, requiredRoles, predecessors, citationIds:[1], isAssumption, phase, priority, detailedSteps, inputs, outputs, acceptanceCriteria, validationSteps, customerResponsibilities, usSignalResponsibilities, prerequisites, risks, and openQuestions.
-                Use two concise complete sentences in detailedSteps and one concise complete sentence in every other task list. Each sentence must stay under 180 characters. Set unsupported product, platform, manufacturer, model, version, licensing, quantity, tool, system, interface, integration, access, and rollback lists to [] or omit those optional fields; never invent them.
+                Use two complete sentences under 100 characters each in detailedSteps. Outputs, acceptanceCriteria, and validationSteps must each contain one complete sentence under 100 characters. Every other task list must contain at most one sentence under 100 characters; use [] when citation 1 does not support a statement. Set unsupported product, platform, manufacturer, model, version, licensing, quantity, tool, system, interface, integration, access, and rollback lists to [] or omit those optional fields; never invent them.
                 Estimated duration and hours are non-binding assumptions until Solution Architect review, but both numeric values must be greater than zero. Each predecessor may reference only an earlier WBS value.
-                Include top-level objective, tasks, milestones, dependencies, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. Use at most one concise item in each top-level list and at most one milestone.
+                Include top-level objective, tasks, milestones:[], dependencies, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. Use at most one concise item under 100 characters in each top-level list.
                 Preserve missing technical detail as a labeled assumption or open question. The Solution Architect must modify and validate the draft before any separately authorized approval or baseline.
                 """;
         }
@@ -1644,8 +1646,8 @@ public sealed class PulseAiPrivateRagService
         {
             return $"""
                 Expand citation 1 into the exact five compact phase tasks required for {feature}.
-                Requested outcome: {(requestedOutcome.Length == 0 ? "Create the five-phase private SOW/GSD review draft." : requestedOutcome)}
-                Keep every task traceable to citation 1. Use assumptions and openQuestions for unsupported implementation specifics. Complete every required task field, remain below 10,000 JSON characters, and close the JSON object.
+                Create only the five-phase private SOW/GSD review draft; do not repeat or restate the incoming request.
+                Keep every task traceable to citation 1. Use assumptions and openQuestions for unsupported implementation specifics. Complete every required task field, remain below 6,000 JSON characters, and close the JSON object.
                 """;
         }
 
