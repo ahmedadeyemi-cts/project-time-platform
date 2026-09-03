@@ -1633,7 +1633,7 @@ public sealed class PulseAiPrivateRagService
         return new PulseAiPrivateFlowHivePlan(
             Objective: objective,
             Tasks: tasks,
-            Milestones: [],
+            Milestones: ParseModule025DetailedMilestones(root),
             Dependencies: Module025JsonStrings(root, "dependencies")
                 .Concat(tasks.SelectMany(task => task.Predecessors))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -1883,7 +1883,13 @@ public sealed class PulseAiPrivateRagService
                 var text = arrayItem.ValueKind switch
                 {
                     JsonValueKind.String => Limit(arrayItem.GetString(), 2_000, string.Empty),
-                    JsonValueKind.Object => ModelJsonString(arrayItem, "text", "description", "step", "name", "value"),
+                    JsonValueKind.Object => Module025JsonObjectText(
+                        arrayItem,
+                        "text",
+                        "description",
+                        "step",
+                        "name",
+                        "value"),
                     _ => throw new JsonException(
                         "Module 025 detailed-plan list fields must contain strings or text-bearing objects.")
                 };
@@ -1895,6 +1901,21 @@ public sealed class PulseAiPrivateRagService
             return items;
         }
         return [];
+    }
+
+    private static string Module025JsonObjectText(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!TryModelJsonProperty(element, propertyName, out var value)) continue;
+            if (value.ValueKind != JsonValueKind.String)
+                throw new JsonException(
+                    "Module 025 detailed-plan text-bearing objects must contain a JSON string value.");
+            return Limit(value.GetString(), 2_000, string.Empty);
+        }
+        return string.Empty;
     }
 
     private static IReadOnlyList<string> Module025JsonStrings(
@@ -1909,6 +1930,45 @@ public sealed class PulseAiPrivateRagService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(60)
             .ToArray();
+    }
+
+    private static IReadOnlyList<PulseAiPrivateFlowHiveMilestone> ParseModule025DetailedMilestones(
+        JsonElement root)
+    {
+        var milestones = new List<PulseAiPrivateFlowHiveMilestone>();
+        foreach (var item in ModelJsonArrayItems(root, 100, "milestones", "deliveryMilestones"))
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                throw new JsonException("Module 025 detailed-plan milestones must be JSON objects.");
+            var name = Module025JsonObjectText(item, "name", "title", "milestone");
+            var description = Module025JsonObjectText(item, "description", "objective", "outcome");
+            var proposedTiming = Module025JsonObjectText(item, "proposedTiming", "timing", "targetTiming");
+            var acceptanceEvidence = Module025JsonStrings(
+                item,
+                "acceptanceEvidence",
+                "acceptanceCriteria",
+                "evidence");
+            if (name.Length == 0
+                || description.Length < 40
+                || proposedTiming.Length == 0
+                || acceptanceEvidence.Count == 0
+                || ContainsCannedModule025ScopeLanguage(name)
+                || ContainsCannedModule025ScopeLanguage(description)
+                || ContainsCannedModule025ScopeLanguage(proposedTiming)
+                || acceptanceEvidence.Any(ContainsCannedModule025ScopeLanguage))
+            {
+                throw new JsonException(
+                    "Module 025 detailed-plan milestone did not meet the customer-ready evidence contract.");
+            }
+            milestones.Add(new PulseAiPrivateFlowHiveMilestone(
+                Name: name,
+                Description: description,
+                ProposedTiming: proposedTiming,
+                AcceptanceEvidence: acceptanceEvidence,
+                CitationIds: [1],
+                IsAssumption: Module025JsonBoolean(item, "isAssumption", "assumption") ?? true));
+        }
+        return asMilestones(milestones, 1);
     }
 
     private static string CanonicalModule025Phase(params string?[] values)

@@ -94,6 +94,17 @@ var module025Payload = JsonSerializer.Serialize(new
                 : Array.Empty<string>()
         })
     }),
+    milestones = new[]
+    {
+        new
+        {
+            name = "CUCM production upgrade decision gate",
+            description = "Confirm that the Cisco Unified Communications Manager production cluster is ready for the approved upgrade window and that every blocking readiness condition has a documented disposition.",
+            proposedTiming = "After readiness and design approval, before production implementation begins.",
+            acceptanceEvidence = new[] { "Approved readiness record, implementation decision, rollback authority, and customer change-window confirmation are retained." },
+            assumption = true
+        }
+    },
     roles = new[] { "Solution Architect", "Cisco Collaboration Engineer", "Project Manager" },
     assumptions = new[] { "Technical procedures and effort remain proposals until the Solution Architect validates the customer environment." },
     risks = new[] { "Unsupported components or unresolved customer prerequisites can prevent a safe upgrade." },
@@ -124,6 +135,9 @@ Assert(parsedModule025.Tasks.All(task => (task.ValidationSteps?.Count ?? 0) > 0)
 Assert(parsedModule025.Tasks.All(task => (task.Prerequisites?.Count ?? 0) > 0), "module025_every_task_has_prerequisites");
 Assert(parsedModule025.Tasks.All(task => (task.Risks?.Count ?? 0) > 0), "module025_every_task_has_risks");
 Assert(parsedModule025.Tasks.All(task => task.Description.Length >= 80), "module025_customer_ready_descriptions_preserved");
+Assert(parsedModule025.Milestones.Count == 1, "module025_model_milestone_preserved");
+Assert(parsedModule025.Milestones[0].CitationIds.SequenceEqual(new[] { 1 }), "module025_milestone_citation_bound");
+Assert(parsedModule025.Milestones[0].Name.Contains("CUCM", StringComparison.Ordinal), "module025_milestone_content_preserved");
 
 var rejectedGenericModule025 = false;
 try
@@ -154,7 +168,7 @@ try
         {
             module025Payload.Replace(
                 "\"Cisco Collaboration Engineer\"",
-                "true",
+                "{\"text\":true}",
                 StringComparison.Ordinal),
             module025Retrieval
         });
@@ -163,7 +177,7 @@ catch (TargetInvocationException exception) when (exception.InnerException is Js
 {
     rejectedNonTextModule025 = true;
 }
-Assert(rejectedNonTextModule025, "module025_non_text_list_entries_rejected");
+Assert(rejectedNonTextModule025, "module025_non_string_text_object_rejected");
 
 var sourcePlan = new ProjectFlowHivePlanRequest(
     ProjectId: Guid.NewGuid(),

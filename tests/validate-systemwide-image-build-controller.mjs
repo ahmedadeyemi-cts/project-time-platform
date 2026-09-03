@@ -238,6 +238,9 @@ assert.match(privateRagService, /Use the exact top-level property name tasks, no
 assert.match(privateRagService, /Module025DetailedPlanDiagnosticCode/);
 assert.match(privateRagService, /private_module025_detailed_plan_invalid_\{reason\}/);
 assert.match(privateRagService, /detailed-plan list fields must contain strings or text-bearing objects/);
+assert.match(privateRagService, /text-bearing objects must contain a JSON string value/);
+assert.match(privateRagService, /Milestones: ParseModule025DetailedMilestones\(root\)/);
+assert.match(privateRagService, /Module 025 detailed-plan milestone did not meet the customer-ready evidence contract/);
 assert.match(privateRagService, /ContainsCannedModule025ScopeLanguage/);
 assert.match(privateRagService, /value\.Contains\("cited scope"/);
 assert.match(privateRagService, /value\.Contains\("source-backed scope"/);
