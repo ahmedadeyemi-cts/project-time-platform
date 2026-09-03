@@ -107,6 +107,7 @@ jobs:
           .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/module025-protected-uat-control.yml
           .github/workflows/module033-project-forge-ci.yml
+          .github/workflows/deep-intelligence-read-contract-ci.yml
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
@@ -126,6 +127,8 @@ jobs:
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
           scripts/wait-containerapp-ready-revision.sh
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
           src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs
           src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs

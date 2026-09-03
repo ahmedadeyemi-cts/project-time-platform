@@ -97,7 +97,13 @@ public sealed class PulseAiPrivateModelClient
             httpRequest.Headers.Add("X-Pulse-AI-Correlation-Id", request.CorrelationId);
             httpRequest.Headers.Add("X-Pulse-AI-External-Escalation", "false");
 
-            var client = _httpClientFactory.CreateClient("PulseAiPrivateInference");
+            var clientName = string.Equals(
+                request.FeatureCode,
+                CelarAiCapabilityCatalog.SowGsdPlanning,
+                StringComparison.OrdinalIgnoreCase)
+                    ? "PulseAiPrivateSowInference"
+                    : "PulseAiPrivateInference";
+            var client = _httpClientFactory.CreateClient(clientName);
             using var response = await client.SendAsync(
                 httpRequest,
                 HttpCompletionOption.ResponseHeadersRead,

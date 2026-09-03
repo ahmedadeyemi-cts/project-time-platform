@@ -282,7 +282,8 @@ jobs:
               'Model Registry' \
               'Verified current fact' \
               '/api/celar-ai/v2/chat' \
-              '/api/project-flowhive/ai/production-generate'; do
+              '/api/project-flowhive/projects/' \
+              '/ai-planner/runs'; do
               assert_js_marker "$marker"
             done
             assert_css_marker '.celar-production-platform'

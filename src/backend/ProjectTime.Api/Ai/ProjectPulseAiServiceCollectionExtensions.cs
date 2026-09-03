@@ -38,6 +38,15 @@ public static class ProjectPulseAiServiceCollectionExtensions
             client.Timeout = TimeSpan.FromMinutes(5);
         })
         .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
+        // SOW/GSD generation deliberately runs behind a durable queue. Its
+        // comprehensive, structured five-phase response can exceed the normal
+        // interactive inference window on the governed private model, while
+        // every other private AI surface retains the five-minute ceiling.
+        services.AddHttpClient("PulseAiPrivateSowInference", client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(12);
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
         services.AddHttpClient("PulseAiPrivateMalwareScan", client =>
         {
             client.Timeout = TimeSpan.FromMinutes(5);

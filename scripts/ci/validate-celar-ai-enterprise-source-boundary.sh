@@ -172,12 +172,46 @@ if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]
     <<<"$PROHIBITED" || true)"
   test -f .github/workflows/module025-protected-uat-control.yml
   test -f scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
-  grep -Fxq '.github/workflows/projectpulse-deploy-test.yml' <<<"$CHANGED"
-  grep -Fxq 'deployment/containers/web/default.conf.template' <<<"$CHANGED"
-  grep -Fq 'Run protected-Test Module 025 SOW/GSD generation lifecycle UAT' \
-    .github/workflows/projectpulse-deploy-test.yml
-  ! grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
-  ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
+  if grep -Fxq '.github/workflows/projectpulse-deploy-test.yml' <<<"$CHANGED" \
+    || grep -Fxq 'deployment/containers/web/default.conf.template' <<<"$CHANGED"; then
+    grep -Fxq '.github/workflows/projectpulse-deploy-test.yml' <<<"$CHANGED"
+    grep -Fxq 'deployment/containers/web/default.conf.template' <<<"$CHANGED"
+    grep -Fq 'Run protected-Test Module 025 SOW/GSD generation lifecycle UAT' \
+      .github/workflows/projectpulse-deploy-test.yml
+    ! grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
+    ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
+  else
+    cat > "${TMPDIR:-/tmp}/module025-worker-repair-expected-files" <<'FILES'
+    .github/workflows/deep-intelligence-read-contract-ci.yml
+    .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+    .github/workflows/projectpulse-release-test-control-ci.yml
+    scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+    scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+    src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+    src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
+    src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+    tests/validate-systemwide-image-build-controller.mjs
+FILES
+    sed -i 's/^[[:space:]]*//' "${TMPDIR:-/tmp}/module025-worker-repair-expected-files"
+    LC_ALL=C sort -u "${TMPDIR:-/tmp}/module025-worker-repair-expected-files" \
+      -o "${TMPDIR:-/tmp}/module025-worker-repair-expected-files"
+    printf '%s\n' "$CHANGED" | LC_ALL=C sort -u > "${TMPDIR:-/tmp}/module025-worker-repair-actual-files"
+    cmp -s \
+      "${TMPDIR:-/tmp}/module025-worker-repair-expected-files" \
+      "${TMPDIR:-/tmp}/module025-worker-repair-actual-files" || {
+      echo 'The Module 025 durable worker repair differs from its exact governed file set.' >&2
+      diff -u \
+        "${TMPDIR:-/tmp}/module025-worker-repair-expected-files" \
+        "${TMPDIR:-/tmp}/module025-worker-repair-actual-files" >&2 || true
+      exit 1
+    }
+    grep -Fq 'PulseAiPrivateSowInference' \
+      src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs \
+      src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
+    grep -Fq 'WorkerLockConnectionString' \
+      src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+    echo 'CELAR_AI_MODULE025_DURABLE_WORKER_REPAIR_BOUNDARY=PASSED'
+  fi
   grep -Fq 'module025_detailed_scope_generation_queued' \
     src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
   grep -Fq 'ProcessNextQueuedGenerationAsync' \
