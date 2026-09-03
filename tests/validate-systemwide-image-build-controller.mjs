@@ -104,6 +104,11 @@ assert.match(module025Uat, /\/generations\/\$GENERATION_ID/);
 assert.match(module025Uat, /\.terminal == true/);
 assert.match(module025Uat, /\["plan","design","implement","validate","release"\]/);
 assert.match(module025Uat, /\.engagement\.status == "review_ready"/);
+assert.match(
+  module025Uat,
+  /\.engagement\.aiMetadata\.CorrelationId \/\/ \.engagement\.aiMetadata\.correlationId/,
+  'Module 025 UAT must accept the persisted metadata dictionary casing while retaining camel-case compatibility'
+);
 assert.match(module025Uat, /module025_archived/);
 assert.match(module025Uat, /productionMutation:false/);
 assert.match(module025Uat, /demo\.manager@ussignal\.local/);
@@ -241,6 +246,7 @@ assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_EXACT_PHASE_AUTHORITY_BOUN
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_BOUNDED_PRIVATE_OUTPUT_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_CITED_PHASE_EXPANSION_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_TOLERANT_CITED_SCOPE_BOUNDARY=PASSED/);
+assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_READBACK_METADATA_CASE_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
 for (const controllerValidator of [releaseControllerValidator, releaseControllerReregisteredValidator]) {
   assert.match(controllerValidator, /\.github\/workflows\/deep-intelligence-read-contract-ci\.yml/);
