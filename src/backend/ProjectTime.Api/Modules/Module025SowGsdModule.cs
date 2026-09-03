@@ -668,7 +668,7 @@ public static class Module025SowGsdModule
                     "Celar AI returned no detailed work packages. No generic P/D/I/V/R scope was substituted.",
                     Clean(composition.CorrelationId, 160),
                     false,
-                    CompositionDiagnosticCode(composition));
+                    "private_sow_work_packages_missing");
             }
 
             generated = PhaseCodes.ToDictionary(code => code, code => new GeneratedPhase(code), StringComparer.OrdinalIgnoreCase);
