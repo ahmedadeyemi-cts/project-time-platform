@@ -170,9 +170,20 @@ assert.doesNotMatch(
   /SowGsdPlanning/,
   'Module 025 SOW generation must fail closed when the approved private model does not complete'
 );
+assert.match(privateRagService, /Module025SowMaximumOutputTokens = 3_000/);
+assert.match(
+  privateRagService,
+  /Math\.Min\(options\.MaximumOutputTokens, Module025SowMaximumOutputTokens\)/
+);
+assert.match(privateRagService, /Return exactly five executable tasks/);
+assert.match(privateRagService, /Keep the complete JSON below 10,000 characters/);
 assert.match(aiServices, /AddHttpClient\("PulseAiPrivateSowInference"/);
 assert.match(aiServices, /PulseAiPrivateSowInference[\s\S]*?TimeSpan\.FromMinutes\(12\)/);
 assert.match(privateModelClient, /CelarAiCapabilityCatalog\.SowGsdPlanning[\s\S]*?"PulseAiPrivateSowInference"/);
+assert.match(privateModelClient, /private_model_output_truncated/);
+assert.match(privateModelClient, /ReadFinishReason/);
+assert.match(module025Module, /CompositionDiagnosticCode/);
+assert.match(module025Module, /private_sow_phase_coverage_incomplete/);
 assert.match(privateRagRepository, /citation\.SourceType,[\s\S]*?"module025_saved_service_overview"/);
 assert.match(privateRagRepository, /@answer_run_id,NULL,NULL,NULL,NULL,@source_type,@source_module/);
 assert.doesNotMatch(webProxy, /proxy_read_timeout 230s;/);
@@ -191,6 +202,7 @@ for (const source of [module033Workflow, celarSourceBoundary, celarPr630Validato
 }
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_PROTECTED_UAT_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_DURABLE_WORKER_REPAIR_BOUNDARY=PASSED/);
+assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_COMPACT_PRIVATE_PLAN_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
 for (const controllerValidator of [releaseControllerValidator, releaseControllerReregisteredValidator]) {
   assert.match(controllerValidator, /\.github\/workflows\/deep-intelligence-read-contract-ci\.yml/);

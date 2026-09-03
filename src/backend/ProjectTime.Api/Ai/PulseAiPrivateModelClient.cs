@@ -135,6 +135,13 @@ public sealed class PulseAiPrivateModelClient
                     PulseAiPrivateModelResponsePolicy.SafetyRefusalDiagnostic,
                     DateTimeOffset.UtcNow);
             }
+            if (IsOutputLimitFinishReason(ReadFinishReason(json.RootElement)))
+            {
+                return Failure(
+                    "private_model_output_truncated",
+                    "private_model_output_truncated",
+                    DateTimeOffset.UtcNow);
+            }
             var content = ReadContent(json.RootElement);
             if (string.IsNullOrWhiteSpace(content))
             {
@@ -146,7 +153,10 @@ public sealed class PulseAiPrivateModelClient
             content = StripCodeFence(content.Trim());
             if (content.Length > options.MaximumAnswerCharacters)
             {
-                content = content[..options.MaximumAnswerCharacters];
+                return Failure(
+                    "private_model_output_too_large",
+                    "private_model_output_too_large",
+                    DateTimeOffset.UtcNow);
             }
             using var validation = JsonDocument.Parse(content, new JsonDocumentOptions { MaxDepth = 128 });
             if (validation.RootElement.ValueKind != JsonValueKind.Object)
@@ -280,6 +290,22 @@ public sealed class PulseAiPrivateModelClient
         }
         return string.Empty;
     }
+
+    private static string ReadFinishReason(JsonElement root)
+    {
+        if (root.TryGetProperty("choices", out var choices)
+            && choices.ValueKind == JsonValueKind.Array
+            && choices.GetArrayLength() > 0
+            && choices[0].TryGetProperty("finish_reason", out var finishReason)
+            && finishReason.ValueKind == JsonValueKind.String)
+        {
+            return finishReason.GetString() ?? string.Empty;
+        }
+        return string.Empty;
+    }
+
+    private static bool IsOutputLimitFinishReason(string finishReason) =>
+        finishReason.Trim().ToLowerInvariant() is "length" or "max_tokens" or "max_output_tokens";
 
     private static string StripCodeFence(string value)
     {

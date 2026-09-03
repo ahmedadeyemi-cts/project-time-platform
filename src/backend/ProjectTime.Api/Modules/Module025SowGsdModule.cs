@@ -650,7 +650,7 @@ public static class Module025SowGsdModule
                 "Celar AI did not return a reviewable SOW draft. No generic scope or fabricated level of effort was substituted.",
                 Clean(composition.CorrelationId, 160),
                 false,
-                Clean(composition.Status, 160));
+                CompositionDiagnosticCode(composition));
         }
 
         Dictionary<string, GeneratedPhase> generated;
@@ -668,7 +668,7 @@ public static class Module025SowGsdModule
                     "Celar AI returned no detailed work packages. No generic P/D/I/V/R scope was substituted.",
                     Clean(composition.CorrelationId, 160),
                     false,
-                    Clean(composition.Status, 160));
+                    CompositionDiagnosticCode(composition));
             }
 
             generated = PhaseCodes.ToDictionary(code => code, code => new GeneratedPhase(code), StringComparer.OrdinalIgnoreCase);
@@ -694,6 +694,21 @@ public static class Module025SowGsdModule
                 AddDistinct(phase.ValidationSteps, JsonStrings(package, "ValidationSteps"));
                 AddDistinct(phase.Risks, JsonStrings(package, "Risks"));
                 foreach (var citationId in JsonIntegers(package, "CitationIds")) phase.CitationIds.Add(citationId);
+            }
+
+            var missingPhaseCodes = generated
+                .Where(item => item.Value.PackageCount == 0)
+                .Select(item => item.Key)
+                .ToArray();
+            if (missingPhaseCodes.Length > 0)
+            {
+                return new(
+                    StatusCodes.Status422UnprocessableEntity,
+                    "module025_ai_evidence_limited",
+                    "Celar AI did not return complete Plan, Design, Implement, Validate, and Release coverage. The saved SOW/GSD draft was not changed.",
+                    Clean(composition.CorrelationId, 160),
+                    false,
+                    "private_sow_phase_coverage_incomplete");
             }
 
             sowSections = JsonSerializer.SerializeToElement(new
@@ -1676,6 +1691,18 @@ public static class Module025SowGsdModule
     private static string PhaseLabel(string phaseCode) => phaseCode switch { "plan" => "Plan", "design" => "Design", "implement" => "Implement", "validate" => "Validate", "release" => "Release", _ => phaseCode };
     private static IReadOnlyList<string> CleanList(IEnumerable<string>? values) => (values ?? Array.Empty<string>()).Select(value => Clean(value, 12_000)).Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Take(500).ToArray();
     private static string Clean(string? value, int maximum) { var clean = value?.Trim() ?? string.Empty; return clean.Length <= maximum ? clean : clean[..maximum]; }
+    private static string CompositionDiagnosticCode(CelarAiComposeResult composition)
+    {
+        var privateDecision = (composition.TargetDecisions ?? [])
+            .FirstOrDefault(decision =>
+                string.Equals(decision.Target, CelarAiCapabilityTargets.CelarAi, StringComparison.OrdinalIgnoreCase)
+                && (string.Equals(decision.Outcome, "failed", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(decision.Outcome, "refused", StringComparison.OrdinalIgnoreCase)));
+        var privateReason = privateDecision?.ReasonCode;
+        return Clean(string.IsNullOrWhiteSpace(privateReason)
+            ? composition.Status
+            : privateReason, 160);
+    }
     private static DateTimeOffset? NullableTimestamp(NpgsqlDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetFieldValue<DateTimeOffset>(ordinal);
     private static void AddNullableGuid(NpgsqlCommand command, string name, Guid? value) => command.Parameters.AddWithValue(name, value.HasValue ? (object)value.Value : DBNull.Value);
 
