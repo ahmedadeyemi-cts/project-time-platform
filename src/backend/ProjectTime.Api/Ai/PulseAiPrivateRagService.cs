@@ -6,6 +6,8 @@ namespace ProjectTime.Api.Ai;
 
 public sealed class PulseAiPrivateRagService
 {
+    private const int Module025SowMaximumOutputTokens = 3_000;
+
     private readonly PulseAiPrivateRagRepository _repository;
     private readonly PulseAiPrivateRetrievalService _retrieval;
     private readonly PulseAiPrivateModelClient _model;
@@ -357,14 +359,21 @@ public sealed class PulseAiPrivateRagService
         var scopeAuthorityInstruction = authoritativeSource is null
             ? "First locate and prioritize the approved SOW or Statement of Work sections titled Scope of Services, Scope of Service, Services, Implementation Scope, In Scope, Deliverables, or Acceptance Criteria. Treat those sections as the primary authority for what work is included. Preserve exclusions and conflicts instead of expanding them into tasks."
             : "Use the server-authorized Module 025 Saved Service Overview source as the primary scope input for this review-only draft. It is author-saved input, not an approved contract. Preserve missing details as assumptions or open questions and never imply that the draft is approved or binding.";
-        var question = $"""
-            Create a comprehensive, cited, customer-ready delivery draft for Project Manager and Engineering review.
-            Project: {projectCode} {projectName}
-            Requested outcome: {(requestedOutcome.Length == 0 ? "Use the authorized scope, deliverables, constraints, responsibilities, acceptance criteria, and technical design evidence." : requestedOutcome)}
-            {scopeAuthorityInstruction}
-            Organize every supported work package under exactly these phases and in this order: Plan, Design, Implement, Validate, Release. Use the phase field on every task.
-            Automatically fill every supported section. For each work package or task, provide ordered execution steps, inputs, outputs, validation, measurable acceptance criteria, prerequisites, responsibilities, risks, open questions, estimated duration and hours, priority, dependencies, required roles, and source citations.
-            """;
+        var question = authoritativeSource is null
+            ? $"""
+                Create a comprehensive, cited, customer-ready delivery draft for Project Manager and Engineering review.
+                Project: {projectCode} {projectName}
+                Requested outcome: {(requestedOutcome.Length == 0 ? "Use the authorized scope, deliverables, constraints, responsibilities, acceptance criteria, and technical design evidence." : requestedOutcome)}
+                {scopeAuthorityInstruction}
+                Organize every supported work package under exactly these phases and in this order: Plan, Design, Implement, Validate, Release. Use the phase field on every task.
+                Automatically fill every supported section. For each work package or task, provide ordered execution steps, inputs, outputs, validation, measurable acceptance criteria, prerequisites, responsibilities, risks, open questions, estimated duration and hours, priority, dependencies, required roles, and source citations.
+                """
+            : $"""
+                Create one concise, cited, review-only work package for each phase in this exact order: Plan, Design, Implement, Validate, Release.
+                Project: {projectCode} {projectName}
+                Requested outcome: {(requestedOutcome.Length == 0 ? "Expand the saved Service Overview into the five required review phases." : requestedOutcome)}
+                Use only citation 1, the server-authorized saved Service Overview. Keep unsupported technical detail in assumptions or open questions.
+                """;
         var query = BuildQuery(
             actualUserId: actualUserId,
             effectiveUserId: effectiveUserId,
@@ -509,7 +518,9 @@ public sealed class PulseAiPrivateRagService
                 UserInstruction: userInstruction,
                 Sources: retrieval.Chunks,
                 OutputSchemaName: modelSchema,
-                MaximumOutputTokens: options.MaximumOutputTokens,
+                MaximumOutputTokens: query.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
+                    ? Math.Min(options.MaximumOutputTokens, Module025SowMaximumOutputTokens)
+                    : options.MaximumOutputTokens,
                 Temperature: flowHive ? 0.15m : query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature ? 0.05m : 0.10m,
                 CorrelationId: query.CorrelationId);
             var model = usePrivateModelWhenAvailable
@@ -1580,35 +1591,61 @@ public sealed class PulseAiPrivateRagService
 
     private static string FlowHiveSystemInstruction(
         string feature,
-        bool hasModule025AuthoritativeScope = false) => $"""
-        You are Celar AI preparing a private, cited, customer-facing delivery artifact for capability {feature}.
-        {(hasModule025AuthoritativeScope
-            ? "The supplied Module 025 Saved Service Overview is server-authorized author input for this review-only draft. Use it as the primary scope source, but never describe it or the generated draft as approved, published, contractually binding, or customer-accepted. Convert unsupported detail only into labeled assumptions or open questions."
-            : "Locate the approved SOW Scope of Services or equivalent in-scope and deliverables sections first. Treat them as the primary delivery authority, then use approved GSD, architecture, design, order, and supporting evidence to explain how the authorized scope can be conducted. Never turn an exclusion, option, unsupported inference, or conflict into committed work.")}
-        Extract and organize scope, deliverables, exclusions, responsibilities, prerequisites, quantities, locations, acceptance criteria, constraints, assumptions, risks, dependencies, milestones, required roles, and open questions.
-        Classify every executable task under exactly one of these phases and use this exact phase value: Plan, Design, Implement, Validate, or Release. The final plan order is Plan, then Design, then Implement, then Validate, then Release.
-        Return structured tasks and milestones with source citation IDs. Automatically populate every task field supported by PulseAiPrivateFlowHiveTask.
-        Each task must be executable by a delivery professional without guessing. Include an ordered detailedSteps list; explicit inputs and outputs; validationSteps; measurable acceptanceCriteria; customerResponsibilities; usSignalResponsibilities; prerequisites; task-specific risks and openQuestions; phase; priority; estimatedDurationDays; estimatedHours; roles; predecessors; citations; and an assumption flag.
-        Every detailed step must identify the actor, action, required input or prerequisite, expected output, validation or evidence, and completion condition. Use complete customer-ready sentences, not vague labels such as configure, test, or validate without explaining what is performed and how success is established.
-        Do not calculate authoritative dates inside the language model; describe proposed timing and dependencies for the deterministic FlowHive schedule engine.
-        Do not baseline a plan, assign a person, reserve capacity, publish to a customer, change a contract, or commit a customer date.
-        Clearly label every unsupported duration, hour estimate, dependency, milestone, responsibility, acceptance criterion, or role as an assumption and place unresolved facts in openQuestions.
-        The Project Manager and Engineering must modify and validate the draft before any separately authorized baseline.
-        Return valid JSON matching PulseAiPrivateFlowHivePlan.
-        """;
+        bool hasModule025AuthoritativeScope = false)
+    {
+        if (hasModule025AuthoritativeScope)
+        {
+            return $"""
+                You are Celar AI preparing a private, cited, review-only SOW/GSD draft for capability {feature}.
+                The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
+                Return only one valid compact JSON object matching PulseAiPrivateFlowHivePlan, with no markdown, commentary, or code fence. Keep the complete JSON below 10,000 characters so it closes before the governed response limit.
+                Return exactly five executable tasks and no phase-summary tasks. Use one task for each phase in this exact order and spelling: Plan, Design, Implement, Validate, Release. Use WBS values 1.1, 2.1, 3.1, 4.1, and 5.1.
+                Every task must include wbs, name, description, estimatedDurationDays, estimatedHours, requiredRoles, predecessors, citationIds:[1], isAssumption, phase, priority, detailedSteps, inputs, outputs, acceptanceCriteria, validationSteps, customerResponsibilities, usSignalResponsibilities, prerequisites, risks, and openQuestions.
+                Use two concise complete sentences in detailedSteps and one concise complete sentence in every other task list. Each sentence must stay under 180 characters. Set unsupported product, platform, manufacturer, model, version, licensing, quantity, tool, system, interface, integration, access, and rollback lists to [] or omit those optional fields; never invent them.
+                Estimated duration and hours are non-binding assumptions until Solution Architect review, but both numeric values must be greater than zero. Each predecessor may reference only an earlier WBS value.
+                Include top-level objective, tasks, milestones, dependencies, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. Use at most one concise item in each top-level list and at most one milestone.
+                Preserve missing technical detail as a labeled assumption or open question. The Solution Architect must modify and validate the draft before any separately authorized approval or baseline.
+                """;
+        }
+
+        return $"""
+            You are Celar AI preparing a private, cited, customer-facing delivery artifact for capability {feature}.
+            Locate the approved SOW Scope of Services or equivalent in-scope and deliverables sections first. Treat them as the primary delivery authority, then use approved GSD, architecture, design, order, and supporting evidence to explain how the authorized scope can be conducted. Never turn an exclusion, option, unsupported inference, or conflict into committed work.
+            Extract and organize scope, deliverables, exclusions, responsibilities, prerequisites, quantities, locations, acceptance criteria, constraints, assumptions, risks, dependencies, milestones, required roles, and open questions.
+            Classify every executable task under exactly one of these phases and use this exact phase value: Plan, Design, Implement, Validate, or Release. The final plan order is Plan, then Design, then Implement, then Validate, then Release.
+            Return structured tasks and milestones with source citation IDs. Automatically populate every task field supported by PulseAiPrivateFlowHiveTask.
+            Each task must be executable by a delivery professional without guessing. Include an ordered detailedSteps list; explicit inputs and outputs; validationSteps; measurable acceptanceCriteria; customerResponsibilities; usSignalResponsibilities; prerequisites; task-specific risks and openQuestions; phase; priority; estimatedDurationDays; estimatedHours; roles; predecessors; citations; and an assumption flag.
+            Every detailed step must identify the actor, action, required input or prerequisite, expected output, validation or evidence, and completion condition. Use complete customer-ready sentences, not vague labels such as configure, test, or validate without explaining what is performed and how success is established.
+            Do not calculate authoritative dates inside the language model; describe proposed timing and dependencies for the deterministic FlowHive schedule engine.
+            Do not baseline a plan, assign a person, reserve capacity, publish to a customer, change a contract, or commit a customer date.
+            Clearly label every unsupported duration, hour estimate, dependency, milestone, responsibility, acceptance criterion, or role as an assumption and place unresolved facts in openQuestions.
+            The Project Manager and Engineering must modify and validate the draft before any separately authorized baseline.
+            Return valid JSON matching PulseAiPrivateFlowHivePlan.
+            """;
+    }
 
     private static string FlowHiveUserInstruction(
         string feature,
         string requestedOutcome,
-        bool hasModule025AuthoritativeScope = false) => $"""
-        Prepare the most complete reviewable WBS, work packages, milestones, dependency logic, roles, assumptions, risks, out-of-scope items, open questions, and source conflicts supported by the private evidence for {feature}.
-        Requested outcome: {(requestedOutcome.Length == 0 ? "Create the full private document-to-plan draft." : requestedOutcome)}
-        {(hasModule025AuthoritativeScope
-            ? "Begin with the cited Module 025 Saved Service Overview and expand only its supported scope into logically ordered, executable draft tasks. Treat every inferred implementation detail as an assumption or open question requiring Solution Architect review."
-            : "Begin with the approved SOW Scope of Services.")} Expand each supported scope component into logically ordered, executable tasks distributed across Plan, Design, Implement, Validate, and Release. Do not repeat phase summary rows as tasks; return the detailed child work packages and their phase values.
-        Every executable task must contain at least one citationIds value that references the supplied authorized evidence. Never emit a phase-only summary row such as a task named only Plan, Design, Implement, Validate, or Release. If a task cannot be source-cited, do not return it as executable work; record the missing fact in openQuestions instead.
-        Automatically fill every requested section and every structured task field. Preserve source citations and identify every missing contractual or technical input. Do not leave a field empty when the evidence supports it; when evidence does not support a value, provide a clearly labeled assumption or open question instead of inventing a fact.
-        """;
+        bool hasModule025AuthoritativeScope = false)
+    {
+        if (hasModule025AuthoritativeScope)
+        {
+            return $"""
+                Expand citation 1 into the exact five compact phase tasks required for {feature}.
+                Requested outcome: {(requestedOutcome.Length == 0 ? "Create the five-phase private SOW/GSD review draft." : requestedOutcome)}
+                Keep every task traceable to citation 1. Use assumptions and openQuestions for unsupported implementation specifics. Complete every required task field, remain below 10,000 JSON characters, and close the JSON object.
+                """;
+        }
+
+        return $"""
+            Prepare the most complete reviewable WBS, work packages, milestones, dependency logic, roles, assumptions, risks, out-of-scope items, open questions, and source conflicts supported by the private evidence for {feature}.
+            Requested outcome: {(requestedOutcome.Length == 0 ? "Create the full private document-to-plan draft." : requestedOutcome)}
+            Begin with the approved SOW Scope of Services. Expand each supported scope component into logically ordered, executable tasks distributed across Plan, Design, Implement, Validate, and Release. Do not repeat phase summary rows as tasks; return the detailed child work packages and their phase values.
+            Every executable task must contain at least one citationIds value that references the supplied authorized evidence. Never emit a phase-only summary row such as a task named only Plan, Design, Implement, Validate, or Release. If a task cannot be source-cited, do not return it as executable work; record the missing fact in openQuestions instead.
+            Automatically fill every requested section and every structured task field. Preserve source citations and identify every missing contractual or technical input. Do not leave a field empty when the evidence supports it; when evidence does not support a value, provide a clearly labeled assumption or open question instead of inventing a fact.
+            """;
+    }
 
     private static string PlanningFeature(string? feature) => feature?.Trim().ToLowerInvariant() switch
     {
