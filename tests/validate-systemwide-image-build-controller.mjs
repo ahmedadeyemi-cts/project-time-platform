@@ -177,12 +177,20 @@ assert.match(
 );
 assert.match(privateRagService, /Return exactly five executable tasks/);
 assert.match(privateRagService, /Keep the complete JSON below 10,000 characters/);
+assert.match(privateRagService, /hasExecutableDetail/);
+assert.match(privateRagService, /Never name a task only Plan, Design, Implement, Validate, or Release/);
+assert.doesNotMatch(
+  privateRagService,
+  /return string\.Equals\(task\.Name\?\.Trim\(\), phase, StringComparison\.OrdinalIgnoreCase\);/,
+  'a substantive private-model task must not be discarded solely because its name matches its phase'
+);
 assert.match(aiServices, /AddHttpClient\("PulseAiPrivateSowInference"/);
 assert.match(aiServices, /PulseAiPrivateSowInference[\s\S]*?TimeSpan\.FromMinutes\(12\)/);
 assert.match(privateModelClient, /CelarAiCapabilityCatalog\.SowGsdPlanning[\s\S]*?"PulseAiPrivateSowInference"/);
 assert.match(privateModelClient, /private_model_output_truncated/);
 assert.match(privateModelClient, /ReadFinishReason/);
 assert.match(module025Module, /CompositionDiagnosticCode/);
+assert.match(module025Module, /private_sow_work_packages_missing/);
 assert.match(module025Module, /private_sow_phase_coverage_incomplete/);
 assert.match(privateRagRepository, /citation\.SourceType,[\s\S]*?"module025_saved_service_overview"/);
 assert.match(privateRagRepository, /@answer_run_id,NULL,NULL,NULL,NULL,@source_type,@source_module/);
@@ -203,6 +211,7 @@ for (const source of [module033Workflow, celarSourceBoundary, celarPr630Validato
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_PROTECTED_UAT_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_DURABLE_WORKER_REPAIR_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_COMPACT_PRIVATE_PLAN_BOUNDARY=PASSED/);
+assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_SUBSTANTIVE_PHASE_TASK_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
 for (const controllerValidator of [releaseControllerValidator, releaseControllerReregisteredValidator]) {
   assert.match(controllerValidator, /\.github\/workflows\/deep-intelligence-read-contract-ci\.yml/);

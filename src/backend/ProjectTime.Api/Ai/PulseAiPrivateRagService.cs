@@ -731,8 +731,8 @@ public sealed class PulseAiPrivateRagService
 
             // The shared planning orchestrator requires every executable model task
             // to cite current authorized evidence. Keep that contract aligned here:
-            // structural phase-summary rows are not executable work packages and are
-            // removed, while any remaining uncited task causes the model artifact to
+            // structure-only phase-summary rows are not executable work packages and
+            // are removed, while any remaining uncited task causes the model artifact to
             // fail closed into the existing deterministic citation-preserving scaffold.
             var taskCitationsComplete = plan.Tasks.Count > 0
                 && plan.Tasks.All(task => task.CitationIds.Count > 0);
@@ -1052,7 +1052,17 @@ public sealed class PulseAiPrivateRagService
         var phase = task.Phase?.Trim() ?? string.Empty;
         if (phase is not ("Plan" or "Design" or "Implement" or "Validate" or "Release"))
             return false;
-        return string.Equals(task.Name?.Trim(), phase, StringComparison.OrdinalIgnoreCase);
+        if (!string.Equals(task.Name?.Trim(), phase, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // A small private model can use the phase itself as a concise task name.
+        // Preserve that task when it contains the execution evidence required to
+        // act on and review it; remove only a structure-only phase heading.
+        var hasExecutableDetail = (task.DetailedSteps?.Count ?? 0) > 0
+            && (task.Outputs?.Count ?? 0) > 0
+            && (task.AcceptanceCriteria?.Count ?? 0) > 0
+            && (task.ValidationSteps?.Count ?? 0) > 0;
+        return !hasExecutableDetail;
     }
 
     private static string DeterministicPlanningPhase(
@@ -1600,6 +1610,7 @@ public sealed class PulseAiPrivateRagService
                 The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
                 Return only one valid compact JSON object matching PulseAiPrivateFlowHivePlan, with no markdown, commentary, or code fence. Keep the complete JSON below 10,000 characters so it closes before the governed response limit.
                 Return exactly five executable tasks and no phase-summary tasks. Use one task for each phase in this exact order and spelling: Plan, Design, Implement, Validate, Release. Use WBS values 1.1, 2.1, 3.1, 4.1, and 5.1.
+                Use these exact task names in order: Scope and delivery readiness; Solution design and execution preparation; Controlled solution implementation; Technical and acceptance validation; Operational handoff and closeout. Never name a task only Plan, Design, Implement, Validate, or Release.
                 Every task must include wbs, name, description, estimatedDurationDays, estimatedHours, requiredRoles, predecessors, citationIds:[1], isAssumption, phase, priority, detailedSteps, inputs, outputs, acceptanceCriteria, validationSteps, customerResponsibilities, usSignalResponsibilities, prerequisites, risks, and openQuestions.
                 Use two concise complete sentences in detailedSteps and one concise complete sentence in every other task list. Each sentence must stay under 180 characters. Set unsupported product, platform, manufacturer, model, version, licensing, quantity, tool, system, interface, integration, access, and rollback lists to [] or omit those optional fields; never invent them.
                 Estimated duration and hours are non-binding assumptions until Solution Architect review, but both numeric values must be greater than zero. Each predecessor may reference only an earlier WBS value.
