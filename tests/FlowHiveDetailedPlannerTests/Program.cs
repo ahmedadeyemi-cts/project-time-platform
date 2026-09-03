@@ -85,7 +85,13 @@ var module025Payload = JsonSerializer.Serialize(new
                 $"Execute the reviewed {phase.ToLowerInvariant()} procedure for work package {packageIndex}, retain objective before-and-after evidence, and verify the stated completion condition."
             },
             requiredInputs = new[] { "Customer-approved CUCM inventory, compatibility evidence, access plan, and change constraints." },
-            deliverables = new[] { $"Documented {phase.ToLowerInvariant()} output and evidence package {packageIndex}." }
+            deliverables = new[] { $"Documented {phase.ToLowerInvariant()} output and evidence package {packageIndex}." },
+            acceptance = packageIndex == 1
+                ? new[] { $"Record the task-specific completion decision for {phase.ToLowerInvariant()} work package {packageIndex}." }
+                : Array.Empty<string>(),
+            customerActions = packageIndex == 1
+                ? new[] { $"Confirm the task-specific customer decision for {phase.ToLowerInvariant()} work package {packageIndex}." }
+                : Array.Empty<string>()
         })
     }),
     roles = new[] { "Solution Architect", "Cisco Collaboration Engineer", "Project Manager" },
@@ -112,6 +118,11 @@ Assert(parsedModule025.Tasks.All(task => task.EstimatedDurationDays > 0m && task
 Assert(parsedModule025.Tasks.All(task => (task.DetailedSteps?.Count ?? 0) >= 2), "module025_structured_and_string_steps_preserved");
 Assert(parsedModule025.Tasks.All(task => (task.CustomerResponsibilities?.Count ?? 0) > 0), "module025_phase_level_responsibilities_inherited");
 Assert(parsedModule025.Tasks.All(task => (task.AcceptanceCriteria?.Count ?? 0) > 0), "module025_phase_level_acceptance_inherited");
+Assert(parsedModule025.Tasks.First().CustomerResponsibilities!.Count == 2, "module025_task_and_phase_responsibilities_merged");
+Assert(parsedModule025.Tasks.First().AcceptanceCriteria!.Count == 2, "module025_task_and_phase_acceptance_merged");
+Assert(parsedModule025.Tasks.All(task => (task.ValidationSteps?.Count ?? 0) > 0), "module025_every_task_has_validation");
+Assert(parsedModule025.Tasks.All(task => (task.Prerequisites?.Count ?? 0) > 0), "module025_every_task_has_prerequisites");
+Assert(parsedModule025.Tasks.All(task => (task.Risks?.Count ?? 0) > 0), "module025_every_task_has_risks");
 Assert(parsedModule025.Tasks.All(task => task.Description.Length >= 80), "module025_customer_ready_descriptions_preserved");
 
 var rejectedGenericModule025 = false;
@@ -133,6 +144,26 @@ catch (TargetInvocationException exception) when (exception.InnerException is Js
     rejectedGenericModule025 = true;
 }
 Assert(rejectedGenericModule025, "module025_generic_cited_scope_language_rejected");
+
+var rejectedNonTextModule025 = false;
+try
+{
+    _ = module025Parser.Invoke(
+        null,
+        new object?[]
+        {
+            module025Payload.Replace(
+                "\"Cisco Collaboration Engineer\"",
+                "true",
+                StringComparison.Ordinal),
+            module025Retrieval
+        });
+}
+catch (TargetInvocationException exception) when (exception.InnerException is JsonException)
+{
+    rejectedNonTextModule025 = true;
+}
+Assert(rejectedNonTextModule025, "module025_non_text_list_entries_rejected");
 
 var sourcePlan = new ProjectFlowHivePlanRequest(
     ProjectId: Guid.NewGuid(),

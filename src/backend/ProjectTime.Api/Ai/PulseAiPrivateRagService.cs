@@ -1595,6 +1595,12 @@ public sealed class PulseAiPrivateRagService
                 || (task.DetailedSteps?.Count ?? 0) < 2
                 || (task.Inputs?.Count ?? 0) == 0
                 || (task.Outputs?.Count ?? 0) == 0
+                || (task.AcceptanceCriteria?.Count ?? 0) == 0
+                || (task.ValidationSteps?.Count ?? 0) == 0
+                || (task.CustomerResponsibilities?.Count ?? 0) == 0
+                || (task.UsSignalResponsibilities?.Count ?? 0) == 0
+                || (task.Prerequisites?.Count ?? 0) == 0
+                || (task.Risks?.Count ?? 0) == 0
                 || task.RequiredRoles.Count == 0
                 || task.EstimatedHours is null
                 || task.EstimatedHours <= 0m
@@ -1871,18 +1877,22 @@ public sealed class PulseAiPrivateRagService
                 return item.Length == 0 ? [] : [item];
             }
             if (value.ValueKind != JsonValueKind.Array) continue;
-            return value.EnumerateArray()
-                .Select(item => item.ValueKind switch
+            var items = new List<string>();
+            foreach (var arrayItem in value.EnumerateArray().Take(60))
+            {
+                var text = arrayItem.ValueKind switch
                 {
-                    JsonValueKind.String => Limit(item.GetString(), 2_000, string.Empty),
-                    JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => Limit(item.GetRawText(), 2_000, string.Empty),
-                    JsonValueKind.Object => ModelJsonString(item, "text", "description", "step", "name", "value"),
-                    _ => string.Empty
-                })
-                .Where(item => item.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(60)
-                .ToArray();
+                    JsonValueKind.String => Limit(arrayItem.GetString(), 2_000, string.Empty),
+                    JsonValueKind.Object => ModelJsonString(arrayItem, "text", "description", "step", "name", "value"),
+                    _ => throw new JsonException(
+                        "Module 025 detailed-plan list fields must contain strings or text-bearing objects.")
+                };
+                if (text.Length == 0)
+                    throw new JsonException(
+                        "Module 025 detailed-plan list objects must contain usable text.");
+                if (!items.Contains(text, StringComparer.OrdinalIgnoreCase)) items.Add(text);
+            }
+            return items;
         }
         return [];
     }
@@ -1893,9 +1903,12 @@ public sealed class PulseAiPrivateRagService
         params string[] propertyNames)
     {
         var values = Module025JsonStrings(element, propertyNames);
-        return values.Count > 0 || fallbackElement.ValueKind != JsonValueKind.Object
-            ? values
-            : Module025JsonStrings(fallbackElement, propertyNames);
+        if (fallbackElement.ValueKind != JsonValueKind.Object) return values;
+        return values
+            .Concat(Module025JsonStrings(fallbackElement, propertyNames))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(60)
+            .ToArray();
     }
 
     private static string CanonicalModule025Phase(params string?[] values)
