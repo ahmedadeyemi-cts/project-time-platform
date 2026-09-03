@@ -295,12 +295,35 @@ RESOLVED_ENGINEER_USER_ID=''
 resolve_live_engineer_identity() {
   local email="$1" label="$2"
   local slug login_payload login_response security_response logout_response
-  local login_status security_status logout_status candidate_session
+  local login_status security_status logout_status candidate_session=''
 
   slug="$(printf '%s' "$label" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9_-')"
   login_payload="$(mktemp)"
   login_response="$(mktemp)"
   chmod 0600 "$login_payload" "$login_response"
+
+  candidate_cleanup() {
+    local cleanup_output cleanup_status
+    rm -f "$login_payload" "$login_response"
+    if [[ -n "$candidate_session" ]]; then
+      cleanup_output="$(mktemp)"
+      cleanup_status="$(curl -sS --max-time 60 \
+        -o "$cleanup_output" -w '%{http_code}' \
+        -X POST \
+        -H 'Cache-Control: no-cache' \
+        -H "Authorization: Bearer $candidate_session" \
+        -H "X-ProjectPulse-Session: $candidate_session" \
+        -H 'X-ProjectPulse-Module-Number: 003' \
+        -H "Origin: $BASE" \
+        -H 'Sec-Fetch-Site: same-origin' \
+        "$BASE/api/auth/session/logout" || true)"
+      rm -f "$cleanup_output"
+      if [[ "$cleanup_status" != 200 ]]; then
+        echo "WARN: $label candidate-session cleanup returned HTTP $cleanup_status." >&2
+      fi
+      candidate_session=''
+    fi
+  }
 
   jq -n \
     --arg username "$email" \
@@ -316,18 +339,24 @@ resolve_live_engineer_identity() {
     --data-binary @"$login_payload" \
     "$BASE/api/auth/local/login" || true)"
   rm -f "$login_payload"
-  [[ "$login_status" == 200 ]] \
-    || fail "$label live identity login returned HTTP $login_status."
+  if [[ "$login_status" != 200 ]]; then
+    candidate_cleanup
+    fail "$label live identity login returned HTTP $login_status."
+  fi
 
-  jq -e '
+  candidate_session="$(jq -r '.sessionToken // empty' "$login_response" 2>/dev/null || true)"
+  if [[ -n "$candidate_session" ]]; then
+    echo "::add-mask::$candidate_session"
+  fi
+  if ! jq -e '
     .provider == "LOCAL"
     and .mustChangePassword == false
     and (.sessionToken | type == "string" and length > 0)
-  ' "$login_response" >/dev/null \
-    || fail "$label live identity login did not satisfy the session contract."
+  ' "$login_response" >/dev/null; then
+    candidate_cleanup
+    fail "$label live identity login did not satisfy the session contract."
+  fi
 
-  candidate_session="$(jq -r '.sessionToken' "$login_response")"
-  echo "::add-mask::$candidate_session"
   jq 'del(.sessionToken,.token,.password)' "$login_response" \
     > "$EVIDENCE_DIR/manager-outsider-candidate-$slug-login-redacted.json"
   rm -f "$login_response"
@@ -342,9 +371,11 @@ resolve_live_engineer_identity() {
     -H "Origin: $BASE" \
     -H 'Sec-Fetch-Site: same-origin' \
     "$BASE/api/security/context" || true)"
-  [[ "$security_status" == 200 ]] \
-    || fail "$label live identity security context returned HTTP $security_status."
-  jq -e '
+  if [[ "$security_status" != 200 ]]; then
+    candidate_cleanup
+    fail "$label live identity security context returned HTTP $security_status."
+  fi
+  if ! jq -e '
     [
       .roles[]?
       | if type == "object"
@@ -356,12 +387,16 @@ resolve_live_engineer_identity() {
       | gsub("[ -]+"; "_")
     ] as $roles
     | (($roles | index("ENGINEER")) != null or ($roles | index("ENGINEERING")) != null)
-  ' "$security_response" >/dev/null \
-    || fail "$label is not a live Engineer identity in Protected Test."
+  ' "$security_response" >/dev/null; then
+    candidate_cleanup
+    fail "$label is not a live Engineer identity in Protected Test."
+  fi
 
   RESOLVED_ENGINEER_USER_ID="$(jq -r '.userId // empty' "$security_response")"
-  [[ "$RESOLVED_ENGINEER_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
-    || fail "$label live security context did not expose a valid user ID."
+  if [[ ! "$RESOLVED_ENGINEER_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+    candidate_cleanup
+    fail "$label live security context did not expose a valid user ID."
+  fi
 
   logout_response="$EVIDENCE_DIR/manager-outsider-candidate-$slug-logout.json"
   logout_status="$(curl -sS --max-time 60 \
@@ -374,9 +409,12 @@ resolve_live_engineer_identity() {
     -H "Origin: $BASE" \
     -H 'Sec-Fetch-Site: same-origin' \
     "$BASE/api/auth/session/logout" || true)"
-  [[ "$logout_status" == 200 ]] \
-    || fail "$label live identity logout returned HTTP $logout_status."
-  unset candidate_session
+  if [[ "$logout_status" != 200 ]]; then
+    candidate_cleanup
+    fail "$label live identity logout returned HTTP $logout_status."
+  fi
+  candidate_session=''
+  rm -f "$login_payload" "$login_response"
 }
 
 MANAGER_OUTSIDER_ID=''
