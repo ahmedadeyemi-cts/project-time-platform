@@ -21,6 +21,8 @@ const celarServicePath = 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatfo
 const privateRagContractsPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs';
 const privateRagServicePath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs';
 const privateRagRepositoryPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs';
+const privateModelClientPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs';
+const aiServicesPath = 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs';
 const webProxyPath = 'deployment/containers/web/default.conf.template';
 const module033WorkflowPath = '.github/workflows/module033-project-forge-ci.yml';
 const celarSourceBoundaryPath = 'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh';
@@ -42,6 +44,8 @@ const celarService = fs.readFileSync(celarServicePath, 'utf8');
 const privateRagContracts = fs.readFileSync(privateRagContractsPath, 'utf8');
 const privateRagService = fs.readFileSync(privateRagServicePath, 'utf8');
 const privateRagRepository = fs.readFileSync(privateRagRepositoryPath, 'utf8');
+const privateModelClient = fs.readFileSync(privateModelClientPath, 'utf8');
+const aiServices = fs.readFileSync(aiServicesPath, 'utf8');
 const webProxy = fs.readFileSync(webProxyPath, 'utf8');
 const module033Workflow = fs.readFileSync(module033WorkflowPath, 'utf8');
 const celarSourceBoundary = fs.readFileSync(celarSourceBoundaryPath, 'utf8');
@@ -104,6 +108,8 @@ assert.match(module025Uat, /generationQueueElapsedSeconds/);
 assert.match(module025Uat, /generationTotalElapsedSeconds/);
 assert.match(module025Uat, /generationPollAttempts/);
 assert.match(module025Uat, /generationResponseServer/);
+assert.match(module025Uat, /seq 1 180/);
+assert.match(module025Uat, /terminal state within 15 minutes/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID/);
 assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_SOURCE_COMMIT/);
@@ -129,6 +135,11 @@ assert.match(module025Module, /ai_generation_started/);
 assert.match(module025Module, /ai_generation_completed/);
 assert.match(module025Module, /ProcessNextQueuedGenerationAsync/);
 assert.match(module025Module, /pg_try_advisory_lock\(hashtextextended\(@generation_id::text,725\)\)/);
+assert.match(module025Module, /WorkerLockConnectionString/);
+assert.match(module025Module, /KeepAlive = 30/);
+assert.match(module025Module, /RecordGenerationStartedAsync\(connectionString/);
+assert.match(module025Module, /RecordGenerationTerminalAsync\(\s*connectionString/);
+assert.doesNotMatch(module025Module, /IValueHttpResult|IStatusCodeHttpResult/);
 assert.match(apiProgram, /AddHostedService<Module025SowGsdGenerationWorker>\(\)/);
 assert.match(module025Workspace, /waitForDetailedScopeGeneration/);
 assert.match(module025Workspace, /\/generations\/\$\{generationId\}/);
@@ -153,6 +164,9 @@ assert.doesNotMatch(
   /SowGsdPlanning/,
   'Module 025 SOW generation must fail closed when the approved private model does not complete'
 );
+assert.match(aiServices, /AddHttpClient\("PulseAiPrivateSowInference"/);
+assert.match(aiServices, /PulseAiPrivateSowInference[\s\S]*?TimeSpan\.FromMinutes\(12\)/);
+assert.match(privateModelClient, /CelarAiCapabilityCatalog\.SowGsdPlanning[\s\S]*?"PulseAiPrivateSowInference"/);
 assert.match(privateRagRepository, /citation\.SourceType,[\s\S]*?"module025_saved_service_overview"/);
 assert.match(privateRagRepository, /@answer_run_id,NULL,NULL,NULL,NULL,@source_type,@source_module/);
 assert.doesNotMatch(webProxy, /proxy_read_timeout 230s;/);
