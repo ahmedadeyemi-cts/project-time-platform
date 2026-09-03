@@ -6,7 +6,7 @@ namespace ProjectTime.Api.Ai;
 
 public sealed class PulseAiPrivateRagService
 {
-    private const int Module025SowMaximumOutputTokens = 1_800;
+    private const int Module025SowMaximumOutputTokens = 1_000;
 
     private readonly PulseAiPrivateRagRepository _repository;
     private readonly PulseAiPrivateRetrievalService _retrieval;
@@ -369,9 +369,9 @@ public sealed class PulseAiPrivateRagService
                 Automatically fill every supported section. For each work package or task, provide ordered execution steps, inputs, outputs, validation, measurable acceptance criteria, prerequisites, responsibilities, risks, open questions, estimated duration and hours, priority, dependencies, required roles, and source citations.
                 """
             : $"""
-                Create one concise, cited, review-only work package for each phase in this exact order: Plan, Design, Implement, Validate, Release.
+                Extract between one and three concise, cited, review-only scope work packages from the saved Service Overview.
                 Project: {projectCode} {projectName}
-                Expand the saved Service Overview into the five required review phases.
+                Describe only the source-backed delivery scope. Do not create lifecycle phase rows; the governed composer expands each cited scope work package into Plan, Design, Implement, Validate, and Release.
                 Use only citation 1, the server-authorized saved Service Overview. Keep unsupported technical detail in assumptions or open questions.
                 """;
         var query = BuildQuery(
@@ -533,7 +533,13 @@ public sealed class PulseAiPrivateRagService
             if (model.Succeeded)
             {
                 answer = flowHive
-                    ? ParseFlowHive(answerRunId, query, retrieval, model, options)
+                    ? ParseFlowHive(
+                        answerRunId,
+                        query,
+                        retrieval,
+                        model,
+                        options,
+                        expandModule025CitedPhases: authoritativeSource is not null)
                     : ParseDetailedAnswer(answerRunId, query, retrieval, model, options);
             }
             else if ((flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode))
@@ -706,7 +712,8 @@ public sealed class PulseAiPrivateRagService
         PulseAiPrivateRetrievalQuery query,
         PulseAiPrivateRetrievalResult retrieval,
         PulseAiPrivateModelResult model,
-        PulseAiPrivateRagOptions options)
+        PulseAiPrivateRagOptions options,
+        bool expandModule025CitedPhases = false)
     {
         try
         {
@@ -714,11 +721,20 @@ public sealed class PulseAiPrivateRagService
                 model.Content,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (dto is null) throw new JsonException("FlowHive plan JSON was empty.");
+            var planCitationIds = ValidCitationIds(dto.CitationIds, retrieval.Chunks.Count);
+            var parsedTasks = asTasks(dto.Tasks, retrieval.Chunks.Count)
+                .Where(task => !IsPhaseSummaryTask(task))
+                .ToArray();
+            if (expandModule025CitedPhases)
+            {
+                parsedTasks = ExpandModule025CitedScopeTasks(
+                    parsedTasks,
+                    planCitationIds,
+                    retrieval.Chunks.Count);
+            }
             var plan = new PulseAiPrivateFlowHivePlan(
                 Objective: Limit(dto.Objective, 4_000, "Prepare a reviewable project plan from the authorized project evidence."),
-                Tasks: asTasks(dto.Tasks, retrieval.Chunks.Count)
-                    .Where(task => !IsPhaseSummaryTask(task))
-                    .ToArray(),
+                Tasks: parsedTasks,
                 Milestones: asMilestones(dto.Milestones, retrieval.Chunks.Count),
                 Dependencies: List(dto.Dependencies, 100, 2_000),
                 RequiredRoles: List(dto.RequiredRoles, 60, 1_000),
@@ -727,7 +743,7 @@ public sealed class PulseAiPrivateRagService
                 OutOfScopeItems: List(dto.OutOfScopeItems, 80, 2_000),
                 OpenQuestions: List(dto.OpenQuestions, 80, 2_000),
                 Conflicts: List(dto.Conflicts, 80, 2_000),
-                CitationIds: ValidCitationIds(dto.CitationIds, retrieval.Chunks.Count),
+                CitationIds: planCitationIds,
                 Confidence: Math.Clamp(dto.Confidence ?? retrieval.CoverageScore, 0m, 1m),
                 ConfidenceExplanation: Limit(dto.ConfidenceExplanation, 2_000, "Confidence reflects private source coverage. Dates and dependencies require deterministic FlowHive scheduling and Engineering review."));
 
@@ -1447,6 +1463,175 @@ public sealed class PulseAiPrivateRagService
         return Math.Clamp(ceiling, 0m, 0.95m);
     }
 
+    private static PulseAiPrivateFlowHiveTask[] ExpandModule025CitedScopeTasks(
+        IReadOnlyList<PulseAiPrivateFlowHiveTask> sourceTasks,
+        IReadOnlyList<int> planCitationIds,
+        int citationMaximum)
+    {
+        var fallbackCitationIds = planCitationIds.Count > 0
+            ? planCitationIds.ToArray()
+            : citationMaximum == 1
+                ? new[] { 1 }
+                : Array.Empty<int>();
+        var citedScopeTasks = sourceTasks
+            .Where(task => task.CitationIds.Count > 0 || fallbackCitationIds.Length > 0)
+            .Take(3)
+            .ToArray();
+        if (citedScopeTasks.Length == 0) return [];
+
+        var phases = new[]
+        {
+            new
+            {
+                Name = "Plan",
+                Weight = 0.15m,
+                Purpose = "Prepare the cited scope for review and controlled delivery.",
+                Steps = new[]
+                {
+                    "Review the cited scope, deliverables, exclusions, responsibilities, and prerequisites.",
+                    "Record owners, dependencies, risks, open questions, and required review gates."
+                },
+                Output = "Reviewed scope, responsibility, dependency, risk, and readiness record."
+            },
+            new
+            {
+                Name = "Design",
+                Weight = 0.20m,
+                Purpose = "Translate the cited scope into a reviewable delivery design.",
+                Steps = new[]
+                {
+                    "Define the source-backed technical and operational design without inventing details.",
+                    "Map implementation, validation, acceptance, and rollback requirements to the scope."
+                },
+                Output = "Reviewed design, implementation sequence, validation method, and rollback needs."
+            },
+            new
+            {
+                Name = "Implement",
+                Weight = 0.40m,
+                Purpose = "Perform only the reviewed work represented by the cited scope.",
+                Steps = new[]
+                {
+                    "Execute the reviewed source-backed work in controlled stages.",
+                    "Capture actions, deviations, and before-and-after evidence for review."
+                },
+                Output = "Source-backed implementation output with actions, deviations, and evidence."
+            },
+            new
+            {
+                Name = "Validate",
+                Weight = 0.20m,
+                Purpose = "Verify the implemented result against the cited scope.",
+                Steps = new[]
+                {
+                    "Test the implemented result against the cited scope and acceptance criteria.",
+                    "Record results, defects, corrections, retests, and residual risk."
+                },
+                Output = "Validation and acceptance evidence with defects and residual risks recorded."
+            },
+            new
+            {
+                Name = "Release",
+                Weight = 0.05m,
+                Purpose = "Prepare the validated result for governed handoff and closeout.",
+                Steps = new[]
+                {
+                    "Complete as-built documentation, knowledge transfer, support ownership, and handoff.",
+                    "Record acceptance evidence and unresolved actions before governed closeout."
+                },
+                Output = "Handoff, support, acceptance, open-action, and closeout record."
+            }
+        };
+
+        var expanded = new List<PulseAiPrivateFlowHiveTask>(citedScopeTasks.Length * phases.Length);
+        for (var phaseIndex = 0; phaseIndex < phases.Length; phaseIndex++)
+        {
+            var phase = phases[phaseIndex];
+            for (var scopeIndex = 0; scopeIndex < citedScopeTasks.Length; scopeIndex++)
+            {
+                var source = citedScopeTasks[scopeIndex];
+                var citationIds = source.CitationIds.Count > 0
+                    ? source.CitationIds.ToArray()
+                    : fallbackCitationIds;
+                var wbs = $"{phaseIndex + 1}.{scopeIndex + 1}";
+                var sourceDescription = Limit(
+                    source.Description,
+                    3_000,
+                    $"Complete the cited scope represented by {source.Name}.");
+                var totalDays = Math.Max(1m, source.EstimatedDurationDays);
+                var totalHours = Math.Max(8m, source.EstimatedHours ?? totalDays * 8m);
+                var roles = source.RequiredRoles.Count > 0
+                    ? source.RequiredRoles
+                    : new[] { "Solution Architect", "Project Manager", "Engineering reviewer" };
+                var citationLabel = string.Join(", ", citationIds.Select(value => $"[{value}]"));
+
+                expanded.Add(new PulseAiPrivateFlowHiveTask(
+                    Wbs: wbs,
+                    Name: Limit($"{phase.Name} — {source.Name}", 300, $"{phase.Name} cited scope work package"),
+                    Description: Limit(
+                        $"{phase.Purpose} Source-backed scope: {sourceDescription}",
+                        4_000,
+                        $"Complete the {phase.Name.ToLowerInvariant()} work for the cited scope."),
+                    EstimatedDurationDays: Math.Max(
+                        0.1m,
+                        Math.Round(totalDays * phase.Weight, 2, MidpointRounding.AwayFromZero)),
+                    RequiredRoles: roles,
+                    Predecessors: phaseIndex == 0 ? [] : [$"{phaseIndex}.{scopeIndex + 1}"],
+                    CitationIds: citationIds,
+                    IsAssumption: source.IsAssumption,
+                    Phase: phase.Name,
+                    DetailedSteps: phase.Steps
+                        .Concat((source.DetailedSteps ?? []).Take(2))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(4)
+                        .ToArray(),
+                    Inputs: source.Inputs is { Count: > 0 }
+                        ? source.Inputs
+                        : [$"Authorized Service Overview citation {citationLabel} and reviewed prior-phase output."],
+                    Outputs: new[] { phase.Output }
+                        .Concat((source.Outputs ?? []).Take(1))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray(),
+                    AcceptanceCriteria:
+                    [
+                        $"The {phase.Name.ToLowerInvariant()} output remains traceable to citation {citationLabel}, and unresolved facts are explicit.",
+                        .. (source.AcceptanceCriteria ?? []).Take(1)
+                    ],
+                    ValidationSteps:
+                    [
+                        $"Compare the {phase.Name.ToLowerInvariant()} output with citation {citationLabel} and retain review evidence.",
+                        .. (source.ValidationSteps ?? []).Take(1)
+                    ],
+                    CustomerResponsibilities: source.CustomerResponsibilities,
+                    UsSignalResponsibilities: source.UsSignalResponsibilities,
+                    Prerequisites: source.Prerequisites,
+                    Risks: source.Risks,
+                    OpenQuestions: source.OpenQuestions,
+                    EstimatedHours: Math.Max(
+                        0.1m,
+                        Math.Round(totalHours * phase.Weight, 2, MidpointRounding.AwayFromZero)),
+                    Priority: source.Priority,
+                    Products: source.Products,
+                    Platforms: source.Platforms,
+                    Manufacturers: source.Manufacturers,
+                    Models: source.Models,
+                    SoftwareVersions: source.SoftwareVersions,
+                    FirmwareVersions: source.FirmwareVersions,
+                    LicensingRequirements: source.LicensingRequirements,
+                    Quantities: source.Quantities,
+                    Tools: source.Tools,
+                    Systems: source.Systems,
+                    Interfaces: source.Interfaces,
+                    IntegrationPoints: source.IntegrationPoints,
+                    AccessRequirements: source.AccessRequirements,
+                    RollbackSteps: source.RollbackSteps,
+                    Assumptions: source.Assumptions));
+            }
+        }
+
+        return expanded.ToArray();
+    }
+
     private static IReadOnlyList<PulseAiPrivateFlowHiveTask> asTasks(
         IReadOnlyList<PulseAiPrivateFlowHiveTask>? values,
         int citationMaximum) =>
@@ -1460,7 +1645,7 @@ public sealed class PulseAiPrivateRagService
                 EstimatedDurationDays = Math.Clamp(task.EstimatedDurationDays, 0.1m, 365m),
                 RequiredRoles = List(task.RequiredRoles, 30, 300),
                 Predecessors = List(task.Predecessors, 30, 80),
-                CitationIds = ValidCitationIds(task.CitationIds.ToArray(), citationMaximum),
+                CitationIds = ValidCitationIds(task.CitationIds?.ToArray(), citationMaximum),
                 Phase = Limit(task.Phase, 200, "Delivery"),
                 DetailedSteps = List(task.DetailedSteps, 60, 2_000),
                 Inputs = List(task.Inputs, 40, 1_500),
@@ -1610,13 +1795,11 @@ public sealed class PulseAiPrivateRagService
             return $"""
                 You are Celar AI preparing a private, cited, review-only SOW/GSD draft for capability {feature}.
                 The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
-                Return only one valid compact JSON object matching PulseAiPrivateFlowHivePlan, with no markdown, commentary, or code fence. Keep the complete JSON below 6,000 characters so it closes before the governed response limit.
-                Return exactly five executable tasks and no phase-summary tasks. Use one task for each phase in this exact order and spelling: Plan, Design, Implement, Validate, Release. Use WBS values 1.1, 2.1, 3.1, 4.1, and 5.1.
-                Use these exact task names in order: Scope and delivery readiness; Solution design and execution preparation; Controlled solution implementation; Technical and acceptance validation; Operational handoff and closeout. Never name a task only Plan, Design, Implement, Validate, or Release.
-                Every task must include wbs, name, description, estimatedDurationDays, estimatedHours, requiredRoles, predecessors, citationIds:[1], isAssumption, phase, priority, detailedSteps, inputs, outputs, acceptanceCriteria, validationSteps, customerResponsibilities, usSignalResponsibilities, prerequisites, risks, and openQuestions.
-                Use two complete sentences under 100 characters each in detailedSteps. Outputs, acceptanceCriteria, and validationSteps must each contain one complete sentence under 100 characters. Every other task list must contain at most one sentence under 100 characters; use [] when citation 1 does not support a statement. Set unsupported product, platform, manufacturer, model, version, licensing, quantity, tool, system, interface, integration, access, and rollback lists to [] or omit those optional fields; never invent them.
-                Estimated duration and hours are non-binding assumptions until Solution Architect review, but both numeric values must be greater than zero. Each predecessor may reference only an earlier WBS value.
-                Include top-level objective, tasks, milestones:[], dependencies, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. Use at most one concise item under 100 characters in each top-level list.
+                Return only one valid compact JSON object matching PulseAiPrivateFlowHivePlan, with no markdown, commentary, or code fence. Keep the complete JSON below 3,500 characters so it closes well before the governed response limit.
+                Return between one and three cited scope work-package tasks, not lifecycle phase rows. A deterministic, citation-preserving composer expands every returned scope work package into Plan, Design, Implement, Validate, and Release after private inference completes.
+                Every task must include only wbs, name, description, estimatedDurationDays, estimatedHours, requiredRoles, predecessors, citationIds:[1], isAssumption, phase:"Scope", detailedSteps, outputs, acceptanceCriteria, and validationSteps. Optional task fields may be omitted.
+                Use at most two concise sentences in detailedSteps and one concise sentence in each other task list. Estimated duration and hours are non-binding assumptions until Solution Architect review, but both numeric values must be greater than zero.
+                Include top-level objective, tasks, milestones:[], dependencies:[], requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. Use at most one concise item in each top-level list.
                 Preserve missing technical detail as a labeled assumption or open question. The Solution Architect must modify and validate the draft before any separately authorized approval or baseline.
                 """;
         }
@@ -1645,9 +1828,9 @@ public sealed class PulseAiPrivateRagService
         if (hasModule025AuthoritativeScope)
         {
             return $"""
-                Expand citation 1 into the exact five compact phase tasks required for {feature}.
-                Create only the five-phase private SOW/GSD review draft; do not repeat or restate the incoming request.
-                Keep every task traceable to citation 1. Use assumptions and openQuestions for unsupported implementation specifics. Complete every required task field, remain below 6,000 JSON characters, and close the JSON object.
+                Extract the concise source-backed scope work packages required for {feature} from citation 1.
+                Do not repeat or restate the incoming request, and do not create Plan, Design, Implement, Validate, or Release rows.
+                Keep every task traceable to citation 1. Use assumptions and openQuestions for unsupported implementation specifics. Remain below 3,500 JSON characters and close the JSON object.
                 """;
         }
 
