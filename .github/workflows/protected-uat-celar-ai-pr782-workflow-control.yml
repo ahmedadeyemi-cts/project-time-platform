@@ -236,6 +236,7 @@ jobs:
       RETIRED_RUN_CREATED_AT: '2026-09-02T16:26:03Z'
       RETIRED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
       RETIRED_RELEASE_BRANCH: fix/shared-project-document-planning-20260819
+      RESTORED_RELEASE_SHA: 20c57ef8e10042decc438560d8f71c516b7f7838
     steps:
       - name: Check out exact current main for concurrency inventory
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -254,7 +255,7 @@ jobs:
             exit 1
           }
           branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${RETIRED_RELEASE_BRANCH}" --jq '.object.sha')"
-          [[ "$branch_sha" == "$RETIRED_RELEASE_SHA" ]] || { echo 'Legacy candidate changed.' >&2; exit 1; }
+          [[ "$branch_sha" == "$RESTORED_RELEASE_SHA" ]] || { echo 'Legacy candidate is not at its exact restored commit.' >&2; exit 1; }
 
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
           jq -e --arg path "$DEPLOY_WORKFLOW_PATH" --arg sha "$RETIRED_RELEASE_SHA" --arg branch "$RETIRED_RELEASE_BRANCH" --arg created "$RETIRED_RUN_CREATED_AT" --argjson id "$RETIRED_RUN_ID" --argjson attempt "$RETIRED_RUN_ATTEMPT" --argjson workflow "$DEPLOY_WORKFLOW_ID" '
@@ -454,6 +455,7 @@ jobs:
       RETIRED_RUN_CREATED_AT: '2026-09-02T16:26:03Z'
       RETIRED_RELEASE_SHA: 3d02b4cb62683b96554186f9d3a782fc1f21ca54
       RETIRED_RELEASE_BRANCH: fix/shared-project-document-planning-20260819
+      RESTORED_RELEASE_SHA: 20c57ef8e10042decc438560d8f71c516b7f7838
     steps:
       - name: Check out exact current main for post-lock inventory
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -604,52 +606,158 @@ jobs:
           echo "FINALIZED_PROTECTED_UAT_RUN_ID=$SUCCESSFUL_RUN_ID"
           echo "FINALIZED_PROTECTED_UAT_ARTIFACT_DIGEST=$artifact_digest"
 
-      - name: Force-retire exact zero-job ghost deployment
-        id: retired
+      - name: Snapshot exact zero-job Actions orphan before deletion
+        id: ghost_snapshot
         shell: bash
+        env:
+          SUCCESSFUL_ARTIFACT_ID: ${{ steps.evidence.outputs.artifact_id }}
+          SUCCESSFUL_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
         run: |
           set -Eeuo pipefail
+          actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$actual_main" == "$GITHUB_SHA" ]] || { echo 'Main changed before ghost evidence capture.' >&2; exit 1; }
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
           branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${RETIRED_RELEASE_BRANCH}" --jq '.object.sha')"
-          [[ "$branch_sha" == "$RETIRED_RELEASE_SHA" ]] || { echo 'Legacy candidate changed.' >&2; exit 1; }
+          [[ "$branch_sha" == "$RESTORED_RELEASE_SHA" ]] || { echo 'Legacy candidate is not at its exact restored commit.' >&2; exit 1; }
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
           jq -e --arg path "$DEPLOY_WORKFLOW_PATH" --arg sha "$RETIRED_RELEASE_SHA" --arg branch "$RETIRED_RELEASE_BRANCH" --arg created "$RETIRED_RUN_CREATED_AT" --argjson id "$RETIRED_RUN_ID" --argjson attempt "$RETIRED_RUN_ATTEMPT" --argjson workflow "$DEPLOY_WORKFLOW_ID" '
             .id == $id and .run_attempt == $attempt and .workflow_id == $workflow and .path == $path
             and .event == "workflow_dispatch" and .head_branch == $branch and .head_sha == $sha and .created_at == $created
-          ' <<<"$run_json" >/dev/null || { echo 'Ghost run identity mismatch.' >&2; exit 1; }
-          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=latest&per_page=100" --jq '.total_count')" == '0' ]]
-          cancelled=false
-          status="$(jq -r '.status' <<<"$run_json")"
-          conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
-          if [[ "$status" == 'completed' && "$conclusion" == 'cancelled' ]]; then
-            cancelled=true
-          elif [[ "$status" == 'queued' && -z "$conclusion" ]]; then
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/cancel" >/dev/null || true
-            for attempt in $(seq 1 60); do
-              run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
-              [[ "$(jq -r '.run_attempt' <<<"$run_json")" == "$RETIRED_RUN_ATTEMPT" ]] || exit 1
-              status="$(jq -r '.status' <<<"$run_json")"
-              conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
-              if [[ "$status" == 'completed' ]]; then
-                [[ "$conclusion" == 'cancelled' ]] || exit 1
-                cancelled=true
-                break
-              fi
-              gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/force-cancel" >/dev/null || true
-              sleep 2
-            done
-          else
-            echo "Ghost run entered an unexpected terminal state: status=$status conclusion=${conclusion:-null}" >&2
-            exit 1
-          fi
-          [[ "$cancelled" == true ]] || { echo 'Ghost cancellation was not verified.' >&2; exit 1; }
-          post_cancel_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"
-          jq -e '.total_count == 0 and (.jobs | length) == 0' <<<"$post_cancel_jobs_json" >/dev/null || {
-            echo 'Ghost materialized one or more jobs during cancellation; finalization failed closed.' >&2
+            and .status == "queued" and .conclusion == null
+          ' <<<"$run_json" >/dev/null || { echo 'Ghost run identity mismatch before evidence capture.' >&2; exit 1; }
+          pre_delete_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"
+          jq -e '.total_count == 0 and (.jobs | length) == 0' <<<"$pre_delete_jobs_json" >/dev/null || {
+            echo 'Ghost materialized one or more jobs before evidence capture; deletion is forbidden.' >&2
             exit 1
           }
+          captured_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          snapshot_path="$RUNNER_TEMP/protected-uat-zero-job-ghost-${RETIRED_RUN_ID}.json"
+          jq -S -n \
+            --arg schema 'protected-uat-zero-job-actions-orphan/v1' \
+            --arg captured_at "$captured_at" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg current_main "$GITHUB_SHA" \
+            --arg restored_candidate_sha "$branch_sha" \
+            --arg successful_run_id "$SUCCESSFUL_RUN_ID" \
+            --arg successful_release_sha "$SUCCESSFUL_RELEASE_SHA" \
+            --arg successful_artifact_name "$SUCCESSFUL_ARTIFACT_NAME" \
+            --arg successful_artifact_id "$SUCCESSFUL_ARTIFACT_ID" \
+            --arg successful_artifact_digest "$SUCCESSFUL_ARTIFACT_DIGEST" \
+            --argjson run "$run_json" \
+            --argjson jobs "$pre_delete_jobs_json" \
+            '{
+              schema: $schema,
+              captured_at: $captured_at,
+              repository: $repository,
+              current_main: $current_main,
+              restored_candidate_sha: $restored_candidate_sha,
+              successful_uat: {
+                run_id: $successful_run_id,
+                release_sha: $successful_release_sha,
+                artifact_name: $successful_artifact_name,
+                artifact_id: $successful_artifact_id,
+                artifact_digest: $successful_artifact_digest
+              },
+              ghost_run: ($run | {
+                id, run_attempt, workflow_id, path, event, head_branch, head_sha,
+                created_at, updated_at, status, conclusion, html_url,
+                actor: .actor.login, triggering_actor: .triggering_actor.login
+              }),
+              jobs: {total_count: $jobs.total_count, jobs: $jobs.jobs}
+            }' > "$snapshot_path"
+          snapshot_digest="$(sha256sum "$snapshot_path" | awk '{print $1}')"
           retired_url="$(jq -r '.html_url' <<<"$run_json")"
+          echo 'snapshot_ready=true' >> "$GITHUB_OUTPUT"
+          echo "snapshot_digest=sha256:$snapshot_digest" >> "$GITHUB_OUTPUT"
           echo "retired_url=$retired_url" >> "$GITHUB_OUTPUT"
-          echo 'FINALIZED_PROTECTED_UAT_GHOST_CONCLUSION=cancelled'
+          echo "FINALIZED_PROTECTED_UAT_GHOST_SNAPSHOT=sealed digest=sha256:$snapshot_digest jobs=0"
+
+      - name: Upload immutable zero-job ghost retirement evidence
+        id: ghost_retirement_evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: protected-uat-zero-job-ghost-retirement-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/protected-uat-zero-job-ghost-33654881418.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Delete exact zero-job Actions orphan through GitHub REST
+        id: retired
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$actual_main" == "$GITHUB_SHA" ]] || { echo 'Main changed before ghost deletion.' >&2; exit 1; }
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          branch_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${RETIRED_RELEASE_BRANCH}" --jq '.object.sha')"
+          [[ "$branch_sha" == "$RESTORED_RELEASE_SHA" ]] || { echo 'Legacy candidate moved after evidence capture.' >&2; exit 1; }
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
+          jq -e --arg path "$DEPLOY_WORKFLOW_PATH" --arg sha "$RETIRED_RELEASE_SHA" --arg branch "$RETIRED_RELEASE_BRANCH" --arg created "$RETIRED_RUN_CREATED_AT" --argjson id "$RETIRED_RUN_ID" --argjson attempt "$RETIRED_RUN_ATTEMPT" --argjson workflow "$DEPLOY_WORKFLOW_ID" '
+            .id == $id and .run_attempt == $attempt and .workflow_id == $workflow and .path == $path
+            and .event == "workflow_dispatch" and .head_branch == $branch and .head_sha == $sha and .created_at == $created
+            and .status == "queued" and .conclusion == null
+          ' <<<"$run_json" >/dev/null || { echo 'Ghost run identity changed after evidence capture.' >&2; exit 1; }
+          pre_delete_jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"
+          jq -e '.total_count == 0 and (.jobs | length) == 0' <<<"$pre_delete_jobs_json" >/dev/null || {
+            echo 'Ghost materialized one or more jobs after evidence capture; deletion is forbidden.' >&2
+            exit 1
+          }
+          jq -S '.ghost_run' "$RUNNER_TEMP/protected-uat-zero-job-ghost-${RETIRED_RUN_ID}.json" > "$RUNNER_TEMP/expected-ghost-run.json"
+          jq -S '{
+            id, run_attempt, workflow_id, path, event, head_branch, head_sha,
+            created_at, updated_at, status, conclusion, html_url,
+            actor: .actor.login, triggering_actor: .triggering_actor.login
+          }' <<<"$run_json" > "$RUNNER_TEMP/current-ghost-run.json"
+          cmp -s "$RUNNER_TEMP/expected-ghost-run.json" "$RUNNER_TEMP/current-ghost-run.json" || {
+            echo 'Ghost identity differs from the uploaded immutable snapshot.' >&2
+            exit 1
+          }
+
+          delete_http_status="$(curl --silent --show-error \
+            --output "$RUNNER_TEMP/ghost-delete-response.json" \
+            --write-out '%{http_code}' \
+            --request DELETE \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
+          [[ "$delete_http_status" == '204' ]] || {
+            echo "GitHub refused exact zero-job orphan deletion: HTTP $delete_http_status" >&2
+            jq -c '{message,documentation_url,status}' "$RUNNER_TEMP/ghost-delete-response.json" >&2 2>/dev/null || true
+            exit 1
+          }
+
+          deletion_verified=false
+          for attempt in $(seq 1 30); do
+            run_http_status="$(curl --silent --show-error \
+              --output "$RUNNER_TEMP/ghost-get-after-delete.json" \
+              --write-out '%{http_code}' \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}")"
+            jobs_http_status="$(curl --silent --show-error \
+              --output "$RUNNER_TEMP/ghost-jobs-after-delete.json" \
+              --write-out '%{http_code}' \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${RETIRED_RUN_ID}/jobs?filter=all&per_page=100")"
+            workflow_run_pages="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
+            listed_count="$(jq -r --argjson id "$RETIRED_RUN_ID" '[.[].workflow_runs[] | select(.id == $id)] | length' <<<"$workflow_run_pages")"
+            if [[ "$run_http_status" == '404' && "$jobs_http_status" == '404' && "$listed_count" == '0' ]]; then
+              deletion_verified=true
+              break
+            fi
+            sleep 2
+          done
+          [[ "$deletion_verified" == true ]] || {
+            echo "Deleted ghost remained observable: run_http=$run_http_status jobs_http=$jobs_http_status list_count=$listed_count" >&2
+            exit 1
+          }
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          echo "retired_url=${{ steps.ghost_snapshot.outputs.retired_url }}" >> "$GITHUB_OUTPUT"
+          echo 'FINALIZED_PROTECTED_UAT_GHOST_RETIREMENT=deleted_zero_job_orphan'
 
       - name: Verify sealed exhaustive deployment ledger
         shell: bash
@@ -664,10 +772,10 @@ jobs:
           jq -s 'unique_by(.id)' "$RUNNER_TEMP/shared-group-runs.ndjson" > "$RUNNER_TEMP/shared-group-runs.json"
           runs_json="$(jq -c '{workflow_runs: .}' "$RUNNER_TEMP/shared-group-runs.json")"
           [[ "$(jq -r '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$runs_json")" == '0' ]]
-          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '[.workflow_runs[] | select(.id != $success and .id != $retired and (.created_at >= $created or ((.run_started_at // .created_at) >= $created)))] | length' <<<"$runs_json")" == '0' ]]
+          [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.id != $success and (.created_at >= $created or ((.run_started_at // .created_at) >= $created)))] | length' <<<"$runs_json")" == '0' ]]
           jq -e --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
             ([.workflow_runs[] | select(.id == $success and .run_attempt == 1 and .status == "completed" and .conclusion == "success")] | length) == 1
-            and ([.workflow_runs[] | select(.id == $retired and .run_attempt == 1 and .status == "completed" and .conclusion == "cancelled")] | length) == 1
+            and ([.workflow_runs[] | select(.id == $retired)] | length) == 0
           ' <<<"$runs_json" >/dev/null
           echo 'FINALIZED_PROTECTED_UAT_WORKFLOW_STATE=disabled_manually'
           echo 'FINALIZED_PROTECTED_UAT_SHARED_GROUP_POST_SUCCESS_DEPLOYMENTS=none'
@@ -722,7 +830,7 @@ jobs:
           [[ "$(jq -r --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" '[.workflow_runs[] | select(.id != $success and ((.run_started_at // .created_at) >= $created))] | length' <<<"$runs_json")" == '0' ]]
           jq -e --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
             ([.workflow_runs[] | select(.id == $success and .run_attempt == 1 and .status == "completed" and .conclusion == "success")] | length) == 1
-            and ([.workflow_runs[] | select(.id == $retired and .run_attempt == 1 and .status == "completed" and .conclusion == "cancelled")] | length) == 1
+            and ([.workflow_runs[] | select(.id == $retired)] | length) == 0
           ' <<<"$runs_json" >/dev/null
           if [[ "$unexpected_active_seen" == true ]]; then
             echo 'Unexpected active deployments were terminally cancelled; finalization refuses success.' >&2
@@ -787,11 +895,11 @@ jobs:
           jq -s 'unique_by(.id)' "$RUNNER_TEMP/shared-group-runs-final.ndjson" > "$RUNNER_TEMP/shared-group-runs-final.json"
           jq -e --arg created "$SUCCESSFUL_RUN_CREATED_AT" --argjson success "$SUCCESSFUL_RUN_ID" --argjson retired "$RETIRED_RUN_ID" '
             ([.[] | select(.status != "completed")] | length) == 0
-            and ([.[] | select(.id != $success and .id != $retired and (
+            and ([.[] | select(.id != $success and (
               .created_at >= $created or ((.run_started_at // .created_at) >= $created)
             ))] | length) == 0
             and ([.[] | select(.id == $success and .run_attempt == 1 and .status == "completed" and .conclusion == "success")] | length) == 1
-            and ([.[] | select(.id == $retired and .run_attempt == 1 and .status == "completed" and .conclusion == "cancelled")] | length) == 1
+            and ([.[] | select(.id == $retired)] | length) == 0
           ' "$RUNNER_TEMP/shared-group-runs-final.json" >/dev/null || {
             echo 'Shared-group Protected-Test ledger changed immediately before success reporting.' >&2
             exit 1
@@ -811,7 +919,7 @@ jobs:
           echo "shared_owner_count=$shared_owner_count" >> "$GITHUB_OUTPUT"
           echo "FINALIZED_PROTECTED_UAT_ATOMIC_FENCED_LEDGER=quiescent owners=$shared_owner_count"
           watchdog_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${{ needs.authorize_ghost_retirement.outputs.watchdog_run_id }}"
-          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT evidence and zero-job ghost retirement were atomically sealed while every shared-group admission remained fenced.\n\n- Successful deployment: ${{ steps.evidence.outputs.run_url }}\n- Release SHA: \`$SUCCESSFUL_RELEASE_SHA\`\n- Evidence artifact: \`$SUCCESSFUL_ARTIFACT_NAME\` (ID ${{ steps.evidence.outputs.artifact_id }}, digest \`${{ steps.evidence.outputs.artifact_digest }}\`)\n- Module 001B assigned-work/live-reallocation UAT: passed\n- Utilization role-scoping UAT: passed\n- Retired zero-job ghost: ${{ steps.retired.outputs.retired_url }}\n- Deployment workflow: \`disabled_manually\`\n- Exact current main: \`$actual_main_end\`\n- Fresh atomic shared-group ledger owners verified: \`$shared_owner_count\`\n- Independently armed fence-restoration watchdog: $watchdog_url\n- Admission fences: held until this source finalizer reaches a terminal state; the watchdog then restores exactly the originally active owners\n- Legacy candidate ref restoration: pending\n- Production mutation: none\n- Module 025 mutation: none"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Protected-Test UAT evidence and permanent zero-job orphan retirement were atomically sealed while every shared-group admission remained fenced.\n\n- Successful deployment: ${{ steps.evidence.outputs.run_url }}\n- Release SHA: \`$SUCCESSFUL_RELEASE_SHA\`\n- Deployment evidence artifact: \`$SUCCESSFUL_ARTIFACT_NAME\` (ID ${{ steps.evidence.outputs.artifact_id }}, digest \`${{ steps.evidence.outputs.artifact_digest }}\`)\n- Module 001B assigned-work/live-reallocation UAT: passed\n- Utilization role-scoping UAT: passed\n- Deleted zero-job Actions orphan: ${{ steps.retired.outputs.retired_url }}\n- Pre-delete identity evidence artifact: \`protected-uat-zero-job-ghost-retirement-${{ github.run_id }}-${{ github.run_attempt }}\` (ID ${{ steps.ghost_retirement_evidence.outputs.artifact-id }}, digest \`${{ steps.ghost_retirement_evidence.outputs.artifact-digest }}\`, snapshot \`${{ steps.ghost_snapshot.outputs.snapshot_digest }}\`)\n- Deployment workflow: \`disabled_manually\`\n- Exact current main: \`$actual_main_end\`\n- Fresh atomic shared-group ledger owners verified: \`$shared_owner_count\`\n- Independently armed fence-restoration watchdog: $watchdog_url\n- Admission fences: held until this source finalizer reaches a terminal state; the watchdog then restores exactly the originally active owners\n- Legacy candidate ref: verified restored at \`$RESTORED_RELEASE_SHA\`\n- Production mutation: none\n- Module 025 mutation: none"
 
       - name: Record failed finalization evidence
         if: failure()
