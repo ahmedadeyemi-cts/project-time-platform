@@ -181,7 +181,33 @@ if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]
     ! grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
     ! grep -Fq '/generate$' deployment/containers/web/default.conf.template
   else
-    if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-phase-authority-* ]]; then
+    if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-bounded-output-* ]]; then
+      cat > "${TMPDIR:-/tmp}/module025-bounded-output-expected-files" <<'FILES'
+      scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+      src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      tests/validate-systemwide-image-build-controller.mjs
+FILES
+      sed -i 's/^[[:space:]]*//' "${TMPDIR:-/tmp}/module025-bounded-output-expected-files"
+      LC_ALL=C sort -u "${TMPDIR:-/tmp}/module025-bounded-output-expected-files" \
+        -o "${TMPDIR:-/tmp}/module025-bounded-output-expected-files"
+      printf '%s\n' "$CHANGED" | LC_ALL=C sort -u > "${TMPDIR:-/tmp}/module025-bounded-output-actual-files"
+      cmp -s \
+        "${TMPDIR:-/tmp}/module025-bounded-output-expected-files" \
+        "${TMPDIR:-/tmp}/module025-bounded-output-actual-files" || {
+        echo 'The Module 025 bounded private-output repair differs from its governed file set.' >&2
+        diff -u \
+          "${TMPDIR:-/tmp}/module025-bounded-output-expected-files" \
+          "${TMPDIR:-/tmp}/module025-bounded-output-actual-files" >&2 || true
+        exit 1
+      }
+      grep -Fq 'Module025SowMaximumOutputTokens = 1_800' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      grep -Fq 'below 6,000 characters' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      grep -Fq '? 0.05m' \
+        src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+      echo 'CELAR_AI_MODULE025_BOUNDED_PRIVATE_OUTPUT_BOUNDARY=PASSED'
+    elif [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-phase-authority-* ]]; then
       cat > "${TMPDIR:-/tmp}/module025-phase-authority-expected-files" <<'FILES'
       scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
       src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs

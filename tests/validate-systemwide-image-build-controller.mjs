@@ -170,13 +170,18 @@ assert.doesNotMatch(
   /SowGsdPlanning/,
   'Module 025 SOW generation must fail closed when the approved private model does not complete'
 );
-assert.match(privateRagService, /Module025SowMaximumOutputTokens = 3_000/);
+assert.match(privateRagService, /Module025SowMaximumOutputTokens = 1_800/);
 assert.match(
   privateRagService,
   /Math\.Min\(options\.MaximumOutputTokens, Module025SowMaximumOutputTokens\)/
 );
 assert.match(privateRagService, /Return exactly five executable tasks/);
-assert.match(privateRagService, /Keep the complete JSON below 10,000 characters/);
+assert.match(privateRagService, /Keep the complete JSON below 6,000 characters/);
+assert.match(privateRagService, /do not repeat or restate the incoming request/);
+assert.match(
+  privateRagService,
+  /query\.FeatureCode == CelarAiCapabilityCatalog\.SowGsdPlanning[\s\S]*?\? 0\.05m[\s\S]*?: flowHive/
+);
 assert.match(privateRagService, /hasExecutableDetail/);
 assert.match(privateRagService, /Never name a task only Plan, Design, Implement, Validate, or Release/);
 assert.doesNotMatch(
@@ -219,6 +224,7 @@ assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_DURABLE_WORKER_REPAIR_BOUN
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_COMPACT_PRIVATE_PLAN_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_SUBSTANTIVE_PHASE_TASK_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_EXACT_PHASE_AUTHORITY_BOUNDARY=PASSED/);
+assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_BOUNDED_PRIVATE_OUTPUT_BOUNDARY=PASSED/);
 assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
 for (const controllerValidator of [releaseControllerValidator, releaseControllerReregisteredValidator]) {
   assert.match(controllerValidator, /\.github\/workflows\/deep-intelligence-read-contract-ci\.yml/);
