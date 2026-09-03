@@ -1966,7 +1966,7 @@ public sealed class PulseAiPrivateRagService
                 ProposedTiming: proposedTiming,
                 AcceptanceEvidence: acceptanceEvidence,
                 CitationIds: [1],
-                IsAssumption: Module025JsonBoolean(item, "isAssumption", "assumption") ?? true));
+                IsAssumption: ModelJsonBoolean(item, "isAssumption", "assumption") ?? true));
         }
         return asMilestones(milestones, 1);
     }
