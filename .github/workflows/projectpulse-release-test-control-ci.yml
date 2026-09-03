@@ -312,6 +312,16 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-protected-uat-validation-defects-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" -o "$RUNNER_TEMP/exact-protected-uat-validation-defects-files"
 
+          cat > "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files" <<'FILES'
+          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs
+          tests/validate-celar-ai-internal-data-intelligence.mjs
+          tests/validate-celar-ai-pr630-consolidated.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files" -o "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files"
+
           git fetch --no-tags origin main
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
@@ -323,6 +333,13 @@ jobs:
               exit 1
             }
             echo 'EXACT_PROTECTED_UAT_VALIDATION_DEFECTS_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'fix/celar-internal-trust-evidence-20260903' ]]; then
+            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files" || {
+              echo 'Celar internal-data trust-evidence repair differs from its exact governed file set.' >&2
+              diff -u "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_CELAR_INTERNAL_TRUST_EVIDENCE_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
             test -s "$SHARED_PLANNING_MANIFEST" || fail 'The shared project-document planning release manifest is missing.'
             grep -Ev '^[[:space:]]*(#|$)' "$SHARED_PLANNING_MANIFEST" | LC_ALL=C sort -u > "$RUNNER_TEMP/shared-project-document-planning-files"

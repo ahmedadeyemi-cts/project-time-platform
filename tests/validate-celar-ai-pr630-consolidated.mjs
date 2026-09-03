@@ -83,6 +83,8 @@ const module025ProtectedUatCompatibilityMode =
   branchName.startsWith('fix/module025-protected-uat-generation-verification-');
 const protectedUatValidationDefectsCompatibilityMode =
   branchName === 'fix/protected-uat-validation-defects-20260903';
+const celarInternalTrustEvidenceCompatibilityMode =
+  branchName === 'fix/celar-internal-trust-evidence-20260903';
 const scopedCompatibilityMode = systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
@@ -90,7 +92,8 @@ const scopedCompatibilityMode = systemwideReliabilityMode
   || flowHiveLivePlannerDocumentDeleteCompatibilityMode
   || internalEnterpriseFactsCompatibilityMode
   || module025ProtectedUatCompatibilityMode
-  || protectedUatValidationDefectsCompatibilityMode;
+  || protectedUatValidationDefectsCompatibilityMode
+  || celarInternalTrustEvidenceCompatibilityMode;
 const pr630AllowedPrefixes = [
   '.github/workflows/celar-ai-',
   'database/migrations/084_module_076_',
@@ -166,6 +169,8 @@ if (module025ProtectedUatCompatibilityMode)
   console.log('CELAR_PR630_MODULE025_PROTECTED_UAT_COMPATIBILITY=PASS');
 if (protectedUatValidationDefectsCompatibilityMode)
   console.log('CELAR_PR630_PROTECTED_UAT_VALIDATION_DEFECTS_COMPATIBILITY=PASS');
+if (celarInternalTrustEvidenceCompatibilityMode)
+  console.log('CELAR_PR630_INTERNAL_TRUST_EVIDENCE_COMPATIBILITY=PASS');
 
 try {
   await import('./validate-celar-ai-pr630-consolidated-legacy.mjs');

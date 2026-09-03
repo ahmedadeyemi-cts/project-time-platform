@@ -339,6 +339,7 @@ public static partial class CelarAiProductionPlatformModule
             module = "011",
             brand = CelarAiBrandProfile.BrandName,
             feature = CelarAiCapabilityCatalog.HelpAssistant,
+            status = result.Status,
             orchestrationContract = "celar_ai_production_answer_orchestration",
             providerConfiguration = helpRoute.ToPublicResponse(),
             decision = intent,
@@ -779,9 +780,15 @@ public static partial class CelarAiProductionPlatformModule
         var currentPublicVerified = authoritativeSources.Any(source =>
             string.Equals(source.SourceType, "authoritative_public_web", StringComparison.OrdinalIgnoreCase)
             && source.Path.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
-            && (source.Freshness.Contains("current", StringComparison.OrdinalIgnoreCase)
-                || source.Freshness.Contains("retrieved", StringComparison.OrdinalIgnoreCase)
-                || source.Freshness.Contains("live", StringComparison.OrdinalIgnoreCase)));
+            && IsCurrentTrustObservation(source));
+        var currentInternalVerified = authoritativeSources.Any(source =>
+            IsCurrentTrustObservation(source)
+            && (source.SourceType.Contains("internal_database", StringComparison.OrdinalIgnoreCase)
+                || source.SourceType.Contains("live_tool", StringComparison.OrdinalIgnoreCase)
+                || source.SourceType.Contains("same_origin_tool", StringComparison.OrdinalIgnoreCase)));
+        var currentEvidenceVerified = intent.Code == "internal_data"
+            ? currentInternalVerified
+            : currentPublicVerified;
         var verifiedPrivateAnswer = privateCitations > 0
             && string.Equals(result.Status, "completed", StringComparison.OrdinalIgnoreCase)
             && string.Equals(
@@ -792,7 +799,7 @@ public static partial class CelarAiProductionPlatformModule
             && AnswerHasRequiredShape(string.Empty, result.Answer.DirectConclusion, intent.Code)
             && !LooksLikeNonAnswer(result.Answer.DirectConclusion);
         var answered = answerShapePresent
-            && (!intent.RequiresCurrentEvidence || currentPublicVerified)
+            && (!intent.RequiresCurrentEvidence || currentEvidenceVerified)
             && (intent.Code != "internal_data" || successful > 0);
 
         var classification = intent.Code switch
@@ -838,7 +845,9 @@ public static partial class CelarAiProductionPlatformModule
             label,
             questionAnswered = answered,
             currentEvidenceRequired = intent.RequiresCurrentEvidence,
+            currentEvidenceVerified,
             currentPublicEvidenceVerified = currentPublicVerified,
+            currentInternalEvidenceVerified = currentInternalVerified,
             successfulSourceCount = successful,
             authoritativeSourceCount = successful,
             failedSourceCount = failed,
@@ -860,6 +869,11 @@ public static partial class CelarAiProductionPlatformModule
             dataAsOf = result.Answer.DataAsOf
         };
     }
+
+    private static bool IsCurrentTrustObservation(PulseAiSystemSourceEvidence source) =>
+        source.Freshness.Contains("current", StringComparison.OrdinalIgnoreCase)
+        || source.Freshness.Contains("retrieved", StringComparison.OrdinalIgnoreCase)
+        || source.Freshness.Contains("live", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsProviderNarrativeSource(PulseAiSystemSourceEvidence source)
     {
