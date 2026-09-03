@@ -20,6 +20,9 @@ const privateRagContractsPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRa
 const privateRagServicePath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs';
 const privateRagRepositoryPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs';
 const webProxyPath = 'deployment/containers/web/default.conf.template';
+const module033WorkflowPath = '.github/workflows/module033-project-forge-ci.yml';
+const celarSourceBoundaryPath = 'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh';
+const celarPr630ValidatorPath = 'tests/validate-celar-ai-pr630-consolidated.mjs';
 const module001bFixturePath = 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs';
 const documentAuthorityMigrationBuilderPath = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
@@ -36,6 +39,9 @@ const privateRagContracts = fs.readFileSync(privateRagContractsPath, 'utf8');
 const privateRagService = fs.readFileSync(privateRagServicePath, 'utf8');
 const privateRagRepository = fs.readFileSync(privateRagRepositoryPath, 'utf8');
 const webProxy = fs.readFileSync(webProxyPath, 'utf8');
+const module033Workflow = fs.readFileSync(module033WorkflowPath, 'utf8');
+const celarSourceBoundary = fs.readFileSync(celarSourceBoundaryPath, 'utf8');
+const celarPr630Validator = fs.readFileSync(celarPr630ValidatorPath, 'utf8');
 const module001bFixture = fs.readFileSync(module001bFixturePath, 'utf8');
 const documentAuthorityMigrationBuilder = fs.readFileSync(documentAuthorityMigrationBuilderPath, 'utf8');
 
@@ -134,6 +140,17 @@ assert.match(
   /location \/api\/ \{[\s\S]*?proxy_read_timeout 60s;/,
   'the longer Module 025 window must not extend the generic API timeout'
 );
+for (const source of [module033Workflow, celarSourceBoundary, celarPr630Validator]) {
+  assert.match(
+    source,
+    /fix\/module025-protected-uat-generation-verification-/,
+    'legacy CI compatibility must remain restricted to the reviewed Module 025 repair branch'
+  );
+}
+assert.match(celarSourceBoundary, /CELAR_AI_MODULE025_PROTECTED_UAT_BOUNDARY=PASSED/);
+assert.match(celarSourceBoundary, /! grep -Fq 'phd-west\.onenecklab\.com'/);
+assert.match(module033Workflow, /MODULE_033_MODULE025_PROXY_REGRESSION_BOUNDARY=PASSED/);
+assert.match(celarPr630Validator, /CELAR_PR630_MODULE025_PROTECTED_UAT_COMPATIBILITY=PASS/);
 assert.match(workflow, /093_assigned_work_canonical_visibility_repair\.sql/);
 assert.match(workflow, /097_project_planning_identity_safe_admission\.sql/);
 assert.match(workflow, /097_project_planning_identity_safe_admission_rollback\.sql/);

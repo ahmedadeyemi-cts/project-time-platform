@@ -273,12 +273,12 @@ public sealed class PulseAiPrivateRagService
             cancellationToken);
     }
 
-    public Task<PulseAiPrivateRagAnswer> GenerateFlowHivePlanAsync(
+    public async Task<PulseAiPrivateRagAnswer> GenerateFlowHivePlanAsync(
         Guid actualUserId,
         Guid effectiveUserId,
         PulseAiPrivateFlowHiveRequest request,
         CancellationToken cancellationToken = default) =>
-        GenerateFlowHivePlanInternalAsync(
+        await GenerateFlowHivePlanInternalAsync(
             actualUserId,
             effectiveUserId,
             request,
