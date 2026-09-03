@@ -42,7 +42,14 @@ for (const marker of [
   '.access.canViewAll == false',
   '.access.canUseTeamScope == true',
   '.access.canSelectEngineer == true',
-  'MANAGER_OUTSIDER_ID=',
+  'resolve_live_engineer_identity()',
+  'jason.mosier@ussignal.local|Jason Mosier',
+  'jeremy.holt@ussignal.local|Jeremy Holt',
+  'demo.engineer@ussignal.local|Demo Engineer',
+  'manager-outsider-candidate-$slug-security-context.json',
+  'RESOLVED_ENGINEER_USER_ID=',
+  'MANAGER_OUTSIDER_EMAIL=',
+  'managerCrossTeamIdentitySource:\"live_authenticated_security_context\"',
   '[[ \"$MANAGER_OUTSIDER_STATUS\" == 403 ]]',
   'Selected engineer is not available within your utilization scope.',
   'managerRoleScope:\"assigned_team_only\"',
@@ -50,6 +57,10 @@ for (const marker of [
 ]) {
   assert.ok(protectedTestUat.includes(marker), `Protected-Test utilization UAT is missing: ${marker}`);
 }
+assert.ok(
+  !protectedTestUat.includes("JASON_USER_ID='73e58088-c70a-4a4f-a856-a38c0e43b089'"),
+  'Protected-Test utilization UAT must not use a static Jason UUID for a cross-team denial proof.'
+);
 assert.ok(
   !protectedTestUat.includes('[[ \"$OTHER_ENGINEER_STATUS\" == 403 ]]'),
   'Protected-Test utilization UAT must not require a 403 where the backend securely normalizes Engineer scope.'
@@ -68,4 +79,4 @@ assert.doesNotMatch(drawer, /addEventListener\('hashchange', loadUsers\)/);
 assert.match(app, /Legacy DOM View-As preview disabled/);
 assert.doesNotMatch(app, /^installProjectPulseGlobalViewAsPreview\(\);$/m);
 
-console.log('UTILIZATION_ROLE_SCOPING_VALIDATION=PASS engineer=self lead=self+team managerDirector=team executive=all viewAs=capability-gated liveManagerBoundary=required');
+console.log('UTILIZATION_ROLE_SCOPING_VALIDATION=PASS engineer=self lead=self+team managerDirector=team executive=all viewAs=capability-gated liveManagerBoundary=required liveOutsiderIdentity=required');
