@@ -11,6 +11,15 @@ const apiBuildPropsPath = 'src/backend/ProjectTime.Api/Directory.Build.props';
 const sourceRevisionPath = 'src/backend/ProjectTime.Api/.projectpulse-source-revision';
 const revisionWaitPath = 'scripts/wait-containerapp-ready-revision.sh';
 const assignedWorkUatPath = 'scripts/release-test/run-assigned-work-protected-test-uat.sh';
+const module025UatPath = 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh';
+const module025UatAccessPath = 'src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs';
+const module025ModulePath = 'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs';
+const celarContractsPath = 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs';
+const celarServicePath = 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs';
+const privateRagContractsPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs';
+const privateRagServicePath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs';
+const privateRagRepositoryPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs';
+const webProxyPath = 'deployment/containers/web/default.conf.template';
 const module001bFixturePath = 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs';
 const documentAuthorityMigrationBuilderPath = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh';
 const workflow = fs.readFileSync(workflowPath, 'utf8');
@@ -18,6 +27,15 @@ const apiProject = fs.readFileSync(apiProjectPath, 'utf8');
 const apiBuildProps = fs.readFileSync(apiBuildPropsPath, 'utf8');
 const revisionWait = fs.readFileSync(revisionWaitPath, 'utf8');
 const assignedWorkUat = fs.readFileSync(assignedWorkUatPath, 'utf8');
+const module025Uat = fs.readFileSync(module025UatPath, 'utf8');
+const module025UatAccess = fs.readFileSync(module025UatAccessPath, 'utf8');
+const module025Module = fs.readFileSync(module025ModulePath, 'utf8');
+const celarContracts = fs.readFileSync(celarContractsPath, 'utf8');
+const celarService = fs.readFileSync(celarServicePath, 'utf8');
+const privateRagContracts = fs.readFileSync(privateRagContractsPath, 'utf8');
+const privateRagService = fs.readFileSync(privateRagServicePath, 'utf8');
+const privateRagRepository = fs.readFileSync(privateRagRepositoryPath, 'utf8');
+const webProxy = fs.readFileSync(webProxyPath, 'utf8');
 const module001bFixture = fs.readFileSync(module001bFixturePath, 'utf8');
 const documentAuthorityMigrationBuilder = fs.readFileSync(documentAuthorityMigrationBuilderPath, 'utf8');
 
@@ -46,6 +64,76 @@ assert.match(workflow, /docker push "\$full_image"/);
 assert.match(workflow, /BUILD_LOG="\$EVIDENCE_DIR\/image-build\.log"/);
 assert.match(workflow, /node tests\/validate-systemwide-image-build-controller\.mjs/);
 assert.match(workflow, /run-utilization-role-scoping-protected-test-uat\.sh/);
+assert.match(workflow, /Run protected-Test Module 025 SOW\/GSD generation lifecycle UAT/);
+assert.match(workflow, /Enable exact-run Module 025 protected-Test authorization fixture/);
+assert.match(workflow, /Disable exact-run Module 025 protected-Test authorization fixture/);
+assert.match(workflow, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED=true/);
+assert.match(workflow, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED=false/);
+assert.match(workflow, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID="\$\{GITHUB_RUN_ID\}-\$\{GITHUB_RUN_ATTEMPT\}"/);
+assert.match(workflow, /persistentRoleAssignmentMutation:false/);
+assert.match(workflow, /run-module025-sow-gsd-protected-test-uat\.sh/);
+assert.match(workflow, /module025-sow-gsd-protected-test-uat\.json/);
+assert.match(module025Uat, /https:\/\/phd-west-test\.onenecklab\.com/);
+assert.match(module025Uat, /\.access\.isSolutionArchitect == true/);
+assert.match(module025Uat, /module025_detailed_scope_generated/);
+assert.match(module025Uat, /\["plan","design","implement","validate","release"\]/);
+assert.match(module025Uat, /\.engagement\.status == "review_ready"/);
+assert.match(module025Uat, /module025_archived/);
+assert.match(module025Uat, /productionMutation:false/);
+assert.match(module025Uat, /demo\.manager@ussignal\.local/);
+assert.match(module025Uat, /X-ProjectPulse-Module025-Uat-Run/);
+assert.match(module025Uat, /protectedTestUatRoleFixture == true/);
+assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED/);
+assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID/);
+assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_SOURCE_COMMIT/);
+assert.match(module025UatAccess, /PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_EXPIRES_AT/);
+assert.match(module025UatAccess, /expiresAt <= now/);
+assert.match(module025UatAccess, /expiresAt > now \+ 3_600/);
+assert.match(module025UatAccess, /phd-west-test\.onenecklab\.com/);
+assert.match(module025UatAccess, /actualUserId == effectiveUserId/);
+assert.match(module025UatAccess, /!ProjectPulseActualSessionAuthority\.IsViewAs\(context\)/);
+assert.match(module025UatAccess, /roles\.Contains\("MANAGER"\)/);
+assert.match(module025UatAccess, /!roles\.Overlaps/);
+assert.doesNotMatch(module025UatAccess, /INSERT|UPDATE|DELETE|app_user_role_assignments/i);
+assert.match(
+  celarContracts,
+  /internal sealed record CelarAiAuthoritativeScopeEvidence/,
+  'Module 025 saved-scope evidence must remain server-internal and unavailable to public request binding'
+);
+assert.match(module025Module, /ComposeModule025SowAsync\(/);
+assert.match(module025Module, /new CelarAiAuthoritativeScopeEvidence\(/);
+assert.match(celarService, /authoritativeScopeEvidence: null/);
+assert.match(celarService, /internal Task<CelarAiComposeResult> ComposeModule025SowAsync/);
+assert.match(celarService, /GenerateModule025SowPlanAsync\(/);
+assert.match(privateRagContracts, /string SourceType = "project_document"/);
+assert.match(privateRagContracts, /string SourceModule = "011"/);
+assert.match(privateRagService, /CreateModule025AuthoritativeScopeSource/);
+assert.match(privateRagService, /SourceType: "module025_saved_service_overview"/);
+assert.match(privateRagService, /SourceModule: "025"/);
+assert.match(privateRagService, /RetrievalMode: "direct_knowledge"/);
+assert.match(privateRagService, /hasModule025AuthoritativeScope: authoritativeSource is not null/);
+assert.match(
+  privateRagService,
+  /AllowsDeterministicCitedPlanningFallback[\s\S]*?ProjectFlowHivePlan[\s\S]*?ProjectForgePlanEstimate;/,
+  'only FlowHive and Project Forge may use deterministic cited planning fallback'
+);
+assert.doesNotMatch(
+  privateRagService.match(/private static bool AllowsDeterministicCitedPlanningFallback[\s\S]*?;/)?.[0] ?? '',
+  /SowGsdPlanning/,
+  'Module 025 SOW generation must fail closed when the approved private model does not complete'
+);
+assert.match(privateRagRepository, /citation\.SourceType,[\s\S]*?"module025_saved_service_overview"/);
+assert.match(privateRagRepository, /@answer_run_id,NULL,NULL,NULL,NULL,@source_type,@source_module/);
+assert.match(
+  webProxy,
+  /location ~ "\^\/api\/module025\/sow-gsd\/[\s\S]*?\/generate\$" \{[\s\S]*?proxy_read_timeout 230s;/,
+  'the synchronous Module 025 generation route must have a bounded proxy window below the 240-second Container Apps ingress limit'
+);
+assert.match(
+  webProxy,
+  /location \/api\/ \{[\s\S]*?proxy_read_timeout 60s;/,
+  'the longer Module 025 window must not extend the generic API timeout'
+);
 assert.match(workflow, /093_assigned_work_canonical_visibility_repair\.sql/);
 assert.match(workflow, /097_project_planning_identity_safe_admission\.sql/);
 assert.match(workflow, /097_project_planning_identity_safe_admission_rollback\.sql/);
@@ -384,4 +472,4 @@ const bashProbe = spawnSync('bash', ['-c', bashScript], { encoding: 'utf8' });
 assert.equal(bashProbe.status, 0, bashProbe.stderr);
 assert.equal(bashProbe.stdout.trim(), 'repository|Dockerfile|.|repository:validation-tag');
 
-console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097+098+099 utilization-uat=registered module001b-single-revision-reconcile=ready-inactive-safe module001b-fixture-audit=immutable module025-migration099=registered');
+console.log('SYSTEMWIDE_IMAGE_BUILD_CONTROLLER_VALIDATION=PASS governed-controller=projectpulse-deploy-test local-initialization=ordered acr-path=context-owned docker-fallback=full_image api-source-provenance=temporary-revision-file migration-builders=094,095,096+097+098+099 utilization-uat=registered module001b-single-revision-reconcile=ready-inactive-safe module001b-fixture-audit=immutable module025-migration099=registered module025-generation-uat=registered');

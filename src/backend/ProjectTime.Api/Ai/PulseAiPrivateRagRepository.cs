@@ -804,6 +804,77 @@ public sealed class PulseAiPrivateRagRepository
             var rank = 1;
             foreach (var citation in answer.Citations)
             {
+                if (string.Equals(
+                        citation.SourceType,
+                        "module025_saved_service_overview",
+                        StringComparison.Ordinal)
+                    && string.Equals(
+                        citation.SourceModule,
+                        "025",
+                        StringComparison.Ordinal)
+                    && string.Equals(
+                        citation.DocumentCategory,
+                        "module025_service_overview",
+                        StringComparison.Ordinal))
+                {
+                    const string module025CitationSql = """
+                        INSERT INTO pulse_ai_answer_citations (
+                            pulse_ai_answer_run_id,chunk_id,project_intake_document_id,
+                            pulse_ai_document_version_id,project_id,source_type,source_module,
+                            document_category,document_version,original_file_name,
+                            citation_anchor,page_number,sheet_name,rank_order,combined_score,
+                            source_sha256,text_sha256,source_processed_at
+                        ) VALUES (
+                            @answer_run_id,NULL,NULL,NULL,NULL,@source_type,@source_module,
+                            @document_category,@document_version,@original_file_name,
+                            @citation_anchor,NULL,NULL,@rank_order,@combined_score,
+                            @source_sha256,@text_sha256,@source_processed_at
+                        )
+                        ON CONFLICT (pulse_ai_answer_run_id, rank_order) DO NOTHING;
+                        """;
+                    await using var module025Citation = new NpgsqlCommand(
+                        module025CitationSql,
+                        connection,
+                        transaction);
+                    module025Citation.Parameters.AddWithValue(
+                        "answer_run_id",
+                        answer.AnswerRunId);
+                    module025Citation.Parameters.AddWithValue(
+                        "source_type",
+                        citation.SourceType);
+                    module025Citation.Parameters.AddWithValue(
+                        "source_module",
+                        citation.SourceModule);
+                    module025Citation.Parameters.AddWithValue(
+                        "document_category",
+                        citation.DocumentCategory);
+                    module025Citation.Parameters.AddWithValue(
+                        "document_version",
+                        citation.DocumentVersion);
+                    module025Citation.Parameters.AddWithValue(
+                        "original_file_name",
+                        citation.OriginalFileName);
+                    module025Citation.Parameters.AddWithValue(
+                        "citation_anchor",
+                        citation.CitationAnchor);
+                    module025Citation.Parameters.AddWithValue("rank_order", rank);
+                    module025Citation.Parameters.AddWithValue(
+                        "combined_score",
+                        citation.RelevanceScore);
+                    module025Citation.Parameters.AddWithValue(
+                        "source_sha256",
+                        citation.SourceSha256);
+                    module025Citation.Parameters.AddWithValue(
+                        "text_sha256",
+                        citation.TextSha256);
+                    module025Citation.Parameters.AddWithValue(
+                        "source_processed_at",
+                        citation.ProcessedAt);
+                    await module025Citation.ExecuteNonQueryAsync(cancellationToken);
+                    rank++;
+                    continue;
+                }
+
                 const string citationSql = """
                     INSERT INTO pulse_ai_answer_citations (
                         pulse_ai_answer_run_id,chunk_id,project_intake_document_id,

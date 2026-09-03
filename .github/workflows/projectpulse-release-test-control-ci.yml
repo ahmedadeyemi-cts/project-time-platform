@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/module-loading-assignment-propagation-ci.yml'
+      - '.github/workflows/module025-protected-uat-control.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
@@ -15,15 +16,26 @@ on:
       - 'database/migrations/040_scoped_role_policy_versions/00_schema.sql'
       - 'database/migrations/097_project_planning_identity_safe_admission.sql'
       - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
+      - 'deployment/containers/web/default.conf.template'
       - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
       - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
+      - 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'scripts/wait-containerapp-ready-revision.sh'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs'
       - 'src/backend/ProjectTime.Api/Program.cs'
+      - 'tests/ProjectTime.Api.AuthorizationTests/Program.cs'
       - 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
       - 'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs'
       - 'src/frontend/project-time-web/src/App.jsx'
@@ -71,11 +83,13 @@ jobs:
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+          MODULE025_SUPERVISOR='.github/workflows/module025-protected-uat-control.yml'
           FINALIZER='.github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml'
           RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
           RETIRED_MODULE001B_UAT='.github/workflows/module001b-live-reallocation-protected-test-uat.yml'
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
           ASSIGNED_WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
+          MODULE025_UAT='scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
           MODULE001B_REVISION_WAIT='scripts/wait-containerapp-ready-revision.sh'
           MODULE001B_FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
           DOCUMENT_AUTHORITY_MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
@@ -87,6 +101,7 @@ jobs:
 
           cat > "$RUNNER_TEMP/allowed-release-files" <<'FILES'
           .github/workflows/module-loading-assignment-propagation-ci.yml
+          .github/workflows/module025-protected-uat-control.yml
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
@@ -97,14 +112,25 @@ jobs:
           database/migrations/040_scoped_role_policy_versions/00_schema.sql
           database/migrations/097_project_planning_identity_safe_admission.sql
           database/rollback/097_project_planning_identity_safe_admission_rollback.sql
+          deployment/containers/web/default.conf.template
           scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
           scripts/release-test/run-assigned-work-protected-test-uat.sh
+          scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
           scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
           scripts/wait-containerapp-ready-revision.sh
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
           src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
+          src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
           src/backend/ProjectTime.Api/Program.cs
+          tests/ProjectTime.Api.AuthorizationTests/Program.cs
           src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
           src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs
           src/frontend/project-time-web/src/App.jsx
@@ -274,11 +300,13 @@ jobs:
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+          MODULE025_SUPERVISOR='.github/workflows/module025-protected-uat-control.yml'
           FINALIZER='.github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml'
           RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
           RETIRED_MODULE001B_UAT='.github/workflows/module001b-live-reallocation-protected-test-uat.yml'
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
           ASSIGNED_WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
+          MODULE025_UAT='scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
           MODULE001B_REVISION_WAIT='scripts/wait-containerapp-ready-revision.sh'
           MODULE001B_FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
           DOCUMENT_AUTHORITY_MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
@@ -289,11 +317,13 @@ jobs:
           git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
 
           test -f "$CONTROLLER" || fail 'The governed protected-Test controller is missing.'
+          test -f "$MODULE025_SUPERVISOR" || fail 'The Module 025 protected-Test supervisor is missing.'
           test -f "$FINALIZER" || fail 'The successful Protected-Test UAT finalizer is missing.'
           test ! -e "$RETIRED_CONTROLLER" || fail 'The unregistered duplicate protected-Test controller was not retired.'
           test ! -e "$RETIRED_MODULE001B_UAT" || fail 'The parallel Module 001B protected-Test mutator was not retired.'
           test -f "$UTILIZATION_UAT" || fail 'The utilization role-scoping UAT script is missing.'
           test -f "$ASSIGNED_WORK_UAT" || fail 'The assigned-work UAT script is missing.'
+          test -f "$MODULE025_UAT" || fail 'The Module 025 SOW/GSD UAT script is missing.'
           test -f "$MODULE001B_REVISION_WAIT" || fail 'The Module 001B revision readiness helper is missing.'
           test -f "$MODULE001B_FIXTURE" || fail 'The Module 001B disposable protected-Test fixture module is missing.'
           test -f "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER" || fail 'The governed document-authority migration builder is missing.'
@@ -301,6 +331,7 @@ jobs:
           bash -n "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
           bash -n "$UTILIZATION_UAT"
           bash -n "$ASSIGNED_WORK_UAT"
+          bash -n "$MODULE025_UAT"
           bash -n "$MODULE001B_REVISION_WAIT"
 
           grep -Fq 'name: Deploy System-wide Enterprise Reliability and Utilization to Protected Test' "$CONTROLLER"
@@ -361,9 +392,11 @@ jobs:
           grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
           grep -Fq 'Run protected-Test authenticated functional UAT' "$CONTROLLER"
+          grep -Fq 'Run protected-Test Module 025 SOW/GSD generation lifecycle UAT' "$CONTROLLER"
           grep -Fq 'Run protected-Test assigned-work visibility UAT' "$CONTROLLER"
           grep -Fq 'Run protected-Test utilization role-scoping UAT' "$CONTROLLER"
           grep -Fq 'assignedWorkUat:true' "$CONTROLLER"
+          grep -Fq 'module025SowGsdUat:true' "$CONTROLLER"
           grep -Fq 'Restore exact prior Test images after application failure' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_api_image' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_web_image' "$CONTROLLER"
@@ -376,6 +409,20 @@ jobs:
           grep -Fq 'MODULE001B_LIVE_REALLOCATION_UAT=PASS' "$ASSIGNED_WORK_UAT"
           grep -Fq 'currentEmployeeWeekMutation:false' "$ASSIGNED_WORK_UAT"
           grep -Fq 'productionMutation:false' "$ASSIGNED_WORK_UAT"
+          grep -Fq 'MODULE025_SOW_GSD_PROTECTED_TEST_UAT=PASS' "$MODULE025_UAT"
+          grep -Fq '.access.isSolutionArchitect == true' "$MODULE025_UAT"
+          grep -Fq '.engagement.status == "review_ready"' "$MODULE025_UAT"
+          grep -Fq '["plan","design","implement","validate","release"]' "$MODULE025_UAT"
+          grep -Fq 'module025_archived' "$MODULE025_UAT"
+          grep -Fq 'DEPLOY MODULE025 PROTECTED UAT SHA ' "$MODULE025_SUPERVISOR"
+          grep -Fq "github.actor == 'ahmedadeyemi-cts'" "$MODULE025_SUPERVISOR"
+          grep -Fq 'git merge-base --is-ancestor "$REPAIRED_MODULE025_SHA" HEAD' "$MODULE025_SUPERVISOR"
+          grep -Fq 'actions/workflows/${DEPLOY_WORKFLOW_ID}/dispatches' "$MODULE025_SUPERVISOR"
+          grep -Fq 'MODULE025_PROTECTED_UAT_FINAL_WORKFLOW_STATE=disabled_manually' "$MODULE025_SUPERVISOR"
+          grep -Fq 'PRODUCTION_MUTATION=NONE' "$MODULE025_SUPERVISOR"
+          grep -Fq 'PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED' src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs
+          grep -Fq 'phd-west-test.onenecklab.com' src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs
+          ! grep -Eqi 'INSERT|UPDATE|DELETE|app_user_role_assignments' src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs
           TARGET_MAIN_BRANCH_CONDITION="if [[ \"\$TARGET_RELEASE_BRANCH\" == 'main' ]]; then"
           grep -Fq "$TARGET_MAIN_BRANCH_CONDITION" "$CONTROLLER"
           RELIABILITY_RELEASE_MARKER='RELIABILITY_RELEASE_COMMIT: $'
@@ -503,7 +550,7 @@ jobs:
           ! grep -Eq '^[[:space:]]*environment:[[:space:]]*production([[:space:]]|$)' "$CONTROLLER"
           ! grep -Fq 'celarai.onenecklab.com' "$CONTROLLER"
           ! grep -Fq 'phd-west.onenecklab.com' "$CONTROLLER"
-          ! grep -Eq 'productionMutation:true|privateRuntimeConfigurationMutation:true' "$CONTROLLER" "$UTILIZATION_UAT" "$ASSIGNED_WORK_UAT"
+          ! grep -Eq 'productionMutation:true|privateRuntimeConfigurationMutation:true' "$CONTROLLER" "$UTILIZATION_UAT" "$ASSIGNED_WORK_UAT" "$MODULE025_UAT" "$MODULE025_SUPERVISOR"
 
           bash tests/test-project-planning-identity-safe-admission-migration-097.sh
           bash tests/test-pulse-ai-runtime-job-query-shape.sh

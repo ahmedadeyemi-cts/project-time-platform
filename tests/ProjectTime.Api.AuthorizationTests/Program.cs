@@ -4,11 +4,232 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Primitives;
+using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
 
 var assignedProjectId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 var unassignedProjectId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 var checks = 0;
+
+var priorModule025UatEnabled = Environment.GetEnvironmentVariable(
+    Module025ProtectedTestUatAccess.EnabledVariable);
+var priorModule025UatRunId = Environment.GetEnvironmentVariable(
+    Module025ProtectedTestUatAccess.RunIdVariable);
+var priorModule025UatSourceCommit = Environment.GetEnvironmentVariable(
+    Module025ProtectedTestUatAccess.SourceCommitVariable);
+var priorModule025UatExpiresAt = Environment.GetEnvironmentVariable(
+    Module025ProtectedTestUatAccess.ExpiresAtVariable);
+var priorSourceCommit = Environment.GetEnvironmentVariable("PROJECTPULSE_SOURCE_COMMIT");
+var module025ActualUserId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+var module025EffectiveUserId = module025ActualUserId;
+var module025ManagerRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "MANAGER"
+};
+
+try
+{
+    Environment.SetEnvironmentVariable(Module025ProtectedTestUatAccess.EnabledVariable, "true");
+    Environment.SetEnvironmentVariable(Module025ProtectedTestUatAccess.RunIdVariable, "123456789-1");
+    Environment.SetEnvironmentVariable("PROJECTPULSE_SOURCE_COMMIT", new string('a', 40));
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.SourceCommitVariable,
+        new string('a', 40));
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.ExpiresAtVariable,
+        (DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 1_800).ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
+
+    Expect(
+        "MODULE_025_PROTECTED_UAT:EXACT_BOUNDARY_AUTHORIZES",
+        Module025ProtectedTestUatAccess.Authorizes(
+            Module025ProtectedTestContext(),
+            module025ActualUserId,
+            module025EffectiveUserId,
+            Module025ProtectedTestUatAccess.TargetEmail,
+            module025ManagerRoles),
+        "the exact protected-Test run, origin, identity, and Manager-only session must authorize the non-persistent UAT fixture");
+
+    var wrongRun = Module025ProtectedTestContext();
+    wrongRun.Request.Headers[Module025ProtectedTestUatAccess.RunIdHeader] = "123456789-2";
+    Expect(
+        "MODULE_025_PROTECTED_UAT:WRONG_RUN_FAILS_CLOSED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            wrongRun,
+            module025ActualUserId,
+            module025EffectiveUserId,
+            Module025ProtectedTestUatAccess.TargetEmail,
+            module025ManagerRoles),
+        "a request not bound to the exact enabled GitHub run must be denied");
+
+    var wrongHost = Module025ProtectedTestContext();
+    wrongHost.Request.Host = new HostString("phd-west.onenecklab.com");
+    wrongHost.Request.Headers["Origin"] = "https://phd-west.onenecklab.com";
+    Expect(
+        "MODULE_025_PROTECTED_UAT:PRODUCTION_HOST_FAILS_CLOSED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            wrongHost,
+            module025ActualUserId,
+            module025EffectiveUserId,
+            Module025ProtectedTestUatAccess.TargetEmail,
+            module025ManagerRoles),
+        "the UAT role fixture must never authorize the Production host");
+
+    var viewAs = Module025ProtectedTestContext();
+    viewAs.Items["ProjectPulseIsViewAs"] = true;
+    Expect(
+        "MODULE_025_PROTECTED_UAT:VIEW_AS_FAILS_CLOSED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            viewAs,
+            module025ActualUserId,
+            module025EffectiveUserId,
+            Module025ProtectedTestUatAccess.TargetEmail,
+            module025ManagerRoles),
+        "View-As must not inherit the UAT Solution Architect fixture");
+
+    Expect(
+        "MODULE_025_PROTECTED_UAT:IMPERSONATED_IDENTITY_FAILS_CLOSED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            Module025ProtectedTestContext(),
+            module025ActualUserId,
+            Guid.Parse("44444444-4444-4444-4444-444444444444"),
+            Module025ProtectedTestUatAccess.TargetEmail,
+            module025ManagerRoles),
+        "different actual and effective identities must be denied");
+
+    Expect(
+        "MODULE_025_PROTECTED_UAT:WRONG_IDENTITY_FAILS_CLOSED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            Module025ProtectedTestContext(),
+            module025ActualUserId,
+            module025EffectiveUserId,
+            "another.manager@ussignal.local",
+            module025ManagerRoles),
+        "the fixture must remain bound to the reviewed protected-Test identity");
+
+    Expect(
+        "MODULE_025_PROTECTED_UAT:NON_MANAGER_FAILS_CLOSED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            Module025ProtectedTestContext(),
+            module025ActualUserId,
+            module025EffectiveUserId,
+            Module025ProtectedTestUatAccess.TargetEmail,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "ENGINEERING" }),
+        "an identity without the Manager role must be denied");
+
+    Expect(
+        "MODULE_025_PROTECTED_UAT:EXISTING_SOLUTION_ARCHITECT_NOT_RECLASSIFIED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            Module025ProtectedTestContext(),
+            module025ActualUserId,
+            module025EffectiveUserId,
+            Module025ProtectedTestUatAccess.TargetEmail,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "MANAGER",
+                "SOLUTION_ARCHITECT"
+            }),
+        "an existing Solution Architect session must use its real role instead of the UAT fixture");
+
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.ExpiresAtVariable,
+        (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 1).ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
+    Expect(
+        "MODULE_025_PROTECTED_UAT:EXPIRED_FIXTURE_FAILS_CLOSED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            Module025ProtectedTestContext(),
+            module025ActualUserId,
+            module025EffectiveUserId,
+            Module025ProtectedTestUatAccess.TargetEmail,
+            module025ManagerRoles),
+        "a fixture that cleanup failed to disable must self-expire");
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.ExpiresAtVariable,
+        (DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 1_800).ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
+
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.SourceCommitVariable,
+        new string('b', 40));
+    Expect(
+        "MODULE_025_PROTECTED_UAT:WRONG_SOURCE_COMMIT_FAILS_CLOSED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            Module025ProtectedTestContext(),
+            module025ActualUserId,
+            module025EffectiveUserId,
+            Module025ProtectedTestUatAccess.TargetEmail,
+            module025ManagerRoles),
+        "the fixture must remain bound to the exact deployed candidate source commit");
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.SourceCommitVariable,
+        new string('a', 40));
+
+    Environment.SetEnvironmentVariable(Module025ProtectedTestUatAccess.EnabledVariable, "false");
+    Expect(
+        "MODULE_025_PROTECTED_UAT:DISABLED_FAILS_CLOSED",
+        !Module025ProtectedTestUatAccess.Authorizes(
+            Module025ProtectedTestContext(),
+            module025ActualUserId,
+            module025EffectiveUserId,
+            Module025ProtectedTestUatAccess.TargetEmail,
+            module025ManagerRoles),
+        "the fixture must be inert when the governed runtime flag is disabled");
+}
+finally
+{
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.EnabledVariable,
+        priorModule025UatEnabled);
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.RunIdVariable,
+        priorModule025UatRunId);
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.SourceCommitVariable,
+        priorModule025UatSourceCommit);
+    Environment.SetEnvironmentVariable(
+        Module025ProtectedTestUatAccess.ExpiresAtVariable,
+        priorModule025UatExpiresAt);
+    Environment.SetEnvironmentVariable("PROJECTPULSE_SOURCE_COMMIT", priorSourceCommit);
+}
+
+var authoritativeScopeSavedAt = DateTimeOffset.Parse(
+    "2026-09-03T00:00:00Z",
+    System.Globalization.CultureInfo.InvariantCulture);
+var authoritativeScope = new CelarAiAuthoritativeScopeEvidence(
+    EngagementId: Guid.Parse("55555555-5555-5555-5555-555555555555"),
+    Revision: 7,
+    EngagementNumber: "SOW-2026-000555",
+    CustomerName: "Protected UAT Customer",
+    ServiceOverview: "Plan and deliver a governed two-site network modernization with explicit validation and handoff requirements.",
+    SavedAt: authoritativeScopeSavedAt);
+var authoritativeSource = PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(
+    authoritativeScope);
+Expect(
+    "MODULE_025_PRIVATE_SCOPE:SERVER_SAVED_SOURCE_CREATED",
+    authoritativeSource is
+    {
+        RankOrder: 1,
+        ProjectId: null,
+        DocumentCategory: "module025_service_overview",
+        CitationAnchor: "Saved Service Overview",
+        SourceType: "module025_saved_service_overview",
+        SourceModule: "025"
+    }
+    && authoritativeSource.DocumentId == authoritativeScope.EngagementId
+    && authoritativeSource.DocumentVersionId == authoritativeScope.EngagementId
+    && authoritativeSource.ProjectCode == authoritativeScope.EngagementNumber
+    && authoritativeSource.ProjectName == authoritativeScope.CustomerName
+    && authoritativeSource.Text == authoritativeScope.ServiceOverview
+    && authoritativeSource.ProcessedAt == authoritativeScopeSavedAt
+    && Regex.IsMatch(authoritativeSource.SourceSha256, "^[0-9a-f]{64}$")
+    && Regex.IsMatch(authoritativeSource.TextSha256, "^[0-9a-f]{64}$"),
+    "the owned saved Service Overview must become one private, hashed, citation-addressable Module 025 source");
+Expect(
+    "MODULE_025_PRIVATE_SCOPE:SHORT_UNSAVED_SOURCE_FAILS_CLOSED",
+    PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(
+        authoritativeScope with { ServiceOverview = "too short" }) is null,
+    "an incomplete Service Overview must not be admitted as authoritative private evidence");
 
 var roleAssignmentRoute = ScopedRolePolicyRules.RouteContract(
     "/api/admin/users/roles",
@@ -254,6 +475,16 @@ static DefaultHttpContext JsonContext(string path, string json)
     context.Request.ContentType = "application/json";
     context.Request.ContentLength = bytes.Length;
     context.Request.Body = new MemoryStream(bytes);
+    return context;
+}
+
+static DefaultHttpContext Module025ProtectedTestContext()
+{
+    var context = new DefaultHttpContext();
+    context.Request.Scheme = "https";
+    context.Request.Host = new HostString("phd-west-test.onenecklab.com");
+    context.Request.Headers["Origin"] = "https://phd-west-test.onenecklab.com";
+    context.Request.Headers[Module025ProtectedTestUatAccess.RunIdHeader] = "123456789-1";
     return context;
 }
 

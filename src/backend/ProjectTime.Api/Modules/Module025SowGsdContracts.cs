@@ -53,6 +53,7 @@ internal sealed record Module025AccessContext(
     bool IsViewAs,
     bool IsAdministrator,
     bool IsSolutionArchitect,
+    bool IsProtectedTestUatRoleFixture,
     bool IsManager,
     IReadOnlySet<Guid> VisibleSolutionArchitectIds)
 {

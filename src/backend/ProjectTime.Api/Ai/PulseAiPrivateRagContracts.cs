@@ -283,7 +283,9 @@ public sealed record PulseAiPrivateRetrievedChunk(
     decimal SemanticScore,
     decimal CombinedScore,
     DateTimeOffset ProcessedAt,
-    int RankOrder)
+    int RankOrder,
+    string SourceType = "project_document",
+    string SourceModule = "011")
 {
     public object ToCitationEvidence() => new
     {
@@ -306,6 +308,8 @@ public sealed record PulseAiPrivateRetrievedChunk(
         sourceSha256 = SourceSha256,
         textSha256 = TextSha256,
         processedAt = ProcessedAt,
+        sourceType = SourceType,
+        sourceModule = SourceModule,
         rawChunkTextReturned = false,
         embeddingVectorReturned = false
     };
@@ -347,7 +351,9 @@ public sealed record PulseAiPrivateAnswerCitation(
     decimal RelevanceScore,
     string SourceSha256,
     string TextSha256,
-    DateTimeOffset ProcessedAt);
+    DateTimeOffset ProcessedAt,
+    string SourceType = "project_document",
+    string SourceModule = "011");
 
 public sealed record PulseAiPrivateDetailedAnswer(
     string DirectConclusion,

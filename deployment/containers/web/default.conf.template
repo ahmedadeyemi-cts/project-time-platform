@@ -37,6 +37,26 @@ server {
         add_header Cache-Control "no-store" always;
     }
 
+    # Module 025 performs one synchronous, private-model generation request.
+    # Keep this route below Azure Container Apps' 240-second ingress boundary
+    # while allowing more than the generic API proxy's 60-second read window.
+    # A route-specific limit avoids extending long-held connections for every API.
+    location ~ "^/api/module025/sow-gsd/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/generate$" {
+        proxy_pass $api_upstream$request_uri;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $proxy_host;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $projectpulse_forwarded_proto;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 230s;
+        proxy_send_timeout 60s;
+        client_max_body_size 1m;
+        add_header Cache-Control "no-store" always;
+    }
+
     location /api/ {
         proxy_pass $api_upstream$request_uri;
         proxy_http_version 1.1;
