@@ -161,8 +161,27 @@ elif [[ "$HEAD_BRANCH" == release/test-b1335bd2-timesheet-ai-* ]]; then
     ! grep -Eq 'azure/[l]ogin@' "$deferred"
     ! grep -Fq 'environment: test' "$deferred"
     ! grep -Eq 'id-token:[[:space:]]+[w]rite' "$deferred"
-    ! grep -Eq '^[[:space:]]{2}push:' "$deferred"
+  ! grep -Eq '^[[:space:]]{2}push:' "$deferred"
   done
+fi
+
+if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]; then
+  PROHIBITED="$(grep -Fvx \
+    -e '.github/workflows/projectpulse-deploy-test.yml' \
+    -e 'deployment/containers/web/default.conf.template' \
+    <<<"$PROHIBITED" || true)"
+  test -f .github/workflows/module025-protected-uat-control.yml
+  test -f scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+  grep -Fxq '.github/workflows/projectpulse-deploy-test.yml' <<<"$CHANGED"
+  grep -Fxq 'deployment/containers/web/default.conf.template' <<<"$CHANGED"
+  grep -Fq 'Run protected-Test Module 025 SOW/GSD generation lifecycle UAT' \
+    .github/workflows/projectpulse-deploy-test.yml
+  grep -Fq 'proxy_read_timeout 230s;' deployment/containers/web/default.conf.template
+  ! grep -Fq 'phd-west.onenecklab.com' \
+    .github/workflows/projectpulse-deploy-test.yml \
+    .github/workflows/module025-protected-uat-control.yml \
+    scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+  echo 'CELAR_AI_MODULE025_PROTECTED_UAT_BOUNDARY=PASSED'
 fi
 
 if [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then

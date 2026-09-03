@@ -47,6 +47,19 @@ public sealed record CelarAiComposeRequest(
     Guid? AssignmentId = null,
     string? CapabilityCode = null);
 
+/// <summary>
+/// Server-owned evidence for a Module 025 draft that does not have a Project ID
+/// yet. This type is intentionally internal so the public Celar compose endpoint
+/// cannot accept caller-asserted authoritative evidence.
+/// </summary>
+internal sealed record CelarAiAuthoritativeScopeEvidence(
+    Guid EngagementId,
+    int Revision,
+    string EngagementNumber,
+    string CustomerName,
+    string ServiceOverview,
+    DateTimeOffset SavedAt);
+
 public sealed record CelarAiTimelineItem(
     string Id,
     string Wbs,

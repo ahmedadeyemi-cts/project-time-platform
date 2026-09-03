@@ -100,6 +100,7 @@ public static class Module025SowGsdModule
             {
                 access.IsAdministrator,
                 access.IsSolutionArchitect,
+                protectedTestUatRoleFixture = access.IsProtectedTestUatRoleFixture,
                 access.IsManager,
                 access.IsViewAs,
                 canCreate = access.CanCreate,
@@ -362,7 +363,7 @@ public static class Module025SowGsdModule
         try
         {
             var enterprise = context.RequestServices.GetRequiredService<CelarAiEnterprisePlatformService>();
-            composition = await enterprise.ComposeAsync(
+            composition = await enterprise.ComposeModule025SowAsync(
                 access.ActualUserId,
                 access.EffectiveUserId,
                 new CelarAiComposeRequest(
@@ -376,6 +377,13 @@ public static class Module025SowGsdModule
                     AllowSanitizedExternalFallback: false,
                     ProjectId: null,
                     CapabilityCode: CelarAiCapabilityCatalog.SowGsdPlanning),
+                new CelarAiAuthoritativeScopeEvidence(
+                    current.EngagementId,
+                    current.Revision,
+                    current.EngagementNumber,
+                    current.CustomerName,
+                    current.ServiceOverview,
+                    current.UpdatedAt),
                 context,
                 cancellationToken);
         }
@@ -804,6 +812,7 @@ public static class Module025SowGsdModule
             canArchive = access.CanWriteOwned(engagement.OwnerUserId),
             canDownload = access.CanViewOwned(engagement.OwnerUserId) && engagement.Status == "confirmed",
             readOnlyManagerView = access.IsManager && !access.IsAdministrator && engagement.OwnerUserId != access.EffectiveUserId,
+            protectedTestUatRoleFixture = access.IsProtectedTestUatRoleFixture,
             access.IsViewAs
         },
         stateChanged = false
@@ -833,12 +842,14 @@ public static class Module025SowGsdModule
             displayName = reader.GetString(0); email = reader.GetString(1); department = reader.GetString(2); team = reader.GetString(3); roles = Split(reader.GetString(4));
         }
         var administrator = roles.Overlaps(AdministratorRoles);
-        var solutionArchitect = roles.Overlaps(SolutionArchitectRoles);
+        var protectedTestUatRoleFixture = Module025ProtectedTestUatAccess.Authorizes(
+            context, actual.Value, effective.Value, email, roles);
+        var solutionArchitect = roles.Overlaps(SolutionArchitectRoles) || protectedTestUatRoleFixture;
         var visibleIds = administrator ? await LoadAllSolutionArchitectIdsAsync(connection, cancellationToken) : await LoadDirectReportSolutionArchitectIdsAsync(connection, effective.Value, department, cancellationToken);
         var manager = roles.Overlaps(ManagerRoles) || visibleIds.Count > 0;
         var visible = new HashSet<Guid>(visibleIds);
         if (solutionArchitect) visible.Add(effective.Value);
-        return new Module025AccessContext(actual.Value, effective.Value, displayName, email, department, team, roles, ProjectPulseActualSessionAuthority.IsViewAs(context) || actual.Value != effective.Value, administrator, solutionArchitect, manager, visible);
+        return new Module025AccessContext(actual.Value, effective.Value, displayName, email, department, team, roles, ProjectPulseActualSessionAuthority.IsViewAs(context) || actual.Value != effective.Value, administrator, solutionArchitect, protectedTestUatRoleFixture, manager, visible);
     }
 
     private static async Task<IReadOnlySet<Guid>> LoadDirectReportSolutionArchitectIdsAsync(NpgsqlConnection connection, Guid managerUserId, string departmentName, CancellationToken cancellationToken)

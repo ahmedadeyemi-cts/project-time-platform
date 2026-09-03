@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+fail() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+: "${BASE:?BASE is required}"
+: "${TEST_LOGIN_PASSWORD:?TEST_LOGIN_PASSWORD is required}"
+: "${EVIDENCE_DIR:?EVIDENCE_DIR is required}"
+: "${MODULE025_UAT_RUN_ID:?MODULE025_UAT_RUN_ID is required}"
+
+BASE="${BASE%/}"
+[[ "$BASE" == 'https://phd-west-test.onenecklab.com' ]] \
+  || fail 'Module 025 UAT is restricted to protected Test.'
+[[ "$MODULE025_UAT_RUN_ID" =~ ^[0-9]+-[0-9]+$ ]] \
+  || fail 'MODULE025_UAT_RUN_ID must be the exact numeric GitHub run ID and attempt.'
+
+install -d -m 0700 "$EVIDENCE_DIR"
+WORK_DIR="$(mktemp -d)"
+chmod 0700 "$WORK_DIR"
+
+SA_EMAIL='demo.manager@ussignal.local'
+SA_USER_ID=''
+SA_SESSION=''
+ENGAGEMENT_ID=''
+ENGAGEMENT_NUMBER=''
+ARCHIVED=false
+
+login() {
+  local username="$1" output="$2" payload="$3"
+  jq -n --arg username "$username" --arg password "$TEST_LOGIN_PASSWORD" \
+    '{username:$username,password:$password}' > "$payload"
+  chmod 0600 "$payload" "$output"
+  local status curl_exit
+  set +e
+  status="$(curl -sS --http1.1 --connect-timeout 30 --max-time 90 \
+    -o "$output" -w '%{http_code}' \
+    -H 'Cache-Control: no-cache' \
+    -H 'Content-Type: application/json' \
+    -H "Origin: $BASE" \
+    -H 'Sec-Fetch-Site: same-origin' \
+    --data-binary @"$payload" \
+    "$BASE/api/auth/local/login")"
+  curl_exit=$?
+  set -e
+  rm -f "$payload"
+  printf '%s|%s\n' "$curl_exit" "${status:-000}"
+}
+
+auth_request() {
+  local method="$1" path="$2" output="$3" session="$4" max_time="${5:-120}" body="${6:-}"
+  local status curl_exit
+  local args=(
+    -sS --http1.1 --connect-timeout 30 --max-time "$max_time"
+    -o "$output" -w '%{http_code}'
+    -X "$method"
+    -H 'Cache-Control: no-cache'
+    -H 'Accept: application/json'
+    -H "Authorization: Bearer $session"
+    -H "X-ProjectPulse-Session: $session"
+    -H 'X-ProjectPulse-Module-Number: 025'
+    -H "X-ProjectPulse-Module025-Uat-Run: $MODULE025_UAT_RUN_ID"
+    -H "Origin: $BASE"
+    -H 'Sec-Fetch-Site: same-origin'
+  )
+  if [[ -n "$body" ]]; then
+    args+=( -H 'Content-Type: application/json' --data-binary @"$body" )
+  fi
+  set +e
+  status="$(curl "${args[@]}" "$BASE$path")"
+  curl_exit=$?
+  set -e
+  printf '%s|%s\n' "$curl_exit" "${status:-000}"
+}
+
+logout_session() {
+  local session="$1" label="$2"
+  [[ -n "$session" ]] || return 0
+  local output="$EVIDENCE_DIR/${label}-logout.json" result curl_exit status
+  result="$(auth_request POST '/api/auth/session/logout' "$output" "$session" 60)"
+  IFS='|' read -r curl_exit status <<<"$result"
+  jq -n --arg label "$label" --argjson curlExit "$curl_exit" --arg httpStatus "$status" \
+    '{identity:$label,curlExit:$curlExit,httpStatus:$httpStatus}' \
+    > "$EVIDENCE_DIR/${label}-logout-result.json"
+}
+
+archive_fixture() {
+  [[ -n "$ENGAGEMENT_ID" && -n "$SA_SESSION" && "$ARCHIVED" != true ]] || return 0
+  local output="$EVIDENCE_DIR/module025-cleanup-archive.json" result curl_exit status
+  result="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/archive" "$output" "$SA_SESSION" 120)"
+  IFS='|' read -r curl_exit status <<<"$result"
+  jq -n \
+    --arg engagementId "$ENGAGEMENT_ID" \
+    --argjson curlExit "$curl_exit" \
+    --arg httpStatus "$status" \
+    --arg apiStatus "$(jq -r '.status // empty' "$output" 2>/dev/null || true)" \
+    '{engagementId:$engagementId,curlExit:$curlExit,httpStatus:$httpStatus,apiStatus:$apiStatus}' \
+    > "$EVIDENCE_DIR/module025-cleanup-result.json"
+  if [[ "$curl_exit" == 0 && "$status" == 200 ]] \
+    && jq -e '.status == "module025_archived"' "$output" >/dev/null 2>&1; then
+    ARCHIVED=true
+  fi
+}
+
+cleanup() {
+  local exit_code="$1"
+  set +e
+  archive_fixture
+  logout_session "$SA_SESSION" 'module025-solution-architect'
+  rm -rf -- "$WORK_DIR"
+  unset SA_SESSION TEST_LOGIN_PASSWORD
+  if [[ "$exit_code" -ne 0 && -n "$ENGAGEMENT_ID" && "$ARCHIVED" != true ]]; then
+    echo "ERROR: Module 025 fixture $ENGAGEMENT_ID could not be confirmed archived during failure cleanup." >&2
+  fi
+}
+
+on_exit() {
+  local exit_code=$?
+  trap - EXIT
+  cleanup "$exit_code"
+  exit "$exit_code"
+}
+trap on_exit EXIT
+
+SA_LOGIN="$WORK_DIR/sa-login.json"
+SA_LOGIN_PAYLOAD="$WORK_DIR/sa-login-payload.json"
+SA_LOGIN_RESULT="$(login "$SA_EMAIL" "$SA_LOGIN" "$SA_LOGIN_PAYLOAD")"
+IFS='|' read -r SA_LOGIN_CURL_EXIT SA_LOGIN_STATUS <<<"$SA_LOGIN_RESULT"
+[[ "$SA_LOGIN_CURL_EXIT" == 0 && "$SA_LOGIN_STATUS" == 200 ]] \
+  || fail "Module 025 protected-Test role-fixture login returned curl exit $SA_LOGIN_CURL_EXIT and HTTP $SA_LOGIN_STATUS."
+jq -e '.provider == "LOCAL" and .mustChangePassword == false and (.sessionToken | type == "string" and length > 0)' \
+  "$SA_LOGIN" >/dev/null \
+  || fail 'Module 025 protected-Test role-fixture login did not satisfy the session contract.'
+SA_SESSION="$(jq -r '.sessionToken' "$SA_LOGIN")"
+echo "::add-mask::$SA_SESSION"
+jq 'del(.sessionToken,.token,.password)' "$SA_LOGIN" \
+  > "$EVIDENCE_DIR/module025-solution-architect-login-redacted.json"
+
+SA_SECURITY="$EVIDENCE_DIR/module025-solution-architect-security-context.json"
+SA_SECURITY_RESULT="$(auth_request GET '/api/security/context' "$SA_SECURITY" "$SA_SESSION" 120)"
+IFS='|' read -r SA_SECURITY_CURL_EXIT SA_SECURITY_STATUS <<<"$SA_SECURITY_RESULT"
+[[ "$SA_SECURITY_CURL_EXIT" == 0 && "$SA_SECURITY_STATUS" == 200 ]] \
+  || fail "Module 025 role-fixture security context returned curl exit $SA_SECURITY_CURL_EXIT and HTTP $SA_SECURITY_STATUS."
+jq -e '
+  [
+    .roles[]?
+    | if type == "object" then (.roleCode // .roleName // "") else tostring end
+    | ascii_upcase
+    | gsub("[ -]+"; "_")
+  ] as $roles
+  | any($roles[]; . == "MANAGER")
+  and (any($roles[]; . == "SOLUTION_ARCHITECT" or . == "SOLUTIONS_ARCHITECT" or . == "SA" or . == "SAA") | not)
+' "$SA_SECURITY" >/dev/null \
+  || fail 'The protected-Test role fixture must begin as Manager-only and must not alter persistent role assignments.'
+
+SA_BOOTSTRAP="$EVIDENCE_DIR/module025-solution-architect-bootstrap.json"
+SA_BOOTSTRAP_RESULT="$(auth_request GET '/api/module025/sow-gsd/bootstrap' "$SA_BOOTSTRAP" "$SA_SESSION" 120)"
+IFS='|' read -r SA_BOOTSTRAP_CURL_EXIT SA_BOOTSTRAP_STATUS <<<"$SA_BOOTSTRAP_RESULT"
+[[ "$SA_BOOTSTRAP_CURL_EXIT" == 0 && "$SA_BOOTSTRAP_STATUS" == 200 ]] \
+  || fail "Module 025 Solution Architect bootstrap returned curl exit $SA_BOOTSTRAP_CURL_EXIT and HTTP $SA_BOOTSTRAP_STATUS."
+jq -e '
+  .status == "module025_workspace_ready"
+  and .module == "025"
+  and .migration == "099_module025_sow_gsd_workspace"
+  and .access.isSolutionArchitect == true
+  and .access.protectedTestUatRoleFixture == true
+  and .access.canCreate == true
+  and .access.isViewAs == false
+' "$SA_BOOTSTRAP" >/dev/null \
+  || fail 'Module 025 did not activate the exact-run Solution Architect authorization fixture.'
+SA_USER_ID="$(jq -r '.currentUser.userId // empty' "$SA_BOOTSTRAP")"
+[[ "$SA_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+  || fail 'The selected Solution Architect bootstrap did not expose a valid user ID.'
+
+FIXTURE_SUFFIX="${GITHUB_RUN_ID:-manual}-${GITHUB_RUN_ATTEMPT:-1}-$(date -u +%Y%m%dT%H%M%SZ)"
+CREATE_PAYLOAD="$WORK_DIR/module025-create.json"
+jq -n \
+  --arg customerName "Protected UAT Module 025 $FIXTURE_SUFFIX" \
+  --arg serviceOverview 'Plan, design, implement, validate, and release a secure two-site network modernization. Discover the existing routing, switching, firewall, addressing, circuit, monitoring, and change-control requirements. Produce a reviewable architecture and migration plan, configure the approved network and security changes, validate connectivity, resiliency, observability, rollback, and acceptance criteria, then complete a controlled production handoff with documentation and knowledge transfer.' \
+  '{
+    customerId:null,
+    customerName:$customerName,
+    customerEntryMode:"manual",
+    commercialModel:"time_and_materials",
+    customerProgram:"standard",
+    accountExecutiveUserId:null,
+    resaleUserId:null,
+    serviceOverview:$serviceOverview
+  }' > "$CREATE_PAYLOAD"
+
+CREATE_RESPONSE="$EVIDENCE_DIR/module025-created-engagement.json"
+CREATE_RESULT="$(auth_request POST '/api/module025/sow-gsd' "$CREATE_RESPONSE" "$SA_SESSION" 120 "$CREATE_PAYLOAD")"
+IFS='|' read -r CREATE_CURL_EXIT CREATE_STATUS <<<"$CREATE_RESULT"
+[[ "$CREATE_CURL_EXIT" == 0 && "$CREATE_STATUS" == 201 ]] \
+  || fail "Module 025 temporary SOW creation returned curl exit $CREATE_CURL_EXIT and HTTP $CREATE_STATUS (status $(jq -r '.status // "not-json"' "$CREATE_RESPONSE" 2>/dev/null || true))."
+jq -e --arg owner "$SA_USER_ID" '
+  .status == "module025_engagement_loaded"
+  and .stateChanged == false
+  and .engagement.ownerUserId == $owner
+  and .engagement.customerEntryMode == "manual"
+  and .engagement.commercialModel == "time_and_materials"
+  and .engagement.customerProgram == "standard"
+  and .engagement.status == "draft"
+  and .engagement.isActive == true
+  and .engagement.revision == 1
+  and (.engagement.phases | type == "array" and length == 5)
+' "$CREATE_RESPONSE" >/dev/null \
+  || fail 'Module 025 temporary SOW creation did not satisfy the owned draft contract.'
+ENGAGEMENT_ID="$(jq -r '.engagement.engagementId // empty' "$CREATE_RESPONSE")"
+ENGAGEMENT_NUMBER="$(jq -r '.engagement.engagementNumber // empty' "$CREATE_RESPONSE")"
+[[ "$ENGAGEMENT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+  || fail 'Module 025 temporary SOW creation did not return a valid engagement ID.'
+[[ -n "$ENGAGEMENT_NUMBER" ]] || fail 'Module 025 temporary SOW creation did not return an engagement number.'
+
+GENERATE_RESPONSE="$EVIDENCE_DIR/module025-generate-response.json"
+GENERATE_RESULT="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/generate" "$GENERATE_RESPONSE" "$SA_SESSION" 900)"
+IFS='|' read -r GENERATE_CURL_EXIT GENERATE_STATUS <<<"$GENERATE_RESULT"
+jq -n \
+  --argjson curlExit "$GENERATE_CURL_EXIT" \
+  --arg httpStatus "$GENERATE_STATUS" \
+  --arg apiStatus "$(jq -r '.status // empty' "$GENERATE_RESPONSE" 2>/dev/null || true)" \
+  --arg correlationId "$(jq -r '.correlationId // empty' "$GENERATE_RESPONSE" 2>/dev/null || true)" \
+  '{curlExit:$curlExit,httpStatus:$httpStatus,apiStatus:$apiStatus,correlationId:$correlationId}' \
+  > "$EVIDENCE_DIR/module025-generate-http-result.json"
+[[ "$GENERATE_CURL_EXIT" == 0 && "$GENERATE_STATUS" == 200 ]] \
+  || fail "Module 025 detailed-scope generation returned curl exit $GENERATE_CURL_EXIT and HTTP $GENERATE_STATUS (status $(jq -r '.status // "not-json"' "$GENERATE_RESPONSE" 2>/dev/null || true))."
+jq -e '
+  .status == "module025_detailed_scope_generated"
+  and .stateChanged == true
+  and (.revision | type == "number" and . > 1)
+  and (.correlationId | type == "string" and length > 0)
+' "$GENERATE_RESPONSE" >/dev/null \
+  || fail 'Module 025 generation response did not confirm a persisted detailed-scope state change.'
+GENERATED_REVISION="$(jq -r '.revision' "$GENERATE_RESPONSE")"
+
+READBACK_RESPONSE="$EVIDENCE_DIR/module025-review-ready-readback.json"
+READBACK_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID" "$READBACK_RESPONSE" "$SA_SESSION" 120)"
+IFS='|' read -r READBACK_CURL_EXIT READBACK_STATUS <<<"$READBACK_RESULT"
+[[ "$READBACK_CURL_EXIT" == 0 && "$READBACK_STATUS" == 200 ]] \
+  || fail "Module 025 generated-scope readback returned curl exit $READBACK_CURL_EXIT and HTTP $READBACK_STATUS."
+jq -e --arg id "$ENGAGEMENT_ID" --arg owner "$SA_USER_ID" --argjson revision "$GENERATED_REVISION" '
+  .status == "module025_engagement_loaded"
+  and .stateChanged == false
+  and .engagement.engagementId == $id
+  and .engagement.ownerUserId == $owner
+  and .engagement.status == "review_ready"
+  and .engagement.isActive == true
+  and .engagement.revision == $revision
+  and (.engagement.lastGeneratedAt | type == "string" and length > 0)
+  and .engagement.sowSections.reviewRequired == true
+  and .engagement.sowSections.contractuallyBinding == false
+  and (.engagement.aiMetadata.correlationId | type == "string" and length > 0)
+  and (.engagement.phases | type == "array" and length == 5)
+  and ([.engagement.phases | sort_by(.sortOrder)[] | .phaseCode] == ["plan","design","implement","validate","release"])
+  and all(.engagement.phases[];
+    (.objective | type == "string" and length > 0)
+    and .aiGenerated == true
+    and (.suggestedHours | type == "number" and . >= 0)
+    and (.finalHours | type == "number" and . >= 0)
+  )
+  and ([.engagement.phases[].suggestedHours] | add) > 0
+' "$READBACK_RESPONSE" >/dev/null \
+  || fail 'Module 025 persisted readback did not contain the exact review_ready P/D/I/V/R contract.'
+
+ACTIVE_LIST="$EVIDENCE_DIR/module025-active-list-readback.json"
+ACTIVE_LIST_RESULT="$(auth_request GET "/api/module025/sow-gsd?state=active&ownerUserId=$SA_USER_ID" "$ACTIVE_LIST" "$SA_SESSION" 120)"
+IFS='|' read -r ACTIVE_LIST_CURL_EXIT ACTIVE_LIST_STATUS <<<"$ACTIVE_LIST_RESULT"
+[[ "$ACTIVE_LIST_CURL_EXIT" == 0 && "$ACTIVE_LIST_STATUS" == 200 ]] \
+  || fail "Module 025 active-list readback returned curl exit $ACTIVE_LIST_CURL_EXIT and HTTP $ACTIVE_LIST_STATUS."
+jq -e --arg id "$ENGAGEMENT_ID" '
+  .status == "module025_engagements_loaded"
+  and .state == "active"
+  and any(.engagements[]?; .engagementId == $id and .status == "review_ready" and .isActive == true)
+' "$ACTIVE_LIST" >/dev/null \
+  || fail 'Module 025 active queue did not expose the persisted review-ready SOW/GSD.'
+
+archive_fixture
+[[ "$ARCHIVED" == true ]] || fail 'Module 025 generated fixture was not archived.'
+
+ARCHIVED_LIST="$EVIDENCE_DIR/module025-archived-list-readback.json"
+ARCHIVED_LIST_RESULT="$(auth_request GET "/api/module025/sow-gsd?state=archived&ownerUserId=$SA_USER_ID" "$ARCHIVED_LIST" "$SA_SESSION" 120)"
+IFS='|' read -r ARCHIVED_LIST_CURL_EXIT ARCHIVED_LIST_STATUS <<<"$ARCHIVED_LIST_RESULT"
+[[ "$ARCHIVED_LIST_CURL_EXIT" == 0 && "$ARCHIVED_LIST_STATUS" == 200 ]] \
+  || fail "Module 025 archived-list verification returned curl exit $ARCHIVED_LIST_CURL_EXIT and HTTP $ARCHIVED_LIST_STATUS."
+jq -e --arg id "$ENGAGEMENT_ID" '
+  .status == "module025_engagements_loaded"
+  and .state == "archived"
+  and any(.engagements[]?; .engagementId == $id and .status == "archived" and .isActive == false)
+' "$ARCHIVED_LIST" >/dev/null \
+  || fail 'Module 025 cleanup did not persist the fixture in the archived queue.'
+
+jq -n \
+  --arg identity "$SA_EMAIL" \
+  --arg userId "$SA_USER_ID" \
+  --arg engagementId "$ENGAGEMENT_ID" \
+  --arg engagementNumber "$ENGAGEMENT_NUMBER" \
+  --argjson generatedRevision "$GENERATED_REVISION" \
+  --arg correlationId "$(jq -r '.correlationId' "$GENERATE_RESPONSE")" \
+  --argjson suggestedHours "$(jq -r '[.engagement.phases[].suggestedHours] | add' "$READBACK_RESPONSE")" \
+  '{
+    status:"passed",
+    environment:"protected-test",
+    identity:$identity,
+    userId:$userId,
+    role:"SOLUTION_ARCHITECT",
+    authorizationMode:"exact_run_non_persistent_module025_role_fixture",
+    persistentRoleAssignmentMutation:false,
+    engagementId:$engagementId,
+    engagementNumber:$engagementNumber,
+    createStatus:"draft",
+    generateStatus:"module025_detailed_scope_generated",
+    readbackStatus:"review_ready",
+    generatedRevision:$generatedRevision,
+    phaseCodes:["plan","design","implement","validate","release"],
+    suggestedHours:$suggestedHours,
+    correlationId:$correlationId,
+    cleanupStatus:"archived",
+    fixtureActive:false,
+    productionMutation:false,
+    privateRuntimeConfigurationMutation:false
+  }' > "$EVIDENCE_DIR/module025-sow-gsd-protected-test-uat.json"
+
+echo "MODULE025_SOW_GSD_PROTECTED_TEST_UAT=PASS identity=$SA_EMAIL authorization=exact-run-non-persistent-solution-architect-fixture engagement=$ENGAGEMENT_NUMBER phases=plan,design,implement,validate,release state=review_ready cleanup=archived"

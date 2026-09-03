@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace ProjectTime.Api.Ai;
@@ -275,7 +277,33 @@ public sealed class PulseAiPrivateRagService
         Guid actualUserId,
         Guid effectiveUserId,
         PulseAiPrivateFlowHiveRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await GenerateFlowHivePlanInternalAsync(
+            actualUserId,
+            effectiveUserId,
+            request,
+            authoritativeScopeEvidence: null,
+            cancellationToken: cancellationToken);
+
+    internal Task<PulseAiPrivateRagAnswer> GenerateModule025SowPlanAsync(
+        Guid actualUserId,
+        Guid effectiveUserId,
+        PulseAiPrivateFlowHiveRequest request,
+        CelarAiAuthoritativeScopeEvidence authoritativeScopeEvidence,
+        CancellationToken cancellationToken = default) =>
+        GenerateFlowHivePlanInternalAsync(
+            actualUserId,
+            effectiveUserId,
+            request,
+            authoritativeScopeEvidence,
+            cancellationToken);
+
+    private async Task<PulseAiPrivateRagAnswer> GenerateFlowHivePlanInternalAsync(
+        Guid actualUserId,
+        Guid effectiveUserId,
+        PulseAiPrivateFlowHiveRequest request,
+        CelarAiAuthoritativeScopeEvidence? authoritativeScopeEvidence,
+        CancellationToken cancellationToken)
     {
         var options = Options();
         var access = await _repository.LoadAccessAsync(effectiveUserId, cancellationToken);
@@ -294,16 +322,46 @@ public sealed class PulseAiPrivateRagService
         }
         var projectCode = Clean(request.ProjectCode, 120);
         var projectName = Clean(request.ProjectName, 300);
-        if (!request.ProjectId.HasValue && projectCode.Length == 0 && projectName.Length == 0)
+        PulseAiPrivateRetrievedChunk? authoritativeSource = null;
+        if (authoritativeScopeEvidence is not null)
+        {
+            authoritativeSource = CreateModule025AuthoritativeScopeSource(
+                authoritativeScopeEvidence);
+            if (feature != CelarAiCapabilityCatalog.SowGsdPlanning
+                || actualUserId != effectiveUserId
+                || authoritativeSource is null
+                || !string.Equals(
+                    projectCode,
+                    authoritativeSource.ProjectCode,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    projectName,
+                    authoritativeSource.ProjectName,
+                    StringComparison.Ordinal))
+            {
+                return Blocked(
+                    feature,
+                    purpose,
+                    "module025_authoritative_scope_invalid",
+                    "The saved Module 025 Service Overview did not satisfy the private source-evidence boundary.");
+            }
+        }
+        if (authoritativeSource is null
+            && !request.ProjectId.HasValue
+            && projectCode.Length == 0
+            && projectName.Length == 0)
         {
             return Blocked(feature, purpose, "project_context_required", "An exact authorized project identity, project code, or project name is required.");
         }
         var requestedOutcome = Clean(request.RequestedOutcome, 6_000);
+        var scopeAuthorityInstruction = authoritativeSource is null
+            ? "First locate and prioritize the approved SOW or Statement of Work sections titled Scope of Services, Scope of Service, Services, Implementation Scope, In Scope, Deliverables, or Acceptance Criteria. Treat those sections as the primary authority for what work is included. Preserve exclusions and conflicts instead of expanding them into tasks."
+            : "Use the server-authorized Module 025 Saved Service Overview source as the primary scope input for this review-only draft. It is author-saved input, not an approved contract. Preserve missing details as assumptions or open questions and never imply that the draft is approved or binding.";
         var question = $"""
             Create a comprehensive, cited, customer-ready delivery draft for Project Manager and Engineering review.
             Project: {projectCode} {projectName}
             Requested outcome: {(requestedOutcome.Length == 0 ? "Use the authorized scope, deliverables, constraints, responsibilities, acceptance criteria, and technical design evidence." : requestedOutcome)}
-            First locate and prioritize the approved SOW or Statement of Work sections titled Scope of Services, Scope of Service, Services, Implementation Scope, In Scope, Deliverables, or Acceptance Criteria. Treat those sections as the primary authority for what work is included. Preserve exclusions and conflicts instead of expanding them into tasks.
+            {scopeAuthorityInstruction}
             Organize every supported work package under exactly these phases and in this order: Plan, Design, Implement, Validate, Release. Use the phase field on every task.
             Automatically fill every supported section. For each work package or task, provide ordered execution steps, inputs, outputs, validation, measurable acceptance criteria, prerequisites, responsibilities, risks, open questions, estimated duration and hours, priority, dependencies, required roles, and source citations.
             """;
@@ -328,12 +386,18 @@ public sealed class PulseAiPrivateRagService
             DetailLevel(request.DetailLevel, "comprehensive"),
             directKnowledge: null,
             modelSchema: "PulseAiPrivateFlowHivePlan",
-            systemInstruction: FlowHiveSystemInstruction(feature),
-            userInstruction: FlowHiveUserInstruction(feature, requestedOutcome),
+            systemInstruction: FlowHiveSystemInstruction(
+                feature,
+                hasModule025AuthoritativeScope: authoritativeSource is not null),
+            userInstruction: FlowHiveUserInstruction(
+                feature,
+                requestedOutcome,
+                hasModule025AuthoritativeScope: authoritativeSource is not null),
             flowHive: true,
             retrieveAuthorizedDocuments: true,
             usePrivateModelWhenAvailable: true,
-            cancellationToken);
+            cancellationToken,
+            authoritativeSource);
     }
 
     public async Task<bool> SaveFeedbackAsync(
@@ -374,7 +438,8 @@ public sealed class PulseAiPrivateRagService
         bool flowHive,
         bool retrieveAuthorizedDocuments,
         bool usePrivateModelWhenAvailable,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        PulseAiPrivateRetrievedChunk? authoritativeSource = null)
     {
         var options = Options();
         var answerRunId = Guid.Empty;
@@ -385,13 +450,15 @@ public sealed class PulseAiPrivateRagService
                 detailLevel,
                 query.CorrelationId,
                 cancellationToken);
-            var retrieval = retrieveAuthorizedDocuments
-                ? await _retrieval.RetrieveAsync(
-                    access,
-                    query,
-                    options,
-                    cancellationToken)
-                : NoDocumentRetrieval(query);
+            var retrieval = authoritativeSource is not null
+                ? Module025AuthoritativeScopeRetrieval(query, authoritativeSource)
+                : retrieveAuthorizedDocuments
+                    ? await _retrieval.RetrieveAsync(
+                        access,
+                        query,
+                        options,
+                        cancellationToken)
+                    : NoDocumentRetrieval(query);
             await _repository.SaveRetrievalEventAsync(
                 answerRunId,
                 query,
@@ -1232,6 +1299,74 @@ public sealed class PulseAiPrivateRagService
             DataAsOf: DateTimeOffset.UtcNow,
             DiagnosticCode: "private_document_retrieval_not_requested");
 
+    internal static PulseAiPrivateRetrievedChunk? CreateModule025AuthoritativeScopeSource(
+        CelarAiAuthoritativeScopeEvidence evidence)
+    {
+        var engagementNumber = Clean(evidence.EngagementNumber, 120);
+        var customerName = Clean(evidence.CustomerName, 300);
+        var serviceOverview = Clean(evidence.ServiceOverview, 30_000);
+        if (evidence.EngagementId == Guid.Empty
+            || evidence.Revision < 1
+            || engagementNumber.Length == 0
+            || customerName.Length == 0
+            || serviceOverview.Length < 20
+            || evidence.SavedAt == default)
+        {
+            return null;
+        }
+
+        var textHash = Sha256(serviceOverview);
+        var sourceHash = Sha256(
+            $"{evidence.EngagementId:D}|{evidence.Revision}|{engagementNumber}|{customerName}|{textHash}");
+        return new PulseAiPrivateRetrievedChunk(
+            ChunkId: sourceHash,
+            DocumentVersionId: evidence.EngagementId,
+            DocumentId: evidence.EngagementId,
+            ProjectId: null,
+            ProjectCode: engagementNumber,
+            ProjectName: customerName,
+            CustomerName: customerName,
+            DocumentCategory: "module025_service_overview",
+            DocumentVersion: $"module025-revision-{evidence.Revision}",
+            Classification: "author_saved_private_scope",
+            OriginalFileName: $"Module 025 {engagementNumber}",
+            CitationAnchor: "Saved Service Overview",
+            PageNumber: null,
+            SheetName: null,
+            SectionTitle: "Service Overview",
+            Text: serviceOverview,
+            SourceSha256: sourceHash,
+            TextSha256: textHash,
+            LexicalScore: 1m,
+            SemanticScore: 1m,
+            CombinedScore: 1m,
+            ProcessedAt: evidence.SavedAt,
+            RankOrder: 1,
+            SourceType: "module025_saved_service_overview",
+            SourceModule: "025");
+    }
+
+    private static PulseAiPrivateRetrievalResult Module025AuthoritativeScopeRetrieval(
+        PulseAiPrivateRetrievalQuery _,
+        PulseAiPrivateRetrievedChunk source) =>
+        new(
+            Status: "module025_authoritative_scope_ready",
+            // Migration 053 constrains this column to the existing retrieval
+            // vocabulary. The citation's dedicated source type/module retain the
+            // exact Module 025 provenance without weakening that schema contract.
+            RetrievalMode: "direct_knowledge",
+            ResolvedProjectId: null,
+            ResolvedProjectCode: source.ProjectCode,
+            ResolvedProjectName: source.ProjectName,
+            CandidateCount: 1,
+            AuthorizedCandidateCount: 1,
+            Chunks: [source],
+            MissingEvidence: [],
+            Conflicts: [],
+            CoverageScore: 1m,
+            DataAsOf: source.ProcessedAt,
+            DiagnosticCode: string.Empty);
+
     private static IReadOnlyList<PulseAiPrivateAnswerCitation> Citations(
         IReadOnlyList<PulseAiPrivateRetrievedChunk> chunks,
         IReadOnlyCollection<int>? selectedCitationIds = null) =>
@@ -1253,7 +1388,13 @@ public sealed class PulseAiPrivateRagService
             RelevanceScore: chunk.CombinedScore,
             SourceSha256: chunk.SourceSha256,
             TextSha256: chunk.TextSha256,
-            ProcessedAt: chunk.ProcessedAt)).ToArray();
+            ProcessedAt: chunk.ProcessedAt,
+            SourceType: chunk.SourceType,
+            SourceModule: chunk.SourceModule)).ToArray();
+
+    private static string Sha256(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))
+            .ToLowerInvariant();
 
     private static IReadOnlyList<int> ValidCitationIds(int[]? values, int maximum)
     {
@@ -1437,9 +1578,13 @@ public sealed class PulseAiPrivateRagService
         The directConclusion must be polished customer-facing prose, detailed enough for invoice review, and limited to facts supported by the Engineer note and authorized evidence. It remains subject to Engineer review and explicit application.
         """;
 
-    private static string FlowHiveSystemInstruction(string feature) => $"""
+    private static string FlowHiveSystemInstruction(
+        string feature,
+        bool hasModule025AuthoritativeScope = false) => $"""
         You are Celar AI preparing a private, cited, customer-facing delivery artifact for capability {feature}.
-        Locate the approved SOW Scope of Services or equivalent in-scope and deliverables sections first. Treat them as the primary delivery authority, then use approved GSD, architecture, design, order, and supporting evidence to explain how the authorized scope can be conducted. Never turn an exclusion, option, unsupported inference, or conflict into committed work.
+        {(hasModule025AuthoritativeScope
+            ? "The supplied Module 025 Saved Service Overview is server-authorized author input for this review-only draft. Use it as the primary scope source, but never describe it or the generated draft as approved, published, contractually binding, or customer-accepted. Convert unsupported detail only into labeled assumptions or open questions."
+            : "Locate the approved SOW Scope of Services or equivalent in-scope and deliverables sections first. Treat them as the primary delivery authority, then use approved GSD, architecture, design, order, and supporting evidence to explain how the authorized scope can be conducted. Never turn an exclusion, option, unsupported inference, or conflict into committed work.")}
         Extract and organize scope, deliverables, exclusions, responsibilities, prerequisites, quantities, locations, acceptance criteria, constraints, assumptions, risks, dependencies, milestones, required roles, and open questions.
         Classify every executable task under exactly one of these phases and use this exact phase value: Plan, Design, Implement, Validate, or Release. The final plan order is Plan, then Design, then Implement, then Validate, then Release.
         Return structured tasks and milestones with source citation IDs. Automatically populate every task field supported by PulseAiPrivateFlowHiveTask.
@@ -1452,10 +1597,15 @@ public sealed class PulseAiPrivateRagService
         Return valid JSON matching PulseAiPrivateFlowHivePlan.
         """;
 
-    private static string FlowHiveUserInstruction(string feature, string requestedOutcome) => $"""
+    private static string FlowHiveUserInstruction(
+        string feature,
+        string requestedOutcome,
+        bool hasModule025AuthoritativeScope = false) => $"""
         Prepare the most complete reviewable WBS, work packages, milestones, dependency logic, roles, assumptions, risks, out-of-scope items, open questions, and source conflicts supported by the private evidence for {feature}.
         Requested outcome: {(requestedOutcome.Length == 0 ? "Create the full private document-to-plan draft." : requestedOutcome)}
-        Begin with the approved SOW Scope of Services. Expand each supported scope component into logically ordered, executable tasks distributed across Plan, Design, Implement, Validate, and Release. Do not repeat phase summary rows as tasks; return the detailed child work packages and their phase values.
+        {(hasModule025AuthoritativeScope
+            ? "Begin with the cited Module 025 Saved Service Overview and expand only its supported scope into logically ordered, executable draft tasks. Treat every inferred implementation detail as an assumption or open question requiring Solution Architect review."
+            : "Begin with the approved SOW Scope of Services.")} Expand each supported scope component into logically ordered, executable tasks distributed across Plan, Design, Implement, Validate, and Release. Do not repeat phase summary rows as tasks; return the detailed child work packages and their phase values.
         Every executable task must contain at least one citationIds value that references the supplied authorized evidence. Never emit a phase-only summary row such as a task named only Plan, Design, Implement, Validate, or Release. If a task cannot be source-cited, do not return it as executable work; record the missing fact in openQuestions instead.
         Automatically fill every requested section and every structured task field. Preserve source citations and identify every missing contractual or technical input. Do not leave a field empty when the evidence supports it; when evidence does not support a value, provide a clearly labeled assumption or open question instead of inventing a fact.
         """;

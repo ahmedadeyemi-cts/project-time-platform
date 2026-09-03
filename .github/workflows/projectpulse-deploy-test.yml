@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/projectpulse-deploy-test.yml'
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
+      - 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
       - 'database/migrations/086_module_066_flowhive_enterprise_pm.sql'
@@ -132,6 +133,7 @@ jobs:
           for required in \
             .github/workflows/projectpulse-deploy-test.yml \
             scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh \
+            scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh \
             scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh \
             scripts/release-test/run-assigned-work-protected-test-uat.sh \
             database/migrations/086_module_066_flowhive_enterprise_pm.sql \
@@ -174,6 +176,7 @@ jobs:
           done
 
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash -n scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
           bash -n scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
           bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
           node tests/validate-utilization-role-scoping.mjs
@@ -217,6 +220,7 @@ jobs:
               applicationRelease:$releaseCommit,
               migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission"],
               migrationScope:$migrationScope,
+              module025SowGsdUat:true,
               utilizationRoleScopingUat:true,
               assignedWorkUat:true,
               sharedProjectDocumentPlanning:true,
@@ -1171,6 +1175,80 @@ jobs:
             }' > "$EVIDENCE_DIR/uat-summary.json"
           unset COORDINATOR_SESSION TEST_LOGIN_PASSWORD
 
+      - name: Enable exact-run Module 025 protected-Test authorization fixture
+        id: module025_fixture
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          CURRENT_FIXTURE_STATE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else "false" end' <<<"$API_JSON")"
+          CURRENT_FIXTURE_EXPIRES_AT="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_EXPIRES_AT") | .value // empty] | if length == 1 then .[0] else "0" end' <<<"$API_JSON")"
+          if [[ "$CURRENT_FIXTURE_STATE" == 'true' && "$CURRENT_FIXTURE_EXPIRES_AT" =~ ^[0-9]+$ ]] \
+            && (( CURRENT_FIXTURE_EXPIRES_AT > $(date +%s) )); then
+            fail 'A prior unexpired Module 025 protected-Test authorization fixture remains enabled.'
+          fi
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          FIXTURE_EXPIRES_AT="$(( $(date +%s) + 2700 ))"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --set-env-vars \
+              PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED=true \
+              PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" \
+              PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_EXPIRES_AT="$FIXTURE_EXPIRES_AT" \
+            --revision-suffix "m025e-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$API_REVISION" '${{ steps.build.outputs.api_image }}' 60 10
+          ENABLED_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$ENABLED_JSON")" == 'true' ]]
+          [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$ENABLED_JSON")" == "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]
+          [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$ENABLED_JSON")" == "$TARGET_RELEASE_COMMIT" ]]
+          [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_EXPIRES_AT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$ENABLED_JSON")" == "$FIXTURE_EXPIRES_AT" ]]
+          echo "MODULE025_PROTECTED_TEST_UAT_FIXTURE=enabled revision=$API_REVISION run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+      - name: Run protected-Test Module 025 SOW/GSD generation lifecycle UAT
+        id: module025_uat
+        shell: bash
+        working-directory: release
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          BASE: ${{ steps.contract.outputs.base }}
+          EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
+          MODULE025_UAT_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -Eeuo pipefail
+          bash scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+
+      - name: Disable exact-run Module 025 protected-Test authorization fixture
+        if: always() && steps.module025_fixture.outputs.started == 'true'
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --set-env-vars \
+              PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED=false \
+              PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_RUN_ID=disabled \
+              PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_SOURCE_COMMIT=disabled \
+              PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_EXPIRES_AT=0 \
+            --revision-suffix "m025d-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$API_REVISION" '${{ steps.build.outputs.api_image }}' 60 10
+          DISABLED_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$DISABLED_JSON")" == 'false' ]]
+          [[ "$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$DISABLED_JSON")" == "$TARGET_RELEASE_COMMIT" ]]
+          jq -n \
+            --arg revision "$API_REVISION" \
+            --arg source "$TARGET_RELEASE_COMMIT" \
+            '{status:"disabled",revision:$revision,sourceCommit:$source,persistentRoleAssignmentMutation:false,productionMutation:false}' \
+            > "$EVIDENCE_DIR/module025-protected-test-uat-fixture-disabled.json"
+          echo "MODULE025_PROTECTED_TEST_UAT_FIXTURE=disabled revision=$API_REVISION"
+
       - name: Run protected-Test assigned-work visibility UAT
         id: assigned_work_uat
         shell: bash
@@ -1236,6 +1314,7 @@ jobs:
             echo '- Target: https://phd-west-test.onenecklab.com'
             [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, 093, 094, 095, 096, and 097: applied and verified' || echo '- Migrations 086, 088, 093, 094, 095, 096, and 097: not completed'
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: passed' || echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: not completed'
+            [[ -f "$EVIDENCE_DIR/module025-sow-gsd-protected-test-uat.json" ]] && echo '- Module 025 authorized Solution Architect generation, review-ready P/D/I/V/R readback, and archive cleanup UAT: passed' || echo '- Module 025 SOW/GSD generation lifecycle UAT: not completed'
             [[ -f "$EVIDENCE_DIR/utilization-role-scoping-uat.json" ]] && echo '- Kevin utilization role-scoping UAT: passed' || echo '- Kevin utilization role-scoping UAT: not completed'
             [[ -f "$EVIDENCE_DIR/rollback.json" ]] && echo '- Application image rollback: completed'
             if [[ -f "$EVIDENCE_DIR/deployment-health-verified.json" && ! -f "$EVIDENCE_DIR/rollback.json" ]]; then

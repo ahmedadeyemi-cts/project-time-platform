@@ -1,0 +1,264 @@
+name: Control Module 025 Protected UAT
+
+on:
+  issue_comment:
+    types: [created]
+
+run-name: Deploy and verify Module 025 from PR #${{ github.event.issue.number }}
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: module025-protected-uat-control
+  cancel-in-progress: false
+
+jobs:
+  deploy_and_verify:
+    if: >-
+      github.event.issue.pull_request &&
+      github.actor == 'ahmedadeyemi-cts' &&
+      startsWith(github.event.comment.body, 'DEPLOY MODULE025 PROTECTED UAT SHA ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 230
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REQUEST_COMMENT: ${{ github.event.comment.body }}
+      DEPLOY_WORKFLOW_ID: '315562561'
+      DEPLOY_WORKFLOW_PATH: .github/workflows/projectpulse-deploy-test.yml
+      REPAIRED_MODULE025_SHA: f7c86b45cff09741dd022c0e80bc1e6ad7d5c80b
+      QUARANTINED_ZERO_JOB_RUN_ID: '33654881418'
+
+    steps:
+      - name: Check out exact current main controller
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Authorize exact Module 025 Protected-Test release
+        id: authorize
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]] \
+            || fail 'The Module 025 deployment command is not exact.'
+          requested_sha="${BASH_REMATCH[1]}"
+          actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$requested_sha" == "$actual_main" && "$GITHUB_SHA" == "$actual_main" ]] \
+            || fail 'The requested release is not exact current main.'
+          [[ "$GITHUB_REF" == 'refs/heads/main' ]] \
+            || fail 'The Module 025 release supervisor is not executing from main.'
+          git merge-base --is-ancestor "$REPAIRED_MODULE025_SHA" HEAD \
+            || fail 'Current main does not contain the reviewed Module 025 persistence repair.'
+
+          test -f "$DEPLOY_WORKFLOW_PATH" \
+            || fail 'The governed Protected-Test deployment controller is missing.'
+          test -f scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh \
+            || fail 'The Module 025 live UAT script is missing.'
+          grep -Fq 'Run protected-Test Module 025 SOW/GSD generation lifecycle UAT' "$DEPLOY_WORKFLOW_PATH" \
+            || fail 'The governed deployment does not own the Module 025 lifecycle UAT gate.'
+          grep -Fq 'MODULE025_SOW_GSD_PROTECTED_TEST_UAT=PASS' scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh \
+            || fail 'The Module 025 live UAT success contract is missing.'
+
+          workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
+          [[ "$workflow_state" == 'disabled_manually' ]] \
+            || fail "Protected-Test deployment workflow must begin disabled_manually; found $workflow_state."
+
+          runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
+          active_count="$(jq --argjson quarantined "$QUARANTINED_ZERO_JOB_RUN_ID" '
+            [.workflow_runs[]
+              | select(.id != $quarantined)
+              | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending")
+            ] | length
+          ' <<<"$runs_json")"
+          [[ "$active_count" == 0 ]] \
+            || fail "Another executable Protected-Test deployment already exists (count $active_count)."
+
+          echo "release_sha=$requested_sha" >> "$GITHUB_OUTPUT"
+          echo "MODULE025_PROTECTED_UAT_RELEASE_AUTHORIZED=$requested_sha"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Dispatch exact governed Protected-Test deployment and reseal admissions
+        id: dispatch
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ steps.authorize.outputs.release_sha }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          disable_deploy_workflow() {
+            local state
+            state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state' 2>/dev/null || true)"
+            if [[ "$state" == 'active' ]]; then
+              gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+            fi
+          }
+          seal_on_exit() {
+            local exit_code=$?
+            trap - EXIT
+            set +e
+            disable_deploy_workflow
+            final_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state' 2>/dev/null || true)"
+            [[ "$final_state" == 'disabled_manually' ]] \
+              || echo "ERROR: Protected-Test deployment workflow did not reseal; state=$final_state" >&2
+            exit "$exit_code"
+          }
+          trap seal_on_exit EXIT
+
+          dispatch_started_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/enable" >/dev/null
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'active' ]] \
+            || fail 'Protected-Test deployment workflow did not enable for the bounded dispatch.'
+
+          jq -n \
+            --arg ref 'main' \
+            --arg release_sha "$RELEASE_SHA" \
+            --arg release_branch 'main' \
+            '{ref:$ref,inputs:{release_sha:$release_sha,release_branch:$release_branch}}' \
+            > "$RUNNER_TEMP/module025-protected-uat-dispatch.json"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/dispatches" \
+            --input "$RUNNER_TEMP/module025-protected-uat-dispatch.json" >/dev/null
+
+          deployment_run_id=''
+          deployment_run_url=''
+          for attempt in $(seq 1 90); do
+            runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?event=workflow_dispatch&per_page=100")"
+            deployment_run_id="$(jq -r \
+              --arg sha "$RELEASE_SHA" \
+              --arg created "$dispatch_started_at" \
+              --argjson quarantined "$QUARANTINED_ZERO_JOB_RUN_ID" '
+                [.workflow_runs[]
+                  | select(.id != $quarantined)
+                  | select(.event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha)
+                  | select(.created_at >= $created)
+                ]
+                | sort_by(.created_at, .id)
+                | last
+                | .id // empty
+              ' <<<"$runs_json")"
+            if [[ "$deployment_run_id" =~ ^[0-9]+$ ]]; then
+              deployment_run_url="$(jq -r --argjson id "$deployment_run_id" '.workflow_runs[] | select(.id == $id) | .html_url' <<<"$runs_json")"
+              break
+            fi
+            sleep 2
+          done
+          [[ "$deployment_run_id" =~ ^[0-9]+$ && "$deployment_run_url" == https://github.com/* ]] \
+            || fail 'The exact dispatched Protected-Test deployment could not be located.'
+
+          disable_deploy_workflow
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]] \
+            || fail 'Protected-Test deployment admissions were not resealed after dispatch.'
+          trap - EXIT
+
+          echo "run_id=$deployment_run_id" >> "$GITHUB_OUTPUT"
+          echo "run_url=$deployment_run_url" >> "$GITHUB_OUTPUT"
+          echo "MODULE025_PROTECTED_UAT_DEPLOYMENT_DISPATCHED=$deployment_run_id"
+          echo 'PROTECTED_TEST_DEPLOYMENT_WORKFLOW=disabled_manually'
+
+      - name: Publish dispatched Protected-Test run
+        shell: bash
+        env:
+          DEPLOYMENT_RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+          DEPLOYMENT_RUN_URL: ${{ steps.dispatch.outputs.run_url }}
+          RELEASE_SHA: ${{ steps.authorize.outputs.release_sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$DEPLOYMENT_RUN_URL" == https://github.com/* ]]
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Module 025 Protected-Test deployment is now executing.
+
+          - Release SHA: \`$RELEASE_SHA\`
+          - Deployment run: $DEPLOYMENT_RUN_URL
+          - Required live gate: authorized Solution Architect → temporary SOW → Celar generation → persisted \`review_ready\` P/D/I/V/R → archive cleanup
+          - Deployment workflow admissions: \`disabled_manually\`
+          - Production mutation: none"
+
+      - name: Observe exact Protected-Test deployment to terminal status
+        id: observe
+        shell: bash
+        env:
+          DEPLOYMENT_RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+          RELEASE_SHA: ${{ steps.authorize.outputs.release_sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ && "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          deadline_epoch=$(( $(date +%s) + 215 * 60 ))
+          poll=0
+          while (( $(date +%s) < deadline_epoch )); do
+            run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${DEPLOYMENT_RUN_ID}")"
+            jq -e --arg sha "$RELEASE_SHA" --argjson id "$DEPLOYMENT_RUN_ID" '
+              .id == $id
+              and .workflow_id == 315562561
+              and .event == "workflow_dispatch"
+              and .head_branch == "main"
+              and .head_sha == $sha
+            ' <<<"$run_json" >/dev/null
+            status="$(jq -r '.status' <<<"$run_json")"
+            conclusion="$(jq -r '.conclusion // empty' <<<"$run_json")"
+            if [[ "$status" == 'completed' ]]; then
+              echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
+              echo "MODULE025_PROTECTED_UAT_DEPLOYMENT_TERMINAL=$conclusion run=$DEPLOYMENT_RUN_ID"
+              exit 0
+            fi
+            poll=$((poll + 1))
+            if (( poll == 1 || poll % 8 == 0 )); then
+              echo "MODULE025_PROTECTED_UAT_DEPLOYMENT_RUNNING run=$DEPLOYMENT_RUN_ID status=$status poll=$poll"
+            fi
+            sleep 15
+          done
+          echo 'conclusion=timed_out' >> "$GITHUB_OUTPUT"
+          echo "ERROR: Protected-Test deployment $DEPLOYMENT_RUN_ID exceeded the 215-minute observation budget." >&2
+          exit 1
+
+      - name: Reassert sealed Protected-Test deployment admissions
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
+          if [[ "$state" == 'active' ]]; then
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+          fi
+          [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]]
+          echo 'MODULE025_PROTECTED_UAT_FINAL_WORKFLOW_STATE=disabled_manually'
+
+      - name: Publish Module 025 Protected-Test result
+        if: always()
+        shell: bash
+        env:
+          DEPLOYMENT_RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+          DEPLOYMENT_RUN_URL: ${{ steps.dispatch.outputs.run_url }}
+          DEPLOYMENT_CONCLUSION: ${{ steps.observe.outputs.conclusion }}
+          RELEASE_SHA: ${{ steps.authorize.outputs.release_sha }}
+        run: |
+          set -Eeuo pipefail
+          conclusion="${DEPLOYMENT_CONCLUSION:-not_dispatched}"
+          run_reference="${DEPLOYMENT_RUN_URL:-not dispatched}"
+          gh pr comment '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" --body "Module 025 Protected-Test deployment reached terminal status.
+
+          - Release SHA: \`${RELEASE_SHA:-unavailable}\`
+          - Deployment run: $run_reference
+          - Conclusion: \`$conclusion\`
+          - Required live gate: authorized Solution Architect → temporary SOW → Celar generation → persisted \`review_ready\` P/D/I/V/R → archive cleanup
+          - Deployment workflow: \`disabled_manually\`
+          - Production mutation: none"
+
+      - name: Require successful Module 025 Protected-Test lifecycle
+        if: always()
+        shell: bash
+        env:
+          DEPLOYMENT_CONCLUSION: ${{ steps.observe.outputs.conclusion }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$DEPLOYMENT_CONCLUSION" == 'success' ]] || {
+            echo "ERROR: Module 025 Protected-Test deployment conclusion is ${DEPLOYMENT_CONCLUSION:-unavailable}." >&2
+            exit 1
+          }
+          echo 'MODULE025_PROTECTED_UAT_CONTROL=PASS'
+          echo 'PRODUCTION_MUTATION=NONE'

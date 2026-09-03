@@ -55,12 +55,64 @@ public sealed class CelarAiEnterprisePlatformService
         generatedAt = DateTimeOffset.UtcNow
     };
 
-    public async Task<CelarAiComposeResult> ComposeAsync(
+    public Task<CelarAiComposeResult> ComposeAsync(
         Guid actualUserId,
         Guid effectiveUserId,
         CelarAiComposeRequest request,
         HttpContext context,
+        CancellationToken cancellationToken = default) =>
+        ComposeInternalAsync(
+            actualUserId,
+            effectiveUserId,
+            request,
+            authoritativeScopeEvidence: null,
+            context: context,
+            cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// Runs Module 025 SOW generation from a server-authorized, already-saved
+    /// Service Overview. The evidence parameter is internal and cannot be bound
+    /// by the public Celar compose endpoint.
+    /// </summary>
+    internal Task<CelarAiComposeResult> ComposeModule025SowAsync(
+        Guid actualUserId,
+        Guid effectiveUserId,
+        CelarAiComposeRequest request,
+        CelarAiAuthoritativeScopeEvidence authoritativeScopeEvidence,
+        HttpContext context,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(authoritativeScopeEvidence);
+        if (!string.Equals(
+                NormalizeMode(request.Mode),
+                "sow_draft",
+                StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(
+                ResolveCapability("sow_draft", request),
+                CelarAiCapabilityCatalog.SowGsdPlanning,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "Module 025 authoritative scope evidence is valid only for SOW/GSD planning.",
+                nameof(request));
+        }
+
+        return ComposeInternalAsync(
+            actualUserId,
+            effectiveUserId,
+            request,
+            authoritativeScopeEvidence,
+            context,
+            cancellationToken);
+    }
+
+    private async Task<CelarAiComposeResult> ComposeInternalAsync(
+        Guid actualUserId,
+        Guid effectiveUserId,
+        CelarAiComposeRequest request,
+        CelarAiAuthoritativeScopeEvidence? authoritativeScopeEvidence,
+        HttpContext context,
+        CancellationToken cancellationToken)
     {
         var mode = NormalizeMode(request.Mode);
         var correlationId = CorrelationId(context);
@@ -118,6 +170,7 @@ public sealed class CelarAiEnterprisePlatformService
                         request,
                         projectCode,
                         projectName,
+                        authoritativeScopeEvidence,
                         privateCancellationToken);
                     return PrivateComposeTargetResult(privateResult);
                 },
@@ -291,6 +344,7 @@ public sealed class CelarAiEnterprisePlatformService
         CelarAiComposeRequest request,
         string projectCode,
         string projectName,
+        CelarAiAuthoritativeScopeEvidence? authoritativeScopeEvidence,
         CancellationToken cancellationToken)
     {
         if (mode == "timesheet_description")
@@ -317,19 +371,27 @@ public sealed class CelarAiEnterprisePlatformService
         }
         if (mode == "sow_draft")
         {
-            return await _privateRag.GenerateFlowHivePlanAsync(
-                actualUserId,
-                effectiveUserId,
-                new PulseAiPrivateFlowHiveRequest(
-                    ProjectCode: projectCode,
-                    ProjectName: projectName,
-                    RequestedOutcome: request.RequestedOutcome,
-                    DetailLevel: request.DetailLevel ?? "comprehensive",
-                    FeatureCode: CelarAiCapabilityCatalog.SowGsdPlanning,
-                    ProjectId: request.ProjectId,
-                    TaskId: request.TaskId,
-                    AssignmentId: request.AssignmentId),
-                cancellationToken);
+            var planningRequest = new PulseAiPrivateFlowHiveRequest(
+                ProjectCode: projectCode,
+                ProjectName: projectName,
+                RequestedOutcome: request.RequestedOutcome,
+                DetailLevel: request.DetailLevel ?? "comprehensive",
+                FeatureCode: CelarAiCapabilityCatalog.SowGsdPlanning,
+                ProjectId: request.ProjectId,
+                TaskId: request.TaskId,
+                AssignmentId: request.AssignmentId);
+            return authoritativeScopeEvidence is null
+                ? await _privateRag.GenerateFlowHivePlanAsync(
+                    actualUserId,
+                    effectiveUserId,
+                    planningRequest,
+                    cancellationToken)
+                : await _privateRag.GenerateModule025SowPlanAsync(
+                    actualUserId,
+                    effectiveUserId,
+                    planningRequest,
+                    authoritativeScopeEvidence,
+                    cancellationToken);
         }
         var planningCapability = ResolveCapability(mode, request);
         return await _privateRag.GenerateFlowHivePlanAsync(
