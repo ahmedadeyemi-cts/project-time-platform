@@ -218,7 +218,19 @@ assert.match(privateRagService, /at least four distinct execution steps in the \
 assert.match(privateRagService, /at least two distinct deliverables in the \{phase\} phase/);
 assert.match(privateRagService, /task\.Description\.Length < 80/);
 assert.match(privateRagService, /\(task\.DetailedSteps\?\.Count \?\? 0\) < 2/);
-assert.match(privateRagService, /\(task\.Risks\?\.Count \?\? 0\) == 0/);
+assert.match(privateRagService, /phaseTasks\.SelectMany\(task => task\.CustomerResponsibilities \?\? \[\]\)\.Any\(\)/);
+assert.match(privateRagService, /phaseTasks\.SelectMany\(task => task\.UsSignalResponsibilities \?\? \[\]\)\.Any\(\)/);
+assert.match(privateRagService, /phaseTasks\.SelectMany\(task => task\.Prerequisites \?\? \[\]\)\.Any\(\)/);
+assert.match(privateRagService, /phaseTasks\.SelectMany\(task => task\.AcceptanceCriteria \?\? \[\]\)\.Any\(\)/);
+assert.match(privateRagService, /phaseTasks\.SelectMany\(task => task\.ValidationSteps \?\? \[\]\)\.Any\(\)/);
+assert.match(privateRagService, /phaseTasks\.SelectMany\(task => task\.Risks \?\? \[\]\)\.Any\(\)/);
+assert.match(privateRagService, /Module025ModelTaskItems/);
+assert.match(privateRagService, /"tasks", "workPackages", "work_packages", "scopeItems"/);
+assert.match(privateRagService, /"phases", "deliveryPhases", "lifecyclePhases"/);
+assert.match(privateRagService, /CitationIds: \[1\]/);
+assert.match(privateRagService, /Use the exact top-level property name tasks, not workPackages or scopeItems/);
+assert.match(privateRagService, /Module025DetailedPlanDiagnosticCode/);
+assert.match(privateRagService, /private_module025_detailed_plan_invalid_\{reason\}/);
 assert.match(privateRagService, /ContainsCannedModule025ScopeLanguage/);
 assert.match(privateRagService, /value\.Contains\("cited scope"/);
 assert.match(privateRagService, /value\.Contains\("source-backed scope"/);
@@ -231,7 +243,7 @@ assert.match(
 );
 assert.match(
   privateRagService,
-  /catch \(Exception\) when \(validateModule025DetailedPlan\)[\s\S]*?private_module025_detailed_plan_invalid/,
+  /catch \(Exception exception\) when \(validateModule025DetailedPlan\)[\s\S]*?Module025DetailedPlanDiagnosticCode\(exception\)/,
   'Module 025 schema and detail failures must fail closed instead of saving generic work packages'
 );
 assert.match(
