@@ -27,6 +27,8 @@ jobs:
           set -Eeuo pipefail
           [[ "$TEST_API_APP" == ca-phd-test-api-westus3 ]]
           [[ "$(az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query tags.environment -o tsv)" == test ]]
+          az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query "properties.template.containers[0].env[?starts_with(name, 'PROJECTPULSE_AI_SECRET_ENCRYPTION')].{name:name,reference:secretRef}" -o json
+          az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query "properties.configuration.secrets[].{name:name,keyVaultUrl:keyVaultUrl}" -o json
           az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query '{latest:properties.latestRevisionName,ready:properties.latestReadyRevisionName,state:properties.provisioningState,mode:properties.configuration.activeRevisionsMode,traffic:properties.configuration.ingress.traffic,scale:properties.template.scale,probes:properties.template.containers[0].probes}' -o json
           az containerapp revision list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query '[?properties.active].{name:name,state:properties.provisioningState,health:properties.healthState,running:properties.runningState,replicas:properties.replicas,traffic:properties.trafficWeight,image:properties.template.containers[0].image}' -o json
           mapfile -t revisions < <(az containerapp revision list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query '[?properties.active].name' -o tsv)
