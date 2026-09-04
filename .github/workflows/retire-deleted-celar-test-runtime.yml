@@ -1,0 +1,74 @@
+name: Retire deleted Celar runtime in Protected Test
+on:
+  push:
+    branches: [fix/retire-deleted-celar-test-runtime-20260904]
+    paths: [.github/workflows/retire-deleted-celar-test-runtime.yml]
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+jobs:
+  retire:
+    runs-on: ubuntu-24.04
+    environment: test
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 44733461d9bd1f58d1f7fe8e830f64fa2dd56ce0
+          persist-credentials: false
+      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Retire only the deleted Test gateway and restore startup
+        shell: bash
+        env:
+          TEST_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          TEST_API_APP: ${{ vars.AZURE_API_APP }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$TEST_API_APP" == ca-phd-test-api-westus3 ]]
+          [[ "$(az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query tags.environment -o tsv)" == test ]]
+          current_image="$(az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query properties.template.containers[0].image -o tsv)"
+          [[ "$current_image" == acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:8aaed814fc47518511cf602cfd473f017abdb7337fab11d4b74e12bc3003ef91 ]]
+          phase="$(az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query "properties.template.containers[0].env[?name=='PROJECTPULSE_AI_RELEASE_PHASE'].value | [0]" -o tsv)"
+          [[ -z "$phase" || "$phase" == disabled ]]
+          gateway_host="$(az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query "properties.template.containers[0].env[?name=='PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST'].value | [0]" -o tsv)"
+          [[ "$gateway_host" == celarai.onenecklab.com ]]
+          az containerapp update -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" \
+            --set-env-vars \
+              PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED=false \
+              PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE=not_configured \
+              PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED=false \
+              PROJECTPULSE_PULSE_AI_AUTO_QUEUE_ELIGIBLE_DOCUMENTS=false \
+            --remove-env-vars \
+              PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST \
+              PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_EXPECTED_IP \
+              PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_APPROVAL_REFERENCE \
+              PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_READINESS_ENDPOINT \
+              PROJECTPULSE_PRIVATE_MALWARE_SCAN_ENDPOINT \
+              PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN \
+              PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN_SECRET_REFERENCE \
+              PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT \
+              PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN \
+              PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN_SECRET_REFERENCE \
+              PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT \
+              PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN \
+              PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN_SECRET_REFERENCE \
+              PROJECTPULSE_PRIVATE_OCR_ENDPOINT \
+              PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN \
+              PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN_SECRET_REFERENCE \
+              PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST \
+            --revision-suffix "celarretire-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          revision="$(az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query properties.latestRevisionName -o tsv)"
+          bash scripts/wait-containerapp-ready-revision.sh "$TEST_RESOURCE_GROUP" "$TEST_API_APP" "$revision" "$current_image" 60 10
+          echo 'DELETED_CELAR_GATEWAY=RETIRED'
+          echo 'MALWARE_SCANNING=NOT_CONFIGURED_FAIL_CLOSED'
+          echo 'OCR_AND_EMBEDDING_ENDPOINTS=UNCONFIGURED'
+          echo 'API_IMAGE=UNCHANGED'
+          echo 'PRODUCTION_MUTATION=FALSE'
