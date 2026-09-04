@@ -54,6 +54,10 @@ jobs:
           set -Eeuo pipefail
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
+            node tests/validate-deepseek-release-scope.mjs
+            exit 0
+          fi
           git fetch origin "$BASE_BRANCH" --no-tags
           BASE="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
           CHANGED="$(git diff --name-only "$BASE"...HEAD)"

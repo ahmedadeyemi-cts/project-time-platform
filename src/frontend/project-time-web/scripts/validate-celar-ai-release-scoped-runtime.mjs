@@ -56,7 +56,7 @@ assert(
     && policy.includes('PROJECTPULSE_CLAUDE_APPROVED_ORIGINS')
     && policy.includes('PROJECTPULSE_OPENAI_APPROVED_ORIGINS')
     && policy.includes('RejectLegacySecretAlias("ANTHROPIC_API_KEY"')
-    && policy.includes('must be exactly celar_ai,claude,openai,local_template')
+    && policy.includes('must be exactly deepseek_v4,celar_ai,claude,openai,local_template')
     && apiProject.includes('<AssemblyMetadata Include="ProjectPulseSourceRevision" Value="$(ProjectPulseSourceRevision)" />'),
   'source metadata, controller commit, canonical safe configuration, secret versions, and route order fail closed',
 );

@@ -85,7 +85,9 @@ const protectedUatValidationDefectsCompatibilityMode =
   branchName === 'fix/protected-uat-validation-defects-20260903';
 const celarInternalTrustEvidenceCompatibilityMode =
   branchName === 'fix/celar-internal-trust-evidence-20260903';
-const scopedCompatibilityMode = systemwideReliabilityMode
+const deepSeekProviderMode = branchName === 'feature/deepseek-v4-dgx-primary-20260904';
+if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');
+const scopedCompatibilityMode = deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

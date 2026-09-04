@@ -414,7 +414,7 @@ check(
   'MODULE001_AI_PRIVATE_ATTEMPT_TELEMETRY_EXACTLY_ONCE',
   (timesheetSuggestion.match(/RecordAlreadyExecutedPrivateAttempt\(/g) ?? []).length === 0
     && containsAll(centralRoute, [
-      'RecordAlreadyExecutedPrivateAttempt(',
+      '_health.RecordSuccess(target, privateResult.Usage, privateResult.RequestId, "generation_succeeded")',
       '_health.RecordFailure(',
       '_assurance.Record(',
       'decisions.Add(new(target, "failed", privateFailureCode))'

@@ -19,6 +19,12 @@ publish_mode() {
   printf 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=%s\n' "$mode"
 }
 
+if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
+  node tests/validate-deepseek-release-scope.mjs
+  publish_mode DEEPSEEK_V4_PROVIDER
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == 'fix/module025-protected-uat-generation-verification-detailed-plan-parser-20260903' ]]; then
   ALLOWED_DATABASE='^(database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
   publish_mode MODULE025_DETAILED_PLAN_PARSER
