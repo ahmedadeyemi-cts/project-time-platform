@@ -283,6 +283,17 @@ assert.match(
   /IsOutputLimitedCompletionAsync[\s\S]*?IsInvalidJsonObjectCompletionAsync[\s\S]*?JsonDocument\.Parse\([\s\S]*?MaxDepth = 128/,
   'Module 025 must use its bounded recovery attempt for truncated or malformed primary JSON'
 );
+for (const method of ['IsOutputLimitedCompletionAsync', 'IsInvalidJsonObjectCompletionAsync']) {
+  const start = aiServices.indexOf(`private static async Task<bool> ${method}`);
+  const end = aiServices.indexOf('\n    private static ', start + 1);
+  const body = aiServices.slice(start, end < 0 ? undefined : end);
+  assert.match(body, /PulseAiPrivateModelResponsePolicy\.IsSafetyRefusal\(root\)\) return false;/,
+    `${method} must preserve terminal safety refusals before retry classification`);
+  assert.ok(body.indexOf('IsSafetyRefusal(root)') < body.indexOf('root.TryGetProperty("choices"'),
+    `${method} must evaluate refusal policy before completion fields`);
+}
+assert.match(aiServices, /if \(content\.Length == 0\) return true;/,
+  'Empty private JSON completions must receive the bounded recovery attempt');
 assert.match(privateModelClient, /CelarAiCapabilityCatalog\.SowGsdPlanning[\s\S]*?"PulseAiPrivateSowInference"/);
 assert.match(privateModelClient, /private_model_output_truncated/);
 assert.match(privateModelClient, /ReadFinishReason/);

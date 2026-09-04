@@ -626,6 +626,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
+            if (PulseAiPrivateModelResponsePolicy.IsSafetyRefusal(root)) return false;
             if (!root.TryGetProperty("choices", out var choices)
                 || choices.ValueKind != JsonValueKind.Array
                 || choices.GetArrayLength() == 0
@@ -653,6 +654,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             using var envelope = JsonDocument.Parse(body);
             var root = envelope.RootElement;
+            if (PulseAiPrivateModelResponsePolicy.IsSafetyRefusal(root)) return false;
             if (!root.TryGetProperty("choices", out var choices)
                 || choices.ValueKind != JsonValueKind.Array
                 || choices.GetArrayLength() == 0
@@ -673,7 +675,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                     content = content[(firstLineEnd + 1)..lastFence].Trim();
                 }
             }
-            if (content.Length == 0) return false;
+            if (content.Length == 0) return true;
 
             using var draft = JsonDocument.Parse(
                 content,
