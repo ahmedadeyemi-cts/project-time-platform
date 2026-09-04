@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -259,7 +260,9 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
 {
     private const int PrimaryMaximumOutputTokens = 5_200;
     private const int RecoveryMaximumOutputTokens = 4_200;
-    private const int MaximumBufferedResponseCharacters = 1_000_000;
+    private const int MaximumBufferedResponseBytes = 1_000_000;
+    private const int MaximumStreamedResponseBytes = 2_000_000;
+    private const int MaximumSseLineBytes = 256_000;
     private const int MaximumStreamedContentCharacters = 96_000;
     private static readonly TimeSpan OverallInferenceBudget = TimeSpan.FromSeconds(690);
 
@@ -341,11 +344,17 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
     {
         using (response)
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (body.Length > MaximumBufferedResponseCharacters)
+            if (response.Content.Headers.ContentLength is > MaximumBufferedResponseBytes)
             {
                 throw new InvalidOperationException("Private SOW response exceeded the bounded transport limit.");
             }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var body = await ReadBoundedUtf8Async(
+                stream,
+                MaximumBufferedResponseBytes,
+                "Private SOW response exceeded the bounded transport limit.",
+                cancellationToken);
             return BufferedResponse(
                 response,
                 body,
@@ -359,40 +368,47 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
     {
         using (response)
         {
+            if (response.Content.Headers.ContentLength is > MaximumStreamedResponseBytes)
+            {
+                throw new InvalidOperationException("Private SOW event stream exceeded the bounded transport limit.");
+            }
+
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(
-                stream,
-                Encoding.UTF8,
-                detectEncodingFromByteOrderMarks: true,
-                bufferSize: 8_192,
-                leaveOpen: false);
+            var readBuffer = new byte[8_192];
+            var lineBuffer = new ArrayBufferWriter<byte>(8_192);
             var content = new StringBuilder();
             var finishReason = string.Empty;
             JsonObject? terminalError = null;
+            var totalStreamBytes = 0;
+            var stopReading = false;
+            var sawTerminalEvent = false;
 
-            while (true)
+            bool ProcessLine(string line)
             {
-                var line = await reader.ReadLineAsync(cancellationToken);
-                if (line is null) break;
-                if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return false;
 
                 var data = line[5..].Trim();
-                if (data.Length == 0) continue;
-                if (string.Equals(data, "[DONE]", StringComparison.Ordinal)) break;
+                if (data.Length == 0) return false;
+                if (string.Equals(data, "[DONE]", StringComparison.Ordinal))
+                {
+                    sawTerminalEvent = true;
+                    return true;
+                }
 
                 var envelope = JsonNode.Parse(data) as JsonObject
                     ?? throw new InvalidOperationException("Private SOW stream event must be a JSON object.");
                 if (envelope["error"] is JsonObject error)
                 {
                     terminalError = error.DeepClone().AsObject();
-                    break;
+                    sawTerminalEvent = true;
+                    return true;
                 }
 
                 if (envelope["choices"] is not JsonArray choices
                     || choices.Count == 0
                     || choices[0] is not JsonObject choice)
                 {
-                    continue;
+                    return false;
                 }
 
                 var eventFinishReason = JsonString(choice["finish_reason"]);
@@ -408,14 +424,64 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                 {
                     deltaContent = JsonString(message["content"]);
                 }
-                if (deltaContent.Length == 0) continue;
+                if (deltaContent.Length == 0) return false;
 
-                content.Append(deltaContent);
-                if (content.Length > MaximumStreamedContentCharacters)
+                if (deltaContent.Length > MaximumStreamedContentCharacters - content.Length)
                 {
                     finishReason = "length";
+                    sawTerminalEvent = true;
+                    return true;
+                }
+
+                content.Append(deltaContent);
+                return false;
+            }
+
+            while (!stopReading)
+            {
+                var read = await stream.ReadAsync(readBuffer.AsMemory(), cancellationToken);
+                if (read == 0)
+                {
+                    if (lineBuffer.WrittenCount > 0)
+                    {
+                        stopReading = ProcessLine(Encoding.UTF8.GetString(lineBuffer.WrittenSpan));
+                        lineBuffer.Clear();
+                    }
                     break;
                 }
+
+                if (totalStreamBytes > MaximumStreamedResponseBytes - read)
+                {
+                    throw new InvalidOperationException("Private SOW event stream exceeded the bounded transport limit.");
+                }
+                totalStreamBytes += read;
+
+                for (var index = 0; index < read; index++)
+                {
+                    var value = readBuffer[index];
+                    if (value == (byte)'\n')
+                    {
+                        stopReading = ProcessLine(Encoding.UTF8.GetString(lineBuffer.WrittenSpan));
+                        lineBuffer.Clear();
+                        if (stopReading) break;
+                        continue;
+                    }
+
+                    if (value == (byte)'\r') continue;
+                    if (lineBuffer.WrittenCount >= MaximumSseLineBytes)
+                    {
+                        throw new InvalidOperationException("Private SOW event exceeded the bounded per-event transport limit.");
+                    }
+
+                    var destination = lineBuffer.GetSpan(1);
+                    destination[0] = value;
+                    lineBuffer.Advance(1);
+                }
+            }
+
+            if (!sawTerminalEvent && finishReason.Length == 0 && terminalError is null)
+            {
+                throw new InvalidOperationException("Private SOW event stream ended without a terminal event.");
             }
 
             JsonObject bufferedEnvelope;
@@ -451,6 +517,35 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                 bufferedEnvelope.ToJsonString(),
                 "application/json");
         }
+    }
+
+    private static async Task<string> ReadBoundedUtf8Async(
+        Stream stream,
+        int maximumBytes,
+        string limitMessage,
+        CancellationToken cancellationToken)
+    {
+        using var buffer = new MemoryStream(Math.Min(maximumBytes, 64 * 1024));
+        var chunk = new byte[8_192];
+        var totalBytes = 0;
+
+        while (true)
+        {
+            var read = await stream.ReadAsync(chunk.AsMemory(), cancellationToken);
+            if (read == 0) break;
+            if (totalBytes > maximumBytes - read)
+            {
+                throw new InvalidOperationException(limitMessage);
+            }
+
+            totalBytes += read;
+            await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
+        }
+
+        return Encoding.UTF8.GetString(
+            buffer.GetBuffer(),
+            0,
+            checked((int)buffer.Length));
     }
 
     private static HttpResponseMessage BufferedResponse(
