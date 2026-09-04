@@ -1,0 +1,37 @@
+name: Diagnose Protected Test API startup
+on:
+  push:
+    branches: [diagnostics/deepseek-protected-test-20260904]
+    paths: [.github/workflows/deepseek-protected-test-startup-diagnostics.yml]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    environment: test
+    timeout-minutes: 10
+    steps:
+      - name: Sign in to protected Test
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Read Test revision and startup diagnostics
+        shell: bash
+        env:
+          TEST_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          TEST_API_APP: ${{ vars.AZURE_API_APP }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$TEST_API_APP" == ca-phd-test-api-westus3 ]]
+          [[ "$(az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query tags.environment -o tsv)" == test ]]
+          az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query '{latest:properties.latestRevisionName,ready:properties.latestReadyRevisionName,state:properties.provisioningState,mode:properties.configuration.activeRevisionsMode,traffic:properties.configuration.ingress.traffic,scale:properties.template.scale,probes:properties.template.containers[0].probes}' -o json
+          az containerapp revision list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query '[?properties.active].{name:name,state:properties.provisioningState,health:properties.healthState,running:properties.runningState,replicas:properties.replicas,traffic:properties.trafficWeight,image:properties.template.containers[0].image}' -o json
+          for revision in ca-phd-test-api-westus3--rela-33925802640-1 ca-phd-test-api-westus3--relra-33925802640-1; do
+            echo "DIAGNOSTIC_REVISION=$revision"
+            az containerapp replica list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" -o json || true
+            az containerapp logs show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" --type system --tail 80 --format json || true
+          done
+          echo 'PROTECTED_TEST_DIAGNOSTICS_READ_ONLY=COMPLETE'
