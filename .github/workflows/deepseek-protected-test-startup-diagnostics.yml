@@ -32,6 +32,16 @@ jobs:
           for revision in ca-phd-test-api-westus3--rela-33925802640-1 ca-phd-test-api-westus3--relra-33925802640-1; do
             echo "DIAGNOSTIC_REVISION=$revision"
             az containerapp replica list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" -o json || true
-            az containerapp logs show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" --type system --tail 80 --format json || true
+            az containerapp logs show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" --type console --tail 100 --format json > /tmp/startup-console.jsonl 2>&1 || true
+            python3 - <<'PY'
+          import re
+          for line in open('/tmp/startup-console.jsonl'):
+              if re.search(r'exception|error|failed|fatal|crit:| at ProjectTime| at Microsoft| at Npgsql| at System', line, re.I):
+                  if re.search(r'password|bearer |api.?key|connection.?string|token=|authorization:', line, re.I):
+                      print('SENSITIVE_STARTUP_LINE_OMITTED')
+                  else:
+                      print(line[:1800].rstrip())
+          PY
           done
+          az containerapp logs show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --type system --tail 80 --format json || true
           echo 'PROTECTED_TEST_DIAGNOSTICS_READ_ONLY=COMPLETE'
