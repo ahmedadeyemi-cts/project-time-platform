@@ -275,8 +275,8 @@ assert.match(aiServices, /AddHttpClient\("PulseAiPrivateSowInference"/);
 assert.match(aiServices, /PulseAiPrivateSowInference[\s\S]*?TimeSpan\.FromMinutes\(12\)/);
 assert.match(
   aiServices,
-  /payload\["stream"\] = true;[\s\S]*?payload\.Remove\("response_format"\)/,
-  'Module 025 streaming must omit the response_format hint rejected by the protected private gateway'
+  /PrimaryMaximumOutputTokens = 4_200[\s\S]*?RecoveryMaximumOutputTokens = 3_400[\s\S]*?payload\["stream"\] = false;[\s\S]*?"Accept", "application\/json"/,
+  'Module 025 must use the protected gateway non-streaming contract with a bounded compact output budget'
 );
 assert.match(privateModelClient, /CelarAiCapabilityCatalog\.SowGsdPlanning[\s\S]*?"PulseAiPrivateSowInference"/);
 assert.match(privateModelClient, /private_model_output_truncated/);
