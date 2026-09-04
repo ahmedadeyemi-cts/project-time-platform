@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using ProjectTime.Api.Modules;
 
@@ -44,8 +45,8 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddTransient<PulseAiPrivateSowInferenceBudgetHandler>();
         // SOW/GSD generation deliberately runs behind a durable queue. Its
         // logical quality contract remains comprehensive, while the dedicated
-        // handler streams the long private completion and buffers only the final
-        // bounded JSON envelope before the strict Module 025 parser sees it.
+        // handler bounds the non-streaming response accepted by the protected
+        // gateway before the strict Module 025 parser sees it.
         services.AddHttpClient("PulseAiPrivateSowInference", client =>
         {
             client.Timeout = TimeSpan.FromMinutes(12);
@@ -251,22 +252,23 @@ public static class ProjectPulseAiServiceCollectionExtensions
 
 /// <summary>
 /// Keeps Module 025 private SOW inference inside the private boundary while
-/// streaming the long OpenAI-compatible completion through the gateway. The
-/// handler owns the complete body read, rebuilds one bounded JSON completion,
-/// and therefore makes the timeout budget cover real generation rather than
-/// only the time needed to receive response headers.
+/// using the non-streaming OpenAI-compatible contract accepted by the protected
+/// gateway. The handler applies a compact output budget and owns the bounded
+/// body read before the strict Module 025 parser sees the completion.
 /// </summary>
 internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandler
 {
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
-    private const int PrimaryMaximumOutputTokens = 5_200;
-    private const int RecoveryMaximumOutputTokens = 4_200;
+    private const int PrimaryMaximumOutputTokens = 4_200;
+    private const int RecoveryMaximumOutputTokens = 3_400;
     private const int MaximumBufferedResponseBytes = 1_000_000;
     private const int MaximumStreamedResponseBytes = 2_000_000;
     private const int MaximumSseLineBytes = 256_000;
     private const int MaximumStreamedContentCharacters = 96_000;
+    private static readonly TimeSpan PrimaryAttemptBudget = TimeSpan.FromSeconds(420);
+    private static readonly TimeSpan RecoveryAttemptBudget = TimeSpan.FromSeconds(260);
     private static readonly TimeSpan OverallInferenceBudget = TimeSpan.FromSeconds(690);
 
     protected override async Task<HttpResponseMessage> SendAsync(
@@ -294,23 +296,42 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                 originalBody,
                 PrimaryMaximumOutputTokens,
                 recoveryAttempt: false);
-            var primaryResponse = await SendBoundedAttemptAsync(
-                primaryRequest,
-                overallCancellation.Token);
-            if (!IsTransientGatewayFailure(primaryResponse.StatusCode))
+            try
             {
-                return primaryResponse;
+                using var primaryCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                    overallCancellation.Token);
+                primaryCancellation.CancelAfter(PrimaryAttemptBudget);
+                var primaryResponse = await SendBoundedAttemptAsync(
+                    primaryRequest,
+                    primaryCancellation.Token);
+                if (!IsTransientGatewayFailure(primaryResponse.StatusCode)
+                    && !await IsOutputLimitedCompletionAsync(
+                        primaryResponse,
+                        primaryCancellation.Token))
+                {
+                    return primaryResponse;
+                }
+                primaryResponse.Dispose();
             }
-            primaryResponse.Dispose();
+            catch (OperationCanceledException) when (
+                !cancellationToken.IsCancellationRequested
+                && !overallCancellation.IsCancellationRequested)
+            {
+                // Retry once with a smaller complete JSON contract. The same
+                // authorized evidence and strict adoption boundary are retained.
+            }
 
             using var recoveryRequest = CloneWithBudget(
                 request,
                 originalBody,
                 RecoveryMaximumOutputTokens,
                 recoveryAttempt: true);
+            using var recoveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                overallCancellation.Token);
+            recoveryCancellation.CancelAfter(RecoveryAttemptBudget);
             return await SendBoundedAttemptAsync(
                 recoveryRequest,
-                overallCancellation.Token);
+                recoveryCancellation.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -592,6 +613,33 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
             "text/event-stream",
             StringComparison.OrdinalIgnoreCase);
 
+    private static async Task<bool> IsOutputLimitedCompletionAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        if (!response.IsSuccessStatusCode) return false;
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("choices", out var choices)
+                || choices.ValueKind != JsonValueKind.Array
+                || choices.GetArrayLength() == 0
+                || !choices[0].TryGetProperty("finish_reason", out var finishReason)
+                || finishReason.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            return finishReason.GetString() is "length" or "max_tokens";
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     private static HttpRequestMessage CloneWithBudget(
         HttpRequestMessage source,
         string originalBody,
@@ -607,12 +655,10 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
             requestedMaximum = parsedMaximum;
         }
         payload["max_tokens"] = Math.Min(requestedMaximum, maximumOutputTokens);
-        payload["stream"] = true;
-        // The protected Ollama OpenAI-compatibility gateway rejects streaming
-        // chat completions when the OpenAI response_format hint is present.
-        // Module 025 still requires JSON in the governed prompt and validates
-        // the completed body with the existing strict parser before adoption.
-        payload.Remove("response_format");
+        // The protected Oracle gateway rejects streamed chat completions. Keep
+        // its supported JSON-object contract, but bound the generation tightly
+        // enough to finish inside the governed request window.
+        payload["stream"] = false;
 
         if (payload["messages"] is JsonArray messages)
         {
@@ -629,8 +675,8 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
 
                 var content = message["content"]?.GetValue<string>() ?? string.Empty;
                 var boundedInstruction = recoveryAttempt
-                    ? "RECOVERY RESPONSE BUDGET: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required execution/detail field, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Keep each list concise and implementation-grade; use exactly three detailedSteps per task, do not omit required fields, and do not invent unsupported customer facts."
-                    : "BOUNDED STREAMING SOW RESPONSE: Return ten to twelve substantive governed SOW/GSD work packages total, with at least two under each of Plan, Design, Implement, Validate, and Release; prefer ten unless materially distinct required work needs one or two additional packages. Preserve every required execution/detail field, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Keep arrays concise, use exactly three implementation-grade detailedSteps per task, avoid narrative repetition, and do not invent unsupported customer facts.";
+                    ? "RECOVERY RESPONSE BUDGET: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required field and citationIds:[1]. Use exactly three concise implementation-grade detailedSteps per task and exactly one concise item in every other required task list. Keep top-level lists to at most one concise item. Do not invent unsupported customer facts."
+                    : "BOUNDED SOW RESPONSE: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required field and citationIds:[1]. Use exactly three concise implementation-grade detailedSteps per task and exactly one concise item in every other required task list. Keep top-level lists to at most one concise item, avoid repetition, and do not invent unsupported customer facts.";
                 message["content"] = $"{content}\n\n{boundedInstruction}";
                 break;
             }
@@ -646,7 +692,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         {
             clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
-        clone.Headers.TryAddWithoutValidation("Accept", "text/event-stream");
+        clone.Headers.TryAddWithoutValidation("Accept", "application/json");
         return clone;
     }
 
