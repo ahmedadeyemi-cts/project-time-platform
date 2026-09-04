@@ -2516,13 +2516,10 @@ public sealed class CelarAiCapabilityRouter
             || execution.ContainsFinancialValues;
         var privateDocumentTargetMandatory = execution.ContainsPrivateDocuments
             && privatePolicyProfile?.RequirePrivateModelForDocuments == true;
+        static bool IsPrivateTarget(string target) => target is CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi;
         var orderedTargets = requirePrivateTargetBeforeExternal
-            && route.Targets.Contains(CelarAiCapabilityTargets.CelarAi, StringComparer.OrdinalIgnoreCase)
-            ? new[] { CelarAiCapabilityTargets.CelarAi }
-                .Concat(route.Targets.Where(target => !string.Equals(
-                    target,
-                    CelarAiCapabilityTargets.CelarAi,
-                    StringComparison.OrdinalIgnoreCase)))
+            ? route.Targets.Where(IsPrivateTarget)
+                .Concat(route.Targets.Where(target => !IsPrivateTarget(target)))
                 .ToArray()
             : route.Targets;
         var attempted = new List<string>();
@@ -2531,10 +2528,7 @@ public sealed class CelarAiCapabilityRouter
         var decisions = new List<ProjectPulseAiTargetDecision>();
         if (requirePrivateTargetBeforeExternal)
         {
-            foreach (var deferredTarget in route.Targets.TakeWhile(target => !string.Equals(
-                         target,
-                         CelarAiCapabilityTargets.CelarAi,
-                         StringComparison.OrdinalIgnoreCase)))
+            foreach (var deferredTarget in route.Targets.TakeWhile(target => !IsPrivateTarget(target)))
             {
                 decisions.Add(new(
                     deferredTarget,
@@ -2545,7 +2539,6 @@ public sealed class CelarAiCapabilityRouter
             }
         }
 
-        orderedTargets = new[] { CelarAiCapabilityTargets.DeepSeek }.Concat(orderedTargets.Where(target => target != CelarAiCapabilityTargets.DeepSeek)).ToArray();
         foreach (var target in orderedTargets)
         {
             cancellationToken.ThrowIfCancellationRequested();

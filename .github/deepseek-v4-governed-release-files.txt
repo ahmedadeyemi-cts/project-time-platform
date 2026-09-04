@@ -10,6 +10,7 @@ database/migrations/101_deepseek_v4_provider.sql
 docs/releases/deepseek-v4-protected-test-activation.md
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
 scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+scripts/release-test/verify-runtime.mjs
 src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiConfiguration.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiContracts.cs
@@ -20,6 +21,7 @@ src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
 src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs
+src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
 src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
 src/frontend/project-time-web/scripts/validate-celar-ai-release-scoped-runtime.mjs
 src/frontend/project-time-web/scripts/validate-celar-ai-unified-chat-attachments.mjs

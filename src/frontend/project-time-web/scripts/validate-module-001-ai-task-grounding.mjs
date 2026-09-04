@@ -391,8 +391,9 @@ check(
       'var route = await _store.LoadRouteAsync(',
       'privatePolicyProfile?.RequirePrivateModelForDocuments == true',
       'var orderedTargets = requirePrivateTargetBeforeExternal',
-      'route.Targets.Where(target => !string.Equals(',
-      'CelarAiCapabilityTargets.CelarAi,'
+      'route.Targets.Where(IsPrivateTarget)',
+      'route.Targets.Where(target => !IsPrivateTarget(target))',
+      'CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi'
     ])
     && !timesheetSuggestion.includes('_router.IsFirstTargetAsync('),
   'the central router owns persisted order and conditionally forces private document inference'

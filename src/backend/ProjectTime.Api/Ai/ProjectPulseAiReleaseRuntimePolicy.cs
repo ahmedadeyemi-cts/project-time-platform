@@ -24,6 +24,8 @@ public static class ProjectPulseAiReleaseRuntimePolicy
     private static readonly string[] SafeConfigurationVariables =
     [
         RouteOrderVariable,
+        "PROJECTPULSE_AI_DEEPSEEK_ENABLED",
+        "PROJECTPULSE_DEEPSEEK_API_KEY_SECRET_REFERENCE",
         "PROJECTPULSE_ENVIRONMENT",
         "PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_ID",
         "PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_SECRET_REFERENCE",
@@ -128,6 +130,7 @@ public static class ProjectPulseAiReleaseRuntimePolicy
 
     private static readonly HashSet<string> BooleanVariables = new(StringComparer.Ordinal)
     {
+        "PROJECTPULSE_AI_DEEPSEEK_ENABLED",
         "PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED",
         "PROJECTPULSE_CELAR_AI_ENABLED",
         "PROJECTPULSE_CELAR_AI_TRAINING_ENABLED",
@@ -397,6 +400,11 @@ public static class ProjectPulseAiReleaseRuntimePolicy
         }
         if (Sha256("PROJECTPULSE_AI_RELEASE_SOW_SOURCE_SHA256").Length != 64)
             errors.Add("PROJECTPULSE_AI_RELEASE_SOW_SOURCE_SHA256 must contain the exact release SOW source digest.");
+        RequirePinnedSecretReference(
+            "PROJECTPULSE_DEEPSEEK_API_KEY",
+            "PROJECTPULSE_DEEPSEEK_API_KEY_SECRET_REFERENCE",
+            required: Enabled("PROJECTPULSE_AI_DEEPSEEK_ENABLED"),
+            errors);
         RequirePinnedSecretReference(
             "PROJECTPULSE_CLAUDE_API_KEY",
             "PROJECTPULSE_CLAUDE_API_KEY_SECRET_REFERENCE",

@@ -7,6 +7,16 @@ After deployment, an actual Module 064 administrator saves the key in the DeepSe
 provider card. The existing same-origin, encrypted, write-only credential endpoint
 stores it. Verify the card reports available before testing generation.
 
+Webpage key entry requires the existing database-managed runtime mode. Candidate
+and active immutable AI release phases keep their HTTP 423 mutation lock; they
+instead explicitly enable `PROJECTPULSE_AI_DEEPSEEK_ENABLED=true` and require
+`PROJECTPULSE_DEEPSEEK_API_KEY` injected from the version-pinned
+`PROJECTPULSE_DEEPSEEK_API_KEY_SECRET_REFERENCE`. DeepSeek defaults to disabled in
+those immutable phases until that configuration is supplied. The safe configuration digest binds
+the enabled flag and secret reference. Verify the target runtime's configuration
+authority before claiming webpage activation is available; do not unset an immutable
+release phase to bypass its controls.
+
 The requested default is DeepSeek v4 → Celar AI → Claude → OpenAI → governed local
 template. Safety refusals remain terminal; public vendors retain their existing
 sanitization requirements, and evidence-dependent consumers retain their adoption

@@ -30,3 +30,21 @@ Check(CelarAiCapabilityTargets.DefaultOrder.SequenceEqual(new[] {"deepseek_v4", 
 config.ApplyStoredEnabled(ProjectPulseAiProviders.DeepSeek, false);
 Check(!config.DeepSeek.Enabled, "DeepSeek can be disabled independently.");
 Console.WriteLine("DEEPSEEK_PROVIDER_TESTS=PASS");
+Environment.SetEnvironmentVariable("PROJECTPULSE_DEEPSEEK_API_KEY", "test-only-injected-key");
+try
+{
+    var injected = new ProjectPulseAiConfiguration();
+    Check(injected.DeepSeek.Configured, "Deployment-injected DeepSeek credential must load.");
+    Check(!JsonSerializer.Serialize(injected.ToSanitizedResponse()).Contains("test-only-injected-key"), "Injected credential must never be returned.");
+    Environment.SetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.PhaseVariable, "candidate");
+    Check(!new ProjectPulseAiConfiguration().DeepSeek.Enabled, "Immutable releases require explicit provider activation.");
+    Environment.SetEnvironmentVariable("PROJECTPULSE_AI_DEEPSEEK_ENABLED", "true");
+    var snapshot = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+    Check(snapshot.Errors.Any(error => error.Contains("PROJECTPULSE_DEEPSEEK_API_KEY_SECRET_REFERENCE")), "Immutable activation must reject an unpinned key.");
+}
+finally
+{
+    Environment.SetEnvironmentVariable("PROJECTPULSE_DEEPSEEK_API_KEY", null);
+    Environment.SetEnvironmentVariable("PROJECTPULSE_AI_DEEPSEEK_ENABLED", null);
+    Environment.SetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.PhaseVariable, null);
+}

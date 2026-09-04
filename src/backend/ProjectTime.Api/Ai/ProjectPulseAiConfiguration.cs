@@ -187,12 +187,14 @@ public sealed class ProjectPulseAiConfiguration
 
     private ProjectPulseAiProviderConfiguration BuildDeepSeek()
     {
-        // The administrator supplies the key through Module 064's encrypted store.
+        // Normal deployments hydrate Module 064's encrypted store. Immutable releases
+        // use the same protected, version-pinned environment injection as other providers.
+        var key = FirstValue("PROJECTPULSE_DEEPSEEK_API_KEY");
         return new ProjectPulseAiProviderConfiguration(
-            ProjectPulseAiProviders.DeepSeek, "DeepSeek v4", true, null,
+            ProjectPulseAiProviders.DeepSeek, "DeepSeek v4", Boolean("PROJECTPULSE_AI_DEEPSEEK_ENABLED", !ProjectPulseAiReleaseRuntimePolicy.IsReleaseScoped), key,
             ProjectPulseDeepSeekProvider.Model, ProjectPulseDeepSeekProvider.Endpoint,
             "chat-completions-v1", [ProjectPulseDeepSeekProvider.Model],
-            null, null, SecretMetadata("DEEPSEEK", null));
+            null, null, SecretMetadata("DEEPSEEK", key));
     }
 
     private ProjectPulseAiProviderConfiguration BuildClaude()
