@@ -258,6 +258,9 @@ public static class ProjectPulseAiServiceCollectionExtensions
 /// </summary>
 internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandler
 {
+    private static readonly Encoding StrictUtf8 = new UTF8Encoding(
+        encoderShouldEmitUTF8Identifier: false,
+        throwOnInvalidBytes: true);
     private const int PrimaryMaximumOutputTokens = 5_200;
     private const int RecoveryMaximumOutputTokens = 4_200;
     private const int MaximumBufferedResponseBytes = 1_000_000;
@@ -382,9 +385,18 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
             var totalStreamBytes = 0;
             var stopReading = false;
             var sawTerminalEvent = false;
+            var firstSseLine = true;
 
             bool ProcessLine(string line)
             {
+                if (firstSseLine)
+                {
+                    firstSseLine = false;
+                    if (line.Length > 0 && line[0] == '\uFEFF')
+                    {
+                        line = line[1..];
+                    }
+                }
                 if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return false;
 
                 var data = line[5..].Trim();
@@ -444,7 +456,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                 {
                     if (lineBuffer.WrittenCount > 0)
                     {
-                        stopReading = ProcessLine(Encoding.UTF8.GetString(lineBuffer.WrittenSpan));
+                        stopReading = ProcessLine(StrictUtf8.GetString(lineBuffer.WrittenSpan));
                         lineBuffer.Clear();
                     }
                     break;
@@ -461,7 +473,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                     var value = readBuffer[index];
                     if (value == (byte)'\n')
                     {
-                        stopReading = ProcessLine(Encoding.UTF8.GetString(lineBuffer.WrittenSpan));
+                        stopReading = ProcessLine(StrictUtf8.GetString(lineBuffer.WrittenSpan));
                         lineBuffer.Clear();
                         if (stopReading) break;
                         continue;
@@ -542,7 +554,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
             await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
         }
 
-        return Encoding.UTF8.GetString(
+        return StrictUtf8.GetString(
             buffer.GetBuffer(),
             0,
             checked((int)buffer.Length));
@@ -609,8 +621,8 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
 
                 var content = message["content"]?.GetValue<string>() ?? string.Empty;
                 var boundedInstruction = recoveryAttempt
-                    ? "RECOVERY RESPONSE BUDGET: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required execution/detail field, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Keep each list concise and implementation-grade; use exactly two detailedSteps per task, do not omit required fields, and do not invent unsupported customer facts."
-                    : "BOUNDED STREAMING SOW RESPONSE: Return ten to twelve substantive governed SOW/GSD work packages total, with at least two under each of Plan, Design, Implement, Validate, and Release; prefer ten unless materially distinct required work needs one or two additional packages. Preserve every required execution/detail field, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Keep arrays concise, use two or three implementation-grade detailedSteps per task, avoid narrative repetition, and do not invent unsupported customer facts.";
+                    ? "RECOVERY RESPONSE BUDGET: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required execution/detail field, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Keep each list concise and implementation-grade; use exactly three detailedSteps per task, do not omit required fields, and do not invent unsupported customer facts."
+                    : "BOUNDED STREAMING SOW RESPONSE: Return ten to twelve substantive governed SOW/GSD work packages total, with at least two under each of Plan, Design, Implement, Validate, and Release; prefer ten unless materially distinct required work needs one or two additional packages. Preserve every required execution/detail field, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Keep arrays concise, use exactly three implementation-grade detailedSteps per task, avoid narrative repetition, and do not invent unsupported customer facts.";
                 message["content"] = $"{content}\n\n{boundedInstruction}";
                 break;
             }
