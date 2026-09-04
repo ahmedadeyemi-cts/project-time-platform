@@ -52,3 +52,19 @@ jobs:
           done
           az containerapp logs show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --type system --tail 80 --format json || true
           echo 'PROTECTED_TEST_DIAGNOSTICS_READ_ONLY=COMPLETE'
+      - name: Verify saved-state response without submitting a credential
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          BASE=https://phd-west-test.onenecklab.com
+          jq -n --arg password "$TEST_LOGIN_PASSWORD" '{username:"project.team.coordinator@ussignal.local",password:$password}' > /tmp/login.json
+          curl -fsS --max-time 60 -H 'Content-Type: application/json' -H "Origin: $BASE" --data-binary @/tmp/login.json "$BASE/api/auth/local/login" > /tmp/session.json
+          session="$(jq -er '.sessionToken' /tmp/session.json)"
+          echo "::add-mask::$session"
+          curl -sS --max-time 60 -H "X-ProjectPulse-Session: $session" "$BASE/api/ai-configuration" > /tmp/provider-config.json
+          jq '{status,release,providers:[.configuration.providers[]? | {code,configured,enabled}]}' /tmp/provider-config.json
+          curl -sS --max-time 60 -X PUT -H "X-ProjectPulse-Session: $session" -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' -H 'Content-Type: application/json' --data '{"apiKey":""}' "$BASE/api/ai-configuration/providers/deepseek_v4/secret" | jq '{status,message}'
+          rm -f /tmp/login.json /tmp/session.json /tmp/provider-config.json
