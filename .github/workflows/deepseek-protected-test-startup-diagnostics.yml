@@ -33,7 +33,11 @@ jobs:
           for revision in "${revisions[@]}"; do
             echo "DIAGNOSTIC_REVISION=$revision"
             az containerapp replica list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" -o json || true
-            az containerapp logs show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" --type console --tail 300 --format json > /tmp/startup-console.jsonl 2>&1 || true
+            mapfile -t replicas < <(az containerapp replica list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" --query '[].name' -o tsv)
+            : > /tmp/startup-console.jsonl
+            for replica in "${replicas[@]}"; do
+              az containerapp logs show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" --replica "$replica" --container "$TEST_API_APP" --type console --tail 300 --format json >> /tmp/startup-console.jsonl 2>&1 || true
+            done
             python3 - <<'PY'
           import re
           for line in open('/tmp/startup-console.jsonl'):
