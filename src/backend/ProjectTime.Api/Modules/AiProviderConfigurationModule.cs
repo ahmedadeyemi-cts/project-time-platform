@@ -59,8 +59,8 @@ public static class AiProviderConfigurationModule
         if (ReleaseConfigurationMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
-        if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
-            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be claude or openai." });
+        if (providerCode is not (ProjectPulseAiProviders.DeepSeek or ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
+            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be deepseek_v4, claude, or openai." });
 
         ReplaceModelRequest? request;
         try
@@ -153,8 +153,8 @@ public static class AiProviderConfigurationModule
         if (ReleaseConfigurationMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
-        if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
-            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be claude or openai." });
+        if (providerCode is not (ProjectPulseAiProviders.DeepSeek or ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
+            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be deepseek_v4, claude, or openai." });
 
         SetEnabledRequest? request;
         try
@@ -232,8 +232,8 @@ public static class AiProviderConfigurationModule
         if (ReleaseConfigurationMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
-        if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
-            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be claude or openai." });
+        if (providerCode is not (ProjectPulseAiProviders.DeepSeek or ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
+            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be deepseek_v4, claude, or openai." });
         if (!secretStore.Available)
             return Results.Json(
                 new { status = "secure_store_unavailable", message = secretStore.UnavailableReason },
@@ -336,6 +336,7 @@ public static class AiProviderConfigurationModule
                 configuration.ApplyStoredEnabled(setting.Key, setting.Value);
         }
 
+        health.ApplyConfiguration(configuration.DeepSeek);
         health.ApplyConfiguration(configuration.Claude);
         health.ApplyConfiguration(configuration.OpenAi);
         var snapshots = await coordinator.RefreshAsync(false, cancellationToken);
@@ -368,6 +369,7 @@ public static class AiProviderConfigurationModule
         var authorization = await AuthorizeAdministratorAsync(context);
         if (authorization is not null) return authorization;
 
+        health.ApplyConfiguration(configuration.DeepSeek);
         health.ApplyConfiguration(configuration.Claude);
         health.ApplyConfiguration(configuration.OpenAi);
         var snapshots = health.Snapshots();
@@ -410,6 +412,7 @@ public static class AiProviderConfigurationModule
         sourcePhase = "full_shared_runtime_and_automatic_health_center",
         defaultPriority = new[]
         {
+            ProjectPulseAiProviders.DeepSeek,
             ProjectPulseAiProviders.Claude,
             ProjectPulseAiProviders.OpenAi,
             ProjectPulseAiProviders.Local

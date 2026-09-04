@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import './celar-ai-capability-routing-panel.css';
 
 const TARGET_LABELS = {
+  deepseek_v4: 'DeepSeek v4',
   celar_ai: 'Celar AI',
   claude: 'Claude',
   openai: 'OpenAI',
@@ -9,6 +10,7 @@ const TARGET_LABELS = {
 };
 
 const TARGET_DESCRIPTIONS = {
+  deepseek_v4: 'Self-hosted DGX inference with governed context and a single request slot.',
   celar_ai: 'Private orchestration, governed tools, private RAG, and private inference.',
   claude: 'Eligible external reasoning target; receives only fixed, backend-owned, identity-free capsules.',
   openai: 'Eligible external reasoning target; receives only fixed, backend-owned, identity-free capsules.',
@@ -36,7 +38,7 @@ async function readJson(response) {
 
 function routeDraft(route) {
   return {
-    targets: [...(route.targets ?? ['celar_ai', 'claude', 'openai', 'local_template'])],
+    targets: [...(route.targets ?? ['deepseek_v4', 'celar_ai', 'claude', 'openai', 'local_template'])],
     revision: route.revision ?? 0,
   };
 }
@@ -103,7 +105,7 @@ export default function CelarAiCapabilityRoutingPanel() {
   useEffect(() => { void load(); }, [load]);
 
   const targetOptions = useMemo(
-    () => ['celar_ai', 'claude', 'openai', 'local_template'],
+    () => ['deepseek_v4', 'celar_ai', 'claude', 'openai', 'local_template'],
     [],
   );
 
@@ -263,8 +265,8 @@ export default function CelarAiCapabilityRoutingPanel() {
 
       <div className="celar-ai-routing__architecture" aria-label="Celar AI routing architecture">
         {targetOptions.map((target, index) => (
-          <article key={target} className={target === 'celar_ai' ? 'is-primary' : target === 'local_template' ? 'is-local' : ''}>
-            <span>{index === 0 ? 'Default primary' : index === 1 ? 'Default secondary' : index === 2 ? 'Default tertiary' : 'Final fallback'}</span>
+          <article key={target} className={target === 'deepseek_v4' ? 'is-primary' : target === 'local_template' ? 'is-local' : ''}>
+            <span>{index === 0 ? 'Default primary' : index === 1 ? 'Default secondary' : index === 2 ? 'Default tertiary' : index === 3 ? 'Default fourth' : 'Final fallback'}</span>
             <strong>{TARGET_LABELS[target]}</strong>
             <small>{TARGET_DESCRIPTIONS[target]}</small>
           </article>
@@ -422,14 +424,14 @@ export default function CelarAiCapabilityRoutingPanel() {
 
       <section className="celar-ai-routing__routes" aria-labelledby="capability-route-title">
         <div className="celar-ai-routing__subheading">
-          <div><p>Capability routing</p><h3 id="capability-route-title">Primary, secondary, tertiary, and final fallback</h3></div>
-          <span>Stored priority among eligible targets. Default: Celar AI → Claude → OpenAI → Governed local template</span>
+          <div><p>Capability routing</p><h3 id="capability-route-title">Provider priority and final fallback</h3></div>
+          <span>Stored priority among eligible targets. Default: DeepSeek v4 → Celar AI → Claude → OpenAI → Governed local template</span>
         </div>
         <div className="celar-ai-routing__route-grid">
           {state.routes.map((route) => {
             const draft = drafts[route.feature] ?? routeDraft(route);
             const duplicate = new Set(draft.targets).size !== draft.targets.length;
-            const localLast = draft.targets[3] === 'local_template';
+            const localLast = draft.targets.length === 5 && draft.targets[4] === 'local_template';
             return (
               <article key={route.feature} className="celar-ai-routing__route-card">
                 <header>
@@ -437,13 +439,13 @@ export default function CelarAiCapabilityRoutingPanel() {
                   <span>{title(route.contextClassification)}</span>
                 </header>
                 <div className="celar-ai-routing__route-selects">
-                  {['Primary', 'Secondary', 'Tertiary', 'Final fallback'].map((label, position) => (
+                  {['Primary', 'Secondary', 'Tertiary', 'Fourth', 'Final fallback'].map((label, position) => (
                     <label key={label}>
                       <span>{label}</span>
                       <select
                         value={draft.targets[position] || ''}
                         onChange={(event) => setTarget(route.feature, position, event.target.value)}
-                        disabled={deploymentManaged || position === 3}
+                        disabled={deploymentManaged || position === 4}
                       >
                         {targetOptions.map((target) => <option value={target} key={target}>{TARGET_LABELS[target]}</option>)}
                       </select>

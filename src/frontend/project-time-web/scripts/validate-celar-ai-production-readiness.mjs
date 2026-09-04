@@ -491,7 +491,7 @@ assert(
   'EXACT_TIMESHEET_TARGET_ORDER',
   module064.includes('route.Targets.SequenceEqual')
     && module064.includes('CelarAiCapabilityTargets.DefaultOrder')
-    && routing.includes('DefaultOrder = [CelarAi, Claude, OpenAi, Local]'),
+    && routing.includes('DefaultOrder = [DeepSeek, CelarAi, Claude, OpenAi, Local]'),
   'production readiness requires Celar AI, Claude, OpenAI, then governed local for every Timesheet capability'
 );
 

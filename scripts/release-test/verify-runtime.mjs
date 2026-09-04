@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 const expectedSource = "e2ab37c93b565a4e1d5a94ef5e54efaf3d22e6a3";
 const expectedBase = "https://phd-west-test.onenecklab.com";
-const expectedTargets = ["celar_ai", "claude", "openai", "local_template"];
+const expectedTargets = ["deepseek_v4", "celar_ai", "claude", "openai", "local_template"];
 const expectedFeatures = [
   "timesheet_non_project_description",
   "timesheet_project_task_description",
@@ -617,6 +617,7 @@ async function run() {
   });
   assert(providerConfiguration.status === 200, "Module 064 provider configuration returned HTTP " + providerConfiguration.status + ".");
   assert(providerConfiguration.json?.module === "064", "Module 064 provider configuration has the wrong module.");
+  assert(providerConfiguration.json?.providers?.some((provider) => provider.code === "deepseek_v4" && provider.model === "deepseek-v4-flash-0731"), "Module 064 did not expose the DeepSeek v4 provider for key entry.");
   assert(providerConfiguration.json?.governance?.sanitizedExternalExecutionEnabled === true, "Module 064 sanitized external execution is not enabled.");
   assert(providerConfiguration.json?.governance?.enterpriseSanitizedExternalFallbackEnabled === true, "Module 064 enterprise sanitized external fallback is not enabled.");
   const providerHealth = await request("/api/ai-configuration/health/refresh", {
@@ -736,7 +737,7 @@ async function run() {
   assert(generalKnowledgeChat.status === 200, "Celar general-knowledge question returned HTTP " + generalKnowledgeChat.status + ".");
   assert(generalKnowledgeChat.json?.result?.intentCode === "general_knowledge", "Celar did not classify the outside question as general knowledge.");
   assert(/\bParis\b/i.test(String(generalKnowledgeChat.json?.result?.answer?.directConclusion || "")), "Celar general-knowledge answer did not return Paris.");
-  assert(["celar_ai", "claude", "openai"].includes(String(generalKnowledgeChat.json?.result?.modelProvider || "").toLowerCase()), "Celar general knowledge fell through to the governed local template.");
+  assert(["deepseek_v4", "celar_ai", "claude", "openai"].includes(String(generalKnowledgeChat.json?.result?.modelProvider || "").toLowerCase()), "Celar general knowledge fell through to the governed local template.");
   assert(Array.isArray(generalKnowledgeChat.json?.result?.relevantApis) && generalKnowledgeChat.json.result.relevantApis.length === 0, "Celar general-knowledge answer exposed API inventory.");
   assert(Array.isArray(generalKnowledgeChat.json?.result?.toolResults) && generalKnowledgeChat.json.result.toolResults.length === 0, "Celar general-knowledge answer ran Pulse tools.");
   assert(!answerContainsApiDetail(generalKnowledgeChat.json?.result?.answer), "Celar general-knowledge answer included unrequested API, route, endpoint, or HTTP detail.");
@@ -780,7 +781,7 @@ async function run() {
   });
   assert(timesheetSuggestion.status === 200, "Timesheet AI suggestion returned HTTP " + timesheetSuggestion.status + ".");
   assert(timesheetSuggestion.json?.status === "ai_suggestion_generated", "Timesheet AI suggestion was not generated.");
-  assert(["celar_ai", "claude", "openai"].includes(String(timesheetSuggestion.json?.provider || "").toLowerCase()), "Timesheet AI suggestion fell through to the governed local template.");
+  assert(["deepseek_v4", "celar_ai", "claude", "openai"].includes(String(timesheetSuggestion.json?.provider || "").toLowerCase()), "Timesheet AI suggestion fell through to the governed local template.");
   assert(String(timesheetSuggestion.json?.suggestion || "").trim().length >= 90, "Timesheet AI training suggestion was not detailed enough for review.");
   assert(sentenceCount(timesheetSuggestion.json?.suggestion) >= 2, "Timesheet AI suggestion did not contain a comprehensive multi-sentence response.");
   assert(!String(timesheetSuggestion.json?.suggestion || "").includes("[REDACTED_"), "Timesheet AI suggestion exposed a redaction marker.");
@@ -812,7 +813,7 @@ async function run() {
   });
   assert(closeoutDraft.status === 200, "Closeout AI communication returned HTTP " + closeoutDraft.status + ".");
   assert(closeoutDraft.json?.status !== "closeout_draft_refused", "Closeout AI communication was refused.");
-  assert(["celar_ai", "claude", "openai"].includes(String(closeoutDraft.json?.selectedTarget || "").toLowerCase()), "Closeout AI communication fell through to the governed local template.");
+  assert(["deepseek_v4", "celar_ai", "claude", "openai"].includes(String(closeoutDraft.json?.selectedTarget || "").toLowerCase()), "Closeout AI communication fell through to the governed local template.");
   assert(String(closeoutDraft.json?.draft || "").trim().length >= 300, "Closeout AI communication was not comprehensive enough for review.");
   assert(closeoutDraft.json?.reviewRequired === true && closeoutDraft.json?.emailSent === false && closeoutDraft.json?.stateChanged === false, "Closeout AI communication violated the review-only boundary.");
   evidence.authenticatedChecks.closeoutComprehensiveAiDraft = "passed";
@@ -981,7 +982,7 @@ async function run() {
   );
   assert(sowComposition.status === 200, "Comprehensive SOW composition returned HTTP " + sowComposition.status + ".");
   assert(sowComposition.json?.result?.status === "celar_ai_solution_draft_completed", "Comprehensive SOW composition did not complete.");
-  assert(["celar_ai", "claude", "openai"].includes(String(sowComposition.json?.result?.selectedTarget || "").toLowerCase()), "SOW composition fell through to a local template.");
+  assert(["deepseek_v4", "celar_ai", "claude", "openai"].includes(String(sowComposition.json?.result?.selectedTarget || "").toLowerCase()), "SOW composition fell through to a local template.");
   const sowDraft = sowComposition.json?.result?.sowDraft || {};
   assert(String(sowDraft.title || "").trim().length > 0 && String(sowDraft.executiveSummary || "").trim().length >= 80, "SOW title or executive summary is incomplete.");
   for (const [field, label] of [

@@ -48,6 +48,10 @@ jobs:
           git diff --name-only origin/main...HEAD | LC_ALL=C sort -u > "$RUNNER_TEMP/module-management-actual.txt"
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
+            node tests/validate-deepseek-release-scope.mjs
+            exit 0
+          fi
           if [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
             cat > "$RUNNER_TEMP/protected-uat-validation-defects.txt" <<'EOF'
           .github/workflows/module-loading-assignment-propagation-ci.yml

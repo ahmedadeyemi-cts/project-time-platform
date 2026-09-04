@@ -391,8 +391,9 @@ check(
       'var route = await _store.LoadRouteAsync(',
       'privatePolicyProfile?.RequirePrivateModelForDocuments == true',
       'var orderedTargets = requirePrivateTargetBeforeExternal',
-      'route.Targets.Where(target => !string.Equals(',
-      'CelarAiCapabilityTargets.CelarAi,'
+      'route.Targets.Where(IsPrivateTarget)',
+      'route.Targets.Where(target => !IsPrivateTarget(target))',
+      'CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi'
     ])
     && !timesheetSuggestion.includes('_router.IsFirstTargetAsync('),
   'the central router owns persisted order and conditionally forces private document inference'
@@ -414,7 +415,7 @@ check(
   'MODULE001_AI_PRIVATE_ATTEMPT_TELEMETRY_EXACTLY_ONCE',
   (timesheetSuggestion.match(/RecordAlreadyExecutedPrivateAttempt\(/g) ?? []).length === 0
     && containsAll(centralRoute, [
-      'RecordAlreadyExecutedPrivateAttempt(',
+      '_health.RecordSuccess(target, privateResult.Usage, privateResult.RequestId, "generation_succeeded")',
       '_health.RecordFailure(',
       '_assurance.Record(',
       'decisions.Add(new(target, "failed", privateFailureCode))'

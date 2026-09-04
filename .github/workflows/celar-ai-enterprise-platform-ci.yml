@@ -211,7 +211,8 @@ jobs:
             '/api/ai-configuration/routes' \
             '/api/ai-configuration/private-model/settings' \
             '/api/ai-configuration/consumers' \
-            'Primary, secondary, tertiary, and final fallback'; do
+            'Provider priority and final fallback' \
+            'DeepSeek v4'; do
             grep -Fq "$marker" /tmp/celar-enterprise.js
           done
           for marker in \

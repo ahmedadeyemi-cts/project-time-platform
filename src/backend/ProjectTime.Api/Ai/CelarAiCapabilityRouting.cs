@@ -13,13 +13,14 @@ namespace ProjectTime.Api.Ai;
 
 public static class CelarAiCapabilityTargets
 {
+    public const string DeepSeek = ProjectPulseAiProviders.DeepSeek;
     public const string CelarAi = "celar_ai";
     public const string Claude = ProjectPulseAiProviders.Claude;
     public const string OpenAi = ProjectPulseAiProviders.OpenAi;
     public const string Local = ProjectPulseAiProviders.Local;
 
-    public static readonly string[] All = [CelarAi, Claude, OpenAi, Local];
-    public static readonly string[] DefaultOrder = [CelarAi, Claude, OpenAi, Local];
+    public static readonly string[] All = [DeepSeek, CelarAi, Claude, OpenAi, Local];
+    public static readonly string[] DefaultOrder = [DeepSeek, CelarAi, Claude, OpenAi, Local];
 }
 
 public sealed record CelarAiExternalCapsuleDefinition(
@@ -392,8 +393,8 @@ public static class CelarAiCapabilityCatalog
             .Select(value => value?.Trim().ToLowerInvariant() ?? string.Empty)
             .Where(value => value.Length > 0)
             .ToArray();
-        if (targets.Length != 4)
-            throw new ArgumentException("Select exactly four targets: primary, secondary, tertiary, and final fallback.");
+        if (targets.Length != 5)
+            throw new ArgumentException("Select all five targets with the governed local template last.");
         if (targets.Distinct(StringComparer.OrdinalIgnoreCase).Count() != targets.Length)
             throw new ArgumentException("A capability route cannot contain duplicate targets.");
         if (targets.Any(target => !CelarAiCapabilityTargets.All.Contains(target, StringComparer.OrdinalIgnoreCase)))
@@ -1263,7 +1264,7 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
 
     private static IReadOnlyList<string> SafeTargets(IReadOnlyList<string> values)
     {
-        try { return CelarAiCapabilityCatalog.ValidateTargets(values); }
+        try { return CelarAiCapabilityCatalog.ValidateTargets(values.Contains(CelarAiCapabilityTargets.DeepSeek) ? values : new[] { CelarAiCapabilityTargets.DeepSeek }.Concat(values)); }
         catch { return CelarAiCapabilityTargets.DefaultOrder; }
     }
 
@@ -2515,13 +2516,10 @@ public sealed class CelarAiCapabilityRouter
             || execution.ContainsFinancialValues;
         var privateDocumentTargetMandatory = execution.ContainsPrivateDocuments
             && privatePolicyProfile?.RequirePrivateModelForDocuments == true;
+        static bool IsPrivateTarget(string target) => target is CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi;
         var orderedTargets = requirePrivateTargetBeforeExternal
-            && route.Targets.Contains(CelarAiCapabilityTargets.CelarAi, StringComparer.OrdinalIgnoreCase)
-            ? new[] { CelarAiCapabilityTargets.CelarAi }
-                .Concat(route.Targets.Where(target => !string.Equals(
-                    target,
-                    CelarAiCapabilityTargets.CelarAi,
-                    StringComparison.OrdinalIgnoreCase)))
+            ? route.Targets.Where(IsPrivateTarget)
+                .Concat(route.Targets.Where(target => !IsPrivateTarget(target)))
                 .ToArray()
             : route.Targets;
         var attempted = new List<string>();
@@ -2530,10 +2528,7 @@ public sealed class CelarAiCapabilityRouter
         var decisions = new List<ProjectPulseAiTargetDecision>();
         if (requirePrivateTargetBeforeExternal)
         {
-            foreach (var deferredTarget in route.Targets.TakeWhile(target => !string.Equals(
-                         target,
-                         CelarAiCapabilityTargets.CelarAi,
-                         StringComparison.OrdinalIgnoreCase)))
+            foreach (var deferredTarget in route.Targets.TakeWhile(target => !IsPrivateTarget(target)))
             {
                 decisions.Add(new(
                     deferredTarget,
@@ -2575,8 +2570,18 @@ public sealed class CelarAiCapabilityRouter
                     decisions);
             }
 
-            if (target == CelarAiCapabilityTargets.CelarAi)
+            if (target is CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi)
             {
+                if (target == CelarAiCapabilityTargets.DeepSeek)
+                {
+                    _health.ApplyConfiguration(_configuration.DeepSeek);
+                    if (!_providers.ContainsKey(target) || !_health.CanAttempt(target, out _))
+                    {
+                        skipped.Add(target);
+                        decisions.Add(new(target, "skipped", "deepseek_unavailable"));
+                        continue;
+                    }
+                }
                 var mandatoryConsumerPrivateTarget = privateTargetOverride is not null
                     && requirePrivateTargetBeforeExternal;
                 if (!execution.PrivateTargetAllowed && !mandatoryConsumerPrivateTarget)
@@ -2591,7 +2596,11 @@ public sealed class CelarAiCapabilityRouter
                 {
                     if (privateTargetOverride is not null)
                     {
-                        privateResult = await privateTargetOverride(cancellationToken);
+                        privateResult = await ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(target, privateTargetOverride, cancellationToken);
+                    }
+                    else if (target == CelarAiCapabilityTargets.DeepSeek)
+                    {
+                        privateResult = await _providers[target].GenerateAsync(request with { Feature = feature }, cancellationToken);
                     }
                     else
                     {
@@ -2614,7 +2623,7 @@ public sealed class CelarAiCapabilityRouter
                         "The consumer-owned private Celar target failed without exposing prompt, source, endpoint, or secret content. Feature={Feature}",
                         feature);
                     privateResult = new ProjectPulseAiProviderResult(
-                        CelarAiCapabilityTargets.CelarAi,
+                        target,
                         ProjectPulseAiOutcomes.Unavailable,
                         null,
                         "consumer_private_target_failure",
@@ -2626,13 +2635,13 @@ public sealed class CelarAiCapabilityRouter
                 if (privateResult.IsRefusal)
                 {
                     _health.RecordRefusal(
-                        CelarAiCapabilityTargets.CelarAi,
+                        target,
                         privateResult.Usage,
                         privateResult.RequestId,
                         privateResult.RateLimits);
                     _assurance.Record(
                         feature,
-                        CelarAiCapabilityTargets.CelarAi,
+                        target,
                         ProjectPulseAiOutcomes.Refusal,
                         execution.CorrelationId);
                     decisions.Add(new(
@@ -2643,7 +2652,7 @@ public sealed class CelarAiCapabilityRouter
                         string.Empty,
                         target,
                         ProjectPulseAiOutcomes.Refusal,
-                        "Celar AI declined this request under its safety controls. No later target was attempted.",
+                        "The private provider declined this request under its safety controls. No later target was attempted.",
                         attempted,
                         skipped,
                         privateResult.Usage,
@@ -2662,14 +2671,14 @@ public sealed class CelarAiCapabilityRouter
                         // the provider healthy and continue to Claude/OpenAI in the
                         // persisted route instead of displaying a weak answer.
                         _health.RecordSuccess(
-                            CelarAiCapabilityTargets.CelarAi,
+                            target,
                             privateResult.Usage,
                             privateResult.RequestId,
                             privatePublicQualityCode,
                             privateResult.RateLimits);
                         _assurance.Record(
                             feature,
-                            CelarAiCapabilityTargets.CelarAi,
+                            target,
                             ProjectPulseAiOutcomes.Unavailable,
                             execution.CorrelationId);
                         failed.Add(target);
@@ -2677,11 +2686,8 @@ public sealed class CelarAiCapabilityRouter
                         continue;
                     }
 
-                    RecordAlreadyExecutedPrivateAttempt(
-                        feature,
-                        execution.CorrelationId,
-                        succeeded: true,
-                        diagnosticCode: "generation_succeeded");
+                    _health.RecordSuccess(target, privateResult.Usage, privateResult.RequestId, "generation_succeeded");
+                    _assurance.Record(feature, target, ProjectPulseAiOutcomes.Success, execution.CorrelationId);
                     decisions.Add(new(target, "used", "generation_succeeded"));
                     return new ProjectPulseAiRouteResult(
                         privateResult.Content,
@@ -2697,7 +2703,7 @@ public sealed class CelarAiCapabilityRouter
                 failed.Add(target);
                 var privateFailureCode = DecisionCode(privateResult.Code, "private_model_unavailable");
                 _health.RecordFailure(
-                    CelarAiCapabilityTargets.CelarAi,
+                    target,
                     privateFailureCode,
                     privateResult.RequestId);
                 decisions.Add(new(target, "failed", privateFailureCode));
@@ -3204,6 +3210,7 @@ public sealed class CelarAiCapabilityRouter
 
     private static string DisplayName(string target) => target switch
     {
+        CelarAiCapabilityTargets.DeepSeek => "DeepSeek v4",
         CelarAiCapabilityTargets.CelarAi => "Celar AI",
         CelarAiCapabilityTargets.Claude => "Claude",
         CelarAiCapabilityTargets.OpenAi => "OpenAI",

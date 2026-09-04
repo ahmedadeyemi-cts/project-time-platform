@@ -323,6 +323,7 @@ public sealed class ProjectPulseAiSecretLoader(
             // Candidate and active release revisions consume version-pinned
             // deployment secrets and models. Shared database values must never
             // replace the configuration covered by the release digest.
+            health.ApplyConfiguration(configuration.DeepSeek);
             health.ApplyConfiguration(configuration.Claude);
             health.ApplyConfiguration(configuration.OpenAi);
             logger.LogInformation(
@@ -336,6 +337,7 @@ public sealed class ProjectPulseAiSecretLoader(
             logger.LogWarning(
                 "Module 064 write-only secret store is unavailable: {Reason}",
                 store.UnavailableReason);
+            health.ApplyConfiguration(configuration.DeepSeek);
             health.ApplyConfiguration(configuration.Claude);
             health.ApplyConfiguration(configuration.OpenAi);
             return;
@@ -378,6 +380,7 @@ public sealed class ProjectPulseAiSecretLoader(
         {
             // The registry can be constructed before the asynchronous loader.
             // Reconcile it with whatever safe configuration is available.
+            health.ApplyConfiguration(configuration.DeepSeek);
             health.ApplyConfiguration(configuration.Claude);
             health.ApplyConfiguration(configuration.OpenAi);
         }
@@ -418,7 +421,8 @@ public sealed class ProjectPulseAiConfigurationSynchronizer(
                 foreach (var setting in await store.LoadEnabledAsync(stoppingToken))
                     configuration.ApplyStoredEnabled(setting.Key, setting.Value);
 
-                health.ApplyConfiguration(configuration.Claude);
+                health.ApplyConfiguration(configuration.DeepSeek);
+            health.ApplyConfiguration(configuration.Claude);
                 health.ApplyConfiguration(configuration.OpenAi);
                 await coordinator.RefreshAsync(false, stoppingToken);
             }

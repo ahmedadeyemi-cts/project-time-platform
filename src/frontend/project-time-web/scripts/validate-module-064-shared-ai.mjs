@@ -45,7 +45,7 @@ function count(text, marker) {
 
 assert('MODULE_064_CONTRACTS_EXIST', contracts.includes('ProjectPulseAiGenerationRequest') && contracts.includes('ProjectPulseAiRouteResult'));
 assert('MODULE_064_SHARED_CONFIGURATION', configuration.includes('ProjectPulseAiConfiguration') && configuration.includes('ToSanitizedResponse'));
-assert('MODULE_064_CLAUDE_FIRST_DEFAULT', configuration.includes('[ProjectPulseAiProviders.Claude, ProjectPulseAiProviders.OpenAi, ProjectPulseAiProviders.Local]'));
+assert('MODULE_064_DEEPSEEK_FIRST_DEFAULT', configuration.includes('[ProjectPulseAiProviders.DeepSeek, ProjectPulseAiProviders.Claude, ProjectPulseAiProviders.OpenAi, ProjectPulseAiProviders.Local]'));
 assert('MODULE_064_EXPLICIT_PROVIDER_MODES', ['claude_only', 'openai_only', 'priority_failover', 'local_only'].every((mode) => configuration.includes(mode)));
 assert('MODULE_064_ALL_FEATURE_ROUTES', ['timesheet_description', 'sow_gsd_planning', 'help_assistant', 'closeout_communication', 'project_flowhive_plan'].every((feature) => contracts.includes(feature)));
 assert('MODULE_064_ROUTE_DEDUPLICATION', configuration.includes('Distinct(StringComparer.OrdinalIgnoreCase)') && configuration.includes('duplicateRequests = false'));
@@ -194,7 +194,7 @@ assert('MODULE_064_NO_DATABASE_ARTIFACT', !fs.existsSync(path.join(repository, '
 
 const failed = assertions.filter((assertion) => !assertion.condition);
 console.log(`\nMODULE_064_VALIDATION_CHECKS=${assertions.length}`);
-console.log('MODULE_064_ROUTING=CELAR_CLAUDE_OPENAI_LOCAL');
+console.log('MODULE_064_ROUTING=DEEPSEEK_CELAR_CLAUDE_OPENAI_LOCAL');
 console.log('MODULE_064_AUTOMATIC_HEALTH=STARTUP_PERIODIC_REPLICA_ROUTER');
 console.log('MODULE_064_SAFETY_REFUSAL_FAILOVER=BLOCKED');
 console.log('MODULE_064_SECRET_MUTATION=ADMIN_WRITE_ONLY_ENCRYPTED');

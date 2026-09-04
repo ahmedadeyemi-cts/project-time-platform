@@ -117,7 +117,7 @@ check(
 
 check(
   'MODULE064_ROUTE_AUTHORITY',
-  routing.includes('public static readonly string[] DefaultOrder = [CelarAi, Claude, OpenAi, Local];')
+  routing.includes('public static readonly string[] DefaultOrder = [DeepSeek, CelarAi, Claude, OpenAi, Local];')
     && productionModule.includes('routing.LoadRouteAsync(CelarAiCapabilityCatalog.HelpAssistant')
     && productionModule.includes('providerConfiguration = helpRoute.ToPublicResponse()')
     && productionModule.includes('module064Authority = true'),
@@ -219,7 +219,7 @@ check(
 
 check(
   'CLAUDE_OPENAI_SANITIZED_FALLBACK',
-  routing.includes('DefaultOrder = [CelarAi, Claude, OpenAi, Local]')
+  routing.includes('DefaultOrder = [DeepSeek, CelarAi, Claude, OpenAi, Local]')
     && all(externalPreparation, [
       'execution.ExternalProblemStatement',
       'sanitizedProblem.ExternalExecutionAuthorized',
