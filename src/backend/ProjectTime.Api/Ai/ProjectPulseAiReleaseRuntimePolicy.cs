@@ -237,7 +237,7 @@ public static class ProjectPulseAiReleaseRuntimePolicy
                 CelarAiCapabilityTargets.DefaultOrder,
                 StringComparer.OrdinalIgnoreCase))
         {
-            errors.Add($"{RouteOrderVariable} must be exactly celar_ai,claude,openai,local_template.");
+            errors.Add($"{RouteOrderVariable} must be exactly deepseek_v4,celar_ai,claude,openai,local_template.");
         }
 
         foreach (var name in new[]

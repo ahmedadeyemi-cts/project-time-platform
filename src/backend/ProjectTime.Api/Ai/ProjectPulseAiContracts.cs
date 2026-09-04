@@ -2,11 +2,12 @@ namespace ProjectTime.Api.Ai;
 
 public static class ProjectPulseAiProviders
 {
+    public const string DeepSeek = "deepseek_v4";
     public const string Claude = "claude";
     public const string OpenAi = "openai";
     public const string Local = "local_template";
 
-    public static readonly string[] Remote = [Claude, OpenAi];
+    public static readonly string[] Remote = [DeepSeek, Claude, OpenAi];
 }
 
 public static class ProjectPulseAiFeatures

@@ -11,6 +11,7 @@ public sealed class ProjectPulseAiHealthRegistry
     public ProjectPulseAiHealthRegistry(ProjectPulseAiConfiguration configuration)
     {
         _configuration = configuration;
+        _states[ProjectPulseAiProviders.DeepSeek] = ProviderState.Remote(configuration.DeepSeek);
         _states[ProjectPulseAiProviders.Claude] = ProviderState.Remote(configuration.Claude);
         _states[ProjectPulseAiProviders.OpenAi] = ProviderState.Remote(configuration.OpenAi);
         _states[ProjectPulseAiProviders.Local] = ProviderState.Local();
@@ -237,6 +238,7 @@ public sealed class ProjectPulseAiHealthRegistry
             .Select(Snapshot)
             .OrderBy(item => item.Provider switch
             {
+                ProjectPulseAiProviders.DeepSeek => -1,
                 "celar_ai" => 0,
                 ProjectPulseAiProviders.Claude => 1,
                 ProjectPulseAiProviders.OpenAi => 2,

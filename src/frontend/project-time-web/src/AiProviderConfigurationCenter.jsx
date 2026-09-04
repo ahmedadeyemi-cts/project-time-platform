@@ -7,6 +7,7 @@ import './projectpulse-module-standard.css';
 import AiProviderReadinessPanel from './ai/AiProviderReadinessPanel.jsx';
 
 const PROVIDER_LABELS = {
+  deepseek_v4: 'DeepSeek v4',
   claude: 'Claude',
   openai: 'OpenAI',
   local_template: 'Governed local template',
@@ -44,7 +45,7 @@ export default function AiProviderConfigurationCenter() {
   const [state, setState] = useState({ loading: true, error: '', payload: null });
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
-  const [keys, setKeys] = useState({ claude: '', openai: '' });
+  const [keys, setKeys] = useState({ deepseek_v4: '', claude: '', openai: '' });
   const [models, setModels] = useState({});
   const [savingProvider, setSavingProvider] = useState('');
   const [savingModel, setSavingModel] = useState('');

@@ -16,6 +16,14 @@ public static class ProjectPulseAiServiceCollectionExtensions
         // background worker or configuration loader is allowed to start.
         services.AddHostedService<ProjectPulseAiReleaseRuntimeGuard>();
         services.AddHttpContextAccessor();
+        services.AddHttpClient("DeepSeekDgx", client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false,
+                UseProxy = false,
+                ConnectTimeout = TimeSpan.FromSeconds(15)
+            });
         services.AddHttpClient("ProjectPulseAi")
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
@@ -87,6 +95,8 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddHostedService<ProjectPulseAiConfigurationSynchronizer>();
         services.AddSingleton<ProjectPulseAiHealthRegistry>();
         services.AddSingleton<ProjectPulseClaudeProvider>();
+        services.AddSingleton<ProjectPulseDeepSeekProvider>();
+        services.AddSingleton<IProjectPulseAiProvider>(provider => provider.GetRequiredService<ProjectPulseDeepSeekProvider>());
         services.AddSingleton<ProjectPulseOpenAiProvider>();
         services.AddSingleton<IProjectPulseAiProvider>(provider => provider.GetRequiredService<ProjectPulseClaudeProvider>());
         services.AddSingleton<IProjectPulseAiProvider>(provider => provider.GetRequiredService<ProjectPulseOpenAiProvider>());
