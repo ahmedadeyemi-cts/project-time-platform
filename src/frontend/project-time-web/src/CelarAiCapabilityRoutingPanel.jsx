@@ -431,7 +431,7 @@ export default function CelarAiCapabilityRoutingPanel() {
           {state.routes.map((route) => {
             const draft = drafts[route.feature] ?? routeDraft(route);
             const duplicate = new Set(draft.targets).size !== draft.targets.length;
-            const localLast = draft.targets[3] === 'local_template';
+            const localLast = draft.targets.length === 5 && draft.targets[4] === 'local_template';
             return (
               <article key={route.feature} className="celar-ai-routing__route-card">
                 <header>
@@ -439,13 +439,13 @@ export default function CelarAiCapabilityRoutingPanel() {
                   <span>{title(route.contextClassification)}</span>
                 </header>
                 <div className="celar-ai-routing__route-selects">
-                  {['Primary', 'Secondary', 'Tertiary', 'Final fallback'].map((label, position) => (
+                  {['Primary', 'Secondary', 'Tertiary', 'Fourth', 'Final fallback'].map((label, position) => (
                     <label key={label}>
                       <span>{label}</span>
                       <select
                         value={draft.targets[position] || ''}
                         onChange={(event) => setTarget(route.feature, position, event.target.value)}
-                        disabled={deploymentManaged || position === 3}
+                        disabled={deploymentManaged || position === 4}
                       >
                         {targetOptions.map((target) => <option value={target} key={target}>{TARGET_LABELS[target]}</option>)}
                       </select>

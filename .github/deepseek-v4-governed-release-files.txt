@@ -1,4 +1,5 @@
 .github/deepseek-v4-governed-release-files.txt
+.github/workflows/celar-ai-enterprise-platform-ci.yml
 .github/workflows/celar-ai-production-platform-ci.yml
 .github/workflows/deepseek-v4-provider-ci.yml
 .github/workflows/module-management-owner-drawer-ci.yml
