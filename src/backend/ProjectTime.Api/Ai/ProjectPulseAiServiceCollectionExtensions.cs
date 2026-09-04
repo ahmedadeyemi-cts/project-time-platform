@@ -608,6 +608,11 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         }
         payload["max_tokens"] = Math.Min(requestedMaximum, maximumOutputTokens);
         payload["stream"] = true;
+        // The protected Ollama OpenAI-compatibility gateway rejects streaming
+        // chat completions when the OpenAI response_format hint is present.
+        // Module 025 still requires JSON in the governed prompt and validates
+        // the completed body with the existing strict parser before adoption.
+        payload.Remove("response_format");
 
         if (payload["messages"] is JsonArray messages)
         {
