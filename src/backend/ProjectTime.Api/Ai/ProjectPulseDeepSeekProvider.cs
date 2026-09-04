@@ -31,7 +31,8 @@ public sealed class ProjectPulseDeepSeekProvider(
         if (!provider.Enabled || !provider.Configured) return Failure("deepseek_not_configured");
         if (provider.Endpoint != Endpoint || provider.Model != Model) return Failure("deepseek_configuration_rejected");
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        budget.CancelAfter(TimeSpan.FromMinutes(10));
+        var probe = request.Feature == "provider_readiness";
+        budget.CancelAfter(probe ? TimeSpan.FromSeconds(30) : TimeSpan.FromMinutes(10));
         try
         {
             // One slot across API replicas, health probes, and private consumers.
@@ -41,7 +42,7 @@ public sealed class ProjectPulseDeepSeekProvider(
             await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(budget.Token);
             await using var transaction = await connection.BeginTransactionAsync(budget.Token);
-            var queueDeadline = DateTimeOffset.UtcNow.AddSeconds(60);
+            var queueDeadline = DateTimeOffset.UtcNow.AddSeconds(probe ? 5 : 60);
             while (true)
             {
                 await using var slot = new NpgsqlCommand(

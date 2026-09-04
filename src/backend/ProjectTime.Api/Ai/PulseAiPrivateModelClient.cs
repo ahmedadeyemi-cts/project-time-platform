@@ -50,6 +50,8 @@ public sealed class PulseAiPrivateModelClient
             - Do not output raw source passages longer than necessary to explain the answer.
             """;
 
+        if (_deepSeek is null && ProjectPulseDeepSeekProvider.PrivateTarget == CelarAiCapabilityTargets.DeepSeek)
+            return Failure("private_model_failed", "deepseek_not_registered", DateTimeOffset.UtcNow);
         if (_deepSeek is not null && ProjectPulseDeepSeekProvider.PrivateTarget != CelarAiCapabilityTargets.CelarAi)
         {
             var deepSeek = await _deepSeek.GenerateAsync(

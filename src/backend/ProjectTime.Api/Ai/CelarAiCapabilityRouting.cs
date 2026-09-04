@@ -2579,6 +2579,16 @@ public sealed class CelarAiCapabilityRouter
 
             if (target is CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi)
             {
+                if (target == CelarAiCapabilityTargets.DeepSeek)
+                {
+                    _health.ApplyConfiguration(_configuration.DeepSeek);
+                    if (!_providers.ContainsKey(target) || !_health.CanAttempt(target, out _))
+                    {
+                        skipped.Add(target);
+                        decisions.Add(new(target, "skipped", "deepseek_unavailable"));
+                        continue;
+                    }
+                }
                 var mandatoryConsumerPrivateTarget = privateTargetOverride is not null
                     && requirePrivateTargetBeforeExternal;
                 if (!execution.PrivateTargetAllowed && !mandatoryConsumerPrivateTarget)
