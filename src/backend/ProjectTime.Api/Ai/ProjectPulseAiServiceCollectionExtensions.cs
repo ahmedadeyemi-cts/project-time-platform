@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -42,11 +43,9 @@ public static class ProjectPulseAiServiceCollectionExtensions
         .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
         services.AddTransient<PulseAiPrivateSowInferenceBudgetHandler>();
         // SOW/GSD generation deliberately runs behind a durable queue. Its
-        // logical quality contract remains comprehensive, but a bounded private-
-        // transport budget prevents a single oversized inference from reaching
-        // the upstream gateway timeout. A transient private-model attempt may be
-        // retried once without changing the evidence, citations, or fail-closed
-        // SOW validation boundary.
+        // logical quality contract remains comprehensive, while the dedicated
+        // handler streams the long private completion and buffers only the final
+        // bounded JSON envelope before the strict Module 025 parser sees it.
         services.AddHttpClient("PulseAiPrivateSowInference", client =>
         {
             client.Timeout = TimeSpan.FromMinutes(12);
@@ -252,16 +251,23 @@ public static class ProjectPulseAiServiceCollectionExtensions
 
 /// <summary>
 /// Keeps Module 025 private SOW inference inside the private boundary while
-/// preventing one oversized generation from consuming the entire upstream
-/// gateway window. The second attempt is allowed only for transient transport
-/// outcomes and reuses the same evidence/citations with a tighter JSON budget.
+/// streaming the long OpenAI-compatible completion through the gateway. The
+/// handler owns the complete body read, rebuilds one bounded JSON completion,
+/// and therefore makes the timeout budget cover real generation rather than
+/// only the time needed to receive response headers.
 /// </summary>
 internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandler
 {
-    private const int PrimaryMaximumOutputTokens = 7_500;
-    private const int RecoveryMaximumOutputTokens = 6_000;
-    private static readonly TimeSpan PrimaryAttemptBudget = TimeSpan.FromSeconds(405);
-    private static readonly TimeSpan RecoveryAttemptBudget = TimeSpan.FromSeconds(300);
+    private static readonly Encoding StrictUtf8 = new UTF8Encoding(
+        encoderShouldEmitUTF8Identifier: false,
+        throwOnInvalidBytes: true);
+    private const int PrimaryMaximumOutputTokens = 5_200;
+    private const int RecoveryMaximumOutputTokens = 4_200;
+    private const int MaximumBufferedResponseBytes = 1_000_000;
+    private const int MaximumStreamedResponseBytes = 2_000_000;
+    private const int MaximumSseLineBytes = 256_000;
+    private const int MaximumStreamedContentCharacters = 96_000;
+    private static readonly TimeSpan OverallInferenceBudget = TimeSpan.FromSeconds(690);
 
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
@@ -278,45 +284,313 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
             return await base.SendAsync(request, cancellationToken);
         }
 
-        using var primaryRequest = CloneWithBudget(
-            request,
-            originalBody,
-            PrimaryMaximumOutputTokens,
-            recoveryAttempt: false);
+        using var overallCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        overallCancellation.CancelAfter(OverallInferenceBudget);
+
         try
         {
-            using var primaryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            primaryCancellation.CancelAfter(PrimaryAttemptBudget);
-            var primaryResponse = await base.SendAsync(primaryRequest, primaryCancellation.Token);
+            using var primaryRequest = CloneWithBudget(
+                request,
+                originalBody,
+                PrimaryMaximumOutputTokens,
+                recoveryAttempt: false);
+            var primaryResponse = await SendBoundedAttemptAsync(
+                primaryRequest,
+                overallCancellation.Token);
             if (!IsTransientGatewayFailure(primaryResponse.StatusCode))
             {
                 return primaryResponse;
             }
             primaryResponse.Dispose();
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // The first private attempt exceeded its bounded inference window.
-            // Retry once with a tighter response budget before the named client's
-            // overall twelve-minute deadline expires.
-        }
 
-        using var recoveryRequest = CloneWithBudget(
-            request,
-            originalBody,
-            RecoveryMaximumOutputTokens,
-            recoveryAttempt: true);
-        using var recoveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        recoveryCancellation.CancelAfter(RecoveryAttemptBudget);
-        try
-        {
-            return await base.SendAsync(recoveryRequest, recoveryCancellation.Token);
+            using var recoveryRequest = CloneWithBudget(
+                request,
+                originalBody,
+                RecoveryMaximumOutputTokens,
+                recoveryAttempt: true);
+            return await SendBoundedAttemptAsync(
+                recoveryRequest,
+                overallCancellation.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException("The bounded private SOW inference recovery attempt timed out.");
+            throw new TimeoutException("The bounded private SOW inference stream timed out.");
         }
     }
+
+    private async Task<HttpResponseMessage> SendBoundedAttemptAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        var response = await base.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return response;
+        }
+
+        try
+        {
+            return IsEventStream(response)
+                ? await BufferStreamingCompletionAsync(response, cancellationToken)
+                : await BufferRegularCompletionAsync(response, cancellationToken);
+        }
+        catch
+        {
+            response.Dispose();
+            throw;
+        }
+    }
+
+    private static async Task<HttpResponseMessage> BufferRegularCompletionAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        using (response)
+        {
+            if (response.Content.Headers.ContentLength is > MaximumBufferedResponseBytes)
+            {
+                throw new InvalidOperationException("Private SOW response exceeded the bounded transport limit.");
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var body = await ReadBoundedUtf8Async(
+                stream,
+                MaximumBufferedResponseBytes,
+                "Private SOW response exceeded the bounded transport limit.",
+                cancellationToken);
+            return BufferedResponse(
+                response,
+                body,
+                response.Content.Headers.ContentType?.MediaType ?? "application/json");
+        }
+    }
+
+    private static async Task<HttpResponseMessage> BufferStreamingCompletionAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        using (response)
+        {
+            if (response.Content.Headers.ContentLength is > MaximumStreamedResponseBytes)
+            {
+                throw new InvalidOperationException("Private SOW event stream exceeded the bounded transport limit.");
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var readBuffer = new byte[8_192];
+            var lineBuffer = new ArrayBufferWriter<byte>(8_192);
+            var content = new StringBuilder();
+            var finishReason = string.Empty;
+            JsonObject? terminalError = null;
+            var totalStreamBytes = 0;
+            var stopReading = false;
+            var sawTerminalEvent = false;
+            var firstSseLine = true;
+
+            bool ProcessLine(string line)
+            {
+                if (line.EndsWith('\r'))
+                {
+                    line = line[..^1];
+                }
+                if (firstSseLine)
+                {
+                    firstSseLine = false;
+                    if (line.Length > 0 && line[0] == '\uFEFF')
+                    {
+                        line = line[1..];
+                    }
+                }
+                if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return false;
+
+                var data = line[5..].Trim();
+                if (data.Length == 0) return false;
+                if (string.Equals(data, "[DONE]", StringComparison.Ordinal))
+                {
+                    sawTerminalEvent = true;
+                    return true;
+                }
+
+                var envelope = JsonNode.Parse(data) as JsonObject
+                    ?? throw new InvalidOperationException("Private SOW stream event must be a JSON object.");
+                if (envelope["error"] is JsonObject error)
+                {
+                    terminalError = error.DeepClone().AsObject();
+                    sawTerminalEvent = true;
+                    return true;
+                }
+
+                if (envelope["choices"] is not JsonArray choices
+                    || choices.Count == 0
+                    || choices[0] is not JsonObject choice)
+                {
+                    return false;
+                }
+
+                var eventFinishReason = JsonString(choice["finish_reason"]);
+                if (eventFinishReason.Length > 0)
+                {
+                    finishReason = eventFinishReason;
+                }
+
+                var deltaContent = choice["delta"] is JsonObject delta
+                    ? JsonString(delta["content"])
+                    : string.Empty;
+                if (deltaContent.Length == 0 && choice["message"] is JsonObject message)
+                {
+                    deltaContent = JsonString(message["content"]);
+                }
+                if (deltaContent.Length == 0) return false;
+
+                if (deltaContent.Length > MaximumStreamedContentCharacters - content.Length)
+                {
+                    finishReason = "length";
+                    sawTerminalEvent = true;
+                    return true;
+                }
+
+                content.Append(deltaContent);
+                return false;
+            }
+
+            while (!stopReading)
+            {
+                var read = await stream.ReadAsync(readBuffer.AsMemory(), cancellationToken);
+                if (read == 0)
+                {
+                    if (lineBuffer.WrittenCount > 0)
+                    {
+                        stopReading = ProcessLine(StrictUtf8.GetString(lineBuffer.WrittenSpan));
+                        lineBuffer.Clear();
+                    }
+                    break;
+                }
+
+                if (totalStreamBytes > MaximumStreamedResponseBytes - read)
+                {
+                    throw new InvalidOperationException("Private SOW event stream exceeded the bounded transport limit.");
+                }
+                totalStreamBytes += read;
+
+                for (var index = 0; index < read; index++)
+                {
+                    var value = readBuffer[index];
+                    if (value == (byte)'\n')
+                    {
+                        stopReading = ProcessLine(StrictUtf8.GetString(lineBuffer.WrittenSpan));
+                        lineBuffer.Clear();
+                        if (stopReading) break;
+                        continue;
+                    }
+
+                    if (lineBuffer.WrittenCount >= MaximumSseLineBytes)
+                    {
+                        throw new InvalidOperationException("Private SOW event exceeded the bounded per-event transport limit.");
+                    }
+
+                    var destination = lineBuffer.GetSpan(1);
+                    destination[0] = value;
+                    lineBuffer.Advance(1);
+                }
+            }
+
+            if (!sawTerminalEvent && finishReason.Length == 0 && terminalError is null)
+            {
+                throw new InvalidOperationException("Private SOW event stream ended without a terminal event.");
+            }
+
+            JsonObject bufferedEnvelope;
+            if (terminalError is not null)
+            {
+                bufferedEnvelope = new JsonObject
+                {
+                    ["error"] = terminalError
+                };
+            }
+            else
+            {
+                bufferedEnvelope = new JsonObject
+                {
+                    ["choices"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["message"] = new JsonObject
+                            {
+                                ["content"] = content.ToString()
+                            },
+                            ["finish_reason"] = finishReason.Length == 0
+                                ? null
+                                : JsonValue.Create(finishReason)
+                        }
+                    }
+                };
+            }
+
+            return BufferedResponse(
+                response,
+                bufferedEnvelope.ToJsonString(),
+                "application/json");
+        }
+    }
+
+    private static async Task<string> ReadBoundedUtf8Async(
+        Stream stream,
+        int maximumBytes,
+        string limitMessage,
+        CancellationToken cancellationToken)
+    {
+        using var buffer = new MemoryStream(Math.Min(maximumBytes, 64 * 1024));
+        var chunk = new byte[8_192];
+        var totalBytes = 0;
+
+        while (true)
+        {
+            var read = await stream.ReadAsync(chunk.AsMemory(), cancellationToken);
+            if (read == 0) break;
+            if (totalBytes > maximumBytes - read)
+            {
+                throw new InvalidOperationException(limitMessage);
+            }
+
+            totalBytes += read;
+            await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
+        }
+
+        return StrictUtf8.GetString(
+            buffer.GetBuffer(),
+            0,
+            checked((int)buffer.Length));
+    }
+
+    private static HttpResponseMessage BufferedResponse(
+        HttpResponseMessage source,
+        string body,
+        string mediaType)
+    {
+        var buffered = new HttpResponseMessage(source.StatusCode)
+        {
+            Version = source.Version,
+            ReasonPhrase = source.ReasonPhrase,
+            Content = new StringContent(body, Encoding.UTF8, mediaType)
+        };
+        foreach (var header in source.Headers)
+        {
+            buffered.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+        return buffered;
+    }
+
+    private static string JsonString(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue<string>(out var text)
+            ? text ?? string.Empty
+            : string.Empty;
+
+    private static bool IsEventStream(HttpResponseMessage response) =>
+        string.Equals(
+            response.Content.Headers.ContentType?.MediaType,
+            "text/event-stream",
+            StringComparison.OrdinalIgnoreCase);
 
     private static HttpRequestMessage CloneWithBudget(
         HttpRequestMessage source,
@@ -333,6 +607,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
             requestedMaximum = parsedMaximum;
         }
         payload["max_tokens"] = Math.Min(requestedMaximum, maximumOutputTokens);
+        payload["stream"] = true;
 
         if (payload["messages"] is JsonArray messages)
         {
@@ -349,8 +624,8 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
 
                 var content = message["content"]?.GetValue<string>() ?? string.Empty;
                 var boundedInstruction = recoveryAttempt
-                    ? "RECOVERY RESPONSE BUDGET: Return the complete governed SOW/GSD JSON within this tighter private-model budget. Preserve all five phases, at least two substantive work packages per phase and at least ten total, all required execution/detail fields, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Use concise implementation-grade wording; do not omit required fields and do not invent unsupported customer facts."
-                    : "BOUNDED SOW RESPONSE: Return the complete governed SOW/GSD JSON within the available private-model budget. Preserve all five phases, at least two substantive work packages per phase and at least ten total, all required execution/detail fields, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Prefer concise implementation-grade wording and detailed steps over narrative repetition; add extra work packages only when materially distinct work requires them.";
+                    ? "RECOVERY RESPONSE BUDGET: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required execution/detail field, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Keep each list concise and implementation-grade; use exactly three detailedSteps per task, do not omit required fields, and do not invent unsupported customer facts."
+                    : "BOUNDED STREAMING SOW RESPONSE: Return ten to twelve substantive governed SOW/GSD work packages total, with at least two under each of Plan, Design, Implement, Validate, and Release; prefer ten unless materially distinct required work needs one or two additional packages. Preserve every required execution/detail field, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Keep arrays concise, use exactly three implementation-grade detailedSteps per task, avoid narrative repetition, and do not invent unsupported customer facts.";
                 message["content"] = $"{content}\n\n{boundedInstruction}";
                 break;
             }
@@ -366,6 +641,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         {
             clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
+        clone.Headers.TryAddWithoutValidation("Accept", "text/event-stream");
         return clone;
     }
 
