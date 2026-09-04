@@ -307,6 +307,9 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                 if (!IsTransientGatewayFailure(primaryResponse.StatusCode)
                     && !await IsOutputLimitedCompletionAsync(
                         primaryResponse,
+                        primaryCancellation.Token)
+                    && !await IsInvalidJsonObjectCompletionAsync(
+                        primaryResponse,
                         primaryCancellation.Token))
                 {
                     return primaryResponse;
@@ -640,6 +643,49 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         }
     }
 
+    private static async Task<bool> IsInvalidJsonObjectCompletionAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        if (!response.IsSuccessStatusCode) return false;
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var envelope = JsonDocument.Parse(body);
+            var root = envelope.RootElement;
+            if (!root.TryGetProperty("choices", out var choices)
+                || choices.ValueKind != JsonValueKind.Array
+                || choices.GetArrayLength() == 0
+                || !choices[0].TryGetProperty("message", out var message)
+                || !message.TryGetProperty("content", out var contentNode)
+                || contentNode.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            var content = contentNode.GetString()?.Trim() ?? string.Empty;
+            if (content.StartsWith("```", StringComparison.Ordinal))
+            {
+                var firstLineEnd = content.IndexOf('\n');
+                var lastFence = content.LastIndexOf("```", StringComparison.Ordinal);
+                if (firstLineEnd >= 0 && lastFence > firstLineEnd)
+                {
+                    content = content[(firstLineEnd + 1)..lastFence].Trim();
+                }
+            }
+            if (content.Length == 0) return false;
+
+            using var draft = JsonDocument.Parse(
+                content,
+                new JsonDocumentOptions { MaxDepth = 128 });
+            return draft.RootElement.ValueKind != JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
+    }
+
     private static HttpRequestMessage CloneWithBudget(
         HttpRequestMessage source,
         string originalBody,
@@ -675,7 +721,7 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
 
                 var content = message["content"]?.GetValue<string>() ?? string.Empty;
                 var boundedInstruction = recoveryAttempt
-                    ? "RECOVERY RESPONSE BUDGET: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required field and citationIds:[1]. Use exactly three concise implementation-grade detailedSteps per task and exactly one concise item in every other required task list. Keep top-level lists to at most one concise item. Do not invent unsupported customer facts."
+                    ? "RECOVERY RESPONSE BUDGET: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required field and citationIds:[1]. Use exactly three implementation-grade detailedSteps per task. Use exactly one item in every other required task list and at most one item in each top-level list. Keep every string under 110 characters except objective and description. Close the JSON object. Do not invent unsupported customer facts."
                     : "BOUNDED SOW RESPONSE: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required field and citationIds:[1]. Use exactly three concise implementation-grade detailedSteps per task and exactly one concise item in every other required task list. Keep top-level lists to at most one concise item, avoid repetition, and do not invent unsupported customer facts.";
                 message["content"] = $"{content}\n\n{boundedInstruction}";
                 break;

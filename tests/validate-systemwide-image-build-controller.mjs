@@ -278,6 +278,11 @@ assert.match(
   /PrimaryMaximumOutputTokens = 4_200[\s\S]*?RecoveryMaximumOutputTokens = 3_400[\s\S]*?payload\["stream"\] = false;[\s\S]*?"Accept", "application\/json"/,
   'Module 025 must use the protected gateway non-streaming contract with a bounded compact output budget'
 );
+assert.match(
+  aiServices,
+  /IsOutputLimitedCompletionAsync[\s\S]*?IsInvalidJsonObjectCompletionAsync[\s\S]*?JsonDocument\.Parse\([\s\S]*?MaxDepth = 128/,
+  'Module 025 must use its bounded recovery attempt for truncated or malformed primary JSON'
+);
 assert.match(privateModelClient, /CelarAiCapabilityCatalog\.SowGsdPlanning[\s\S]*?"PulseAiPrivateSowInference"/);
 assert.match(privateModelClient, /private_model_output_truncated/);
 assert.match(privateModelClient, /ReadFinishReason/);
