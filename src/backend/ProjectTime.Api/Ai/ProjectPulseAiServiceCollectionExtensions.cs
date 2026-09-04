@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Text.Json.Nodes;
 using ProjectTime.Api.Modules;
 
 namespace ProjectTime.Api.Ai;
@@ -38,14 +40,18 @@ public static class ProjectPulseAiServiceCollectionExtensions
             client.Timeout = TimeSpan.FromMinutes(5);
         })
         .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
+        services.AddTransient<PulseAiPrivateSowInferenceBudgetHandler>();
         // SOW/GSD generation deliberately runs behind a durable queue. Its
-        // comprehensive, structured five-phase response can exceed the normal
-        // interactive inference window on the governed private model, while
-        // every other private AI surface retains the five-minute ceiling.
+        // logical quality contract remains comprehensive, but a bounded private-
+        // transport budget prevents a single oversized inference from reaching
+        // the upstream gateway timeout. A transient private-model attempt may be
+        // retried once without changing the evidence, citations, or fail-closed
+        // SOW validation boundary.
         services.AddHttpClient("PulseAiPrivateSowInference", client =>
         {
             client.Timeout = TimeSpan.FromMinutes(12);
         })
+        .AddHttpMessageHandler<PulseAiPrivateSowInferenceBudgetHandler>()
         .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
         services.AddHttpClient("PulseAiPrivateMalwareScan", client =>
         {
@@ -242,4 +248,129 @@ public static class ProjectPulseAiServiceCollectionExtensions
             "The private AI endpoint could not be reached through its validated private addresses.",
             lastFailure);
     }
+}
+
+/// <summary>
+/// Keeps Module 025 private SOW inference inside the private boundary while
+/// preventing one oversized generation from consuming the entire upstream
+/// gateway window. The second attempt is allowed only for transient transport
+/// outcomes and reuses the same evidence/citations with a tighter JSON budget.
+/// </summary>
+internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandler
+{
+    private const int PrimaryMaximumOutputTokens = 7_500;
+    private const int RecoveryMaximumOutputTokens = 6_000;
+    private static readonly TimeSpan PrimaryAttemptBudget = TimeSpan.FromSeconds(405);
+    private static readonly TimeSpan RecoveryAttemptBudget = TimeSpan.FromSeconds(300);
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Content is null)
+        {
+            return await base.SendAsync(request, cancellationToken);
+        }
+
+        var originalBody = await request.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(originalBody))
+        {
+            return await base.SendAsync(request, cancellationToken);
+        }
+
+        using var primaryRequest = CloneWithBudget(
+            request,
+            originalBody,
+            PrimaryMaximumOutputTokens,
+            recoveryAttempt: false);
+        try
+        {
+            using var primaryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            primaryCancellation.CancelAfter(PrimaryAttemptBudget);
+            var primaryResponse = await base.SendAsync(primaryRequest, primaryCancellation.Token);
+            if (!IsTransientGatewayFailure(primaryResponse.StatusCode))
+            {
+                return primaryResponse;
+            }
+            primaryResponse.Dispose();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The first private attempt exceeded its bounded inference window.
+            // Retry once with a tighter response budget before the named client's
+            // overall twelve-minute deadline expires.
+        }
+
+        using var recoveryRequest = CloneWithBudget(
+            request,
+            originalBody,
+            RecoveryMaximumOutputTokens,
+            recoveryAttempt: true);
+        using var recoveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        recoveryCancellation.CancelAfter(RecoveryAttemptBudget);
+        try
+        {
+            return await base.SendAsync(recoveryRequest, recoveryCancellation.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("The bounded private SOW inference recovery attempt timed out.");
+        }
+    }
+
+    private static HttpRequestMessage CloneWithBudget(
+        HttpRequestMessage source,
+        string originalBody,
+        int maximumOutputTokens,
+        bool recoveryAttempt)
+    {
+        var payload = JsonNode.Parse(originalBody) as JsonObject
+            ?? throw new InvalidOperationException("Private SOW inference payload must be a JSON object.");
+        var requestedMaximum = maximumOutputTokens;
+        if (payload["max_tokens"] is JsonValue tokenValue
+            && tokenValue.TryGetValue<int>(out var parsedMaximum))
+        {
+            requestedMaximum = parsedMaximum;
+        }
+        payload["max_tokens"] = Math.Min(requestedMaximum, maximumOutputTokens);
+
+        if (payload["messages"] is JsonArray messages)
+        {
+            for (var index = messages.Count - 1; index >= 0; index--)
+            {
+                if (messages[index] is not JsonObject message
+                    || !string.Equals(
+                        message["role"]?.GetValue<string>(),
+                        "user",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var content = message["content"]?.GetValue<string>() ?? string.Empty;
+                var boundedInstruction = recoveryAttempt
+                    ? "RECOVERY RESPONSE BUDGET: Return the complete governed SOW/GSD JSON within this tighter private-model budget. Preserve all five phases, at least two substantive work packages per phase and at least ten total, all required execution/detail fields, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Use concise implementation-grade wording; do not omit required fields and do not invent unsupported customer facts."
+                    : "BOUNDED SOW RESPONSE: Return the complete governed SOW/GSD JSON within the available private-model budget. Preserve all five phases, at least two substantive work packages per phase and at least ten total, all required execution/detail fields, authoritative citation IDs, milestone constraints, assumptions/open questions, acceptance criteria, validation procedures, responsibilities, risks, and engineering hours. Prefer concise implementation-grade wording and detailed steps over narrative repetition; add extra work packages only when materially distinct work requires them.";
+                message["content"] = $"{content}\n\n{boundedInstruction}";
+                break;
+            }
+        }
+
+        var clone = new HttpRequestMessage(source.Method, source.RequestUri)
+        {
+            Version = source.Version,
+            VersionPolicy = source.VersionPolicy,
+            Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json")
+        };
+        foreach (var header in source.Headers)
+        {
+            clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+        return clone;
+    }
+
+    private static bool IsTransientGatewayFailure(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.BadGateway
+            or HttpStatusCode.ServiceUnavailable
+            or HttpStatusCode.GatewayTimeout;
 }
