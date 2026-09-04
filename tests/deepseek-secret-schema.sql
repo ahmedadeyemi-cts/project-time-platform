@@ -6,7 +6,7 @@ WHERE c.conrelid IN ('ai_provider_secrets'::regclass,'ai_provider_secret_audit':
 ORDER BY 1,2;
 SELECT provider_code,count(*) AS saved_count FROM ai_provider_secrets GROUP BY provider_code;
 COMMIT;
-\i /repair.sql
+\ir ../database/migrations/102_deepseek_legacy_provider_constraints.sql
 BEGIN;
 INSERT INTO ai_provider_secrets(provider_code,ciphertext,nonce,tag,encryption_key_id,version,rotated_at,rotated_by)
 VALUES ('deepseek_v4',decode('00','hex'),decode(repeat('00',12),'hex'),decode(repeat('00',16),'hex'),
