@@ -389,6 +389,10 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
 
             bool ProcessLine(string line)
             {
+                if (line.EndsWith('\r'))
+                {
+                    line = line[..^1];
+                }
                 if (firstSseLine)
                 {
                     firstSseLine = false;
@@ -479,7 +483,6 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                         continue;
                     }
 
-                    if (value == (byte)'\r') continue;
                     if (lineBuffer.WrittenCount >= MaximumSseLineBytes)
                     {
                         throw new InvalidOperationException("Private SOW event exceeded the bounded per-event transport limit.");
