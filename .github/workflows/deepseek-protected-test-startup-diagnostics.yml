@@ -29,10 +29,11 @@ jobs:
           [[ "$(az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query tags.environment -o tsv)" == test ]]
           az containerapp show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query '{latest:properties.latestRevisionName,ready:properties.latestReadyRevisionName,state:properties.provisioningState,mode:properties.configuration.activeRevisionsMode,traffic:properties.configuration.ingress.traffic,scale:properties.template.scale,probes:properties.template.containers[0].probes}' -o json
           az containerapp revision list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query '[?properties.active].{name:name,state:properties.provisioningState,health:properties.healthState,running:properties.runningState,replicas:properties.replicas,traffic:properties.trafficWeight,image:properties.template.containers[0].image}' -o json
-          for revision in ca-phd-test-api-westus3--rela-33925802640-1 ca-phd-test-api-westus3--relra-33925802640-1; do
+          mapfile -t revisions < <(az containerapp revision list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --query '[?properties.active].name' -o tsv)
+          for revision in "${revisions[@]}"; do
             echo "DIAGNOSTIC_REVISION=$revision"
             az containerapp replica list -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" -o json || true
-            az containerapp logs show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" --type console --tail 100 --format json > /tmp/startup-console.jsonl 2>&1 || true
+            az containerapp logs show -g "$TEST_RESOURCE_GROUP" -n "$TEST_API_APP" --revision "$revision" --type console --tail 300 --format json > /tmp/startup-console.jsonl 2>&1 || true
             python3 - <<'PY'
           import re
           for line in open('/tmp/startup-console.jsonl'):
