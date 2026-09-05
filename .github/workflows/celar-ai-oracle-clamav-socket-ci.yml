@@ -58,9 +58,19 @@ jobs:
 
           grep -Fq 'GITOPS_DRAIN_TIMEOUT_SECONDS=600' "$BOOTSTRAP"
           grep -Fq 'GITOPS_TIMER_WAS_ACTIVE=false' "$BOOTSTRAP"
-          grep -Fq 'restore_timer_on_failure()' "$BOOTSTRAP"
-          grep -Fq 'systemctl start celar-gitops.timer' "$BOOTSTRAP"
-          grep -Fq 'trap restore_timer_on_failure EXIT INT TERM' "$BOOTSTRAP"
+          grep -Fq 'restore_prior_timer()' "$BOOTSTRAP"
+          grep -Fq 'on_exit()' "$BOOTSTRAP"
+          grep -Fq 'on_interrupt()' "$BOOTSTRAP"
+          grep -Fq 'on_terminate()' "$BOOTSTRAP"
+          grep -Fq 'exit 130' "$BOOTSTRAP"
+          grep -Fq 'exit 143' "$BOOTSTRAP"
+          grep -Fq 'trap on_exit EXIT' "$BOOTSTRAP"
+          grep -Fq 'trap on_interrupt INT' "$BOOTSTRAP"
+          grep -Fq 'trap on_terminate TERM' "$BOOTSTRAP"
+          if grep -Fq 'trap restore_timer_on_failure EXIT INT TERM' "$BOOTSTRAP"; then
+            echo 'Bootstrap must use dedicated nonzero INT/TERM handlers.' >&2
+            exit 1
+          fi
           grep -Fq 'systemctl stop celar-gitops.timer' "$BOOTSTRAP"
           grep -Fq 'DRAIN_DEADLINE=$((SECONDS + GITOPS_DRAIN_TIMEOUT_SECONDS))' "$BOOTSTRAP"
           grep -Fq 'while systemctl is-active --quiet celar-gitops.service' "$BOOTSTRAP"
@@ -80,10 +90,16 @@ jobs:
           start = text.index('systemctl enable --now celar-gitops.timer')
           if not stop < deploy < record < start:
               raise SystemExit('Bootstrap GitOps timer ordering is unsafe.')
-          if text.index('trap restore_timer_on_failure EXIT INT TERM') > stop:
-              raise SystemExit('Failure trap must be installed before timer stop.')
+          for trap_line in ('trap on_exit EXIT', 'trap on_interrupt INT', 'trap on_terminate TERM'):
+              if text.index(trap_line) > stop:
+                  raise SystemExit(f'{trap_line} must be installed before timer stop.')
+          if 'on_interrupt()' not in text or 'exit 130' not in text:
+              raise SystemExit('INT handler must force exit 130.')
+          if 'on_terminate()' not in text or 'exit 143' not in text:
+              raise SystemExit('TERM handler must force exit 143.')
           print('BOOTSTRAP_GITOPS_TIMER_ORDER=PASS')
           print('BOOTSTRAP_GITOPS_FAILURE_RECOVERY=PASS')
+          print('BOOTSTRAP_SIGNAL_RECOVERY=PASS')
           PY
 
           grep -Fxq 'Environment=HOME=/root' "$GITOPS_UNIT"
