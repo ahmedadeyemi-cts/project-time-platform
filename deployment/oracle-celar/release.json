@@ -54,6 +54,17 @@
   "ollamaNumParallel": 1,
   "ollamaMaxQueue": 64,
   "runtimeMutationLockWaitSeconds": 3600,
+  "modelMaintenance": {
+    "enabled": true,
+    "cadence": "weekly",
+    "dayOfWeek": "Sunday",
+    "localTime": "01:00",
+    "timeZone": "America/Chicago",
+    "systemdOnCalendar": "Sun *-*-* 01:00:00 America/Chicago",
+    "automaticEngineUpdate": true,
+    "automaticModelPull": true,
+    "rollbackOnValidationFailure": true
+  },
   "localBackupRetentionDays": 7,
   "resticKeepDaily": 7,
   "resticKeepWeekly": 4,
