@@ -26,6 +26,9 @@ LockPersonality=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 CapabilityBoundingSet=
 ReadWritePaths=/var/lib/celar-ai/gateway
+MemoryHigh=1536M
+MemoryMax=2G
+TasksMax=64
 LimitNOFILE=4096
 
 [Install]
