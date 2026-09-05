@@ -530,6 +530,11 @@ if [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
   node tests/validate-planner-fallback-build-release-scope.mjs
   PROHIBITED="$(grep -Fvx 'deployment/containers/api/Dockerfile' <<<"$PROHIBITED" || true)"
 fi
+if [[ "$HEAD_BRANCH" == 'fix/module064-systemwide-failover-20260905' ]]; then
+  node tests/validate-module064-systemwide-failover-scope.mjs
+  # This exact repair adds an authenticated chat assertion to the Test gate.
+  PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
+fi
 if [[ -n "$PROHIBITED" ]]; then
   echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2
   printf '%s\n' "$PROHIBITED" >&2

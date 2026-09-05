@@ -4,6 +4,7 @@
 .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
 docs/releases/module064-systemwide-failover-20260905.md
+scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
 src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs
