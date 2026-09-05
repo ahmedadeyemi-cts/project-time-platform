@@ -185,6 +185,27 @@ public sealed class CelarAiEnterprisePlatformService
                 return RefusedComposeResult(mode, routed, correlationId);
             }
 
+            if (privateResult is null
+                && routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                && capability is CelarAiCapabilityCatalog.ProjectFlowHivePlan or CelarAiCapabilityCatalog.ProjectForgePlanEstimate)
+            {
+                // Provider eligibility must not gate permission-scoped evidence
+                // retrieval. This path never invokes a model: it preserves the
+                // existing cited private scaffold alongside generic assistance.
+                privateResult = await _privateRag.GenerateFlowHiveEvidenceScaffoldAsync(
+                    actualUserId, effectiveUserId,
+                    new PulseAiPrivateFlowHiveRequest(
+                        ProjectCode: projectCode,
+                        ProjectName: projectName,
+                        RequestedOutcome: request.RequestedOutcome,
+                        DetailLevel: request.DetailLevel ?? "comprehensive",
+                        FeatureCode: capability,
+                        ProjectId: request.ProjectId,
+                        TaskId: request.TaskId,
+                        AssignmentId: request.AssignmentId),
+                    cancellationToken);
+            }
+
             var plan = privateResult?.FlowHivePlan;
             var detailed = privateResult?.Answer
                 ?? (plan is null || privateResult is null ? null : BuildPlanSummary(plan, privateResult));

@@ -303,6 +303,24 @@ public sealed class PulseAiPrivateRagService
             authoritativeScopeEvidence: null,
             cancellationToken: cancellationToken);
 
+    internal Task<PulseAiPrivateRagAnswer> GenerateFlowHiveEvidenceScaffoldAsync(
+        Guid actualUserId,
+        Guid effectiveUserId,
+        PulseAiPrivateFlowHiveRequest request,
+        CancellationToken cancellationToken)
+    {
+        var feature = PlanningFeature(request.FeatureCode);
+        if (!AllowsDeterministicCitedPlanningFallback(feature))
+            throw new ArgumentException("This capability requires model-generated detailed scope.", nameof(request));
+        if (!Options().Enabled)
+            return Task.FromResult(Blocked(feature, PlanningPurpose(feature), "private_rag_disabled", "Private evidence execution is disabled by configuration."));
+        return GenerateFlowHivePlanInternalAsync(
+            actualUserId, effectiveUserId, request,
+            authoritativeScopeEvidence: null,
+            cancellationToken: cancellationToken,
+            usePrivateModelWhenAvailable: false);
+    }
+
     internal Task<PulseAiPrivateRagAnswer> GenerateModule025SowPlanAsync(
         Guid actualUserId,
         Guid effectiveUserId,
@@ -321,7 +339,8 @@ public sealed class PulseAiPrivateRagService
         Guid effectiveUserId,
         PulseAiPrivateFlowHiveRequest request,
         CelarAiAuthoritativeScopeEvidence? authoritativeScopeEvidence,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool usePrivateModelWhenAvailable = true)
     {
         var options = Options();
         var access = await _repository.LoadAccessAsync(effectiveUserId, cancellationToken);
@@ -420,7 +439,7 @@ public sealed class PulseAiPrivateRagService
                 hasModule025AuthoritativeScope: authoritativeSource is not null),
             flowHive: true,
             retrieveAuthorizedDocuments: true,
-            usePrivateModelWhenAvailable: true,
+            usePrivateModelWhenAvailable: usePrivateModelWhenAvailable,
             cancellationToken,
             authoritativeSource);
     }

@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -89,7 +90,17 @@ const deepSeekProviderMode = branchName === 'feature/deepseek-v4-dgx-primary-202
 if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');
 const aiRoutingSowRepairMode = branchName === 'fix/ai-routing-sow-regeneration-20260905';
 if (aiRoutingSowRepairMode) await import('./validate-ai-routing-sow-release-scope.mjs');
-const scopedCompatibilityMode = aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const plannerEvidenceFallbackMode = branchName === 'fix/ai-planner-evidence-fallback-20260905';
+if (plannerEvidenceFallbackMode) {
+  const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
+  const actual = String(originalExecFileSync('git', ['diff', '--name-only', base, 'HEAD'], { encoding: 'utf8' })).trim().split('\n').filter(Boolean).sort();
+  assert.deepEqual(actual, [
+    'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs',
+    'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
+    'tests/validate-celar-ai-pr630-consolidated.mjs'
+  ], 'Planner evidence fallback must retain its exact three-file repair scope');
+}
+const scopedCompatibilityMode = plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode
