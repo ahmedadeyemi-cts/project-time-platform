@@ -766,7 +766,7 @@ jobs:
           # A verified public fact can complete without an LLM. Separately
           # require a model-backed answer and actual saved-order decisions.
           ROUTING_SMOKE_PAYLOAD="$(mktemp)"
-          jq -n '{question:"Explain how rainbows form.",mode:"system_help",detailLevel:"standard",includeRepositoryContext:false,includeAuthorizedProjectDocuments:false,includeApiInventory:false,includeTroubleshooting:false,usePrivateModelWhenAvailable:true}' > "$ROUTING_SMOKE_PAYLOAD"
+          jq -n '{question:"Explain how rainbows form using the words refraction and reflection in your step-by-step explanation.",mode:"system_help",detailLevel:"standard",includeRepositoryContext:false,includeAuthorizedProjectDocuments:false,includeApiInventory:false,includeTroubleshooting:false,usePrivateModelWhenAvailable:true}' > "$ROUTING_SMOKE_PAYLOAD"
           ROUTING_SMOKE_STARTED=$SECONDS
           ROUTING_SMOKE_STATUS="$(auth_post '/api/celar-ai/v2/chat' "$ROUTING_SMOKE_PAYLOAD" "$EVIDENCE_DIR/module064-provider-routing-smoke.json")"
           ROUTING_SMOKE_SECONDS=$((SECONDS - ROUTING_SMOKE_STARTED))
