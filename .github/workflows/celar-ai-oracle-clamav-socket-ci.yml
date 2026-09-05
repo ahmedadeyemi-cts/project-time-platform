@@ -8,6 +8,8 @@ on:
       - 'deployment/oracle-celar/systemd/clamav-daemon.socket.d/**'
       - 'deployment/oracle-celar/systemd/celar-gitops.service'
       - 'deployment/oracle-celar/systemd/celar-ollama-update.service'
+      - 'deployment/oracle-celar/systemd/celar-maintenance-reconcile.service'
+      - 'deployment/oracle-celar/systemd/celar-maintenance-reconcile.timer'
       - '.github/workflows/celar-ai-oracle-clamav-socket-ci.yml'
   workflow_dispatch:
 
@@ -33,6 +35,8 @@ jobs:
           DROPIN=deployment/oracle-celar/systemd/clamav-daemon.socket.d/10-celar-tcp.conf
           GITOPS_UNIT=deployment/oracle-celar/systemd/celar-gitops.service
           UPDATE_UNIT=deployment/oracle-celar/systemd/celar-ollama-update.service
+          RECONCILE_UNIT=deployment/oracle-celar/systemd/celar-maintenance-reconcile.service
+          RECONCILE_TIMER=deployment/oracle-celar/systemd/celar-maintenance-reconcile.timer
 
           bash -n "$DEPLOY"
           bash -n "$BOOTSTRAP"
@@ -49,8 +53,18 @@ jobs:
           grep -Fq "printf 'zPING\\0' | nc -N -w 3" "$DEPLOY"
           grep -Fq "fail 'ClamAV localhost TCP socket did not become ready on 127.0.0.1:3310.'" "$DEPLOY"
 
-          grep -Fq 'systemctl enable --now celar-backup.timer celar-ollama-update.timer' "$DEPLOY"
+          # The maintenance reconciler, not deploy.sh, owns the model-update timer.
+          # This prevents a later GitOps deployment from overwriting an approved
+          # administrator-selected maintenance window.
+          grep -Fq 'systemctl enable --now celar-backup.timer celar-maintenance-reconcile.timer' "$DEPLOY"
+          grep -Fq 'systemctl start celar-maintenance-reconcile.service' "$DEPLOY"
           grep -Fq 'systemctl enable celar-gitops.timer' "$DEPLOY"
+          if grep -Fq 'enable --now celar-backup.timer celar-ollama-update.timer' "$DEPLOY"; then
+            echo 'deploy.sh must not directly own the model-update timer after maintenance governance activation.' >&2
+            exit 1
+          fi
+          grep -Fq 'ExecStart=/opt/celar-ai/deploy/maintenance-reconcile.sh' "$RECONCILE_UNIT"
+          grep -Fq 'OnUnitActiveSec=60s' "$RECONCILE_TIMER"
           if grep -Fq 'enable --now celar-gitops.timer' "$DEPLOY"; then
             echo 'deploy.sh must not start GitOps before bootstrap records the applied tree.' >&2
             exit 1
