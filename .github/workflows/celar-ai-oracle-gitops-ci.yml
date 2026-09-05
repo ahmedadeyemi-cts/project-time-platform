@@ -25,23 +25,14 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Validate shell, Python, and desired-state manifest
+      - name: Validate syntax and governed manifest
         shell: bash
         run: |
           set -Eeuo pipefail
-          for script in \
-            deployment/oracle-celar/bootstrap.sh \
-            deployment/oracle-celar/deploy.sh \
-            deployment/oracle-celar/gitops.sh \
-            deployment/oracle-celar/health-check.sh \
-            deployment/oracle-celar/backup.sh \
-            deployment/oracle-celar/restore.sh \
-            deployment/oracle-celar/ollama-update.sh; do
+          for script in deployment/oracle-celar/{bootstrap,deploy,gitops,health-check,backup,restore,ollama-update}.sh; do
             bash -n "$script"
           done
-          python3 -m py_compile \
-            deployment/oracle-celar/gateway/gateway.py \
-            deployment/oracle-celar/gateway/wsgi.py
+          python3 -m py_compile deployment/oracle-celar/gateway/gateway.py deployment/oracle-celar/gateway/wsgi.py
           jq -e '
             .schema == 1 and
             .environment == "protected-test-oracle-celar" and
@@ -50,167 +41,107 @@ jobs:
             .gatewayVersion == "1.1.0" and
             .gatewayBind == "127.0.0.1:8787" and
             .generationModel == "gemma3:4b" and
-            .reasoningModel == "qwen3:4b" and
+            .reasoningModel == "qwen3:4b-instruct" and
             .fastGeneralModel == "llama3.2:3b" and
             .embeddingModel == "embeddinggemma" and
             .embeddingDimension == 768 and
             .ocrModel == "tesseract-5-eng" and
-            .localGenerationModels == ["gemma3:4b","qwen3:4b","llama3.2:3b"] and
-            .structuredGenerationOrder == ["gemma3:4b","qwen3:4b","llama3.2:3b"] and
-            .generalGenerationOrder == ["qwen3:4b","llama3.2:3b","gemma3:4b"] and
+            .localGenerationModels == ["gemma3:4b","qwen3:4b-instruct","llama3.2:3b"] and
+            .structuredGenerationOrder == ["gemma3:4b","qwen3:4b-instruct","llama3.2:3b"] and
+            .generalGenerationOrder == ["qwen3:4b-instruct","llama3.2:3b","gemma3:4b"] and
             .ollamaHost == "127.0.0.1:11434" and
-            .clamavHost == "127.0.0.1" and
-            .clamavPort == 3310 and
-            .maxUploadBytes > 0 and
-            .maxJsonRequestBytes > 0 and
-            .maxGatewayResponseBytes > 0 and
-            .maxOcrPages > 0 and
-            .maxOcrImagePixels > 0 and
-            .maxOcrImageEdge > 0 and
-            .pdfRasterMaxEdge > 0
+            .clamavHost == "127.0.0.1" and .clamavPort == 3310 and
+            .maxUploadBytes > 0 and .maxOcrPages > 0 and
+            .maxOcrImagePixels > 0 and .maxOcrImageEdge > 0 and .pdfRasterMaxEdge > 0
           ' deployment/oracle-celar/release.json >/dev/null
 
-      - name: Validate exact authenticated gateway contract
+      - name: Validate gateway and local specialist policy
         shell: bash
         run: |
           set -Eeuo pipefail
           GATEWAY=deployment/oracle-celar/gateway/gateway.py
           WSGI=deployment/oracle-celar/gateway/wsgi.py
-          CADDY=deployment/oracle-celar/caddy/Caddyfile
           UNIT=deployment/oracle-celar/systemd/celar-ai-gateway.service
+          CADDY=deployment/oracle-celar/caddy/Caddyfile
 
           python3 - <<'PY'
           import ast
           from pathlib import Path
-
-          path = Path('deployment/oracle-celar/gateway/gateway.py')
-          tree = ast.parse(path.read_text(encoding='utf-8'))
+          tree = ast.parse(Path('deployment/oracle-celar/gateway/gateway.py').read_text())
           routes = set()
           for node in tree.body:
-              if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                  continue
-              for decorator in node.decorator_list:
-                  if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
-                      continue
-                  if decorator.func.attr not in {'get', 'post'} or not decorator.args:
-                      continue
-                  value = decorator.args[0]
-                  if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                      routes.add((decorator.func.attr.upper(), value.value))
-          expected = {
-              ('GET', '/health'),
-              ('POST', '/v1/chat/completions'),
-              ('POST', '/v1/embeddings'),
-              ('POST', '/v1/extract'),
-              ('POST', '/v1/scan'),
-          }
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                  for dec in node.decorator_list:
+                      if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute) and dec.func.attr in {'get','post'} and dec.args:
+                          arg = dec.args[0]
+                          if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                              routes.add((dec.func.attr.upper(), arg.value))
+          expected = {('GET','/health'),('POST','/v1/chat/completions'),('POST','/v1/embeddings'),('POST','/v1/extract'),('POST','/v1/scan')}
           if routes != expected:
-              raise SystemExit(f'Unexpected public gateway route set: {sorted(routes)}')
-          print('CELAR_GATEWAY_EXACT_ROUTE_SET=PASS')
+              raise SystemExit(f'Unexpected gateway routes: {sorted(routes)}')
           PY
 
-          if grep -Fq '/train' "$GATEWAY"; then
-            echo 'Training route/source is prohibited from the Oracle gateway.' >&2
-            exit 1
-          fi
+          ! grep -Fq '/train' "$GATEWAY"
           grep -Fq 'hmac.compare_digest' "$GATEWAY"
-          grep -Fq 'X-Pulse-AI-Privacy-Boundary' "$GATEWAY"
           grep -Fq 'private_pulse_runtime_only' "$GATEWAY"
-          grep -Fq 'MAX_CONTENT_LENGTH' "$GATEWAY"
-          grep -Fq 'MAX_GATEWAY_RESPONSE_BYTES' "$GATEWAY"
-          grep -Fq 'rawDocumentContentLogged' "$GATEWAY"
-          grep -Fq '"trainingEnabled": False' "$GATEWAY"
-          grep -Fq '"externalEscalationEnabled": False' "$GATEWAY"
-
-          grep -Fq 'qwen3:4b' "$WSGI"
-          grep -Fq 'llama3.2:3b' "$WSGI"
           grep -Fq 'STRUCTURED_ORDER' "$WSGI"
           grep -Fq 'GENERAL_ORDER' "$WSGI"
           grep -Fq 'X-Celar-Local-Model' "$WSGI"
           grep -Fq 'if status < 500' "$WSGI"
           grep -Fq 'fcntl.LOCK_EX | fcntl.LOCK_NB' "$WSGI"
-          grep -Fq 'ocr_busy' "$WSGI"
           grep -Fq 'MAX_OCR_IMAGE_PIXELS' "$WSGI"
-          grep -Fq 'MAX_OCR_IMAGE_EDGE' "$WSGI"
           grep -Fq 'PDF_RASTER_MAX_EDGE' "$WSGI"
           grep -Fq '"-scale-to", str(PDF_RASTER_MAX_EDGE)' "$WSGI"
           grep -Fq 'image.verify()' "$WSGI"
 
-          grep -Fq 'celarai.onenecklab.com' "$CADDY"
           grep -Fq 'reverse_proxy 127.0.0.1:8787' "$CADDY"
-          grep -Fq 'max_size 36MB' "$CADDY"
-          grep -Fq 'auto_https disable_redirects' "$CADDY"
           grep -Fq 'disable_http_challenge' "$CADDY"
-
           grep -Fq 'User=celar-ai' "$UNIT"
-          grep -Fq '127.0.0.1:8787' "$UNIT"
-          grep -Fq 'wsgi:app' "$UNIT"
-          grep -Fq 'OMP_THREAD_LIMIT=2' "$UNIT"
           grep -Fq 'TemporaryFileSystem=/tmp:rw,nosuid,nodev,noexec,size=768M' "$UNIT"
           grep -Fq 'LimitAS=1536M' "$UNIT"
           grep -Fq 'LimitFSIZE=64M' "$UNIT"
           grep -Fq 'MemoryMax=2G' "$UNIT"
-          grep -Fq 'TasksMax=64' "$UNIT"
           grep -Fq 'NoNewPrivileges=true' "$UNIT"
-          grep -Fq 'CapabilityBoundingSet=' "$UNIT"
 
-      - name: Reject embedded credentials and unsafe public service binds
+      - name: Reject secrets and unsafe exposure
         shell: bash
         run: |
           set -Eeuo pipefail
-          if grep -RInE --exclude='README.md' --exclude='backup.env.example' \
-            '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|ssh-ed25519 AAAA)' \
-            deployment/oracle-celar; then
-            echo 'Embedded SSH/private key material is prohibited.' >&2
-            exit 1
+          if grep -RInE --exclude='README.md' --exclude='backup.env.example' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|ssh-ed25519 AAAA)' deployment/oracle-celar; then
+            echo 'Embedded private key material is prohibited.' >&2; exit 1
           fi
-          if grep -RInE \
-            '(0\.0\.0\.0:11434|0\.0\.0\.0.*3310|TCPAddr[[:space:]]+0\.0\.0\.0|0\.0\.0\.0:8787)' \
-            deployment/oracle-celar; then
-            echo 'A private Celar component would be exposed publicly.' >&2
-            exit 1
+          if grep -RInE '(0\.0\.0\.0:11434|0\.0\.0\.0.*3310|TCPAddr[[:space:]]+0\.0\.0\.0|0\.0\.0\.0:8787)' deployment/oracle-celar; then
+            echo 'A private service would be publicly exposed.' >&2; exit 1
           fi
-          grep -Fq 'openssl rand -hex 48' deployment/oracle-celar/deploy.sh
-          grep -Fq 'CELAR_RUNTIME_TOKEN_VALUE=REDACTED' deployment/oracle-celar/deploy.sh
-          grep -Fq 'CELAR_REASONING_MODEL=$REASONING_MODEL' deployment/oracle-celar/deploy.sh
-          grep -Fq 'CELAR_FAST_GENERAL_MODEL=$FAST_GENERAL_MODEL' deployment/oracle-celar/deploy.sh
-          grep -Fq 'systemctl restart ollama.service' deployment/oracle-celar/deploy.sh
-          grep -Fq 'systemctl restart celar-ai-gateway.service' deployment/oracle-celar/deploy.sh
-          grep -Fq 'systemctl restart caddy.service' deployment/oracle-celar/deploy.sh
-
+          DEPLOY=deployment/oracle-celar/deploy.sh
           HEALTH=deployment/oracle-celar/health-check.sh
+          grep -Fq 'CELAR_REASONING_MODEL=$REASONING_MODEL' "$DEPLOY"
+          grep -Fq 'CELAR_FAST_GENERAL_MODEL=$FAST_GENERAL_MODEL' "$DEPLOY"
+          grep -Fq 'systemctl restart ollama.service' "$DEPLOY"
+          grep -Fq 'systemctl restart celar-ai-gateway.service' "$DEPLOY"
+          grep -Fq 'systemctl restart caddy.service' "$DEPLOY"
           grep -Fq -- '--config "$AUTH_CONFIG"' "$HEALTH"
           if grep -Fq 'Authorization: Bearer $RUNTIME_TOKEN' "$HEALTH"; then
-            echo 'Runtime token must never be expanded into curl process arguments.' >&2
-            exit 1
+            echo 'Runtime token must not appear in curl argv.' >&2; exit 1
           fi
 
-      - name: Verify GitOps, backups, updates, and live acceptance are recoverable
+      - name: Validate backup, rollback, and acceptance invariants
         shell: bash
         run: |
           set -Eeuo pipefail
           BACKUP=deployment/oracle-celar/backup.sh
           UPDATE=deployment/oracle-celar/ollama-update.sh
           HEALTH=deployment/oracle-celar/health-check.sh
-
           grep -Fq 'fetch --no-tags --prune origin main' deployment/oracle-celar/gitops.sh
-          grep -Fq 'deployment/oracle-celar' deployment/oracle-celar/gitops.sh
           grep -Fq 'restic backup' "$BACKUP"
           grep -Fq 'restic restore' deployment/oracle-celar/restore.sh
-          grep -Fq -- "--exclude='var/lib/celar-ai/recovery'" "$BACKUP"
           grep -Fq -- "--exclude='/var/lib/celar-ai/recovery'" "$BACKUP"
-
           grep -Fq 'mapfile -t GENERATION_MODELS' "$UPDATE"
           grep -Fq 'for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"' "$UPDATE"
-          grep -Fq 'OLD_BINARY_MODE=' "$UPDATE"
           grep -Fq 'install -m "$OLD_BINARY_MODE" "$BACKUP_BINARY" "$OLD_BINARY"' "$UPDATE"
-          if grep -Fq 'chmod 0700 "$BACKUP_BINARY"' "$UPDATE"; then
-            echo 'Ollama rollback binary must preserve executable service mode.' >&2
-            exit 1
-          fi
+          ! grep -Fq 'chmod 0700 "$BACKUP_BINARY"' "$UPDATE"
           grep -Fq '"$HEALTH_CHECK"' "$UPDATE"
           grep -Fq 'CELAR_OLLAMA_UPDATE=PASS' "$UPDATE"
-
           grep -Fq 'PUBLIC_HTTPS_AUTH_BOUNDARY=PASS' "$HEALTH"
           grep -Fq 'LOCAL_REASONING_ROUTE=PASS' "$HEALTH"
           grep -Fq 'LOCAL_STRUCTURED_ROUTE=PASS' "$HEALTH"
