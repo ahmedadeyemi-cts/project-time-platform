@@ -1,0 +1,135 @@
+name: Validate Oracle Celar Backup Safety
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/oracle-celar/backup.sh'
+      - '.github/workflows/celar-ai-oracle-backup-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Validate atomic secret-safe local backup
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BACKUP=deployment/oracle-celar/backup.sh
+          bash -n "$BACKUP"
+          command -v tar >/dev/null
+          command -v zstd >/dev/null
+
+          # Source the exact production helper without running main().
+          source "$BACKUP"
+
+          ROOT="$(mktemp -d)"
+          OUT="$(mktemp -d)"
+          LIST="$(mktemp)"
+          FAKEBIN="$(mktemp -d)"
+          trap 'rm -rf "$ROOT" "$OUT" "$LIST" "$FAKEBIN"' EXIT
+
+          mkdir -p \
+            "$ROOT/etc/celar-ai/gateway" \
+            "$ROOT/etc/caddy" \
+            "$ROOT/var/lib/celar-ai/recovery/old" \
+            "$ROOT/var/lib/celar-ai/ollama-models/blob" \
+            "$ROOT/var/lib/celar-ai/state"
+
+          printf 'DO-NOT-BACK-UP-TOKEN\n' > "$ROOT/etc/celar-ai/gateway/runtime-token"
+          printf 'DO-NOT-BACK-UP-CREDENTIALS\n' > "$ROOT/etc/celar-ai/backup.env"
+          printf 'DO-NOT-BACK-UP-RECOVERY\n' > "$ROOT/var/lib/celar-ai/recovery/old/file"
+          printf 'DO-NOT-BACK-UP-MODEL\n' > "$ROOT/var/lib/celar-ai/ollama-models/blob/file"
+          printf 'safe-config\n' > "$ROOT/etc/celar-ai/config.json"
+          printf 'safe-caddy\n' > "$ROOT/etc/caddy/Caddyfile"
+          printf 'safe-state\n' > "$ROOT/var/lib/celar-ai/state/applied"
+
+          printf '%s\n' \
+            etc/celar-ai \
+            etc/caddy \
+            var/lib/celar-ai \
+            > "$LIST"
+
+          ARCHIVE="$OUT/celar-state-test.tar.zst"
+          create_local_archive "$ROOT" "$LIST" "$ARCHIVE"
+
+          [[ -f "$ARCHIVE" ]]
+          [[ "$(stat -c '%a' "$ARCHIVE")" == 600 ]]
+          zstd -t -q "$ARCHIVE"
+          zstd -dc "$ARCHIVE" | tar -tf - > "$OUT/listing"
+
+          grep -Fxq 'etc/celar-ai/config.json' "$OUT/listing"
+          grep -Fxq 'etc/caddy/Caddyfile' "$OUT/listing"
+          grep -Fxq 'var/lib/celar-ai/state/applied' "$OUT/listing"
+          ! grep -Fq 'etc/celar-ai/gateway/runtime-token' "$OUT/listing"
+          ! grep -Fq 'etc/celar-ai/backup.env' "$OUT/listing"
+          ! grep -Fq 'var/lib/celar-ai/recovery/' "$OUT/listing"
+          ! grep -Fq 'var/lib/celar-ai/ollama-models/' "$OUT/listing"
+
+          # A failed tar input must not publish a final archive or leave a partial.
+          BAD="$OUT/celar-state-bad.tar.zst"
+          if create_local_archive "$ROOT" "$OUT/does-not-exist.list" "$BAD"; then
+            echo 'Expected invalid list-file backup to fail.' >&2
+            exit 1
+          fi
+          [[ ! -e "$BAD" ]]
+          ! find "$OUT" -maxdepth 1 -name '.celar-state-partial.*.tar.zst' -print -quit | grep -q .
+
+          # A final publication failure must also return failure and clean staging.
+          cat > "$FAKEBIN/mv" <<'SH'
+          #!/usr/bin/env bash
+          exit 74
+          SH
+          chmod +x "$FAKEBIN/mv"
+          PUBLISH_FAIL="$OUT/celar-state-publish-fail.tar.zst"
+          if PATH="$FAKEBIN:$PATH" create_local_archive "$ROOT" "$LIST" "$PUBLISH_FAIL"; then
+            echo 'Expected publication failure to propagate.' >&2
+            exit 1
+          fi
+          [[ ! -e "$PUBLISH_FAIL" ]]
+          ! find "$OUT" -maxdepth 1 -name '.celar-state-partial.*.tar.zst' -print -quit | grep -q .
+          [[ -z "${ARCHIVE_TEMP_TO_CLEAN:-}" ]]
+          [[ -z "${ARCHIVE_LISTING_TO_CLEAN:-}" ]]
+
+          # Enforce the exact production ordering and interruption-cleanup contract.
+          python3 - "$BACKUP" <<'PY'
+          from pathlib import Path
+          import sys
+          text = Path(sys.argv[1]).read_text(encoding='utf-8')
+          start = text.index('if ! tar')
+          end = text.index('| zstd -f', start)
+          block = text[start:end]
+          if block.index('"${tar_exclude_args[@]}"') > block.index('--files-from="$list_file"'):
+              raise SystemExit('tar excludes must precede --files-from')
+          for marker in [
+              'etc/celar-ai/backup.env',
+              'etc/celar-ai/gateway/runtime-token',
+              'var/lib/celar-ai/recovery',
+              'var/lib/celar-ai/ollama-models',
+              'PROTECTED_ARCHIVE_PATH_REGEX',
+              '.celar-state-partial.',
+              'ARCHIVE_TEMP_TO_CLEAN',
+              'ARCHIVE_LISTING_TO_CLEAN',
+              "trap 'backup_interrupted 130' INT",
+              "trap 'backup_interrupted 143' TERM",
+              'if ! mv -f -- "$temp_archive" "$archive"; then',
+          ]:
+              if marker not in text:
+                  raise SystemExit(f'missing backup safety marker: {marker}')
+          print('CELAR_BACKUP_TAR_EXCLUDE_ORDER=PASS')
+          print('CELAR_BACKUP_INTERRUPT_CLEANUP=PASS')
+          PY
+
+          echo 'CELAR_BACKUP_SECRET_EXCLUSION=PASS'
+          echo 'CELAR_BACKUP_ATOMIC_PUBLISH=PASS'
+          echo 'CELAR_BACKUP_PUBLICATION_FAILURE_PROPAGATION=PASS'
+          git diff --check
