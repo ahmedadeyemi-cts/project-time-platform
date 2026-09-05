@@ -279,8 +279,9 @@ def health() -> tuple[Response, int]:
     payload = {
         "status": "ready" if ready else "degraded",
         "gatewayVersion": GATEWAY_VERSION,
-        "sowTimeoutSeconds": int(os.environ.get("CELAR_SOW_TIMEOUT_SECONDS", "640")),
-        "sowModelAttemptSeconds": [int(value) for value in os.environ.get("CELAR_SOW_MODEL_ATTEMPT_SECONDS", "420,120,90").split(",")],
+        "sowContextTokens": int(os.environ.get("CELAR_SOW_CONTEXT_TOKENS", "16384")),
+        "sowTimeoutSeconds": int(os.environ.get("CELAR_SOW_TIMEOUT_SECONDS", "3600")),
+        "sowModelAttemptSeconds": [int(value) for value in os.environ.get("CELAR_SOW_MODEL_ATTEMPT_SECONDS", "3000,3000,3000").split(",")],
         "ollamaReady": ollama_ready,
         "generationModelReady": generation_ready,
         "embeddingModelReady": embedding_ready,

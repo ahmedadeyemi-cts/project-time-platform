@@ -11,7 +11,7 @@ Group=celar-ai
 WorkingDirectory=/opt/celar-ai/gateway
 EnvironmentFile=/etc/celar-ai/gateway/runtime.env
 Environment="OMP_THREAD_LIMIT=2"
-ExecStart=/usr/bin/gunicorn --workers 2 --threads 4 --bind 127.0.0.1:8787 --timeout 900 --graceful-timeout 30 --keep-alive 5 --worker-tmp-dir /dev/shm wsgi:app
+ExecStart=/usr/bin/gunicorn --workers 2 --threads 4 --bind 127.0.0.1:8787 --timeout 3660 --graceful-timeout 30 --keep-alive 5 --worker-tmp-dir /dev/shm wsgi:app
 Restart=always
 RestartSec=3
 UMask=0077

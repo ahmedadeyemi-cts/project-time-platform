@@ -40,7 +40,7 @@ jobs:
             .environment == "protected-test-oracle-celar" and
             .hostname == "celarai.onenecklab.com" and
             .architecture == "arm64" and
-            .gatewayVersion == "1.1.4" and
+            .gatewayVersion == "1.1.5" and
             .gatewayBind == "127.0.0.1:8787" and
             .generationModel == "gemma3:4b" and
             .reasoningModel == "qwen3:4b-instruct" and
@@ -54,9 +54,10 @@ jobs:
             .generalGenerationOrder == ["qwen3:4b-instruct","llama3.2:3b","gemma3:4b"] and
             .generalModelAttemptSeconds == [140,70,20] and
             .chatTimeoutSeconds == 240 and
-            .sowModelAttemptSeconds == [420,120,90] and
-            .sowTimeoutSeconds == 640 and
-            (.sowModelAttemptSeconds | add) < .sowTimeoutSeconds and
+            .sowModelAttemptSeconds == [3000,3000,3000] and
+            .sowTimeoutSeconds == 3600 and
+            .sowContextTokens == 16384 and
+            (.sowModelAttemptSeconds | max) < .sowTimeoutSeconds and
             .embeddingTimeoutSeconds == 150 and
             (.structuredModelAttemptSeconds | add) <= .chatTimeoutSeconds and
             (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds and
