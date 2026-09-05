@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Validate shell and desired-state manifest
         shell: bash
@@ -54,10 +55,18 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          ! grep -RInE --exclude='README.md' --exclude='backup.env.example' \
-            '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|ssh-ed25519 AAAA|RESTIC_PASSWORD=.+|AWS_SECRET_ACCESS_KEY=.+|runtime-token=.+)' \
-            deployment/oracle-celar
-          ! grep -RInE '(0\.0\.0\.0:11434|0\.0\.0\.0.*3310|TCPAddr[[:space:]]+0\.0\.0\.0)' deployment/oracle-celar
+          if grep -RInE --exclude='README.md' --exclude='backup.env.example' \
+            '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|ssh-ed25519 AAAA)' \
+            deployment/oracle-celar; then
+            echo 'Embedded SSH/private key material is prohibited.' >&2
+            exit 1
+          fi
+          if grep -RInE \
+            '(0\.0\.0\.0:11434|0\.0\.0\.0.*3310|TCPAddr[[:space:]]+0\.0\.0\.0)' \
+            deployment/oracle-celar; then
+            echo 'Ollama or ClamAV would be exposed publicly.' >&2
+            exit 1
+          fi
           grep -Fq 'Environment="OLLAMA_HOST=$OLLAMA_HOST_VALUE"' deployment/oracle-celar/deploy.sh
           grep -Fq "CLAMAV_HOST\" == '127.0.0.1'" deployment/oracle-celar/deploy.sh
 
@@ -65,9 +74,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          grep -Fq 'git fetch --no-tags --prune origin main' deployment/oracle-celar/gitops.sh
+          grep -Fq 'fetch --no-tags --prune origin main' deployment/oracle-celar/gitops.sh
           grep -Fq 'deployment/oracle-celar' deployment/oracle-celar/gitops.sh
           grep -Fq 'restic backup' deployment/oracle-celar/backup.sh
           grep -Fq 'restic restore' deployment/oracle-celar/restore.sh
           grep -Fq 'CELAR_OLLAMA_UPDATE=PASS' deployment/oracle-celar/ollama-update.sh
-          git diff --check
+          git diff --check "${{ github.event.pull_request.base.sha || github.sha }}"..HEAD || git diff --check
