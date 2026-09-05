@@ -120,7 +120,10 @@ Environment="OLLAMA_MAX_QUEUE=$OLLAMA_MAX_QUEUE"
 EOF
 
 systemctl daemon-reload
-systemctl enable --now ollama.service
+# Enable and explicitly restart so changed Git-managed drop-ins are applied even
+# when the host already has an active Ollama service.
+systemctl enable ollama.service >/dev/null
+systemctl restart ollama.service
 for attempt in $(seq 1 30); do
   if curl -fsS --max-time 3 http://127.0.0.1:11434/api/version >/dev/null; then
     break
@@ -129,10 +132,18 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 
-if ! ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fxq "$GENERATION_MODEL"; then
+ollama_model_present() {
+  local model="$1"
+  ollama list 2>/dev/null | awk -v wanted="$model" '
+    NR > 1 && ($1 == wanted || $1 == wanted ":latest") { found=1 }
+    END { exit(found ? 0 : 1) }
+  '
+}
+
+if ! ollama_model_present "$GENERATION_MODEL"; then
   ollama pull "$GENERATION_MODEL"
 fi
-if ! ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fxq "$EMBEDDING_MODEL"; then
+if ! ollama_model_present "$EMBEDDING_MODEL"; then
   ollama pull "$EMBEDDING_MODEL"
 fi
 
@@ -199,7 +210,10 @@ install -m 0644 "$ROOT/backup.env.example" "$INSTALL_ROOT/backup.env.example"
 install -m 0644 "$ROOT/systemd/"*.service "$ROOT/systemd/"*.timer /etc/systemd/system/
 
 systemctl daemon-reload
-systemctl enable --now celar-ai-gateway.service
+# Explicit restarts make repeated GitOps runs converge changed code/unit/config
+# rather than merely leaving already-active services untouched.
+systemctl enable celar-ai-gateway.service >/dev/null
+systemctl restart celar-ai-gateway.service
 for attempt in $(seq 1 30); do
   if ss -lnt | awk '{print $4}' | grep -Fxq '127.0.0.1:8787'; then
     break
@@ -207,7 +221,8 @@ for attempt in $(seq 1 30); do
   (( attempt < 30 )) || fail 'Celar gateway did not bind to localhost:8787.'
   sleep 2
 done
-systemctl enable --now caddy.service
+systemctl enable caddy.service >/dev/null
+systemctl restart caddy.service
 
 systemctl enable --now celar-backup.timer celar-ollama-update.timer >/dev/null
 systemctl enable celar-gitops.timer >/dev/null
