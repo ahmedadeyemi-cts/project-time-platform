@@ -10,6 +10,7 @@ const requireText = (content, value, evidence) => {
 const rejectText = (content, value, evidence) => {
   if (content.includes(value)) throw new Error(`Unexpected ${evidence}: ${value}`)
 }
+const count = (content, value) => content.split(value).length - 1
 
 const workflow = read('.github/workflows/celar-ai-oracle-test-runtime-reactivate.yml')
 const docs = read('docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md')
@@ -37,12 +38,27 @@ for (const marker of [
   'PROJECTPULSE_CELAR_AI_TRAINING_ENABLED=false',
   'PRODUCTION_MUTATION=NONE',
   'MIGRATIONS_APPLIED=NONE',
-  'Rollback protected Test API configuration on failure',
+  'Rollback protected Test API configuration on failure or cancellation',
+  '(failure() || cancelled())',
   'oracle-before-env.json',
   'oracle-before-image',
   'az containerapp secret remove',
   'secretMaterialRecorded:false',
 ]) requireText(workflow, marker, 'protected Test reactivation controller')
+
+for (const marker of [
+  'ORACLE_CURL=(--resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" --noproxy "$ORACLE_RUNTIME_HOST")',
+  'curl -fsS --max-time 45 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG"',
+  'curl -fsS --max-time 270 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG"',
+  'curl -fsS --max-time 180 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG"',
+  'curl -fsS --max-time 300 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG"',
+]) requireText(workflow, marker, 'connect-time Oracle IP pin and proxy bypass')
+
+// Health, generation, embeddings, malware, and OCR are all authenticated Oracle
+// preflight calls and must consume the connect-time pin/proxy-bypass array.
+if (count(workflow, '"${ORACLE_CURL[@]}"') < 7) {
+  throw new Error('Expected every Oracle preflight curl to use the pinned ORACLE_CURL array.')
+}
 
 for (const marker of [
   '((.data | length) == 1)',
@@ -51,7 +67,19 @@ for (const marker of [
   'rawDocumentContentLogged == false',
   'trainingEnabled == false',
   'externalEscalationEnabled == false',
+  '[[ "$ORACLE_CLAMAV_SIGNATURE_VERSION" =~ ^daily-[0-9]+$ ]]',
+  '.signature == $signature',
+  'command -v convert',
+  "-annotate +0+0 'CELAR OCR OK'",
+  '"$ORACLE_OCR_ENDPOINT" > "$RUNNER_TEMP/oracle-ocr.json"',
+  '($text | contains("CELAR")) and ($text | contains("OCR"))',
 ]) requireText(workflow, marker, 'live Oracle acceptance')
+
+rejectText(
+  workflow,
+  '[[ "$ORACLE_CLAMAV_SIGNATURE_VERSION" =~ ^[A-Za-z0-9._:-]{3,120}$ ]]',
+  'placeholder-compatible ClamAV attestation',
+)
 
 for (const prohibited of [
   'environment: production',
@@ -89,4 +117,8 @@ rejectText(behavior, '129.213.82.144', 'retired behavior-test public IPv4 pin')
 
 console.log('CELAR_AI_ORACLE_TEST_REACTIVATION_CONTRACT=PASS')
 console.log('CELAR_AI_ORACLE_TEST_EXPECTED_IP=141.148.19.235')
+console.log('CELAR_AI_ORACLE_PREFLIGHT_CONNECT_PIN=PASS')
+console.log('CELAR_AI_ORACLE_CLAMAV_CONCRETE_ATTESTATION=PASS')
+console.log('CELAR_AI_ORACLE_OCR_LIVE_PROBE=PASS')
+console.log('CELAR_AI_ORACLE_CANCEL_ROLLBACK=PASS')
 console.log('PRODUCTION_MUTATION=NONE')
