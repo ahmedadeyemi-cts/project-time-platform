@@ -15,6 +15,7 @@ const count = (content, value) => content.split(value).length - 1
 const workflow = read('.github/workflows/celar-ai-oracle-test-runtime-reactivate.yml')
 const docs = read('docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md')
 const behavior = read('tests/CelarAiOracleExternalRuntimeTests/Program.cs')
+const policy = read('src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs')
 
 for (const marker of [
   'name: ProjectPulse Reactivate Celar AI Oracle HTTPS Runtime in Protected Test',
@@ -54,8 +55,6 @@ for (const marker of [
   'curl -fsS --max-time 300 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG"',
 ]) requireText(workflow, marker, 'connect-time Oracle IP pin and proxy bypass')
 
-// Health, generation, embeddings, malware, and OCR are all authenticated Oracle
-// preflight calls and must consume the connect-time pin/proxy-bypass array.
 if (count(workflow, '"${ORACLE_CURL[@]}"') < 7) {
   throw new Error('Expected every Oracle preflight curl to use the pinned ORACLE_CURL array.')
 }
@@ -81,6 +80,44 @@ rejectText(
   'placeholder-compatible ClamAV attestation',
 )
 
+const rollbackMarker = '- name: Rollback protected Test API configuration on failure or cancellation'
+const rollbackStart = workflow.indexOf(rollbackMarker)
+if (rollbackStart < 0) throw new Error('Could not isolate Protected Test rollback block.')
+const rollback = workflow.slice(rollbackStart)
+for (const marker of [
+  'set -Eeuo pipefail',
+  '[[ -n "$OLD_IMAGE" ]]',
+  'az containerapp update "${UPDATE[@]}"',
+  'ROLLBACK_REVISION="$(az containerapp show',
+  'scripts/wait-containerapp-ready-revision.sh "$RESOURCE_GROUP" "$API_APP" "$ROLLBACK_REVISION" "$OLD_IMAGE"',
+  'az containerapp secret remove',
+  "echo 'PROTECTED_TEST_ROLLBACK=PASS'",
+]) requireText(rollback, marker, 'fail-closed rollback contract')
+rejectText(rollback, 'set +e', 'rollback error suppression')
+rejectText(rollback, '--only-show-errors || true', 'rollback secret-removal error suppression')
+const restorePosition = rollback.indexOf('az containerapp update "${UPDATE[@]}"')
+const waitPosition = rollback.indexOf('scripts/wait-containerapp-ready-revision.sh')
+const secretRemovePosition = rollback.indexOf('az containerapp secret remove')
+if (!(restorePosition >= 0 && restorePosition < waitPosition && waitPosition < secretRemovePosition)) {
+  throw new Error('Run-scoped secret may only be removed after the previous API image/environment is ready.')
+}
+
+for (const marker of [
+  'private static readonly Regex ClamAvSignatureVersion',
+  '@"^daily-[0-9]+$"',
+  'if (!ClamAvSignatureVersion.IsMatch(signatureVersion))',
+  'requires a concrete ClamAV daily-<version> signature attestation',
+]) requireText(policy, marker, 'application ClamAV signature policy')
+
+for (const marker of [
+  'const string ConcreteClamAvSignature = "daily-28087";',
+  'Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION", "runtime_managed");',
+  '"placeholder ClamAV signature evidence is rejected"',
+  'Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION", "clamav-runtime-managed");',
+  '"legacy placeholder ClamAV signature evidence is rejected"',
+  'Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION", ConcreteClamAvSignature);',
+]) requireText(behavior, marker, 'ClamAV signature behavior coverage')
+
 for (const prohibited of [
   'environment: production',
   'PROJECTPULSE_PRODUCTION',
@@ -96,8 +133,6 @@ requireText(docs, '141.148.19.235', 'replacement Oracle public IPv4')
 requireText(docs, 'celar-ai-oracle-test-runtime-reactivate.yml', 'current reactivation workflow documentation')
 rejectText(docs, 'initially `129.213.82.144`', 'retired Oracle IPv4 guidance')
 
-// The behavior test deliberately centralizes the replacement address so every
-// positive reset, parser assertion, and pinning assertion consumes one value.
 requireText(
   behavior,
   'const string ExpectedOracleAddress = "141.148.19.235";',
@@ -121,4 +156,5 @@ console.log('CELAR_AI_ORACLE_PREFLIGHT_CONNECT_PIN=PASS')
 console.log('CELAR_AI_ORACLE_CLAMAV_CONCRETE_ATTESTATION=PASS')
 console.log('CELAR_AI_ORACLE_OCR_LIVE_PROBE=PASS')
 console.log('CELAR_AI_ORACLE_CANCEL_ROLLBACK=PASS')
+console.log('CELAR_AI_ORACLE_ROLLBACK_FAILURE_PROPAGATION=PASS')
 console.log('PRODUCTION_MUTATION=NONE')
