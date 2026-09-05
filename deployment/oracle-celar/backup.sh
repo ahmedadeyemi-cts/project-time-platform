@@ -13,11 +13,20 @@ BACKUP_EXCLUDES=(
 
 PROTECTED_ARCHIVE_PATH_REGEX='^(\./)?(etc/celar-ai/backup\.env|etc/celar-ai/gateway/runtime-token|var/lib/celar-ai/recovery(/|$)|var/lib/celar-ai/ollama-models(/|$)|var/lib/ollama(/|$)|var/lib/clamav(/|$))'
 LIST_FILE_TO_CLEAN=''
+ARCHIVE_TEMP_TO_CLEAN=''
+ARCHIVE_LISTING_TO_CLEAN=''
 
 cleanup_backup_temp_files() {
-  if [[ -n "${LIST_FILE_TO_CLEAN:-}" ]]; then
-    rm -f -- "$LIST_FILE_TO_CLEAN"
-  fi
+  [[ -z "${ARCHIVE_TEMP_TO_CLEAN:-}" ]] || rm -f -- "$ARCHIVE_TEMP_TO_CLEAN"
+  [[ -z "${ARCHIVE_LISTING_TO_CLEAN:-}" ]] || rm -f -- "$ARCHIVE_LISTING_TO_CLEAN"
+  [[ -z "${LIST_FILE_TO_CLEAN:-}" ]] || rm -f -- "$LIST_FILE_TO_CLEAN"
+}
+
+backup_interrupted() {
+  local code="$1"
+  cleanup_backup_temp_files
+  trap - EXIT INT TERM
+  exit "$code"
 }
 
 fail() {
@@ -33,10 +42,25 @@ create_local_archive() {
   local -a tar_exclude_args=()
 
   archive_dir="$(dirname -- "$archive")"
-  install -d -m 0700 "$archive_dir"
-  temp_archive="$(mktemp "$archive_dir/.celar-state-partial.XXXXXX.tar.zst")"
-  archive_listing="$(mktemp)"
-  chmod 0600 "$temp_archive"
+  if ! install -d -m 0700 "$archive_dir"; then
+    return 1
+  fi
+  if ! temp_archive="$(mktemp "$archive_dir/.celar-state-partial.XXXXXX.tar.zst")"; then
+    return 1
+  fi
+  ARCHIVE_TEMP_TO_CLEAN="$temp_archive"
+  if ! archive_listing="$(mktemp)"; then
+    rm -f -- "$temp_archive"
+    ARCHIVE_TEMP_TO_CLEAN=''
+    return 1
+  fi
+  ARCHIVE_LISTING_TO_CLEAN="$archive_listing"
+  if ! chmod 0600 "$temp_archive"; then
+    rm -f -- "$temp_archive" "$archive_listing"
+    ARCHIVE_TEMP_TO_CLEAN=''
+    ARCHIVE_LISTING_TO_CLEAN=''
+    return 1
+  fi
 
   for pattern in "${BACKUP_EXCLUDES[@]}"; do
     tar_exclude_args+=("--exclude=$pattern")
@@ -55,28 +79,52 @@ create_local_archive() {
     --files-from="$list_file" \
     | zstd -f -T0 -8 -q -o "$temp_archive"; then
     rm -f -- "$temp_archive" "$archive_listing"
+    ARCHIVE_TEMP_TO_CLEAN=''
+    ARCHIVE_LISTING_TO_CLEAN=''
     return 1
   fi
 
   if ! zstd -t -q -- "$temp_archive"; then
     rm -f -- "$temp_archive" "$archive_listing"
+    ARCHIVE_TEMP_TO_CLEAN=''
+    ARCHIVE_LISTING_TO_CLEAN=''
     return 1
   fi
 
   if ! zstd -dc -- "$temp_archive" | tar -tf - > "$archive_listing"; then
     rm -f -- "$temp_archive" "$archive_listing"
+    ARCHIVE_TEMP_TO_CLEAN=''
+    ARCHIVE_LISTING_TO_CLEAN=''
     return 1
   fi
 
   if grep -Eq "$PROTECTED_ARCHIVE_PATH_REGEX" "$archive_listing"; then
     echo 'ERROR: Local backup archive contains a protected/excluded path; refusing to publish it.' >&2
     rm -f -- "$temp_archive" "$archive_listing"
+    ARCHIVE_TEMP_TO_CLEAN=''
+    ARCHIVE_LISTING_TO_CLEAN=''
     return 1
   fi
 
-  chmod 0600 "$temp_archive"
-  mv -f -- "$temp_archive" "$archive"
-  rm -f -- "$archive_listing"
+  if ! chmod 0600 "$temp_archive"; then
+    rm -f -- "$temp_archive" "$archive_listing"
+    ARCHIVE_TEMP_TO_CLEAN=''
+    ARCHIVE_LISTING_TO_CLEAN=''
+    return 1
+  fi
+  if ! mv -f -- "$temp_archive" "$archive"; then
+    rm -f -- "$temp_archive" "$archive_listing"
+    ARCHIVE_TEMP_TO_CLEAN=''
+    ARCHIVE_LISTING_TO_CLEAN=''
+    return 1
+  fi
+
+  # The final path now owns the validated bytes. Clear staged-path cleanup state
+  # before removing the member-list file so EXIT/TERM cannot delete publication.
+  ARCHIVE_TEMP_TO_CLEAN=''
+  rm -f -- "$archive_listing" || true
+  ARCHIVE_LISTING_TO_CLEAN=''
+  return 0
 }
 
 main() {
@@ -105,6 +153,8 @@ main() {
   list_file="$(mktemp)"
   LIST_FILE_TO_CLEAN="$list_file"
   trap cleanup_backup_temp_files EXIT
+  trap 'backup_interrupted 130' INT
+  trap 'backup_interrupted 143' TERM
 
   install -d -m 0700 "$backup_root"
 
@@ -129,7 +179,9 @@ main() {
   # Local quick-rollback archive. Reproducible models/signatures, credentials,
   # and staged recovery trees are excluded. The archive is published atomically
   # only after its compressed stream and member list have both been verified.
-  create_local_archive / "$list_file" "$archive" || fail 'Local backup archive creation or exclusion validation failed.'
+  if ! create_local_archive / "$list_file" "$archive"; then
+    fail 'Local backup archive creation or exclusion validation failed.'
+  fi
 
   find "$backup_root" -maxdepth 1 -type f -name 'celar-state-*.tar.zst' -mtime "+$retention_days" -delete
 
