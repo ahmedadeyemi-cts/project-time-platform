@@ -187,7 +187,8 @@ chown root:celar-ai "$RUNTIME_ENV_FILE"
 chmod 0640 "$RUNTIME_ENV_FILE"
 
 install -m 0555 "$ROOT/gateway/gateway.py" "$GATEWAY_ROOT/gateway.py"
-python3 -m py_compile "$GATEWAY_ROOT/gateway.py"
+install -m 0555 "$ROOT/gateway/wsgi.py" "$GATEWAY_ROOT/wsgi.py"
+python3 -m py_compile "$GATEWAY_ROOT/gateway.py" "$GATEWAY_ROOT/wsgi.py"
 
 # Caddy owns the only public application port. Back up any pre-GitOps config,
 # validate the reviewed Caddyfile, then let Caddy manage ACME/TLS state.
