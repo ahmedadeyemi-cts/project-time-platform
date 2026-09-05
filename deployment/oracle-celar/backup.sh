@@ -4,6 +4,7 @@ set -Eeuo pipefail
 BACKUP_EXCLUDES=(
   'etc/celar-ai/backup.env'
   'etc/celar-ai/gateway/runtime-token'
+  'etc/celar-ai/gateway/maintenance-token'
   'var/lib/celar-ai/recovery'
   'var/lib/celar-ai/recovery/**'
   'var/lib/celar-ai/ollama-models'
@@ -11,7 +12,7 @@ BACKUP_EXCLUDES=(
   'var/lib/clamav'
 )
 
-PROTECTED_ARCHIVE_PATH_REGEX='^(\./)?(etc/celar-ai/backup\.env|etc/celar-ai/gateway/runtime-token|var/lib/celar-ai/recovery(/|$)|var/lib/celar-ai/ollama-models(/|$)|var/lib/ollama(/|$)|var/lib/clamav(/|$))'
+PROTECTED_ARCHIVE_PATH_REGEX='^(\./)?(etc/celar-ai/backup\.env|etc/celar-ai/gateway/(runtime-token|maintenance-token)|var/lib/celar-ai/recovery(/|$)|var/lib/celar-ai/ollama-models(/|$)|var/lib/ollama(/|$)|var/lib/clamav(/|$))'
 LIST_FILE_TO_CLEAN=''
 ARCHIVE_TEMP_TO_CLEAN=''
 ARCHIVE_LISTING_TO_CLEAN=''
