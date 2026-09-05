@@ -7,6 +7,7 @@ const string RuntimeToken = "test-runtime-token-value-1234567890-abcdef";
 const string TokenReference = "github-environment://test/celar-ai-oracle-runtime-token@1111111111111111111111111111111111111111";
 const string Approval = "ORACLE-TEST-CI-20260905";
 const string ExpectedOracleAddress = "141.148.19.235";
+const string ConcreteClamAvSignature = "daily-28087";
 
 var touched = new[]
 {
@@ -92,6 +93,16 @@ try
     Require(!PulseAiExternalHttpsRuntimePolicy.Evaluate().Valid,
         "private expected addresses are rejected by the public Test exception");
     Set(PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable, ExpectedOracleAddress);
+
+    Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION", "runtime_managed");
+    Require(!PulseAiExternalHttpsRuntimePolicy.Evaluate().Valid,
+        "placeholder ClamAV signature evidence is rejected");
+    Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION", "clamav-runtime-managed");
+    Require(!PulseAiExternalHttpsRuntimePolicy.Evaluate().Valid,
+        "legacy placeholder ClamAV signature evidence is rejected");
+    Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION", ConcreteClamAvSignature);
+    Require(PulseAiExternalHttpsRuntimePolicy.Evaluate().Active,
+        "concrete ClamAV daily signature evidence restores the valid Test runtime");
 
     var options = PulseAiPrivateRuntimeOptions.FromEnvironment();
     Require(options.HttpsMalwareScanConfigured && options.MalwareScannerConfigured,
@@ -204,8 +215,7 @@ static void ConfigureValidTestRuntime()
     Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE",
         PulseAiExternalHttpsRuntimePolicy.MalwareScannerMode);
     Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED", "true");
-    Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION",
-        "clamav-runtime-managed");
+    Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION", ConcreteClamAvSignature);
     Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE", Approval);
 }
 
