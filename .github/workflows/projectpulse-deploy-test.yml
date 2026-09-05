@@ -789,9 +789,13 @@ jobs:
           set -Eeuo pipefail
           [[ ${#RUNTIME_TOKEN} -ge 32 ]]
           EXPECTED_VERSION="$(jq -r '.gatewayVersion' deployment/oracle-celar/release.json)"
+          umask 077
+          AUTH_HEADERS="$(mktemp "$RUNNER_TEMP/sow-auth-headers.XXXXXX")"
+          trap 'rm -f "$AUTH_HEADERS" "$RUNNER_TEMP/sow-runtime-health.json"' EXIT
+          printf 'Authorization: Bearer %s\n' "$RUNTIME_TOKEN" > "$AUTH_HEADERS"
           ready=false
           for attempt in $(seq 1 10); do
-            HTTP="$(curl -sS --max-time 30 -H "Authorization: Bearer $RUNTIME_TOKEN" \
+            HTTP="$(curl -sS --max-time 30 --header "@$AUTH_HEADERS" \
               -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only' \
               -o "$RUNNER_TEMP/sow-runtime-health.json" -w '%{http_code}' \
               https://celarai.onenecklab.com/health || true)"
