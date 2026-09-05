@@ -86,3 +86,19 @@ int Budget(int finalTokens) => (int)budgetMethod.Invoke(null, [finalTokens])!;
 Check(Budget(520) > 520, "Short timesheet requests must reserve tokens for reasoning as well as final prose.");
 Check(Budget(12_000) >= 12_000 && Budget(int.MaxValue) == 16_384,
     "Detailed scope retains its requested budget and oversized inputs remain bounded without integer overflow.");
+var readinessConfig = new ProjectPulseAiConfiguration();
+readinessConfig.ApplyStoredSecret(ProjectPulseAiProviders.DeepSeek, "test-only", "test", DateTimeOffset.UtcNow);
+readinessConfig.ApplyStoredEnabled(ProjectPulseAiProviders.DeepSeek, true);
+var readinessHealth = new ProjectPulseAiHealthRegistry(readinessConfig);
+var readinessClient = new PulseAiPrivateModelClient(null!,
+    Microsoft.Extensions.Logging.Abstractions.NullLogger<PulseAiPrivateModelClient>.Instance,
+    new ProjectPulseDeepSeekProvider(null!, readinessConfig), readinessHealth, readinessConfig);
+var readinessMethod = typeof(PulseAiPrivateModelClient).GetMethod("DeepSeekReadiness", BindingFlags.Instance | BindingFlags.NonPublic)!;
+(bool Configured, bool Ready) Readiness() => ((bool, bool))readinessMethod.Invoke(readinessClient, null)!;
+Check(Readiness() == (true, false), "Credentials alone must not claim DeepSeek runtime readiness.");
+readinessHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, true, "ready", "Ready", 200, null));
+Check(Readiness() == (true, true), "Healthy DeepSeek must satisfy inference readiness with Celar disabled.");
+readinessHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, false, "deepseek_http_503", "Unavailable", 503, null));
+Check(Readiness() == (true, false), "An outage must remove DeepSeek runtime readiness.");
+readinessConfig.ApplyStoredEnabled(ProjectPulseAiProviders.DeepSeek, false);
+Check(Readiness() == (false, false), "Disabled DeepSeek must not satisfy inference readiness.");

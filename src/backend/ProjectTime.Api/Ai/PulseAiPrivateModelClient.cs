@@ -27,6 +27,19 @@ public sealed class PulseAiPrivateModelClient
         _configuration = configuration;
     }
 
+    internal (bool Configured, bool Ready) DeepSeekReadiness()
+    {
+        var configuration = _configuration?.DeepSeek;
+        var configured = _deepSeek is not null
+            && configuration?.Enabled == true && configuration.Configured
+            && configuration.Endpoint == ProjectPulseDeepSeekProvider.Endpoint
+            && configuration.Model == ProjectPulseDeepSeekProvider.Model;
+        if (!configured || _health is null) return (configured, false);
+        _health.ApplyConfiguration(configuration!);
+        return (true, _health.CanAttempt(CelarAiCapabilityTargets.DeepSeek, out _)
+            && _health.Snapshot(CelarAiCapabilityTargets.DeepSeek).Status == "available");
+    }
+
     public async Task<PulseAiPrivateModelResult> GenerateAsync(
         PulseAiPrivateModelRequest request,
         PulseAiPrivateRagOptions options,

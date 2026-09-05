@@ -10,6 +10,7 @@ src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
+src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
 src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs
 src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx
 tests/DeepSeekProviderTests/Program.cs
