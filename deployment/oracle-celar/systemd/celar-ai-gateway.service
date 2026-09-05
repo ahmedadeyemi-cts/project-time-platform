@@ -17,6 +17,12 @@ RestartSec=3
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
+# OCR converters inherit these process/file ceilings. /tmp is also a bounded
+# private tmpfs, so compressed documents cannot consume the VM's root volume
+# with unbounded raster output before the application rejects them.
+TemporaryFileSystem=/tmp:rw,nosuid,nodev,noexec,size=768M
+LimitAS=1536M
+LimitFSIZE=64M
 ProtectSystem=strict
 ProtectHome=true
 ProtectKernelTunables=true
