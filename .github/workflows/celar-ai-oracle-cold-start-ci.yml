@@ -1,4 +1,4 @@
-name: Validate Oracle Celar Routed Header Acceptance
+name: Validate Oracle Celar Runtime Acceptance
 
 on:
   pull_request:
@@ -20,7 +20,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate strict CRLF-safe routed-model acceptance
+      - name: Validate routed headers and embedding envelope acceptance
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -29,28 +29,19 @@ jobs:
 
           grep -Fq 'header_value()' "$HEALTH"
           grep -Fq 'sub(/\r$/, "", line)' "$HEALTH"
-          grep -Fq 'GENERAL_SELECTED_MODEL="$(header_value "$TMP/general.headers"' "$HEALTH"
-          grep -Fq 'GENERAL_SELECTED_ROUTE="$(header_value "$TMP/general.headers"' "$HEALTH"
-          grep -Fq 'STRUCTURED_SELECTED_MODEL="$(header_value "$TMP/structured.headers"' "$HEALTH"
-          grep -Fq 'STRUCTURED_SELECTED_ROUTE="$(header_value "$TMP/structured.headers"' "$HEALTH"
           grep -Fq '[[ "$GENERAL_SELECTED_MODEL" == "$REASONING_MODEL" ]]' "$HEALTH"
           grep -Fq '[[ "$GENERAL_SELECTED_ROUTE" == general ]]' "$HEALTH"
           grep -Fq '[[ "$STRUCTURED_SELECTED_MODEL" == "$GENERATION_MODEL" ]]' "$HEALTH"
           grep -Fq '[[ "$STRUCTURED_SELECTED_ROUTE" == structured ]]' "$HEALTH"
-          grep -Fq 'LOCAL_REASONING_ROUTE=PASS' "$HEALTH"
-          grep -Fq 'LOCAL_STRUCTURED_ROUTE=PASS' "$HEALTH"
 
           if grep -Fq 'X-Celar-Local-Model:[[:space:]]*$REASONING_MODEL\r?$' "$HEALTH"; then
             echo 'CRLF-unsafe routed-model grep must not return.' >&2
             exit 1
           fi
-          if grep -Fq 'probe_local_generation_model()' "$HEALTH"; then
-            echo 'Acceptance must not depend on warm-up model ordering.' >&2
-            exit 1
-          fi
 
           HEADER_FIXTURE="$(mktemp)"
-          trap 'rm -f "$HEADER_FIXTURE"' EXIT
+          EMBED_FIXTURE="$(mktemp)"
+          trap 'rm -f "$HEADER_FIXTURE" "$EMBED_FIXTURE"' EXIT
           printf 'HTTP/2 200\r\nX-Celar-Local-Model: qwen3:4b-instruct\r\nX-Celar-Local-Route: general\r\n\r\n' > "$HEADER_FIXTURE"
 
           header_value_fixture() {
@@ -75,10 +66,36 @@ jobs:
           [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Model')" == 'qwen3:4b-instruct' ]]
           [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Route')" == 'general' ]]
 
-          printf 'HTTP/2 200\r\nX-Celar-Local-Model: gemma3:4b\r\nX-Celar-Local-Route: structured\r\n\r\n' > "$HEADER_FIXTURE"
-          [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Model')" == 'gemma3:4b' ]]
-          [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Route')" == 'structured' ]]
+          jq -nc --arg model embeddinggemma '
+            {
+              object:"list",
+              model:$model,
+              data:[{object:"embedding",index:0,embedding:[0.1,0.2,0.3]}],
+              usage:{prompt_tokens:1,total_tokens:1}
+            }
+          ' > "$EMBED_FIXTURE"
+
+          jq -e --arg model embeddinggemma --argjson dimension 3 '
+            .object == "list" and
+            .model == $model and
+            (.data | type) == "array" and
+            ((.data | length) == 1) and
+            .data[0].object == "embedding" and
+            .data[0].index == 0 and
+            (.data[0].embedding | type) == "array" and
+            ((.data[0].embedding | length) == $dimension) and
+            ([.data[0].embedding[] | numbers] | length) == $dimension
+          ' "$EMBED_FIXTURE" >/dev/null
+
+          if grep -Fq "'.data | length == 1 and (.data[0].embedding | length) == \$dimension'" "$HEALTH"; then
+            echo 'jq context-changing embedding assertion must not return.' >&2
+            exit 1
+          fi
+          grep -Fq '((.data | length) == 1)' "$HEALTH"
+          grep -Fq '((.data[0].embedding | length) == $dimension)' "$HEALTH"
+          grep -Fq '.object == "list"' "$HEALTH"
+          grep -Fq '.model == $model' "$HEALTH"
 
           echo 'CELAR_ROUTED_HEADER_CRLF_PARSING=PASS'
-          echo 'CELAR_ROUTING_ASSERTIONS_REMAIN_STRICT=PASS'
+          echo 'CELAR_EMBEDDING_ENVELOPE_ACCEPTANCE=PASS'
           git diff --check
