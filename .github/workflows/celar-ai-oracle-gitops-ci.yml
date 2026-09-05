@@ -34,12 +34,13 @@ jobs:
             bash -n "$script"
           done
           python3 -m py_compile deployment/oracle-celar/gateway/gateway.py deployment/oracle-celar/gateway/wsgi.py
+          python3 tests/test-celar-sow-runtime-deadlines.py
           jq -e '
             .schema == 1 and
             .environment == "protected-test-oracle-celar" and
             .hostname == "celarai.onenecklab.com" and
             .architecture == "arm64" and
-            .gatewayVersion == "1.1.3" and
+            .gatewayVersion == "1.1.4" and
             .gatewayBind == "127.0.0.1:8787" and
             .generationModel == "gemma3:4b" and
             .reasoningModel == "qwen3:4b-instruct" and
@@ -53,6 +54,9 @@ jobs:
             .generalGenerationOrder == ["qwen3:4b-instruct","llama3.2:3b","gemma3:4b"] and
             .generalModelAttemptSeconds == [140,70,20] and
             .chatTimeoutSeconds == 240 and
+            .sowModelAttemptSeconds == [420,120,90] and
+            .sowTimeoutSeconds == 640 and
+            (.sowModelAttemptSeconds | add) < .sowTimeoutSeconds and
             .embeddingTimeoutSeconds == 150 and
             (.structuredModelAttemptSeconds | add) <= .chatTimeoutSeconds and
             (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds and
@@ -160,7 +164,7 @@ jobs:
           grep -Fq 'GENERAL_ORDER' "$WSGI"
           grep -Fq 'STRUCTURED_ATTEMPT_SECONDS' "$WSGI"
           grep -Fq 'GENERAL_ATTEMPT_SECONDS' "$WSGI"
-          grep -Fq 'deadline = time.monotonic() + gateway.CHAT_TIMEOUT_SECONDS' "$WSGI"
+          grep -Fq 'deadline = time.monotonic() + (SOW_TIMEOUT_SECONDS if sow else gateway.CHAT_TIMEOUT_SECONDS)' "$WSGI"
           grep -Fq 'attempt_timeout = max(10, min(attempt_budgets[index], remaining))' "$WSGI"
           grep -Fq 'if status < 500' "$WSGI"
           grep -Fq 'X-Celar-Local-Model' "$WSGI"
