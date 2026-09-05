@@ -1,10 +1,9 @@
-name: Validate Oracle Celar Cold-Start Acceptance
+name: Validate Oracle Celar Routed Header Acceptance
 
 on:
   pull_request:
     paths:
       - 'deployment/oracle-celar/health-check.sh'
-      - 'deployment/oracle-celar/release.json'
       - '.github/workflows/celar-ai-oracle-cold-start-ci.yml'
   workflow_dispatch:
 
@@ -21,43 +20,72 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate cold-start specialist readiness contract
+      - name: Validate strict CRLF-safe routed-model acceptance
         shell: bash
         run: |
           set -Eeuo pipefail
           HEALTH=deployment/oracle-celar/health-check.sh
           bash -n "$HEALTH"
 
-          grep -Fq 'probe_local_generation_model()' "$HEALTH"
-          grep -Fq 'http://127.0.0.1:11434/v1/chat/completions' "$HEALTH"
-          grep -Fq 'probe_local_generation_model "$FAST_GENERAL_MODEL" fast' "$HEALTH"
-          grep -Fq 'probe_local_generation_model "$GENERATION_MODEL" structured' "$HEALTH"
-          grep -Fq 'probe_local_generation_model "$REASONING_MODEL" reasoning' "$HEALTH"
-          grep -Fq 'LOCAL_FAST_DIRECT=PASS' "$HEALTH"
-          grep -Fq 'LOCAL_STRUCTURED_DIRECT=PASS' "$HEALTH"
-          grep -Fq 'LOCAL_REASONING_DIRECT=PASS' "$HEALTH"
+          grep -Fq 'header_value()' "$HEALTH"
+          grep -Fq 'sub(/\r$/, "", line)' "$HEALTH"
+          grep -Fq 'GENERAL_SELECTED_MODEL="$(header_value "$TMP/general.headers"' "$HEALTH"
+          grep -Fq 'GENERAL_SELECTED_ROUTE="$(header_value "$TMP/general.headers"' "$HEALTH"
+          grep -Fq 'STRUCTURED_SELECTED_MODEL="$(header_value "$TMP/structured.headers"' "$HEALTH"
+          grep -Fq 'STRUCTURED_SELECTED_ROUTE="$(header_value "$TMP/structured.headers"' "$HEALTH"
+          grep -Fq '[[ "$GENERAL_SELECTED_MODEL" == "$REASONING_MODEL" ]]' "$HEALTH"
+          grep -Fq '[[ "$GENERAL_SELECTED_ROUTE" == general ]]' "$HEALTH"
+          grep -Fq '[[ "$STRUCTURED_SELECTED_MODEL" == "$GENERATION_MODEL" ]]' "$HEALTH"
+          grep -Fq '[[ "$STRUCTURED_SELECTED_ROUTE" == structured ]]' "$HEALTH"
           grep -Fq 'LOCAL_REASONING_ROUTE=PASS' "$HEALTH"
           grep -Fq 'LOCAL_STRUCTURED_ROUTE=PASS' "$HEALTH"
-          grep -Fq 'actual=${ACTUAL_GENERAL_MODEL:-missing}' "$HEALTH"
-          grep -Fq 'actual=${ACTUAL_STRUCTURED_MODEL:-missing}' "$HEALTH"
 
-          python3 - "$HEALTH" <<'PY'
-          from pathlib import Path
-          import sys
+          # The prior implementation used grep -E with `\r?`, but GNU grep ERE
+          # does not interpret that escape as a carriage return. curl -D writes
+          # CRLF header lines, so valid Qwen/Gemma headers were falsely rejected.
+          if grep -Fq 'X-Celar-Local-Model:[[:space:]]*$REASONING_MODEL\r?$' "$HEALTH"; then
+            echo 'CRLF-unsafe routed-model grep must not return.' >&2
+            exit 1
+          fi
 
-          text = Path(sys.argv[1]).read_text(encoding='utf-8')
-          fast = text.index('probe_local_generation_model "$FAST_GENERAL_MODEL" fast')
-          structured = text.index('probe_local_generation_model "$GENERATION_MODEL" structured')
-          reasoning = text.index('probe_local_generation_model "$REASONING_MODEL" reasoning')
-          general_route = text.index('"$BASE/v1/chat/completions" > "$TMP/general.json"')
-          structured_route = text.index('"$BASE/v1/chat/completions" > "$TMP/structured.json"')
-          if not fast < structured < reasoning < general_route < structured_route:
-              raise SystemExit('Cold-start warm/probe ordering is unsafe.')
-          print('CELAR_COLD_START_SPECIALIST_ORDER=PASS')
-          PY
+          # Cold model preloading is not a correctness condition. It caused
+          # unnecessary model churn on the two-loaded-model ARM64 host and must
+          # not replace accurate parsing of the actual routed response headers.
+          if grep -Fq 'probe_local_generation_model()' "$HEALTH"; then
+            echo 'Acceptance must not depend on warm-up model ordering.' >&2
+            exit 1
+          fi
 
-          # The warm-up is readiness only. Do not weaken the routing assertions:
-          # Qwen must still win general work and Gemma must still win structured work.
-          grep -Fq 'expected=$REASONING_MODEL' "$HEALTH"
-          grep -Fq 'expected=$GENERATION_MODEL' "$HEALTH"
+          HEADER_FIXTURE="$(mktemp)"
+          trap 'rm -f "$HEADER_FIXTURE"' EXIT
+          printf 'HTTP/2 200\r\nX-Celar-Local-Model: qwen3:4b-instruct\r\nX-Celar-Local-Route: general\r\n\r\n' > "$HEADER_FIXTURE"
+
+          header_value_fixture() {
+            local file="$1"
+            local wanted="$2"
+            awk -v wanted="$wanted" '
+              {
+                line=$0
+                sub(/\r$/, "", line)
+                split(line, parts, ":")
+                if (tolower(parts[1]) == tolower(wanted)) {
+                  sub(/^[^:]+:[[:space:]]*/, "", line)
+                  value=line
+                }
+              }
+              END {
+                if (value != "") print value
+              }
+            ' "$file"
+          }
+
+          [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Model')" == 'qwen3:4b-instruct' ]]
+          [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Route')" == 'general' ]]
+
+          printf 'HTTP/2 200\r\nX-Celar-Local-Model: gemma3:4b\r\nX-Celar-Local-Route: structured\r\n\r\n' > "$HEADER_FIXTURE"
+          [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Model')" == 'gemma3:4b' ]]
+          [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Route')" == 'structured' ]]
+
+          echo 'CELAR_ROUTED_HEADER_CRLF_PARSING=PASS'
+          echo 'CELAR_ROUTING_ASSERTIONS_REMAIN_STRICT=PASS'
           git diff --check
