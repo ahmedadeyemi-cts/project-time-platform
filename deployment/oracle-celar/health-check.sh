@@ -108,24 +108,26 @@ jq -e \
     .trainingEnabled == false and .externalEscalationEnabled == false
   ' "$TMP/health.json" >/dev/null || fail 'Authenticated health contract failed.'
 
-# The gateway owns an 840-second end-to-end generation budget. The acceptance
-# client allows 900 seconds so connection/TLS/JSON overhead cannot mask a valid
-# fallback response that completed inside the governed gateway deadline.
-curl -fsS --max-time 900 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/general.headers" \
+# The gateway owns a 240-second end-to-end local generation budget. Acceptance
+# allows 270 seconds so connection/TLS/JSON overhead cannot mask a response that
+# completed inside the governed gateway deadline.
+curl -fsS --max-time 270 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/general.headers" \
   -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return only: CELAR ORACLE GENERAL OK"}],stream:false,temperature:0,max_tokens:32}')" \
   "$BASE/v1/chat/completions" > "$TMP/general.json"
 jq -e '.choices[0].message.content | strings | length > 0' "$TMP/general.json" >/dev/null || fail 'General local-model gateway probe failed.'
 grep -Eiq "^X-Celar-Local-Model:[[:space:]]*$REASONING_MODEL\r?$" "$TMP/general.headers" || fail 'General route did not select the reasoning specialist.'
 
-curl -fsS --max-time 900 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/structured.headers" \
+curl -fsS --max-time 270 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/structured.headers" \
   -H 'Content-Type: application/json' -H 'X-Pulse-AI-Feature: sow_gsd_planning' \
   -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return a JSON object with status set to ok."}],stream:false,temperature:0,max_tokens:64,response_format:{type:"json_object"}}')" \
   "$BASE/v1/chat/completions" > "$TMP/structured.json"
 jq -e '.choices[0].message.content | strings | length > 0' "$TMP/structured.json" >/dev/null || fail 'Structured local-model gateway probe failed.'
 grep -Eiq "^X-Celar-Local-Model:[[:space:]]*$GENERATION_MODEL\r?$" "$TMP/structured.headers" || fail 'Structured route did not select the compatibility specialist.'
 
-curl -fsS --max-time 240 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
+# Pulse's embedding client has a fixed three-minute deadline. The gateway owns
+# only 150 seconds, and this acceptance client allows 180 seconds for overhead.
+curl -fsS --max-time 180 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg model "$EMBEDDING_MODEL" '{model:$model,input:["Celar AI embedding health proof"],encoding_format:"float"}')" \
   "$BASE/v1/embeddings" > "$TMP/embed.json"
 jq -e --argjson dimension "$EMBEDDING_DIMENSION" '.data | length == 1 and (.data[0].embedding | length) == $dimension' "$TMP/embed.json" >/dev/null || fail 'Authenticated embedding gateway probe failed.'
