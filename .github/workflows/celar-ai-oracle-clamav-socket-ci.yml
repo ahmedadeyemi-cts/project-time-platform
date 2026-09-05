@@ -56,8 +56,16 @@ jobs:
             exit 1
           fi
 
+          grep -Fq 'GITOPS_DRAIN_TIMEOUT_SECONDS=600' "$BOOTSTRAP"
+          grep -Fq 'GITOPS_TIMER_WAS_ACTIVE=false' "$BOOTSTRAP"
+          grep -Fq 'restore_timer_on_failure()' "$BOOTSTRAP"
+          grep -Fq 'systemctl start celar-gitops.timer' "$BOOTSTRAP"
+          grep -Fq 'trap restore_timer_on_failure EXIT INT TERM' "$BOOTSTRAP"
           grep -Fq 'systemctl stop celar-gitops.timer' "$BOOTSTRAP"
+          grep -Fq 'DRAIN_DEADLINE=$((SECONDS + GITOPS_DRAIN_TIMEOUT_SECONDS))' "$BOOTSTRAP"
           grep -Fq 'while systemctl is-active --quiet celar-gitops.service' "$BOOTSTRAP"
+          grep -Fq 'SECONDS >= DRAIN_DEADLINE' "$BOOTSTRAP"
+          grep -Fq 'journalctl -u celar-gitops.service -n 80 --no-pager' "$BOOTSTRAP"
           grep -Fq 'gitops-applied-tree' "$BOOTSTRAP"
           grep -Fq 'systemctl enable --now celar-gitops.timer' "$BOOTSTRAP"
 
@@ -72,11 +80,12 @@ jobs:
           start = text.index('systemctl enable --now celar-gitops.timer')
           if not stop < deploy < record < start:
               raise SystemExit('Bootstrap GitOps timer ordering is unsafe.')
+          if text.index('trap restore_timer_on_failure EXIT INT TERM') > stop:
+              raise SystemExit('Failure trap must be installed before timer stop.')
           print('BOOTSTRAP_GITOPS_TIMER_ORDER=PASS')
+          print('BOOTSTRAP_GITOPS_FAILURE_RECOVERY=PASS')
           PY
 
-          # Ollama CLI currently requires HOME. systemd system services do not
-          # guarantee that variable, so both automated mutation paths must set it.
           grep -Fxq 'Environment=HOME=/root' "$GITOPS_UNIT"
           grep -Fxq 'Environment=HOME=/root' "$UPDATE_UNIT"
           grep -Fq 'ExecStart=/opt/celar-ai/deploy/gitops.sh' "$GITOPS_UNIT"
