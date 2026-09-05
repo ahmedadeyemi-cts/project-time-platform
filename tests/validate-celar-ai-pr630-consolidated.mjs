@@ -101,7 +101,9 @@ if (plannerLocalEvidenceMode) {
     'tests/validate-celar-ai-pr630-consolidated.mjs'
   ], 'Governed local evidence repair must retain its exact two-file scope');
 }
-const scopedCompatibilityMode = plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const module064SystemwideFailoverMode = branchName === 'fix/module064-systemwide-failover-20260905';
+if (module064SystemwideFailoverMode) await import('./validate-module064-systemwide-failover-scope.mjs');
+const scopedCompatibilityMode = module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

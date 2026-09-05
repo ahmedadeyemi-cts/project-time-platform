@@ -55,6 +55,10 @@ jobs:
           printf '%s\n' "$CHANGED"
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == 'fix/module064-systemwide-failover-20260905' ]]; then
+            node tests/validate-module064-systemwide-failover-scope.mjs
+            exit 0
+          fi
           if [[ "$HEAD_BRANCH" == 'fix/ai-routing-sow-regeneration-20260905' ]]; then
             node tests/validate-ai-routing-sow-release-scope.mjs
             exit 0

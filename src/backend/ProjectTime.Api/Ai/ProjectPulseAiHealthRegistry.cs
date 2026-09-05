@@ -212,6 +212,22 @@ public sealed class ProjectPulseAiHealthRegistry
         }
     }
 
+    // A rejected answer is a request-level policy failure, not proof that the
+    // provider is down. Preserve its diagnostic without opening a global circuit.
+    public void RecordOutputRejected(string provider, string code, string? requestId)
+    {
+        if (!TryGetRecordableState(provider, out var state)) return;
+        lock (state.Sync)
+        {
+            state.LastOutcome = "output_rejected";
+            state.LastCheckedAt = DateTimeOffset.UtcNow;
+            state.LastFailureAt = state.LastCheckedAt;
+            state.LastFailureCode = SanitizeCode(code);
+            state.FailureCount++;
+            state.LastRequestId = requestId;
+        }
+    }
+
     public void RecordProbe(ProjectPulseAiProbeResult result)
     {
         if (!TryGetRecordableState(result.Provider, out var state)) return;

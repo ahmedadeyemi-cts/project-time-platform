@@ -102,3 +102,48 @@ readinessHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, false, "deepse
 Check(Readiness() == (true, false), "An outage must remove DeepSeek runtime readiness.");
 readinessConfig.ApplyStoredEnabled(ProjectPulseAiProviders.DeepSeek, false);
 Check(Readiness() == (false, false), "Disabled DeepSeek must not satisfy inference readiness.");
+
+// Rejected content must remain rejected without turning a healthy provider into
+// a global outage for unrelated consumers.
+var rejectionHealth = new ProjectPulseAiHealthRegistry(healthConfig);
+for (var i = 0; i < healthConfig.FailureThreshold + 1; i++)
+    rejectionHealth.RecordOutputRejected(ProjectPulseAiProviders.DeepSeek, "external_output_identity_validation_failed", null);
+Check(rejectionHealth.CanAttempt(ProjectPulseAiProviders.DeepSeek, out _),
+    "Output rejection must not open a provider-wide availability circuit.");
+
+var budgetType = typeof(CelarAiCapabilityRouter).Assembly.GetType("ProjectTime.Api.Ai.CelarAiRouteAttemptBudget")!;
+var runBudget = budgetType.GetMethod("RunAsync", BindingFlags.Public | BindingFlags.Static)!;
+Task<ProjectPulseAiProviderResult> Attempt(string target, TimeSpan timeout,
+    Func<CancellationToken, Task<ProjectPulseAiProviderResult>> action, CancellationToken token = default)
+    => (Task<ProjectPulseAiProviderResult>)runBudget.Invoke(null, [target, timeout, action, token])!;
+var visited = new List<string>();
+var timedOut = await Attempt("deepseek_v4", TimeSpan.FromMilliseconds(30), async token =>
+{
+    visited.Add("deepseek_v4");
+    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+    throw new InvalidOperationException("Cancelled work must not complete.");
+});
+Check(timedOut.Code == "provider_deadline_exceeded" && !timedOut.IsRefusal,
+    "An attempt timeout must remain eligible for next-provider fallback.");
+var next = await Attempt("claude", TimeSpan.FromSeconds(1), token =>
+{
+    visited.Add("claude");
+    return Task.FromResult(new ProjectPulseAiProviderResult("claude", ProjectPulseAiOutcomes.Success, "answer", null, null, null, null, 200));
+});
+Check(next.IsSuccess && visited.SequenceEqual(new[] { "deepseek_v4", "claude" }),
+    "Later providers can execute after an earlier attempt times out.");
+using var cancelledRequest = new CancellationTokenSource();
+cancelledRequest.Cancel();
+try
+{
+    await Attempt("deepseek_v4", TimeSpan.FromSeconds(1), _ => throw new InvalidOperationException("Do not call after user cancellation."), cancelledRequest.Token);
+    Check(false, "User cancellation must terminate rather than initiate fallback.");
+}
+catch (OperationCanceledException) { }
+var refusal = await Attempt("claude", TimeSpan.FromSeconds(1), _ => Task.FromResult(
+    new ProjectPulseAiProviderResult("claude", ProjectPulseAiOutcomes.Refusal, null, "provider_safety_refusal", null, null, null, 400)));
+Check(refusal.IsRefusal, "Attempt deadlines must preserve terminal safety refusals.");
+var backgroundBudget = Activator.CreateInstance(budgetType, [CelarAiCapabilityCatalog.SowGsdPlanning])!;
+Check(budgetType.GetMethod("NextTimeout")!.Invoke(backgroundBudget, [4]) is null,
+    "Background detailed SOW generation must not inherit the interactive deadline.");
+Console.WriteLine("MODULE064_ATTEMPT_DEADLINES_AND_REJECTION_ISOLATION=PASS");

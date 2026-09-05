@@ -14,8 +14,8 @@ public sealed class ProjectPulseDeepSeekProvider(
     public const string Model = "deepseek-v4-flash-0731";
     private static readonly AsyncLocal<string?> SelectedPrivateTarget = new();
     internal static string? PrivateTarget => SelectedPrivateTarget.Value;
-    internal static async Task<ProjectPulseAiProviderResult> RunPrivateTargetAsync(
-        string target, Func<CancellationToken, Task<ProjectPulseAiProviderResult>> action, CancellationToken token)
+    internal static async Task<T> RunPrivateTargetAsync<T>(
+        string target, Func<CancellationToken, Task<T>> action, CancellationToken token)
     {
         var previous = SelectedPrivateTarget.Value;
         SelectedPrivateTarget.Value = target;

@@ -46,6 +46,7 @@ function approvalAuthorityFromNavigationState() {
 }
 
 const TIMESHEET_AI_PROVIDER_LABELS = Object.freeze({
+  deepseek_v4: 'DeepSeek v4',
   celar_ai: 'Celar AI',
   claude: 'Claude',
   openai: 'OpenAI',

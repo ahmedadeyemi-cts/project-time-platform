@@ -2070,6 +2070,43 @@ internal static class CelarAiExternalAnswerQuality
     }
 }
 
+// Interactive routes must leave time for later providers before the 60-second
+// gateway deadline. Background SOW/planner jobs retain their larger budgets.
+internal sealed class CelarAiRouteAttemptBudget(string feature)
+{
+    private readonly Stopwatch _elapsed = Stopwatch.StartNew();
+    private readonly bool _interactive = feature is not (CelarAiCapabilityCatalog.SowGsdPlanning
+        or CelarAiCapabilityCatalog.ProjectFlowHivePlan or CelarAiCapabilityCatalog.ProjectForgePlanEstimate);
+
+    public TimeSpan? NextTimeout(int remainingTargets)
+    {
+        if (!_interactive) return null;
+        var remaining = 40d - _elapsed.Elapsed.TotalSeconds;
+        var reserved = Math.Max(0, remainingTargets - 1) * 6d;
+        return TimeSpan.FromSeconds(Math.Max(0, Math.Min(22d, remaining - reserved)));
+    }
+
+    public static async Task<ProjectPulseAiProviderResult> RunAsync(
+        string target, TimeSpan? timeout,
+        Func<CancellationToken, Task<ProjectPulseAiProviderResult>> action,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (timeout is null) return await action(cancellationToken);
+        using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        attempt.CancelAfter(timeout.Value);
+        try
+        {
+            return await action(attempt.Token).WaitAsync(attempt.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new(target, ProjectPulseAiOutcomes.Unavailable, null,
+                "provider_deadline_exceeded", "The provider exceeded this route's attempt budget.", null, null, null);
+        }
+    }
+}
+
 public sealed class CelarAiCapabilityRouter
 {
     private readonly CelarAiCapabilityRoutingStore _store;
@@ -2544,8 +2581,11 @@ public sealed class CelarAiCapabilityRouter
             }
         }
 
+        var attemptBudget = new CelarAiRouteAttemptBudget(feature);
+        var remainingTargets = orderedTargets.Count(target => target != CelarAiCapabilityTargets.Local);
         foreach (var target in orderedTargets)
         {
+            var targetTimeout = target == CelarAiCapabilityTargets.Local ? null : attemptBudget.NextTimeout(remainingTargets--);
             cancellationToken.ThrowIfCancellationRequested();
             if (skipPrivateTarget
                 && !requirePrivateTargetBeforeExternal
@@ -2573,6 +2613,13 @@ public sealed class CelarAiCapabilityRouter
                     null,
                     null,
                     decisions);
+            }
+
+            if (targetTimeout is { } exhausted && exhausted <= TimeSpan.Zero)
+            {
+                skipped.Add(target);
+                decisions.Add(new(target, "skipped", "interactive_route_deadline_exceeded"));
+                continue;
             }
 
             if (target is CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi)
@@ -2619,20 +2666,20 @@ public sealed class CelarAiCapabilityRouter
                 {
                     if (privateTargetOverride is not null)
                     {
-                        privateResult = await ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(target, privateTargetOverride, cancellationToken);
+                        privateResult = await CelarAiRouteAttemptBudget.RunAsync(target, targetTimeout,
+                            token => ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(target, privateTargetOverride, token), cancellationToken);
                     }
                     else if (target == CelarAiCapabilityTargets.DeepSeek)
                     {
-                        privateResult = await _providers[target].GenerateAsync(request with { Feature = feature }, cancellationToken);
+                        privateResult = await CelarAiRouteAttemptBudget.RunAsync(target, targetTimeout,
+                            token => _providers[target].GenerateAsync(request with { Feature = feature }, token), cancellationToken);
                     }
                     else
                     {
                         var profile = privatePolicyProfile
                             ?? await _store.LoadPrivateModelProfileAsync(cancellationToken);
-                        privateResult = await _privateTarget.GenerateAsync(
-                            request with { Feature = feature },
-                            profile,
-                            cancellationToken);
+                        privateResult = await CelarAiRouteAttemptBudget.RunAsync(target, targetTimeout,
+                            token => _privateTarget.GenerateAsync(request with { Feature = feature }, profile, token), cancellationToken);
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -2758,7 +2805,8 @@ public sealed class CelarAiCapabilityRouter
             ProjectPulseAiProviderResult result;
             try
             {
-                result = await provider.GenerateAsync(externalRequest, cancellationToken);
+                result = await CelarAiRouteAttemptBudget.RunAsync(target, targetTimeout,
+                    token => provider.GenerateAsync(externalRequest, token), cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -2813,7 +2861,7 @@ public sealed class CelarAiCapabilityRouter
                         target,
                         outputDecisionCode,
                         result.RequestId);
-                    _health.RecordFailure(target, outputDecisionCode, result.RequestId);
+                    _health.RecordOutputRejected(target, outputDecisionCode, result.RequestId);
                     failed.Add(target);
                     decisions.Add(new(target, "failed", outputDecisionCode));
                     continue;

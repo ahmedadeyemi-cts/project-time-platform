@@ -3,6 +3,7 @@ import { authoritativeApi } from '../projectpulse-authoritative-api.js';
 import './timesheet-ai-description-assistant.css';
 
 const PROVIDER_LABELS = Object.freeze({
+  deepseek_v4: 'DeepSeek v4',
   celar_ai: 'Celar AI',
   claude: 'Claude',
   openai: 'OpenAI',
