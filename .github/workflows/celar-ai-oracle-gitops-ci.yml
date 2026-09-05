@@ -170,13 +170,26 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          BACKUP=deployment/oracle-celar/backup.sh
+          UPDATE=deployment/oracle-celar/ollama-update.sh
+
           grep -Fq 'fetch --no-tags --prune origin main' deployment/oracle-celar/gitops.sh
           grep -Fq 'deployment/oracle-celar' deployment/oracle-celar/gitops.sh
-          grep -Fq 'restic backup' deployment/oracle-celar/backup.sh
+          grep -Fq 'restic backup' "$BACKUP"
           grep -Fq 'restic restore' deployment/oracle-celar/restore.sh
-          grep -Fq 'resolve_model_name' deployment/oracle-celar/ollama-update.sh
-          grep -Fq '"$HEALTH_CHECK"' deployment/oracle-celar/ollama-update.sh
-          grep -Fq 'CELAR_OLLAMA_UPDATE=PASS' deployment/oracle-celar/ollama-update.sh
+          grep -Fq -- "--exclude='var/lib/celar-ai/recovery'" "$BACKUP"
+          grep -Fq -- "--exclude='/var/lib/celar-ai/recovery'" "$BACKUP"
+
+          grep -Fq 'resolve_model_name' "$UPDATE"
+          grep -Fq 'OLD_BINARY_MODE=' "$UPDATE"
+          grep -Fq 'install -m "$OLD_BINARY_MODE" "$BACKUP_BINARY" "$OLD_BINARY"' "$UPDATE"
+          if grep -Fq 'chmod 0700 "$BACKUP_BINARY"' "$UPDATE"; then
+            echo 'Ollama rollback binary must preserve executable service mode.' >&2
+            exit 1
+          fi
+          grep -Fq '"$HEALTH_CHECK"' "$UPDATE"
+          grep -Fq 'CELAR_OLLAMA_UPDATE=PASS' "$UPDATE"
+
           grep -Fq 'PUBLIC_HTTPS_AUTH_BOUNDARY=PASS' deployment/oracle-celar/health-check.sh
           grep -Fq 'CHAT_GATEWAY=PASS' deployment/oracle-celar/health-check.sh
           grep -Fq 'EMBEDDING_GATEWAY=PASS' deployment/oracle-celar/health-check.sh
