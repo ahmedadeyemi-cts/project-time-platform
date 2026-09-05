@@ -39,7 +39,9 @@ jobs:
             deployment/oracle-celar/ollama-update.sh; do
             bash -n "$script"
           done
-          python3 -m py_compile deployment/oracle-celar/gateway/gateway.py
+          python3 -m py_compile \
+            deployment/oracle-celar/gateway/gateway.py \
+            deployment/oracle-celar/gateway/wsgi.py
           jq -e '
             .schema == 1 and
             .environment == "protected-test-oracle-celar" and
@@ -65,13 +67,44 @@ jobs:
         run: |
           set -Eeuo pipefail
           GATEWAY=deployment/oracle-celar/gateway/gateway.py
+          WSGI=deployment/oracle-celar/gateway/wsgi.py
           CADDY=deployment/oracle-celar/caddy/Caddyfile
           UNIT=deployment/oracle-celar/systemd/celar-ai-gateway.service
 
-          for route in '/health' '/v1/chat/completions' '/v1/embeddings' '/v1/extract' '/v1/scan'; do
-            grep -Fq "$route" "$GATEWAY"
-          done
-          ! grep -Fq '/train' "$GATEWAY"
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('deployment/oracle-celar/gateway/gateway.py')
+          tree = ast.parse(path.read_text(encoding='utf-8'))
+          routes = set()
+          for node in tree.body:
+              if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                  continue
+              for decorator in node.decorator_list:
+                  if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                      continue
+                  if decorator.func.attr not in {'get', 'post'} or not decorator.args:
+                      continue
+                  value = decorator.args[0]
+                  if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                      routes.add((decorator.func.attr.upper(), value.value))
+          expected = {
+              ('GET', '/health'),
+              ('POST', '/v1/chat/completions'),
+              ('POST', '/v1/embeddings'),
+              ('POST', '/v1/extract'),
+              ('POST', '/v1/scan'),
+          }
+          if routes != expected:
+              raise SystemExit(f'Unexpected public gateway route set: {sorted(routes)}')
+          print('CELAR_GATEWAY_EXACT_ROUTE_SET=PASS')
+          PY
+
+          if grep -Fq '/train' "$GATEWAY"; then
+            echo 'Training route/source is prohibited from the Oracle gateway.' >&2
+            exit 1
+          fi
           grep -Fq 'hmac.compare_digest' "$GATEWAY"
           grep -Fq 'X-Pulse-AI-Privacy-Boundary' "$GATEWAY"
           grep -Fq 'private_pulse_runtime_only' "$GATEWAY"
@@ -82,20 +115,30 @@ jobs:
           grep -Fq '"externalEscalationEnabled": False' "$GATEWAY"
           grep -Fq 'streaming_not_supported' "$GATEWAY"
           grep -Fq 'embedding_dimension_invalid' "$GATEWAY"
+          grep -Fq 'configured}:latest' "$GATEWAY"
           grep -Fq 'struct.pack(">I"' "$GATEWAY"
           grep -Fq '/usr/bin/tesseract' "$GATEWAY"
           grep -Fq '/usr/bin/pdftoppm' "$GATEWAY"
+
+          grep -Fq 'fcntl.LOCK_EX | fcntl.LOCK_NB' "$WSGI"
+          grep -Fq 'ocr_busy' "$WSGI"
+          grep -Fq '/var/lib/celar-ai/gateway/ocr.lock' "$WSGI"
 
           grep -Fq 'celarai.onenecklab.com' "$CADDY"
           grep -Fq 'reverse_proxy 127.0.0.1:8787' "$CADDY"
           grep -Fq 'max_size 33MB' "$CADDY"
           grep -Fq 'auto_https disable_redirects' "$CADDY"
+          grep -Fq 'disable_http_challenge' "$CADDY"
 
           grep -Fq 'User=celar-ai' "$UNIT"
           grep -Fq 'Group=celar-ai' "$UNIT"
           grep -Fq '127.0.0.1:8787' "$UNIT"
+          grep -Fq 'wsgi:app' "$UNIT"
+          grep -Fq 'OMP_THREAD_LIMIT=2' "$UNIT"
           grep -Fq 'NoNewPrivileges=true' "$UNIT"
           grep -Fq 'CapabilityBoundingSet=' "$UNIT"
+          grep -Fq 'MemoryMax=2G' "$UNIT"
+          grep -Fq 'TasksMax=64' "$UNIT"
 
       - name: Reject embedded credentials and unsafe public service binds
         shell: bash
@@ -118,6 +161,10 @@ jobs:
           grep -Fq 'CELAR_RUNTIME_TOKEN_VALUE=REDACTED' deployment/oracle-celar/deploy.sh
           grep -Fq 'Environment="OLLAMA_HOST=$OLLAMA_HOST_VALUE"' deployment/oracle-celar/deploy.sh
           grep -Fq "CLAMAV_HOST\" == '127.0.0.1'" deployment/oracle-celar/deploy.sh
+          grep -Fq 'systemctl restart ollama.service' deployment/oracle-celar/deploy.sh
+          grep -Fq 'systemctl restart celar-ai-gateway.service' deployment/oracle-celar/deploy.sh
+          grep -Fq 'systemctl restart caddy.service' deployment/oracle-celar/deploy.sh
+          grep -Fq 'gateway/wsgi.py' deployment/oracle-celar/deploy.sh
 
       - name: Verify GitOps, backups, updates, and live acceptance are recoverable
         shell: bash
@@ -127,6 +174,8 @@ jobs:
           grep -Fq 'deployment/oracle-celar' deployment/oracle-celar/gitops.sh
           grep -Fq 'restic backup' deployment/oracle-celar/backup.sh
           grep -Fq 'restic restore' deployment/oracle-celar/restore.sh
+          grep -Fq 'resolve_model_name' deployment/oracle-celar/ollama-update.sh
+          grep -Fq '"$HEALTH_CHECK"' deployment/oracle-celar/ollama-update.sh
           grep -Fq 'CELAR_OLLAMA_UPDATE=PASS' deployment/oracle-celar/ollama-update.sh
           grep -Fq 'PUBLIC_HTTPS_AUTH_BOUNDARY=PASS' deployment/oracle-celar/health-check.sh
           grep -Fq 'CHAT_GATEWAY=PASS' deployment/oracle-celar/health-check.sh
