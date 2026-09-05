@@ -23,6 +23,20 @@ Module 084 manages only the private runtime that sits inside the Celar AI target
 | Tesseract 5 | OCR |
 | ClamAV/FreshClam | Malware scanning/signature maintenance |
 
+## Version policy
+
+Automatic maintenance refreshes the **currently approved tags** with `ollama pull`; it does not silently change model families or major-version policy. For example, a future `gemma4`, `qwen4`, or different Llama family is not auto-promoted merely because it exists upstream.
+
+The UI should therefore distinguish:
+
+- approved model tag, such as `gemma3:4b`;
+- installed immutable Ollama model ID/digest;
+- upstream refresh/modified timestamp when available;
+- whether the installed digest matches the latest artifact for the approved tag;
+- separately governed major-version upgrade availability.
+
+A major model-family change must pass the same routing, private-document, refusal, latency, resource, and full Celar health acceptance before the approved portfolio changes.
+
 ## Default maintenance window
 
 Automatic Ollama engine and approved-model maintenance runs weekly on **Sunday at 1:00 AM Central Time**.
