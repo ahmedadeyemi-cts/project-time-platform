@@ -854,8 +854,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p evidence
-          jq -n --arg environment test --arg releaseCommit "$TARGET_RELEASE_COMMIT" --arg approvalReference "$APPROVAL_REFERENCE" --arg apiImage '${{ steps.build.outputs.api_image }}' --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
-            '{environment:$environment,releaseCommit:$releaseCommit,approvalReference:$approvalReference,migrations:[],productionMutation:false,openCloudMutation:false,oracleInfrastructureMutation:false,apiImage:$apiImage,apiRevision:$apiRevision,secretMaterialRecorded:false}' \
+          jq -n --slurpfile migrationEvidence "$EVIDENCE_DIR/migrations.json" --arg environment test --arg releaseCommit "$TARGET_RELEASE_COMMIT" --arg approvalReference "$APPROVAL_REFERENCE" --arg apiImage '${{ steps.build.outputs.api_image }}' --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
+            '{environment:$environment,releaseCommit:$releaseCommit,approvalReference:$approvalReference,migrations:$migrationEvidence[0].migrations,productionMutation:false,openCloudMutation:false,oracleInfrastructureMutation:false,apiImage:$apiImage,apiRevision:$apiRevision,secretMaterialRecorded:false}' \
             > evidence/celar-ai-oracle-test-runtime.json
 
       - name: Upload sanitized deployment evidence
