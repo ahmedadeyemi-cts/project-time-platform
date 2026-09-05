@@ -305,7 +305,12 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
             {
                 using var primaryCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                     overallCancellation.Token);
-                primaryCancellation.CancelAfter(PrimaryAttemptBudget);
+                primaryCancellation.CancelAfter(
+                    request.RequestUri is { } endpoint
+                        && PulseAiExternalHttpsRuntimePolicy.Evaluate() is { Active: true } runtime
+                        && endpoint == runtime.InferenceEndpoint
+                            ? TimeSpan.FromSeconds(650)
+                            : PrimaryAttemptBudget);
                 var primaryResponse = await SendBoundedAttemptAsync(
                     primaryRequest,
                     primaryCancellation.Token);

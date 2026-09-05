@@ -278,7 +278,7 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-utilization-manager-authorization-repair-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/e-utilization-manager-authorization-repair-files" -o "$RUNNER_TEMP/e-utilization-manager-authorization-repair-files"
 
-          cat > "$RUNNER_TEMP/e-pr777-module025-workspace-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-777-workspace" <<'FILES'
           database/migrations/089_module_catalog_role_administration_reconciliation.sql
           src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs
           src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs
@@ -286,10 +286,10 @@ jobs:
           src/frontend/project-time-web/src/module-availability-registry.js
           tests/validate-systemwide-enterprise-reliability.mjs
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-pr777-module025-workspace-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/e-pr777-module025-workspace-files" -o "$RUNNER_TEMP/e-pr777-module025-workspace-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-777-workspace"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-777-workspace" -o "$RUNNER_TEMP/e-777-workspace"
 
-          cat > "$RUNNER_TEMP/e-protected-uat-validation-defects-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-uat-defects" <<'FILES'
           .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/module-management-owner-drawer-ci.yml
           .github/workflows/projectpulse-deploy-test.yml
@@ -316,8 +316,8 @@ jobs:
           tests/validate-module-management-owner-drawer.mjs
           tests/validate-systemwide-image-build-controller.mjs
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-protected-uat-validation-defects-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/e-protected-uat-validation-defects-files" -o "$RUNNER_TEMP/e-protected-uat-validation-defects-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-uat-defects"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-uat-defects" -o "$RUNNER_TEMP/e-uat-defects"
 
           cat > "$RUNNER_TEMP/e-celar-internal-trust-evidence-files" <<'FILES'
           .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
@@ -337,7 +337,7 @@ jobs:
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
             echo 'EXACT_CELAR_RUNTIME_VERSION_CENTER_SCOPE=PASSED'
-          elif [[ "$HEAD_BRANCH" == fix/celar-oracle-token-budget-20260905 || "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
+          elif [[ "$HEAD_BRANCH" == fix/celar-sow-runtime-deadlines-20260905 || "$HEAD_BRANCH" == fix/celar-oracle-token-budget-20260905 || "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/module064-public-geography-fallback-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
@@ -348,9 +348,9 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
             node tests/validate-deepseek-release-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
-            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-protected-uat-validation-defects-files" || {
+            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-uat-defects" || {
               echo 'Protected-UAT validation-defect repair differs from its exact governed file set.' >&2
-              diff -u "$RUNNER_TEMP/e-protected-uat-validation-defects-files" "$RUNNER_TEMP/changed-files" >&2 || true
+              diff -u "$RUNNER_TEMP/e-uat-defects" "$RUNNER_TEMP/changed-files" >&2 || true
               exit 1
             }
             echo 'EXACT_PROTECTED_UAT_VALIDATION_DEFECTS_SCOPE=PASSED'
@@ -387,9 +387,9 @@ jobs:
             }
             echo 'FLOWHIVE_PR734_GOVERNED_RELEASE_SCOPE=PASSED'
           elif [[ "${{ github.event.pull_request.number }}" == '777' ]]; then
-            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-pr777-module025-workspace-files" || {
+            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-777-workspace" || {
               echo 'PR #777 Module 025 workspace repair differs from its exact governed file set.' >&2
-              diff -u "$RUNNER_TEMP/e-pr777-module025-workspace-files" "$RUNNER_TEMP/changed-files" >&2 || true
+              diff -u "$RUNNER_TEMP/e-777-workspace" "$RUNNER_TEMP/changed-files" >&2 || true
               exit 1
             }
             echo 'EXACT_PR777_MODULE025_WORKSPACE_SCOPE=PASSED'

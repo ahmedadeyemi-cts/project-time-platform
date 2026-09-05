@@ -57,6 +57,8 @@ MAX_OCR_IMAGE_PIXELS="$(jq -r '.maxOcrImagePixels' "$MANIFEST")"
 MAX_OCR_IMAGE_EDGE="$(jq -r '.maxOcrImageEdge' "$MANIFEST")"
 PDF_RASTER_MAX_EDGE="$(jq -r '.pdfRasterMaxEdge' "$MANIFEST")"
 OCR_TOTAL_TIMEOUT_SECONDS="$(jq -r '.ocrTotalTimeoutSeconds' "$MANIFEST")"
+SOW_MODEL_ATTEMPT_SECONDS="$(jq -r '.sowModelAttemptSeconds | join(",")' "$MANIFEST")"
+SOW_TIMEOUT_SECONDS="$(jq -r '.sowTimeoutSeconds' "$MANIFEST")"
 CHAT_TIMEOUT_SECONDS="$(jq -r '.chatTimeoutSeconds' "$MANIFEST")"
 EMBEDDING_TIMEOUT_SECONDS="$(jq -r '.embeddingTimeoutSeconds' "$MANIFEST")"
 LOCK_WAIT_SECONDS="$(jq -r '.runtimeMutationLockWaitSeconds' "$MANIFEST")"
@@ -98,6 +100,10 @@ jq -e '
   ([.structuredModelAttemptSeconds[], .generalModelAttemptSeconds[]] | all(. >= 10)) and
   (.structuredModelAttemptSeconds | add) <= .chatTimeoutSeconds and
   (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds and
+  (.sowModelAttemptSeconds | length) == (.structuredGenerationOrder | length) and
+  (.sowModelAttemptSeconds | all(. >= 10)) and
+  (.sowModelAttemptSeconds | add) < .sowTimeoutSeconds and
+  .sowTimeoutSeconds <= 640 and
   .modelMaintenance.cadence == "weekly" and
   .modelMaintenance.timeZone == "America/Chicago" and
   .modelMaintenance.automaticEngineUpdate == true and
@@ -280,6 +286,8 @@ CELAR_MAX_OCR_IMAGE_EDGE=$MAX_OCR_IMAGE_EDGE
 CELAR_PDF_RASTER_MAX_EDGE=$PDF_RASTER_MAX_EDGE
 CELAR_OCR_TOTAL_TIMEOUT_SECONDS=$OCR_TOTAL_TIMEOUT_SECONDS
 CELAR_CHAT_TIMEOUT_SECONDS=$CHAT_TIMEOUT_SECONDS
+CELAR_SOW_MODEL_ATTEMPT_SECONDS=$SOW_MODEL_ATTEMPT_SECONDS
+CELAR_SOW_TIMEOUT_SECONDS=$SOW_TIMEOUT_SECONDS
 CELAR_EMBED_TIMEOUT_SECONDS=$EMBEDDING_TIMEOUT_SECONDS
 EOF
 chown root:celar-ai "$RUNTIME_ENV_FILE"

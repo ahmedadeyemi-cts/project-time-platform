@@ -136,7 +136,7 @@ def _order(name: str, default: list[str]) -> list[str]:
     return result
 
 
-def _budgets(name: str, default: list[int], expected: int) -> list[int]:
+def _budgets(name: str, default: list[int], expected: int, deadline_seconds: int | None = None) -> list[int]:
     raw = os.environ.get(name, "").strip()
     try:
         values = [int(value.strip()) for value in raw.split(",") if value.strip()] if raw else list(default)
@@ -144,7 +144,7 @@ def _budgets(name: str, default: list[int], expected: int) -> list[int]:
         raise RuntimeError(f"Invalid model-attempt budget: {name}") from exc
     if len(values) != expected or any(value < 10 for value in values):
         raise RuntimeError(f"Model-attempt budget does not match route order: {name}")
-    if sum(values) > gateway.CHAT_TIMEOUT_SECONDS:
+    if sum(values) > (gateway.CHAT_TIMEOUT_SECONDS if deadline_seconds is None else deadline_seconds):
         raise RuntimeError(f"Model-attempt budget exceeds end-to-end chat timeout: {name}")
     return values
 
@@ -167,6 +167,13 @@ GENERAL_ATTEMPT_SECONDS = _budgets(
     [360, 240, 180],
     len(GENERAL_ORDER),
 )
+SOW_TIMEOUT_SECONDS = int(os.environ.get("CELAR_SOW_TIMEOUT_SECONDS", "640"))
+if not 1 <= SOW_TIMEOUT_SECONDS <= 640:
+    raise RuntimeError("Invalid bounded SOW timeout")
+SOW_ATTEMPT_SECONDS = _budgets(
+    "CELAR_SOW_MODEL_ATTEMPT_SECONDS", [420, 120, 90], len(STRUCTURED_ORDER), SOW_TIMEOUT_SECONDS
+)
+
 APPROVED_GENERATION_MODELS = set(STRUCTURED_ORDER + GENERAL_ORDER)
 
 if CONTRACT_MODEL not in APPROVED_GENERATION_MODELS:
@@ -359,6 +366,10 @@ def _local_chat_completions() -> Any:
     candidates = STRUCTURED_ORDER if structured else GENERAL_ORDER
     attempt_budgets = STRUCTURED_ATTEMPT_SECONDS if structured else GENERAL_ATTEMPT_SECONDS
 
+    sow = feature == "sow_gsd_planning"
+    if sow:
+        attempt_budgets = SOW_ATTEMPT_SECONDS
+
     base_payload: dict[str, Any] = {
         "messages": messages,
         "stream": False,
@@ -368,7 +379,7 @@ def _local_chat_completions() -> Any:
         if name in payload:
             base_payload[name] = payload[name]
 
-    deadline = time.monotonic() + gateway.CHAT_TIMEOUT_SECONDS
+    deadline = time.monotonic() + (SOW_TIMEOUT_SECONDS if sow else gateway.CHAT_TIMEOUT_SECONDS)
     last_body: dict[str, Any] = {"error": {"code": "private_runtime_unavailable"}}
     last_status = 502
     attempted: list[str] = []
