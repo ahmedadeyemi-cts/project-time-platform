@@ -186,6 +186,7 @@ public sealed class CelarAiEnterprisePlatformService
             }
 
             if (privateResult is null
+                && routed.Outcome == ProjectPulseAiOutcomes.Success
                 && routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
                 && capability is CelarAiCapabilityCatalog.ProjectFlowHivePlan or CelarAiCapabilityCatalog.ProjectForgePlanEstimate)
             {
