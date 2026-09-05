@@ -23,13 +23,17 @@ EMBEDDING_MODEL="$(jq -r '.embeddingModel' "$MANIFEST")"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 INSTALLER="$(mktemp)"
 OLD_BINARY="$(command -v ollama)"
+OLD_BINARY_MODE="$(stat -c '%a' "$OLD_BINARY")"
 BACKUP_BINARY="$ROLLBACK_ROOT/ollama-$STAMP"
 GEN_ALIAS="${GENERATION_MODEL}-rollback-$STAMP"
 EMB_ALIAS="${EMBEDDING_MODEL}-rollback-$STAMP"
 
+[[ "$OLD_BINARY_MODE" =~ ^[0-7]{3,4}$ ]] || fail 'Could not determine the current Ollama executable mode.'
 install -d -m 0700 "$ROLLBACK_ROOT"
 cp -a "$OLD_BINARY" "$BACKUP_BINARY"
-chmod 0700 "$BACKUP_BINARY"
+# Preserve the installed binary mode. The upstream service runs as the
+# unprivileged ollama account, so a root-only rollback copy would be unusable.
+chmod "$OLD_BINARY_MODE" "$BACKUP_BINARY"
 
 resolve_model_name() {
   local wanted="$1"
@@ -57,7 +61,7 @@ rollback() {
   if [[ "$status" -ne 0 ]]; then
     echo 'Ollama update validation failed; restoring the previous engine and model aliases.' >&2
     systemctl stop ollama.service || true
-    cp -a "$BACKUP_BINARY" "$OLD_BINARY" || true
+    install -m "$OLD_BINARY_MODE" "$BACKUP_BINARY" "$OLD_BINARY" || true
     systemctl start ollama.service || true
     sleep 3
     if have_model "$GEN_ALIAS"; then
