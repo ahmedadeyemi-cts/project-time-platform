@@ -139,25 +139,16 @@ function patchApp() {
     "    case 'celar-ai-runtime-version':"
   );
 
-  const exclusionEntry = "        'celar-ai-runtime-version',";
-  const exclusionMarker = 'MODULE_084_CELAR_RUNTIME_VERSION_FALLBACK_EXCLUSION_START';
-  if (!source.includes(exclusionMarker)) {
-    const markedExclusion = `        /* ${exclusionMarker} */\n${exclusionEntry}\n        /* MODULE_084_CELAR_RUNTIME_VERSION_FALLBACK_EXCLUSION_END */`;
-    if (source.includes(exclusionEntry)) {
-      source = source.replace(exclusionEntry, markedExclusion);
-    } else {
-      const exclusionAnchor = source.includes("        'full-future-loop',")
-        ? "        'full-future-loop',"
-        : "        'project-risk-register',";
-      source = insertAfter(
-        source,
-        exclusionAnchor,
-        markedExclusion,
-        'standalone route exclusion list',
-        exclusionMarker
-      );
-    }
-  }
+  const exclusionAnchor = source.includes("        'full-future-loop',")
+    ? "        'full-future-loop',"
+    : "        'project-risk-register',";
+  source = insertAfter(
+    source,
+    exclusionAnchor,
+    "        'celar-ai-runtime-version',",
+    'standalone route exclusion list',
+    "        'celar-ai-runtime-version',"
+  );
 
   const expectations = [
     ["import CelarAiRuntimeVersionCenter from './CelarAiRuntimeVersionCenter.jsx';", 1, 'imports'],
@@ -165,7 +156,7 @@ function patchApp() {
     ['MODULE_084_CELAR_RUNTIME_VERSION_NAV_START', 1, 'nav'],
     ['MODULE_084_CELAR_RUNTIME_VERSION_INSTALLED_REGISTRY_START', 1, 'installed'],
     ["    case 'celar-ai-runtime-version':", 1, 'groups'],
-    [exclusionMarker, 1, 'exclusions']
+    ["        'celar-ai-runtime-version',", 1, 'exclusions']
   ];
   for (const [marker, expected, label] of expectations) {
     const count = source.split(marker).length - 1;

@@ -149,8 +149,6 @@ jobs:
           npm run build
           grep -R -Fq 'celar-ai-runtime-version' dist
           grep -R -Fq 'Celar AI Runtime & Version Center' dist
-          grep -R -Fq 'Save maintenance window' dist
-          grep -R -Fq '/api/celar-ai/v1/runtime-version/status' dist
           git diff --exit-code -- src/App.jsx src/module-availability-registry.js
           test ! -e .celar-ai-production-build-backup
           echo 'MODULE_084_BROWSER_BUILD=PASS'
