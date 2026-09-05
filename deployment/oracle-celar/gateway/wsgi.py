@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WSGI entrypoint with local specialist-model routing and OCR admission control.
+"""WSGI entrypoint with local specialist-model routing and bounded OCR.
 
 Ollama is the execution runtime, not the answer authority. Pulse retrieves and
 permission-scopes internal facts before inference; this layer chooses among the
@@ -11,10 +11,15 @@ from __future__ import annotations
 
 import fcntl
 import os
+import subprocess
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
 from flask import jsonify, request
+from PIL import Image, UnidentifiedImageError
+from werkzeug.exceptions import RequestEntityTooLarge
 
 import gateway
 from gateway import app
@@ -23,6 +28,12 @@ LOCK_PATH = Path("/var/lib/celar-ai/gateway/ocr.lock")
 CONTRACT_MODEL = gateway.GENERATION_MODEL
 REASONING_MODEL = os.environ.get("CELAR_REASONING_MODEL", "qwen3:4b").strip()
 FAST_GENERAL_MODEL = os.environ.get("CELAR_FAST_GENERAL_MODEL", "llama3.2:3b").strip()
+MAX_OCR_IMAGE_PIXELS = int(os.environ.get("CELAR_MAX_OCR_IMAGE_PIXELS", "40000000"))
+MAX_OCR_IMAGE_EDGE = int(os.environ.get("CELAR_MAX_OCR_IMAGE_EDGE", "12000"))
+PDF_RASTER_MAX_EDGE = int(os.environ.get("CELAR_PDF_RASTER_MAX_EDGE", "3000"))
+MAX_OCR_TEXT_BYTES = 1_000_000
+
+Image.MAX_IMAGE_PIXELS = MAX_OCR_IMAGE_PIXELS
 
 
 def _order(name: str, default: list[str]) -> list[str]:
@@ -56,7 +67,131 @@ STRUCTURED_FEATURES = {
     "closeout_communication",
 }
 
-_original_extract = app.view_functions["extract"]
+
+def _validate_image_dimensions(path: Path) -> tuple[int, int]:
+    try:
+        with Image.open(path) as image:
+            width, height = image.size
+            if width < 1 or height < 1:
+                raise ValueError("image_dimensions_invalid")
+            if width > MAX_OCR_IMAGE_EDGE or height > MAX_OCR_IMAGE_EDGE:
+                raise ValueError("image_edge_limit_exceeded")
+            if width * height > MAX_OCR_IMAGE_PIXELS:
+                raise ValueError("image_pixel_limit_exceeded")
+            image.verify()
+            return width, height
+    except (UnidentifiedImageError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ValueError("image_decode_rejected") from exc
+
+
+def _ocr_image_to_text(path: Path, output_base: Path, deadline: float) -> str:
+    _validate_image_dimensions(path)
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired(["tesseract"], 0)
+    result = subprocess.run(
+        ["/usr/bin/tesseract", str(path), str(output_base), "-l", "eng", "--psm", "3"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=max(1, min(60, int(remaining))),
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("ocr_failed")
+    text_path = output_base.with_suffix(".txt")
+    if not text_path.is_file() or text_path.stat().st_size > MAX_OCR_TEXT_BYTES:
+        raise RuntimeError("ocr_text_limit_exceeded")
+    return text_path.read_text(encoding="utf-8", errors="replace").replace("\x00", "").strip()
+
+
+def _bounded_extract() -> Any:
+    upload = request.files.get("file")
+    model = request.form.get("model", "").strip()
+    document_id = request.form.get("documentId", "").strip()
+    document_category = request.form.get("documentCategory", "").strip()
+    if upload is None:
+        return gateway._error("file_required", 400)
+    if model != gateway.OCR_MODEL:
+        return gateway._error("ocr_model_rejected", 400)
+    if not document_id or len(document_id) > 128 or len(document_category) > 128:
+        return gateway._error("ocr_metadata_invalid", 400)
+
+    deadline = time.monotonic() + gateway.OCR_TOTAL_TIMEOUT_SECONDS
+    filename = upload.filename or "document"
+    suffix = Path(filename).suffix.lower()
+    with tempfile.TemporaryDirectory(prefix="celar-ocr-") as temp_dir:
+        root = Path(temp_dir)
+        source = root / f"source{suffix if len(suffix) <= 8 else ''}"
+        try:
+            gateway._save_upload(upload, source)
+            with source.open("rb") as handle:
+                prefix = handle.read(5)
+            is_pdf = suffix == ".pdf" or prefix == b"%PDF-"
+            pages: list[dict[str, Any]] = []
+            total_text_bytes = 0
+
+            if is_pdf:
+                page_count = gateway._pdf_page_count(source, deadline)
+                if page_count < 1 or page_count > gateway.MAX_OCR_PAGES:
+                    return gateway._error("ocr_page_limit_exceeded", 413)
+
+                # Render one page at a time and cap the raster edge. This keeps
+                # both temporary storage and decoded pixel memory bounded even
+                # when the source PDF declares extreme page geometry.
+                for page_number in range(1, page_count + 1):
+                    output_prefix = root / f"raster-{page_number}"
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(["pdftoppm"], 0)
+                    converted = subprocess.run(
+                        [
+                            "/usr/bin/pdftoppm",
+                            "-f", str(page_number),
+                            "-l", str(page_number),
+                            "-singlefile",
+                            "-scale-to", str(PDF_RASTER_MAX_EDGE),
+                            "-png",
+                            str(source),
+                            str(output_prefix),
+                        ],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=max(1, min(60, int(remaining))),
+                        check=False,
+                    )
+                    if converted.returncode != 0:
+                        return gateway._error("pdf_render_failed", 422)
+                    image_path = output_prefix.with_suffix(".png")
+                    if not image_path.is_file():
+                        return gateway._error("pdf_render_incomplete", 422)
+                    text = _ocr_image_to_text(image_path, root / f"ocr-{page_number}", deadline)
+                    image_path.unlink(missing_ok=True)
+                    if text:
+                        total_text_bytes += len(text.encode("utf-8"))
+                        if total_text_bytes > MAX_OCR_TEXT_BYTES:
+                            return gateway._error("ocr_response_too_large", 413)
+                        pages.append({"pageNumber": page_number, "text": text})
+            else:
+                _validate_image_dimensions(source)
+                text = _ocr_image_to_text(source, root / "ocr-1", deadline)
+                if text:
+                    total_text_bytes = len(text.encode("utf-8"))
+                    if total_text_bytes > MAX_OCR_TEXT_BYTES:
+                        return gateway._error("ocr_response_too_large", 413)
+                    pages.append({"pageNumber": 1, "text": text})
+
+        except RequestEntityTooLarge:
+            raise
+        except subprocess.TimeoutExpired:
+            return gateway._error("ocr_timeout", 504)
+        except ValueError:
+            return gateway._error("ocr_image_limits_rejected", 413)
+        except (OSError, RuntimeError):
+            return gateway._error("ocr_failed", 422)
+
+    if not pages:
+        return gateway._error("ocr_no_text_returned", 422)
+    return jsonify({"pages": pages, "model": gateway.OCR_MODEL}), 200
 
 
 def _serialized_extract() -> Any:
@@ -67,7 +202,7 @@ def _serialized_extract() -> Any:
         except BlockingIOError:
             return jsonify({"error": {"code": "ocr_busy"}}), 503
         try:
-            return _original_extract()
+            return _bounded_extract()
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
