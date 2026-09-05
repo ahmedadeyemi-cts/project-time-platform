@@ -1,4 +1,3 @@
-import './inject-module-084-celar-ai-runtime-version.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,11 +12,11 @@ function check(name, condition) {
   console.log(`${name}=PASS`);
 }
 
-const app = read('src/frontend/project-time-web/src/App.jsx');
-const registry = read('src/frontend/project-time-web/src/module-availability-registry.js');
-const availability = read('src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs');
+const injector = read('src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs');
+const buildBackup = read('src/frontend/project-time-web/scripts/backup-celar-ai-production-sources.mjs');
+const buildRestore = read('src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs');
+const buildProps = read('src/backend/ProjectTime.Api/Directory.Build.props');
 const backend = read('src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs');
-const program = read('src/backend/ProjectTime.Api/Program.cs');
 const component = read('src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx');
 const release = JSON.parse(read('deployment/oracle-celar/release.json'));
 const timer = read('deployment/oracle-celar/systemd/celar-ollama-update.timer');
@@ -26,14 +25,26 @@ const reconcile = read('deployment/oracle-celar/maintenance-reconcile.sh');
 const backup = read('deployment/oracle-celar/backup.sh');
 const protectedTestController = read('.github/workflows/projectpulse-deploy-test.yml');
 
-check('MODULE_084_IMPORT', app.includes("import CelarAiRuntimeVersionCenter from './CelarAiRuntimeVersionCenter.jsx';"));
-check('MODULE_084_ROUTE', app.includes("activeRoute === 'celar-ai-runtime-version'") && app.includes('<CelarAiRuntimeVersionCenter />'));
-check('MODULE_084_ADMIN_NAV', app.includes("navLabel: 'MODULE 084'") && app.includes("permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']"));
-check('MODULE_084_STATIC_REGISTRY', registry.includes("moduleNumber: '084'") && registry.includes("route: 'celar-ai-runtime-version'"));
-check('MODULE_084_BACKEND_AVAILABILITY', availability.includes('["084"] = Module("084", "celar-ai-runtime-version", "Celar AI Runtime & Version Center", "Platform Operations")'));
+check('MODULE_084_BROWSER_IMPORT_INJECTED', injector.includes("import CelarAiRuntimeVersionCenter from './CelarAiRuntimeVersionCenter.jsx';"));
+check('MODULE_084_BROWSER_ROUTE_INJECTED', injector.includes("activeRoute === 'celar-ai-runtime-version'") && injector.includes('<CelarAiRuntimeVersionCenter />'));
+check('MODULE_084_ADMIN_NAV_INJECTED', injector.includes("navLabel: 'MODULE 084'") && injector.includes("permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']"));
+check('MODULE_084_STATIC_REGISTRY_INJECTED', injector.includes("moduleNumber: '084'") && injector.includes("route: 'celar-ai-runtime-version'"));
+check('MODULE_084_BROWSER_BUILD_TRANSACTION',
+  buildBackup.includes("'App.jsx'")
+  && buildBackup.includes("'module-availability-registry.js'")
+  && buildBackup.includes("inject-module-084-celar-ai-runtime-version.mjs")
+  && buildRestore.includes("'App.jsx'")
+  && buildRestore.includes("'module-availability-registry.js'"));
 
 check('MODULE_084_BACKEND_ROUTES', backend.includes('/api/celar-ai/v1/runtime-version/status') && backend.includes('/api/celar-ai/v1/runtime-version/schedule'));
-check('MODULE_084_CENTRAL_ENDPOINT_MAP', program.includes('MODULE_084_CELAR_RUNTIME_VERSION_ENDPOINT_MAP_START') && program.includes('app.MapCelarAiRuntimeVersionEndpoints();'));
+check('MODULE_084_GENERATED_ENDPOINT_MAP',
+  buildProps.includes('RegisterModule084CelarRuntimeVersionEndpoints')
+  && buildProps.includes('app.MapCelarAiRuntimeVersionEndpoints();')
+  && buildProps.includes('$(ScopedRbacGeneratedProgram)'));
+check('MODULE_084_GENERATED_AVAILABILITY',
+  buildProps.includes('RegisterModule084Availability')
+  && buildProps.includes('celar-ai-runtime-version')
+  && buildProps.includes('$(ModuleAvailabilityResilienceGenerated)'));
 check('MODULE_084_ACTUAL_ADMIN_AUTHORITY', backend.includes('AdminExperienceCommon.AuthorizeAsync(context)') && backend.includes('AdminExperienceCommon.IsViewAs(context)'));
 check('MODULE_084_VIEW_AS_FAIL_CLOSED', backend.includes('status = "view_as_read_only"') && backend.includes('mutationAuthorityTransferred = false'));
 check('MODULE_084_TEST_ONLY_RUNTIME_POLICY', backend.includes('PulseAiExternalHttpsRuntimePolicy.Evaluate()') && backend.includes('productionMutationAllowed = false'));
@@ -46,7 +57,7 @@ check('MODULE_084_UI_ENGINE_VERSION', component.includes('Ollama engine') && com
 check('MODULE_084_UI_MODEL_DIGESTS', component.includes('Artifact digest') && component.includes('model.digest'));
 check('MODULE_084_UI_UPDATE_HISTORY', component.includes('Last update result') && component.includes('lastSuccessfulUpdateAt') && component.includes('rollbackAvailable'));
 check('MODULE_084_UI_CENTRAL_AND_BROWSER_TIME', component.includes('Next update · Central') && component.includes('Next update · your browser') && component.includes("const CENTRAL_ZONE = 'America/Chicago'"));
-check('MODULE_084_UI_SCHEDULE_CONTROL', component.includes('Save maintenance window') && component.includes("type=\"time\"") && component.includes('scheduleMutationConfigured'));
+check('MODULE_084_UI_SCHEDULE_CONTROL', component.includes('Save maintenance window') && component.includes('type="time"') && component.includes('scheduleMutationConfigured'));
 check('MODULE_084_UI_PROVIDER_ORDER_UNCHANGED', component.includes('DeepSeek v4 → Celar AI → Claude → OpenAI → governed local template'));
 
 check('MODULE_084_DEFAULT_1AM_CENTRAL', release.modelMaintenance?.dayOfWeek === 'Sunday'
