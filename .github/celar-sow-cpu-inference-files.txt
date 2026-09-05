@@ -1,5 +1,6 @@
 .github/celar-sow-cpu-inference-files.txt
 .github/workflows/celar-ai-oracle-gitops-ci.yml
+.github/workflows/celar-ai-oracle-refusal-ci.yml
 .github/workflows/projectpulse-deploy-test.yml
 .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml

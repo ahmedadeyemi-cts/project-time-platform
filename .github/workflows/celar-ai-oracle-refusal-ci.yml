@@ -133,8 +133,13 @@ jobs:
               'body.get("message")',
               "body.get('message')",
           ]
+          # Native /api/chat success envelopes legitimately contain a message.
+          # Error sanitizers must never read or forward provider message text.
+          error_source = '\n'.join(ast.get_source_segment(wsgi_text, node) for node in tree.body
+              if isinstance(node, ast.FunctionDef) and node.name in {
+                  '_safe_refusal_code', '_ollama_post_preserving_refusal'})
           for fragment in forbidden:
-              if fragment in wsgi_text:
+              if fragment in error_source:
                   raise SystemExit(f'Provider message forwarding is prohibited: {fragment}')
 
           print('ORACLE_PULSE_TERMINAL_REFUSAL_CONTRACT=PASS')
