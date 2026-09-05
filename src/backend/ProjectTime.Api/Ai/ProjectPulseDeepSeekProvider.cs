@@ -62,8 +62,9 @@ public sealed class ProjectPulseDeepSeekProvider(
                     new { role = "system", content = request.SystemPrompt },
                     new { role = "user", content = request.UserPrompt }
                 },
-                // Reasoning consumes the same budget; short probes still need headroom.
-                max_tokens = Math.Clamp(request.MaxOutputTokens, 500, 16384),
+                // Consumer budgets describe final prose. DeepSeek reasoning
+                // shares max_tokens and must not consume that entire allowance.
+                max_tokens = CompletionBudget(request.MaxOutputTokens),
                 stream = false
             }), Encoding.UTF8, "application/json");
             using var response = await clients.CreateClient("DeepSeekDgx").SendAsync(
@@ -105,6 +106,9 @@ public sealed class ProjectPulseDeepSeekProvider(
         return new(ProjectPulseAiProviders.DeepSeek, ProjectPulseAiOutcomes.Success,
             content.GetString()!.Trim(), null, null, null, null, 200);
     }
+
+    internal static int CompletionBudget(int finalOutputTokens) =>
+        (int)Math.Clamp((long)finalOutputTokens + 2_048, 2_048, 16_384);
 
     private static ProjectPulseAiProviderResult Failure(string code) => new(
         ProjectPulseAiProviders.DeepSeek, ProjectPulseAiOutcomes.Unavailable,

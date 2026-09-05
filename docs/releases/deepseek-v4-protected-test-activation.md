@@ -20,8 +20,8 @@ release phase to bypass its controls.
 The requested default is DeepSeek v4 → Celar AI → Claude → OpenAI → governed local
 template. Safety refusals remain terminal; public vendors retain their existing
 sanitization requirements, and evidence-dependent consumers retain their adoption
-checks. Reasoning is never used as final answer text. Readiness uses 500 output tokens;
-larger generation requests retain their feature-specific budget.
+checks. Reasoning is never used as final answer text. Readiness requests 500 final-answer tokens; DeepSeek adds 2,048 tokens of reasoning
+headroom to consumer budgets, with a 16,384-token total cap.
 
 The DGX request slot is coordinated across API replicas with a PostgreSQL transaction
 advisory lock. Waiting is bounded; missing credentials, queue contention, timeouts,

@@ -229,6 +229,7 @@ public sealed class CelarAiEnterprisePlatformService
                     : "celar_ai_solution_draft_evidence_limited";
             var path = routed.Provider switch
                 {
+                    CelarAiCapabilityTargets.DeepSeek => "private_deepseek_rag_and_deterministic_composer",
                     CelarAiCapabilityTargets.CelarAi => "private_celar_rag_and_deterministic_composer",
                     CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
                         when privateResult?.FlowHivePlan is not null || privateResult?.Answer is not null

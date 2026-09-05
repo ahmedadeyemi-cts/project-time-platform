@@ -114,6 +114,19 @@ public sealed class ProjectPulseAiHealthRegistry
         }
     }
 
+    public void ApplyPrivateConfiguration(CelarAiPrivateModelProfile profile)
+    {
+        var state = _states.GetOrAdd(CelarAiCapabilityTargets.CelarAi, ProviderState.PrivateTarget);
+        lock (state.Sync)
+        {
+            state.Enabled = profile.Enabled;
+            state.Configured = profile.Configured && profile.AuthenticationConfigured;
+            if (!state.Enabled) state.Status = "disabled";
+            else if (!state.Configured) state.Status = "not_configured";
+            else if (state.Status is "disabled" or "not_configured") state.Status = "checking";
+        }
+    }
+
     public void MarkProbeStarted(string provider)
     {
         if (!_states.TryGetValue(provider, out var state)) return;
@@ -216,6 +229,9 @@ public sealed class ProjectPulseAiHealthRegistry
                 state.LastProbeSuccessAt = now;
                 state.LastProbeFailureCode = null;
                 state.ProbeSuccessCount++;
+                state.CircuitOpenUntil = null;
+                state.ConsecutiveFailures = 0;
+                state.Status = "available";
                 if (state.Status is "checking" or "not_checked" or "probe_due" or "degraded")
                 {
                     state.Status = "available";
@@ -228,7 +244,10 @@ public sealed class ProjectPulseAiHealthRegistry
             state.LastProbeFailureAt = now;
             state.LastProbeFailureCode = SanitizeCode(result.Code);
             state.ProbeFailureCount++;
-            if (state.Status is not "circuit_open") state.Status = "degraded";
+            // A failed readiness probe is already evidence of unavailability;
+            // do not spend the next user's request rediscovering the outage.
+            state.CircuitOpenUntil = now.AddSeconds(_configuration.CircuitBreakSeconds);
+            state.Status = "circuit_open";
         }
     }
 

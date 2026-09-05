@@ -275,8 +275,8 @@ assert.match(aiServices, /AddHttpClient\("PulseAiPrivateSowInference"/);
 assert.match(aiServices, /PulseAiPrivateSowInference[\s\S]*?TimeSpan\.FromMinutes\(12\)/);
 assert.match(
   aiServices,
-  /PrimaryMaximumOutputTokens = 4_200[\s\S]*?RecoveryMaximumOutputTokens = 3_400[\s\S]*?payload\["stream"\] = false;[\s\S]*?"Accept", "application\/json"/,
-  'Module 025 must use the protected gateway non-streaming contract with a bounded compact output budget'
+  /PrimaryMaximumOutputTokens = 12_000[\s\S]*?RecoveryMaximumOutputTokens = 10_000[\s\S]*?payload\["stream"\] = false;[\s\S]*?"Accept", "application\/json"/,
+  'Module 025 must use the protected gateway non-streaming contract with a bounded detailed output budget'
 );
 assert.match(
   aiServices,

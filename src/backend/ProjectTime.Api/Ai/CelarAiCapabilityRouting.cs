@@ -21,6 +21,8 @@ public static class CelarAiCapabilityTargets
 
     public static readonly string[] All = [DeepSeek, CelarAi, Claude, OpenAi, Local];
     public static readonly string[] DefaultOrder = [DeepSeek, CelarAi, Claude, OpenAi, Local];
+
+    public static bool IsPrivate(string? target) => target is DeepSeek or CelarAi;
 }
 
 public sealed record CelarAiExternalCapsuleDefinition(
@@ -1348,10 +1350,13 @@ public static class CelarAiPrivateModelRuntime
         if (profile is null || (!profile.Persisted && !profile.DeploymentManaged)) return options;
         return options with
         {
-            Enabled = profile.Enabled,
-            InferenceEndpoint = profile.Endpoint,
-            InferenceModel = profile.Model,
-            InferenceBearerToken = profile.BearerToken,
+            // RAG is the shared evidence service. Disabling the Celar provider
+            // must not disable DeepSeek's access to authorized evidence.
+            // Preserve the independent deployment-level RAG execution switch.
+            Enabled = options.Enabled,
+            InferenceEndpoint = profile.Enabled ? profile.Endpoint : string.Empty,
+            InferenceModel = profile.Enabled ? profile.Model : string.Empty,
+            InferenceBearerToken = profile.Enabled ? profile.BearerToken : string.Empty,
             RequirePrivateModelForDocumentAnswers = profile.RequirePrivateModelForDocuments,
             PrivateHostAllowlist = profile.PrivateHostAllowlist
         };
@@ -2575,10 +2580,28 @@ public sealed class CelarAiCapabilityRouter
                 if (target == CelarAiCapabilityTargets.DeepSeek)
                 {
                     _health.ApplyConfiguration(_configuration.DeepSeek);
-                    if (!_providers.ContainsKey(target) || !_health.CanAttempt(target, out _))
+                    if (!_providers.ContainsKey(target))
                     {
                         skipped.Add(target);
-                        decisions.Add(new(target, "skipped", "deepseek_unavailable"));
+                        decisions.Add(new(target, "skipped", "provider_not_registered"));
+                        continue;
+                    }
+                    if (!_health.CanAttempt(target, out var privateHealthReason))
+                    {
+                        skipped.Add(target);
+                        decisions.Add(new(target, "skipped", privateHealthReason));
+                        continue;
+                    }
+                }
+                else
+                {
+                    var profile = privatePolicyProfile
+                        ?? await _store.LoadPrivateModelProfileAsync(cancellationToken);
+                    _health.ApplyPrivateConfiguration(profile);
+                    if (!_health.CanAttempt(target, out var privateHealthReason))
+                    {
+                        skipped.Add(target);
+                        decisions.Add(new(target, "skipped", privateHealthReason));
                         continue;
                     }
                 }
@@ -2693,7 +2716,7 @@ public sealed class CelarAiCapabilityRouter
                         privateResult.Content,
                         target,
                         privateResult.Outcome,
-                        failed.Count > 0 || skipped.Count > 0 ? "Celar AI completed after another target was skipped." : null,
+                        failed.Count > 0 || skipped.Count > 0 ? BuildFallbackWarning(decisions) : null,
                         attempted,
                         skipped,
                         privateResult.Usage,
