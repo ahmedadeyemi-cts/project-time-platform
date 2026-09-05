@@ -1,0 +1,61 @@
+name: Validate Celar AI Oracle Maintenance Window
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/oracle-celar/release.json'
+      - 'deployment/oracle-celar/systemd/celar-ollama-update.timer'
+      - 'deployment/oracle-celar/ollama-update.sh'
+      - 'deployment/oracle-celar/README.md'
+      - '.github/workflows/celar-ai-oracle-maintenance-window-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'deployment/oracle-celar/release.json'
+      - 'deployment/oracle-celar/systemd/celar-ollama-update.timer'
+      - 'deployment/oracle-celar/ollama-update.sh'
+      - 'deployment/oracle-celar/README.md'
+      - '.github/workflows/celar-ai-oracle-maintenance-window-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Central-Time maintenance contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TIMER='deployment/oracle-celar/systemd/celar-ollama-update.timer'
+          RELEASE='deployment/oracle-celar/release.json'
+          UPDATER='deployment/oracle-celar/ollama-update.sh'
+
+          grep -Fxq 'OnCalendar=Sun *-*-* 01:00:00 America/Chicago' "$TIMER"
+          grep -Fxq 'AccuracySec=1min' "$TIMER"
+          grep -Fxq 'RandomizedDelaySec=0' "$TIMER"
+          grep -Fxq 'Persistent=true' "$TIMER"
+
+          jq -e '
+            .modelMaintenance.enabled == true and
+            .modelMaintenance.cadence == "weekly" and
+            .modelMaintenance.dayOfWeek == "Sunday" and
+            .modelMaintenance.localTime == "01:00" and
+            .modelMaintenance.timeZone == "America/Chicago" and
+            .modelMaintenance.systemdOnCalendar == "Sun *-*-* 01:00:00 America/Chicago" and
+            .modelMaintenance.automaticEngineUpdate == true and
+            .modelMaintenance.automaticModelPull == true and
+            .modelMaintenance.rollbackOnValidationFailure == true and
+            .localGenerationModels == ["gemma3:4b","qwen3:4b-instruct","llama3.2:3b"] and
+            .embeddingModel == "embeddinggemma"
+          ' "$RELEASE" >/dev/null
+
+          grep -Fq 'for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do' "$UPDATER"
+          grep -Fq 'ollama pull "$model"' "$UPDATER"
+          grep -Fq '"$HEALTH_CHECK"' "$UPDATER"
+
+          echo 'CELAR_ORACLE_MAINTENANCE_WINDOW=PASS'
