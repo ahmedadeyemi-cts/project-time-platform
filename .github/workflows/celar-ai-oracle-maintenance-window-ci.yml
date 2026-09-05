@@ -1,0 +1,155 @@
+name: Validate Celar AI Oracle Maintenance Window
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/oracle-celar/**'
+      - 'docs/modules/module-084-celar-ai-runtime-version/**'
+      - 'src/backend/ProjectTime.Api/Directory.Build.props'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs'
+      - 'src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx'
+      - 'src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs'
+      - 'src/frontend/project-time-web/scripts/backup-celar-ai-production-sources.mjs'
+      - 'src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs'
+      - '.github/workflows/celar-ai-oracle-maintenance-window-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'deployment/oracle-celar/**'
+      - 'docs/modules/module-084-celar-ai-runtime-version/**'
+      - 'src/backend/ProjectTime.Api/Directory.Build.props'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs'
+      - 'src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx'
+      - 'src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs'
+      - 'src/frontend/project-time-web/scripts/backup-celar-ai-production-sources.mjs'
+      - 'src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs'
+      - '.github/workflows/celar-ai-oracle-maintenance-window-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate Central-Time maintenance contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TIMER='deployment/oracle-celar/systemd/celar-ollama-update.timer'
+          RELEASE='deployment/oracle-celar/release.json'
+          UPDATER='deployment/oracle-celar/ollama-update.sh'
+          DEPLOY='deployment/oracle-celar/deploy.sh'
+          RECONCILE='deployment/oracle-celar/maintenance-reconcile.sh'
+          GATEWAY='deployment/oracle-celar/gateway/maintenance_gateway.py'
+          SERVICE='deployment/oracle-celar/systemd/celar-maintenance-gateway.service'
+          RECONCILE_SERVICE='deployment/oracle-celar/systemd/celar-maintenance-reconcile.service'
+          RECONCILE_TIMER='deployment/oracle-celar/systemd/celar-maintenance-reconcile.timer'
+          CADDY='deployment/oracle-celar/caddy/Caddyfile'
+
+          grep -Fxq 'OnCalendar=Sun *-*-* 01:00:00 America/Chicago' "$TIMER"
+          grep -Fxq 'AccuracySec=1min' "$TIMER"
+          grep -Fxq 'RandomizedDelaySec=0' "$TIMER"
+          grep -Fxq 'Persistent=true' "$TIMER"
+
+          jq -e '
+            .modelMaintenance.enabled == true and
+            .modelMaintenance.cadence == "weekly" and
+            .modelMaintenance.dayOfWeek == "Sunday" and
+            .modelMaintenance.localTime == "01:00" and
+            .modelMaintenance.timeZone == "America/Chicago" and
+            .modelMaintenance.systemdOnCalendar == "Sun *-*-* 01:00:00 America/Chicago" and
+            .modelMaintenance.automaticEngineUpdate == true and
+            .modelMaintenance.automaticModelPull == true and
+            .modelMaintenance.rollbackOnValidationFailure == true and
+            .localGenerationModels == ["gemma3:4b","qwen3:4b-instruct","llama3.2:3b"] and
+            .structuredGenerationOrder == ["gemma3:4b","qwen3:4b-instruct","llama3.2:3b"] and
+            .generalGenerationOrder == ["qwen3:4b-instruct","llama3.2:3b","gemma3:4b"] and
+            .embeddingModel == "embeddinggemma"
+          ' "$RELEASE" >/dev/null
+
+          grep -Fq 'for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do' "$UPDATER"
+          grep -Fq 'ollama pull "$model"' "$UPDATER"
+          grep -Fq '"$HEALTH_CHECK"' "$UPDATER"
+          grep -Fq 'write_update_status success' "$UPDATER"
+          grep -Fq 'write_update_status rolled_back' "$UPDATER"
+
+          grep -Fq 'CELAR_MAINTENANCE_TOKEN_FILE=' "$DEPLOY"
+          grep -Fq 'CELAR_MAINTENANCE_TOKEN_VALUE=REDACTED' "$DEPLOY"
+          grep -Fq 'maintenance_gateway.py' "$DEPLOY"
+          grep -Fq 'maintenance-reconcile.sh' "$DEPLOY"
+          grep -Fq 'celar-maintenance-reconcile.timer' "$DEPLOY"
+          ! grep -Fq 'enable --now celar-backup.timer celar-ollama-update.timer' "$DEPLOY"
+
+          grep -Fq 'timeZone == "America/Chicago"' "$RECONCILE"
+          grep -Fq 'OnCalendar=' "$RECONCILE"
+          grep -Fq 'systemctl enable celar-ollama-update.timer' "$RECONCILE"
+          grep -Fq 'systemctl disable --now celar-ollama-update.timer' "$RECONCILE"
+          grep -Fq 'OnUnitActiveSec=60s' "$RECONCILE_TIMER"
+          grep -Fq 'ExecStart=/opt/celar-ai/deploy/maintenance-reconcile.sh' "$RECONCILE_SERVICE"
+
+          grep -Fq '127.0.0.1:8788' "$SERVICE"
+          grep -Fq 'NoNewPrivileges=true' "$SERVICE"
+          grep -Fq 'ReadWritePaths=/var/lib/celar-ai/gateway' "$SERVICE"
+          grep -Fq 'handle /v1/maintenance/*' "$CADDY"
+          grep -Fq 'reverse_proxy 127.0.0.1:8788' "$CADDY"
+          grep -Fq 'MAINTENANCE_TOKEN' "$GATEWAY"
+          grep -Fq 'runtimeTokenMayChangeSchedule": False' "$GATEWAY"
+          grep -Fq 'X-Celar-Maintenance-Intent' "$GATEWAY"
+          grep -Fq 'time_zone != "America/Chicago"' "$GATEWAY"
+          ! grep -Eq 'subprocess\.(run|Popen).*systemctl|os\.system|shell=True|sudo' "$GATEWAY"
+
+          if grep -RInE '(0\.0\.0\.0|\[::\]|\*):8788' deployment/oracle-celar; then
+            echo 'The maintenance gateway would be publicly bound.' >&2
+            exit 1
+          fi
+
+          python3 -m py_compile "$GATEWAY"
+          bash -n "$DEPLOY" "$UPDATER" "$RECONCILE"
+          node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
+          node src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs
+
+          echo 'CELAR_ORACLE_MAINTENANCE_WINDOW=PASS'
+          echo 'CELAR_ORACLE_MAINTENANCE_CONTROL_PLANE=PASS'
+          echo 'CELAR_MODULE_064_PROVIDER_ORDER=PASS'
+          echo 'CELAR_DNS_MANAGED_RUNTIME=PASS'
+
+      - name: Compile Module 084 API registration
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Build and verify Module 084 browser route transaction
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          # Run the canonical production build so the existing FlowHive/Celar
+          # source preparation completes before Vite opens the Module 084
+          # source transaction. A bare Vite invocation skips those prerequisites.
+          npm run build
+          grep -R -Fq 'celar-ai-runtime-version' dist
+          grep -R -Fq 'Celar AI Runtime & Version Center' dist
+          git diff --exit-code -- src/App.jsx src/module-availability-registry.js
+          test ! -e .celar-ai-production-build-backup
+          echo 'MODULE_084_BROWSER_BUILD=PASS'
+          echo 'MODULE_084_SOURCE_TRANSACTION_RESTORED=PASS'

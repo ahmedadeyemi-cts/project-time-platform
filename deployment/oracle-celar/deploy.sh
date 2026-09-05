@@ -9,6 +9,7 @@ STATE_DIR='/var/lib/celar-ai'
 GATEWAY_STATE_DIR='/var/lib/celar-ai/gateway'
 GATEWAY_CONFIG_DIR='/etc/celar-ai/gateway'
 RUNTIME_TOKEN_FILE="$GATEWAY_CONFIG_DIR/runtime-token"
+MAINTENANCE_TOKEN_FILE="$GATEWAY_CONFIG_DIR/maintenance-token"
 RUNTIME_ENV_FILE="$GATEWAY_CONFIG_DIR/runtime.env"
 FIREWALL_RULES='/etc/iptables/rules.v4'
 CADDYFILE='/etc/caddy/Caddyfile'
@@ -59,6 +60,11 @@ OCR_TOTAL_TIMEOUT_SECONDS="$(jq -r '.ocrTotalTimeoutSeconds' "$MANIFEST")"
 CHAT_TIMEOUT_SECONDS="$(jq -r '.chatTimeoutSeconds' "$MANIFEST")"
 EMBEDDING_TIMEOUT_SECONDS="$(jq -r '.embeddingTimeoutSeconds' "$MANIFEST")"
 LOCK_WAIT_SECONDS="$(jq -r '.runtimeMutationLockWaitSeconds' "$MANIFEST")"
+MAINTENANCE_ENABLED="$(jq -r '.modelMaintenance.enabled' "$MANIFEST")"
+MAINTENANCE_DAY="$(jq -r '.modelMaintenance.dayOfWeek' "$MANIFEST")"
+MAINTENANCE_LOCAL_TIME="$(jq -r '.modelMaintenance.localTime' "$MANIFEST")"
+MAINTENANCE_TIME_ZONE="$(jq -r '.modelMaintenance.timeZone' "$MANIFEST")"
+MAINTENANCE_ON_CALENDAR="$(jq -r '.modelMaintenance.systemdOnCalendar' "$MANIFEST")"
 
 [[ "$ARCH" == arm64 && "$(uname -m)" == aarch64 ]] || fail 'The release architecture does not match this host.'
 [[ "$HOSTNAME_VALUE" == celarai.onenecklab.com ]] || fail 'The governed Oracle hostname changed unexpectedly.'
@@ -70,6 +76,11 @@ done
 [[ "$EMBEDDING_DIMENSION" == 768 ]] || fail 'Embedding dimension must remain 768.'
 [[ "$OLLAMA_HOST_VALUE" == '127.0.0.1:11434' ]] || fail 'Ollama must remain bound to localhost.'
 [[ "$CLAMAV_HOST" == '127.0.0.1' && "$CLAMAV_PORT" == 3310 ]] || fail 'ClamAV must remain on localhost:3310.'
+[[ "$MAINTENANCE_ENABLED" == true || "$MAINTENANCE_ENABLED" == false ]] || fail 'Invalid maintenance enabled flag.'
+[[ "$MAINTENANCE_DAY" == Sunday ]] || fail 'The GitOps default maintenance day must remain Sunday.'
+[[ "$MAINTENANCE_LOCAL_TIME" == 01:00 ]] || fail 'The GitOps default maintenance time must remain 01:00.'
+[[ "$MAINTENANCE_TIME_ZONE" == America/Chicago ]] || fail 'The GitOps maintenance time zone must remain America/Chicago.'
+[[ "$MAINTENANCE_ON_CALENDAR" == 'Sun *-*-* 01:00:00 America/Chicago' ]] || fail 'The GitOps maintenance calendar changed unexpectedly.'
 for numeric in "$MAX_UPLOAD_BYTES" "$MAX_JSON_REQUEST_BYTES" "$MAX_GATEWAY_RESPONSE_BYTES" "$MAX_OCR_PAGES" "$MAX_OCR_IMAGE_PIXELS" "$MAX_OCR_IMAGE_EDGE" "$PDF_RASTER_MAX_EDGE" "$OCR_TOTAL_TIMEOUT_SECONDS" "$CHAT_TIMEOUT_SECONDS" "$EMBEDDING_TIMEOUT_SECONDS" "$LOCK_WAIT_SECONDS"; do
   [[ "$numeric" =~ ^[0-9]+$ && "$numeric" -gt 0 ]] || fail 'Invalid positive numeric runtime limit.'
 done
@@ -86,8 +97,13 @@ jq -e '
   (.generalGenerationOrder | length) == (.generalModelAttemptSeconds | length) and
   ([.structuredModelAttemptSeconds[], .generalModelAttemptSeconds[]] | all(. >= 10)) and
   (.structuredModelAttemptSeconds | add) <= .chatTimeoutSeconds and
-  (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds
-' "$MANIFEST" >/dev/null || fail 'Local model order or bounded-attempt policy is invalid.'
+  (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds and
+  .modelMaintenance.cadence == "weekly" and
+  .modelMaintenance.timeZone == "America/Chicago" and
+  .modelMaintenance.automaticEngineUpdate == true and
+  .modelMaintenance.automaticModelPull == true and
+  .modelMaintenance.rollbackOnValidationFailure == true
+' "$MANIFEST" >/dev/null || fail 'Local model order, bounded-attempt policy, or maintenance policy is invalid.'
 
 exec 8>"$RUNTIME_MUTATION_LOCK"
 flock -w "$LOCK_WAIT_SECONDS" 8 || fail 'Timed out waiting for the Celar runtime mutation lock.'
@@ -217,8 +233,29 @@ fi
 chown root:celar-ai "$RUNTIME_TOKEN_FILE"
 chmod 0640 "$RUNTIME_TOKEN_FILE"
 
+# Schedule mutation uses a separate credential from inference/read-only status.
+# The value is never printed. It is synchronized to the protected Test secret
+# only through an administrator-controlled secret channel after live acceptance.
+if [[ ! -s "$MAINTENANCE_TOKEN_FILE" ]]; then
+  umask 0077
+  openssl rand -hex 48 > "$MAINTENANCE_TOKEN_FILE"
+fi
+[[ "$(wc -c < "$MAINTENANCE_TOKEN_FILE")" -ge 64 ]] || fail 'Maintenance token is unexpectedly short.'
+chown root:celar-ai "$MAINTENANCE_TOKEN_FILE"
+chmod 0640 "$MAINTENANCE_TOKEN_FILE"
+
 cat > "$RUNTIME_ENV_FILE" <<EOF
 CELAR_RUNTIME_TOKEN_FILE=$RUNTIME_TOKEN_FILE
+CELAR_MAINTENANCE_TOKEN_FILE=$MAINTENANCE_TOKEN_FILE
+CELAR_MAINTENANCE_DESIRED_FILE=$GATEWAY_STATE_DIR/maintenance-desired.json
+CELAR_MAINTENANCE_POLICY_STATUS_FILE=$GATEWAY_STATE_DIR/maintenance-policy-status.json
+CELAR_UPDATE_STATUS_FILE=$GATEWAY_STATE_DIR/update-status.json
+CELAR_MAINTENANCE_ENABLED=$MAINTENANCE_ENABLED
+CELAR_MAINTENANCE_CADENCE=weekly
+CELAR_MAINTENANCE_DAY_OF_WEEK=$MAINTENANCE_DAY
+CELAR_MAINTENANCE_LOCAL_TIME=$MAINTENANCE_LOCAL_TIME
+CELAR_MAINTENANCE_TIME_ZONE=$MAINTENANCE_TIME_ZONE
+CELAR_MAINTENANCE_SYSTEMD_ON_CALENDAR=$MAINTENANCE_ON_CALENDAR
 CELAR_GATEWAY_VERSION=$GATEWAY_VERSION
 CELAR_GENERATION_MODEL=$GENERATION_MODEL
 CELAR_REASONING_MODEL=$REASONING_MODEL
@@ -250,7 +287,8 @@ chmod 0640 "$RUNTIME_ENV_FILE"
 
 install -m 0555 "$ROOT/gateway/gateway.py" "$GATEWAY_ROOT/gateway.py"
 install -m 0555 "$ROOT/gateway/wsgi.py" "$GATEWAY_ROOT/wsgi.py"
-python3 -m py_compile "$GATEWAY_ROOT/gateway.py" "$GATEWAY_ROOT/wsgi.py"
+install -m 0555 "$ROOT/gateway/maintenance_gateway.py" "$GATEWAY_ROOT/maintenance_gateway.py"
+python3 -m py_compile "$GATEWAY_ROOT/gateway.py" "$GATEWAY_ROOT/wsgi.py" "$GATEWAY_ROOT/maintenance_gateway.py"
 
 if [[ -s "$CADDYFILE" && ! -e /etc/caddy/Caddyfile.pre-celar-gitops ]]; then
   cp -a "$CADDYFILE" /etc/caddy/Caddyfile.pre-celar-gitops
@@ -264,28 +302,38 @@ install -m 0755 \
   "$ROOT/backup.sh" \
   "$ROOT/restore.sh" \
   "$ROOT/ollama-update.sh" \
+  "$ROOT/maintenance-reconcile.sh" \
   "$INSTALL_ROOT/"
 install -m 0644 "$MANIFEST" "$INSTALL_ROOT/release.json"
 install -m 0644 "$ROOT/backup.env.example" "$INSTALL_ROOT/backup.env.example"
 install -m 0644 "$ROOT/systemd/"*.service "$ROOT/systemd/"*.timer /etc/systemd/system/
 
 systemctl daemon-reload
-systemctl enable celar-ai-gateway.service >/dev/null
-systemctl restart celar-ai-gateway.service
-for attempt in $(seq 1 30); do
-  if ss -lnt | awk '{print $4}' | grep -Fxq '127.0.0.1:8787'; then
-    break
-  fi
-  (( attempt < 30 )) || fail 'Celar gateway did not bind to localhost:8787.'
-  sleep 2
+systemctl enable celar-ai-gateway.service celar-maintenance-gateway.service >/dev/null
+systemctl restart celar-ai-gateway.service celar-maintenance-gateway.service
+for port in 8787 8788; do
+  READY=false
+  for attempt in $(seq 1 30); do
+    if ss -lnt | awk '{print $4}' | grep -Fxq "127.0.0.1:$port"; then
+      READY=true
+      break
+    fi
+    sleep 2
+  done
+  [[ "$READY" == true ]] || fail "Celar localhost gateway did not bind to 127.0.0.1:$port."
 done
 systemctl enable caddy.service >/dev/null
 systemctl restart caddy.service
 
-# Backup/model timers can start immediately. The GitOps timer must remain
-# enable-only here; bootstrap starts it only after recording the applied tree,
-# preventing a second deployment from racing the first fresh bootstrap.
-systemctl enable --now celar-backup.timer celar-ollama-update.timer >/dev/null
+# The root reconciler owns whether/when the model-update timer is active. This
+# preserves an administrator-selected schedule across later GitOps deployments
+# instead of blindly re-enabling the canonical default on every deployment.
+systemctl enable --now celar-backup.timer celar-maintenance-reconcile.timer >/dev/null
+systemctl start celar-maintenance-reconcile.service
+
+# The GitOps timer must remain enable-only here; bootstrap starts it only after
+# recording the applied tree, preventing a second deployment from racing the
+# first fresh bootstrap.
 systemctl enable celar-gitops.timer >/dev/null
 
 "$INSTALL_ROOT/health-check.sh"
@@ -293,3 +341,5 @@ systemctl enable celar-gitops.timer >/dev/null
 echo 'CELAR_ORACLE_DESIRED_STATE=APPLIED'
 echo "CELAR_RUNTIME_TOKEN_FILE=$RUNTIME_TOKEN_FILE"
 echo 'CELAR_RUNTIME_TOKEN_VALUE=REDACTED'
+echo "CELAR_MAINTENANCE_TOKEN_FILE=$MAINTENANCE_TOKEN_FILE"
+echo 'CELAR_MAINTENANCE_TOKEN_VALUE=REDACTED'

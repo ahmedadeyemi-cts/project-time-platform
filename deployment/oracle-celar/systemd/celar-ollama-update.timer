@@ -1,9 +1,10 @@
 [Unit]
-Description=Run Celar AI Ollama maintenance weekly
+Description=Run Celar AI Ollama maintenance weekly at 1:00 AM Central Time
 
 [Timer]
-OnCalendar=Sun *-*-* 04:15:00 UTC
-RandomizedDelaySec=30m
+OnCalendar=Sun *-*-* 01:00:00 America/Chicago
+AccuracySec=1min
+RandomizedDelaySec=0
 Persistent=true
 Unit=celar-ollama-update.service
 

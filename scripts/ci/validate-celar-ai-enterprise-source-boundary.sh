@@ -25,7 +25,10 @@ if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
   exit 0
 fi
 
-if [[ "$HEAD_BRANCH" == 'fix/module025-protected-uat-generation-verification-detailed-plan-parser-20260903' ]]; then
+if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
+  ALLOWED_DATABASE='a^'
+  publish_mode CELAR_RUNTIME_VERSION_CENTER
+elif [[ "$HEAD_BRANCH" == 'fix/module025-protected-uat-generation-verification-detailed-plan-parser-20260903' ]]; then
   ALLOWED_DATABASE='^(database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
   publish_mode MODULE025_DETAILED_PLAN_PARSER
 elif [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
@@ -103,6 +106,9 @@ if [[ -n "$DISALLOWED_DATABASE" ]]; then
 fi
 
 PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED" || true)"
+if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
+  PROHIBITED="$(grep -v '^deployment/oracle-celar/' <<<"$PROHIBITED" || true)"
+fi
 if [[ "$HEAD_BRANCH" == security/celar-ai-production-readiness-* ]]; then
   PROHIBITED="$(grep -Fvx \
     -e 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs' \

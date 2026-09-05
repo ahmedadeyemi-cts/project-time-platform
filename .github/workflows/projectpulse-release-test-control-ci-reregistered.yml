@@ -333,7 +333,11 @@ jobs:
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
-          if [[ "$HEAD_BRANCH" == fix/celar-oracle-token-budget-20260905 || "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
+          if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
+            bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+            node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
+            echo 'EXACT_CELAR_RUNTIME_VERSION_CENTER_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == fix/celar-oracle-token-budget-20260905 || "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/module064-public-geography-fallback-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs

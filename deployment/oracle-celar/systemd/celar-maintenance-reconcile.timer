@@ -1,0 +1,12 @@
+[Unit]
+Description=Reconcile Celar AI maintenance schedule desired state
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=15s
+Persistent=true
+Unit=celar-maintenance-reconcile.service
+
+[Install]
+WantedBy=timers.target

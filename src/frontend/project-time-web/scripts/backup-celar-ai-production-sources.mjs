@@ -6,6 +6,8 @@ const webRoot = fileURLToPath(new URL('../', import.meta.url));
 const sourceRoot = path.join(webRoot, 'src');
 const backupRoot = path.join(webRoot, '.celar-ai-production-build-backup');
 const files = [
+  'App.jsx',
+  'module-availability-registry.js',
   'WorkTaskBuilderPanel.jsx',
   'HelpAssistant.jsx',
   'ProjectFlowHiveCenter.jsx',
@@ -32,3 +34,9 @@ for (const relative of files) {
 }
 console.log(`CELAR_AI_PRODUCTION_BUILD_BACKUP_FILES=${files.length}`);
 console.log('CELAR_AI_PRODUCTION_BUILD_TRANSACTION=OPEN');
+
+// Module 084 is a build-time browser integration, matching the existing Celar
+// source transaction. App.jsx and the static module registry are restored after
+// the bundle closes, so ordinary builds never dirty canonical tracked source.
+await import('./inject-module-084-celar-ai-runtime-version.mjs');
+console.log('MODULE_084_CELAR_RUNTIME_VERSION_BUILD_INJECTION=READY');
