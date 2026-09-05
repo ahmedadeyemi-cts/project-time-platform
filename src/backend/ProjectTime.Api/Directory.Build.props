@@ -139,4 +139,24 @@
     <Exec Command="grep -Fq 'app.UseProjectPulsePublicOriginCompatibility();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
     <Exec Command="grep -Fq 'app.MapModule025SowGsdEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
   </Target>
+
+  <!--
+    Module 084 is composed into ignored generated copies only. The canonical
+    oversized Program and shared module-availability source stay reviewable and
+    unchanged while the compiled API registers the administrator-only runtime
+    version endpoints and exposes Module 084 to the shared availability layer.
+  -->
+  <Target Name="RegisterModule084CelarRuntimeVersionEndpoints"
+          AfterTargets="GenerateScopedRbacSources"
+          BeforeTargets="CoreCompile">
+    <Exec Command="grep -Fq 'app.MapCelarAiRuntimeVersionEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot; || sed -i '/app.MapCelarAiBrandEndpoints();/a app.MapCelarAiRuntimeVersionEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'app.MapCelarAiRuntimeVersionEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+  </Target>
+
+  <Target Name="RegisterModule084Availability"
+          AfterTargets="GenerateModuleAvailabilityRuntimeResilience"
+          BeforeTargets="CoreCompile">
+    <Exec Command="grep -Fq '[&quot;084&quot;] = Module(&quot;084&quot;, &quot;celar-ai-runtime-version&quot;, &quot;Celar AI Runtime &amp; Version Center&quot;, &quot;Platform Operations&quot;),' &quot;$(ModuleAvailabilityResilienceGenerated)&quot; || sed -i '/[[]&quot;997&quot;[]] = Module/i\            [&quot;084&quot;] = Module(&quot;084&quot;, &quot;celar-ai-runtime-version&quot;, &quot;Celar AI Runtime \&amp; Version Center&quot;, &quot;Platform Operations&quot;),' &quot;$(ModuleAvailabilityResilienceGenerated)&quot;" />
+    <Exec Command="grep -Fq '[&quot;084&quot;] = Module(&quot;084&quot;, &quot;celar-ai-runtime-version&quot;, &quot;Celar AI Runtime &amp; Version Center&quot;, &quot;Platform Operations&quot;),' &quot;$(ModuleAvailabilityResilienceGenerated)&quot;" />
+  </Target>
 </Project>
