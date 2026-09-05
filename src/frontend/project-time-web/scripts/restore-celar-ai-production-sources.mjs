@@ -6,6 +6,8 @@ const webRoot = fileURLToPath(new URL('../', import.meta.url));
 const sourceRoot = path.join(webRoot, 'src');
 const backupRoot = path.join(webRoot, '.celar-ai-production-build-backup');
 const files = [
+  'App.jsx',
+  'module-availability-registry.js',
   'WorkTaskBuilderPanel.jsx',
   'HelpAssistant.jsx',
   'ProjectFlowHiveCenter.jsx',
