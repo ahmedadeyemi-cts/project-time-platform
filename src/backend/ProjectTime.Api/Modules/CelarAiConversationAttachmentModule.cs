@@ -30,7 +30,6 @@ public static class CelarAiConversationAttachmentModule
         endpoints.MapDelete(
             "/api/celar-ai/v2/conversations/{conversationId:guid}/attachments/{attachmentId:guid}",
             (Func<Guid, Guid, HttpContext, PulseAiSystemIntelligenceService, CelarAiConversationAttachmentService, CancellationToken, Task<IResult>>)RevokeAsync);
-        endpoints.MapCelarAiRuntimeVersionEndpoints();
         return endpoints;
     }
 
@@ -189,7 +188,6 @@ public static class CelarAiConversationAttachmentModule
             attachmentId,
             retrievalEligible = false,
             access = Access(identity.Value),
-            rawDocumentTextReturned = false,
             stateChanged = true
         });
     }
