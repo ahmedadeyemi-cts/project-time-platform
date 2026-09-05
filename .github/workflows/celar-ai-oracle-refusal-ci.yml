@@ -1,0 +1,142 @@
+name: Validate Oracle Celar Terminal Refusal Contract
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/oracle-celar/gateway/**'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs'
+      - '.github/workflows/celar-ai-oracle-refusal-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-oracle-refusal-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Prove refusal codes stay terminal across Oracle and Pulse
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import ast
+          import re
+          from pathlib import Path
+
+          wsgi_path = Path('deployment/oracle-celar/gateway/wsgi.py')
+          pulse_path = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs')
+          wsgi_text = wsgi_path.read_text(encoding='utf-8')
+          pulse_text = pulse_path.read_text(encoding='utf-8')
+
+          ast.parse(wsgi_text)
+
+          match = re.search(
+              r'private static readonly IReadOnlySet<string> SafetyErrorCodes\s*=.*?\{(?P<body>.*?)\};',
+              pulse_text,
+              re.DOTALL,
+          )
+          if not match:
+              raise SystemExit('Pulse safety refusal code catalog was not found.')
+          pulse_codes = set(re.findall(r'"([a-z0-9]+)"', match.group('body')))
+          expected = {
+              'contentfilter',
+              'contentpolicyviolation',
+              'jailbreakdetected',
+              'moderationblocked',
+              'policyviolation',
+              'responsibleaipolicyviolation',
+              'safetyrefusal',
+              'safetyviolation',
+          }
+          if pulse_codes != expected:
+              raise SystemExit(f'Pulse refusal catalog changed: {sorted(pulse_codes)}')
+
+          tree = ast.parse(wsgi_text)
+          selected = []
+          for node in tree.body:
+              if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                  names = []
+                  if isinstance(node, ast.Assign):
+                      names = [target.id for target in node.targets if isinstance(target, ast.Name)]
+                  elif isinstance(node.target, ast.Name):
+                      names = [node.target.id]
+                  if 'SAFETY_REFUSAL_CODES' in names:
+                      selected.append(node)
+              elif isinstance(node, ast.FunctionDef) and node.name in {
+                  '_normalize_safety_code',
+                  '_safe_refusal_code',
+              }:
+                  selected.append(node)
+
+          namespace = {'Any': object}
+          exec(compile(ast.Module(body=selected, type_ignores=[]), str(wsgi_path), 'exec'), namespace)
+          oracle_codes = namespace['SAFETY_REFUSAL_CODES']
+          normalize = namespace['_normalize_safety_code']
+          extract = namespace['_safe_refusal_code']
+          if set(oracle_codes) != pulse_codes:
+              raise SystemExit(
+                  f'Oracle/Pulse refusal catalogs differ: oracle={sorted(oracle_codes)} pulse={sorted(pulse_codes)}'
+              )
+
+          # Every canonical Oracle output must normalize back to the exact Pulse
+          # code it represents, and all four documented envelope locations must
+          # be recognized without forwarding message text.
+          for normalized, canonical in oracle_codes.items():
+              if normalize(canonical) != normalized:
+                  raise SystemExit(f'Canonical refusal code does not round-trip: {canonical}')
+              fixtures = [
+                  {'error': {'code': canonical, 'message': 'must-not-be-forwarded'}},
+                  {'error': {'type': canonical, 'message': 'must-not-be-forwarded'}},
+                  {'error': {'innererror': {'code': canonical, 'message': 'must-not-be-forwarded'}}},
+                  {'error': {'innererror': {'type': canonical, 'message': 'must-not-be-forwarded'}}},
+              ]
+              for fixture in fixtures:
+                  result = extract(fixture)
+                  if result != canonical:
+                      raise SystemExit(f'Refusal envelope was not preserved: {fixture}')
+
+          for fixture in [
+              {'error': {'code': 'ordinary_bad_request', 'message': 'private provider detail'}},
+              {'error': {'type': 'rate_limit_error'}},
+              {'error': {'innererror': {'code': 'model_not_found'}}},
+              {'message': 'not a structured error'},
+          ]:
+              if extract(fixture) is not None:
+                  raise SystemExit(f'Unrecognized provider error was promoted to refusal: {fixture}')
+
+          required_source = [
+              'upstream.status_code in {400, 403, 422}',
+              'refusal_code = _safe_refusal_code(body)',
+              'return {"error": {"code": refusal_code}}, upstream.status_code',
+              'gateway._ollama_post = _ollama_post_preserving_refusal',
+              'if status < 500:',
+          ]
+          for fragment in required_source:
+              if fragment not in wsgi_text:
+                  raise SystemExit(f'Missing terminal-refusal routing invariant: {fragment}')
+
+          forbidden = [
+              '"message": body',
+              "'message': body",
+              'body.get("message")',
+              "body.get('message')",
+          ]
+          for fragment in forbidden:
+              if fragment in wsgi_text:
+                  raise SystemExit(f'Provider message forwarding is prohibited: {fragment}')
+
+          print('ORACLE_PULSE_TERMINAL_REFUSAL_CONTRACT=PASS')
+          print('ORACLE_REFUSAL_CODE_COUNT=8')
+          PY
