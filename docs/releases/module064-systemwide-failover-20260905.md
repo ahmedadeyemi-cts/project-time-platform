@@ -15,3 +15,5 @@ Both timesheet UI implementations identify deepseek_v4 as DeepSeek v4, and the s
 ## Verification
 
 DeepSeekProviderTests exercises cancelled attempts, progression to the next provider, caller cancellation, terminal refusal preservation, background budget separation and rejection/circuit isolation. Existing router, consumer, privacy and controller tests remain required. The exact release scope is checked before consumer boundary compatibility is applied. Protected Test only; runtime acceptance pending.
+
+The protected-Test controller now exercises the HAR public question before document-specific FlowHive acceptance. It requires a correct model-generated answer, provider decisions and completion under 55 seconds. The evidence is uploaded even if a later document acceptance gate fails.

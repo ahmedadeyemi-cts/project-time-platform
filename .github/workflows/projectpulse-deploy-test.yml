@@ -746,6 +746,24 @@ jobs:
             fail "$name failed after 3 attempts (curl exit $curl_exit; HTTP $status; content type ${content_type:-none}; body bytes $body_bytes)."
           }
 
+          # Exercise the reported interactive timeout before document-specific
+          # FlowHive gates, so its provider decisions survive later UAT failures.
+          ROUTING_SMOKE_PAYLOAD="$(mktemp)"
+          jq -n '{question:"How many states are there in the US?",mode:"system_help",detailLevel:"standard",includeRepositoryContext:false,includeAuthorizedProjectDocuments:false,includeApiInventory:false,includeTroubleshooting:false,usePrivateModelWhenAvailable:true}' > "$ROUTING_SMOKE_PAYLOAD"
+          ROUTING_SMOKE_STARTED=$SECONDS
+          ROUTING_SMOKE_STATUS="$(auth_post '/api/celar-ai/v2/chat' "$ROUTING_SMOKE_PAYLOAD" "$EVIDENCE_DIR/module064-chat-routing-smoke.json")"
+          ROUTING_SMOKE_SECONDS=$((SECONDS - ROUTING_SMOKE_STARTED))
+          rm -f "$ROUTING_SMOKE_PAYLOAD"
+          [[ "$ROUTING_SMOKE_STATUS" == 200 ]] || fail "Module 064 chat routing smoke returned HTTP $ROUTING_SMOKE_STATUS."
+          jq -e '
+            (.result.answer.directConclusion | test("\\b50\\b|\\bfifty\\b"; "i"))
+            and (.result.modelProvider as $provider | ["deepseek_v4","celar_ai","claude","openai"] | index($provider) != null)
+            and ((.result.targetDecisions // []) | any(.outcome == "used"))
+          ' "$EVIDENCE_DIR/module064-chat-routing-smoke.json" >/dev/null || fail 'Module 064 chat did not return the correct model-generated answer and routing evidence.'
+          (( ROUTING_SMOKE_SECONDS < 55 )) || fail "Module 064 chat exceeded the interactive deadline: $ROUTING_SMOKE_SECONDS seconds."
+          jq '{status,provider:.result.modelProvider,targetDecisions:.result.targetDecisions}' "$EVIDENCE_DIR/module064-chat-routing-smoke.json"
+          echo "MODULE064_CHAT_ROUTING_SMOKE=PASS durationSeconds=$ROUTING_SMOKE_SECONDS"
+
           require_get 'Project Management summary' '/api/project-management/summary' "$EVIDENCE_DIR/project-management-summary.json"
           require_get 'Project Intake overview' '/api/project-intake/overview' "$EVIDENCE_DIR/project-intake-overview.json"
           require_get 'Project financial portfolio' '/api/project-financials/portfolio?workspace=pm&limit=250' "$EVIDENCE_DIR/project-financial-portfolio.json"
