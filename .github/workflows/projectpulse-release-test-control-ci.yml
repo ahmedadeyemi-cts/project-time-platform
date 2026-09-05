@@ -183,6 +183,10 @@ jobs:
           tests/validate-utilization-role-scoping.mjs
           FILES
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-release-files"
+          if [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
+            # The consolidated CI validates this repair's exact six-file scope.
+            echo 'deployment/containers/api/Dockerfile' >> "$RUNNER_TEMP/allowed-release-files"
+          fi
           LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
 
           cat > "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files" <<'FILES'

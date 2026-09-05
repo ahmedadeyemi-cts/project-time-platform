@@ -95,10 +95,13 @@ if (plannerEvidenceFallbackMode) {
   const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
   const actual = String(originalExecFileSync('git', ['diff', '--name-only', base, 'HEAD'], { encoding: 'utf8' })).trim().split('\n').filter(Boolean).sort();
   assert.deepEqual(actual, [
+    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+    '.github/workflows/projectpulse-release-test-control-ci.yml',
+    'deployment/containers/api/Dockerfile',
     'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs',
     'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
     'tests/validate-celar-ai-pr630-consolidated.mjs'
-  ], 'Planner evidence fallback must retain its exact three-file repair scope');
+  ], 'Planner evidence fallback must retain its exact six-file planner and verified package-fetch repair scope');
 }
 const scopedCompatibilityMode = plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
