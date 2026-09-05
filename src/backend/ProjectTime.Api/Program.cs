@@ -2841,6 +2841,8 @@ app.MapPost("/api/timesheets/ai-description-suggestions", async (
         contextSource = contextResolution.ContextSource,
         message = result.Provider switch
         {
+            ProjectPulseAiProviders.DeepSeek when !string.IsNullOrWhiteSpace(result.Suggestion) =>
+                "DeepSeek v4 generated a time-entry description suggestion.",
             ProjectPulseAiProviders.Claude when !string.IsNullOrWhiteSpace(result.Suggestion) =>
                 "Claude generated a time-entry description suggestion.",
             ProjectPulseAiProviders.OpenAi when !string.IsNullOrWhiteSpace(result.Suggestion) =>

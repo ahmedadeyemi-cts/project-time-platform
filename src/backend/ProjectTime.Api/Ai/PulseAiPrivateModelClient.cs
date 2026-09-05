@@ -12,19 +12,22 @@ public sealed class PulseAiPrivateModelClient
     private readonly ProjectPulseDeepSeekProvider? _deepSeek;
     private readonly ProjectPulseAiHealthRegistry? _health;
     private readonly ProjectPulseAiConfiguration? _configuration;
+    private readonly CelarAiCapabilityRoutingStore? _routes;
 
     public PulseAiPrivateModelClient(
         IHttpClientFactory httpClientFactory,
         ILogger<PulseAiPrivateModelClient> logger,
         ProjectPulseDeepSeekProvider? deepSeek = null,
         ProjectPulseAiHealthRegistry? health = null,
-        ProjectPulseAiConfiguration? configuration = null)
+        ProjectPulseAiConfiguration? configuration = null,
+        CelarAiCapabilityRoutingStore? routes = null)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _deepSeek = deepSeek;
         _health = health;
         _configuration = configuration;
+        _routes = routes;
     }
 
     internal (bool Configured, bool Ready) DeepSeekReadiness()
@@ -44,6 +47,68 @@ public sealed class PulseAiPrivateModelClient
         PulseAiPrivateModelRequest request,
         PulseAiPrivateRagOptions options,
         CancellationToken cancellationToken = default)
+    {
+        // A router-owned callback has already selected one target. Direct RAG
+        // consumers must also consult Module 064 instead of assuming DeepSeek first.
+        if (ProjectPulseDeepSeekProvider.PrivateTarget is not null || _routes is null)
+            return await GenerateTargetAsync(request, options, cancellationToken);
+        if (!options.Enabled)
+            return Failure("private_rag_disabled", "private_rag_disabled", DateTimeOffset.UtcNow);
+
+        var route = await _routes.LoadRouteAsync(request.FeatureCode, cancellationToken);
+        PulseAiPrivateModelResult? last = null;
+        var budget = new CelarAiRouteAttemptBudget(CelarAiCapabilityCatalog.NormalizeFeature(request.FeatureCode));
+        var remainingPrivateTargets = route.Targets.Count(CelarAiCapabilityTargets.IsPrivate);
+        foreach (var target in route.Targets)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (target == CelarAiCapabilityTargets.Local) break;
+            // These callers carry raw authorized source evidence. Public targets
+            // cannot receive it; the outer composer owns sanitized assistance.
+            if (!CelarAiCapabilityTargets.IsPrivate(target)) continue;
+            var timeout = budget.NextTimeout(remainingPrivateTargets--);
+            if (timeout is { } exhausted && exhausted <= TimeSpan.Zero)
+            {
+                last = Failure("private_model_unavailable", "interactive_route_deadline_exceeded", DateTimeOffset.UtcNow);
+                continue;
+            }
+            if (target == CelarAiCapabilityTargets.DeepSeek && _configuration is not null)
+                _health?.ApplyConfiguration(_configuration.DeepSeek);
+            if (target == CelarAiCapabilityTargets.CelarAi && CelarAiPrivateModelRuntime.Snapshot() is { } profile)
+                _health?.ApplyPrivateConfiguration(profile);
+            if (_health is not null && !_health.CanAttempt(target, out var reason))
+            {
+                last = Failure("private_model_unavailable", reason, DateTimeOffset.UtcNow);
+                continue;
+            }
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (timeout is { } timeLimit) attempt.CancelAfter(timeLimit);
+            try
+            {
+                last = await ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(target,
+                    token => GenerateTargetAsync(request, options, token), attempt.Token).WaitAsync(attempt.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                last = Failure("private_model_unavailable", "provider_deadline_exceeded", DateTimeOffset.UtcNow);
+            }
+            if (last.Succeeded)
+            {
+                _health?.RecordSuccess(target, null, null, "generation_succeeded");
+                return last;
+            }
+            if (last.Status == "private_model_refused"
+                || last.DiagnosticCode == PulseAiPrivateModelResponsePolicy.SafetyRefusalDiagnostic)
+                return last;
+            _health?.RecordFailure(target, last.DiagnosticCode, null);
+        }
+        return last ?? Failure("private_model_unavailable", "no_eligible_private_target", DateTimeOffset.UtcNow);
+    }
+
+    private async Task<PulseAiPrivateModelResult> GenerateTargetAsync(
+        PulseAiPrivateModelRequest request,
+        PulseAiPrivateRagOptions options,
+        CancellationToken cancellationToken)
     {
         var completedAt = DateTimeOffset.UtcNow;
         if (!options.Enabled)

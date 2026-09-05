@@ -86,7 +86,7 @@ const sanitizedExternalProductionProbe = section(
 );
 const externalSuccess = section(
   routing,
-  'result = await provider.GenerateAsync(externalRequest, cancellationToken);',
+  'token => provider.GenerateAsync(externalRequest, token), cancellationToken);',
   'if (result.IsRefusal)'
 );
 const remotePrompt = section(
@@ -566,7 +566,7 @@ check(
       '_sanitizer.IsTimesheetExternalOutputSafe(',
       '_sanitizer.IsPublicExternalOutputSafe(',
       'out outputDecisionCode',
-      '_health.RecordFailure(target, outputDecisionCode',
+      '_health.RecordOutputRejected(target, outputDecisionCode',
       'continue;'
     ]),
   'untrusted Claude/OpenAI output is discarded if it reintroduces protected data; the isolated public-question path applies its separate credential and identifier boundary'
