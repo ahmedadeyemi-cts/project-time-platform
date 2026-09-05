@@ -1,0 +1,39 @@
+name: Validate Oracle Celar Protected-Test Reactivation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/celar-ai-oracle-test-runtime-reactivate.yml'
+      - '.github/workflows/celar-ai-oracle-test-reactivation-ci.yml'
+      - 'tests/validate-celar-ai-oracle-test-reactivation.mjs'
+      - 'tests/CelarAiOracleExternalRuntimeTests/**'
+      - 'docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate static Protected-Test reactivation contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-celar-ai-oracle-test-reactivation.mjs
+          node tests/validate-celar-ai-oracle-test-runtime.mjs
+          git diff --check
+
+      - name: Validate Oracle external-runtime behavior
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/CelarAiOracleExternalRuntimeTests/CelarAiOracleExternalRuntimeTests.csproj --configuration Release
