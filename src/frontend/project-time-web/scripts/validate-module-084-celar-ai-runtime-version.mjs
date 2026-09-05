@@ -13,6 +13,7 @@ function check(name, condition) {
 }
 
 const injector = read('src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs');
+const app = read('src/frontend/project-time-web/src/App.jsx');
 const buildBackup = read('src/frontend/project-time-web/scripts/backup-celar-ai-production-sources.mjs');
 const buildRestore = read('src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs');
 const buildProps = read('src/backend/ProjectTime.Api/Directory.Build.props');
@@ -35,6 +36,13 @@ check('MODULE_084_BROWSER_BUILD_TRANSACTION',
   && buildBackup.includes("inject-module-084-celar-ai-runtime-version.mjs")
   && buildRestore.includes("'App.jsx'")
   && buildRestore.includes("'module-availability-registry.js'"));
+check('MODULE_084_CANONICAL_BROWSER_ROUTE',
+  app.includes("import CelarAiRuntimeVersionCenter from './CelarAiRuntimeVersionCenter.jsx';")
+  && app.includes("activeRoute === 'celar-ai-runtime-version'")
+  && app.includes('<CelarAiRuntimeVersionCenter />'));
+check('MODULE_084_CANONICAL_FALLBACK_EXCLUSION',
+  app.includes('MODULE_084_CELAR_RUNTIME_VERSION_FALLBACK_EXCLUSION_START')
+  && app.includes("        'celar-ai-runtime-version',"));
 
 check('MODULE_084_BACKEND_ROUTES', backend.includes('/api/celar-ai/v1/runtime-version/status') && backend.includes('/api/celar-ai/v1/runtime-version/schedule'));
 check('MODULE_084_GENERATED_ENDPOINT_MAP',
