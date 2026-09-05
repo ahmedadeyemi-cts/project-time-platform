@@ -38,7 +38,7 @@ jobs:
             .environment == "protected-test-oracle-celar" and
             .hostname == "celarai.onenecklab.com" and
             .architecture == "arm64" and
-            .gatewayVersion == "1.1.2" and
+            .gatewayVersion == "1.1.3" and
             .gatewayBind == "127.0.0.1:8787" and
             .generationModel == "gemma3:4b" and
             .reasoningModel == "qwen3:4b-instruct" and
@@ -52,6 +52,7 @@ jobs:
             .generalGenerationOrder == ["qwen3:4b-instruct","llama3.2:3b","gemma3:4b"] and
             .generalModelAttemptSeconds == [140,70,20] and
             .chatTimeoutSeconds == 240 and
+            .embeddingTimeoutSeconds == 150 and
             (.structuredModelAttemptSeconds | add) <= .chatTimeoutSeconds and
             (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds and
             (.structuredModelAttemptSeconds | add) <= 230 and
@@ -69,16 +70,20 @@ jobs:
           set -Eeuo pipefail
           APP=src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
           # Generic private inference is bounded by the application at five
-          # minutes, and SOW recovery at 260 seconds. The Oracle gateway must
-          # finish its complete local portfolio before either caller expires.
+          # minutes, SOW recovery at 260 seconds, and embeddings at three minutes.
+          # Oracle must finish first so Pulse receives a governed result/timeout.
           grep -Fq 'services.AddHttpClient("PulseAiPrivateInference"' "$APP"
           grep -Fq 'client.Timeout = TimeSpan.FromMinutes(5);' "$APP"
           grep -Fq 'RecoveryAttemptBudget = TimeSpan.FromSeconds(260);' "$APP"
+          grep -Fq 'services.AddHttpClient("PulseAiPrivateEmbedding"' "$APP"
+          grep -Fq 'client.Timeout = TimeSpan.FromMinutes(3);' "$APP"
           jq -e '
             .chatTimeoutSeconds < 260 and
             (.structuredModelAttemptSeconds | add) < 260 and
-            (.generalModelAttemptSeconds | add) < 300
+            (.generalModelAttemptSeconds | add) < 300 and
+            .embeddingTimeoutSeconds < 180
           ' deployment/oracle-celar/release.json >/dev/null
+          grep -Fq 'curl -fsS --max-time 180' deployment/oracle-celar/health-check.sh
 
       - name: Validate gateway and local specialist policy
         shell: bash
