@@ -223,7 +223,22 @@ jobs:
           grep -Fq "BACKUP_TAG='celar-oracle'" "$RESTORE"
           grep -Fq 'restic snapshots --tag "$BACKUP_TAG"' "$RESTORE"
           grep -Fq 'restic restore "$SNAPSHOT" --tag "$BACKUP_TAG" --target "$TARGET"' "$RESTORE"
-          grep -Fq -- "--exclude='/var/lib/celar-ai/recovery'" "$BACKUP"
+
+          # Recovery/credential exclusions are now governed once and consumed by
+          # both GNU tar and Restic. The local archive is published only after
+          # compression/member validation succeeds.
+          grep -Fq 'BACKUP_EXCLUDES=(' "$BACKUP"
+          grep -Fq "'etc/celar-ai/gateway/runtime-token'" "$BACKUP"
+          grep -Fq "'etc/celar-ai/backup.env'" "$BACKUP"
+          grep -Fq "'var/lib/celar-ai/recovery'" "$BACKUP"
+          grep -Fq 'PROTECTED_ARCHIVE_PATH_REGEX=' "$BACKUP"
+          grep -Fq 'create_local_archive / "$list_file" "$archive"' "$BACKUP"
+          grep -Fq '"${tar_exclude_args[@]}"' "$BACKUP"
+          grep -Fq -- '--files-from="$list_file"' "$BACKUP"
+          grep -Fq 'zstd -t -q -- "$temp_archive"' "$BACKUP"
+          grep -Fq 'mv -f -- "$temp_archive" "$archive"' "$BACKUP"
+          grep -Fq 'restic_exclude_args+=("--exclude=/$pattern")' "$BACKUP"
+
           grep -Fq 'mapfile -t GENERATION_MODELS' "$UPDATE"
           grep -Fq 'for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"' "$UPDATE"
 
