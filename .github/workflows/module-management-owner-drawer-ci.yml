@@ -52,6 +52,22 @@ jobs:
             node tests/validate-deepseek-release-scope.mjs
             exit 0
           fi
+          if [[ "$HEAD_BRANCH" == 'fix/deepseek-migration-102-protected-test-20260904' ]]; then
+            cat > "$RUNNER_TEMP/deepseek-migration-102-release.txt" <<'EOF'
+          .github/workflows/module-management-owner-drawer-ci.yml
+          scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          EOF
+            sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/deepseek-migration-102-release.txt"
+            LC_ALL=C sort -u "$RUNNER_TEMP/deepseek-migration-102-release.txt" \
+              -o "$RUNNER_TEMP/deepseek-migration-102-release.txt"
+            cmp -s "$RUNNER_TEMP/module-management-actual.txt" "$RUNNER_TEMP/deepseek-migration-102-release.txt" || {
+              echo 'DeepSeek migration-102 release repair differs from the exact governed source set.' >&2
+              diff -u "$RUNNER_TEMP/deepseek-migration-102-release.txt" "$RUNNER_TEMP/module-management-actual.txt" >&2 || true
+              exit 1
+            }
+            echo 'MODULE_MANAGEMENT_DEEPSEEK_MIGRATION_102_RELEASE_SOURCE_BOUNDARY=PASS'
+            exit 0
+          fi
           if [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
             cat > "$RUNNER_TEMP/protected-uat-validation-defects.txt" <<'EOF'
           .github/workflows/module-loading-assignment-propagation-ci.yml
