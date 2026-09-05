@@ -1,0 +1,51 @@
+name: Validate Oracle Celar ClamAV Socket Activation
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/oracle-celar/deploy.sh'
+      - 'deployment/oracle-celar/systemd/clamav-daemon.socket.d/**'
+      - '.github/workflows/celar-ai-oracle-clamav-socket-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Validate shell and ClamAV socket contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          DEPLOY=deployment/oracle-celar/deploy.sh
+          DROPIN=deployment/oracle-celar/systemd/clamav-daemon.socket.d/10-celar-tcp.conf
+
+          bash -n "$DEPLOY"
+          test -s "$DROPIN"
+          grep -Fxq '[Socket]' "$DROPIN"
+          grep -Fxq 'ListenStream=127.0.0.1:3310' "$DROPIN"
+
+          grep -Fq "CLAMAV_SOCKET_DROPIN_DIR='/etc/systemd/system/clamav-daemon.socket.d'" "$DEPLOY"
+          grep -Fq 'install -m 0644 "$ROOT/systemd/clamav-daemon.socket.d/10-celar-tcp.conf" "$CLAMAV_SOCKET_DROPIN"' "$DEPLOY"
+          grep -Fq 'systemctl enable clamav-freshclam clamav-daemon clamav-daemon.socket' "$DEPLOY"
+          grep -Fq 'systemctl stop clamav-daemon.service clamav-daemon.socket' "$DEPLOY"
+          grep -Fq 'systemctl start clamav-daemon.socket' "$DEPLOY"
+          grep -Fq 'systemctl start clamav-daemon.service' "$DEPLOY"
+          grep -Fq "printf 'zPING\\0' | nc -N -w 3" "$DEPLOY"
+          grep -Fq "fail 'ClamAV localhost TCP socket did not become ready on 127.0.0.1:3310.'" "$DEPLOY"
+          grep -Fq 'systemctl enable --now celar-backup.timer celar-ollama-update.timer celar-gitops.timer' "$DEPLOY"
+
+          if grep -Fq 'ListenStream=0.0.0.0:3310' "$DROPIN"; then
+            echo 'ClamAV TCP must never bind publicly.' >&2
+            exit 1
+          fi
+
+          git diff --check
