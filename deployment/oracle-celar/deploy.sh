@@ -101,8 +101,15 @@ apt-get install -y \
   clamav clamav-daemon clamav-freshclam \
   caddy restic unattended-upgrades iptables-persistent
 
+# Create the service identity before the /etc tree so the parent can grant only
+# execute/traverse permission to the gateway group without becoming listable.
+getent group celar-ai >/dev/null 2>&1 || groupadd --system celar-ai
+if ! id celar-ai >/dev/null 2>&1; then
+  useradd --system --gid celar-ai --home-dir "$GATEWAY_STATE_DIR" --shell /usr/sbin/nologin celar-ai
+fi
+
 install -d -m 0755 "$INSTALL_ROOT" "$STATE_DIR" /var/backups/celar-ai "$GATEWAY_ROOT"
-install -d -m 0700 /etc/celar-ai
+install -d -o root -g celar-ai -m 0710 /etc/celar-ai
 
 if [[ -s "$FIREWALL_RULES" ]]; then
   install -d -m 0700 /root/celar-firewall-backup
@@ -175,10 +182,6 @@ for model in "${APPROVED_GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
   fi
 done
 
-getent group celar-ai >/dev/null 2>&1 || groupadd --system celar-ai
-if ! id celar-ai >/dev/null 2>&1; then
-  useradd --system --gid celar-ai --home-dir "$GATEWAY_STATE_DIR" --shell /usr/sbin/nologin celar-ai
-fi
 install -d -o root -g celar-ai -m 0750 "$GATEWAY_CONFIG_DIR"
 install -d -o celar-ai -g celar-ai -m 0750 "$GATEWAY_STATE_DIR"
 install -d -o root -g root -m 0755 "$GATEWAY_ROOT"
