@@ -30,6 +30,23 @@ header_value() {
   ' "$file"
 }
 
+validate_embedding_response() {
+  local file="$1"
+  local model="$2"
+  local dimension="$3"
+  jq -e --arg model "$model" --argjson dimension "$dimension" '
+    .object == "list" and
+    .model == $model and
+    (.data | type) == "array" and
+    ((.data | length) == 1) and
+    .data[0].object == "embedding" and
+    .data[0].index == 0 and
+    (.data[0].embedding | type) == "array" and
+    ((.data[0].embedding | length) == $dimension) and
+    ([.data[0].embedding[] | numbers] | length) == $dimension
+  ' "$file" >/dev/null
+}
+
 command -v jq >/dev/null 2>&1 || fail 'jq is required.'
 HOSTNAME_VALUE="$(jq -r '.hostname' "$MANIFEST")"
 GATEWAY_VERSION="$(jq -r '.gatewayVersion' "$MANIFEST")"
@@ -159,17 +176,8 @@ STRUCTURED_SELECTED_ROUTE="$(header_value "$TMP/structured.headers" 'X-Celar-Loc
 curl -fsS --max-time 180 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg model "$EMBEDDING_MODEL" '{model:$model,input:["Celar AI embedding health proof"],encoding_format:"float"}')" \
   "$BASE/v1/embeddings" > "$TMP/embed.json"
-jq -e --arg model "$EMBEDDING_MODEL" --argjson dimension "$EMBEDDING_DIMENSION" '
-  .object == "list" and
-  .model == $model and
-  (.data | type) == "array" and
-  ((.data | length) == 1) and
-  .data[0].object == "embedding" and
-  .data[0].index == 0 and
-  (.data[0].embedding | type) == "array" and
-  ((.data[0].embedding | length) == $dimension) and
-  ([.data[0].embedding[] | numbers] | length) == $dimension
-' "$TMP/embed.json" >/dev/null || fail 'Authenticated embedding gateway probe failed.'
+validate_embedding_response "$TMP/embed.json" "$EMBEDDING_MODEL" "$EMBEDDING_DIMENSION" || \
+  fail 'Authenticated embedding gateway probe failed.'
 
 printf 'Celar AI protected Test clean-file validation.\n' > "$TMP/clean.txt"
 CLEAN_SIZE="$(stat -c '%s' "$TMP/clean.txt")"
