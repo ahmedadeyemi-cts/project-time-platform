@@ -22,4 +22,6 @@ console.log('PROTECTED_UAT_RECOVERY_SECURITY_AND_DIAGNOSTICS=PASS');
 
 assert.ok(workflow.indexOf('Apply and verify Migrations 086, 088, and 093 through 100') < workflow.indexOf('Deploy immutable Test API image'));
 assert.ok(workflow.indexOf('Deploy immutable Test API image') < workflow.indexOf('Prove Pulse-to-Oracle inference and runtime readiness'), 'Runtime probe must verify the newly deployed API');
-assert.ok(workflow.includes("steps.recovery_verify.outcome != 'success'"), 'Successful runtime recovery survives unrelated later UAT failures');
+assert.ok(workflow.includes("steps.recovery_verify.outcome != 'success'"), 'Runtime recovery must be verified before it can be retained');
+
+assert.ok(workflow.includes("steps.recovery_verify.outcome != 'success' || steps.uat.outputs.deployment_health_verified != 'true'"), "Image rollback must also restore runtime configuration");

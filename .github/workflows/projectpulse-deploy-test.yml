@@ -854,7 +854,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p evidence
-          jq -n --arg environment test --arg releaseCommit "$TARGET_RELEASE_COMMIT" --arg approvalReference "$APPROVAL_REFERENCE" --arg apiImage '${{ steps.recovery_build.outputs.api_image }}' --arg apiRevision '${{ steps.recovery_deploy_api.outputs.revision }}' \
+          jq -n --arg environment test --arg releaseCommit "$TARGET_RELEASE_COMMIT" --arg approvalReference "$APPROVAL_REFERENCE" --arg apiImage '${{ steps.build.outputs.api_image }}' --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
             '{environment:$environment,releaseCommit:$releaseCommit,approvalReference:$approvalReference,migrations:[],productionMutation:false,openCloudMutation:false,oracleInfrastructureMutation:false,apiImage:$apiImage,apiRevision:$apiRevision,secretMaterialRecorded:false}' \
             > evidence/celar-ai-oracle-test-runtime.json
 
@@ -1652,7 +1652,7 @@ jobs:
           jq -n --arg apiImage '${{ steps.contract.outputs.old_api_image }}' --arg webImage '${{ steps.contract.outputs.old_web_image }}' --arg source '${{ steps.contract.outputs.old_source }}' '{rollbackCompleted:true,apiImage:$apiImage,webImage:$webImage,sourceCommit:$source,migrationsRemainApplied:true,productionMutation:false}' > "$EVIDENCE_DIR/rollback.json"
 
       - name: Rollback protected Test API configuration on failure
-        if: ${{ failure() && steps.recovery_deploy_api.outputs.started == 'true' && steps.recovery_verify.outcome != 'success' }}
+        if: ${{ failure() && steps.recovery_deploy_api.outputs.started == 'true' && (steps.recovery_verify.outcome != 'success' || steps.uat.outputs.deployment_health_verified != 'true') }}
         shell: bash
         working-directory: release
         run: |
