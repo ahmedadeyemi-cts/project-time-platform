@@ -334,15 +334,7 @@ jobs:
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
           if [[ "$HEAD_BRANCH" == 'fix/module064-public-geography-fallback-20260905' ]]; then
-            cat > "$RUNNER_TEMP/exact-module064-public-geography-files" <<'FILES'
-          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
-          .github/workflows/projectpulse-release-test-control-ci.yml
-          src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs
-          tests/CelarAiInternalDataTests/Program.cs
-          tests/validate-celar-ai-pr630-consolidated.mjs
-          FILES
-            sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-module064-public-geography-files"
-            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-module064-public-geography-files" || fail 'Public geography routing repair differs from its exact five-file scope.'
+            node tests/validate-celar-ai-pr630-consolidated.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/module064-systemwide-failover-20260905' ]]; then
             node tests/validate-module064-systemwide-failover-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/ai-routing-sow-regeneration-20260905' ]]; then
