@@ -13,6 +13,7 @@ deployment/oracle-celar/systemd/celar-ai-gateway.service
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
 scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx
 tests/CelarAiOracleExternalRuntimeTests/Program.cs
 tests/test-celar-sow-runtime-deadlines.py
 tests/validate-celar-ai-pr630-consolidated.mjs
