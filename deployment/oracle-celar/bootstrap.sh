@@ -38,6 +38,16 @@ TARGET_COMMIT="$(git -C "$SOURCE_DIR" rev-parse origin/main)"
 git -C "$SOURCE_DIR" checkout --detach "$TARGET_COMMIT"
 
 test -x "$SOURCE_DIR/deployment/oracle-celar/deploy.sh" || fail 'Oracle Celar deployment package is not present on main.'
+
+# A retry may inherit an enabled/active timer from a prior failed bootstrap.
+# Stop future GitOps triggers before entering the long deployment. If an older
+# reconciliation is already active, let its runtime lock drain rather than
+# racing a second mutation path. deploy.sh also holds the same mutation lock.
+systemctl stop celar-gitops.timer >/dev/null 2>&1 || true
+while systemctl is-active --quiet celar-gitops.service; do
+  sleep 2
+done
+
 bash "$SOURCE_DIR/deployment/oracle-celar/deploy.sh"
 
 TARGET_TREE="$(git -C "$SOURCE_DIR" rev-parse "$TARGET_COMMIT:deployment/oracle-celar")"
@@ -45,6 +55,9 @@ printf '%s\n' "$TARGET_COMMIT" > "$STATE_DIR/gitops-applied-commit"
 printf '%s\n' "$TARGET_TREE" > "$STATE_DIR/gitops-applied-tree"
 chmod 0644 "$STATE_DIR/gitops-applied-commit" "$STATE_DIR/gitops-applied-tree"
 
+# Start polling only after the successful deployment has an applied-state
+# marker. The immediate service invocation should therefore converge to a no-op
+# unless main advanced during bootstrap.
 systemctl enable --now celar-gitops.timer
 systemctl start celar-gitops.service
 
