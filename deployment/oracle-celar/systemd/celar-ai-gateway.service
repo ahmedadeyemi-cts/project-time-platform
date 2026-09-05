@@ -1,0 +1,42 @@
+[Unit]
+Description=Celar AI authenticated Oracle gateway
+After=network-online.target ollama.service clamav-daemon.service
+Wants=network-online.target
+Requires=ollama.service clamav-daemon.service
+
+[Service]
+Type=simple
+User=celar-ai
+Group=celar-ai
+WorkingDirectory=/opt/celar-ai/gateway
+EnvironmentFile=/etc/celar-ai/gateway/runtime.env
+Environment="OMP_THREAD_LIMIT=2"
+ExecStart=/usr/bin/gunicorn --workers 2 --threads 4 --bind 127.0.0.1:8787 --timeout 900 --graceful-timeout 30 --keep-alive 5 --worker-tmp-dir /dev/shm wsgi:app
+Restart=always
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+# OCR converters inherit these process/file ceilings. /tmp is also a bounded
+# private tmpfs, so compressed documents cannot consume the VM's root volume
+# with unbounded raster output before the application rejects them.
+TemporaryFileSystem=/tmp:rw,nosuid,nodev,noexec,size=768M
+LimitAS=1536M
+LimitFSIZE=64M
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/celar-ai/gateway
+MemoryHigh=1536M
+MemoryMax=2G
+TasksMax=64
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

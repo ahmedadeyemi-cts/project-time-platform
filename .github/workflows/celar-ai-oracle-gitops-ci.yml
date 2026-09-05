@@ -1,0 +1,258 @@
+name: Validate Oracle Celar GitOps and Recovery Package
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/oracle-celar/**'
+      - '.github/workflows/celar-ai-oracle-gitops-ci.yml'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-oracle-gitops-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate syntax and governed manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for script in deployment/oracle-celar/{bootstrap,deploy,gitops,health-check,backup,restore,ollama-update}.sh; do
+            bash -n "$script"
+          done
+          python3 -m py_compile deployment/oracle-celar/gateway/gateway.py deployment/oracle-celar/gateway/wsgi.py
+          jq -e '
+            .schema == 1 and
+            .environment == "protected-test-oracle-celar" and
+            .hostname == "celarai.onenecklab.com" and
+            .architecture == "arm64" and
+            .gatewayVersion == "1.1.3" and
+            .gatewayBind == "127.0.0.1:8787" and
+            .generationModel == "gemma3:4b" and
+            .reasoningModel == "qwen3:4b-instruct" and
+            .fastGeneralModel == "llama3.2:3b" and
+            .embeddingModel == "embeddinggemma" and
+            .embeddingDimension == 768 and
+            .ocrModel == "tesseract-5-eng" and
+            .localGenerationModels == ["gemma3:4b","qwen3:4b-instruct","llama3.2:3b"] and
+            .structuredGenerationOrder == ["gemma3:4b","qwen3:4b-instruct","llama3.2:3b"] and
+            .structuredModelAttemptSeconds == [150,60,20] and
+            .generalGenerationOrder == ["qwen3:4b-instruct","llama3.2:3b","gemma3:4b"] and
+            .generalModelAttemptSeconds == [140,70,20] and
+            .chatTimeoutSeconds == 240 and
+            .embeddingTimeoutSeconds == 150 and
+            (.structuredModelAttemptSeconds | add) <= .chatTimeoutSeconds and
+            (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds and
+            (.structuredModelAttemptSeconds | add) <= 230 and
+            (.generalModelAttemptSeconds | add) <= 230 and
+            .runtimeMutationLockWaitSeconds >= 60 and
+            .ollamaHost == "127.0.0.1:11434" and
+            .clamavHost == "127.0.0.1" and .clamavPort == 3310 and
+            .maxUploadBytes > 0 and .maxOcrPages > 0 and
+            .maxOcrImagePixels > 0 and .maxOcrImageEdge > 0 and .pdfRasterMaxEdge > 0
+          ' deployment/oracle-celar/release.json >/dev/null
+
+      - name: Validate Pulse caller budget compatibility
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APP=src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+
+          # Slice each named AddHttpClient lambda at its own handler-chain marker.
+          # This prevents timeout values from later OCR/malware/training clients
+          # from satisfying the inference or embedding contract accidentally.
+          python3 - "$APP" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          text = Path(sys.argv[1]).read_text(encoding="utf-8")
+
+          def client_block(name: str) -> str:
+              marker = f'services.AddHttpClient("{name}", client =>'
+              start = text.find(marker)
+              if start < 0:
+                  raise SystemExit(f"Missing named HttpClient registration: {name}")
+              end_marker = '.ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());'
+              end = text.find(end_marker, start)
+              if end < 0:
+                  raise SystemExit(f"Missing private handler chain for: {name}")
+              block = text[start:end]
+              if 'services.AddHttpClient("' in block[len(marker):]:
+                  raise SystemExit(f"Named HttpClient slice escaped its registration: {name}")
+              return block
+
+          def timeout_minutes(name: str) -> int:
+              body = client_block(name)
+              matches = re.findall(
+                  r'client\.Timeout\s*=\s*TimeSpan\.FromMinutes\((\d+)\);',
+                  body,
+              )
+              if len(matches) != 1:
+                  raise SystemExit(f"Expected exactly one timeout in {name}, found {matches}")
+              return int(matches[0])
+
+          inference_minutes = timeout_minutes("PulseAiPrivateInference")
+          embedding_minutes = timeout_minutes("PulseAiPrivateEmbedding")
+          if inference_minutes != 5:
+              raise SystemExit(f"PulseAiPrivateInference timeout changed: {inference_minutes} minutes")
+          if embedding_minutes != 3:
+              raise SystemExit(f"PulseAiPrivateEmbedding timeout changed: {embedding_minutes} minutes")
+          if "RecoveryAttemptBudget = TimeSpan.FromSeconds(260);" not in text:
+              raise SystemExit("SOW recovery attempt budget changed or is missing")
+
+          print("PULSE_PRIVATE_INFERENCE_TIMEOUT_MINUTES=5")
+          print("PULSE_PRIVATE_EMBEDDING_TIMEOUT_MINUTES=3")
+          print("PULSE_SOW_RECOVERY_ATTEMPT_SECONDS=260")
+          PY
+
+          jq -e '
+            .chatTimeoutSeconds < 260 and
+            (.structuredModelAttemptSeconds | add) < 260 and
+            (.generalModelAttemptSeconds | add) < 300 and
+            .embeddingTimeoutSeconds < 180
+          ' deployment/oracle-celar/release.json >/dev/null
+          grep -Fq 'curl -fsS --max-time 180' deployment/oracle-celar/health-check.sh
+
+      - name: Validate gateway and local specialist policy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          GATEWAY=deployment/oracle-celar/gateway/gateway.py
+          WSGI=deployment/oracle-celar/gateway/wsgi.py
+          UNIT=deployment/oracle-celar/systemd/celar-ai-gateway.service
+          CADDY=deployment/oracle-celar/caddy/Caddyfile
+
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          tree = ast.parse(Path('deployment/oracle-celar/gateway/gateway.py').read_text())
+          routes = set()
+          for node in tree.body:
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                  for dec in node.decorator_list:
+                      if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute) and dec.func.attr in {'get','post'} and dec.args:
+                          arg = dec.args[0]
+                          if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                              routes.add((dec.func.attr.upper(), arg.value))
+          expected = {('GET','/health'),('POST','/v1/chat/completions'),('POST','/v1/embeddings'),('POST','/v1/extract'),('POST','/v1/scan')}
+          if routes != expected:
+              raise SystemExit(f'Unexpected gateway routes: {sorted(routes)}')
+          PY
+
+          ! grep -Fq '/train' "$GATEWAY"
+          grep -Fq 'hmac.compare_digest' "$GATEWAY"
+          grep -Fq 'private_pulse_runtime_only' "$GATEWAY"
+          grep -Fq 'STRUCTURED_ORDER' "$WSGI"
+          grep -Fq 'GENERAL_ORDER' "$WSGI"
+          grep -Fq 'STRUCTURED_ATTEMPT_SECONDS' "$WSGI"
+          grep -Fq 'GENERAL_ATTEMPT_SECONDS' "$WSGI"
+          grep -Fq 'deadline = time.monotonic() + gateway.CHAT_TIMEOUT_SECONDS' "$WSGI"
+          grep -Fq 'attempt_timeout = max(10, min(attempt_budgets[index], remaining))' "$WSGI"
+          grep -Fq 'if status < 500' "$WSGI"
+          grep -Fq 'X-Celar-Local-Model' "$WSGI"
+          grep -Fq 'fcntl.LOCK_EX | fcntl.LOCK_NB' "$WSGI"
+          grep -Fq 'MAX_OCR_IMAGE_PIXELS' "$WSGI"
+          grep -Fq 'PDF_RASTER_MAX_EDGE' "$WSGI"
+          grep -Fq '"-scale-to", str(PDF_RASTER_MAX_EDGE)' "$WSGI"
+          grep -Fq 'image.verify()' "$WSGI"
+
+          grep -Fq 'reverse_proxy 127.0.0.1:8787' "$CADDY"
+          grep -Fq 'disable_http_challenge' "$CADDY"
+          grep -Fq 'User=celar-ai' "$UNIT"
+          grep -Fq 'TemporaryFileSystem=/tmp:rw,nosuid,nodev,noexec,size=768M' "$UNIT"
+          grep -Fq 'LimitAS=1536M' "$UNIT"
+          grep -Fq 'LimitFSIZE=64M' "$UNIT"
+          grep -Fq 'MemoryMax=2G' "$UNIT"
+          grep -Fq 'NoNewPrivileges=true' "$UNIT"
+
+      - name: Reject secrets and unsafe exposure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if grep -RInE --exclude='README.md' --exclude='backup.env.example' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|ssh-ed25519 AAAA)' deployment/oracle-celar; then
+            echo 'Embedded private key material is prohibited.' >&2; exit 1
+          fi
+          if grep -RInE '(0\.0\.0\.0:11434|0\.0\.0\.0.*3310|TCPAddr[[:space:]]+0\.0\.0\.0|0\.0\.0\.0:8787)' deployment/oracle-celar; then
+            echo 'A private service would be publicly exposed.' >&2; exit 1
+          fi
+          DEPLOY=deployment/oracle-celar/deploy.sh
+          HEALTH=deployment/oracle-celar/health-check.sh
+          grep -Fq 'CELAR_REASONING_MODEL=$REASONING_MODEL' "$DEPLOY"
+          grep -Fq 'CELAR_FAST_GENERAL_MODEL=$FAST_GENERAL_MODEL' "$DEPLOY"
+          grep -Fq 'CELAR_STRUCTURED_MODEL_ATTEMPT_SECONDS=$STRUCTURED_MODEL_ATTEMPT_SECONDS' "$DEPLOY"
+          grep -Fq 'CELAR_GENERAL_MODEL_ATTEMPT_SECONDS=$GENERAL_MODEL_ATTEMPT_SECONDS' "$DEPLOY"
+          grep -Fq 'systemctl restart ollama.service' "$DEPLOY"
+          grep -Fq 'systemctl restart celar-ai-gateway.service' "$DEPLOY"
+          grep -Fq 'systemctl restart caddy.service' "$DEPLOY"
+          grep -Fq 'install -d -o root -g celar-ai -m 0710 /etc/celar-ai' "$DEPLOY"
+          grep -Fq 'install -d -o root -g celar-ai -m 0750 "$GATEWAY_CONFIG_DIR"' "$DEPLOY"
+          grep -Fq 'chmod 0640 "$RUNTIME_TOKEN_FILE"' "$DEPLOY"
+          if grep -Fq 'install -d -m 0700 /etc/celar-ai' "$DEPLOY"; then
+            echo 'Gateway config parent must remain traversable by celar-ai group.' >&2; exit 1
+          fi
+          grep -Fq -- '--config "$AUTH_CONFIG"' "$HEALTH"
+          if grep -Fq 'Authorization: Bearer $RUNTIME_TOKEN' "$HEALTH"; then
+            echo 'Runtime token must not appear in curl argv.' >&2; exit 1
+          fi
+
+      - name: Validate backup, rollback, locking, and acceptance invariants
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BACKUP=deployment/oracle-celar/backup.sh
+          RESTORE=deployment/oracle-celar/restore.sh
+          UPDATE=deployment/oracle-celar/ollama-update.sh
+          DEPLOY=deployment/oracle-celar/deploy.sh
+          HEALTH=deployment/oracle-celar/health-check.sh
+          grep -Fq 'fetch --no-tags --prune origin main' deployment/oracle-celar/gitops.sh
+          grep -Fq 'restic backup' "$BACKUP"
+          grep -Fq "BACKUP_TAG='celar-oracle'" "$RESTORE"
+          grep -Fq 'restic snapshots --tag "$BACKUP_TAG"' "$RESTORE"
+          grep -Fq 'restic restore "$SNAPSHOT" --tag "$BACKUP_TAG" --target "$TARGET"' "$RESTORE"
+          grep -Fq -- "--exclude='/var/lib/celar-ai/recovery'" "$BACKUP"
+          grep -Fq 'mapfile -t GENERATION_MODELS' "$UPDATE"
+          grep -Fq 'for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"' "$UPDATE"
+
+          # Engine rollback must archive the resolved executable bytes rather
+          # than a launcher symlink that the installer can later repoint.
+          grep -Fq 'OLLAMA_COMMAND="$(command -v ollama)"' "$UPDATE"
+          grep -Fq 'OLD_BINARY="$(readlink -f -- "$OLLAMA_COMMAND")"' "$UPDATE"
+          grep -Fq 'OLD_BINARY_MODE="$(stat -Lc' "$UPDATE"
+          grep -Fq 'cp --dereference --preserve=mode,timestamps -- "$OLD_BINARY" "$BACKUP_BINARY"' "$UPDATE"
+          grep -Fq '[[ -f "$BACKUP_BINARY" && ! -L "$BACKUP_BINARY" ]]' "$UPDATE"
+          grep -Fq 'install -m "$OLD_BINARY_MODE" "$BACKUP_BINARY" "$OLD_BINARY"' "$UPDATE"
+          grep -Fq 'ln -sfnT "$OLD_BINARY" "$OLLAMA_COMMAND"' "$UPDATE"
+          if grep -Fq 'OLD_BINARY="$(command -v ollama)"' "$UPDATE"; then
+            echo 'Ollama rollback must resolve the executable behind any launcher symlink.' >&2; exit 1
+          fi
+
+          grep -Fq '"$HEALTH_CHECK"' "$UPDATE"
+          grep -Fq 'CELAR_OLLAMA_UPDATE=PASS' "$UPDATE"
+
+          for file in "$DEPLOY" "$UPDATE"; do
+            grep -Fq "RUNTIME_MUTATION_LOCK='/run/celar-runtime-mutation.lock'" "$file"
+            grep -Fq 'flock -w "$LOCK_WAIT_SECONDS" 8' "$file"
+          done
+
+          grep -Fq 'PUBLIC_HTTPS_AUTH_BOUNDARY=PASS' "$HEALTH"
+          grep -Fq 'LOCAL_REASONING_ROUTE=PASS' "$HEALTH"
+          grep -Fq 'LOCAL_STRUCTURED_ROUTE=PASS' "$HEALTH"
+          grep -Fq 'LOCAL_FAST_FALLBACK_PRESENT=PASS' "$HEALTH"
+          grep -Fq 'EMBEDDING_GATEWAY=PASS' "$HEALTH"
+          grep -Fq 'MALWARE_GATEWAY=PASS' "$HEALTH"
+          grep -Fq 'OCR_GATEWAY=PASS' "$HEALTH"
+          git diff --check "${{ github.event.pull_request.base.sha || github.sha }}"..HEAD || git diff --check

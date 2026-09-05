@@ -1,0 +1,11 @@
+[Unit]
+Description=Celar AI pull-based GitOps reconciliation
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/celar-ai/deploy/gitops.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

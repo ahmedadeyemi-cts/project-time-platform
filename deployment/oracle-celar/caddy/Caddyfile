@@ -1,0 +1,38 @@
+{
+    # The OCI NSG and Oracle host firewall intentionally expose 443 only.
+    # Disable redirects and the HTTP-01 ACME challenge so automated certificate
+    # issuance/renewal uses the TLS-ALPN challenge on the governed 443 boundary.
+    auto_https disable_redirects
+}
+
+celarai.onenecklab.com {
+    tls {
+        issuer acme {
+            disable_http_challenge
+        }
+    }
+
+    encode zstd gzip
+
+    # The gateway permits a 32 MiB file plus multipart framing. Keep the public
+    # proxy only slightly larger so it does not reject an otherwise-valid upload
+    # before Flask applies the exact payload limit.
+    request_body {
+        max_size 36MB
+    }
+
+    reverse_proxy 127.0.0.1:8787 {
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 900s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        Cache-Control "no-store"
+        -Server
+    }
+}
