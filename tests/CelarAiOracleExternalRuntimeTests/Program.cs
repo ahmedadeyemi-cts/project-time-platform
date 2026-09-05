@@ -119,6 +119,21 @@ try
     Set(PulseAiExternalHttpsRuntimePolicy.AddressModeVariable, null);
     Set(PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable, "129.213.82.144");
 
+    var identityMethod = typeof(CelarAiPrivateGenerationTarget).GetMethod("RoutedModelIdentityMatches", BindingFlags.Static | BindingFlags.NonPublic)!;
+    bool ModelMatches(string expected, string reported, string? routed, bool oracle) =>
+        (bool)identityMethod.Invoke(null, [expected, reported, routed, oracle])!;
+    Require(ModelMatches("gemma3:4b", "gemma3:4b", null, false), "legacy exact model identity remains valid");
+    foreach (var specialist in new[] { "qwen3:4b-instruct", "llama3.2:3b" })
+    {
+        Require(ModelMatches("gemma3:4b", specialist, specialist, true), "approved Oracle specialist is verified");
+        Require(!ModelMatches("gemma3:4b", specialist, specialist, false), "other endpoints cannot use Oracle identity exceptions");
+        Require(!ModelMatches("gemma3:4b", specialist, null, true), "specialist identity requires gateway attestation");
+        Require(!ModelMatches("gemma3:4b", specialist, "different", true), "mismatched gateway attestation fails closed");
+    }
+    Require(!ModelMatches("gemma3:4b", "claude", "claude", true), "public providers cannot pass private readiness");
+    Require(!ModelMatches("gemma3:4b", "unapproved:latest", "unapproved:latest", true), "unreviewed models cannot pass private readiness");
+    Require(!ModelMatches("another-model", "qwen3:4b-instruct", "qwen3:4b-instruct", true), "Oracle exception cannot change another configured model contract");
+
     ValidateEmbeddingResponseVariants();
 
     Console.WriteLine("CELAR_AI_ORACLE_EXTERNAL_HTTPS_RUNTIME_BEHAVIOR=PASS");

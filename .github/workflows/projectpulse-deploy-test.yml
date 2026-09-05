@@ -260,7 +260,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Guard exact source, manual Test scope, and no-migration boundary
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905'))))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
         shell: bash
         env:
           DISPATCH_CONFIRMATION: ${{ inputs.recover_private_runtime }}
@@ -286,7 +286,7 @@ jobs:
           echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
 
       - name: Prove authenticated Oracle HTTPS services before Azure mutation
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905'))))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
         shell: bash
         env:
           RUNTIME_TOKEN: ${{ secrets.PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN }}
@@ -382,7 +382,7 @@ jobs:
           unset RUNTIME_TOKEN
 
       - name: Snapshot the protected Test API
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905'))))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
         id: recovery_snapshot
         shell: bash
         env:
@@ -417,7 +417,7 @@ jobs:
           echo "api_app=$API_APP" >> "$GITHUB_OUTPUT"
 
       - name: Preserve the currently deployed immutable API image
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905'))))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
         id: recovery_build
         shell: bash
         working-directory: release
@@ -428,7 +428,7 @@ jobs:
           echo "api_image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Configure the protected token and deploy the Test API revision
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905'))))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
         id: recovery_deploy_api
         shell: bash
         env:
@@ -488,94 +488,6 @@ jobs:
           REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.latestRevisionName -o tsv --only-show-errors)"
           bash scripts/wait-containerapp-ready-revision.sh "$RESOURCE_GROUP" "$API_APP" "$REVISION" '${{ steps.recovery_build.outputs.api_image }}' 60 10
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
-
-      - name: Prove Pulse-to-Oracle inference and runtime readiness
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905'))))
-        shell: bash
-        env:
-          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
-        working-directory: release
-        run: |
-          set -Eeuo pipefail
-          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
-          [[ "$BASE" == https://phd-west-test.onenecklab.com ]]
-          AUTH=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' -H 'Cache-Control: no-cache')
-          AVAILABLE=false
-          mkdir -p "$EVIDENCE_DIR"
-          for _attempt in $(seq 1 3); do
-            PROBE_HTTP="$(curl -sS --max-time 180 "${AUTH[@]}" -H 'X-ProjectPulse-Module-Number: 064' \
-              -H 'Content-Type: application/json' -d '{}' -o "$RUNNER_TEMP/oracle-admin-probe.json" -w '%{http_code}' \
-              "$BASE/api/ai-configuration/private-model/test" || true)"
-            jq --arg http "$PROBE_HTTP" '{httpStatus:$http, status:(.status // "unknown"), diagnosticCode:(.diagnosticCode // .code // "unknown"), configured:(.configured == true), available:(.available == true), model:(.model // null)}' \
-              "$RUNNER_TEMP/oracle-admin-probe.json" > "$EVIDENCE_DIR/module064-private-runtime-probe.json" 2>/dev/null || true
-            if [[ "$PROBE_HTTP" == 200 ]] && jq -e '.status == "private_model_available" and .configured == true and .available == true' "$RUNNER_TEMP/oracle-admin-probe.json" >/dev/null 2>&1; then AVAILABLE=true; break; fi
-            [[ "$PROBE_HTTP" != 401 && "$PROBE_HTTP" != 403 ]] || break
-            sleep 10
-          done
-          rm -f "$RUNNER_TEMP/oracle-admin-probe.json"
-          [[ "$AVAILABLE" == true ]] || { echo 'ERROR: Module 064 private runtime verification failed; see sanitized probe evidence.' >&2; exit 1; }
-          PIPELINE="$(curl -fsS --max-time 90 "${AUTH[@]}" -H 'X-ProjectPulse-Module-Number: 011' "$BASE/api/celar-ai/v1/documents/pipeline/readiness")"
-          jq -e '.readiness.malwareScanAttested == true and .readiness.malwareScannerMode == "celar_https_gateway" and .readiness.ocrEndpointConfigured == true and .readiness.privateEmbeddingEndpointConfigured == true and .readiness.privateVectorIndexConfigured == true' <<<"$PIPELINE" >/dev/null
-          RUNTIME="$(curl -fsS --max-time 90 "${AUTH[@]}" -H 'X-ProjectPulse-Module-Number: 011' "$BASE/api/celar-ai/v1/documents/runtime/readiness")"
-          jq -e '.readiness.clamAvConfigured == true and .readiness.malwareScannerEndpointPrivate == true and .readiness.ocrConfigured == true and .readiness.ocrEndpointPrivate == true and .readiness.embeddingConfigured == true and .readiness.embeddingEndpointPrivate == true' <<<"$RUNTIME" >/dev/null
-
-      - name: Publish sanitized deployment evidence
-        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905')))))
-        shell: bash
-        working-directory: release
-        run: |
-          set -Eeuo pipefail
-          mkdir -p evidence
-          jq -n --arg environment test --arg releaseCommit "$TARGET_RELEASE_COMMIT" --arg approvalReference "$APPROVAL_REFERENCE" --arg apiImage '${{ steps.recovery_build.outputs.api_image }}' --arg apiRevision '${{ steps.recovery_deploy_api.outputs.revision }}' \
-            '{environment:$environment,releaseCommit:$releaseCommit,approvalReference:$approvalReference,migrations:[],productionMutation:false,openCloudMutation:false,oracleInfrastructureMutation:false,apiImage:$apiImage,apiRevision:$apiRevision,secretMaterialRecorded:false}' \
-            > evidence/celar-ai-oracle-test-runtime.json
-
-      - name: Upload sanitized deployment evidence
-        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905')))))
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: celar-ai-oracle-test-runtime-${{ github.run_id }}-${{ github.run_attempt }}
-          path: release/evidence/celar-ai-oracle-test-runtime.json
-          retention-days: 30
-
-      - name: Rollback protected Test API configuration on failure
-        if: ${{ failure() && steps.recovery_deploy_api.outputs.started == 'true' }}
-        shell: bash
-        working-directory: release
-        run: |
-          set -Eeuo pipefail
-          RESOURCE_GROUP='${{ steps.recovery_snapshot.outputs.resource_group }}'
-          API_APP='${{ steps.recovery_snapshot.outputs.api_app }}'
-          TOUCHED=(
-            PROJECTPULSE_ENVIRONMENT PROJECTPULSE_SOURCE_COMMIT PROJECTPULSE_CELAR_AI_ENABLED PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED
-            PROJECTPULSE_CELAR_AI_TRAINING_ENABLED PROJECTPULSE_CELAR_AI_TRAINING_ENDPOINT PROJECTPULSE_CELAR_AI_TRAINING_HOST_ALLOWLIST PROJECTPULSE_CELAR_AI_TRAINING_BEARER_TOKEN
-            PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED PROJECTPULSE_PRIVATE_INFERENCE_REQUIRED_FOR_DOCUMENTS PROJECTPULSE_PULSE_AI_RAG_REQUIRE_PRIVATE_MODEL
-            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ADDRESS_MODE PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_EXPECTED_IP
-            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_APPROVAL_REFERENCE PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_READINESS_ENDPOINT
-            PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT PROJECTPULSE_PRIVATE_INFERENCE_MODEL PROJECTPULSE_PRIVATE_INFERENCE_AUTH_MODE PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN_SECRET_REFERENCE
-            PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT PROJECTPULSE_PRIVATE_EMBEDDING_MODEL PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN_SECRET_REFERENCE
-            PROJECTPULSE_PRIVATE_OCR_ENDPOINT PROJECTPULSE_PRIVATE_OCR_MODEL PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN_SECRET_REFERENCE
-            PROJECTPULSE_PRIVATE_MALWARE_SCAN_ENDPOINT PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN_SECRET_REFERENCE
-            PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST PROJECTPULSE_PRIVATE_VECTOR_INDEX PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE
-            PROJECTPULSE_PULSE_AI_CLAMAV_HOST PROJECTPULSE_PULSE_AI_CLAMAV_PORT PROJECTPULSE_PULSE_AI_CLAMAV_TIMEOUT_SECONDS
-            PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION
-            PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE PROJECTPULSE_PULSE_AI_DOCUMENT_EXTRACTION_PREVIEW_ENABLED
-          )
-          RESTORE=(); REMOVE=()
-          for name in "${TOUCHED[@]}"; do
-            row="$(jq -c --arg name "$name" '[.[] | select(.name == $name)] | if length == 1 then .[0] else empty end' "$RUNNER_TEMP/oracle-before-env.json")"
-            if [[ -z "$row" ]]; then REMOVE+=("$name"); continue; fi
-            secret="$(jq -r '.secretRef // empty' <<<"$row")"; value="$(jq -r '.value // empty' <<<"$row")"
-            if [[ -n "$secret" ]]; then RESTORE+=("$name=secretref:$secret"); else RESTORE+=("$name=$value"); fi
-          done
-          OLD_IMAGE="$(cat "$RUNNER_TEMP/oracle-before-image")"
-          UPDATE=(-g "$RESOURCE_GROUP" -n "$API_APP" --image "$OLD_IMAGE" --revision-suffix "caorrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors)
-          (( ${#RESTORE[@]} > 0 )) && UPDATE+=(--set-env-vars "${RESTORE[@]}")
-          (( ${#REMOVE[@]} > 0 )) && UPDATE+=(--remove-env-vars "${REMOVE[@]}")
-          az containerapp update "${UPDATE[@]}"
-          RESTORED_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.latestRevisionName -o tsv --only-show-errors)"
-          bash scripts/wait-containerapp-ready-revision.sh "$RESOURCE_GROUP" "$API_APP" "$RESTORED_REVISION" "$OLD_IMAGE" 60 10
-          az containerapp secret remove -g "$RESOURCE_GROUP" -n "$API_APP" --secret-names "$TOKEN_SECRET_NAME" --output none --only-show-errors || true
 
       - name: Snapshot protected Test and preserve rollback contract
         id: contract
@@ -903,6 +815,56 @@ jobs:
           ' <<<"$AFTER_JSON" > "$EVIDENCE_DIR/runtime-contract-after.json"
           diff -u "$EVIDENCE_DIR/runtime-contract-before.json" "$EVIDENCE_DIR/runtime-contract-after.json"
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Prove Pulse-to-Oracle inference and runtime readiness
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
+        id: recovery_verify
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]]
+          AUTH=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' -H 'Cache-Control: no-cache')
+          AVAILABLE=false
+          mkdir -p "$EVIDENCE_DIR"
+          for _attempt in $(seq 1 3); do
+            PROBE_HTTP="$(curl -sS --max-time 180 "${AUTH[@]}" -H 'X-ProjectPulse-Module-Number: 064' \
+              -H 'Content-Type: application/json' -d '{}' -o "$RUNNER_TEMP/oracle-admin-probe.json" -w '%{http_code}' \
+              "$BASE/api/ai-configuration/private-model/test" || true)"
+            jq --arg http "$PROBE_HTTP" '{httpStatus:$http, status:(.status // "unknown"), diagnosticCode:(.diagnosticCode // .code // "unknown"), configured:(.configured == true), available:(.available == true), model:(.model // null)}' \
+              "$RUNNER_TEMP/oracle-admin-probe.json" > "$EVIDENCE_DIR/module064-private-runtime-probe.json" 2>/dev/null || true
+            if [[ "$PROBE_HTTP" == 200 ]] && jq -e '.status == "private_model_available" and .configured == true and .available == true' "$RUNNER_TEMP/oracle-admin-probe.json" >/dev/null 2>&1; then AVAILABLE=true; break; fi
+            [[ "$PROBE_HTTP" != 401 && "$PROBE_HTTP" != 403 ]] || break
+            sleep 10
+          done
+          rm -f "$RUNNER_TEMP/oracle-admin-probe.json"
+          [[ "$AVAILABLE" == true ]] || { echo 'ERROR: Module 064 private runtime verification failed; see sanitized probe evidence.' >&2; exit 1; }
+          PIPELINE="$(curl -fsS --max-time 90 "${AUTH[@]}" -H 'X-ProjectPulse-Module-Number: 011' "$BASE/api/celar-ai/v1/documents/pipeline/readiness")"
+          jq -e '.readiness.malwareScanAttested == true and .readiness.malwareScannerMode == "celar_https_gateway" and .readiness.ocrEndpointConfigured == true and .readiness.privateEmbeddingEndpointConfigured == true and .readiness.privateVectorIndexConfigured == true' <<<"$PIPELINE" >/dev/null
+          RUNTIME="$(curl -fsS --max-time 90 "${AUTH[@]}" -H 'X-ProjectPulse-Module-Number: 011' "$BASE/api/celar-ai/v1/documents/runtime/readiness")"
+          jq -e '.readiness.clamAvConfigured == true and .readiness.malwareScannerEndpointPrivate == true and .readiness.ocrConfigured == true and .readiness.ocrEndpointPrivate == true and .readiness.embeddingConfigured == true and .readiness.embeddingEndpointPrivate == true' <<<"$RUNTIME" >/dev/null
+
+      - name: Publish sanitized deployment evidence
+        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905'))))))
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          jq -n --slurpfile migrationEvidence "$EVIDENCE_DIR/migrations.json" --arg environment test --arg releaseCommit "$TARGET_RELEASE_COMMIT" --arg approvalReference "$APPROVAL_REFERENCE" --arg apiImage '${{ steps.build.outputs.api_image }}' --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
+            '{environment:$environment,releaseCommit:$releaseCommit,approvalReference:$approvalReference,migrations:$migrationEvidence[0].migrations,productionMutation:false,openCloudMutation:false,oracleInfrastructureMutation:false,apiImage:$apiImage,apiRevision:$apiRevision,secretMaterialRecorded:false}' \
+            > evidence/celar-ai-oracle-test-runtime.json
+
+      - name: Upload sanitized deployment evidence
+        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905'))))))
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: celar-ai-oracle-test-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/evidence/celar-ai-oracle-test-runtime.json
+          retention-days: 30
 
       - name: Deploy immutable Test web image
         id: deploy_web
@@ -1688,6 +1650,45 @@ jobs:
           WEB_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
           bash scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$WEB_REVISION" '${{ steps.contract.outputs.old_web_image }}' 60 10
           jq -n --arg apiImage '${{ steps.contract.outputs.old_api_image }}' --arg webImage '${{ steps.contract.outputs.old_web_image }}' --arg source '${{ steps.contract.outputs.old_source }}' '{rollbackCompleted:true,apiImage:$apiImage,webImage:$webImage,sourceCommit:$source,migrationsRemainApplied:true,productionMutation:false}' > "$EVIDENCE_DIR/rollback.json"
+
+      - name: Rollback protected Test API configuration on failure
+        if: ${{ failure() && steps.recovery_deploy_api.outputs.started == 'true' && (steps.recovery_verify.outcome != 'success' || steps.uat.outputs.deployment_health_verified != 'true') }}
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          RESOURCE_GROUP='${{ steps.recovery_snapshot.outputs.resource_group }}'
+          API_APP='${{ steps.recovery_snapshot.outputs.api_app }}'
+          TOUCHED=(
+            PROJECTPULSE_ENVIRONMENT PROJECTPULSE_SOURCE_COMMIT PROJECTPULSE_CELAR_AI_ENABLED PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED
+            PROJECTPULSE_CELAR_AI_TRAINING_ENABLED PROJECTPULSE_CELAR_AI_TRAINING_ENDPOINT PROJECTPULSE_CELAR_AI_TRAINING_HOST_ALLOWLIST PROJECTPULSE_CELAR_AI_TRAINING_BEARER_TOKEN
+            PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED PROJECTPULSE_PRIVATE_INFERENCE_REQUIRED_FOR_DOCUMENTS PROJECTPULSE_PULSE_AI_RAG_REQUIRE_PRIVATE_MODEL
+            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ADDRESS_MODE PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_EXPECTED_IP
+            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_APPROVAL_REFERENCE PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_READINESS_ENDPOINT
+            PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT PROJECTPULSE_PRIVATE_INFERENCE_MODEL PROJECTPULSE_PRIVATE_INFERENCE_AUTH_MODE PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN_SECRET_REFERENCE
+            PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT PROJECTPULSE_PRIVATE_EMBEDDING_MODEL PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN_SECRET_REFERENCE
+            PROJECTPULSE_PRIVATE_OCR_ENDPOINT PROJECTPULSE_PRIVATE_OCR_MODEL PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN_SECRET_REFERENCE
+            PROJECTPULSE_PRIVATE_MALWARE_SCAN_ENDPOINT PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN_SECRET_REFERENCE
+            PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST PROJECTPULSE_PRIVATE_VECTOR_INDEX PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE
+            PROJECTPULSE_PULSE_AI_CLAMAV_HOST PROJECTPULSE_PULSE_AI_CLAMAV_PORT PROJECTPULSE_PULSE_AI_CLAMAV_TIMEOUT_SECONDS
+            PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION
+            PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE PROJECTPULSE_PULSE_AI_DOCUMENT_EXTRACTION_PREVIEW_ENABLED
+          )
+          RESTORE=(); REMOVE=()
+          for name in "${TOUCHED[@]}"; do
+            row="$(jq -c --arg name "$name" '[.[] | select(.name == $name)] | if length == 1 then .[0] else empty end' "$RUNNER_TEMP/oracle-before-env.json")"
+            if [[ -z "$row" ]]; then REMOVE+=("$name"); continue; fi
+            secret="$(jq -r '.secretRef // empty' <<<"$row")"; value="$(jq -r '.value // empty' <<<"$row")"
+            if [[ -n "$secret" ]]; then RESTORE+=("$name=secretref:$secret"); else RESTORE+=("$name=$value"); fi
+          done
+          OLD_IMAGE="$(cat "$RUNNER_TEMP/oracle-before-image")"
+          UPDATE=(-g "$RESOURCE_GROUP" -n "$API_APP" --image "$OLD_IMAGE" --revision-suffix "caorrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors)
+          (( ${#RESTORE[@]} > 0 )) && UPDATE+=(--set-env-vars "${RESTORE[@]}")
+          (( ${#REMOVE[@]} > 0 )) && UPDATE+=(--remove-env-vars "${REMOVE[@]}")
+          az containerapp update "${UPDATE[@]}"
+          RESTORED_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash scripts/wait-containerapp-ready-revision.sh "$RESOURCE_GROUP" "$API_APP" "$RESTORED_REVISION" "$OLD_IMAGE" 60 10
+          az containerapp secret remove -g "$RESOURCE_GROUP" -n "$API_APP" --secret-names "$TOKEN_SECRET_NAME" --output none --only-show-errors || true
 
       - name: Upload protected-Test deployment evidence
         if: always()

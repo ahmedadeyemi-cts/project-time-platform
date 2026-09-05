@@ -110,7 +110,7 @@ jobs:
           MODULE025_UAT='scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
           MODULE001B_REVISION_WAIT='scripts/wait-containerapp-ready-revision.sh'
           MODULE001B_FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
-          DOCUMENT_AUTHORITY_MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+          MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
           SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
@@ -333,7 +333,7 @@ jobs:
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
-          if [[ "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
+          if [[ "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/module064-public-geography-fallback-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
@@ -435,7 +435,7 @@ jobs:
           MODULE025_UAT='scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
           MODULE001B_REVISION_WAIT='scripts/wait-containerapp-ready-revision.sh'
           MODULE001B_FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
-          DOCUMENT_AUTHORITY_MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+          MIGRATION_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
           SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
@@ -452,9 +452,9 @@ jobs:
           test -f "$MODULE025_UAT" || fail 'The Module 025 SOW/GSD UAT script is missing.'
           test -f "$MODULE001B_REVISION_WAIT" || fail 'The Module 001B revision readiness helper is missing.'
           test -f "$MODULE001B_FIXTURE" || fail 'The Module 001B disposable protected-Test fixture module is missing.'
-          test -f "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER" || fail 'The governed document-authority migration builder is missing.'
+          test -f "$MIGRATION_BUILDER" || fail 'The governed document-authority migration builder is missing.'
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          bash -n "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          bash -n "$MIGRATION_BUILDER"
           bash -n "$UTILIZATION_UAT"
           bash -n "$ASSIGNED_WORK_UAT"
           bash -n "$MODULE025_UAT"
@@ -495,18 +495,18 @@ jobs:
           grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           grep -Fq 'MIGRATION_096=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           grep -Fq 'MIGRATION_097=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          grep -Fq '096_project_planning_document_authority.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq '097_project_planning_identity_safe_admission.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq '098_module_management_owner_storage_reconciliation.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq '098_customer_directory_source_authority.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq '099_module025_sow_gsd_workspace.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq '100_module001b_catalog_ownership_reconciliation.sql' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq 'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq 'migration-099.json' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
-          grep -Fq 'migration-100.json' "$DOCUMENT_AUTHORITY_MIGRATION_BUILDER"
+          grep -Fq '096_project_planning_document_authority.sql' "$MIGRATION_BUILDER"
+          grep -Fq '097_project_planning_identity_safe_admission.sql' "$MIGRATION_BUILDER"
+          grep -Fq '098_module_management_owner_storage_reconciliation.sql' "$MIGRATION_BUILDER"
+          grep -Fq '098_customer_directory_source_authority.sql' "$MIGRATION_BUILDER"
+          grep -Fq '099_module025_sow_gsd_workspace.sql' "$MIGRATION_BUILDER"
+          grep -Fq '100_module001b_catalog_ownership_reconciliation.sql' "$MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED' "$MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED' "$MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED' "$MIGRATION_BUILDER"
+          grep -Fq 'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED' "$MIGRATION_BUILDER"
+          grep -Fq 'migration-099.json' "$MIGRATION_BUILDER"
+          grep -Fq 'migration-100.json' "$MIGRATION_BUILDER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs' "$CONTROLLER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' "$CONTROLLER"
           grep -Fq 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' "$CONTROLLER"
