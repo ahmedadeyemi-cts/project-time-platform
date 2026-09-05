@@ -461,12 +461,7 @@ public static class PulseAiSystemKnowledgeCatalog
         // such as "US President" are not mistaken for an internal record code.
         if (LooksLikeClearlyPublicOfficeholderQuestion(normalized)) return true;
 
-        // Match the complete public geography question before the proper-name
-        // guard treats US/USA as an internal record identifier. Do not admit
-        // arbitrary count questions or trailing internal context to this route.
-        if (Regex.IsMatch(normalized,
-            @"^how\s+many\s+states\s+(?:are\s+(?:there\s+)?in\s+(?:the\s+)?(?:u\.?s\.?(?:a\.?)?|united\s+states(?:\s+of\s+america)?)|does\s+(?:the\s+)?(?:u\.?s\.?(?:a\.?)?|united\s+states(?:\s+of\s+america)?)\s+have)\s*[?.!]*$",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return true;
+        if (IsUnitedStatesStateCountQuestion(question)) return true;
 
         if (CelarAiPublicEntityRegistry.IsGovernedPublicQuestion(question)) return true;
 
@@ -477,6 +472,12 @@ public static class PulseAiSystemKnowledgeCatalog
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
             && !LooksLikeInternalRecordQuestion(normalized);
     }
+
+    public static bool IsUnitedStatesStateCountQuestion(string? question) =>
+        Regex.IsMatch(Normalize(question),
+            @"^how\s+many\s+states\s+(?:are\s+(?:there\s+)?in\s+(?:the\s+)?(?:u\.?s\.?(?:a\.?)?|united\s+states(?:\s+of\s+america)?)|does\s+(?:the\s+)?(?:u\.?s\.?(?:a\.?)?|united\s+states(?:\s+of\s+america)?)\s+have)\s*[?.!]*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(200));
 
     private static bool LooksLikeClearlyPublicOfficeholderQuestion(string normalized) =>
         CelarAiPublicEntityRegistry.IsGovernedPublicQuestion(normalized)

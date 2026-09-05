@@ -101,6 +101,22 @@ if (plannerLocalEvidenceMode) {
     'tests/validate-celar-ai-pr630-consolidated.mjs'
   ], 'Governed local evidence repair must retain its exact two-file scope');
 }
+const module064DeepSeekAnswerMode = branchName === 'fix/module064-deepseek-chat-answer-20260905';
+if (module064DeepSeekAnswerMode) {
+  const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
+  const actual = String(originalExecFileSync('git', ['diff', '--name-only', base, 'HEAD'], { encoding: 'utf8' })).trim().split('\n').filter(Boolean).sort();
+  assert.deepEqual(actual, [
+    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+    '.github/workflows/projectpulse-release-test-control-ci.yml',
+    'src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs',
+    'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs',
+    'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs',
+    'tests/CelarAiAuthoritativePublicFactTests/Program.cs',
+    'tests/validate-celar-ai-pr630-consolidated.mjs'
+  ], 'DeepSeek chat answer repair must retain its exact seven-file scope');
+}
+const intelligenceSource = require('node:fs').readFileSync('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs', 'utf8');
+assert.equal((intelligenceSource.match(/CelarAiCapabilityTargets\.IsPrivate\(routed\.Provider\)/g) || []).length, 2, 'Both private RAG adoption and chat answer promotion must recognize DeepSeek');
 const module064PublicGeographyMode = branchName === 'fix/module064-public-geography-fallback-20260905';
 if (module064PublicGeographyMode) {
   const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
@@ -115,7 +131,7 @@ if (module064PublicGeographyMode) {
 }
 const module064SystemwideFailoverMode = branchName === 'fix/module064-systemwide-failover-20260905';
 if (module064SystemwideFailoverMode) await import('./validate-module064-systemwide-failover-scope.mjs');
-const scopedCompatibilityMode = module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const scopedCompatibilityMode = module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

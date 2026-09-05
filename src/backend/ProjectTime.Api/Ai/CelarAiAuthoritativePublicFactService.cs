@@ -19,6 +19,8 @@ public sealed class CelarAiAuthoritativePublicFactService
     public const string ClientName = "CelarAiAuthoritativePublicFacts";
     public const int MaximumResponseBytes = 1_000_000;
 
+    private static readonly Uri CensusStateCodes =
+        new("https://www2.census.gov/geo/docs/reference/state.txt", UriKind.Absolute);
     private static readonly Uri WhiteHouseAdministration =
         new("https://www.whitehouse.gov/administration/", UriKind.Absolute);
     private static readonly Uri JordanGoverningSystem =
@@ -34,6 +36,7 @@ public sealed class CelarAiAuthoritativePublicFactService
 
     private static readonly HashSet<string> ApprovedHosts = new(StringComparer.OrdinalIgnoreCase)
     {
+        "www2.census.gov",
         "www.whitehouse.gov",
         "whitehouse.gov",
         "rhc.jo",
@@ -97,7 +100,9 @@ public sealed class CelarAiAuthoritativePublicFactService
         var recognizedCurrentPublicProfile =
             IsUnitedStatesPresidentQuestion(normalized)
             || IsJordanPresidentQuestion(normalized)
-            || IsUsSignalChiefExecutiveQuestion(normalized);
+            || IsUsSignalChiefExecutiveQuestion(normalized)
+            || (plan.QuestionClass == CelarAiAnswerQuestionClass.PublicStable
+                && PulseAiSystemKnowledgeCatalog.IsUnitedStatesStateCountQuestion(question));
         if (plan.QuestionClass != CelarAiAnswerQuestionClass.PublicCurrent
             && !recognizedCurrentPublicProfile)
             return result;
@@ -105,6 +110,9 @@ public sealed class CelarAiAuthoritativePublicFactService
 
         try
         {
+            if (plan.QuestionClass == CelarAiAnswerQuestionClass.PublicStable
+                && PulseAiSystemKnowledgeCatalog.IsUnitedStatesStateCountQuestion(question))
+                return await VerifyUnitedStatesStateCountAsync(result, cancellationToken);
             if (IsUnitedStatesPresidentQuestion(normalized))
                 return await VerifyUnitedStatesPresidentAsync(result, cancellationToken);
             if (IsJordanPresidentQuestion(normalized))
@@ -126,6 +134,45 @@ public sealed class CelarAiAuthoritativePublicFactService
                 Diagnostic(exception));
             return FailClosed(result, Diagnostic(exception));
         }
+    }
+
+    private async Task<PulseAiSystemQuestionResult> VerifyUnitedStatesStateCountAsync(
+        PulseAiSystemQuestionResult result,
+        CancellationToken cancellationToken)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        var page = await RetrieveAsync(CensusStateCodes, "census_state_codes",
+            "U.S. Census Bureau — State FIPS codes", deadline.Token);
+        if (!page.Succeeded) return FailClosed(result, page.DiagnosticCode);
+        if (!page.Text.StartsWith("STATE|STUSAB|STATE_NAME|STATENS", StringComparison.Ordinal))
+            return FailClosed(result, "official_state_catalog_header_invalid");
+        var codes = Regex.Matches(page.Text, @"\b(?<code>\d{2})\|[A-Z]{2}\|[^|]+\|\d{8}\b",
+                RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200))
+            .Select(match => int.Parse(match.Groups["code"].Value, System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+        // Validate completeness before counting: a truncated table must not
+        // silently turn into a smaller state count. DC and territories are
+        // explicitly excluded using the Census state FIPS classification.
+        int[] expectedCodes = [1,2,4,5,6,8,9,10,11,12,13,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,44,45,46,47,48,49,50,51,53,54,55,56,60,66,69,72,74,78];
+        if (!codes.OrderBy(code => code).SequenceEqual(expectedCodes))
+            return FailClosed(result, "official_state_catalog_incomplete_or_changed");
+        var count = codes.Count(code => code < 60 && code != 11);
+        var basis = $"COUNT of distinct Census STATE codes below 60, excluding 11 (District of Columbia): {count}. Territories are excluded. [1]";
+        var verified = Verified(result, $"The United States has {count} states. [1]", [page]);
+        return verified with
+        {
+            ToolResults = [new PulseAiSystemToolResult(
+                ToolCode: "governed_public_information", ToolName: "Census state count",
+                ModuleCode: "011", ModuleName: "Celar AI", Method: "GET",
+                Path: CensusStateCodes.ToString(), Status: "succeeded", StatusCode: 200,
+                DurationMs: (decimal)elapsed.Elapsed.TotalMilliseconds,
+                ResponseBytes: Encoding.UTF8.GetByteCount(page.Text),
+                DiagnosticCode: "official_state_catalog_counted", ResponseJson: "",
+                EvidenceSummary: [basis], ObservedAt: page.ObservedAt)],
+            Answer = verified.Answer with { DetailedAnalysis = [basis] }
+        };
     }
 
     private async Task<PulseAiSystemQuestionResult> VerifyUnitedStatesPresidentAsync(
