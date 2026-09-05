@@ -187,6 +187,10 @@ jobs:
             node tests/validate-planner-fallback-build-release-scope.mjs
             echo 'deployment/containers/api/Dockerfile' >> "$RUNNER_TEMP/allowed-release-files"
             echo 'tests/validate-planner-fallback-build-release-scope.mjs' >> "$RUNNER_TEMP/allowed-release-files"
+          elif [[ "$HEAD_BRANCH" == 'fix/module084-route-isolation-20260905' ]]; then
+            echo '.github/workflows/celar-ai-oracle-maintenance-window-ci.yml' >> "$RUNNER_TEMP/allowed-release-files"
+            echo 'src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs' >> "$RUNNER_TEMP/allowed-release-files"
+            echo 'src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs' >> "$RUNNER_TEMP/allowed-release-files"
           fi
           LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
 
@@ -333,7 +337,7 @@ jobs:
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
-          if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
+          if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' || "$HEAD_BRANCH" == 'fix/module084-route-isolation-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
             echo 'EXACT_CELAR_RUNTIME_VERSION_CENTER_SCOPE=PASSED'
