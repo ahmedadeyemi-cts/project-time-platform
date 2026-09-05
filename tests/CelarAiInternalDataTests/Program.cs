@@ -154,6 +154,32 @@ Require(
 Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("What is the capital of France?"),
     "clearly public capital question is external eligible");
+foreach (var publicGeographyQuestion in new[]
+{
+    "How many states are there in the US?",
+    "How many states are in the USA?",
+    "How many states are there in the U.S.?",
+    "How many states are there in the United States of America?",
+    "How many states does the United States have?",
+    "how many states does the US have"
+})
+{
+    Require(PulseAiSystemKnowledgeCatalog.Analyze(publicGeographyQuestion).IntentCode == "general_knowledge",
+        "complete public geography question permits the isolated public fallback: " + publicGeographyQuestion);
+}
+foreach (var internalCountQuestion in new[]
+{
+    "How many states are there in our project?",
+    "How many states are there in the US for our customer?",
+    "How many states are there in the US? Include project P-D details.",
+    "How many states are there in the US?\n\nExplicit current-question context:\n- Person or team: Kevin Damisch",
+    "How many states does ACME have?",
+    "How many states are there?"
+})
+{
+    Require(PulseAiSystemKnowledgeCatalog.Analyze(internalCountQuestion).IntentCode != "general_knowledge",
+        "internal or ambiguous counts remain inside the authorized boundary: " + internalCountQuestion);
+}
 Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the US President?"),
     "public US officeholder question is external eligible");

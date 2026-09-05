@@ -101,9 +101,21 @@ if (plannerLocalEvidenceMode) {
     'tests/validate-celar-ai-pr630-consolidated.mjs'
   ], 'Governed local evidence repair must retain its exact two-file scope');
 }
+const module064PublicGeographyMode = branchName === 'fix/module064-public-geography-fallback-20260905';
+if (module064PublicGeographyMode) {
+  const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
+  const actual = String(originalExecFileSync('git', ['diff', '--name-only', base, 'HEAD'], { encoding: 'utf8' })).trim().split('\n').filter(Boolean).sort();
+  assert.deepEqual(actual, [
+    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+    '.github/workflows/projectpulse-release-test-control-ci.yml',
+    'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs',
+    'tests/CelarAiInternalDataTests/Program.cs',
+    'tests/validate-celar-ai-pr630-consolidated.mjs'
+  ], 'Public geography routing repair must retain its exact five-file scope');
+}
 const module064SystemwideFailoverMode = branchName === 'fix/module064-systemwide-failover-20260905';
 if (module064SystemwideFailoverMode) await import('./validate-module064-systemwide-failover-scope.mjs');
-const scopedCompatibilityMode = module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const scopedCompatibilityMode = module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode
