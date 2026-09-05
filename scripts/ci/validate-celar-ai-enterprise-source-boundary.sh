@@ -26,7 +26,7 @@ if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
 fi
 
 if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
-  ALLOWED_DATABASE='^database/migrations/089_module_catalog_role_administration_reconciliation\.sql$'
+  ALLOWED_DATABASE='a^'
   publish_mode CELAR_RUNTIME_VERSION_CENTER
 elif [[ "$HEAD_BRANCH" == 'fix/module025-protected-uat-generation-verification-detailed-plan-parser-20260903' ]]; then
   ALLOWED_DATABASE='^(database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'

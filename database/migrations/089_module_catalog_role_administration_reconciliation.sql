@@ -147,7 +147,6 @@ VALUES
     ('081', 'Lab Equipment Tracker', 'lab-equipment-tracker', 'Platform Operations'),
     ('082', 'Enterprise Project Risk Register', 'project-risk-register', 'Project Delivery'),
     ('083', 'Full Future Loop', 'full-future-loop', 'Platform Operations'),
-    ('084', 'Celar AI Runtime & Version Center', 'celar-ai-runtime-version', 'Platform Operations'),
     ('997', 'Security Operations, Threat Intelligence & Response Center', 'security-operations', 'Security & Audit'),
     ('998', 'System Diagnostic & Controlled Remediation Center', 'system-diagnostics', 'Platform Operations'),
     ('999', 'System User Guide', 'user-guide', 'Help & Documentation');

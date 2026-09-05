@@ -686,7 +686,6 @@ import CustomerDeliveryAcceptanceCenter from './CustomerDeliveryAcceptanceCenter
 import LabEquipmentTrackerCenter from './LabEquipmentTrackerCenter.jsx';
 import ProjectRiskRegisterCenter from './ProjectRiskRegisterCenter.jsx';
 import FullFutureLoopCenter from './FullFutureLoopCenter.jsx';
-import CelarAiRuntimeVersionCenter from './CelarAiRuntimeVersionCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
@@ -2399,17 +2398,6 @@ const roleWorkspaceModules = sortProjectPulseModules([
     roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'SYSTEM_ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'MANAGER', 'RELEASE_MANAGER', 'ENGINEERING_MANAGER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'ENGINEER', 'ENGINEERING', 'SOLUTION_ARCHITECT', 'SUPPORT', 'HELP_DESK', 'SERVICE_DESK', 'EXECUTIVE', 'EXECUTIVE_LEADERSHIP']
   },
   /* MODULE_083_FULL_FUTURE_LOOP_NAV_END */
-  /* MODULE_084_CELAR_RUNTIME_VERSION_NAV_START */
-  {
-    route: 'celar-ai-runtime-version',
-    href: '#celar-ai-runtime-version',
-    title: 'Celar AI Runtime & Version Center',
-    navLabel: 'MODULE 084',
-    description: 'View private Oracle Celar engine and model versions, update evidence, rollback readiness, and the governed automatic maintenance window.',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'SYSTEM_ADMINISTRATOR']
-  },
-  /* MODULE_084_CELAR_RUNTIME_VERSION_NAV_END */
   /* MODULES_075_080_RUNTIME_NAV_END */
   /* MODULES_064_074_RELEASE_TRAIN_NAV_END */
   /* MODULE_998_SYSTEM_DIAGNOSTICS_NAV_START */
@@ -2712,7 +2700,6 @@ function getNavigationGroup(item) {
     case 'integration-event-gateway':
     case 'release-deployment-control':
     case 'full-future-loop':
-    case 'celar-ai-runtime-version':
     case 'observability-slo-health':
       return 'Platform Operations';
 
@@ -3664,17 +3651,6 @@ function getInstalledProjectPulseModuleRegistry() {
     description: 'Provides a governed roadmap-to-delivery sandbox covering selective governance, private development, canary verification, curated promotion, production evidence, support, repair, re-promotion, and final verification.'
   },
   /* MODULE_083_FULL_FUTURE_LOOP_INSTALLED_REGISTRY_END */
-  /* MODULE_084_CELAR_RUNTIME_VERSION_INSTALLED_REGISTRY_START */
-  {
-    route: 'celar-ai-runtime-version',
-    title: 'Celar AI Runtime & Version Center',
-    navLabel: 'MODULE 084',
-    status: 'Protected Test runtime administration',
-    group: 'Platform Operations',
-    permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-    description: 'Administrator-only visibility and governed scheduling for the private Oracle Celar runtime without changing Module 064 provider order.'
-  },
-  /* MODULE_084_CELAR_RUNTIME_VERSION_INSTALLED_REGISTRY_END */
   /* MODULES_075_080_RUNTIME_REGISTRY_END */
   /* MODULES_064_074_RELEASE_TRAIN_INSTALLED_REGISTRY_END */
   /* MODULE_998_SYSTEM_DIAGNOSTICS_INSTALLED_REGISTRY_START */
@@ -7674,13 +7650,6 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
       {/* MODULE_083_FULL_FUTURE_LOOP_ROUTE_END */}
-      {/* MODULE_084_CELAR_RUNTIME_VERSION_ROUTE_START */}
-      {(activeRoute === 'celar-ai-runtime-version' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
-        <section id="celar-ai-runtime-version" className="panel celar-ai-runtime-version-route-panel">
-          <CelarAiRuntimeVersionCenter />
-        </section>
-      ) : null}
-      {/* MODULE_084_CELAR_RUNTIME_VERSION_ROUTE_END */}
       {/* MODULES_075_080_RUNTIME_ROUTES_END */}
 
 
@@ -7820,7 +7789,6 @@ Analytics - Variphy / Infortel`}
         'lab-equipment-tracker',
         'project-risk-register',
         'full-future-loop',
-        'celar-ai-runtime-version',
         'security-operations',
         'calendar-capacity',
         'cicd-pipeline',

@@ -37791,9 +37791,6 @@ app.MapDataGovernanceRetentionEndpoints();
 app.MapCustomerDeliveryAcceptanceEndpoints();
 /* MODULES_075_080_RUNTIME_ENDPOINT_MAP_END */
 
-/* MODULE_084_CELAR_RUNTIME_VERSION_ENDPOINT_MAP_START */
-app.MapCelarAiRuntimeVersionEndpoints();
-/* MODULE_084_CELAR_RUNTIME_VERSION_ENDPOINT_MAP_END */
 /* MODULE_998_SYSTEM_DIAGNOSTIC_ENDPOINT_MAP_START */
 app.MapSystemDiagnosticRemediationEndpoints();
 /* MODULE_998_SYSTEM_DIAGNOSTIC_ENDPOINT_MAP_END */
