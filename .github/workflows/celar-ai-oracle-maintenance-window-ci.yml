@@ -5,24 +5,26 @@ on:
     paths:
       - 'deployment/oracle-celar/**'
       - 'docs/modules/module-084-celar-ai-runtime-version/**'
+      - 'src/backend/ProjectTime.Api/Directory.Build.props'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs'
-      - 'src/backend/ProjectTime.Api/Program.cs'
-      - 'src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs'
       - 'src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx'
       - 'src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs'
+      - 'src/frontend/project-time-web/scripts/backup-celar-ai-production-sources.mjs'
+      - 'src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs'
       - '.github/workflows/celar-ai-oracle-maintenance-window-ci.yml'
   push:
     branches: [main]
     paths:
       - 'deployment/oracle-celar/**'
       - 'docs/modules/module-084-celar-ai-runtime-version/**'
+      - 'src/backend/ProjectTime.Api/Directory.Build.props'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs'
-      - 'src/backend/ProjectTime.Api/Program.cs'
-      - 'src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs'
       - 'src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx'
       - 'src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs'
+      - 'src/frontend/project-time-web/scripts/backup-celar-ai-production-sources.mjs'
+      - 'src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs'
       - '.github/workflows/celar-ai-oracle-maintenance-window-ci.yml'
 
 permissions:
@@ -30,10 +32,25 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Validate Central-Time maintenance contract
         shell: bash
@@ -109,7 +126,6 @@ jobs:
 
           python3 -m py_compile "$GATEWAY"
           bash -n "$DEPLOY" "$UPDATER" "$RECONCILE"
-
           node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
           node src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs
 
@@ -117,3 +133,20 @@ jobs:
           echo 'CELAR_ORACLE_MAINTENANCE_CONTROL_PLANE=PASS'
           echo 'CELAR_MODULE_064_PROVIDER_ORDER=PASS'
           echo 'CELAR_DNS_MANAGED_RUNTIME=PASS'
+
+      - name: Compile Module 084 API registration
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Build and verify Module 084 browser route transaction
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npx vite build
+          grep -R -Fq 'celar-ai-runtime-version' dist
+          grep -R -Fq 'Celar AI Runtime & Version Center' dist
+          git diff --exit-code -- src/App.jsx src/module-availability-registry.js
+          test ! -e .celar-ai-production-build-backup
+          echo 'MODULE_084_BROWSER_BUILD=PASS'
+          echo 'MODULE_084_SOURCE_TRANSACTION_RESTORED=PASS'
