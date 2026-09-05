@@ -103,7 +103,8 @@ if (plannerLocalEvidenceMode) {
 }
 const module064LiveAcceptanceMode = branchName === 'fix/module064-live-routing-acceptance-20260905'
   || branchName === 'fix/module064-routing-evidence-assertion-20260905'
-  || branchName === 'fix/module064-routing-content-assertion-20260905';
+  || branchName === 'fix/module064-routing-content-assertion-20260905'
+  || branchName === 'fix/module064-explicit-smoke-terms-20260905';
 if (module064LiveAcceptanceMode) {
   const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
   const actual = String(originalExecFileSync('git', ['diff', '--name-only', base, 'HEAD'], { encoding: 'utf8' })).trim().split('\n').filter(Boolean).sort();
