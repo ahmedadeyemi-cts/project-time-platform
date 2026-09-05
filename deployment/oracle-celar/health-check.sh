@@ -78,6 +78,35 @@ chmod 0600 "$AUTH_CONFIG" "$AUTH_ONLY_CONFIG"
 unset RUNTIME_TOKEN
 trap 'rm -rf "$TMP"' EXIT
 
+# A freshly restarted Ollama may need to load a model before the first routed
+# request can use it. If that first load returns a transient server error, Celar
+# correctly falls through to another approved specialist, which used to make
+# deployment acceptance fail even though Qwen became healthy seconds later.
+# Directly prove every approved generation specialist first, and probe the
+# reasoning specialist last so Qwen and Gemma are the two most recently loaded
+# models on this host (OLLAMA_MAX_LOADED_MODELS=2). Route acceptance below still
+# requires Qwen for general work and Gemma for structured work; this does not
+# weaken failover or accept a fallback as the primary route.
+probe_local_generation_model() {
+  local model="$1"
+  local label="$2"
+  local output="$TMP/direct-${label}.json"
+  curl -fsS --max-time 180 http://127.0.0.1:11434/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d "$(jq -nc --arg model "$model" '{model:$model,messages:[{role:"user",content:"Return only: OK"}],stream:false,temperature:0,max_tokens:8}')" \
+    > "$output" || fail "Direct local model readiness failed: $model"
+  jq -e --arg model "$model" '
+    .choices[0].message.content | strings | length > 0
+  ' "$output" >/dev/null || fail "Direct local model response was invalid: $model"
+  DIRECT_MODEL="$(jq -r '.model // empty' "$output")"
+  [[ "$DIRECT_MODEL" == "$model" || "$DIRECT_MODEL" == "$model:latest" ]] || \
+    fail "Direct local model response identified an unexpected model: expected=$model actual=${DIRECT_MODEL:-missing}"
+}
+
+probe_local_generation_model "$FAST_GENERAL_MODEL" fast
+probe_local_generation_model "$GENERATION_MODEL" structured
+probe_local_generation_model "$REASONING_MODEL" reasoning
+
 RESOLVE=(--resolve "$HOSTNAME_VALUE:443:127.0.0.1")
 BASE="https://$HOSTNAME_VALUE"
 
@@ -116,14 +145,20 @@ curl -fsS --max-time 270 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/genera
   -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return only: CELAR ORACLE GENERAL OK"}],stream:false,temperature:0,max_tokens:32}')" \
   "$BASE/v1/chat/completions" > "$TMP/general.json"
 jq -e '.choices[0].message.content | strings | length > 0' "$TMP/general.json" >/dev/null || fail 'General local-model gateway probe failed.'
-grep -Eiq "^X-Celar-Local-Model:[[:space:]]*$REASONING_MODEL\r?$" "$TMP/general.headers" || fail 'General route did not select the reasoning specialist.'
+if ! grep -Eiq "^X-Celar-Local-Model:[[:space:]]*$REASONING_MODEL\r?$" "$TMP/general.headers"; then
+  ACTUAL_GENERAL_MODEL="$(awk -F': ' 'tolower($1)=="x-celar-local-model" {gsub("\r", "", $2); print $2; exit}' "$TMP/general.headers")"
+  fail "General route did not select the reasoning specialist: expected=$REASONING_MODEL actual=${ACTUAL_GENERAL_MODEL:-missing}"
+fi
 
 curl -fsS --max-time 270 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/structured.headers" \
   -H 'Content-Type: application/json' -H 'X-Pulse-AI-Feature: sow_gsd_planning' \
   -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return a JSON object with status set to ok."}],stream:false,temperature:0,max_tokens:64,response_format:{type:"json_object"}}')" \
   "$BASE/v1/chat/completions" > "$TMP/structured.json"
 jq -e '.choices[0].message.content | strings | length > 0' "$TMP/structured.json" >/dev/null || fail 'Structured local-model gateway probe failed.'
-grep -Eiq "^X-Celar-Local-Model:[[:space:]]*$GENERATION_MODEL\r?$" "$TMP/structured.headers" || fail 'Structured route did not select the compatibility specialist.'
+if ! grep -Eiq "^X-Celar-Local-Model:[[:space:]]*$GENERATION_MODEL\r?$" "$TMP/structured.headers"; then
+  ACTUAL_STRUCTURED_MODEL="$(awk -F': ' 'tolower($1)=="x-celar-local-model" {gsub("\r", "", $2); print $2; exit}' "$TMP/structured.headers")"
+  fail "Structured route did not select the compatibility specialist: expected=$GENERATION_MODEL actual=${ACTUAL_STRUCTURED_MODEL:-missing}"
+fi
 
 # Pulse's embedding client has a fixed three-minute deadline. The gateway owns
 # only 150 seconds, and this acceptance client allows 180 seconds for overhead.
@@ -159,6 +194,9 @@ MEM_AVAILABLE_KB="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)"
 
 echo 'CELAR_ORACLE_HEALTH=PASS'
 echo 'PUBLIC_HTTPS_AUTH_BOUNDARY=PASS'
+echo "LOCAL_FAST_DIRECT=PASS:$FAST_GENERAL_MODEL"
+echo "LOCAL_STRUCTURED_DIRECT=PASS:$GENERATION_MODEL"
+echo "LOCAL_REASONING_DIRECT=PASS:$REASONING_MODEL"
 echo "LOCAL_REASONING_ROUTE=PASS:$REASONING_MODEL"
 echo "LOCAL_STRUCTURED_ROUTE=PASS:$GENERATION_MODEL"
 echo "LOCAL_FAST_FALLBACK_PRESENT=PASS:$FAST_GENERAL_MODEL"
