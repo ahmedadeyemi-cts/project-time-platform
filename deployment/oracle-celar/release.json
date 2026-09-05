@@ -6,23 +6,23 @@
   "gatewayVersion": "1.1.0",
   "gatewayBind": "127.0.0.1:8787",
   "generationModel": "gemma3:4b",
-  "reasoningModel": "qwen3:4b",
+  "reasoningModel": "qwen3:4b-instruct",
   "fastGeneralModel": "llama3.2:3b",
   "embeddingModel": "embeddinggemma",
   "embeddingDimension": 768,
   "ocrModel": "tesseract-5-eng",
   "localGenerationModels": [
     "gemma3:4b",
-    "qwen3:4b",
+    "qwen3:4b-instruct",
     "llama3.2:3b"
   ],
   "structuredGenerationOrder": [
     "gemma3:4b",
-    "qwen3:4b",
+    "qwen3:4b-instruct",
     "llama3.2:3b"
   ],
   "generalGenerationOrder": [
-    "qwen3:4b",
+    "qwen3:4b-instruct",
     "llama3.2:3b",
     "gemma3:4b"
   ],
