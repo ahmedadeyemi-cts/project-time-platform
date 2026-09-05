@@ -3,7 +3,7 @@
   "environment": "protected-test-oracle-celar",
   "hostname": "celarai.onenecklab.com",
   "architecture": "arm64",
-  "gatewayVersion": "1.1.1",
+  "gatewayVersion": "1.1.2",
   "gatewayBind": "127.0.0.1:8787",
   "generationModel": "gemma3:4b",
   "reasoningModel": "qwen3:4b-instruct",
@@ -22,9 +22,9 @@
     "llama3.2:3b"
   ],
   "structuredModelAttemptSeconds": [
-    660,
-    120,
-    60
+    150,
+    60,
+    20
   ],
   "generalGenerationOrder": [
     "qwen3:4b-instruct",
@@ -32,9 +32,9 @@
     "gemma3:4b"
   ],
   "generalModelAttemptSeconds": [
-    360,
-    240,
-    180
+    140,
+    70,
+    20
   ],
   "ollamaHost": "127.0.0.1:11434",
   "clamavHost": "127.0.0.1",
@@ -47,7 +47,7 @@
   "maxOcrImageEdge": 12000,
   "pdfRasterMaxEdge": 3000,
   "ocrTotalTimeoutSeconds": 270,
-  "chatTimeoutSeconds": 840,
+  "chatTimeoutSeconds": 240,
   "embeddingTimeoutSeconds": 240,
   "ollamaKeepAlive": "30m",
   "ollamaMaxLoadedModels": 2,
