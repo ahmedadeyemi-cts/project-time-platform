@@ -126,7 +126,7 @@ jobs:
 
           grep -Fq 'celarai.onenecklab.com' "$CADDY"
           grep -Fq 'reverse_proxy 127.0.0.1:8787' "$CADDY"
-          grep -Fq 'max_size 33MB' "$CADDY"
+          grep -Fq 'max_size 36MB' "$CADDY"
           grep -Fq 'auto_https disable_redirects' "$CADDY"
           grep -Fq 'disable_http_challenge' "$CADDY"
 
