@@ -8,6 +8,7 @@ src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
 src/backend/ProjectTime.Api/Program.cs
+src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
 src/frontend/project-time-web/src/App.jsx
 src/frontend/project-time-web/src/module001/TimesheetAiDescriptionAssistant.jsx
 tests/DeepSeekProviderTests/Program.cs

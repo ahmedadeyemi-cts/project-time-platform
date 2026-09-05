@@ -140,9 +140,9 @@ try
     Check(false, "User cancellation must terminate rather than initiate fallback.");
 }
 catch (OperationCanceledException) { }
-var refusal = await Attempt("claude", TimeSpan.FromSeconds(1), _ => Task.FromResult(
+var budgetRefusal = await Attempt("claude", TimeSpan.FromSeconds(1), _ => Task.FromResult(
     new ProjectPulseAiProviderResult("claude", ProjectPulseAiOutcomes.Refusal, null, "provider_safety_refusal", null, null, null, 400)));
-Check(refusal.IsRefusal, "Attempt deadlines must preserve terminal safety refusals.");
+Check(budgetRefusal.IsRefusal, "Attempt deadlines must preserve terminal safety refusals.");
 var backgroundBudget = Activator.CreateInstance(budgetType, [CelarAiCapabilityCatalog.SowGsdPlanning])!;
 Check(budgetType.GetMethod("NextTimeout")!.Invoke(backgroundBudget, [4]) is null,
     "Background detailed SOW generation must not inherit the interactive deadline.");
