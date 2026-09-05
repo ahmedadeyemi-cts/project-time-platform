@@ -159,7 +159,17 @@ STRUCTURED_SELECTED_ROUTE="$(header_value "$TMP/structured.headers" 'X-Celar-Loc
 curl -fsS --max-time 180 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg model "$EMBEDDING_MODEL" '{model:$model,input:["Celar AI embedding health proof"],encoding_format:"float"}')" \
   "$BASE/v1/embeddings" > "$TMP/embed.json"
-jq -e --argjson dimension "$EMBEDDING_DIMENSION" '.data | length == 1 and (.data[0].embedding | length) == $dimension' "$TMP/embed.json" >/dev/null || fail 'Authenticated embedding gateway probe failed.'
+jq -e --arg model "$EMBEDDING_MODEL" --argjson dimension "$EMBEDDING_DIMENSION" '
+  .object == "list" and
+  .model == $model and
+  (.data | type) == "array" and
+  ((.data | length) == 1) and
+  .data[0].object == "embedding" and
+  .data[0].index == 0 and
+  (.data[0].embedding | type) == "array" and
+  ((.data[0].embedding | length) == $dimension) and
+  ([.data[0].embedding[] | numbers] | length) == $dimension
+' "$TMP/embed.json" >/dev/null || fail 'Authenticated embedding gateway probe failed.'
 
 printf 'Celar AI protected Test clean-file validation.\n' > "$TMP/clean.txt"
 CLEAN_SIZE="$(stat -c '%s' "$TMP/clean.txt")"
