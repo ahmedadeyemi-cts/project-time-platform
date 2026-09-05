@@ -1,0 +1,63 @@
+name: Validate Oracle Celar Cold-Start Acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/oracle-celar/health-check.sh'
+      - 'deployment/oracle-celar/release.json'
+      - '.github/workflows/celar-ai-oracle-cold-start-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Validate cold-start specialist readiness contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HEALTH=deployment/oracle-celar/health-check.sh
+          bash -n "$HEALTH"
+
+          grep -Fq 'probe_local_generation_model()' "$HEALTH"
+          grep -Fq 'http://127.0.0.1:11434/v1/chat/completions' "$HEALTH"
+          grep -Fq 'probe_local_generation_model "$FAST_GENERAL_MODEL" fast' "$HEALTH"
+          grep -Fq 'probe_local_generation_model "$GENERATION_MODEL" structured' "$HEALTH"
+          grep -Fq 'probe_local_generation_model "$REASONING_MODEL" reasoning' "$HEALTH"
+          grep -Fq 'LOCAL_FAST_DIRECT=PASS' "$HEALTH"
+          grep -Fq 'LOCAL_STRUCTURED_DIRECT=PASS' "$HEALTH"
+          grep -Fq 'LOCAL_REASONING_DIRECT=PASS' "$HEALTH"
+          grep -Fq 'LOCAL_REASONING_ROUTE=PASS' "$HEALTH"
+          grep -Fq 'LOCAL_STRUCTURED_ROUTE=PASS' "$HEALTH"
+          grep -Fq 'actual=${ACTUAL_GENERAL_MODEL:-missing}' "$HEALTH"
+          grep -Fq 'actual=${ACTUAL_STRUCTURED_MODEL:-missing}' "$HEALTH"
+
+          python3 - "$HEALTH" <<'PY'
+          from pathlib import Path
+          import sys
+
+          text = Path(sys.argv[1]).read_text(encoding='utf-8')
+          fast = text.index('probe_local_generation_model "$FAST_GENERAL_MODEL" fast')
+          structured = text.index('probe_local_generation_model "$GENERATION_MODEL" structured')
+          reasoning = text.index('probe_local_generation_model "$REASONING_MODEL" reasoning')
+          general_route = text.index('"$BASE/v1/chat/completions" > "$TMP/general.json"')
+          structured_route = text.index('"$BASE/v1/chat/completions" > "$TMP/structured.json"')
+          if not fast < structured < reasoning < general_route < structured_route:
+              raise SystemExit('Cold-start warm/probe ordering is unsafe.')
+          print('CELAR_COLD_START_SPECIALIST_ORDER=PASS')
+          PY
+
+          # The warm-up is readiness only. Do not weaken the routing assertions:
+          # Qwen must still win general work and Gemma must still win structured work.
+          grep -Fq 'expected=$REASONING_MODEL' "$HEALTH"
+          grep -Fq 'expected=$GENERATION_MODEL' "$HEALTH"
+          git diff --check
