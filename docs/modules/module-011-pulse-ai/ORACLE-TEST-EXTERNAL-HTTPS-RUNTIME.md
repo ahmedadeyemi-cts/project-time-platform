@@ -64,10 +64,10 @@ The application refuses activation unless all of these agree:
 - one exact host allowlist entry;
 - one protected bearer token and matching protected secret provenance reference;
 - explicit `ORACLE-TEST-...` approval reference;
-- ClamAV scan attestation and live signature/version evidence; and
+- ClamAV scan attestation with a concrete `daily-<version>` signature value; and
 - training disabled with no training endpoint or token.
 
-The HTTP transport performs DNS verification immediately before each request and connects only to the configured IPv4 address while TLS continues to validate the original hostname. Redirects, proxies, cookies, custom certificate validators, and insecure TLS behavior remain disabled.
+The HTTP transport performs DNS verification immediately before each request and connects only to the configured IPv4 address while TLS continues to validate the original hostname. During the one-time live preflight, every Oracle curl request also uses `--resolve` to pin `celarai.onenecklab.com:443` to `141.148.19.235` and `--noproxy` to prevent runner proxy settings from diverting authenticated traffic. Redirects, custom certificate validators, and insecure TLS behavior remain disabled.
 
 Production cannot enable this mode. Any partial external-runtime configuration also fails closed.
 
@@ -82,9 +82,9 @@ After the source PR is merged, the Oracle bootstrap is green, and the protected 
 5. Enter an approved reference matching `ORACLE-TEST-...`.
 6. Enter `REACTIVATE-CELAR-AI-ORACLE-RUNTIME-IN-PROTECTED-TEST` as the confirmation.
 
-The controller first proves DNS equals `141.148.19.235`, then performs unauthenticated, incorrect-token, authenticated readiness, inference, strict 768-dimensional embedding, and clean-file malware tests **before** Azure mutation. It snapshots the current Test API image and relevant environment, builds an immutable Test API image from the exact current `main`, applies the private-runtime binding, and validates Pulse-to-Oracle private-model and document-runtime readiness.
+The controller first proves DNS equals `141.148.19.235`, then pins each Oracle request to that address and performs unauthenticated, incorrect-token, authenticated readiness, inference, strict 768-dimensional embedding, exact-byte clean-file malware, and live OCR extraction tests **before** Azure mutation. Malware preflight must return the same concrete daily ClamAV signature version reported by authenticated health; placeholder signature state is not accepted. It snapshots the current Test API image and relevant environment, builds an immutable Test API image from the exact current `main`, applies the private-runtime binding, and validates Pulse-to-Oracle private-model and document-runtime readiness.
 
-If a post-change gate fails, the controller restores the prior Test API image and touched environment values and removes the run-specific Azure bearer secret. No database migration, web deployment, Production mutation, Oracle infrastructure mutation, or public opening of ports 3310, 8787, or 11434 is included.
+If a post-change gate fails **or the workflow is cancelled after mutation begins**, the controller restores the prior Test API image and touched environment values and removes the run-specific Azure bearer secret. No database migration, web deployment, Production mutation, Oracle infrastructure mutation, or public opening of ports 3310, 8787, or 11434 is included.
 
 After successful reactivation, the one-time controller should be retired again in a follow-up cleanup PR; normal Protected-Test releases must preserve rather than silently mutate this binding.
 
