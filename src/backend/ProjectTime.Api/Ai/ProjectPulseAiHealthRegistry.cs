@@ -258,7 +258,6 @@ public sealed class ProjectPulseAiHealthRegistry
             if (result.Provider == ProjectPulseAiProviders.DeepSeek
                 && result.Code == "deepseek_queue_busy")
             {
-                state.ProbeStatus = "busy";
                 state.LastProbeFailureCode = result.Code;
                 return;
             }

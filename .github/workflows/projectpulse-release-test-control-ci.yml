@@ -190,15 +190,15 @@ jobs:
           fi
           LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
 
-          cat > "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-protected-uat-merged-main-relaunch-governance-files" <<'FILES'
           .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
           .github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files" -o "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-protected-uat-merged-main-relaunch-governance-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-protected-uat-merged-main-relaunch-governance-files" -o "$RUNNER_TEMP/e-protected-uat-merged-main-relaunch-governance-files"
 
-          cat > "$RUNNER_TEMP/exact-runtime-repair-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-runtime-repair-files" <<'FILES'
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/runtime-navigation-work-register-responsive-ci.yml
           src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs
@@ -210,10 +210,10 @@ jobs:
           src/frontend/project-time-web/src/module-directory-authority.js
           src/frontend/project-time-web/src/unified-project-financial-workspace.css
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-runtime-repair-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-runtime-repair-files" -o "$RUNNER_TEMP/exact-runtime-repair-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-runtime-repair-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-runtime-repair-files" -o "$RUNNER_TEMP/e-runtime-repair-files"
 
-          cat > "$RUNNER_TEMP/exact-assigned-work-repair-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-assigned-work-repair-files" <<'FILES'
           .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
@@ -223,10 +223,10 @@ jobs:
           src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
           src/frontend/project-time-web/src/App.jsx
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-assigned-work-repair-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-assigned-work-repair-files" -o "$RUNNER_TEMP/exact-assigned-work-repair-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-assigned-work-repair-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-assigned-work-repair-files" -o "$RUNNER_TEMP/e-assigned-work-repair-files"
 
-          cat > "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-pr719-module-directory-owner-001a-files" <<'FILES'
           .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/module-management-owner-drawer-ci.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
@@ -242,10 +242,10 @@ jobs:
           src/frontend/project-time-web/src/background-request-role-gate.js
           tests/validate-module-management-owner-drawer.mjs
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files" -o "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-pr719-module-directory-owner-001a-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-pr719-module-directory-owner-001a-files" -o "$RUNNER_TEMP/e-pr719-module-directory-owner-001a-files"
 
-          cat > "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-modules-directory-authority-starvation-files" <<'FILES'
           .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
           .github/workflows/runtime-navigation-work-register-responsive-ci.yml
@@ -255,19 +255,19 @@ jobs:
           src/frontend/project-time-web/src/background-request-role-gate.js
           src/frontend/project-time-web/src/module-availability-bridge.js
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files" -o "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-modules-directory-authority-starvation-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-modules-directory-authority-starvation-files" -o "$RUNNER_TEMP/e-modules-directory-authority-starvation-files"
 
-          cat > "$RUNNER_TEMP/exact-module001b-live-uat-repair-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-module001b-live-uat-repair-files" <<'FILES'
           .github/workflows/module001b-live-reallocation-protected-test-uat.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
           scripts/release-test/run-assigned-work-protected-test-uat.sh
           src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-module001b-live-uat-repair-files" -o "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-module001b-live-uat-repair-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-module001b-live-uat-repair-files" -o "$RUNNER_TEMP/e-module001b-live-uat-repair-files"
 
-          cat > "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-utilization-manager-authorization-repair-files" <<'FILES'
           .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
           src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs
@@ -275,10 +275,10 @@ jobs:
           tests/ProjectTime.Api.AuthorizationTests/Program.cs
           tests/validate-utilization-role-scoping.mjs
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files" -o "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-utilization-manager-authorization-repair-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-utilization-manager-authorization-repair-files" -o "$RUNNER_TEMP/e-utilization-manager-authorization-repair-files"
 
-          cat > "$RUNNER_TEMP/exact-pr777-module025-workspace-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-pr777-module025-workspace-files" <<'FILES'
           database/migrations/089_module_catalog_role_administration_reconciliation.sql
           src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs
           src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs
@@ -286,10 +286,10 @@ jobs:
           src/frontend/project-time-web/src/module-availability-registry.js
           tests/validate-systemwide-enterprise-reliability.mjs
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-pr777-module025-workspace-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-pr777-module025-workspace-files" -o "$RUNNER_TEMP/exact-pr777-module025-workspace-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-pr777-module025-workspace-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-pr777-module025-workspace-files" -o "$RUNNER_TEMP/e-pr777-module025-workspace-files"
 
-          cat > "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-protected-uat-validation-defects-files" <<'FILES'
           .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/module-management-owner-drawer-ci.yml
           .github/workflows/projectpulse-deploy-test.yml
@@ -316,23 +316,23 @@ jobs:
           tests/validate-module-management-owner-drawer.mjs
           tests/validate-systemwide-image-build-controller.mjs
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-protected-uat-validation-defects-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" -o "$RUNNER_TEMP/exact-protected-uat-validation-defects-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-protected-uat-validation-defects-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-protected-uat-validation-defects-files" -o "$RUNNER_TEMP/e-protected-uat-validation-defects-files"
 
-          cat > "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files" <<'FILES'
+          cat > "$RUNNER_TEMP/e-celar-internal-trust-evidence-files" <<'FILES'
           .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
           src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs
           tests/validate-celar-ai-internal-data-intelligence.mjs
           tests/validate-celar-ai-pr630-consolidated.mjs
           FILES
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files"
-          LC_ALL=C sort -u "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files" -o "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/e-celar-internal-trust-evidence-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/e-celar-internal-trust-evidence-files" -o "$RUNNER_TEMP/e-celar-internal-trust-evidence-files"
 
           git fetch --no-tags origin main
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
-          git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
+          git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
           if [[ "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/module064-public-geography-fallback-20260905' ]]; then
@@ -344,16 +344,16 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
             node tests/validate-deepseek-release-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
-            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" || {
+            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-protected-uat-validation-defects-files" || {
               echo 'Protected-UAT validation-defect repair differs from its exact governed file set.' >&2
-              diff -u "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              diff -u "$RUNNER_TEMP/e-protected-uat-validation-defects-files" "$RUNNER_TEMP/changed-files" >&2 || true
               exit 1
             }
             echo 'EXACT_PROTECTED_UAT_VALIDATION_DEFECTS_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'fix/celar-internal-trust-evidence-20260903' ]]; then
-            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files" || {
+            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-celar-internal-trust-evidence-files" || {
               echo 'Celar internal-data trust-evidence repair differs from its exact governed file set.' >&2
-              diff -u "$RUNNER_TEMP/exact-celar-internal-trust-evidence-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              diff -u "$RUNNER_TEMP/e-celar-internal-trust-evidence-files" "$RUNNER_TEMP/changed-files" >&2 || true
               exit 1
             }
             echo 'EXACT_CELAR_INTERNAL_TRUST_EVIDENCE_SCOPE=PASSED'
@@ -365,51 +365,51 @@ jobs:
             while IFS= read -r required_file; do
               test -f "$required_file" || fail "Governed shared-planning artifact is missing: $required_file"
             done < "$RUNNER_TEMP/shared-project-document-planning-files"
-            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/shared-project-document-planning-files" || {
+            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/shared-project-document-planning-files" || {
               echo 'The clean FlowHive/Forge PR differs from its exact governed release manifest.' >&2
-              diff -u "$RUNNER_TEMP/shared-project-document-planning-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              diff -u "$RUNNER_TEMP/shared-project-document-planning-files" "$RUNNER_TEMP/changed-files" >&2 || true
               exit 1
             }
-            if grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64|one-time-flowhive-clean)' "$RUNNER_TEMP/actual-release-files"; then
+            if grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64|one-time-flowhive-clean)' "$RUNNER_TEMP/changed-files"; then
               fail 'Temporary recovery or publisher artifacts are forbidden from the clean release.'
             fi
             echo 'EXACT_SHARED_PROJECT_DOCUMENT_PLANNING_SCOPE=PASSED'
           elif [[ "${{ github.event.pull_request.number }}" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
             grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-pr734-governed-release-files.txt | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-pr734-files"
-            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/flowhive-pr734-files" || {
+            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/flowhive-pr734-files" || {
               echo 'PR #734 governed release scope differs from its exact reviewed manifest.' >&2
-              diff -u "$RUNNER_TEMP/flowhive-pr734-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              diff -u "$RUNNER_TEMP/flowhive-pr734-files" "$RUNNER_TEMP/changed-files" >&2 || true
               exit 1
             }
             echo 'FLOWHIVE_PR734_GOVERNED_RELEASE_SCOPE=PASSED'
           elif [[ "${{ github.event.pull_request.number }}" == '777' ]]; then
-            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-pr777-module025-workspace-files" || {
+            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-pr777-module025-workspace-files" || {
               echo 'PR #777 Module 025 workspace repair differs from its exact governed file set.' >&2
-              diff -u "$RUNNER_TEMP/exact-pr777-module025-workspace-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              diff -u "$RUNNER_TEMP/e-pr777-module025-workspace-files" "$RUNNER_TEMP/changed-files" >&2 || true
               exit 1
             }
             echo 'EXACT_PR777_MODULE025_WORKSPACE_SCOPE=PASSED'
-          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
+          elif cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-runtime-repair-files"; then
             echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
-          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-assigned-work-repair-files"; then
+          elif cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-assigned-work-repair-files"; then
             echo 'EXACT_ASSIGNED_WORK_REPAIR_SCOPE=PASSED'
-          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files"; then
+          elif cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-pr719-module-directory-owner-001a-files"; then
             echo 'EXACT_PR719_MODULE_DIRECTORY_OWNER_001A_SCOPE=PASSED'
-          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"; then
+          elif cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-modules-directory-authority-starvation-files"; then
             echo 'EXACT_MODULES_DIRECTORY_AUTHORITY_STARVATION_SCOPE=PASSED'
-          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-module001b-live-uat-repair-files"; then
+          elif cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-module001b-live-uat-repair-files"; then
             echo 'EXACT_MODULE001B_LIVE_UAT_REPAIR_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'fix/utilization-manager-team-summary-authorization-20260903' ]]; then
-            cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files" || {
+            cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-utilization-manager-authorization-repair-files" || {
               echo 'Manager utilization authorization repair differs from its exact governed file set.' >&2
-              diff -u "$RUNNER_TEMP/exact-utilization-manager-authorization-repair-files" "$RUNNER_TEMP/actual-release-files" >&2 || true
+              diff -u "$RUNNER_TEMP/e-utilization-manager-authorization-repair-files" "$RUNNER_TEMP/changed-files" >&2 || true
               exit 1
             }
             echo 'EXACT_UTILIZATION_MANAGER_AUTHORIZATION_REPAIR_SCOPE=PASSED'
-          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files"; then
+          elif cmp -s "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/e-protected-uat-merged-main-relaunch-governance-files"; then
             echo 'EXACT_PROTECTED_UAT_MERGED_MAIN_RELAUNCH_GOVERNANCE_SCOPE=PASSED'
           else
-            comm -23 "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
+            comm -23 "$RUNNER_TEMP/changed-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
             [[ ! -s "$RUNNER_TEMP/unexpected-release-files" ]] || {
               echo 'Unexpected files in governed Test controller PR:' >&2
               cat "$RUNNER_TEMP/unexpected-release-files" >&2
