@@ -333,7 +333,9 @@ jobs:
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
-          if [[ "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
+          if [[ "$HEAD_BRANCH" == 'fix/module064-live-routing-acceptance-20260905' ]]; then
+            node tests/validate-celar-ai-pr630-consolidated.mjs
+          elif [[ "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/module064-public-geography-fallback-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs

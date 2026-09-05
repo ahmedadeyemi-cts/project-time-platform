@@ -101,6 +101,17 @@ if (plannerLocalEvidenceMode) {
     'tests/validate-celar-ai-pr630-consolidated.mjs'
   ], 'Governed local evidence repair must retain its exact two-file scope');
 }
+const module064LiveAcceptanceMode = branchName === 'fix/module064-live-routing-acceptance-20260905';
+if (module064LiveAcceptanceMode) {
+  const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
+  const actual = String(originalExecFileSync('git', ['diff', '--name-only', base, 'HEAD'], { encoding: 'utf8' })).trim().split('\n').filter(Boolean).sort();
+  assert.deepEqual(actual, [
+    '.github/workflows/projectpulse-deploy-test.yml',
+    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+    '.github/workflows/projectpulse-release-test-control-ci.yml',
+    'tests/validate-celar-ai-pr630-consolidated.mjs'
+  ], 'Live routing acceptance repair must retain its exact four-file scope');
+}
 const module064DeepSeekAnswerMode = branchName === 'fix/module064-deepseek-chat-answer-20260905';
 if (module064DeepSeekAnswerMode) {
   const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
@@ -131,7 +142,7 @@ if (module064PublicGeographyMode) {
 }
 const module064SystemwideFailoverMode = branchName === 'fix/module064-systemwide-failover-20260905';
 if (module064SystemwideFailoverMode) await import('./validate-module064-systemwide-failover-scope.mjs');
-const scopedCompatibilityMode = module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const scopedCompatibilityMode = module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode
