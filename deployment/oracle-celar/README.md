@@ -71,8 +71,10 @@ The first bootstrap creates `/etc/celar-ai/gateway/runtime-token` when missing. 
 
 - GitOps reconciliation: every 5 minutes.
 - Local/Restic state backup: daily.
-- Ollama engine + every approved local model: weekly pull/update with engine and per-model rollback copies.
-- Promotion requires direct model probes plus the complete HTTPS/auth/model-routing/embedding/ClamAV/OCR acceptance suite.
+- Ollama engine + every approved local model: weekly on **Sunday at 1:00 AM Central Time** using the `America/Chicago` time zone so the maintenance window remains at 1:00 AM through CST/CDT changes.
+- The governed local generation portfolio is `gemma3:4b`, `qwen3:4b-instruct`, and `llama3.2:3b`; `embeddinggemma` is updated in the same maintenance transaction.
+- The maintenance transaction preserves engine and per-model rollback copies and promotes an update only after direct model probes and the complete HTTPS/auth/model-routing/embedding/ClamAV/OCR acceptance suite pass.
+- The maintenance policy is also recorded in `release.json` so Pulse can expose the approved window and model portfolio without inferring schedule state from UTC offsets.
 - FreshClam updates malware signatures automatically.
 - Ubuntu unattended upgrades apply security updates.
 
