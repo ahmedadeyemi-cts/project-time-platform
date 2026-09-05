@@ -21,10 +21,25 @@ celarai.onenecklab.com {
         max_size 36MB
     }
 
-    reverse_proxy 127.0.0.1:8787 {
-        transport http {
-            dial_timeout 5s
-            response_header_timeout 900s
+    # Runtime version/status and schedule desired-state writes are separated
+    # from the inference/document gateway. The maintenance service binds only to
+    # loopback and performs no privileged operation; a root-owned reconciler
+    # independently validates and applies its closed schedule schema.
+    handle /v1/maintenance/* {
+        reverse_proxy 127.0.0.1:8788 {
+            transport http {
+                dial_timeout 3s
+                response_header_timeout 30s
+            }
+        }
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:8787 {
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 900s
+            }
         }
     }
 
