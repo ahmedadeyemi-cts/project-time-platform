@@ -545,6 +545,10 @@ if [[ "$HEAD_BRANCH" == 'fix/celar-hostname-runtime-20260905' ]]; then
   node tests/validate-protected-uat-recovery.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
 fi
+if [[ "$HEAD_BRANCH" == 'fix/celar-oracle-token-budget-20260905' ]]; then
+  node tests/validate-celar-oracle-token-budget-scope.mjs
+fi
+
 if [[ "$HEAD_BRANCH" == 'fix/celar-routed-model-readiness-20260905' ]]; then
   node tests/validate-celar-routed-model-readiness-scope.mjs
   node tests/validate-protected-uat-recovery.mjs

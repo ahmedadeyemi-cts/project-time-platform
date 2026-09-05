@@ -66,6 +66,12 @@ try
         "configured public IPv4 pin is retained");
 
     var inference = new Uri("https://celarai.onenecklab.com/v1/chat/completions");
+    Require(PulseAiExternalHttpsRuntimePolicy.CompletionBudget(inference, 12000) == 8192,
+        "SOW requests fit the Oracle gateway output limit");
+    Require(PulseAiExternalHttpsRuntimePolicy.CompletionBudget(inference, 520) == 520,
+        "short chat and timesheet budgets are preserved");
+    Require(PulseAiExternalHttpsRuntimePolicy.CompletionBudget(new Uri("https://private.example/v1/chat/completions"), 12000) == 12000,
+        "other private providers retain their requested budget");
     Require(PulseAiExternalHttpsRuntimePolicy.TryGetPinnedAddress(
             inference, out var address, out var reason)
             && address.Equals(IPAddress.Parse("129.213.82.144"))
@@ -79,6 +85,8 @@ try
         "unapproved host is rejected");
 
     Set("PROJECTPULSE_ENVIRONMENT", "production");
+    Require(PulseAiExternalHttpsRuntimePolicy.CompletionBudget(inference, 12000) == 12000,
+        "inactive Oracle configuration does not change request budgets");
     Require(!PulseAiExternalHttpsRuntimePolicy.Evaluate().Valid,
         "Production cannot enable the temporary external runtime");
     Set("PROJECTPULSE_ENVIRONMENT", "test");
@@ -112,6 +120,8 @@ try
         Require(!Approved("141.148.19.235", unsafeIp), "mixed unsafe DNS answers are rejected: " + unsafeIp);
     Require(!Approved(), "empty DNS answers are rejected");
     Set("PROJECTPULSE_ENVIRONMENT", "production");
+    Require(PulseAiExternalHttpsRuntimePolicy.CompletionBudget(inference, 12000) == 12000,
+        "inactive Oracle configuration does not change request budgets");
     Require(!PulseAiExternalHttpsRuntimePolicy.Evaluate().Active, "DNS mode cannot activate in Production");
     Set("PROJECTPULSE_ENVIRONMENT", "test");
     Set(PulseAiExternalHttpsRuntimePolicy.AddressModeVariable, "automatic-typo");

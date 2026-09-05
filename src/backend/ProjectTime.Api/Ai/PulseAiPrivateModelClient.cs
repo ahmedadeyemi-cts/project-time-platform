@@ -200,7 +200,7 @@ public sealed class PulseAiPrivateModelClient
                 new { role = "user", content = userInstruction }
             },
             temperature = (double)request.Temperature,
-            max_tokens = request.MaximumOutputTokens,
+            max_tokens = PulseAiExternalHttpsRuntimePolicy.CompletionBudget(endpoint, request.MaximumOutputTokens),
             response_format = new { type = "json_object" }
         };
 
