@@ -773,7 +773,7 @@ jobs:
           rm -f "$ROUTING_SMOKE_PAYLOAD"
           [[ "$ROUTING_SMOKE_STATUS" == 200 ]] || fail "Module 064 provider routing returned HTTP $ROUTING_SMOKE_STATUS."
           jq -e '
-            ([.result.answer.directConclusion, .result.answer.detailedAnalysis[]?] | join("\n") | test("rainbow"; "i"))
+            ([.result.answer.directConclusion, .result.answer.detailedAnalysis[]?] | join("\n") | test("refract"; "i") and test("reflect"; "i"))
             and (.result.modelProvider as $provider | ["deepseek_v4","celar_ai","claude","openai"] | index($provider) != null)
             and ((.result.targetDecisions // []) | any(.outcome == "used"))
             and (.providerConfiguration.targets as $order
