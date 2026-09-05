@@ -52,7 +52,6 @@ for model in "${LOCAL_GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
   model_present "$model" || fail "Approved local model is missing: $model"
 done
 
-# The private services must never acquire wildcard/public listeners.
 SOCKETS="$(ss -lntH)"
 grep -Eq '127\.0\.0\.1:11434([[:space:]]|$)' <<<"$SOCKETS" || fail 'Ollama localhost listener is missing.'
 grep -Eq '127\.0\.0\.1:3310([[:space:]]|$)' <<<"$SOCKETS" || fail 'ClamAV localhost listener is missing.'
@@ -65,8 +64,6 @@ systemctl is-active --quiet celar-ai-gateway.service || fail 'Celar gateway serv
 systemctl is-active --quiet caddy.service || fail 'Caddy service is not active.'
 [[ -s "$TOKEN_FILE" ]] || fail 'Runtime token file is missing.'
 
-# Never place the bearer secret in curl argv. Root-only curl config files carry
-# sensitive headers; ps/proc therefore expose only their paths.
 TMP="$(mktemp -d)"
 chmod 0700 "$TMP"
 AUTH_CONFIG="$TMP/curl-auth.conf"
@@ -111,16 +108,17 @@ jq -e \
     .trainingEnabled == false and .externalEscalationEnabled == false
   ' "$TMP/health.json" >/dev/null || fail 'Authenticated health contract failed.'
 
-# General/plain-text requests use Qwen3 first; structured/private JSON work keeps
-# Gemma first for compatibility with the existing governed contract.
-curl -fsS --max-time 840 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/general.headers" \
+# The gateway owns an 840-second end-to-end generation budget. The acceptance
+# client allows 900 seconds so connection/TLS/JSON overhead cannot mask a valid
+# fallback response that completed inside the governed gateway deadline.
+curl -fsS --max-time 900 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/general.headers" \
   -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return only: CELAR ORACLE GENERAL OK"}],stream:false,temperature:0,max_tokens:32}')" \
   "$BASE/v1/chat/completions" > "$TMP/general.json"
 jq -e '.choices[0].message.content | strings | length > 0' "$TMP/general.json" >/dev/null || fail 'General local-model gateway probe failed.'
 grep -Eiq "^X-Celar-Local-Model:[[:space:]]*$REASONING_MODEL\r?$" "$TMP/general.headers" || fail 'General route did not select the reasoning specialist.'
 
-curl -fsS --max-time 840 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/structured.headers" \
+curl -fsS --max-time 900 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/structured.headers" \
   -H 'Content-Type: application/json' -H 'X-Pulse-AI-Feature: sow_gsd_planning' \
   -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return a JSON object with status set to ok."}],stream:false,temperature:0,max_tokens:64,response_format:{type:"json_object"}}')" \
   "$BASE/v1/chat/completions" > "$TMP/structured.json"
