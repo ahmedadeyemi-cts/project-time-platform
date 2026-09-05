@@ -32,7 +32,7 @@ public sealed class ProjectPulseDeepSeekProvider(
         if (provider.Endpoint != Endpoint || provider.Model != Model) return Failure("deepseek_configuration_rejected");
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var probe = request.Feature == "provider_readiness";
-        budget.CancelAfter(probe ? TimeSpan.FromSeconds(30) : TimeSpan.FromMinutes(10));
+        budget.CancelAfter(AttemptBudget(request.Feature));
         try
         {
             // One slot across API replicas, health probes, and private consumers.
@@ -106,6 +106,13 @@ public sealed class ProjectPulseDeepSeekProvider(
         return new(ProjectPulseAiProviders.DeepSeek, ProjectPulseAiOutcomes.Success,
             content.GetString()!.Trim(), null, null, null, null, 200);
     }
+
+    internal static TimeSpan AttemptBudget(string feature) => feature switch
+    {
+        "provider_readiness" => TimeSpan.FromSeconds(30),
+        CelarAiCapabilityCatalog.SowGsdPlanning => TimeSpan.FromSeconds(120),
+        _ => TimeSpan.FromMinutes(10)
+    };
 
     internal static int CompletionBudget(int finalOutputTokens) =>
         (int)Math.Clamp((long)finalOutputTokens + 2_048, 2_048, 16_384);

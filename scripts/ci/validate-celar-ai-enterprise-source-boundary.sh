@@ -551,6 +551,13 @@ if [[ "$HEAD_BRANCH" == 'fix/celar-hostname-runtime-20260905' ]]; then
   node tests/validate-protected-uat-recovery.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
 fi
+if [[ "$HEAD_BRANCH" == 'fix/celar-sow-runtime-deadlines-20260905' ]]; then
+  node tests/validate-celar-sow-runtime-deadlines-scope.mjs
+  for authorized in .github/workflows/projectpulse-deploy-test.yml deployment/oracle-celar/deploy.sh deployment/oracle-celar/gateway/gateway.py deployment/oracle-celar/gateway/wsgi.py deployment/oracle-celar/release.json; do
+    PROHIBITED="$(grep -Fvx "$authorized" <<<"$PROHIBITED" || true)"
+  done
+fi
+
 if [[ "$HEAD_BRANCH" == 'fix/celar-oracle-token-budget-20260905' ]]; then
   node tests/validate-celar-oracle-token-budget-scope.mjs
 fi

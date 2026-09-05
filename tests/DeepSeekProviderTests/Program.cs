@@ -164,3 +164,9 @@ Check(!busyHealth.CanAttempt(ProjectPulseAiProviders.DeepSeek, out _),
 busyHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, true, "ready", "Ready", 200, null));
 Check(busyHealth.CanAttempt(ProjectPulseAiProviders.DeepSeek, out _),
     "Successful recovery must still restore eligibility after contention.");
+
+var attemptBudgetMethod = typeof(ProjectPulseDeepSeekProvider).GetMethod("AttemptBudget", BindingFlags.Static | BindingFlags.NonPublic)!;
+TimeSpan AttemptBudget(string feature) => (TimeSpan)attemptBudgetMethod.Invoke(null, [feature])!;
+Check(AttemptBudget(CelarAiCapabilityCatalog.SowGsdPlanning) == TimeSpan.FromSeconds(120), "SOW leaves time for Oracle fallback before the UAT deadline.");
+Check(AttemptBudget("provider_readiness") == TimeSpan.FromSeconds(30), "Probe timeout is preserved.");
+Check(AttemptBudget(CelarAiCapabilityCatalog.ProjectFlowHivePlan) == TimeSpan.FromMinutes(10), "Planner timing is preserved.");

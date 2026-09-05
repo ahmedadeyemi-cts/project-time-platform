@@ -3,7 +3,7 @@
   "environment": "protected-test-oracle-celar",
   "hostname": "celarai.onenecklab.com",
   "architecture": "arm64",
-  "gatewayVersion": "1.1.3",
+  "gatewayVersion": "1.1.4",
   "gatewayBind": "127.0.0.1:8787",
   "generationModel": "gemma3:4b",
   "reasoningModel": "qwen3:4b-instruct",
@@ -68,5 +68,11 @@
   "localBackupRetentionDays": 7,
   "resticKeepDaily": 7,
   "resticKeepWeekly": 4,
-  "resticKeepMonthly": 6
+  "resticKeepMonthly": 6,
+  "sowModelAttemptSeconds": [
+    420,
+    120,
+    90
+  ],
+  "sowTimeoutSeconds": 640
 }

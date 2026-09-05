@@ -1,0 +1,16 @@
+.github/celar-sow-runtime-deadlines-files.txt
+.github/workflows/celar-ai-oracle-gitops-ci.yml
+.github/workflows/projectpulse-deploy-test.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+deployment/oracle-celar/deploy.sh
+deployment/oracle-celar/gateway/gateway.py
+deployment/oracle-celar/gateway/wsgi.py
+deployment/oracle-celar/release.json
+scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs
+tests/DeepSeekProviderTests/Program.cs
+tests/test-celar-sow-runtime-deadlines.py
+tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-celar-sow-runtime-deadlines-scope.mjs
