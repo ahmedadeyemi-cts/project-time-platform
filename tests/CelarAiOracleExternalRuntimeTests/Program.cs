@@ -5,7 +5,8 @@ using ProjectTime.Api.Ai;
 
 const string RuntimeToken = "test-runtime-token-value-1234567890-abcdef";
 const string TokenReference = "github-environment://test/celar-ai-oracle-runtime-token@1111111111111111111111111111111111111111";
-const string Approval = "ORACLE-TEST-CI-20260809";
+const string Approval = "ORACLE-TEST-CI-20260905";
+const string ExpectedOracleAddress = "141.148.19.235";
 
 var touched = new[]
 {
@@ -61,13 +62,13 @@ try
     ConfigureValidTestRuntime();
     var active = PulseAiExternalHttpsRuntimePolicy.Evaluate();
     Require(active.Active, "exact protected Test configuration is accepted");
-    Require(active.ExpectedAddress?.Equals(IPAddress.Parse("129.213.82.144")) == true,
+    Require(active.ExpectedAddress?.Equals(IPAddress.Parse(ExpectedOracleAddress)) == true,
         "configured public IPv4 pin is retained");
 
     var inference = new Uri("https://celarai.onenecklab.com/v1/chat/completions");
     Require(PulseAiExternalHttpsRuntimePolicy.TryGetPinnedAddress(
             inference, out var address, out var reason)
-            && address.Equals(IPAddress.Parse("129.213.82.144"))
+            && address.Equals(IPAddress.Parse(ExpectedOracleAddress))
             && reason == "test_external_https_connect_ip_pinned",
         "approved endpoint connects only to the exact pinned address");
     Require(!PulseAiExternalHttpsRuntimePolicy.TryGetPinnedAddress(
@@ -90,7 +91,7 @@ try
     Set(PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable, "10.0.0.10");
     Require(!PulseAiExternalHttpsRuntimePolicy.Evaluate().Valid,
         "private expected addresses are rejected by the public Test exception");
-    Set(PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable, "129.213.82.144");
+    Set(PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable, ExpectedOracleAddress);
 
     var options = PulseAiPrivateRuntimeOptions.FromEnvironment();
     Require(options.HttpsMalwareScanConfigured && options.MalwareScannerConfigured,
@@ -169,7 +170,7 @@ static void ConfigureValidTestRuntime()
     Set("PROJECTPULSE_ENVIRONMENT", "test");
     Set(PulseAiExternalHttpsRuntimePolicy.EnabledVariable, "true");
     Set(PulseAiExternalHttpsRuntimePolicy.HostVariable, PulseAiExternalHttpsRuntimePolicy.ApprovedHost);
-    Set(PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable, "129.213.82.144");
+    Set(PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable, ExpectedOracleAddress);
     Set(PulseAiExternalHttpsRuntimePolicy.ApprovalReferenceVariable, Approval);
     Set(PulseAiExternalHttpsRuntimePolicy.ReadinessEndpointVariable,
         "https://celarai.onenecklab.com/health");
@@ -204,7 +205,7 @@ static void ConfigureValidTestRuntime()
         PulseAiExternalHttpsRuntimePolicy.MalwareScannerMode);
     Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED", "true");
     Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION",
-        "clamav-1.5.3-daily-28087-20260809");
+        "clamav-runtime-managed");
     Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE", Approval);
 }
 
