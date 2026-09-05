@@ -1,0 +1,11 @@
+[Unit]
+Description=Celar AI Ollama engine and approved-model update
+Wants=network-online.target
+After=network-online.target ollama.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/celar-ai/deploy/ollama-update.sh
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "environment": "protected-test-oracle-celar",
+  "hostname": "celarai.onenecklab.com",
+  "architecture": "arm64",
+  "generationModel": "gemma3:4b",
+  "embeddingModel": "embeddinggemma",
+  "ollamaHost": "127.0.0.1:11434",
+  "clamavHost": "127.0.0.1",
+  "clamavPort": 3310,
+  "ollamaKeepAlive": "30m",
+  "ollamaMaxLoadedModels": 2,
+  "ollamaNumParallel": 1,
+  "ollamaMaxQueue": 64,
+  "localBackupRetentionDays": 7,
+  "resticKeepDaily": 7,
+  "resticKeepWeekly": 4,
+  "resticKeepMonthly": 6
+}

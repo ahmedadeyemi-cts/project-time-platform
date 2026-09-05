@@ -1,0 +1,11 @@
+[Unit]
+Description=Celar AI state backup
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/celar-ai/deploy/backup.sh
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

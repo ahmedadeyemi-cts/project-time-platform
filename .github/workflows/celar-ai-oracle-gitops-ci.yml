@@ -1,0 +1,73 @@
+name: Validate Oracle Celar GitOps and Recovery Package
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/oracle-celar/**'
+      - '.github/workflows/celar-ai-oracle-gitops-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-oracle-gitops-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Validate shell and desired-state manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for script in \
+            deployment/oracle-celar/bootstrap.sh \
+            deployment/oracle-celar/deploy.sh \
+            deployment/oracle-celar/gitops.sh \
+            deployment/oracle-celar/health-check.sh \
+            deployment/oracle-celar/backup.sh \
+            deployment/oracle-celar/restore.sh \
+            deployment/oracle-celar/ollama-update.sh; do
+            bash -n "$script"
+          done
+          jq -e '
+            .schema == 1 and
+            .environment == "protected-test-oracle-celar" and
+            .hostname == "celarai.onenecklab.com" and
+            .architecture == "arm64" and
+            .generationModel == "gemma3:4b" and
+            .embeddingModel == "embeddinggemma" and
+            .ollamaHost == "127.0.0.1:11434" and
+            .clamavHost == "127.0.0.1" and
+            .clamavPort == 3310
+          ' deployment/oracle-celar/release.json >/dev/null
+
+      - name: Reject embedded credentials and unsafe public service binds
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ! grep -RInE --exclude='README.md' --exclude='backup.env.example' \
+            '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|ssh-ed25519 AAAA|RESTIC_PASSWORD=.+|AWS_SECRET_ACCESS_KEY=.+|runtime-token=.+)' \
+            deployment/oracle-celar
+          ! grep -RInE '(0\.0\.0\.0:11434|0\.0\.0\.0.*3310|TCPAddr[[:space:]]+0\.0\.0\.0)' deployment/oracle-celar
+          grep -Fq 'OLLAMA_HOST=\$OLLAMA_HOST_VALUE' deployment/oracle-celar/deploy.sh
+          grep -Fq "CLAMAV_HOST\" == '127.0.0.1'" deployment/oracle-celar/deploy.sh
+
+      - name: Verify GitOps is pull-based and backups are recoverable
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -Fq 'git fetch --no-tags --prune origin main' deployment/oracle-celar/gitops.sh
+          grep -Fq 'deployment/oracle-celar' deployment/oracle-celar/gitops.sh
+          grep -Fq 'restic backup' deployment/oracle-celar/backup.sh
+          grep -Fq 'restic restore' deployment/oracle-celar/restore.sh
+          grep -Fq 'CELAR_OLLAMA_UPDATE=PASS' deployment/oracle-celar/ollama-update.sh
+          git diff --check
