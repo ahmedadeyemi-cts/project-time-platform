@@ -92,7 +92,16 @@ const aiRoutingSowRepairMode = branchName === 'fix/ai-routing-sow-regeneration-2
 if (aiRoutingSowRepairMode) await import('./validate-ai-routing-sow-release-scope.mjs');
 const plannerEvidenceFallbackMode = branchName === 'fix/ai-planner-evidence-fallback-20260905';
 if (plannerEvidenceFallbackMode) await import('./validate-planner-fallback-build-release-scope.mjs');
-const scopedCompatibilityMode = plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const plannerLocalEvidenceMode = branchName === 'fix/ai-planner-governed-local-evidence-20260905';
+if (plannerLocalEvidenceMode) {
+  const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
+  const actual = String(originalExecFileSync('git', ['diff', '--name-only', base, 'HEAD'], { encoding: 'utf8' })).trim().split('\n').filter(Boolean).sort();
+  assert.deepEqual(actual, [
+    'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs',
+    'tests/validate-celar-ai-pr630-consolidated.mjs'
+  ], 'Governed local evidence repair must retain its exact two-file scope');
+}
+const scopedCompatibilityMode = plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode
