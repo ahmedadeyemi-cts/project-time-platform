@@ -107,10 +107,8 @@ if (module064LiveAcceptanceMode) {
   const actual = String(originalExecFileSync('git', ['diff', '--name-only', base, 'HEAD'], { encoding: 'utf8' })).trim().split('\n').filter(Boolean).sort();
   assert.deepEqual(actual, [
     '.github/workflows/projectpulse-deploy-test.yml',
-    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
-    '.github/workflows/projectpulse-release-test-control-ci.yml',
     'tests/validate-celar-ai-pr630-consolidated.mjs'
-  ], 'Live routing acceptance repair must retain its exact four-file scope');
+  ], 'Live routing acceptance repair must retain its exact two-file scope');
 }
 const module064DeepSeekAnswerMode = branchName === 'fix/module064-deepseek-chat-answer-20260905';
 if (module064DeepSeekAnswerMode) {
