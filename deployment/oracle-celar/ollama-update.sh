@@ -17,6 +17,7 @@ fail() {
 [[ "$(id -u)" -eq 0 ]] || fail 'ollama-update.sh requires root.'
 command -v jq >/dev/null 2>&1 || fail 'jq is required.'
 command -v ollama >/dev/null 2>&1 || fail 'Ollama is not installed.'
+command -v readlink >/dev/null 2>&1 || fail 'readlink is required.'
 [[ -x "$HEALTH_CHECK" ]] || fail 'Celar Oracle health-check.sh is missing.'
 
 LOCK_WAIT_SECONDS="$(jq -r '.runtimeMutationLockWaitSeconds' "$MANIFEST")"
@@ -29,14 +30,21 @@ EMBEDDING_MODEL="$(jq -r '.embeddingModel' "$MANIFEST")"
 (( ${#GENERATION_MODELS[@]} >= 3 )) || fail 'The governed local generation portfolio is incomplete.'
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 INSTALLER="$(mktemp)"
-OLD_BINARY="$(command -v ollama)"
-OLD_BINARY_MODE="$(stat -c '%a' "$OLD_BINARY")"
+OLLAMA_COMMAND="$(command -v ollama)"
+OLD_BINARY="$(readlink -f -- "$OLLAMA_COMMAND")"
+[[ -n "$OLD_BINARY" && -f "$OLD_BINARY" && -x "$OLD_BINARY" ]] || fail 'Could not resolve the installed Ollama executable.'
+OLD_BINARY_MODE="$(stat -Lc '%a' -- "$OLD_BINARY")"
+ORIGINAL_COMMAND_WAS_SYMLINK=false
+[[ -L "$OLLAMA_COMMAND" ]] && ORIGINAL_COMMAND_WAS_SYMLINK=true
 BACKUP_BINARY="$ROLLBACK_ROOT/ollama-$STAMP"
 declare -A ROLLBACK_ALIAS=()
 
 [[ "$OLD_BINARY_MODE" =~ ^[0-7]{3,4}$ ]] || fail 'Could not determine the current Ollama executable mode.'
 install -d -m 0700 "$ROLLBACK_ROOT"
-cp -a "$OLD_BINARY" "$BACKUP_BINARY"
+# Archive the resolved executable bytes, never the launcher symlink. This keeps
+# the rollback copy independent from whatever target the updater later replaces.
+cp --dereference --preserve=mode,timestamps -- "$OLD_BINARY" "$BACKUP_BINARY"
+[[ -f "$BACKUP_BINARY" && ! -L "$BACKUP_BINARY" ]] || fail 'Ollama executable rollback copy is invalid.'
 chmod "$OLD_BINARY_MODE" "$BACKUP_BINARY"
 
 resolve_model_name() {
@@ -65,7 +73,17 @@ rollback() {
   if [[ "$status" -ne 0 ]]; then
     echo 'Ollama/model update validation failed; restoring the previous engine and model aliases.' >&2
     systemctl stop ollama.service || true
+
+    # Restore the exact pre-update executable bytes to the pre-update resolved
+    # target. If the launcher was originally a symlink, restore that launcher as
+    # an absolute symlink too, because an installer may have repointed/replaced it.
     install -m "$OLD_BINARY_MODE" "$BACKUP_BINARY" "$OLD_BINARY" || true
+    if [[ "$ORIGINAL_COMMAND_WAS_SYMLINK" == true ]]; then
+      ln -sfnT "$OLD_BINARY" "$OLLAMA_COMMAND" || true
+    elif [[ "$OLLAMA_COMMAND" != "$OLD_BINARY" ]]; then
+      install -m "$OLD_BINARY_MODE" "$BACKUP_BINARY" "$OLLAMA_COMMAND" || true
+    fi
+
     systemctl start ollama.service || true
     sleep 3
     for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
