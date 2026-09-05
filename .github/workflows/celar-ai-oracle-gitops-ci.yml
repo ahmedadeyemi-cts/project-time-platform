@@ -71,9 +71,9 @@ jobs:
           set -Eeuo pipefail
           APP=src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
 
-          # Inspect each named HttpClient registration independently. Do not let
-          # an identical timeout in OCR/malware accidentally satisfy the inference
-          # or embedding contract this Oracle gateway depends on.
+          # Slice each named AddHttpClient lambda at its own handler-chain marker.
+          # This prevents timeout values from later OCR/malware/training clients
+          # from satisfying the inference or embedding contract accidentally.
           python3 - "$APP" <<'PY'
           from pathlib import Path
           import re
@@ -82,14 +82,18 @@ jobs:
           text = Path(sys.argv[1]).read_text(encoding="utf-8")
 
           def client_block(name: str) -> str:
-              pattern = re.compile(
-                  rf'services\.AddHttpClient\("{re.escape(name)}",\s*client\s*=>\s*\{{(?P<body>.*?)\n\s*\}}\);',
-                  re.DOTALL,
-              )
-              match = pattern.search(text)
-              if not match:
+              marker = f'services.AddHttpClient("{name}", client =>'
+              start = text.find(marker)
+              if start < 0:
                   raise SystemExit(f"Missing named HttpClient registration: {name}")
-              return match.group("body")
+              end_marker = '.ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());'
+              end = text.find(end_marker, start)
+              if end < 0:
+                  raise SystemExit(f"Missing private handler chain for: {name}")
+              block = text[start:end]
+              if 'services.AddHttpClient("' in block[len(marker):]:
+                  raise SystemExit(f"Named HttpClient slice escaped its registration: {name}")
+              return block
 
           def timeout_minutes(name: str) -> int:
               body = client_block(name)
@@ -216,7 +220,7 @@ jobs:
           HEALTH=deployment/oracle-celar/health-check.sh
           grep -Fq 'fetch --no-tags --prune origin main' deployment/oracle-celar/gitops.sh
           grep -Fq 'restic backup' "$BACKUP"
-          grep -Fq 'BACKUP_TAG='"'"'celar-oracle'"'"'' "$RESTORE"
+          grep -Fq "BACKUP_TAG='celar-oracle'" "$RESTORE"
           grep -Fq 'restic snapshots --tag "$BACKUP_TAG"' "$RESTORE"
           grep -Fq 'restic restore "$SNAPSHOT" --tag "$BACKUP_TAG" --target "$TARGET"' "$RESTORE"
           grep -Fq -- "--exclude='/var/lib/celar-ai/recovery'" "$BACKUP"
