@@ -88,9 +88,14 @@ jobs:
           mapfile -t RESOLVED < <(getent ahostsv4 "$ORACLE_RUNTIME_HOST" | awk '{print $1}' | sort -u)
           (( ${#RESOLVED[@]} == 1 )) || fail 'Oracle runtime DNS must resolve to one IPv4 address.'
           [[ "${RESOLVED[0]}" == "$ORACLE_RUNTIME_IP" ]] || fail 'Oracle runtime DNS does not match the replacement IPv4 pin.'
-          [[ "$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "$ORACLE_READINESS_ENDPOINT")" == 401 ]] || fail 'Unauthenticated readiness must return 401.'
+
+          # Every Oracle request, especially authenticated requests, is pinned to
+          # the approved IPv4 at connect time and bypasses runner proxy settings.
+          # TLS still validates the original celarai.onenecklab.com hostname.
+          ORACLE_CURL=(--resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" --noproxy "$ORACLE_RUNTIME_HOST")
+          [[ "$(curl -sS --max-time 30 "${ORACLE_CURL[@]}" -o /dev/null -w '%{http_code}' "$ORACLE_READINESS_ENDPOINT")" == 401 ]] || fail 'Unauthenticated readiness must return 401.'
           WRONG_TOKEN="$(openssl rand -hex 32)"
-          [[ "$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $WRONG_TOKEN" -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only' "$ORACLE_READINESS_ENDPOINT")" == 401 ]] || fail 'Incorrect-token readiness must return 401.'
+          [[ "$(curl -sS --max-time 30 "${ORACLE_CURL[@]}" -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $WRONG_TOKEN" -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only' "$ORACLE_READINESS_ENDPOINT")" == 401 ]] || fail 'Incorrect-token readiness must return 401.'
           unset WRONG_TOKEN
 
           AUTH_DIR="$(mktemp -d)"
@@ -102,7 +107,7 @@ jobs:
           chmod 0600 "$AUTH_CONFIG"
           unset RUNTIME_TOKEN
 
-          curl -fsS --max-time 45 --config "$AUTH_CONFIG" "$ORACLE_READINESS_ENDPOINT" > "$RUNNER_TEMP/oracle-health.json"
+          curl -fsS --max-time 45 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG" "$ORACLE_READINESS_ENDPOINT" > "$RUNNER_TEMP/oracle-health.json"
           jq -e --arg g "$ORACLE_GENERATION_MODEL" --arg e "$ORACLE_EMBEDDING_MODEL" --arg o "$ORACLE_OCR_MODEL" '
             .status == "ready" and .ollamaReady == true and .generationModelReady == true and
             .embeddingModelReady == true and .tesseractReady == true and .clamavReady == true and
@@ -110,15 +115,15 @@ jobs:
             .rawDocumentContentLogged == false and .trainingEnabled == false and .externalEscalationEnabled == false
           ' "$RUNNER_TEMP/oracle-health.json" >/dev/null
           ORACLE_CLAMAV_SIGNATURE_VERSION="$(jq -r '.clamavSignatureVersion // empty' "$RUNNER_TEMP/oracle-health.json")"
-          [[ "$ORACLE_CLAMAV_SIGNATURE_VERSION" =~ ^[A-Za-z0-9._:-]{3,120}$ ]] || fail 'ClamAV signature/version attestation is invalid.'
+          [[ "$ORACLE_CLAMAV_SIGNATURE_VERSION" =~ ^daily-[0-9]+$ ]] || fail 'ClamAV must report a concrete daily signature version; placeholders are not accepted.'
           echo "ORACLE_CLAMAV_SIGNATURE_VERSION=$ORACLE_CLAMAV_SIGNATURE_VERSION" >> "$GITHUB_ENV"
 
-          curl -fsS --max-time 270 --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
+          curl -fsS --max-time 270 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
             -d "$(jq -nc --arg model "$ORACLE_GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return only: CELAR ORACLE REACTIVATION OK"}],stream:false,temperature:0,max_tokens:32}')" \
             "$ORACLE_INFERENCE_ENDPOINT" > "$RUNNER_TEMP/oracle-inference.json"
           jq -e '.choices[0].message.content | strings | length > 0' "$RUNNER_TEMP/oracle-inference.json" >/dev/null
 
-          curl -fsS --max-time 180 --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
+          curl -fsS --max-time 180 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
             -d "$(jq -nc --arg model "$ORACLE_EMBEDDING_MODEL" '{model:$model,input:["Celar AI Protected Test embedding proof"],encoding_format:"float"}')" \
             "$ORACLE_EMBEDDING_ENDPOINT" > "$RUNNER_TEMP/oracle-embedding.json"
           jq -e --arg model "$ORACLE_EMBEDDING_MODEL" '
@@ -131,10 +136,28 @@ jobs:
           CLEAN_FILE="$RUNNER_TEMP/celar-oracle-clean.txt"
           printf 'Celar AI Protected Test clean-file validation.\n' > "$CLEAN_FILE"
           CLEAN_SIZE="$(stat -c '%s' "$CLEAN_FILE")"
-          curl -fsS --max-time 180 --config "$AUTH_CONFIG" -F "file=@$CLEAN_FILE;filename=celar-oracle-clean.txt" \
+          curl -fsS --max-time 180 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG" -F "file=@$CLEAN_FILE;filename=celar-oracle-clean.txt" \
             "$ORACLE_MALWARE_SCAN_ENDPOINT" > "$RUNNER_TEMP/oracle-scan.json"
-          jq -e --argjson size "$CLEAN_SIZE" '.status == "clean" and .clean == true and .infected == false and .scanner == "clamav" and .sizeBytes == $size' \
-            "$RUNNER_TEMP/oracle-scan.json" >/dev/null
+          jq -e --arg signature "$ORACLE_CLAMAV_SIGNATURE_VERSION" --argjson size "$CLEAN_SIZE" '
+            .status == "clean" and .clean == true and .infected == false and .scanner == "clamav" and
+            .sizeBytes == $size and .signature == $signature
+          ' "$RUNNER_TEMP/oracle-scan.json" >/dev/null
+
+          command -v convert >/dev/null 2>&1 || fail 'ImageMagick convert is required for the OCR live probe.'
+          OCR_FILE="$RUNNER_TEMP/celar-oracle-ocr.png"
+          convert -size 1200x220 xc:white -font DejaVu-Sans -pointsize 72 -fill black -gravity center \
+            -annotate +0+0 'CELAR OCR OK' "$OCR_FILE"
+          curl -fsS --max-time 300 "${ORACLE_CURL[@]}" --config "$AUTH_CONFIG" \
+            -F "file=@$OCR_FILE;filename=celar-oracle-ocr.png" \
+            -F "model=$ORACLE_OCR_MODEL" \
+            -F 'documentId=00000000-0000-0000-0000-000000000849' \
+            -F 'documentCategory=protected-test-reactivation' \
+            "$ORACLE_OCR_ENDPOINT" > "$RUNNER_TEMP/oracle-ocr.json"
+          jq -e --arg model "$ORACLE_OCR_MODEL" '
+            .model == $model and
+            ([.pages[].text] | join(" ") | ascii_upcase) as $text and
+            ($text | contains("CELAR")) and ($text | contains("OCR"))
+          ' "$RUNNER_TEMP/oracle-ocr.json" >/dev/null
 
       - name: Sign in to the protected Test subscription
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
@@ -268,8 +291,8 @@ jobs:
           path: evidence/celar-ai-oracle-test-reactivation.json
           retention-days: 30
 
-      - name: Rollback protected Test API configuration on failure
-        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+      - name: Rollback protected Test API configuration on failure or cancellation
+        if: ${{ (failure() || cancelled()) && steps.deploy_api.outputs.started == 'true' }}
         shell: bash
         run: |
           set +e
