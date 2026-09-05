@@ -780,7 +780,6 @@ jobs:
           jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Verify the matching Oracle SOW runtime before API rollout
-        if: github.event_name == 'push' && contains(github.event.head_commit.message, 'celar-sow-cpu-inference-20260905')
         shell: bash
         working-directory: release
         env:

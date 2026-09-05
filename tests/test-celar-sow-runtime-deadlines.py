@@ -89,3 +89,9 @@ _, status = ns['_local_chat_completions']()
 assert status == 502
 assert ns['_budgets']('TEST_UNSET_BUDGET', [3000]*3, 3, 3600, shared_deadline=True) == [3000]*3
 print('CELAR_SOW_RUNTIME_DEADLINES=PASS')
+
+# The coupled runtime gate must also run on manual and squash/rebase rollouts.
+controller = (root / '.github/workflows/projectpulse-deploy-test.yml').read_text()
+gate = controller.split('      - name: Verify the matching Oracle SOW runtime before API rollout', 1)[1].split('      - name:', 1)[0]
+assert '\n        if:' not in gate
+assert 'sowContextTokens == 16384' in gate
