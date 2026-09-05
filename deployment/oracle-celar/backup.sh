@@ -46,14 +46,18 @@ add_path /root/celar-firewall-backup
 sort -u -o "$LIST_FILE" "$LIST_FILE"
 [[ -s "$LIST_FILE" ]] || fail 'No backup paths were found.'
 
-# Local quick-rollback archive. Deliberately exclude reproducible model/signature data
-# and credential source files. External Restic encryption is the disaster-recovery copy.
+# Local quick-rollback archive. Deliberately exclude reproducible model/signature
+# data, credential source files, and staged restore trees. A staged restore is
+# recovery workspace, not live state; backing it up would recursively nest old
+# snapshots during repeated recovery tests.
 tar \
   --create \
   --directory=/ \
   --files-from="$LIST_FILE" \
   --exclude='etc/celar-ai/backup.env' \
   --exclude='etc/celar-ai/gateway/runtime-token' \
+  --exclude='var/lib/celar-ai/recovery' \
+  --exclude='var/lib/celar-ai/recovery/**' \
   --exclude='var/lib/celar-ai/ollama-models' \
   --exclude='var/lib/ollama' \
   --exclude='var/lib/clamav' \
@@ -85,6 +89,8 @@ if [[ -s "$RESTIC_ENV" ]]; then
     --tag celar-oracle \
     --exclude='/etc/celar-ai/backup.env' \
     --exclude='/etc/celar-ai/gateway/runtime-token' \
+    --exclude='/var/lib/celar-ai/recovery' \
+    --exclude='/var/lib/celar-ai/recovery/**' \
     --exclude='/var/lib/celar-ai/ollama-models' \
     --exclude='/var/lib/ollama' \
     --exclude='/var/lib/clamav' \
