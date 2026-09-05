@@ -282,7 +282,11 @@ done
 systemctl enable caddy.service >/dev/null
 systemctl restart caddy.service
 
-systemctl enable --now celar-backup.timer celar-ollama-update.timer celar-gitops.timer >/dev/null
+# Backup/model timers can start immediately. The GitOps timer must remain
+# enable-only here; bootstrap starts it only after recording the applied tree,
+# preventing a second deployment from racing the first fresh bootstrap.
+systemctl enable --now celar-backup.timer celar-ollama-update.timer >/dev/null
+systemctl enable celar-gitops.timer >/dev/null
 
 "$INSTALL_ROOT/health-check.sh"
 
