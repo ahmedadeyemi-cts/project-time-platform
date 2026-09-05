@@ -1446,7 +1446,7 @@ public sealed class CelarAiPrivateGenerationTarget
                 new { role = "user", content = request.UserPrompt }
             },
             temperature = request.Temperature,
-            max_tokens = request.MaxOutputTokens
+            max_tokens = PulseAiExternalHttpsRuntimePolicy.CompletionBudget(endpoint, request.MaxOutputTokens)
         };
         using var boundedGeneration = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         if (string.Equals(
