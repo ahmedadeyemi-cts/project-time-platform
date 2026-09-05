@@ -4,6 +4,8 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 MANIFEST="$ROOT/release.json"
 [[ -s "$MANIFEST" ]] || MANIFEST='/opt/celar-ai/deploy/release.json'
+HEALTH_CHECK="$ROOT/health-check.sh"
+[[ -x "$HEALTH_CHECK" ]] || HEALTH_CHECK='/opt/celar-ai/deploy/health-check.sh'
 ROLLBACK_ROOT='/var/lib/celar-ai/ollama-rollback'
 
 fail() {
@@ -14,6 +16,7 @@ fail() {
 [[ "$(id -u)" -eq 0 ]] || fail 'ollama-update.sh requires root.'
 command -v jq >/dev/null 2>&1 || fail 'jq is required.'
 command -v ollama >/dev/null 2>&1 || fail 'Ollama is not installed.'
+[[ -x "$HEALTH_CHECK" ]] || fail 'Celar Oracle health-check.sh is missing.'
 
 GENERATION_MODEL="$(jq -r '.generationModel' "$MANIFEST")"
 EMBEDDING_MODEL="$(jq -r '.embeddingModel' "$MANIFEST")"
@@ -28,15 +31,24 @@ install -d -m 0700 "$ROLLBACK_ROOT"
 cp -a "$OLD_BINARY" "$BACKUP_BINARY"
 chmod 0700 "$BACKUP_BINARY"
 
-have_model() {
-  ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fxq "$1"
+resolve_model_name() {
+  local wanted="$1"
+  ollama list 2>/dev/null | awk -v model="$wanted" '
+    NR > 1 && ($1 == model || $1 == model ":latest") { print $1; exit }
+  '
 }
 
-if have_model "$GENERATION_MODEL"; then
-  ollama cp "$GENERATION_MODEL" "$GEN_ALIAS"
+have_model() {
+  [[ -n "$(resolve_model_name "$1")" ]]
+}
+
+GEN_SOURCE="$(resolve_model_name "$GENERATION_MODEL")"
+EMB_SOURCE="$(resolve_model_name "$EMBEDDING_MODEL")"
+if [[ -n "$GEN_SOURCE" ]]; then
+  ollama cp "$GEN_SOURCE" "$GEN_ALIAS"
 fi
-if have_model "$EMBEDDING_MODEL"; then
-  ollama cp "$EMBEDDING_MODEL" "$EMB_ALIAS"
+if [[ -n "$EMB_SOURCE" ]]; then
+  ollama cp "$EMB_SOURCE" "$EMB_ALIAS"
 fi
 
 rollback() {
@@ -56,6 +68,7 @@ rollback() {
       ollama rm "$EMBEDDING_MODEL" >/dev/null 2>&1 || true
       ollama cp "$EMB_ALIAS" "$EMBEDDING_MODEL" || true
     fi
+    systemctl restart celar-ai-gateway.service >/dev/null 2>&1 || true
   fi
   rm -f "$INSTALLER"
   exit "$status"
@@ -89,7 +102,14 @@ EMBED_RESULT="$(curl -fsS --max-time 120 http://127.0.0.1:11434/api/embed \
   -d "$(jq -nc --arg model "$EMBEDDING_MODEL" '{model:$model,input:"Celar AI update validation"}')")"
 jq -e '.embeddings[0] | arrays | length > 0' <<<"$EMBED_RESULT" >/dev/null
 
-# Keep only the two newest rollback aliases per approved model.
+# Reload gateway workers so any provider connection state is fresh, then require
+# the complete authenticated Caddy/gateway/OCR/ClamAV/embedding/inference proof.
+systemctl restart celar-ai-gateway.service
+"$HEALTH_CHECK"
+
+# Keep only the two newest rollback aliases per approved model. Ollama renders
+# untagged aliases with an implicit :latest tag, so match by prefix rather than
+# requiring the requested alias string to be displayed verbatim.
 prune_aliases() {
   local prefix="$1"
   mapfile -t aliases < <(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -F "${prefix}-rollback-" | sort -r || true)
@@ -107,5 +127,5 @@ find "$ROLLBACK_ROOT" -maxdepth 1 -type f -name 'ollama-*' -mtime +30 -delete
 rm -f "$INSTALLER"
 trap - EXIT INT TERM
 
-echo "CELAR_OLLAMA_UPDATE=PASS"
+echo 'CELAR_OLLAMA_UPDATE=PASS'
 ollama --version
