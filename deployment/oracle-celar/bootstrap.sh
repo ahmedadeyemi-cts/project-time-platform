@@ -40,30 +40,47 @@ git -C "$SOURCE_DIR" checkout --detach "$TARGET_COMMIT"
 
 test -x "$SOURCE_DIR/deployment/oracle-celar/deploy.sh" || fail 'Oracle Celar deployment package is not present on main.'
 
-# A retry may inherit an active timer from a prior successful/partial runtime.
-# Remember that state before stopping future triggers. If this bootstrap fails,
-# restore only a timer that was active on entry so recovery automation is not
-# silently disabled by a failed retry.
 GITOPS_TIMER_WAS_ACTIVE=false
 if systemctl is-active --quiet celar-gitops.timer; then
   GITOPS_TIMER_WAS_ACTIVE=true
 fi
 
-restore_timer_on_failure() {
+restore_prior_timer() {
+  if [[ "$GITOPS_TIMER_WAS_ACTIVE" == true ]]; then
+    systemctl start celar-gitops.timer >/dev/null 2>&1 || true
+  fi
+}
+
+on_exit() {
   local status=$?
   trap - EXIT INT TERM
-  if [[ "$status" -ne 0 && "$GITOPS_TIMER_WAS_ACTIVE" == true ]]; then
-    systemctl start celar-gitops.timer >/dev/null 2>&1 || true
+  if [[ "$status" -ne 0 ]]; then
+    restore_prior_timer
   fi
   exit "$status"
 }
-trap restore_timer_on_failure EXIT INT TERM
+
+on_interrupt() {
+  trap - EXIT INT TERM
+  restore_prior_timer
+  exit 130
+}
+
+on_terminate() {
+  trap - EXIT INT TERM
+  restore_prior_timer
+  exit 143
+}
+
+# Install deterministic signal handlers before the timer is stopped. INT and
+# TERM use explicit conventional signal exit codes instead of inheriting `$?`
+# from whichever child happened to finish before Bash dispatched the trap.
+trap on_exit EXIT
+trap on_interrupt INT
+trap on_terminate TERM
 
 systemctl stop celar-gitops.timer >/dev/null 2>&1 || true
 
-# Let an already-running reconciliation leave the shared runtime mutation path,
-# but never wait forever. A stuck fetch/package/model operation must surface as
-# a bounded, diagnosable bootstrap failure.
 DRAIN_DEADLINE=$((SECONDS + GITOPS_DRAIN_TIMEOUT_SECONDS))
 while systemctl is-active --quiet celar-gitops.service; do
   if (( SECONDS >= DRAIN_DEADLINE )); then
@@ -81,9 +98,6 @@ printf '%s\n' "$TARGET_COMMIT" > "$STATE_DIR/gitops-applied-commit"
 printf '%s\n' "$TARGET_TREE" > "$STATE_DIR/gitops-applied-tree"
 chmod 0644 "$STATE_DIR/gitops-applied-commit" "$STATE_DIR/gitops-applied-tree"
 
-# Start polling only after a successful deployment has an applied-state marker.
-# The immediate service invocation should therefore converge to a no-op unless
-# main advanced while the bootstrap was running.
 systemctl enable --now celar-gitops.timer
 systemctl start celar-gitops.service
 
