@@ -1,0 +1,46 @@
+name: Validate Module 025 SOW/GSD Workspace
+
+on:
+  pull_request:
+    paths:
+      - 'database/migrations/099_module025_sow_gsd_workspace.sql'
+      - 'database/rollback/099_module025_sow_gsd_workspace_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/Module025*'
+      - 'src/backend/ProjectTime.Api/Properties/AssemblyInfo.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'tests/Module025SowGsdExporterTests/**'
+      - '.github/workflows/module025-sow-gsd-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module025-sow-gsd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Test the SOW and GSD document exporter
+        shell: bash
+        run: |
+          set +e
+          dotnet run --project tests/Module025SowGsdExporterTests/Module025SowGsdExporterTests.csproj \
+            --configuration Release > /tmp/module025-exporter-tests.log 2>&1
+          STATUS=$?
+          cat /tmp/module025-exporter-tests.log
+          grep -Eq '^MODULE_025_SOW_GSD_EXPORTER_TEST=PASS assertions=[0-9]+$' /tmp/module025-exporter-tests.log || STATUS=1
+          exit "$STATUS"
+      - name: Upload Module 025 exporter test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module025-exporter-test-diagnostics
+          path: /tmp/module025-exporter-tests.log
+          retention-days: 7
