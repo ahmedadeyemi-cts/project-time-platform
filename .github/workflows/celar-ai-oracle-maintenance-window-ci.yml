@@ -6,6 +6,7 @@ on:
       - 'deployment/oracle-celar/**'
       - 'docs/modules/module-084-celar-ai-runtime-version/**'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs'
+      - 'src/backend/ProjectTime.Api/Program.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs'
       - 'src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx'
       - 'src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs'
@@ -17,6 +18,7 @@ on:
       - 'deployment/oracle-celar/**'
       - 'docs/modules/module-084-celar-ai-runtime-version/**'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs'
+      - 'src/backend/ProjectTime.Api/Program.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs'
       - 'src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx'
       - 'src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs'
@@ -64,6 +66,8 @@ jobs:
             .modelMaintenance.automaticModelPull == true and
             .modelMaintenance.rollbackOnValidationFailure == true and
             .localGenerationModels == ["gemma3:4b","qwen3:4b-instruct","llama3.2:3b"] and
+            .structuredGenerationOrder == ["gemma3:4b","qwen3:4b-instruct","llama3.2:3b"] and
+            .generalGenerationOrder == ["qwen3:4b-instruct","llama3.2:3b","gemma3:4b"] and
             .embeddingModel == "embeddinggemma"
           ' "$RELEASE" >/dev/null
 
@@ -106,5 +110,10 @@ jobs:
           python3 -m py_compile "$GATEWAY"
           bash -n "$DEPLOY" "$UPDATER" "$RECONCILE"
 
+          node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
+          node src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs
+
           echo 'CELAR_ORACLE_MAINTENANCE_WINDOW=PASS'
           echo 'CELAR_ORACLE_MAINTENANCE_CONTROL_PLANE=PASS'
+          echo 'CELAR_MODULE_064_PROVIDER_ORDER=PASS'
+          echo 'CELAR_DNS_MANAGED_RUNTIME=PASS'

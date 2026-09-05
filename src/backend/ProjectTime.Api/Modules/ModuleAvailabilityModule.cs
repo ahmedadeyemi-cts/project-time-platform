@@ -88,6 +88,7 @@ public static class ModuleAvailabilityModule
             ["081"] = Module("081", "lab-equipment-tracker", "Lab Equipment Tracker", "Platform Operations"),
             ["082"] = Module("082", "project-risk-register", "Enterprise Project Risk Register", "Project Delivery"),
             ["083"] = Module("083", "full-future-loop", "Full Future Loop", "Platform Operations"),
+            ["084"] = Module("084", "celar-ai-runtime-version", "Celar AI Runtime & Version Center", "Platform Operations"),
             ["997"] = Module("997", "security-operations", "Security Operations, Threat Intelligence & Response Center", "Security & Audit"),
             ["998"] = Module("998", "system-diagnostics", "System Diagnostic & Controlled Remediation Center", "Platform Operations"),
             ["999"] = Module("999", "user-guide", "System User Guide", "Help & Documentation")

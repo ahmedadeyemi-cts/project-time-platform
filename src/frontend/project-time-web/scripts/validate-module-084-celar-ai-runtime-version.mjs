@@ -17,12 +17,14 @@ const app = read('src/frontend/project-time-web/src/App.jsx');
 const registry = read('src/frontend/project-time-web/src/module-availability-registry.js');
 const availability = read('src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs');
 const backend = read('src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs');
+const program = read('src/backend/ProjectTime.Api/Program.cs');
 const component = read('src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx');
 const release = JSON.parse(read('deployment/oracle-celar/release.json'));
 const timer = read('deployment/oracle-celar/systemd/celar-ollama-update.timer');
 const gateway = read('deployment/oracle-celar/gateway/maintenance_gateway.py');
 const reconcile = read('deployment/oracle-celar/maintenance-reconcile.sh');
 const backup = read('deployment/oracle-celar/backup.sh');
+const protectedTestController = read('.github/workflows/projectpulse-deploy-test.yml');
 
 check('MODULE_084_IMPORT', app.includes("import CelarAiRuntimeVersionCenter from './CelarAiRuntimeVersionCenter.jsx';"));
 check('MODULE_084_ROUTE', app.includes("activeRoute === 'celar-ai-runtime-version'") && app.includes('<CelarAiRuntimeVersionCenter />'));
@@ -31,6 +33,7 @@ check('MODULE_084_STATIC_REGISTRY', registry.includes("moduleNumber: '084'") && 
 check('MODULE_084_BACKEND_AVAILABILITY', availability.includes('["084"] = Module("084", "celar-ai-runtime-version", "Celar AI Runtime & Version Center", "Platform Operations")'));
 
 check('MODULE_084_BACKEND_ROUTES', backend.includes('/api/celar-ai/v1/runtime-version/status') && backend.includes('/api/celar-ai/v1/runtime-version/schedule'));
+check('MODULE_084_CENTRAL_ENDPOINT_MAP', program.includes('MODULE_084_CELAR_RUNTIME_VERSION_ENDPOINT_MAP_START') && program.includes('app.MapCelarAiRuntimeVersionEndpoints();'));
 check('MODULE_084_ACTUAL_ADMIN_AUTHORITY', backend.includes('AdminExperienceCommon.AuthorizeAsync(context)') && backend.includes('AdminExperienceCommon.IsViewAs(context)'));
 check('MODULE_084_VIEW_AS_FAIL_CLOSED', backend.includes('status = "view_as_read_only"') && backend.includes('mutationAuthorityTransferred = false'));
 check('MODULE_084_TEST_ONLY_RUNTIME_POLICY', backend.includes('PulseAiExternalHttpsRuntimePolicy.Evaluate()') && backend.includes('productionMutationAllowed = false'));
@@ -52,6 +55,12 @@ check('MODULE_084_DEFAULT_1AM_CENTRAL', release.modelMaintenance?.dayOfWeek === 
   && timer.includes('OnCalendar=Sun *-*-* 01:00:00 America/Chicago')
   && timer.includes('RandomizedDelaySec=0'));
 check('MODULE_084_APPROVED_PORTFOLIO', JSON.stringify(release.localGenerationModels) === JSON.stringify(['gemma3:4b', 'qwen3:4b-instruct', 'llama3.2:3b']) && release.embeddingModel === 'embeddinggemma');
+check('MODULE_084_SPECIALIST_ORDER_PRESERVED',
+  JSON.stringify(release.structuredGenerationOrder) === JSON.stringify(['gemma3:4b', 'qwen3:4b-instruct', 'llama3.2:3b'])
+  && JSON.stringify(release.generalGenerationOrder) === JSON.stringify(['qwen3:4b-instruct', 'llama3.2:3b', 'gemma3:4b']));
+check('MODULE_084_DNS_MANAGED_RUNTIME_PRESERVED',
+  protectedTestController.includes('PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ADDRESS_MODE=dns')
+  && !/^\s*ORACLE_RUNTIME_IP:\s*\d{1,3}(?:\.\d{1,3}){3}\s*$/m.test(protectedTestController));
 check('MODULE_084_CLOSED_SCHEDULE_SCHEMA', gateway.includes('time_zone != "America/Chicago"') && gateway.includes('ALLOWED_DAYS') && gateway.includes('TIME_PATTERN'));
 check('MODULE_084_UNPRIVILEGED_GATEWAY', gateway.includes('runtimeTokenMayChangeSchedule": False') && !/shell\s*=\s*True|os\.system|sudo/.test(gateway));
 check('MODULE_084_ROOT_RECONCILER', reconcile.includes('systemctl enable celar-ollama-update.timer') && reconcile.includes('systemctl disable --now celar-ollama-update.timer') && reconcile.includes('.timeZone == "America/Chicago"'));

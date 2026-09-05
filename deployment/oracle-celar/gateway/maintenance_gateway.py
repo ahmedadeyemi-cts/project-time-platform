@@ -6,7 +6,7 @@ GET status accepts the ordinary read-only runtime token or the dedicated
 maintenance token. PUT schedule accepts only the dedicated maintenance token
 and writes a closed-schema desired-state file. A separate root-owned systemd
 service validates and applies that file; this process never invokes systemctl,
-sudo, a shell, or arbitrary commands.
+privilege escalation, a shell, or arbitrary commands.
 """
 
 from __future__ import annotations
