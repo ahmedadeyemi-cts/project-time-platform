@@ -131,6 +131,7 @@ public sealed class CelarAiEnterprisePlatformService
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             PulseAiPrivateRagAnswer? privateResult = null;
+            PulseAiPrivateRagAnswer? evidenceGateResult = null;
             var routed = await _router.GenerateWithPrivateTargetAsync(
                 new ProjectPulseAiGenerationRequest(
                     Feature: capability,
@@ -193,7 +194,7 @@ public sealed class CelarAiEnterprisePlatformService
                 // Provider eligibility must not gate permission-scoped evidence
                 // retrieval. This path never invokes a model: it preserves the
                 // existing cited private scaffold alongside generic assistance.
-                privateResult = await _privateRag.GenerateFlowHiveEvidenceScaffoldAsync(
+                evidenceGateResult = await _privateRag.GenerateFlowHiveEvidenceScaffoldAsync(
                     actualUserId, effectiveUserId,
                     new PulseAiPrivateFlowHiveRequest(
                         ProjectCode: projectCode,
@@ -205,8 +206,13 @@ public sealed class CelarAiEnterprisePlatformService
                         TaskId: request.TaskId,
                         AssignmentId: request.AssignmentId),
                     cancellationToken);
+                if (evidenceGateResult.FlowHivePlan is not null && evidenceGateResult.Citations.Count > 0)
+                {
+                    privateResult = evidenceGateResult;
+                }
             }
 
+            var evidenceDiagnostics = privateResult ?? evidenceGateResult;
             var plan = privateResult?.FlowHivePlan;
             var detailed = privateResult?.Answer
                 ?? (plan is null || privateResult is null ? null : BuildPlanSummary(plan, privateResult));
@@ -221,7 +227,7 @@ public sealed class CelarAiEnterprisePlatformService
                 : null;
 
             var confidence = plan?.Confidence ?? detailed?.Confidence ?? 0.25m;
-            var warnings = new List<string>(privateResult?.Warnings ?? []);
+            var warnings = new List<string>(evidenceDiagnostics?.Warnings ?? []);
             warnings.AddRange(mode switch
             {
                 "timesheet_description" => ["The Engineer must verify the factual description before applying it. Celar AI did not save or submit time."],
@@ -241,7 +247,7 @@ public sealed class CelarAiEnterprisePlatformService
             }
             if (!string.IsNullOrWhiteSpace(routed.Warning)) warnings.Add(routed.Warning);
 
-            // The structured artifact is produced only by the private callback.
+            // The structured artifact requires private, permission-scoped evidence.
             // A later external/local target can add separate generic assistance,
             // but it does not replace or de-ground that private artifact.
             var status = privateResult?.Status == "completed"
@@ -276,8 +282,8 @@ public sealed class CelarAiEnterprisePlatformService
                 Diagram: diagram,
                 Citations: privateResult?.Citations ?? [],
                 Warnings: warnings,
-                MissingEvidence: privateResult?.MissingEvidence ?? ["No private source-grounded composition completed."],
-                Conflicts: privateResult?.Conflicts ?? [],
+                MissingEvidence: evidenceDiagnostics?.MissingEvidence ?? ["No private source-grounded composition completed."],
+                Conflicts: evidenceDiagnostics?.Conflicts ?? [],
                 CoverageScore: privateResult?.CoverageScore ?? 0m,
                 Confidence: confidence,
                 ConfidenceExplanation: plan?.ConfidenceExplanation
