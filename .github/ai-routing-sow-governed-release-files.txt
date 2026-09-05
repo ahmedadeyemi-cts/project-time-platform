@@ -4,6 +4,7 @@
 .github/workflows/projectpulse-release-test-control-ci.yml
 docs/releases/ai-routing-sow-regeneration-20260905.md
 docs/releases/deepseek-v4-protected-test-activation.md
+scripts/release-test/verify-runtime.mjs
 src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
 src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry.cs
