@@ -526,6 +526,10 @@ if [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
   echo 'CELAR_AI_FLOWHIVE_PROTECTED_TEST_BOUNDARY=PASSED'
 fi
 
+if [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
+  node tests/validate-planner-fallback-build-release-scope.mjs
+  PROHIBITED="$(grep -Fvx 'deployment/containers/api/Dockerfile' <<<"$PROHIBITED" || true)"
+fi
 if [[ -n "$PROHIBITED" ]]; then
   echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2
   printf '%s\n' "$PROHIBITED" >&2

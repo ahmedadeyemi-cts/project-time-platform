@@ -184,8 +184,9 @@ jobs:
           FILES
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-release-files"
           if [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
-            # The consolidated CI validates this repair's exact six-file scope.
+            node tests/validate-planner-fallback-build-release-scope.mjs
             echo 'deployment/containers/api/Dockerfile' >> "$RUNNER_TEMP/allowed-release-files"
+            echo 'tests/validate-planner-fallback-build-release-scope.mjs' >> "$RUNNER_TEMP/allowed-release-files"
           fi
           LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
 

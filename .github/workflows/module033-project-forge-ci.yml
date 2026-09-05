@@ -116,6 +116,10 @@ jobs:
             grep -Fq 'proxy_read_timeout 60s;' deployment/containers/web/default.conf.template
             echo 'MODULE_033_MODULE025_ASYNC_PROXY_REGRESSION_BOUNDARY=PASSED'
           fi
+          if [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
+            node tests/validate-planner-fallback-build-release-scope.mjs
+            PROTECTED_DEPLOYMENT="$(grep -Fvx 'deployment/containers/api/Dockerfile' <<<"$PROTECTED_DEPLOYMENT" || true)"
+          fi
           if [[ -n "$PROTECTED_DEPLOYMENT" ]]; then
             echo 'Project Forge validation never authorizes deployment controls or the web Dockerfile.' >&2
             printf '%s\n' "$PROTECTED_DEPLOYMENT" >&2

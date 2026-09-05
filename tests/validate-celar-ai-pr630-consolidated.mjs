@@ -91,18 +91,7 @@ if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');
 const aiRoutingSowRepairMode = branchName === 'fix/ai-routing-sow-regeneration-20260905';
 if (aiRoutingSowRepairMode) await import('./validate-ai-routing-sow-release-scope.mjs');
 const plannerEvidenceFallbackMode = branchName === 'fix/ai-planner-evidence-fallback-20260905';
-if (plannerEvidenceFallbackMode) {
-  const base = String(originalExecFileSync('git', ['merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD'], { encoding: 'utf8' })).trim();
-  const actual = String(originalExecFileSync('git', ['diff', '--name-only', base, 'HEAD'], { encoding: 'utf8' })).trim().split('\n').filter(Boolean).sort();
-  assert.deepEqual(actual, [
-    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
-    '.github/workflows/projectpulse-release-test-control-ci.yml',
-    'deployment/containers/api/Dockerfile',
-    'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs',
-    'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
-    'tests/validate-celar-ai-pr630-consolidated.mjs'
-  ], 'Planner evidence fallback must retain its exact six-file planner and verified package-fetch repair scope');
-}
+if (plannerEvidenceFallbackMode) await import('./validate-planner-fallback-build-release-scope.mjs');
 const scopedCompatibilityMode = plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
