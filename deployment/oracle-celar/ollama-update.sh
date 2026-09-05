@@ -18,21 +18,19 @@ command -v jq >/dev/null 2>&1 || fail 'jq is required.'
 command -v ollama >/dev/null 2>&1 || fail 'Ollama is not installed.'
 [[ -x "$HEALTH_CHECK" ]] || fail 'Celar Oracle health-check.sh is missing.'
 
-GENERATION_MODEL="$(jq -r '.generationModel' "$MANIFEST")"
+mapfile -t GENERATION_MODELS < <(jq -r '.localGenerationModels[]' "$MANIFEST")
 EMBEDDING_MODEL="$(jq -r '.embeddingModel' "$MANIFEST")"
+(( ${#GENERATION_MODELS[@]} >= 3 )) || fail 'The governed local generation portfolio is incomplete.'
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 INSTALLER="$(mktemp)"
 OLD_BINARY="$(command -v ollama)"
 OLD_BINARY_MODE="$(stat -c '%a' "$OLD_BINARY")"
 BACKUP_BINARY="$ROLLBACK_ROOT/ollama-$STAMP"
-GEN_ALIAS="${GENERATION_MODEL}-rollback-$STAMP"
-EMB_ALIAS="${EMBEDDING_MODEL}-rollback-$STAMP"
+declare -A ROLLBACK_ALIAS=()
 
 [[ "$OLD_BINARY_MODE" =~ ^[0-7]{3,4}$ ]] || fail 'Could not determine the current Ollama executable mode.'
 install -d -m 0700 "$ROLLBACK_ROOT"
 cp -a "$OLD_BINARY" "$BACKUP_BINARY"
-# Preserve the installed binary mode. The upstream service runs as the
-# unprivileged ollama account, so a root-only rollback copy would be unusable.
 chmod "$OLD_BINARY_MODE" "$BACKUP_BINARY"
 
 resolve_model_name() {
@@ -46,32 +44,31 @@ have_model() {
   [[ -n "$(resolve_model_name "$1")" ]]
 }
 
-GEN_SOURCE="$(resolve_model_name "$GENERATION_MODEL")"
-EMB_SOURCE="$(resolve_model_name "$EMBEDDING_MODEL")"
-if [[ -n "$GEN_SOURCE" ]]; then
-  ollama cp "$GEN_SOURCE" "$GEN_ALIAS"
-fi
-if [[ -n "$EMB_SOURCE" ]]; then
-  ollama cp "$EMB_SOURCE" "$EMB_ALIAS"
-fi
+for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
+  source_name="$(resolve_model_name "$model")"
+  if [[ -n "$source_name" ]]; then
+    alias_name="${model}-rollback-$STAMP"
+    ollama cp "$source_name" "$alias_name"
+    ROLLBACK_ALIAS["$model"]="$alias_name"
+  fi
+done
 
 rollback() {
   local status=$?
   trap - EXIT INT TERM
   if [[ "$status" -ne 0 ]]; then
-    echo 'Ollama update validation failed; restoring the previous engine and model aliases.' >&2
+    echo 'Ollama/model update validation failed; restoring the previous engine and model aliases.' >&2
     systemctl stop ollama.service || true
     install -m "$OLD_BINARY_MODE" "$BACKUP_BINARY" "$OLD_BINARY" || true
     systemctl start ollama.service || true
     sleep 3
-    if have_model "$GEN_ALIAS"; then
-      ollama rm "$GENERATION_MODEL" >/dev/null 2>&1 || true
-      ollama cp "$GEN_ALIAS" "$GENERATION_MODEL" || true
-    fi
-    if have_model "$EMB_ALIAS"; then
-      ollama rm "$EMBEDDING_MODEL" >/dev/null 2>&1 || true
-      ollama cp "$EMB_ALIAS" "$EMBEDDING_MODEL" || true
-    fi
+    for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
+      alias_name="${ROLLBACK_ALIAS[$model]:-}"
+      if [[ -n "$alias_name" ]] && have_model "$alias_name"; then
+        ollama rm "$model" >/dev/null 2>&1 || true
+        ollama cp "$alias_name" "$model" || true
+      fi
+    done
     systemctl restart celar-ai-gateway.service >/dev/null 2>&1 || true
   fi
   rm -f "$INSTALLER"
@@ -86,34 +83,36 @@ systemctl daemon-reload
 systemctl restart ollama.service
 
 for attempt in $(seq 1 30); do
-  if curl -fsS --max-time 3 http://127.0.0.1:11434/api/version >/dev/null; then
-    break
-  fi
+  if curl -fsS --max-time 3 http://127.0.0.1:11434/api/version >/dev/null; then break; fi
   (( attempt < 30 )) || fail 'Updated Ollama did not become ready.'
   sleep 2
 done
 
-ollama pull "$GENERATION_MODEL"
-ollama pull "$EMBEDDING_MODEL"
+# Refresh every approved free local model. Pulling an unchanged tag is safe and
+# keeps this weekly job simple; a changed tag is accepted only after all probes.
+for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
+  ollama pull "$model"
+done
 
-GENERATION_RESULT="$(curl -fsS --max-time 120 http://127.0.0.1:11434/api/generate \
-  -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,prompt:"Reply with OK.",stream:false,options:{num_predict:8}}')")"
-jq -e '.response | strings | length > 0' <<<"$GENERATION_RESULT" >/dev/null
+# Every local generation specialist must still be able to complete a minimal
+# request independently before the new engine/model set is accepted.
+for model in "${GENERATION_MODELS[@]}"; do
+  GENERATION_RESULT="$(curl -fsS --max-time 180 http://127.0.0.1:11434/api/generate \
+    -H 'Content-Type: application/json' \
+    -d "$(jq -nc --arg model "$model" '{model:$model,prompt:"Reply with OK.",stream:false,options:{num_predict:8}}')")"
+  jq -e '.response | strings | length > 0' <<<"$GENERATION_RESULT" >/dev/null || fail "Updated local model failed generation: $model"
+done
 
-EMBED_RESULT="$(curl -fsS --max-time 120 http://127.0.0.1:11434/api/embed \
+EMBED_RESULT="$(curl -fsS --max-time 180 http://127.0.0.1:11434/api/embed \
   -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg model "$EMBEDDING_MODEL" '{model:$model,input:"Celar AI update validation"}')")"
-jq -e '.embeddings[0] | arrays | length > 0' <<<"$EMBED_RESULT" >/dev/null
+jq -e '.embeddings[0] | arrays | length > 0' <<<"$EMBED_RESULT" >/dev/null || fail 'Updated embedding model failed.'
 
-# Reload gateway workers so any provider connection state is fresh, then require
-# the complete authenticated Caddy/gateway/OCR/ClamAV/embedding/inference proof.
+# Reload the gateway and require the complete authenticated HTTPS, specialist
+# routing, OCR, ClamAV, embedding, and inference acceptance before promotion.
 systemctl restart celar-ai-gateway.service
 "$HEALTH_CHECK"
 
-# Keep only the two newest rollback aliases per approved model. Ollama renders
-# untagged aliases with an implicit :latest tag, so match by prefix rather than
-# requiring the requested alias string to be displayed verbatim.
 prune_aliases() {
   local prefix="$1"
   mapfile -t aliases < <(ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -F "${prefix}-rollback-" | sort -r || true)
@@ -123,8 +122,9 @@ prune_aliases() {
     done
   fi
 }
-prune_aliases "$GENERATION_MODEL"
-prune_aliases "$EMBEDDING_MODEL"
+for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
+  prune_aliases "$model"
+done
 
 find "$ROLLBACK_ROOT" -maxdepth 1 -type f -name 'ollama-*' -mtime +30 -delete
 
@@ -132,4 +132,5 @@ rm -f "$INSTALLER"
 trap - EXIT INT TERM
 
 echo 'CELAR_OLLAMA_UPDATE=PASS'
+printf 'CELAR_LOCAL_MODELS_UPDATED=%s\n' "${GENERATION_MODELS[*]} $EMBEDDING_MODEL"
 ollama --version
