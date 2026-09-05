@@ -6,6 +6,8 @@ on:
       - 'deployment/oracle-celar/deploy.sh'
       - 'deployment/oracle-celar/bootstrap.sh'
       - 'deployment/oracle-celar/systemd/clamav-daemon.socket.d/**'
+      - 'deployment/oracle-celar/systemd/celar-gitops.service'
+      - 'deployment/oracle-celar/systemd/celar-ollama-update.service'
       - '.github/workflows/celar-ai-oracle-clamav-socket-ci.yml'
   workflow_dispatch:
 
@@ -22,13 +24,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate shell and ClamAV socket contract
+      - name: Validate shell and runtime recovery contracts
         shell: bash
         run: |
           set -Eeuo pipefail
           DEPLOY=deployment/oracle-celar/deploy.sh
           BOOTSTRAP=deployment/oracle-celar/bootstrap.sh
           DROPIN=deployment/oracle-celar/systemd/clamav-daemon.socket.d/10-celar-tcp.conf
+          GITOPS_UNIT=deployment/oracle-celar/systemd/celar-gitops.service
+          UPDATE_UNIT=deployment/oracle-celar/systemd/celar-ollama-update.service
 
           bash -n "$DEPLOY"
           bash -n "$BOOTSTRAP"
@@ -53,6 +57,13 @@ jobs:
           fi
           grep -Fq 'gitops-applied-tree' "$BOOTSTRAP"
           grep -Fq 'systemctl enable --now celar-gitops.timer' "$BOOTSTRAP"
+
+          # Ollama CLI currently requires HOME. systemd system services do not
+          # guarantee that variable, so both automated mutation paths must set it.
+          grep -Fxq 'Environment=HOME=/root' "$GITOPS_UNIT"
+          grep -Fxq 'Environment=HOME=/root' "$UPDATE_UNIT"
+          grep -Fq 'ExecStart=/opt/celar-ai/deploy/gitops.sh' "$GITOPS_UNIT"
+          grep -Fq 'ExecStart=/opt/celar-ai/deploy/ollama-update.sh' "$UPDATE_UNIT"
 
           if grep -Fq 'ListenStream=0.0.0.0:3310' "$DROPIN"; then
             echo 'ClamAV TCP must never bind publicly.' >&2
