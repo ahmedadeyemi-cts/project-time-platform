@@ -57,6 +57,8 @@ public sealed class PulseAiPrivateModelClient
 
         var route = await _routes.LoadRouteAsync(request.FeatureCode, cancellationToken);
         PulseAiPrivateModelResult? last = null;
+        var budget = new CelarAiRouteAttemptBudget(CelarAiCapabilityCatalog.NormalizeFeature(request.FeatureCode));
+        var remainingPrivateTargets = route.Targets.Count(CelarAiCapabilityTargets.IsPrivate);
         foreach (var target in route.Targets)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -64,6 +66,12 @@ public sealed class PulseAiPrivateModelClient
             // These callers carry raw authorized source evidence. Public targets
             // cannot receive it; the outer composer owns sanitized assistance.
             if (!CelarAiCapabilityTargets.IsPrivate(target)) continue;
+            var timeout = budget.NextTimeout(remainingPrivateTargets--);
+            if (timeout is { } exhausted && exhausted <= TimeSpan.Zero)
+            {
+                last = Failure("private_model_unavailable", "interactive_route_deadline_exceeded", DateTimeOffset.UtcNow);
+                continue;
+            }
             if (target == CelarAiCapabilityTargets.DeepSeek && _configuration is not null)
                 _health?.ApplyConfiguration(_configuration.DeepSeek);
             if (target == CelarAiCapabilityTargets.CelarAi && CelarAiPrivateModelRuntime.Snapshot() is { } profile)
@@ -73,8 +81,17 @@ public sealed class PulseAiPrivateModelClient
                 last = Failure("private_model_unavailable", reason, DateTimeOffset.UtcNow);
                 continue;
             }
-            last = await ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(target,
-                token => GenerateTargetAsync(request, options, token), cancellationToken);
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (timeout is { } timeLimit) attempt.CancelAfter(timeLimit);
+            try
+            {
+                last = await ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(target,
+                    token => GenerateTargetAsync(request, options, token), attempt.Token).WaitAsync(attempt.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                last = Failure("private_model_unavailable", "provider_deadline_exceeded", DateTimeOffset.UtcNow);
+            }
             if (last.Succeeded)
             {
                 _health?.RecordSuccess(target, null, null, "generation_succeeded");
