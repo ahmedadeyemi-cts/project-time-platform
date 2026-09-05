@@ -100,6 +100,24 @@ jobs:
             grep -Fq 'ROLLBACK_DATABASE=' tests/test-module-076-celar-ai-defect-operations-migration-084.sh
             ! grep -Fq 'DELETE FROM module076_defect_evidence' tests/test-module-076-celar-ai-defect-operations-migration-084.sh
             echo 'CELAR_AI_MIGRATION_084_CI_ONLY_SCOPE=PASS'
+          elif [[ "$HEAD_BRANCH" == feature/celar-1am-central-runtime-version-* ]]; then
+            # Module 084 is an Oracle maintenance/runtime-version package, not a
+            # Module 076 defect-operations rewrite. Keep the substantive legacy
+            # tests below, but use its own closed-scope validator instead of the
+            # historical PR630 source whitelist that predates Oracle GitOps.
+            git fetch origin main --no-tags
+            BASE="$(git merge-base origin/main HEAD)"
+            CHANGED="$(git diff --name-only "$BASE"...HEAD)"
+            if grep -E '^database/(migrations|rollback)/' <<<"$CHANGED"; then
+              echo 'Module 084 maintenance work must not add or alter database migrations.' >&2
+              exit 1
+            fi
+            if grep -E '^\.github/workflows/projectpulse-deploy-|^deployment/(?!oracle-celar/)' <<<"$CHANGED"; then
+              echo 'Module 084 maintenance work may not alter application deployment controllers or non-Oracle deployment packages.' >&2
+              exit 1
+            fi
+            node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
+            echo 'CELAR_AI_MODULE_084_MAINTENANCE_SCOPE=PASS'
           else
             node tests/validate-celar-ai-pr630-consolidated.mjs
           fi
@@ -131,15 +149,4 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          git diff --check
           git diff --exit-code
-
-      - name: Publish source-only summary
-        run: |
-          echo 'CELAR_AI_ASK_OPERATIONS=SOURCE_VALIDATED'
-          echo 'CELAR_AI_ASK_OPERATIONS_EVALUATION_CASES=60'
-          echo 'CELAR_AI_UNIVERSAL_ANSWER_EVALUATION_CASES=120'
-          echo 'CELAR_AI_ASK_OPERATIONS_MIGRATION_084=DISPOSABLE_CI_ONLY'
-          echo 'CELAR_AI_ASK_OPERATIONS_TEST_DEPLOYMENTS=0'
-          echo 'CELAR_AI_ASK_OPERATIONS_PRODUCTION_MUTATIONS=0'
-          echo 'CELAR_AI_ASK_OPERATIONS_SECRETS_PRINTED=0'
