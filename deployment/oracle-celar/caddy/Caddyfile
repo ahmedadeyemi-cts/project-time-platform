@@ -1,11 +1,17 @@
 {
     # The OCI NSG and Oracle host firewall intentionally expose 443 only.
-    # Automatic HTTPS may use the TLS-ALPN challenge on 443; HTTP redirects are
-    # disabled so port 80 is not part of the required runtime boundary.
+    # Disable redirects and the HTTP-01 ACME challenge so automated certificate
+    # issuance/renewal uses the TLS-ALPN challenge on the governed 443 boundary.
     auto_https disable_redirects
 }
 
 celarai.onenecklab.com {
+    tls {
+        issuer acme {
+            disable_http_challenge
+        }
+    }
+
     encode zstd gzip
 
     request_body {
