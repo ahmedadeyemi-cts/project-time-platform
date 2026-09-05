@@ -252,6 +252,17 @@ public sealed class ProjectPulseAiHealthRegistry
                 return;
             }
 
+            // Contention proves only that another request owns the DGX slot.
+            // Do not turn an inconclusive probe into a provider-wide outage,
+            // or clear an existing circuit without a successful recovery probe.
+            if (result.Provider == ProjectPulseAiProviders.DeepSeek
+                && result.Code == "deepseek_queue_busy")
+            {
+                state.ProbeStatus = "busy";
+                state.LastProbeFailureCode = result.Code;
+                return;
+            }
+
             state.ProbeStatus = "degraded";
             state.LastProbeFailureAt = now;
             state.LastProbeFailureCode = SanitizeCode(result.Code);

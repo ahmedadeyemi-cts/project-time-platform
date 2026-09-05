@@ -42,7 +42,7 @@ public sealed class ProjectPulseDeepSeekProvider(
             await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(budget.Token);
             await using var transaction = await connection.BeginTransactionAsync(budget.Token);
-            var queueDeadline = DateTimeOffset.UtcNow.AddSeconds(probe ? 5 : 60);
+            var queueDeadline = DateTimeOffset.UtcNow.AddSeconds(probe ? 0 : 60);
             while (true)
             {
                 await using var slot = new NpgsqlCommand(

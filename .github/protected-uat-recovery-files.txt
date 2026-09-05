@@ -1,0 +1,13 @@
+.github/protected-uat-recovery-files.txt
+.github/workflows/celar-ai-oracle-test-runtime-recovery.yml
+.github/workflows/module064-automatic-provider-health-ci.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md
+scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry.cs
+src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs
+tests/DeepSeekProviderTests/Program.cs
+tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-protected-uat-recovery-scope.mjs
+tests/validate-protected-uat-recovery.mjs
