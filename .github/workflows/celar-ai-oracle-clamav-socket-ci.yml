@@ -1,0 +1,115 @@
+name: Validate Oracle Celar ClamAV Socket Activation
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/oracle-celar/deploy.sh'
+      - 'deployment/oracle-celar/bootstrap.sh'
+      - 'deployment/oracle-celar/systemd/clamav-daemon.socket.d/**'
+      - 'deployment/oracle-celar/systemd/celar-gitops.service'
+      - 'deployment/oracle-celar/systemd/celar-ollama-update.service'
+      - '.github/workflows/celar-ai-oracle-clamav-socket-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Validate shell and runtime recovery contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          DEPLOY=deployment/oracle-celar/deploy.sh
+          BOOTSTRAP=deployment/oracle-celar/bootstrap.sh
+          DROPIN=deployment/oracle-celar/systemd/clamav-daemon.socket.d/10-celar-tcp.conf
+          GITOPS_UNIT=deployment/oracle-celar/systemd/celar-gitops.service
+          UPDATE_UNIT=deployment/oracle-celar/systemd/celar-ollama-update.service
+
+          bash -n "$DEPLOY"
+          bash -n "$BOOTSTRAP"
+          test -s "$DROPIN"
+          grep -Fxq '[Socket]' "$DROPIN"
+          grep -Fxq 'ListenStream=127.0.0.1:3310' "$DROPIN"
+
+          grep -Fq "CLAMAV_SOCKET_DROPIN_DIR='/etc/systemd/system/clamav-daemon.socket.d'" "$DEPLOY"
+          grep -Fq 'install -m 0644 "$ROOT/systemd/clamav-daemon.socket.d/10-celar-tcp.conf" "$CLAMAV_SOCKET_DROPIN"' "$DEPLOY"
+          grep -Fq 'systemctl enable clamav-freshclam clamav-daemon clamav-daemon.socket' "$DEPLOY"
+          grep -Fq 'systemctl stop clamav-daemon.service clamav-daemon.socket' "$DEPLOY"
+          grep -Fq 'systemctl start clamav-daemon.socket' "$DEPLOY"
+          grep -Fq 'systemctl start clamav-daemon.service' "$DEPLOY"
+          grep -Fq "printf 'zPING\\0' | nc -N -w 3" "$DEPLOY"
+          grep -Fq "fail 'ClamAV localhost TCP socket did not become ready on 127.0.0.1:3310.'" "$DEPLOY"
+
+          grep -Fq 'systemctl enable --now celar-backup.timer celar-ollama-update.timer' "$DEPLOY"
+          grep -Fq 'systemctl enable celar-gitops.timer' "$DEPLOY"
+          if grep -Fq 'enable --now celar-gitops.timer' "$DEPLOY"; then
+            echo 'deploy.sh must not start GitOps before bootstrap records the applied tree.' >&2
+            exit 1
+          fi
+
+          grep -Fq 'GITOPS_DRAIN_TIMEOUT_SECONDS=600' "$BOOTSTRAP"
+          grep -Fq 'GITOPS_TIMER_WAS_ACTIVE=false' "$BOOTSTRAP"
+          grep -Fq 'restore_prior_timer()' "$BOOTSTRAP"
+          grep -Fq 'on_exit()' "$BOOTSTRAP"
+          grep -Fq 'on_interrupt()' "$BOOTSTRAP"
+          grep -Fq 'on_terminate()' "$BOOTSTRAP"
+          grep -Fq 'exit 130' "$BOOTSTRAP"
+          grep -Fq 'exit 143' "$BOOTSTRAP"
+          grep -Fq 'trap on_exit EXIT' "$BOOTSTRAP"
+          grep -Fq 'trap on_interrupt INT' "$BOOTSTRAP"
+          grep -Fq 'trap on_terminate TERM' "$BOOTSTRAP"
+          if grep -Fq 'trap restore_timer_on_failure EXIT INT TERM' "$BOOTSTRAP"; then
+            echo 'Bootstrap must use dedicated nonzero INT/TERM handlers.' >&2
+            exit 1
+          fi
+          grep -Fq 'systemctl stop celar-gitops.timer' "$BOOTSTRAP"
+          grep -Fq 'DRAIN_DEADLINE=$((SECONDS + GITOPS_DRAIN_TIMEOUT_SECONDS))' "$BOOTSTRAP"
+          grep -Fq 'while systemctl is-active --quiet celar-gitops.service' "$BOOTSTRAP"
+          grep -Fq 'SECONDS >= DRAIN_DEADLINE' "$BOOTSTRAP"
+          grep -Fq 'journalctl -u celar-gitops.service -n 80 --no-pager' "$BOOTSTRAP"
+          grep -Fq 'gitops-applied-tree' "$BOOTSTRAP"
+          grep -Fq 'systemctl enable --now celar-gitops.timer' "$BOOTSTRAP"
+
+          python3 - "$BOOTSTRAP" <<'PY'
+          from pathlib import Path
+          import sys
+
+          text = Path(sys.argv[1]).read_text(encoding='utf-8')
+          stop = text.index('systemctl stop celar-gitops.timer')
+          deploy = text.index('bash "$SOURCE_DIR/deployment/oracle-celar/deploy.sh"')
+          record = text.index('gitops-applied-tree')
+          start = text.index('systemctl enable --now celar-gitops.timer')
+          if not stop < deploy < record < start:
+              raise SystemExit('Bootstrap GitOps timer ordering is unsafe.')
+          for trap_line in ('trap on_exit EXIT', 'trap on_interrupt INT', 'trap on_terminate TERM'):
+              if text.index(trap_line) > stop:
+                  raise SystemExit(f'{trap_line} must be installed before timer stop.')
+          if 'on_interrupt()' not in text or 'exit 130' not in text:
+              raise SystemExit('INT handler must force exit 130.')
+          if 'on_terminate()' not in text or 'exit 143' not in text:
+              raise SystemExit('TERM handler must force exit 143.')
+          print('BOOTSTRAP_GITOPS_TIMER_ORDER=PASS')
+          print('BOOTSTRAP_GITOPS_FAILURE_RECOVERY=PASS')
+          print('BOOTSTRAP_SIGNAL_RECOVERY=PASS')
+          PY
+
+          grep -Fxq 'Environment=HOME=/root' "$GITOPS_UNIT"
+          grep -Fxq 'Environment=HOME=/root' "$UPDATE_UNIT"
+          grep -Fq 'ExecStart=/opt/celar-ai/deploy/gitops.sh' "$GITOPS_UNIT"
+          grep -Fq 'ExecStart=/opt/celar-ai/deploy/ollama-update.sh' "$UPDATE_UNIT"
+
+          if grep -Fq 'ListenStream=0.0.0.0:3310' "$DROPIN"; then
+            echo 'ClamAV TCP must never bind publicly.' >&2
+            exit 1
+          fi
+
+          git diff --check

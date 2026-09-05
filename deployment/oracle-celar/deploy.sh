@@ -13,6 +13,8 @@ RUNTIME_ENV_FILE="$GATEWAY_CONFIG_DIR/runtime.env"
 FIREWALL_RULES='/etc/iptables/rules.v4'
 CADDYFILE='/etc/caddy/Caddyfile'
 RUNTIME_MUTATION_LOCK='/run/celar-runtime-mutation.lock'
+CLAMAV_SOCKET_DROPIN_DIR='/etc/systemd/system/clamav-daemon.socket.d'
+CLAMAV_SOCKET_DROPIN="$CLAMAV_SOCKET_DROPIN_DIR/10-celar-tcp.conf"
 
 fail() {
   echo "ERROR: $*" >&2
@@ -87,8 +89,6 @@ jq -e '
   (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds
 ' "$MANIFEST" >/dev/null || fail 'Local model order or bounded-attempt policy is invalid.'
 
-# GitOps deployment and scheduled Ollama/model maintenance must never mutate the
-# same runtime concurrently. Keep this descriptor open for the entire deploy.
 exec 8>"$RUNTIME_MUTATION_LOCK"
 flock -w "$LOCK_WAIT_SECONDS" 8 || fail 'Timed out waiting for the Celar runtime mutation lock.'
 
@@ -101,8 +101,6 @@ apt-get install -y \
   clamav clamav-daemon clamav-freshclam \
   caddy restic unattended-upgrades iptables-persistent
 
-# Create the service identity before the /etc tree so the parent can grant only
-# execute/traverse permission to the gateway group without becoming listable.
 getent group celar-ai >/dev/null 2>&1 || groupadd --system celar-ai
 if ! id celar-ai >/dev/null 2>&1; then
   useradd --system --gid celar-ai --home-dir "$GATEWAY_STATE_DIR" --shell /usr/sbin/nologin celar-ai
@@ -128,14 +126,39 @@ else
   fail 'Oracle iptables rules.v4 is missing; refusing to replace the host firewall blindly.'
 fi
 
+# Ubuntu's clamav-daemon package uses systemd socket activation. Recent package
+# versions may expose only the Unix socket from clamav-daemon.socket even when
+# TCPSocket/TCPAddr are present in clamd.conf. Install an explicit loopback TCP
+# socket drop-in so the Celar gateway can reliably reach 127.0.0.1:3310 while
+# preserving the distro-managed Unix socket.
 if [[ ! -e /etc/clamav/clamd.conf.pre-celar-gitops ]]; then
   cp -a /etc/clamav/clamd.conf /etc/clamav/clamd.conf.pre-celar-gitops
 fi
 sed -i '/^TCPSocket[[:space:]]/d;/^TCPAddr[[:space:]]/d;/^StreamMaxLength[[:space:]]/d' /etc/clamav/clamd.conf
 printf '\nTCPSocket %s\nTCPAddr %s\nStreamMaxLength 50M\n' "$CLAMAV_PORT" "$CLAMAV_HOST" >> /etc/clamav/clamd.conf
-systemctl enable clamav-freshclam clamav-daemon >/dev/null
+install -d -m 0755 "$CLAMAV_SOCKET_DROPIN_DIR"
+install -m 0644 "$ROOT/systemd/clamav-daemon.socket.d/10-celar-tcp.conf" "$CLAMAV_SOCKET_DROPIN"
+systemctl daemon-reload
+systemctl enable clamav-freshclam clamav-daemon clamav-daemon.socket >/dev/null
 systemctl restart clamav-freshclam
-systemctl restart clamav-daemon
+systemctl stop clamav-daemon.service clamav-daemon.socket
+systemctl start clamav-daemon.socket
+systemctl start clamav-daemon.service
+
+CLAM_READY=false
+for attempt in $(seq 1 60); do
+  CLAM_PING="$(printf 'zPING\0' | nc -N -w 3 "$CLAMAV_HOST" "$CLAMAV_PORT" 2>/dev/null | tr -d '\0\r\n' || true)"
+  if [[ "$CLAM_PING" == PONG ]]; then
+    CLAM_READY=true
+    break
+  fi
+  sleep 2
+done
+if [[ "$CLAM_READY" != true ]]; then
+  systemctl --no-pager --full status clamav-daemon.socket clamav-daemon.service >&2 || true
+  journalctl -u clamav-daemon.socket -u clamav-daemon.service -n 80 --no-pager >&2 || true
+  fail 'ClamAV localhost TCP socket did not become ready on 127.0.0.1:3310.'
+fi
 
 if ! command -v ollama >/dev/null 2>&1; then
   INSTALLER="$(mktemp)"
@@ -259,6 +282,9 @@ done
 systemctl enable caddy.service >/dev/null
 systemctl restart caddy.service
 
+# Backup/model timers can start immediately. The GitOps timer must remain
+# enable-only here; bootstrap starts it only after recording the applied tree,
+# preventing a second deployment from racing the first fresh bootstrap.
 systemctl enable --now celar-backup.timer celar-ollama-update.timer >/dev/null
 systemctl enable celar-gitops.timer >/dev/null
 
