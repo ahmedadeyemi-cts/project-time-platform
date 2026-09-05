@@ -40,17 +40,10 @@ jobs:
           grep -Fq 'LOCAL_REASONING_ROUTE=PASS' "$HEALTH"
           grep -Fq 'LOCAL_STRUCTURED_ROUTE=PASS' "$HEALTH"
 
-          # The prior implementation used grep -E with `\r?`, but GNU grep ERE
-          # does not interpret that escape as a carriage return. curl -D writes
-          # CRLF header lines, so valid Qwen/Gemma headers were falsely rejected.
           if grep -Fq 'X-Celar-Local-Model:[[:space:]]*$REASONING_MODEL\r?$' "$HEALTH"; then
             echo 'CRLF-unsafe routed-model grep must not return.' >&2
             exit 1
           fi
-
-          # Cold model preloading is not a correctness condition. It caused
-          # unnecessary model churn on the two-loaded-model ARM64 host and must
-          # not replace accurate parsing of the actual routed response headers.
           if grep -Fq 'probe_local_generation_model()' "$HEALTH"; then
             echo 'Acceptance must not depend on warm-up model ordering.' >&2
             exit 1
