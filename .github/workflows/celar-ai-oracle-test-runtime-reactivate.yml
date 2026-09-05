@@ -89,9 +89,6 @@ jobs:
           (( ${#RESOLVED[@]} == 1 )) || fail 'Oracle runtime DNS must resolve to one IPv4 address.'
           [[ "${RESOLVED[0]}" == "$ORACLE_RUNTIME_IP" ]] || fail 'Oracle runtime DNS does not match the replacement IPv4 pin.'
 
-          # Every Oracle request, especially authenticated requests, is pinned to
-          # the approved IPv4 at connect time and bypasses runner proxy settings.
-          # TLS still validates the original celarai.onenecklab.com hostname.
           ORACLE_CURL=(--resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" --noproxy "$ORACLE_RUNTIME_HOST")
           [[ "$(curl -sS --max-time 30 "${ORACLE_CURL[@]}" -o /dev/null -w '%{http_code}' "$ORACLE_READINESS_ENDPOINT")" == 401 ]] || fail 'Unauthenticated readiness must return 401.'
           WRONG_TOKEN="$(openssl rand -hex 32)"
@@ -295,7 +292,8 @@ jobs:
         if: ${{ (failure() || cancelled()) && steps.deploy_api.outputs.started == 'true' }}
         shell: bash
         run: |
-          set +e
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
           RESOURCE_GROUP='${{ steps.snapshot.outputs.resource_group }}'
           API_APP='${{ steps.snapshot.outputs.api_app }}'
           TOUCHED=(
@@ -322,8 +320,13 @@ jobs:
             if [[ -n "$secret" ]]; then RESTORE+=("$name=secretref:$secret"); else RESTORE+=("$name=$value"); fi
           done
           OLD_IMAGE="$(cat "$RUNNER_TEMP/oracle-before-image")"
+          [[ -n "$OLD_IMAGE" ]] || fail 'Rollback image snapshot is missing.'
           UPDATE=(-g "$RESOURCE_GROUP" -n "$API_APP" --image "$OLD_IMAGE" --revision-suffix "caorrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors)
           (( ${#RESTORE[@]} > 0 )) && UPDATE+=(--set-env-vars "${RESTORE[@]}")
           (( ${#REMOVE[@]} > 0 )) && UPDATE+=(--remove-env-vars "${REMOVE[@]}")
           az containerapp update "${UPDATE[@]}"
-          az containerapp secret remove -g "$RESOURCE_GROUP" -n "$API_APP" --secret-names "$TOKEN_SECRET_NAME" --output none --only-show-errors || true
+          ROLLBACK_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.latestRevisionName -o tsv --only-show-errors)"
+          [[ -n "$ROLLBACK_REVISION" ]] || fail 'Rollback revision could not be resolved.'
+          bash scripts/wait-containerapp-ready-revision.sh "$RESOURCE_GROUP" "$API_APP" "$ROLLBACK_REVISION" "$OLD_IMAGE" 60 10
+          az containerapp secret remove -g "$RESOURCE_GROUP" -n "$API_APP" --secret-names "$TOKEN_SECRET_NAME" --output none --only-show-errors
+          echo 'PROTECTED_TEST_ROLLBACK=PASS'
