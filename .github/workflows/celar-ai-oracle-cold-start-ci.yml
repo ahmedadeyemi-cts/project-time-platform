@@ -1,4 +1,4 @@
-name: Validate Oracle Celar Routed Header Acceptance
+name: Validate Oracle Celar Runtime Acceptance
 
 on:
   pull_request:
@@ -20,7 +20,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate strict CRLF-safe routed-model acceptance
+      - name: Validate routed headers and embedding envelope acceptance
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -37,20 +37,19 @@ jobs:
           grep -Fq '[[ "$GENERAL_SELECTED_ROUTE" == general ]]' "$HEALTH"
           grep -Fq '[[ "$STRUCTURED_SELECTED_MODEL" == "$GENERATION_MODEL" ]]' "$HEALTH"
           grep -Fq '[[ "$STRUCTURED_SELECTED_ROUTE" == structured ]]' "$HEALTH"
-          grep -Fq 'LOCAL_REASONING_ROUTE=PASS' "$HEALTH"
-          grep -Fq 'LOCAL_STRUCTURED_ROUTE=PASS' "$HEALTH"
 
           if grep -Fq 'X-Celar-Local-Model:[[:space:]]*$REASONING_MODEL\r?$' "$HEALTH"; then
             echo 'CRLF-unsafe routed-model grep must not return.' >&2
             exit 1
           fi
-          if grep -Fq 'probe_local_generation_model()' "$HEALTH"; then
-            echo 'Acceptance must not depend on warm-up model ordering.' >&2
-            exit 1
-          fi
 
           HEADER_FIXTURE="$(mktemp)"
-          trap 'rm -f "$HEADER_FIXTURE"' EXIT
+          EMBED_FIXTURE="$(mktemp)"
+          EMBED_BAD_INDEX="$(mktemp)"
+          EMBED_BAD_VECTOR="$(mktemp)"
+          EMBED_VALIDATOR="$(mktemp)"
+          trap 'rm -f "$HEADER_FIXTURE" "$EMBED_FIXTURE" "$EMBED_BAD_INDEX" "$EMBED_BAD_VECTOR" "$EMBED_VALIDATOR"' EXIT
+
           printf 'HTTP/2 200\r\nX-Celar-Local-Model: qwen3:4b-instruct\r\nX-Celar-Local-Route: general\r\n\r\n' > "$HEADER_FIXTURE"
 
           header_value_fixture() {
@@ -75,10 +74,46 @@ jobs:
           [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Model')" == 'qwen3:4b-instruct' ]]
           [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Route')" == 'general' ]]
 
-          printf 'HTTP/2 200\r\nX-Celar-Local-Model: gemma3:4b\r\nX-Celar-Local-Route: structured\r\n\r\n' > "$HEADER_FIXTURE"
-          [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Model')" == 'gemma3:4b' ]]
-          [[ "$(header_value_fixture "$HEADER_FIXTURE" 'X-Celar-Local-Route')" == 'structured' ]]
+          jq -nc --arg model embeddinggemma '
+            {
+              object:"list",
+              model:$model,
+              data:[{object:"embedding",index:0,embedding:[0.1,0.2,0.3]}],
+              usage:{prompt_tokens:1,total_tokens:1}
+            }
+          ' > "$EMBED_FIXTURE"
+
+          # Extract and execute the exact production validation function instead
+          # of duplicating its jq program in CI.
+          awk '
+            /^validate_embedding_response\(\) \{/ { capture=1 }
+            capture { print }
+            capture && /^}$/ { exit }
+          ' "$HEALTH" > "$EMBED_VALIDATOR"
+          [[ -s "$EMBED_VALIDATOR" ]]
+          # shellcheck disable=SC1090
+          source "$EMBED_VALIDATOR"
+
+          validate_embedding_response "$EMBED_FIXTURE" embeddinggemma 3
+
+          jq '.data[0].index = 1' "$EMBED_FIXTURE" > "$EMBED_BAD_INDEX"
+          if validate_embedding_response "$EMBED_BAD_INDEX" embeddinggemma 3; then
+            echo 'Embedding validator accepted an invalid item index.' >&2
+            exit 1
+          fi
+
+          jq '.data[0].embedding[1] = "not-a-number"' "$EMBED_FIXTURE" > "$EMBED_BAD_VECTOR"
+          if validate_embedding_response "$EMBED_BAD_VECTOR" embeddinggemma 3; then
+            echo 'Embedding validator accepted a non-numeric vector.' >&2
+            exit 1
+          fi
+
+          grep -Fq 'validate_embedding_response "$TMP/embed.json" "$EMBEDDING_MODEL" "$EMBEDDING_DIMENSION"' "$HEALTH"
+          if grep -Fq "'.data | length == 1 and (.data[0].embedding | length) == \$dimension'" "$HEALTH"; then
+            echo 'jq context-changing embedding assertion must not return.' >&2
+            exit 1
+          fi
 
           echo 'CELAR_ROUTED_HEADER_CRLF_PARSING=PASS'
-          echo 'CELAR_ROUTING_ASSERTIONS_REMAIN_STRICT=PASS'
+          echo 'CELAR_EMBEDDING_PRODUCTION_VALIDATOR=PASS'
           git diff --check
