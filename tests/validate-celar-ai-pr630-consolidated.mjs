@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -89,7 +90,9 @@ const deepSeekProviderMode = branchName === 'feature/deepseek-v4-dgx-primary-202
 if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');
 const aiRoutingSowRepairMode = branchName === 'fix/ai-routing-sow-regeneration-20260905';
 if (aiRoutingSowRepairMode) await import('./validate-ai-routing-sow-release-scope.mjs');
-const scopedCompatibilityMode = aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const plannerEvidenceFallbackMode = branchName === 'fix/ai-planner-evidence-fallback-20260905';
+if (plannerEvidenceFallbackMode) await import('./validate-planner-fallback-build-release-scope.mjs');
+const scopedCompatibilityMode = plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

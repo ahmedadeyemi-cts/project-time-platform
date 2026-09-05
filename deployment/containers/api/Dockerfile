@@ -6,7 +6,18 @@ USER root
 
 # Directory.Build.targets invokes a Python 3 source generator during publish.
 # Keep Python in the disposable SDK build stage only; it is not copied into runtime.
-RUN apt-get update \
+# Avoid stale HTTP mirror/proxy indexes without weakening package verification.
+RUN set -eu; \
+    for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do \
+      [ ! -f "$source" ] || sed -i \
+        -e 's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+        -e 's|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' "$source"; \
+    done; \
+    printf '%s\n' 'Acquire::Retries "3";' 'Acquire::https::Timeout "30";' \
+      'Acquire::http::Timeout "30";' 'Acquire::By-Hash "force";' \
+      'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99-build-fetch; \
+    rm -rf /var/lib/apt/lists/*; \
+    apt-get update \
     && apt-get install -y --no-install-recommends python3 \
     && python3 --version \
     && rm -rf /var/lib/apt/lists/*
@@ -31,7 +42,18 @@ USER root
 # text-only converter for those files. It never receives network access or
 # executes document macros; the application still requires the private malware
 # scan and path-confinement gates before invoking it.
-RUN apt-get update \
+# Avoid stale HTTP mirror/proxy indexes without weakening package verification.
+RUN set -eu; \
+    for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do \
+      [ ! -f "$source" ] || sed -i \
+        -e 's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+        -e 's|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' "$source"; \
+    done; \
+    printf '%s\n' 'Acquire::Retries "3";' 'Acquire::https::Timeout "30";' \
+      'Acquire::http::Timeout "30";' 'Acquire::By-Hash "force";' \
+      'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99-build-fetch; \
+    rm -rf /var/lib/apt/lists/*; \
+    apt-get update \
     && apt-get install -y --no-install-recommends antiword \
     && (antiword -h >/dev/null 2>&1 || true) \
     && rm -rf /var/lib/apt/lists/*

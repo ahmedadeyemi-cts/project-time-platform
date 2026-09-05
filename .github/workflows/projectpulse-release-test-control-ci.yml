@@ -183,6 +183,11 @@ jobs:
           tests/validate-utilization-role-scoping.mjs
           FILES
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-release-files"
+          if [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
+            node tests/validate-planner-fallback-build-release-scope.mjs
+            echo 'deployment/containers/api/Dockerfile' >> "$RUNNER_TEMP/allowed-release-files"
+            echo 'tests/validate-planner-fallback-build-release-scope.mjs' >> "$RUNNER_TEMP/allowed-release-files"
+          fi
           LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
 
           cat > "$RUNNER_TEMP/exact-protected-uat-merged-main-relaunch-governance-files" <<'FILES'
