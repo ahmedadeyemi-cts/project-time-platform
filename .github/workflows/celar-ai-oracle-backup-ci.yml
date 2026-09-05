@@ -35,7 +35,8 @@ jobs:
           ROOT="$(mktemp -d)"
           OUT="$(mktemp -d)"
           LIST="$(mktemp)"
-          trap 'rm -rf "$ROOT" "$OUT" "$LIST"' EXIT
+          FAKEBIN="$(mktemp -d)"
+          trap 'rm -rf "$ROOT" "$OUT" "$LIST" "$FAKEBIN"' EXIT
 
           mkdir -p \
             "$ROOT/etc/celar-ai/gateway" \
@@ -83,7 +84,23 @@ jobs:
           [[ ! -e "$BAD" ]]
           ! find "$OUT" -maxdepth 1 -name '.celar-state-partial.*.tar.zst' -print -quit | grep -q .
 
-          # Enforce the exact production ordering that caused the live failure.
+          # A final publication failure must also return failure and clean staging.
+          cat > "$FAKEBIN/mv" <<'SH'
+          #!/usr/bin/env bash
+          exit 74
+          SH
+          chmod +x "$FAKEBIN/mv"
+          PUBLISH_FAIL="$OUT/celar-state-publish-fail.tar.zst"
+          if PATH="$FAKEBIN:$PATH" create_local_archive "$ROOT" "$LIST" "$PUBLISH_FAIL"; then
+            echo 'Expected publication failure to propagate.' >&2
+            exit 1
+          fi
+          [[ ! -e "$PUBLISH_FAIL" ]]
+          ! find "$OUT" -maxdepth 1 -name '.celar-state-partial.*.tar.zst' -print -quit | grep -q .
+          [[ -z "${ARCHIVE_TEMP_TO_CLEAN:-}" ]]
+          [[ -z "${ARCHIVE_LISTING_TO_CLEAN:-}" ]]
+
+          # Enforce the exact production ordering and interruption-cleanup contract.
           python3 - "$BACKUP" <<'PY'
           from pathlib import Path
           import sys
@@ -100,13 +117,19 @@ jobs:
               'var/lib/celar-ai/ollama-models',
               'PROTECTED_ARCHIVE_PATH_REGEX',
               '.celar-state-partial.',
-              'mv -f -- "$temp_archive" "$archive"',
+              'ARCHIVE_TEMP_TO_CLEAN',
+              'ARCHIVE_LISTING_TO_CLEAN',
+              "trap 'backup_interrupted 130' INT",
+              "trap 'backup_interrupted 143' TERM",
+              'if ! mv -f -- "$temp_archive" "$archive"; then',
           ]:
               if marker not in text:
                   raise SystemExit(f'missing backup safety marker: {marker}')
           print('CELAR_BACKUP_TAR_EXCLUDE_ORDER=PASS')
+          print('CELAR_BACKUP_INTERRUPT_CLEANUP=PASS')
           PY
 
           echo 'CELAR_BACKUP_SECRET_EXCLUSION=PASS'
           echo 'CELAR_BACKUP_ATOMIC_PUBLISH=PASS'
+          echo 'CELAR_BACKUP_PUBLICATION_FAILURE_PROPAGATION=PASS'
           git diff --check
