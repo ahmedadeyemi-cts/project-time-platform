@@ -497,10 +497,7 @@ public sealed class PulseAiSystemIntelligenceService
                 }
 
                 var privateAnswerPassedQualityGate = privateRagAnswer is not null
-                    && string.Equals(
-                        routed.Provider,
-                        CelarAiCapabilityTargets.CelarAi,
-                        StringComparison.OrdinalIgnoreCase)
+                    && CelarAiCapabilityTargets.IsPrivate(routed.Provider)
                     && routed.Outcome == ProjectPulseAiOutcomes.Success;
                 acceptedPrivateRagAnswer = privateAnswerPassedQualityGate
                     ? privateRagAnswer
@@ -543,10 +540,7 @@ public sealed class PulseAiSystemIntelligenceService
                     sources = [];
                     warnings.Add("The selected target declined the request under its safety controls. No later AI target or governed local answer was used.");
                 }
-                else if (string.Equals(
-                        routed.Provider,
-                        CelarAiCapabilityTargets.CelarAi,
-                        StringComparison.OrdinalIgnoreCase)
+                else if (CelarAiCapabilityTargets.IsPrivate(routed.Provider)
                     && routed.Outcome == ProjectPulseAiOutcomes.Success
                     && !string.IsNullOrWhiteSpace(routed.Content))
                 {
@@ -570,7 +564,7 @@ public sealed class PulseAiSystemIntelligenceService
                                 SourceId: 1,
                                 SourceType: "governed_private_ai",
                                 SourceCode: routed.Provider,
-                                SourceName: "Module 064 governed private Celar AI response",
+                                SourceName: $"Module 064 governed private {routed.Provider} response",
                                 ModuleCode: "064",
                                 Method: "INTERNAL",
                                 Path: "module064:public-general-knowledge-private",
@@ -582,7 +576,9 @@ public sealed class PulseAiSystemIntelligenceService
                         ];
                         warnings.Add(
                             "This general-knowledge answer used only the public question through the private Celar AI runtime. No Pulse record, private document, attachment text, tool result, identity, customer/project context, financial record, or internal technical inventory was included.");
-                        modelName = ragOptions.InferenceModel;
+                        modelName = routed.Provider == CelarAiCapabilityTargets.DeepSeek
+                            ? string.Empty
+                            : ragOptions.InferenceModel;
                     }
                     else
                     {
@@ -591,7 +587,9 @@ public sealed class PulseAiSystemIntelligenceService
                             deterministic,
                             sources.Count,
                             options.MaximumAnswerCharacters);
-                        modelName = ragOptions.InferenceModel;
+                        modelName = routed.Provider == CelarAiCapabilityTargets.DeepSeek
+                            ? string.Empty
+                            : ragOptions.InferenceModel;
                     }
                 }
                 else if ((routed.Provider is CelarAiCapabilityTargets.Claude

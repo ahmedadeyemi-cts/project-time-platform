@@ -13,12 +13,44 @@ var officialBodies = new Dictionary<string, string>(StringComparer.OrdinalIgnore
     ["https://ussignal.com/press-releases/crn-tech-elite-250-2026/"] = "<html><p>Daniel Watts, CEO of US Signal</p></html>",
     ["https://ussignal.com/press-releases/crn-solution-provider-500-2026/"] = "<html><p>Daniel Watts, Chief Executive Officer at US Signal</p></html>"
 };
+var stateCodes = new[] {1,2,4,5,6,8,9,10,11,12,13,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,44,45,46,47,48,49,50,51,53,54,55,56,60,66,69,72,74,78};
+const string censusUri = "https://www2.census.gov/geo/docs/reference/state.txt";
+var stateTable = "STATE|STUSAB|STATE_NAME|STATENS\n" + string.Join("\n", stateCodes.Select(code => $"{code:00}|XX|Test state {code}|00000001"));
+officialBodies[censusUri] = stateTable;
 var factory = new StubHttpClientFactory(uri => officialBodies.TryGetValue(uri.ToString(), out var body)
     ? Response(HttpStatusCode.OK, body)
     : Response(HttpStatusCode.NotFound, "not found"));
 var service = new CelarAiAuthoritativePublicFactService(
     factory,
     NullLogger<CelarAiAuthoritativePublicFactService>.Instance);
+
+var statePlan = reliability.Plan("How many states are there in the US?", "general_knowledge", null, null, null, false, 0);
+Require(statePlan.RequireDeterministicCalculation, "public counts retain deterministic calculation requirements");
+var stateAnswer = await service.VerifyAsync(
+    Result("completed", "general_knowledge", "A provider guessed 52 states.", provider: CelarAiCapabilityTargets.DeepSeek),
+    statePlan, "How many states are there in the US?", CancellationToken.None);
+Require(stateAnswer.Answer.DirectConclusion == "The United States has 50 states. [1]",
+    "state count comes from complete official table, excluding DC and territories");
+Require(stateAnswer.ModelProvider == CelarAiCapabilityTargets.DeepSeek, "verification preserves actual provider attribution");
+var enforcedState = reliability.Enforce(stateAnswer, statePlan, true, false);
+Require(enforcedState.Assessment.Passed && enforcedState.Assessment.DeterministicEvidencePresent,
+    "official calculation passes the unchanged universal evidence gate");
+Require(stateAnswer.Sources.Single().Path == censusUri && stateAnswer.Answer.CitationIds.SequenceEqual([1]),
+    "state count cites the retrieved official dataset");
+foreach (var malformedTable in new[] { stateTable.Replace("01|XX|Test state 1|00000001", ""), stateTable + "\n01|XX|Duplicate|00000001", "unrelated page" })
+{
+    officialBodies[censusUri] = malformedTable;
+    var rejected = await service.VerifyAsync(Result("completed", "general_knowledge", "50 states"),
+        statePlan, "How many states are there in the US?", CancellationToken.None);
+    Require(rejected.Status == "partial" && rejected.Sources.Count == 0 && rejected.ToolResults.Count == 0,
+        "incomplete, duplicated, or malformed state data cannot establish a count");
+}
+officialBodies[censusUri] = stateTable;
+var requestsBeforeInternalCount = factory.Requests.Count;
+await service.VerifyAsync(Result("partial", "general_system", "Internal count unavailable"),
+    reliability.Plan("How many states are there in our project?", "general_system", null, null, null, false, 0),
+    "How many states are there in our project?", CancellationToken.None);
+Require(factory.Requests.Count == requestsBeforeInternalCount, "internal counts never enter public state lookup");
 
 var presidentPlan = reliability.Plan(
     "Who is the current President of the United States?",
@@ -246,7 +278,7 @@ Require(factory.Requests.All(request => request.ContentLength == 0),
     "authoritative connector sends no question, private record, or attachment body");
 Require(factory.Requests.All(request => !request.HasAuthorization),
     "authoritative connector sends no Pulse or provider authorization header");
-Require(factory.Requests.All(request => request.Host is "www.whitehouse.gov" or "whitehouse.gov" or "rhc.jo" or "www.rhc.jo" or "ussignal.com" or "www.ussignal.com"),
+Require(factory.Requests.All(request => request.Host is "www2.census.gov" or "www.whitehouse.gov" or "whitehouse.gov" or "rhc.jo" or "www.rhc.jo" or "ussignal.com" or "www.ussignal.com"),
     "authoritative connector is limited to official allowlisted hosts");
 
 Console.WriteLine("CELAR_AI_WRONG_PROVIDER_TEST=PASS");
