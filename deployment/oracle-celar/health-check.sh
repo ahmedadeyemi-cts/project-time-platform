@@ -11,6 +11,25 @@ fail() {
   exit 1
 }
 
+header_value() {
+  local file="$1"
+  local wanted="$2"
+  awk -v wanted="$wanted" '
+    {
+      line=$0
+      sub(/\r$/, "", line)
+      split(line, parts, ":")
+      if (tolower(parts[1]) == tolower(wanted)) {
+        sub(/^[^:]+:[[:space:]]*/, "", line)
+        value=line
+      }
+    }
+    END {
+      if (value != "") print value
+    }
+  ' "$file"
+}
+
 command -v jq >/dev/null 2>&1 || fail 'jq is required.'
 HOSTNAME_VALUE="$(jq -r '.hostname' "$MANIFEST")"
 GATEWAY_VERSION="$(jq -r '.gatewayVersion' "$MANIFEST")"
@@ -116,14 +135,24 @@ curl -fsS --max-time 270 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/genera
   -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return only: CELAR ORACLE GENERAL OK"}],stream:false,temperature:0,max_tokens:32}')" \
   "$BASE/v1/chat/completions" > "$TMP/general.json"
 jq -e '.choices[0].message.content | strings | length > 0' "$TMP/general.json" >/dev/null || fail 'General local-model gateway probe failed.'
-grep -Eiq "^X-Celar-Local-Model:[[:space:]]*$REASONING_MODEL\r?$" "$TMP/general.headers" || fail 'General route did not select the reasoning specialist.'
+GENERAL_SELECTED_MODEL="$(header_value "$TMP/general.headers" 'X-Celar-Local-Model')"
+GENERAL_SELECTED_ROUTE="$(header_value "$TMP/general.headers" 'X-Celar-Local-Route')"
+[[ "$GENERAL_SELECTED_MODEL" == "$REASONING_MODEL" ]] || \
+  fail "General route did not select the reasoning specialist: expected=$REASONING_MODEL actual=${GENERAL_SELECTED_MODEL:-missing}"
+[[ "$GENERAL_SELECTED_ROUTE" == general ]] || \
+  fail "General route header is invalid: expected=general actual=${GENERAL_SELECTED_ROUTE:-missing}"
 
 curl -fsS --max-time 270 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -D "$TMP/structured.headers" \
   -H 'Content-Type: application/json' -H 'X-Pulse-AI-Feature: sow_gsd_planning' \
   -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return a JSON object with status set to ok."}],stream:false,temperature:0,max_tokens:64,response_format:{type:"json_object"}}')" \
   "$BASE/v1/chat/completions" > "$TMP/structured.json"
 jq -e '.choices[0].message.content | strings | length > 0' "$TMP/structured.json" >/dev/null || fail 'Structured local-model gateway probe failed.'
-grep -Eiq "^X-Celar-Local-Model:[[:space:]]*$GENERATION_MODEL\r?$" "$TMP/structured.headers" || fail 'Structured route did not select the compatibility specialist.'
+STRUCTURED_SELECTED_MODEL="$(header_value "$TMP/structured.headers" 'X-Celar-Local-Model')"
+STRUCTURED_SELECTED_ROUTE="$(header_value "$TMP/structured.headers" 'X-Celar-Local-Route')"
+[[ "$STRUCTURED_SELECTED_MODEL" == "$GENERATION_MODEL" ]] || \
+  fail "Structured route did not select the compatibility specialist: expected=$GENERATION_MODEL actual=${STRUCTURED_SELECTED_MODEL:-missing}"
+[[ "$STRUCTURED_SELECTED_ROUTE" == structured ]] || \
+  fail "Structured route header is invalid: expected=structured actual=${STRUCTURED_SELECTED_ROUTE:-missing}"
 
 # Pulse's embedding client has a fixed three-minute deadline. The gateway owns
 # only 150 seconds, and this acceptance client allows 180 seconds for overhead.
@@ -159,8 +188,8 @@ MEM_AVAILABLE_KB="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)"
 
 echo 'CELAR_ORACLE_HEALTH=PASS'
 echo 'PUBLIC_HTTPS_AUTH_BOUNDARY=PASS'
-echo "LOCAL_REASONING_ROUTE=PASS:$REASONING_MODEL"
-echo "LOCAL_STRUCTURED_ROUTE=PASS:$GENERATION_MODEL"
+echo "LOCAL_REASONING_ROUTE=PASS:$GENERAL_SELECTED_MODEL"
+echo "LOCAL_STRUCTURED_ROUTE=PASS:$STRUCTURED_SELECTED_MODEL"
 echo "LOCAL_FAST_FALLBACK_PRESENT=PASS:$FAST_GENERAL_MODEL"
 echo "EMBEDDING_GATEWAY=PASS:$EMBEDDING_DIMENSION"
 echo 'MALWARE_GATEWAY=PASS'
