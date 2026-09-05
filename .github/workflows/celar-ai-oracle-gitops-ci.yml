@@ -58,8 +58,8 @@ jobs:
             '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|ssh-ed25519 AAAA|RESTIC_PASSWORD=.+|AWS_SECRET_ACCESS_KEY=.+|runtime-token=.+)' \
             deployment/oracle-celar
           ! grep -RInE '(0\.0\.0\.0:11434|0\.0\.0\.0.*3310|TCPAddr[[:space:]]+0\.0\.0\.0)' deployment/oracle-celar
-          grep -Fq 'OLLAMA_HOST=\$OLLAMA_HOST_VALUE' deployment/oracle-celar/deploy.sh
-          grep -Fq "CLAMAV_HOST\" == '127.0.0.1'" deployment/oracle-celar/deploy.sh
+          grep -Fq 'Environment="OLLAMA_HOST=$OLLAMA_HOST_VALUE"' deployment/oracle-celar/deploy.sh
+          grep -Fq '[[ "$CLAMAV_HOST" == '\''127.0.0.1'\''' deployment/oracle-celar/deploy.sh
 
       - name: Verify GitOps is pull-based and backups are recoverable
         shell: bash
