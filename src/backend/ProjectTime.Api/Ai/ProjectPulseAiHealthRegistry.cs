@@ -232,10 +232,6 @@ public sealed class ProjectPulseAiHealthRegistry
                 state.CircuitOpenUntil = null;
                 state.ConsecutiveFailures = 0;
                 state.Status = "available";
-                if (state.Status is "checking" or "not_checked" or "probe_due" or "degraded")
-                {
-                    state.Status = "available";
-                }
                 if (state.LastOutcome == "none") state.LastOutcome = "health_probe_success";
                 return;
             }

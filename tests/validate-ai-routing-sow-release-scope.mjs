@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+const root = fileURLToPath(new URL('../', import.meta.url));
+const run = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+const manifest = readFileSync(new URL('../.github/ai-routing-sow-governed-release-files.txt', import.meta.url), 'utf8').trim().split('\n');
+assert.deepEqual(manifest, [...new Set(manifest)].sort(), 'AI routing/SOW repair manifest must be sorted and unique');
+const base = process.env.BASE_SHA || run('merge-base', 'origin/main', 'HEAD');
+assert.match(base, /^[a-f0-9]{40}$/);
+const actual = run('diff', '--name-only', base, 'HEAD').split('\n').filter(Boolean).sort();
+assert.deepEqual(actual, manifest, 'AI routing/SOW repair changes must match the complete authorized manifest');
+assert.ok(!actual.includes('.github/workflows/projectpulse-deploy-production.yml'));
+run('diff', '--check', base, 'HEAD');
+console.log('AI_ROUTING_SOW_EXACT_RELEASE_SCOPE=PASS');

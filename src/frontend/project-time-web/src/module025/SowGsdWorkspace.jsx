@@ -244,6 +244,7 @@ export default function SowGsdWorkspace() {
   const [saveState, setSaveState] = useState({ state: 'idle', message: '', at: null });
   const [actionState, setActionState] = useState({ busy: '', message: '', error: '' });
   const dirtyRef = useRef(false);
+  const editVersion = useRef(0);
   const saveInFlight = useRef(false);
 
   const loadBootstrap = useCallback(async () => {
@@ -294,6 +295,7 @@ export default function SowGsdWorkspace() {
     try {
       const payload = await requestJson(`/api/module025/sow-gsd/${engagementId}`);
       setSelectedId(engagementId);
+      editVersion.current += 1;
       setEngagement(payload?.engagement || null);
       setAccess(payload?.access || null);
       dirtyRef.current = false;
@@ -307,6 +309,7 @@ export default function SowGsdWorkspace() {
   }, []);
 
   const markChanged = useCallback((updater) => {
+    editVersion.current += 1;
     setEngagement((current) => {
       if (!current) return current;
       const next = typeof updater === 'function' ? updater(current) : { ...current, ...updater };
@@ -322,6 +325,7 @@ export default function SowGsdWorkspace() {
     if (!engagement || !access?.canEdit || saveInFlight.current) return false;
     if (engagement.status === 'confirmed' || engagement.status === 'archived' || !engagement.isActive) return false;
     saveInFlight.current = true;
+    const savingVersion = editVersion.current;
     setSaveState({ state: 'saving', message: 'Saving…', at: null });
     try {
       const payload = await requestJson(`/api/module025/sow-gsd/${engagement.engagementId}`, {
@@ -358,6 +362,14 @@ export default function SowGsdWorkspace() {
       });
       const saved = payload?.engagement?.engagement;
       if (!saved) throw new Error('The saved SOW/GSD could not be verified. Reload before generating scope.');
+      if (editVersion.current !== savingVersion) {
+        // Preserve edits made while autosave was awaiting the server. Only
+        // advance their base revision so the next save can persist those edits.
+        setEngagement((current) => current?.engagementId === saved.engagementId
+          ? { ...current, revision: saved.revision }
+          : current);
+        return false;
+      }
       setEngagement(saved);
       dirtyRef.current = false;
       setDirty(false);
