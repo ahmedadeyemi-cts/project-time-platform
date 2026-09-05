@@ -112,8 +112,14 @@ jobs:
               echo 'Module 084 maintenance work must not add or alter database migrations.' >&2
               exit 1
             fi
-            if grep -E '^\.github/workflows/projectpulse-deploy-|^deployment/(?!oracle-celar/)' <<<"$CHANGED"; then
-              echo 'Module 084 maintenance work may not alter application deployment controllers or non-Oracle deployment packages.' >&2
+            if grep -E '^\.github/workflows/projectpulse-deploy-' <<<"$CHANGED"; then
+              echo 'Module 084 maintenance work may not alter application deployment controllers.' >&2
+              exit 1
+            fi
+            NON_ORACLE_DEPLOYMENT="$(grep -E '^deployment/' <<<"$CHANGED" | grep -Ev '^deployment/oracle-celar/' || true)"
+            if [[ -n "$NON_ORACLE_DEPLOYMENT" ]]; then
+              echo 'Module 084 maintenance work may not alter non-Oracle deployment packages.' >&2
+              printf '%s\n' "$NON_ORACLE_DEPLOYMENT" >&2
               exit 1
             fi
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
