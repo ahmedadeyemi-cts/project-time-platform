@@ -55,8 +55,25 @@ jobs:
             echo 'deploy.sh must not start GitOps before bootstrap records the applied tree.' >&2
             exit 1
           fi
+
+          grep -Fq 'systemctl stop celar-gitops.timer' "$BOOTSTRAP"
+          grep -Fq 'while systemctl is-active --quiet celar-gitops.service' "$BOOTSTRAP"
           grep -Fq 'gitops-applied-tree' "$BOOTSTRAP"
           grep -Fq 'systemctl enable --now celar-gitops.timer' "$BOOTSTRAP"
+
+          python3 - "$BOOTSTRAP" <<'PY'
+          from pathlib import Path
+          import sys
+
+          text = Path(sys.argv[1]).read_text(encoding='utf-8')
+          stop = text.index('systemctl stop celar-gitops.timer')
+          deploy = text.index('bash "$SOURCE_DIR/deployment/oracle-celar/deploy.sh"')
+          record = text.index('gitops-applied-tree')
+          start = text.index('systemctl enable --now celar-gitops.timer')
+          if not stop < deploy < record < start:
+              raise SystemExit('Bootstrap GitOps timer ordering is unsafe.')
+          print('BOOTSTRAP_GITOPS_TIMER_ORDER=PASS')
+          PY
 
           # Ollama CLI currently requires HOME. systemd system services do not
           # guarantee that variable, so both automated mutation paths must set it.
