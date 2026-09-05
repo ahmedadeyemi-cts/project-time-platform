@@ -16,7 +16,7 @@ The verified Oracle boundary is:
 
 The endpoint URLs are **not** entered on the Oracle VM, in DNS, in the Pulse frontend, or in the Module 064 provider form.
 
-They are deployment-managed settings on the **Azure Test API Container App**. The guarded GitHub Actions workflow `.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml` applies them to the API revision as these environment variables:
+They are deployment-managed settings on the **Azure Test API Container App**. The guarded GitHub Actions workflow `.github/workflows/projectpulse-deploy-test.yml` applies them to the API revision as these environment variables:
 
 | Capability | Azure Test API environment variable | Exact value |
 |---|---|---|
@@ -77,18 +77,17 @@ The HTTP transport performs DNS verification immediately before each request and
 
 Production cannot enable this mode. Any external-runtime variables left behind while the enable flag is false also fail closed, preventing a partial or ambiguous configuration.
 
-## Manual deployment after merge
+## Protected recovery after merge
 
-After the source PR is merged and the protected GitHub environment secret exists:
+The merge of PR #854 runs the authorized protected-Test recovery once, before normal deployment. Subsequent normal deployments preserve its configuration. It fails before Azure mutation if the protected token, DNS pin, or live capability checks fail. The retired one-time activation controller remains retired. To repeat recovery manually after the protected GitHub environment secret exists:
 
 1. Open **Actions**.
-2. Select **ProjectPulse Deploy Celar AI Oracle HTTPS Runtime to Test**.
+2. Select **Deploy System-wide Enterprise Reliability and Utilization to Protected Test**.
 3. Run it from `main`.
-4. Enter the exact current `main` commit as `release_commit`.
-5. Enter an approved reference matching `ORACLE-TEST-...`.
-6. Enter `DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST` as the confirmation.
+4. Supply the exact approved release SHA and branch required by the controller.
+5. Enable `recover_private_runtime` to repeat the authorized Test recovery.
 
-The workflow performs live unauthenticated, incorrect-token, authenticated health, inference, embedding, and clean-file malware tests before changing Azure. Authenticated readiness must also report the OCR service and configured OCR model as ready. It then deploys an immutable API image, applies only the protected Test API environment and secret bindings, validates Pulse-to-Oracle inference and readiness, and restores the prior API image, environment values, and secret references if any post-change gate fails.
+The workflow performs live unauthenticated, incorrect-token, authenticated health, inference, embedding, and clean-file malware tests before changing Azure. Authenticated readiness must also report the OCR service and configured OCR model as ready. It preserves the deployed immutable API image, enables the private document worker, applies only the protected Test API environment and secret bindings, validates Pulse-to-Oracle inference and readiness, and restores the prior API image, environment values, and secret references if any post-change gate fails.
 
 No database migration, web deployment, Production mutation, Oracle infrastructure mutation, or public opening of ports 3310, 8787, or 11434 is included.
 

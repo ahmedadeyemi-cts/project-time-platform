@@ -147,3 +147,20 @@ var backgroundBudget = Activator.CreateInstance(budgetType, [CelarAiCapabilityCa
 Check(budgetType.GetMethod("NextTimeout")!.Invoke(backgroundBudget, [4]) is null,
     "Background detailed SOW generation must not inherit the interactive deadline.");
 Console.WriteLine("MODULE064_ATTEMPT_DEADLINES_AND_REJECTION_ISOLATION=PASS");
+
+// A queued readiness probe is inconclusive; it must neither cause nor heal outages.
+var busyHealth = new ProjectPulseAiHealthRegistry(healthConfig);
+busyHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, true, "ready", "Ready", 200, null));
+for (var i = 0; i < healthConfig.FailureThreshold + 1; i++)
+    busyHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, false, "deepseek_queue_busy", "Busy", null, null));
+Check(busyHealth.CanAttempt(ProjectPulseAiProviders.DeepSeek, out _),
+    "Busy readiness probes must not prevent user requests from trying DeepSeek.");
+Check(busyHealth.Snapshot(ProjectPulseAiProviders.DeepSeek).ProbeStatus == "available",
+    "Inconclusive probes must preserve the last verified readiness for all consumers.");
+busyHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, false, "deepseek_http_503", "Unavailable", 503, null));
+busyHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, false, "deepseek_queue_busy", "Busy", null, null));
+Check(!busyHealth.CanAttempt(ProjectPulseAiProviders.DeepSeek, out _),
+    "A busy probe must not heal an actual provider outage.");
+busyHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, true, "ready", "Ready", 200, null));
+Check(busyHealth.CanAttempt(ProjectPulseAiProviders.DeepSeek, out _),
+    "Successful recovery must still restore eligibility after contention.");

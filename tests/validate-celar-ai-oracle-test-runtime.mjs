@@ -180,8 +180,10 @@ for (const marker of [
 rejectText(currentTestController, 'environment: production', 'Production environment binding')
 rejectText(currentTestController, 'az keyvault', 'unapproved key-vault access')
 rejectText(currentTestController, 'PROJECTPULSE_TEST_DATABASE_URL', 'database-secret access')
-rejectText(currentTestController, 'celarai.onenecklab.com', 'Oracle runtime endpoint mutation')
-rejectText(currentTestController, 'PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN', 'Oracle runtime token mutation')
+// Explicit recovery is now owned by the canonical protected Test controller.
+requireText(currentTestController, 'recover_private_runtime:', 'explicit guarded recovery job')
+requireText(currentTestController, "contains(github.event.head_commit.message, '#854')", 'one-time user-authorized recovery on merge')
+requireText(currentTestController, 'PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN', 'protected recovery token')
 rejectText(currentTestController, '--insecure', 'TLS verification bypass')
 rejectText(currentTestController, 'curl -k', 'TLS verification bypass')
 

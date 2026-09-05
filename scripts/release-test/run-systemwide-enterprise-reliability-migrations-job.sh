@@ -331,8 +331,34 @@ for _ in $(seq 1 180); do
 done
 
 if (( CORE_MIGRATIONS_SUCCEEDED != 1 )); then
-  az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
-    --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 250 --only-show-errors >&2 || true
+  # Capture diagnostics before the EXIT trap removes this owned temporary job.
+  # Retain only status fields: job payloads contain secret references and env data.
+  DIAGNOSTICS_DIR="${EVIDENCE_DIR:-${RUNNER_TEMP:-/tmp}/systemwide-migration-evidence}"
+  mkdir -p "$DIAGNOSTICS_DIR"
+  az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+    --query "[?name=='$EXECUTION_NAME'].{name:name,status:properties.status,startTime:properties.startTime,endTime:properties.endTime}" \
+    -o json --only-show-errors > "$DIAGNOSTICS_DIR/migration-execution.json" || true
+  az containerapp job replica list -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+    --execution "$EXECUTION_NAME" \
+    --query '[].{name:name,containers:properties.containers[].{name:name,runningState:runningState,runningStateDetails:runningStateDetails,restartCount:restartCount}}' \
+    -o json --only-show-errors > "$DIAGNOSTICS_DIR/migration-replicas.json" || true
+  while IFS=$'\t' read -r replica container; do
+    [[ "$replica" =~ ^[a-z0-9-]+$ && "$container" =~ ^[a-z0-9-]+$ ]] || continue
+    az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+      --execution "$EXECUTION_NAME" --replica "$replica" --container "$container" \
+      --tail 250 --only-show-errors >&2 || true
+  done < <(jq -r '.[] | .name as $replica | .containers[]? | [$replica, .name] | @tsv' \
+    "$DIAGNOSTICS_DIR/migration-replicas.json" 2>/dev/null || true)
+  # System events survive a missing container and distinguish image-pull,
+  # scheduling, secret-resolution and process failures from logstream failures.
+  workspace_id="$(az containerapp env show --ids "$ENVIRONMENT_ID" \
+    --query properties.appLogsConfiguration.logAnalyticsConfiguration.customerId \
+    -o tsv --only-show-errors 2>/dev/null || true)"
+  if [[ "$workspace_id" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+    az monitor log-analytics query --workspace "$workspace_id" --analytics-query \
+      "union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs | where TimeGenerated > ago(2h) | where tostring(pack_all()) has '$JOB_NAME' | project TimeGenerated, Reason=tostring(column_ifexists('Reason_s', column_ifexists('Reason', ''))), Log=tostring(column_ifexists('Log_s', column_ifexists('Log', ''))) | take 100" \
+      -o json --only-show-errors > "$DIAGNOSTICS_DIR/migration-system-events.json" || true
+  fi
   fail "The protected Test system-wide reliability migration job did not succeed."
 fi
 
