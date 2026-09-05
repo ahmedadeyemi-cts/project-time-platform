@@ -12,6 +12,13 @@ BACKUP_EXCLUDES=(
 )
 
 PROTECTED_ARCHIVE_PATH_REGEX='^(\./)?(etc/celar-ai/backup\.env|etc/celar-ai/gateway/runtime-token|var/lib/celar-ai/recovery(/|$)|var/lib/celar-ai/ollama-models(/|$)|var/lib/ollama(/|$)|var/lib/clamav(/|$))'
+LIST_FILE_TO_CLEAN=''
+
+cleanup_backup_temp_files() {
+  if [[ -n "${LIST_FILE_TO_CLEAN:-}" ]]; then
+    rm -f -- "$LIST_FILE_TO_CLEAN"
+  fi
+}
 
 fail() {
   echo "ERROR: $*" >&2
@@ -75,7 +82,7 @@ create_local_archive() {
 main() {
   local root manifest backup_root restic_env
   local retention_days keep_daily keep_weekly keep_monthly stamp archive list_file
-  local restic_status pattern path
+  local restic_status pattern
   local -a restic_paths=() restic_exclude_args=()
 
   root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -96,7 +103,8 @@ main() {
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   archive="$backup_root/celar-state-$stamp.tar.zst"
   list_file="$(mktemp)"
-  trap 'rm -f -- "$list_file"' EXIT
+  LIST_FILE_TO_CLEAN="$list_file"
+  trap cleanup_backup_temp_files EXIT
 
   install -d -m 0700 "$backup_root"
 
