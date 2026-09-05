@@ -7,6 +7,7 @@ MANIFEST="$ROOT/release.json"
 HEALTH_CHECK="$ROOT/health-check.sh"
 [[ -x "$HEALTH_CHECK" ]] || HEALTH_CHECK='/opt/celar-ai/deploy/health-check.sh'
 ROLLBACK_ROOT='/var/lib/celar-ai/ollama-rollback'
+RUNTIME_MUTATION_LOCK='/run/celar-runtime-mutation.lock'
 
 fail() {
   echo "ERROR: $*" >&2
@@ -17,6 +18,11 @@ fail() {
 command -v jq >/dev/null 2>&1 || fail 'jq is required.'
 command -v ollama >/dev/null 2>&1 || fail 'Ollama is not installed.'
 [[ -x "$HEALTH_CHECK" ]] || fail 'Celar Oracle health-check.sh is missing.'
+
+LOCK_WAIT_SECONDS="$(jq -r '.runtimeMutationLockWaitSeconds' "$MANIFEST")"
+[[ "$LOCK_WAIT_SECONDS" =~ ^[0-9]+$ && "$LOCK_WAIT_SECONDS" -ge 60 ]] || fail 'Invalid runtime mutation lock wait.'
+exec 8>"$RUNTIME_MUTATION_LOCK"
+flock -w "$LOCK_WAIT_SECONDS" 8 || fail 'Timed out waiting for the Celar runtime mutation lock.'
 
 mapfile -t GENERATION_MODELS < <(jq -r '.localGenerationModels[]' "$MANIFEST")
 EMBEDDING_MODEL="$(jq -r '.embeddingModel' "$MANIFEST")"
@@ -88,14 +94,10 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 
-# Refresh every approved free local model. Pulling an unchanged tag is safe and
-# keeps this weekly job simple; a changed tag is accepted only after all probes.
 for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
   ollama pull "$model"
 done
 
-# Every local generation specialist must still be able to complete a minimal
-# request independently before the new engine/model set is accepted.
 for model in "${GENERATION_MODELS[@]}"; do
   GENERATION_RESULT="$(curl -fsS --max-time 180 http://127.0.0.1:11434/api/generate \
     -H 'Content-Type: application/json' \
@@ -108,8 +110,6 @@ EMBED_RESULT="$(curl -fsS --max-time 180 http://127.0.0.1:11434/api/embed \
   -d "$(jq -nc --arg model "$EMBEDDING_MODEL" '{model:$model,input:"Celar AI update validation"}')")"
 jq -e '.embeddings[0] | arrays | length > 0' <<<"$EMBED_RESULT" >/dev/null || fail 'Updated embedding model failed.'
 
-# Reload the gateway and require the complete authenticated HTTPS, specialist
-# routing, OCR, ClamAV, embedding, and inference acceptance before promotion.
 systemctl restart celar-ai-gateway.service
 "$HEALTH_CHECK"
 
