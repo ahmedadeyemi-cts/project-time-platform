@@ -14,8 +14,11 @@ celarai.onenecklab.com {
 
     encode zstd gzip
 
+    # The gateway permits a 32 MiB file plus multipart framing. Keep the public
+    # proxy only slightly larger so it does not reject an otherwise-valid upload
+    # before Flask applies the exact payload limit.
     request_body {
-        max_size 33MB
+        max_size 36MB
     }
 
     reverse_proxy 127.0.0.1:8787 {
