@@ -26,7 +26,7 @@ from gateway import app
 
 LOCK_PATH = Path("/var/lib/celar-ai/gateway/ocr.lock")
 CONTRACT_MODEL = gateway.GENERATION_MODEL
-REASONING_MODEL = os.environ.get("CELAR_REASONING_MODEL", "qwen3:4b").strip()
+REASONING_MODEL = os.environ.get("CELAR_REASONING_MODEL", "qwen3:4b-instruct").strip()
 FAST_GENERAL_MODEL = os.environ.get("CELAR_FAST_GENERAL_MODEL", "llama3.2:3b").strip()
 MAX_OCR_IMAGE_PIXELS = int(os.environ.get("CELAR_MAX_OCR_IMAGE_PIXELS", "40000000"))
 MAX_OCR_IMAGE_EDGE = int(os.environ.get("CELAR_MAX_OCR_IMAGE_EDGE", "12000"))
@@ -46,6 +46,19 @@ def _order(name: str, default: list[str]) -> list[str]:
     return result
 
 
+def _budgets(name: str, default: list[int], expected: int) -> list[int]:
+    raw = os.environ.get(name, "").strip()
+    try:
+        values = [int(value.strip()) for value in raw.split(",") if value.strip()] if raw else list(default)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid model-attempt budget: {name}") from exc
+    if len(values) != expected or any(value < 10 for value in values):
+        raise RuntimeError(f"Model-attempt budget does not match route order: {name}")
+    if sum(values) > gateway.CHAT_TIMEOUT_SECONDS:
+        raise RuntimeError(f"Model-attempt budget exceeds end-to-end chat timeout: {name}")
+    return values
+
+
 STRUCTURED_ORDER = _order(
     "CELAR_STRUCTURED_GENERATION_ORDER",
     [CONTRACT_MODEL, REASONING_MODEL, FAST_GENERAL_MODEL],
@@ -53,6 +66,16 @@ STRUCTURED_ORDER = _order(
 GENERAL_ORDER = _order(
     "CELAR_GENERAL_GENERATION_ORDER",
     [REASONING_MODEL, FAST_GENERAL_MODEL, CONTRACT_MODEL],
+)
+STRUCTURED_ATTEMPT_SECONDS = _budgets(
+    "CELAR_STRUCTURED_MODEL_ATTEMPT_SECONDS",
+    [660, 120, 60],
+    len(STRUCTURED_ORDER),
+)
+GENERAL_ATTEMPT_SECONDS = _budgets(
+    "CELAR_GENERAL_MODEL_ATTEMPT_SECONDS",
+    [360, 240, 180],
+    len(GENERAL_ORDER),
 )
 APPROVED_GENERATION_MODELS = set(STRUCTURED_ORDER + GENERAL_ORDER)
 
@@ -134,10 +157,6 @@ def _bounded_extract() -> Any:
                 page_count = gateway._pdf_page_count(source, deadline)
                 if page_count < 1 or page_count > gateway.MAX_OCR_PAGES:
                     return gateway._error("ocr_page_limit_exceeded", 413)
-
-                # Render one page at a time and cap the raster edge. This keeps
-                # both temporary storage and decoded pixel memory bounded even
-                # when the source PDF declares extreme page geometry.
                 for page_number in range(1, page_count + 1):
                     output_prefix = root / f"raster-{page_number}"
                     remaining = deadline - time.monotonic()
@@ -208,11 +227,10 @@ def _serialized_extract() -> Any:
 
 
 def _local_chat_completions() -> Any:
-    """Preserve the public model contract while routing to local specialists.
+    """Route to local specialists inside one bounded end-to-end deadline.
 
-    Failover is permitted only for local runtime/server failures. A 4xx response
-    (including a policy/safety refusal from a future Ollama-compatible model)
-    remains terminal and is not bypassed by trying another model.
+    Runtime/server failures may fall through to the next approved local model.
+    A 4xx response, including a policy/safety refusal, remains terminal.
     """
     try:
         payload = gateway._bounded_request_json()
@@ -249,6 +267,7 @@ def _local_chat_completions() -> Any:
         isinstance(response_format, dict) and response_format.get("type") == "json_object"
     )
     candidates = STRUCTURED_ORDER if structured else GENERAL_ORDER
+    attempt_budgets = STRUCTURED_ATTEMPT_SECONDS if structured else GENERAL_ATTEMPT_SECONDS
 
     base_payload: dict[str, Any] = {
         "messages": messages,
@@ -259,25 +278,34 @@ def _local_chat_completions() -> Any:
         if name in payload:
             base_payload[name] = payload[name]
 
+    deadline = time.monotonic() + gateway.CHAT_TIMEOUT_SECONDS
     last_body: dict[str, Any] = {"error": {"code": "private_runtime_unavailable"}}
     last_status = 502
     attempted: list[str] = []
-    for candidate in candidates:
+
+    for index, candidate in enumerate(candidates):
         if candidate not in APPROVED_GENERATION_MODELS:
             continue
+        remaining = int(deadline - time.monotonic())
+        if remaining < 10:
+            last_body = {"error": {"code": "private_runtime_timeout"}}
+            last_status = 504
+            break
+        attempt_timeout = max(10, min(attempt_budgets[index], remaining))
         attempted.append(candidate)
         candidate_payload = dict(base_payload)
         candidate_payload["model"] = candidate
         body, status = gateway._ollama_post(
             "/v1/chat/completions",
             candidate_payload,
-            gateway.CHAT_TIMEOUT_SECONDS,
+            attempt_timeout,
             gateway.MAX_GATEWAY_RESPONSE_BYTES,
         )
         if status == 200:
             response = jsonify(body)
             response.headers["X-Celar-Local-Model"] = candidate
             response.headers["X-Celar-Local-Route"] = "structured" if structured else "general"
+            response.headers["X-Celar-Local-Attempt-Seconds"] = str(attempt_timeout)
             return response, 200
         last_body, last_status = body, status
         if status < 500:
