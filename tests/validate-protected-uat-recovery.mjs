@@ -19,3 +19,7 @@ const migration = read('scripts/release-test/run-systemwide-enterprise-reliabili
 for (const marker of ['migration-execution.json', 'migration-replicas.json', 'migration-system-events.json', '--replica "$replica"', 'ContainerAppSystemLogs_CL'])
   assert.ok(migration.includes(marker), marker);
 console.log('PROTECTED_UAT_RECOVERY_SECURITY_AND_DIAGNOSTICS=PASS');
+
+assert.ok(workflow.indexOf('Apply and verify Migrations 086, 088, and 093 through 100') < workflow.indexOf('Deploy immutable Test API image'));
+assert.ok(workflow.indexOf('Deploy immutable Test API image') < workflow.indexOf('Prove Pulse-to-Oracle inference and runtime readiness'), 'Runtime probe must verify the newly deployed API');
+assert.ok(workflow.includes("steps.recovery_verify.outcome != 'success'"), 'Successful runtime recovery survives unrelated later UAT failures');

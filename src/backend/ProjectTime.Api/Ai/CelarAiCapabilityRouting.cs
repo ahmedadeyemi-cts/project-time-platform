@@ -1635,7 +1635,7 @@ public sealed class CelarAiPrivateGenerationTarget
                     ? modelElement.GetString()?.Trim() ?? string.Empty
                     : string.Empty;
             var responseExact = ResponseMatchesReadinessPhrase(content);
-            var modelExact = string.Equals(reportedModel, profile.Model, StringComparison.Ordinal);
+            var modelExact = ModelIdentityVerified(profile, reportedModel, response);
             return new CelarAiPrivateProbeAttestation(
                 responseExact && modelExact,
                 responseExact,
@@ -1735,7 +1735,7 @@ public sealed class CelarAiPrivateGenerationTarget
                     ? modelElement.GetString()?.Trim() ?? string.Empty
                     : string.Empty;
             var responseExact = string.Equals(content, challenge.ExpectedAnswer, StringComparison.Ordinal);
-            var modelExact = string.Equals(reportedModel, profile.Model, StringComparison.Ordinal);
+            var modelExact = ModelIdentityVerified(profile, reportedModel, response);
             return new CelarAiPrivateProbeAttestation(
                 responseExact && modelExact,
                 responseExact,
@@ -1811,6 +1811,30 @@ public sealed class CelarAiPrivateGenerationTarget
         int.TryParse(Environment.GetEnvironmentVariable(name), out var value)
             ? Math.Clamp(value, minimum, maximum)
             : fallback;
+
+    private static bool ModelIdentityVerified(CelarAiPrivateModelProfile profile, string reportedModel, HttpResponseMessage response)
+    {
+        var routedModels = response.Headers.TryGetValues("X-Celar-Local-Model", out var values)
+            ? values.ToArray() : Array.Empty<string>();
+        var oracleEndpoint = PulseAiExternalHttpsRuntimePolicy.Evaluate().Active
+            && string.Equals(profile.Endpoint,
+                $"https://{PulseAiExternalHttpsRuntimePolicy.ApprovedHost}{PulseAiExternalHttpsRuntimePolicy.InferencePath}",
+                StringComparison.Ordinal);
+        return RoutedModelIdentityMatches(profile.Model, reportedModel,
+            routedModels.Length == 1 ? routedModels[0] : null, oracleEndpoint);
+    }
+
+    internal static bool RoutedModelIdentityMatches(string expected, string reported, string? routed, bool approvedOracleEndpoint)
+    {
+        if (string.IsNullOrWhiteSpace(expected) || string.IsNullOrWhiteSpace(reported)) return false;
+        if (string.Equals(expected, reported, StringComparison.Ordinal)) return true;
+        // Only the authenticated, exact Test Oracle endpoint may attest one of
+        // its reviewed local specialists. Public or arbitrary model names never qualify.
+        return approvedOracleEndpoint
+            && expected == PulseAiExternalHttpsRuntimePolicy.GenerationModel
+            && reported is "gemma3:4b" or "qwen3:4b-instruct" or "llama3.2:3b"
+            && string.Equals(reported, routed, StringComparison.Ordinal);
+    }
 
     private static string ReadContent(JsonElement root)
     {
