@@ -1,0 +1,215 @@
+name: Diagnose Module 082 Candidate Risks Failure
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/diagnose-module082-risks-candidate.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Replay exact API candidate, capture failure, and restore Test
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/module082-risks-candidate-logs-20260810'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CANDIDATE_API_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:b14fd4dac8d648ccc40ce279bdb04d4d598e342976ae15a183c31eb1474cfad0
+      CANDIDATE_SOURCE_COMMIT: 2ac05ec4544f2e096fd6675f3d05ab18f8b82b4f
+      DIAGNOSTIC_DIR: /tmp/module082-candidate-diagnostics
+
+    steps:
+      - name: Check out exact diagnostic source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Sign in to protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Snapshot Test, validate session, and resolve rollback image
+        id: contract
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) fail "Image is outside the approved Test ACR: $image" ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" == sha256:* ]] || fail "Could not resolve digest for $image."
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          install -d -m 0700 "$DIAGNOSTIC_DIR"
+          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is required.'
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]] || fail 'Azure login is outside Test.'
+          API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] || fail 'The API target is not tagged Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'The API must use single-revision mode.'
+
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'The public origin is not protected Test.'
+          STATUS="$(curl -sS --max-time 60 -o "$DIAGNOSTIC_DIR/preflight-readiness.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H "Authorization: Bearer $UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' \
+            "$BASE/api/celar-ai/v1/production/readiness")"
+          [[ "$STATUS" == 200 ]] || fail 'The Test UAT session is expired or unauthorized.'
+
+          OLD_API_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image' <<<"$API_JSON")")"
+          jq -c '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT")] | if length == 1 then .[0] else null end' <<<"$API_JSON" > "$DIAGNOSTIC_DIR/source-marker-before.json"
+          jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_EXTERNAL_HTTPS_|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$API_JSON" > "$DIAGNOSTIC_DIR/private-runtime-before.json"
+
+          {
+            echo "base=$BASE"
+            echo "old_api_image=$OLD_API_IMAGE"
+          } >> "$GITHUB_OUTPUT"
+          jq -n --arg oldApi "$OLD_API_IMAGE" --arg candidateApi "$CANDIDATE_API_IMAGE" '{environment:"test",oldApiImage:$oldApi,candidateApiImage:$candidateApi,productionMutation:false,migrationExecution:false}' > "$DIAGNOSTIC_DIR/test-contract.json"
+
+      - name: Deploy exact API candidate for bounded diagnostics
+        id: deploy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image "$CANDIDATE_API_IMAGE" \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$CANDIDATE_SOURCE_COMMIT" \
+            --revision-suffix "diag82-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" "$CANDIDATE_API_IMAGE" 60 10
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Reproduce Module 082 risks failure and capture live logs
+        id: reproduce
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          BASE: ${{ steps.contract.outputs.base }}
+          CANDIDATE_REVISION: ${{ steps.deploy.outputs.revision }}
+        run: |
+          set -Eeuo pipefail
+          auth=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 082')
+          READY=false
+          for attempt in $(seq 1 24); do
+            if curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "$BASE/health?diag82=$GITHUB_RUN_ID-$attempt" > "$DIAGNOSTIC_DIR/health.json"; then READY=true; break; fi
+            sleep 5
+          done
+          [[ "$READY" == true ]]
+
+          ACCESS_STATUS="$(curl -sS --max-time 60 -D "$DIAGNOSTIC_DIR/access-headers.txt" -o "$DIAGNOSTIC_DIR/module-082-access.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth[@]}" "$BASE/api/project-risk-register/access")"
+          RISKS_STATUS="$(curl -sS --max-time 90 -D "$DIAGNOSTIC_DIR/risks-headers.txt" -o "$DIAGNOSTIC_DIR/module-082-risks-response.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth[@]}" "$BASE/api/project-risk-register/risks?limit=500")"
+          echo "ACCESS_HTTP_STATUS=$ACCESS_STATUS" | tee "$DIAGNOSTIC_DIR/http-status.txt"
+          echo "RISKS_HTTP_STATUS=$RISKS_STATUS" | tee -a "$DIAGNOSTIC_DIR/http-status.txt"
+
+          sleep 5
+          set +e
+          az containerapp logs show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$CANDIDATE_REVISION" \
+            --type console \
+            --tail 300 \
+            --format text \
+            > "$DIAGNOSTIC_DIR/console.log" 2>&1
+          CONSOLE_STATUS=$?
+          az containerapp logs show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$CANDIDATE_REVISION" \
+            --type system \
+            --tail 300 \
+            --format text \
+            > "$DIAGNOSTIC_DIR/system.log" 2>&1
+          SYSTEM_STATUS=$?
+          set -e
+
+          sed -E -i \
+            -e 's/(Authorization: Bearer )[A-Za-z0-9._~+\/-]+/\1[REDACTED]/g' \
+            -e 's/(X-ProjectPulse-Session: )[A-Za-z0-9._~+\/-]+/\1[REDACTED]/g' \
+            -e 's/(password|secret|token)=([^[:space:]]+)/\1=[REDACTED]/Ig' \
+            "$DIAGNOSTIC_DIR/console.log" "$DIAGNOSTIC_DIR/system.log" "$DIAGNOSTIC_DIR/access-headers.txt" "$DIAGNOSTIC_DIR/risks-headers.txt"
+
+          {
+            echo "CONSOLE_LOG_STATUS=$CONSOLE_STATUS"
+            echo "SYSTEM_LOG_STATUS=$SYSTEM_STATUS"
+            echo "CANDIDATE_REVISION=$CANDIDATE_REVISION"
+          } > "$DIAGNOSTIC_DIR/diagnostic-status.txt"
+          grep -Ei 'project-risk-register|list risks|Npgsql|Postgres|InvalidCast|DBNull|exception|fail|error|column|ordinal' "$DIAGNOSTIC_DIR/console.log" | tail -n 240 > "$DIAGNOSTIC_DIR/module082-error-extract.log" || true
+
+          [[ "$ACCESS_STATUS" == 200 ]]
+          test -s "$DIAGNOSTIC_DIR/module-082-risks-response.json"
+          echo "risks_status=$RISKS_STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Restore exact prior Test API image and source marker
+        id: rollback
+        if: always() && steps.contract.outcome == 'success' && steps.deploy.outputs.started == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SOURCE_ROW="$(cat "$DIAGNOSTIC_DIR/source-marker-before.json")"
+          if [[ -n "$SOURCE_ROW" && "$SOURCE_ROW" != null ]]; then
+            SOURCE_SECRET="$(jq -r '.secretRef // empty' <<<"$SOURCE_ROW")"
+            SOURCE_VALUE="$(jq -r '.value // empty' <<<"$SOURCE_ROW")"
+            if [[ -n "$SOURCE_SECRET" ]]; then SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=secretref:$SOURCE_SECRET"; else SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=$SOURCE_VALUE"; fi
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.contract.outputs.old_api_image }}' \
+              --set-env-vars "$SOURCE_ARG" \
+              --revision-suffix "diag82rb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --output none --only-show-errors
+          else
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.contract.outputs.old_api_image }}' \
+              --remove-env-vars PROJECTPULSE_SOURCE_COMMIT \
+              --revision-suffix "diag82rb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --output none --only-show-errors
+          fi
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.contract.outputs.old_api_image }}' 60 10
+          jq -n --arg revision "$REVISION" '{status:"restored",revision:$revision,productionMutation:false,migrationExecution:false}' > "$DIAGNOSTIC_DIR/rollback-summary.json"
+          echo 'restored=true' >> "$GITHUB_OUTPUT"
+
+      - name: Upload sanitized candidate diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: module-082-live-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/module082-candidate-diagnostics
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Enforce successful Test restoration
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ steps.rollback.outputs.restored }}' == true ]]
+          echo 'TEST_API_RESTORED_AFTER_DIAGNOSTIC=true'
