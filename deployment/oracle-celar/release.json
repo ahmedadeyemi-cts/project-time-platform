@@ -3,7 +3,7 @@
   "environment": "protected-test-oracle-celar",
   "hostname": "celarai.onenecklab.com",
   "architecture": "arm64",
-  "gatewayVersion": "1.1.0",
+  "gatewayVersion": "1.1.1",
   "gatewayBind": "127.0.0.1:8787",
   "generationModel": "gemma3:4b",
   "reasoningModel": "qwen3:4b-instruct",
@@ -21,10 +21,20 @@
     "qwen3:4b-instruct",
     "llama3.2:3b"
   ],
+  "structuredModelAttemptSeconds": [
+    660,
+    120,
+    60
+  ],
   "generalGenerationOrder": [
     "qwen3:4b-instruct",
     "llama3.2:3b",
     "gemma3:4b"
+  ],
+  "generalModelAttemptSeconds": [
+    360,
+    240,
+    180
   ],
   "ollamaHost": "127.0.0.1:11434",
   "clamavHost": "127.0.0.1",
@@ -43,6 +53,7 @@
   "ollamaMaxLoadedModels": 2,
   "ollamaNumParallel": 1,
   "ollamaMaxQueue": 64,
+  "runtimeMutationLockWaitSeconds": 3600,
   "localBackupRetentionDays": 7,
   "resticKeepDaily": 7,
   "resticKeepWeekly": 4,
