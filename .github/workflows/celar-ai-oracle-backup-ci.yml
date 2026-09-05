@@ -29,7 +29,7 @@ jobs:
           command -v tar >/dev/null
           command -v zstd >/dev/null
 
-          # The production helper is sourceable without running the root-only main.
+          # Source the exact production helper without running main().
           source "$BACKUP"
 
           ROOT="$(mktemp -d)"
@@ -83,12 +83,12 @@ jobs:
           [[ ! -e "$BAD" ]]
           ! find "$OUT" -maxdepth 1 -name '.celar-state-partial.*.tar.zst' -print -quit | grep -q .
 
-          # Enforce the production ordering that caused the live failure.
+          # Enforce the exact production ordering that caused the live failure.
           python3 - "$BACKUP" <<'PY'
           from pathlib import Path
           import sys
           text = Path(sys.argv[1]).read_text(encoding='utf-8')
-          start = text.index('if ! tar \\\n')
+          start = text.index('if ! tar')
           end = text.index('| zstd -f', start)
           block = text[start:end]
           if block.index('"${tar_exclude_args[@]}"') > block.index('--files-from="$list_file"'):
@@ -99,6 +99,8 @@ jobs:
               'var/lib/celar-ai/recovery',
               'var/lib/celar-ai/ollama-models',
               'PROTECTED_ARCHIVE_PATH_REGEX',
+              '.celar-state-partial.',
+              'mv -f -- "$temp_archive" "$archive"',
           ]:
               if marker not in text:
                   raise SystemExit(f'missing backup safety marker: {marker}')
