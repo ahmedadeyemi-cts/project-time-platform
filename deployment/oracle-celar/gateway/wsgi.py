@@ -36,6 +36,96 @@ MAX_OCR_TEXT_BYTES = 1_000_000
 Image.MAX_IMAGE_PIXELS = MAX_OCR_IMAGE_PIXELS
 
 
+# Pulse recognizes this closed set after stripping punctuation/case from the
+# structured error code/type. Preserve only these codes from an upstream 4xx;
+# never forward arbitrary provider messages or prompt-adjacent error text.
+SAFETY_REFUSAL_CODES: dict[str, str] = {
+    "contentfilter": "content_filter",
+    "contentpolicyviolation": "content_policy_violation",
+    "jailbreakdetected": "jailbreak_detected",
+    "moderationblocked": "moderation_blocked",
+    "policyviolation": "policy_violation",
+    "responsibleaipolicyviolation": "responsible_ai_policy_violation",
+    "safetyrefusal": "safety_refusal",
+    "safetyviolation": "safety_violation",
+}
+
+
+def _normalize_safety_code(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    return "".join(character.lower() for character in value[:80] if character.isalnum())
+
+
+def _safe_refusal_code(body: dict[str, Any]) -> str | None:
+    error = body.get("error")
+    if not isinstance(error, dict):
+        return None
+
+    for field in ("code", "type"):
+        normalized = _normalize_safety_code(error.get(field))
+        if normalized in SAFETY_REFUSAL_CODES:
+            return SAFETY_REFUSAL_CODES[normalized]
+
+    inner = error.get("innererror")
+    if isinstance(inner, dict):
+        for field in ("code", "type"):
+            normalized = _normalize_safety_code(inner.get(field))
+            if normalized in SAFETY_REFUSAL_CODES:
+                return SAFETY_REFUSAL_CODES[normalized]
+    return None
+
+
+def _ollama_post_preserving_refusal(
+    path: str,
+    payload: dict[str, Any],
+    timeout: int,
+    limit: int,
+) -> tuple[dict[str, Any], int]:
+    """Proxy bounded Ollama JSON while preserving only recognized refusals.
+
+    Ordinary provider errors remain sanitized to status-class diagnostics. A
+    structured 400/403/422 safety code is reduced to an allowlisted canonical
+    code so PulseAiPrivateModelResponsePolicy can classify it as terminal and
+    prevent later external-provider failover.
+    """
+    try:
+        upstream = gateway.SESSION.post(
+            f"{gateway.OLLAMA_BASE_URL}{path}",
+            json=payload,
+            timeout=(5, timeout),
+            stream=True,
+            allow_redirects=False,
+            headers={"Content-Type": "application/json"},
+        )
+    except gateway.requests.Timeout:
+        return {"error": {"code": "private_runtime_timeout"}}, 504
+    except gateway.requests.RequestException:
+        return {"error": {"code": "private_runtime_unavailable"}}, 502
+
+    with upstream:
+        try:
+            body = gateway._read_bounded_json(upstream, limit)
+        except ValueError:
+            return {"error": {"code": "private_runtime_response_invalid"}}, 502
+
+        if upstream.status_code < 200 or upstream.status_code >= 300:
+            if upstream.status_code in {400, 403, 422}:
+                refusal_code = _safe_refusal_code(body)
+                if refusal_code is not None:
+                    return {"error": {"code": refusal_code}}, upstream.status_code
+            return {
+                "error": {"code": f"private_runtime_http_{upstream.status_code}"}
+            }, upstream.status_code
+        return body, 200
+
+
+# All deployed gateway handlers resolve this module attribute at request time,
+# so replacing it here applies the same refusal-preserving bounded transport to
+# both the specialist chat route below and any base gateway handler using it.
+gateway._ollama_post = _ollama_post_preserving_refusal
+
+
 def _order(name: str, default: list[str]) -> list[str]:
     raw = os.environ.get(name, "").strip()
     values = [value.strip() for value in raw.split(",") if value.strip()] if raw else list(default)
