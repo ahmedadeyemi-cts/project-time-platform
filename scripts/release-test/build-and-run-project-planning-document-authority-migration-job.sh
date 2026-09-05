@@ -12,6 +12,7 @@ OWNER_STORAGE_MIGRATION_FILE="$ROOT/database/migrations/098_module_management_ow
 CUSTOMER_SOURCE_MIGRATION_FILE="$ROOT/database/migrations/098_customer_directory_source_authority.sql"
 MODULE025_MIGRATION_FILE="$ROOT/database/migrations/099_module025_sow_gsd_workspace.sql"
 MODULE001B_CATALOG_MIGRATION_FILE="$ROOT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
+DEEPSEEK_LEGACY_CONSTRAINTS_MIGRATION_FILE="$ROOT/database/migrations/102_deepseek_legacy_provider_constraints.sql"
 MIGRATION_RUNNER="$ROOT/scripts/release-test/run-project-planning-document-authority-migration-job.sh"
 EVIDENCE_ROOT="${EVIDENCE_DIR:-}"
 CONTEXT=""
@@ -40,6 +41,7 @@ trap cleanup EXIT INT TERM
 [[ -s "$CUSTOMER_SOURCE_MIGRATION_FILE" ]] || fail "Customer source authority migration 098 source is missing."
 [[ -s "$MODULE025_MIGRATION_FILE" ]] || fail "Module 025 SOW/GSD migration 099 source is missing."
 [[ -s "$MODULE001B_CATALOG_MIGRATION_FILE" ]] || fail "Module 001B catalog migration 100 source is missing."
+[[ -s "$DEEPSEEK_LEGACY_CONSTRAINTS_MIGRATION_FILE" ]] || fail "DeepSeek legacy provider constraints migration 102 source is missing."
 [[ -s "$MIGRATION_RUNNER" ]] || fail "Migration 096 private-network runner is missing."
 for command_name in az jq mktemp install chmod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required."
@@ -55,6 +57,7 @@ install -m 0444 "$CUSTOMER_SOURCE_MIGRATION_FILE" "$CONTEXT/database/migrations/
 install -m 0444 "$MODULE025_MIGRATION_FILE" "$CONTEXT/database/migrations/099_module025_sow_gsd_workspace.sql"
 install -m 0444 "$MODULE001B_CATALOG_MIGRATION_FILE" "$CONTEXT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 install -m 0444 "$ROOT/database/migrations/101_deepseek_v4_provider.sql" "$CONTEXT/database/migrations/101_deepseek_v4_provider.sql"
+install -m 0444 "$DEEPSEEK_LEGACY_CONSTRAINTS_MIGRATION_FILE" "$CONTEXT/database/migrations/102_deepseek_legacy_provider_constraints.sql"
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -92,6 +95,12 @@ psql -X -v ON_ERROR_STOP=1 --file "$MODULE001B_CATALOG_MIGRATION"
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/101_deepseek_v4_provider.sql"
 [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='101_deepseek_v4_provider')")" == t ]] || exit 1
 echo 'MIGRATION_101_DEEPSEEK_V4=APPLIED_AND_VERIFIED'
+DEEPSEEK_LEGACY_CONSTRAINTS_MIGRATION="$ROOT/database/migrations/102_deepseek_legacy_provider_constraints.sql"
+[[ -f "$DEEPSEEK_LEGACY_CONSTRAINTS_MIGRATION" ]] || { echo 'ERROR: DeepSeek legacy provider constraints migration 102 source is missing from the immutable image.' >&2; exit 1; }
+psql -X -v ON_ERROR_STOP=1 --file "$DEEPSEEK_LEGACY_CONSTRAINTS_MIGRATION"
+[[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='102_deepseek_legacy_provider_constraints')")" == t ]] || exit 1
+[[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname IN ('ai_provider_secrets_provider_code_check','ai_provider_settings_provider_code_check') AND conrelid IN ('ai_provider_secrets'::regclass,'ai_provider_settings'::regclass))")" == t ]] || exit 1
+echo 'MIGRATION_102_DEEPSEEK_LEGACY_PROVIDER_CONSTRAINTS=APPLIED_AND_VERIFIED'
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='096_project_planning_document_authority')::text || '|' ||
@@ -191,6 +200,7 @@ echo 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_102_DEEPSEEK_LEGACY_PROVIDER_CONSTRAINTS=APPLIED_AND_VERIFIED'
 ENTRYPOINT
 chmod 0555 "$CONTEXT/entrypoint.sh"
 
@@ -252,6 +262,7 @@ echo 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_102_DEEPSEEK_LEGACY_PROVIDER_CONSTRAINTS=APPLIED_AND_VERIFIED'
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"
@@ -300,4 +311,12 @@ if [[ -n "$EVIDENCE_ROOT" ]]; then
     --arg image "$RELIABILITY_MIGRATION_IMAGE" \
     '{status:"applied_and_verified",migration:"100_module001b_catalog_ownership_reconciliation",releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,productionMutation:false}' \
     > "$EVIDENCE_ROOT/migration-100.json"
+fi
+
+if [[ -n "$EVIDENCE_ROOT" ]]; then
+  jq -n \
+    --arg releaseCommit "$RELEASE_COMMIT" \
+    --arg image "$RELIABILITY_MIGRATION_IMAGE" \
+    '{status:"applied_and_verified",migration:"102_deepseek_legacy_provider_constraints",releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,productionMutation:false}' \
+    > "$EVIDENCE_ROOT/migration-102.json"
 fi
