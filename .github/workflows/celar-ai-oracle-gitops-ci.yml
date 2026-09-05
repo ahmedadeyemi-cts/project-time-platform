@@ -70,14 +70,51 @@ jobs:
         run: |
           set -Eeuo pipefail
           APP=src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
-          # Generic private inference is bounded by the application at five
-          # minutes, SOW recovery at 260 seconds, and embeddings at three minutes.
-          # Oracle must finish first so Pulse receives a governed result/timeout.
-          grep -Fq 'services.AddHttpClient("PulseAiPrivateInference"' "$APP"
-          grep -Fq 'client.Timeout = TimeSpan.FromMinutes(5);' "$APP"
-          grep -Fq 'RecoveryAttemptBudget = TimeSpan.FromSeconds(260);' "$APP"
-          grep -Fq 'services.AddHttpClient("PulseAiPrivateEmbedding"' "$APP"
-          grep -Fq 'client.Timeout = TimeSpan.FromMinutes(3);' "$APP"
+
+          # Inspect each named HttpClient registration independently. Do not let
+          # an identical timeout in OCR/malware accidentally satisfy the inference
+          # or embedding contract this Oracle gateway depends on.
+          python3 - "$APP" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          text = Path(sys.argv[1]).read_text(encoding="utf-8")
+
+          def client_block(name: str) -> str:
+              pattern = re.compile(
+                  rf'services\.AddHttpClient\("{re.escape(name)}",\s*client\s*=>\s*\{{(?P<body>.*?)\n\s*\}}\);',
+                  re.DOTALL,
+              )
+              match = pattern.search(text)
+              if not match:
+                  raise SystemExit(f"Missing named HttpClient registration: {name}")
+              return match.group("body")
+
+          def timeout_minutes(name: str) -> int:
+              body = client_block(name)
+              matches = re.findall(
+                  r'client\.Timeout\s*=\s*TimeSpan\.FromMinutes\((\d+)\);',
+                  body,
+              )
+              if len(matches) != 1:
+                  raise SystemExit(f"Expected exactly one timeout in {name}, found {matches}")
+              return int(matches[0])
+
+          inference_minutes = timeout_minutes("PulseAiPrivateInference")
+          embedding_minutes = timeout_minutes("PulseAiPrivateEmbedding")
+          if inference_minutes != 5:
+              raise SystemExit(f"PulseAiPrivateInference timeout changed: {inference_minutes} minutes")
+          if embedding_minutes != 3:
+              raise SystemExit(f"PulseAiPrivateEmbedding timeout changed: {embedding_minutes} minutes")
+          if "RecoveryAttemptBudget = TimeSpan.FromSeconds(260);" not in text:
+              raise SystemExit("SOW recovery attempt budget changed or is missing")
+
+          print("PULSE_PRIVATE_INFERENCE_TIMEOUT_MINUTES=5")
+          print("PULSE_PRIVATE_EMBEDDING_TIMEOUT_MINUTES=3")
+          print("PULSE_SOW_RECOVERY_ATTEMPT_SECONDS=260")
+          PY
+
           jq -e '
             .chatTimeoutSeconds < 260 and
             (.structuredModelAttemptSeconds | add) < 260 and
@@ -173,12 +210,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           BACKUP=deployment/oracle-celar/backup.sh
+          RESTORE=deployment/oracle-celar/restore.sh
           UPDATE=deployment/oracle-celar/ollama-update.sh
           DEPLOY=deployment/oracle-celar/deploy.sh
           HEALTH=deployment/oracle-celar/health-check.sh
           grep -Fq 'fetch --no-tags --prune origin main' deployment/oracle-celar/gitops.sh
           grep -Fq 'restic backup' "$BACKUP"
-          grep -Fq 'restic restore' deployment/oracle-celar/restore.sh
+          grep -Fq 'BACKUP_TAG='"'"'celar-oracle'"'"'' "$RESTORE"
+          grep -Fq 'restic snapshots --tag "$BACKUP_TAG"' "$RESTORE"
+          grep -Fq 'restic restore "$SNAPSHOT" --tag "$BACKUP_TAG" --target "$TARGET"' "$RESTORE"
           grep -Fq -- "--exclude='/var/lib/celar-ai/recovery'" "$BACKUP"
           grep -Fq 'mapfile -t GENERATION_MODELS' "$UPDATE"
           grep -Fq 'for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"' "$UPDATE"
