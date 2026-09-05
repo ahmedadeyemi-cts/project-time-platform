@@ -5,8 +5,6 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const appPath = path.join(repoRoot, 'src/frontend/project-time-web/src/App.jsx');
 const registryPath = path.join(repoRoot, 'src/frontend/project-time-web/src/module-availability-registry.js');
-const availabilityPath = path.join(repoRoot, 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs');
-const programPath = path.join(repoRoot, 'src/backend/ProjectTime.Api/Program.cs');
 
 function requireFile(filePath, label) {
   if (!fs.existsSync(filePath)) throw new Error(`Module 084 injection requires ${label}: ${filePath}`);
@@ -179,39 +177,6 @@ function patchRegistry() {
   fs.writeFileSync(registryPath, source, 'utf8');
 }
 
-function patchBackendAvailability() {
-  requireFile(availabilityPath, 'ModuleAvailabilityModule.cs');
-  let source = fs.readFileSync(availabilityPath, 'utf8');
-  const definition = '            ["084"] = Module("084", "celar-ai-runtime-version", "Celar AI Runtime & Version Center", "Platform Operations"),';
-  const anchor = source.includes('["083"] = Module("083"')
-    ? '            ["083"] = Module("083", "full-future-loop", "Full Future Loop", "Platform Operations"),'
-    : '            ["082"] = Module("082", "project-risk-register", "Enterprise Project Risk Register", "Project Delivery"),';
-  source = insertAfter(source, anchor, definition, 'late backend availability definition', '["084"] = Module("084"');
-  if ((source.split('["084"] = Module("084"').length - 1) !== 1) throw new Error('Module 084 backend availability injection produced a duplicate or missing definition.');
-  fs.writeFileSync(availabilityPath, source, 'utf8');
-}
-
-function patchBackendEndpointMap() {
-  requireFile(programPath, 'Program.cs');
-  let source = fs.readFileSync(programPath, 'utf8');
-  const mapping = `/* MODULE_084_CELAR_RUNTIME_VERSION_ENDPOINT_MAP_START */
-app.MapCelarAiRuntimeVersionEndpoints();
-/* MODULE_084_CELAR_RUNTIME_VERSION_ENDPOINT_MAP_END */`;
-  source = insertBefore(
-    source,
-    '/* MODULE_998_SYSTEM_DIAGNOSTIC_ENDPOINT_MAP_START */',
-    mapping,
-    'central backend endpoint map',
-    'MODULE_084_CELAR_RUNTIME_VERSION_ENDPOINT_MAP_START'
-  );
-  if ((source.split('app.MapCelarAiRuntimeVersionEndpoints();').length - 1) !== 1) {
-    throw new Error('Module 084 backend endpoint mapping produced a duplicate or missing registration.');
-  }
-  fs.writeFileSync(programPath, source, 'utf8');
-}
-
 patchApp();
 patchRegistry();
-patchBackendAvailability();
-patchBackendEndpointMap();
 console.log('MODULE_084_CELAR_RUNTIME_VERSION_INJECTION=COMPLETE');
