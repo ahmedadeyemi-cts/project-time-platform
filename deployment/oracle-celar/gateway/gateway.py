@@ -185,6 +185,13 @@ def _ollama_models() -> set[str]:
     return names
 
 
+def _model_ready(models: set[str], configured: str) -> bool:
+    """Accept Ollama's implicit :latest tag without changing the app contract."""
+    if configured in models:
+        return True
+    return ":" not in configured and f"{configured}:latest" in models
+
+
 def _clamav_ping() -> bool:
     try:
         with socket.create_connection((CLAMAV_HOST, CLAMAV_PORT), timeout=5) as client:
@@ -254,8 +261,8 @@ def _scan_stream(stream: Any) -> tuple[bool, bool, int, str]:
 def health() -> tuple[Response, int]:
     models = _ollama_models()
     ollama_ready = bool(models)
-    generation_ready = GENERATION_MODEL in models
-    embedding_ready = EMBEDDING_MODEL in models
+    generation_ready = _model_ready(models, GENERATION_MODEL)
+    embedding_ready = _model_ready(models, EMBEDDING_MODEL)
     try:
         tesseract = subprocess.run(
             ["/usr/bin/tesseract", "--version"],
