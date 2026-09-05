@@ -151,6 +151,12 @@ jobs:
           grep -Fq 'systemctl restart ollama.service' "$DEPLOY"
           grep -Fq 'systemctl restart celar-ai-gateway.service' "$DEPLOY"
           grep -Fq 'systemctl restart caddy.service' "$DEPLOY"
+          grep -Fq 'install -d -o root -g celar-ai -m 0710 /etc/celar-ai' "$DEPLOY"
+          grep -Fq 'install -d -o root -g celar-ai -m 0750 "$GATEWAY_CONFIG_DIR"' "$DEPLOY"
+          grep -Fq 'chmod 0640 "$RUNTIME_TOKEN_FILE"' "$DEPLOY"
+          if grep -Fq 'install -d -m 0700 /etc/celar-ai' "$DEPLOY"; then
+            echo 'Gateway config parent must remain traversable by celar-ai group.' >&2; exit 1
+          fi
           grep -Fq -- '--config "$AUTH_CONFIG"' "$HEALTH"
           if grep -Fq 'Authorization: Bearer $RUNTIME_TOKEN' "$HEALTH"; then
             echo 'Runtime token must not appear in curl argv.' >&2; exit 1
