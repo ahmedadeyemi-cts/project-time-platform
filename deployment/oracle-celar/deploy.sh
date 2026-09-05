@@ -27,9 +27,14 @@ HOSTNAME_VALUE="$(jq -r '.hostname' "$MANIFEST")"
 GATEWAY_VERSION="$(jq -r '.gatewayVersion' "$MANIFEST")"
 GATEWAY_BIND="$(jq -r '.gatewayBind' "$MANIFEST")"
 GENERATION_MODEL="$(jq -r '.generationModel' "$MANIFEST")"
+REASONING_MODEL="$(jq -r '.reasoningModel' "$MANIFEST")"
+FAST_GENERAL_MODEL="$(jq -r '.fastGeneralModel' "$MANIFEST")"
 EMBEDDING_MODEL="$(jq -r '.embeddingModel' "$MANIFEST")"
 EMBEDDING_DIMENSION="$(jq -r '.embeddingDimension' "$MANIFEST")"
 OCR_MODEL="$(jq -r '.ocrModel' "$MANIFEST")"
+LOCAL_GENERATION_MODELS="$(jq -r '.localGenerationModels | join(",")' "$MANIFEST")"
+STRUCTURED_GENERATION_ORDER="$(jq -r '.structuredGenerationOrder | join(",")' "$MANIFEST")"
+GENERAL_GENERATION_ORDER="$(jq -r '.generalGenerationOrder | join(",")' "$MANIFEST")"
 OLLAMA_HOST_VALUE="$(jq -r '.ollamaHost' "$MANIFEST")"
 OLLAMA_KEEP_ALIVE="$(jq -r '.ollamaKeepAlive' "$MANIFEST")"
 OLLAMA_MAX_LOADED_MODELS="$(jq -r '.ollamaMaxLoadedModels' "$MANIFEST")"
@@ -41,6 +46,9 @@ MAX_UPLOAD_BYTES="$(jq -r '.maxUploadBytes' "$MANIFEST")"
 MAX_JSON_REQUEST_BYTES="$(jq -r '.maxJsonRequestBytes' "$MANIFEST")"
 MAX_GATEWAY_RESPONSE_BYTES="$(jq -r '.maxGatewayResponseBytes' "$MANIFEST")"
 MAX_OCR_PAGES="$(jq -r '.maxOcrPages' "$MANIFEST")"
+MAX_OCR_IMAGE_PIXELS="$(jq -r '.maxOcrImagePixels' "$MANIFEST")"
+MAX_OCR_IMAGE_EDGE="$(jq -r '.maxOcrImageEdge' "$MANIFEST")"
+PDF_RASTER_MAX_EDGE="$(jq -r '.pdfRasterMaxEdge' "$MANIFEST")"
 OCR_TOTAL_TIMEOUT_SECONDS="$(jq -r '.ocrTotalTimeoutSeconds' "$MANIFEST")"
 CHAT_TIMEOUT_SECONDS="$(jq -r '.chatTimeoutSeconds' "$MANIFEST")"
 EMBEDDING_TIMEOUT_SECONDS="$(jq -r '.embeddingTimeoutSeconds' "$MANIFEST")"
@@ -48,15 +56,23 @@ EMBEDDING_TIMEOUT_SECONDS="$(jq -r '.embeddingTimeoutSeconds' "$MANIFEST")"
 [[ "$ARCH" == arm64 && "$(uname -m)" == aarch64 ]] || fail 'The release architecture does not match this host.'
 [[ "$HOSTNAME_VALUE" == celarai.onenecklab.com ]] || fail 'The governed Oracle hostname changed unexpectedly.'
 [[ "$GATEWAY_BIND" == '127.0.0.1:8787' ]] || fail 'Celar gateway must remain bound to localhost:8787.'
-[[ "$GENERATION_MODEL" =~ ^[A-Za-z0-9._:/-]+$ ]] || fail 'Invalid generation model name.'
-[[ "$EMBEDDING_MODEL" =~ ^[A-Za-z0-9._:/-]+$ ]] || fail 'Invalid embedding model name.'
+for model in "$GENERATION_MODEL" "$REASONING_MODEL" "$FAST_GENERAL_MODEL" "$EMBEDDING_MODEL"; do
+  [[ "$model" =~ ^[A-Za-z0-9._:/-]+$ ]] || fail "Invalid model name: $model"
+done
 [[ "$OCR_MODEL" == tesseract-5-eng ]] || fail 'Unexpected OCR model.'
 [[ "$EMBEDDING_DIMENSION" == 768 ]] || fail 'Embedding dimension must remain 768.'
 [[ "$OLLAMA_HOST_VALUE" == '127.0.0.1:11434' ]] || fail 'Ollama must remain bound to localhost.'
 [[ "$CLAMAV_HOST" == '127.0.0.1' && "$CLAMAV_PORT" == 3310 ]] || fail 'ClamAV must remain on localhost:3310.'
-for numeric in "$MAX_UPLOAD_BYTES" "$MAX_JSON_REQUEST_BYTES" "$MAX_GATEWAY_RESPONSE_BYTES" "$MAX_OCR_PAGES" "$OCR_TOTAL_TIMEOUT_SECONDS" "$CHAT_TIMEOUT_SECONDS" "$EMBEDDING_TIMEOUT_SECONDS"; do
+for numeric in "$MAX_UPLOAD_BYTES" "$MAX_JSON_REQUEST_BYTES" "$MAX_GATEWAY_RESPONSE_BYTES" "$MAX_OCR_PAGES" "$MAX_OCR_IMAGE_PIXELS" "$MAX_OCR_IMAGE_EDGE" "$PDF_RASTER_MAX_EDGE" "$OCR_TOTAL_TIMEOUT_SECONDS" "$CHAT_TIMEOUT_SECONDS" "$EMBEDDING_TIMEOUT_SECONDS"; do
   [[ "$numeric" =~ ^[0-9]+$ && "$numeric" -gt 0 ]] || fail 'Invalid positive numeric runtime limit.'
 done
+
+mapfile -t APPROVED_GENERATION_MODELS < <(jq -r '.localGenerationModels[]' "$MANIFEST")
+(( ${#APPROVED_GENERATION_MODELS[@]} >= 3 )) || fail 'At least three approved local generation specialists are required.'
+for required in "$GENERATION_MODEL" "$REASONING_MODEL" "$FAST_GENERAL_MODEL"; do
+  printf '%s\n' "${APPROVED_GENERATION_MODELS[@]}" | grep -Fxq "$required" || fail "Required local model is absent from portfolio: $required"
+done
+jq -e '[.structuredGenerationOrder[], .generalGenerationOrder[]] - .localGenerationModels | length == 0' "$MANIFEST" >/dev/null || fail 'A local generation order references an unapproved model.'
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -120,8 +136,6 @@ Environment="OLLAMA_MAX_QUEUE=$OLLAMA_MAX_QUEUE"
 EOF
 
 systemctl daemon-reload
-# Enable and explicitly restart so changed Git-managed drop-ins are applied even
-# when the host already has an active Ollama service.
 systemctl enable ollama.service >/dev/null
 systemctl restart ollama.service
 for attempt in $(seq 1 30); do
@@ -140,12 +154,11 @@ ollama_model_present() {
   '
 }
 
-if ! ollama_model_present "$GENERATION_MODEL"; then
-  ollama pull "$GENERATION_MODEL"
-fi
-if ! ollama_model_present "$EMBEDDING_MODEL"; then
-  ollama pull "$EMBEDDING_MODEL"
-fi
+for model in "${APPROVED_GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
+  if ! ollama_model_present "$model"; then
+    ollama pull "$model"
+  fi
+done
 
 # Run the gateway with a dedicated non-login identity. The bearer token is
 # generated only when missing and is never written to Git or command output.
@@ -169,6 +182,11 @@ cat > "$RUNTIME_ENV_FILE" <<EOF
 CELAR_RUNTIME_TOKEN_FILE=$RUNTIME_TOKEN_FILE
 CELAR_GATEWAY_VERSION=$GATEWAY_VERSION
 CELAR_GENERATION_MODEL=$GENERATION_MODEL
+CELAR_REASONING_MODEL=$REASONING_MODEL
+CELAR_FAST_GENERAL_MODEL=$FAST_GENERAL_MODEL
+CELAR_LOCAL_GENERATION_MODELS=$LOCAL_GENERATION_MODELS
+CELAR_STRUCTURED_GENERATION_ORDER=$STRUCTURED_GENERATION_ORDER
+CELAR_GENERAL_GENERATION_ORDER=$GENERAL_GENERATION_ORDER
 CELAR_EMBEDDING_MODEL=$EMBEDDING_MODEL
 CELAR_EMBEDDING_DIMENSION=$EMBEDDING_DIMENSION
 CELAR_OCR_MODEL=$OCR_MODEL
@@ -179,6 +197,9 @@ CELAR_MAX_UPLOAD_BYTES=$MAX_UPLOAD_BYTES
 CELAR_MAX_JSON_REQUEST_BYTES=$MAX_JSON_REQUEST_BYTES
 CELAR_MAX_GATEWAY_RESPONSE_BYTES=$MAX_GATEWAY_RESPONSE_BYTES
 CELAR_MAX_OCR_PAGES=$MAX_OCR_PAGES
+CELAR_MAX_OCR_IMAGE_PIXELS=$MAX_OCR_IMAGE_PIXELS
+CELAR_MAX_OCR_IMAGE_EDGE=$MAX_OCR_IMAGE_EDGE
+CELAR_PDF_RASTER_MAX_EDGE=$PDF_RASTER_MAX_EDGE
 CELAR_OCR_TOTAL_TIMEOUT_SECONDS=$OCR_TOTAL_TIMEOUT_SECONDS
 CELAR_CHAT_TIMEOUT_SECONDS=$CHAT_TIMEOUT_SECONDS
 CELAR_EMBED_TIMEOUT_SECONDS=$EMBEDDING_TIMEOUT_SECONDS
@@ -190,15 +211,12 @@ install -m 0555 "$ROOT/gateway/gateway.py" "$GATEWAY_ROOT/gateway.py"
 install -m 0555 "$ROOT/gateway/wsgi.py" "$GATEWAY_ROOT/wsgi.py"
 python3 -m py_compile "$GATEWAY_ROOT/gateway.py" "$GATEWAY_ROOT/wsgi.py"
 
-# Caddy owns the only public application port. Back up any pre-GitOps config,
-# validate the reviewed Caddyfile, then let Caddy manage ACME/TLS state.
 if [[ -s "$CADDYFILE" && ! -e /etc/caddy/Caddyfile.pre-celar-gitops ]]; then
   cp -a "$CADDYFILE" /etc/caddy/Caddyfile.pre-celar-gitops
 fi
 install -m 0644 "$ROOT/caddy/Caddyfile" "$CADDYFILE"
 caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null
 
-# Install canonical deployment scripts and service definitions from this release.
 install -m 0755 \
   "$ROOT/gitops.sh" \
   "$ROOT/health-check.sh" \
@@ -211,8 +229,6 @@ install -m 0644 "$ROOT/backup.env.example" "$INSTALL_ROOT/backup.env.example"
 install -m 0644 "$ROOT/systemd/"*.service "$ROOT/systemd/"*.timer /etc/systemd/system/
 
 systemctl daemon-reload
-# Explicit restarts make repeated GitOps runs converge changed code/unit/config
-# rather than merely leaving already-active services untouched.
 systemctl enable celar-ai-gateway.service >/dev/null
 systemctl restart celar-ai-gateway.service
 for attempt in $(seq 1 30); do
