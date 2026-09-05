@@ -85,6 +85,15 @@ public static class PulseAiExternalHttpsRuntimePolicy
         public bool Active => Enabled && Valid;
     }
 
+    // The Oracle gateway rejects max_tokens above 8192 before inference.
+    public static int CompletionBudget(Uri endpoint, int requestedTokens)
+    {
+        var runtime = Evaluate();
+        return runtime.Active && endpoint == runtime.InferenceEndpoint
+            ? Math.Min(requestedTokens, 8192)
+            : requestedTokens;
+    }
+
     public static bool IsEnabled => Boolean(EnabledVariable);
 
     public static Snapshot Evaluate()

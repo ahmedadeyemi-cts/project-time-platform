@@ -1,0 +1,10 @@
+.github/celar-oracle-token-budget-files.txt
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs
+src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
+tests/CelarAiOracleExternalRuntimeTests/Program.cs
+tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-celar-oracle-token-budget-scope.mjs
