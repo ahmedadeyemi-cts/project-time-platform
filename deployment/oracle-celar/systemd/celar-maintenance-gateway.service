@@ -1,0 +1,37 @@
+[Unit]
+Description=Celar AI least-privilege runtime maintenance status gateway
+After=network-online.target ollama.service clamav-daemon.service celar-ai-gateway.service
+Wants=network-online.target
+Requires=ollama.service clamav-daemon.service
+
+[Service]
+Type=simple
+User=celar-ai
+Group=celar-ai
+WorkingDirectory=/opt/celar-ai/gateway
+EnvironmentFile=/etc/celar-ai/gateway/runtime.env
+Environment="OMP_THREAD_LIMIT=1"
+ExecStart=/usr/bin/gunicorn --workers 1 --threads 2 --bind 127.0.0.1:8788 --timeout 30 --graceful-timeout 10 --keep-alive 5 --worker-tmp-dir /dev/shm maintenance_gateway:app
+Restart=always
+RestartSec=3
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+TemporaryFileSystem=/tmp:rw,nosuid,nodev,noexec,size=32M
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/celar-ai/gateway
+MemoryHigh=192M
+MemoryMax=256M
+TasksMax=32
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target
