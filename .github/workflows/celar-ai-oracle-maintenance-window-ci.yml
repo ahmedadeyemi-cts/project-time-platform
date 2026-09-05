@@ -3,18 +3,24 @@ name: Validate Celar AI Oracle Maintenance Window
 on:
   pull_request:
     paths:
-      - 'deployment/oracle-celar/release.json'
-      - 'deployment/oracle-celar/systemd/celar-ollama-update.timer'
-      - 'deployment/oracle-celar/ollama-update.sh'
-      - 'deployment/oracle-celar/README.md'
+      - 'deployment/oracle-celar/**'
+      - 'docs/modules/module-084-celar-ai-runtime-version/**'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs'
+      - 'src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx'
+      - 'src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs'
       - '.github/workflows/celar-ai-oracle-maintenance-window-ci.yml'
   push:
     branches: [main]
     paths:
-      - 'deployment/oracle-celar/release.json'
-      - 'deployment/oracle-celar/systemd/celar-ollama-update.timer'
-      - 'deployment/oracle-celar/ollama-update.sh'
-      - 'deployment/oracle-celar/README.md'
+      - 'deployment/oracle-celar/**'
+      - 'docs/modules/module-084-celar-ai-runtime-version/**'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiRuntimeVersionModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs'
+      - 'src/frontend/project-time-web/src/CelarAiRuntimeVersionCenter.jsx'
+      - 'src/frontend/project-time-web/scripts/inject-module-084-celar-ai-runtime-version.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs'
       - '.github/workflows/celar-ai-oracle-maintenance-window-ci.yml'
 
 permissions:
@@ -23,7 +29,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +40,13 @@ jobs:
           TIMER='deployment/oracle-celar/systemd/celar-ollama-update.timer'
           RELEASE='deployment/oracle-celar/release.json'
           UPDATER='deployment/oracle-celar/ollama-update.sh'
+          DEPLOY='deployment/oracle-celar/deploy.sh'
+          RECONCILE='deployment/oracle-celar/maintenance-reconcile.sh'
+          GATEWAY='deployment/oracle-celar/gateway/maintenance_gateway.py'
+          SERVICE='deployment/oracle-celar/systemd/celar-maintenance-gateway.service'
+          RECONCILE_SERVICE='deployment/oracle-celar/systemd/celar-maintenance-reconcile.service'
+          RECONCILE_TIMER='deployment/oracle-celar/systemd/celar-maintenance-reconcile.timer'
+          CADDY='deployment/oracle-celar/caddy/Caddyfile'
 
           grep -Fxq 'OnCalendar=Sun *-*-* 01:00:00 America/Chicago' "$TIMER"
           grep -Fxq 'AccuracySec=1min' "$TIMER"
@@ -57,5 +70,41 @@ jobs:
           grep -Fq 'for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do' "$UPDATER"
           grep -Fq 'ollama pull "$model"' "$UPDATER"
           grep -Fq '"$HEALTH_CHECK"' "$UPDATER"
+          grep -Fq 'write_update_status success' "$UPDATER"
+          grep -Fq 'write_update_status rolled_back' "$UPDATER"
+
+          grep -Fq 'CELAR_MAINTENANCE_TOKEN_FILE=' "$DEPLOY"
+          grep -Fq 'CELAR_MAINTENANCE_TOKEN_VALUE=REDACTED' "$DEPLOY"
+          grep -Fq 'maintenance_gateway.py' "$DEPLOY"
+          grep -Fq 'maintenance-reconcile.sh' "$DEPLOY"
+          grep -Fq 'celar-maintenance-reconcile.timer' "$DEPLOY"
+          ! grep -Fq 'enable --now celar-backup.timer celar-ollama-update.timer' "$DEPLOY"
+
+          grep -Fq 'timeZone == "America/Chicago"' "$RECONCILE"
+          grep -Fq 'OnCalendar=' "$RECONCILE"
+          grep -Fq 'systemctl enable celar-ollama-update.timer' "$RECONCILE"
+          grep -Fq 'systemctl disable --now celar-ollama-update.timer' "$RECONCILE"
+          grep -Fq 'OnUnitActiveSec=60s' "$RECONCILE_TIMER"
+          grep -Fq 'ExecStart=/opt/celar-ai/deploy/maintenance-reconcile.sh' "$RECONCILE_SERVICE"
+
+          grep -Fq '127.0.0.1:8788' "$SERVICE"
+          grep -Fq 'NoNewPrivileges=true' "$SERVICE"
+          grep -Fq 'ReadWritePaths=/var/lib/celar-ai/gateway' "$SERVICE"
+          grep -Fq 'handle /v1/maintenance/*' "$CADDY"
+          grep -Fq 'reverse_proxy 127.0.0.1:8788' "$CADDY"
+          grep -Fq 'MAINTENANCE_TOKEN' "$GATEWAY"
+          grep -Fq 'runtimeTokenMayChangeSchedule": False' "$GATEWAY"
+          grep -Fq 'X-Celar-Maintenance-Intent' "$GATEWAY"
+          grep -Fq 'time_zone != "America/Chicago"' "$GATEWAY"
+          ! grep -Eq 'subprocess\.(run|Popen).*systemctl|os\.system|shell=True|sudo' "$GATEWAY"
+
+          if grep -RInE '(0\.0\.0\.0|\[::\]|\*):8788' deployment/oracle-celar; then
+            echo 'The maintenance gateway would be publicly bound.' >&2
+            exit 1
+          fi
+
+          python3 -m py_compile "$GATEWAY"
+          bash -n "$DEPLOY" "$UPDATER" "$RECONCILE"
 
           echo 'CELAR_ORACLE_MAINTENANCE_WINDOW=PASS'
+          echo 'CELAR_ORACLE_MAINTENANCE_CONTROL_PLANE=PASS'
