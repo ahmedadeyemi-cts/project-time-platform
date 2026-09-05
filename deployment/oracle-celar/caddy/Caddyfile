@@ -1,0 +1,29 @@
+{
+    # The OCI NSG and Oracle host firewall intentionally expose 443 only.
+    # Automatic HTTPS may use the TLS-ALPN challenge on 443; HTTP redirects are
+    # disabled so port 80 is not part of the required runtime boundary.
+    auto_https disable_redirects
+}
+
+celarai.onenecklab.com {
+    encode zstd gzip
+
+    request_body {
+        max_size 33MB
+    }
+
+    reverse_proxy 127.0.0.1:8787 {
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 900s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        Cache-Control "no-store"
+        -Server
+    }
+}
