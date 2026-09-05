@@ -1,0 +1,13 @@
+.github/celar-hostname-runtime-files.txt
+.github/workflows/projectpulse-deploy-test.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md
+scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs
+tests/CelarAiOracleExternalRuntimeTests/Program.cs
+tests/validate-celar-ai-oracle-test-runtime.mjs
+tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-celar-hostname-runtime-scope.mjs
+tests/validate-protected-uat-recovery.mjs

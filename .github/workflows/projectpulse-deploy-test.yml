@@ -75,7 +75,6 @@ jobs:
       MIGRATION_SCOPE: systemwide-enterprise-reliability-test
       APPROVAL_REFERENCE: ORACLE-TEST-USER-AUTHORIZED-RECOVERY-20260905
       ORACLE_RUNTIME_HOST: celarai.onenecklab.com
-      ORACLE_RUNTIME_IP: 129.213.82.144
       ORACLE_READINESS_ENDPOINT: https://celarai.onenecklab.com/health
       ORACLE_INFERENCE_ENDPOINT: https://celarai.onenecklab.com/v1/chat/completions
       ORACLE_EMBEDDING_ENDPOINT: https://celarai.onenecklab.com/v1/embeddings
@@ -261,7 +260,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Guard exact source, manual Test scope, and no-migration boundary
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '#854')))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905')))
         shell: bash
         env:
           DISPATCH_CONFIRMATION: ${{ inputs.recover_private_runtime }}
@@ -287,7 +286,7 @@ jobs:
           echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
 
       - name: Prove authenticated Oracle HTTPS services before Azure mutation
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '#854')))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905')))
         shell: bash
         env:
           RUNTIME_TOKEN: ${{ secrets.PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN }}
@@ -298,23 +297,31 @@ jobs:
           [[ ${#RUNTIME_TOKEN} -ge 32 ]] || fail 'PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN is missing or too short.'
           mapfile -t RESOLVED < <(getent ahostsv4 "$ORACLE_RUNTIME_HOST" | awk '{print $1}' | sort -u)
           (( ${#RESOLVED[@]} == 1 )) || fail 'Oracle runtime DNS must resolve to one IPv4 address.'
-          [[ "${RESOLVED[0]}" == "$ORACLE_RUNTIME_IP" ]] || fail 'Oracle runtime DNS does not match the approved IPv4 pin.'
-          [[ "$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "$ORACLE_READINESS_ENDPOINT")" == 401 ]] || fail 'Unauthenticated readiness must return 401.'
+          ORACLE_RUNTIME_IP="${RESOLVED[0]}"
+          python3 - "$ORACLE_RUNTIME_IP" <<'PYIP'
+          import ipaddress, sys
+          address = ipaddress.ip_address(sys.argv[1])
+          if address.version != 4 or not address.is_global:
+              raise SystemExit("Oracle hostname must resolve to a public IPv4 address.")
+          PYIP
+          echo "ORACLE_RUNTIME_IP=$ORACLE_RUNTIME_IP" >> "$GITHUB_ENV"
+          echo "ORACLE_RUNTIME_DNS_ADDRESS=$ORACLE_RUNTIME_IP"
+          [[ "$(curl --resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" -sS --max-time 30 -o /dev/null -w '%{http_code}' "$ORACLE_READINESS_ENDPOINT")" == 401 ]] || fail 'Unauthenticated readiness must return 401.'
           WRONG_TOKEN="$(openssl rand -hex 32)"
-          [[ "$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $WRONG_TOKEN" -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only' "$ORACLE_READINESS_ENDPOINT")" == 401 ]] || fail 'Incorrect-token readiness must return 401.'
+          [[ "$(curl --resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" -sS --max-time 30 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $WRONG_TOKEN" -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only' "$ORACLE_READINESS_ENDPOINT")" == 401 ]] || fail 'Incorrect-token readiness must return 401.'
           unset WRONG_TOKEN
           AUTH=(-H "Authorization: Bearer $RUNTIME_TOKEN" -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only')
-          curl -fsS --max-time 45 "${AUTH[@]}" "$ORACLE_READINESS_ENDPOINT" > "$RUNNER_TEMP/oracle-health.json"
+          curl --resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" -fsS --max-time 45 "${AUTH[@]}" "$ORACLE_READINESS_ENDPOINT" > "$RUNNER_TEMP/oracle-health.json"
           jq -e --arg g "$ORACLE_GENERATION_MODEL" --arg e "$ORACLE_EMBEDDING_MODEL" --arg o "$ORACLE_OCR_MODEL" '
             .status == "ready" and .ollamaReady == true and .generationModelReady == true and
             .embeddingModelReady == true and .tesseractReady == true and .clamavReady == true and
             .generationModel == $g and .embeddingModel == $e and .ocrModel == $o and
             .rawDocumentContentLogged == false' "$RUNNER_TEMP/oracle-health.json" >/dev/null
-          curl -fsS --max-time 600 "${AUTH[@]}" -H 'Content-Type: application/json' \
+          curl --resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" -fsS --max-time 600 "${AUTH[@]}" -H 'Content-Type: application/json' \
             -d "$(jq -nc --arg model "$ORACLE_GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return only: CELAR ORACLE OK"}],stream:false,temperature:0,max_tokens:32}')" \
             "$ORACLE_INFERENCE_ENDPOINT" | jq -e '.choices[0].message.content | length > 0' >/dev/null
           EMBEDDING_FILE="$RUNNER_TEMP/oracle-embedding.json"
-          curl -fsS --max-time 180 "${AUTH[@]}" -H 'Content-Type: application/json' \
+          curl --resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" -fsS --max-time 180 "${AUTH[@]}" -H 'Content-Type: application/json' \
             -d "$(jq -nc --arg model "$ORACLE_EMBEDDING_MODEL" '{model:$model,input:["Celar AI Test embedding proof"],encoding_format:"float"}')" \
             "$ORACLE_EMBEDDING_ENDPOINT" > "$EMBEDDING_FILE"
           python3 - "$EMBEDDING_FILE" <<'PY'
@@ -370,12 +377,12 @@ jobs:
           PY
           CLEAN_FILE="$RUNNER_TEMP/celar-oracle-clean.txt"
           printf 'Celar AI protected Test clean-file validation.\n' > "$CLEAN_FILE"
-          curl -fsS --max-time 180 "${AUTH[@]}" -F "file=@$CLEAN_FILE;filename=celar-oracle-clean.txt" \
+          curl --resolve "$ORACLE_RUNTIME_HOST:443:$ORACLE_RUNTIME_IP" -fsS --max-time 180 "${AUTH[@]}" -F "file=@$CLEAN_FILE;filename=celar-oracle-clean.txt" \
             "$ORACLE_MALWARE_SCAN_ENDPOINT" | jq -e '.status == "clean" and .clean == true and .scanner == "clamav"' >/dev/null
           unset RUNTIME_TOKEN
 
       - name: Snapshot the protected Test API
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '#854')))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905')))
         id: recovery_snapshot
         shell: bash
         env:
@@ -398,7 +405,7 @@ jobs:
           echo "api_app=$API_APP" >> "$GITHUB_OUTPUT"
 
       - name: Preserve the currently deployed immutable API image
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '#854')))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905')))
         id: recovery_build
         shell: bash
         working-directory: release
@@ -409,7 +416,7 @@ jobs:
           echo "api_image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Configure the protected token and deploy the Test API revision
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '#854')))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905')))
         id: recovery_deploy_api
         shell: bash
         env:
@@ -437,6 +444,7 @@ jobs:
               PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED=true \
               PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST="$ORACLE_RUNTIME_HOST" \
               PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_EXPECTED_IP="$ORACLE_RUNTIME_IP" \
+              PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ADDRESS_MODE=dns \
               PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_APPROVAL_REFERENCE="$APPROVAL_REFERENCE" \
               PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_READINESS_ENDPOINT="$ORACLE_READINESS_ENDPOINT" \
               PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT="$ORACLE_INFERENCE_ENDPOINT" \
@@ -470,7 +478,7 @@ jobs:
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
       - name: Prove Pulse-to-Oracle inference and runtime readiness
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '#854')))
+        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905')))
         shell: bash
         env:
           UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
@@ -493,7 +501,7 @@ jobs:
           jq -e '.readiness.clamAvConfigured == true and .readiness.malwareScannerEndpointPrivate == true and .readiness.ocrConfigured == true and .readiness.ocrEndpointPrivate == true and .readiness.embeddingConfigured == true and .readiness.embeddingEndpointPrivate == true' <<<"$RUNTIME" >/dev/null
 
       - name: Publish sanitized deployment evidence
-        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '#854'))))
+        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905'))))
         shell: bash
         working-directory: release
         run: |
@@ -504,11 +512,11 @@ jobs:
             > evidence/celar-ai-oracle-test-runtime.json
 
       - name: Upload sanitized deployment evidence
-        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '#854'))))
+        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905'))))
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: celar-ai-oracle-test-runtime-${{ github.run_id }}-${{ github.run_attempt }}
-          path: evidence/celar-ai-oracle-test-runtime.json
+          path: release/evidence/celar-ai-oracle-test-runtime.json
           retention-days: 30
 
       - name: Rollback protected Test API configuration on failure
@@ -523,7 +531,7 @@ jobs:
             PROJECTPULSE_ENVIRONMENT PROJECTPULSE_SOURCE_COMMIT PROJECTPULSE_CELAR_AI_ENABLED PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED
             PROJECTPULSE_CELAR_AI_TRAINING_ENABLED PROJECTPULSE_CELAR_AI_TRAINING_ENDPOINT PROJECTPULSE_CELAR_AI_TRAINING_HOST_ALLOWLIST PROJECTPULSE_CELAR_AI_TRAINING_BEARER_TOKEN
             PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED PROJECTPULSE_PRIVATE_INFERENCE_REQUIRED_FOR_DOCUMENTS PROJECTPULSE_PULSE_AI_RAG_REQUIRE_PRIVATE_MODEL
-            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_EXPECTED_IP
+            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ADDRESS_MODE PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_EXPECTED_IP
             PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_APPROVAL_REFERENCE PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_READINESS_ENDPOINT
             PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT PROJECTPULSE_PRIVATE_INFERENCE_MODEL PROJECTPULSE_PRIVATE_INFERENCE_AUTH_MODE PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN_SECRET_REFERENCE
             PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT PROJECTPULSE_PRIVATE_EMBEDDING_MODEL PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN_SECRET_REFERENCE

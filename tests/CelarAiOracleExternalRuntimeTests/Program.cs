@@ -13,6 +13,7 @@ var touched = new[]
     PulseAiExternalHttpsRuntimePolicy.EnabledVariable,
     PulseAiExternalHttpsRuntimePolicy.HostVariable,
     PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable,
+    PulseAiExternalHttpsRuntimePolicy.AddressModeVariable,
     PulseAiExternalHttpsRuntimePolicy.ApprovalReferenceVariable,
     PulseAiExternalHttpsRuntimePolicy.ReadinessEndpointVariable,
     PulseAiExternalHttpsRuntimePolicy.MalwareScanEndpointVariable,
@@ -97,6 +98,26 @@ try
         "runtime options activate authenticated HTTPS malware scanning");
     Require(options.MalwareScanEndpoint == "https://celarai.onenecklab.com/v1/scan",
         "runtime options preserve the exact scan endpoint");
+
+    Set(PulseAiExternalHttpsRuntimePolicy.AddressModeVariable, "dns");
+    Set(PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable, null);
+    var dnsRuntime = PulseAiExternalHttpsRuntimePolicy.Evaluate();
+    Require(dnsRuntime.Active && dnsRuntime.DnsManaged && dnsRuntime.ExpectedAddress is null,
+        "hostname-managed Test runtime requires no fixed IP");
+    var addressCheck = typeof(PulseAiExternalHttpsRuntimePolicy).GetMethod("AddressesApproved", BindingFlags.NonPublic | BindingFlags.Static)!;
+    bool Approved(params string[] values) => (bool)addressCheck.Invoke(null, [dnsRuntime, values.Select(IPAddress.Parse).ToArray()])!;
+    Require(Approved("141.148.19.235") && Approved("141.148.19.236"),
+        "a replacement public DNS address is accepted without changing runtime settings");
+    foreach (var unsafeIp in new[] { "127.0.0.1", "10.0.0.1", "169.254.169.254", "100.64.0.1", "192.0.2.1", "198.18.0.1", "224.0.0.1", "::1" })
+        Require(!Approved("141.148.19.235", unsafeIp), "mixed unsafe DNS answers are rejected: " + unsafeIp);
+    Require(!Approved(), "empty DNS answers are rejected");
+    Set("PROJECTPULSE_ENVIRONMENT", "production");
+    Require(!PulseAiExternalHttpsRuntimePolicy.Evaluate().Active, "DNS mode cannot activate in Production");
+    Set("PROJECTPULSE_ENVIRONMENT", "test");
+    Set(PulseAiExternalHttpsRuntimePolicy.AddressModeVariable, "automatic-typo");
+    Require(!PulseAiExternalHttpsRuntimePolicy.Evaluate().Valid, "unknown DNS modes fail closed");
+    Set(PulseAiExternalHttpsRuntimePolicy.AddressModeVariable, null);
+    Set(PulseAiExternalHttpsRuntimePolicy.ExpectedIpVariable, "129.213.82.144");
 
     ValidateEmbeddingResponseVariants();
 
@@ -208,7 +229,7 @@ static void ConfigureValidTestRuntime()
     Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE", Approval);
 }
 
-static void Set(string name, string value) => Environment.SetEnvironmentVariable(name, value);
+static void Set(string name, string? value) => Environment.SetEnvironmentVariable(name, value);
 
 static void Require(bool condition, string evidence)
 {

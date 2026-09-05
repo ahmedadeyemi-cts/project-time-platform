@@ -189,15 +189,10 @@ public static class ProjectPulseAiServiceCollectionExtensions
         }
 
         IPAddress[] addresses;
-        if (PulseAiExternalHttpsRuntimePolicy.TryGetPinnedAddress(
-                context.InitialRequestMessage.RequestUri,
-                out var pinnedAddress,
-                out _))
+        if (PulseAiExternalHttpsRuntimePolicy.IsEnabled)
         {
-            // The endpoint adapter already revalidated live DNS. Connect only to
-            // the approved public IPv4 address while SocketsHttpHandler validates
-            // TLS against the original celarai.onenecklab.com request hostname.
-            addresses = [pinnedAddress];
+            addresses = await PulseAiExternalHttpsRuntimePolicy.ResolveConnectAddressesAsync(
+                context.InitialRequestMessage.RequestUri, cancellationToken);
         }
         else
         {
