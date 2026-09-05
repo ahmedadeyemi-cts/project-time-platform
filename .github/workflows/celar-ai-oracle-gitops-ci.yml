@@ -5,6 +5,7 @@ on:
     paths:
       - 'deployment/oracle-celar/**'
       - '.github/workflows/celar-ai-oracle-gitops-ci.yml'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
   workflow_dispatch:
 
 permissions:
@@ -181,8 +182,20 @@ jobs:
           grep -Fq -- "--exclude='/var/lib/celar-ai/recovery'" "$BACKUP"
           grep -Fq 'mapfile -t GENERATION_MODELS' "$UPDATE"
           grep -Fq 'for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"' "$UPDATE"
+
+          # Engine rollback must archive the resolved executable bytes rather
+          # than a launcher symlink that the installer can later repoint.
+          grep -Fq 'OLLAMA_COMMAND="$(command -v ollama)"' "$UPDATE"
+          grep -Fq 'OLD_BINARY="$(readlink -f -- "$OLLAMA_COMMAND")"' "$UPDATE"
+          grep -Fq 'OLD_BINARY_MODE="$(stat -Lc' "$UPDATE"
+          grep -Fq 'cp --dereference --preserve=mode,timestamps -- "$OLD_BINARY" "$BACKUP_BINARY"' "$UPDATE"
+          grep -Fq '[[ -f "$BACKUP_BINARY" && ! -L "$BACKUP_BINARY" ]]' "$UPDATE"
           grep -Fq 'install -m "$OLD_BINARY_MODE" "$BACKUP_BINARY" "$OLD_BINARY"' "$UPDATE"
-          ! grep -Fq 'chmod 0700 "$BACKUP_BINARY"' "$UPDATE"
+          grep -Fq 'ln -sfnT "$OLD_BINARY" "$OLLAMA_COMMAND"' "$UPDATE"
+          if grep -Fq 'OLD_BINARY="$(command -v ollama)"' "$UPDATE"; then
+            echo 'Ollama rollback must resolve the executable behind any launcher symlink.' >&2; exit 1
+          fi
+
           grep -Fq '"$HEALTH_CHECK"' "$UPDATE"
           grep -Fq 'CELAR_OLLAMA_UPDATE=PASS' "$UPDATE"
 
