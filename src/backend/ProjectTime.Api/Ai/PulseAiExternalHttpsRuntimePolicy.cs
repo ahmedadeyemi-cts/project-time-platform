@@ -39,6 +39,9 @@ public static class PulseAiExternalHttpsRuntimePolicy
     private static readonly Regex ApprovalReference = new(
         @"^ORACLE-TEST-[A-Za-z0-9][A-Za-z0-9._-]{7,119}$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex ClamAvSignatureVersion = new(
+        @"^daily-[0-9]+$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly string[] EndpointVariables =
     [
@@ -187,9 +190,10 @@ public static class PulseAiExternalHttpsRuntimePolicy
 
         if (!Boolean("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED"))
             errors.Add("The external HTTPS malware scanner requires reviewed live scan attestation.");
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
-                "PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION")))
-            errors.Add("The external HTTPS malware scanner requires recorded ClamAV signature evidence.");
+        var signatureVersion = Clean(Environment.GetEnvironmentVariable(
+            "PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION"));
+        if (!ClamAvSignatureVersion.IsMatch(signatureVersion))
+            errors.Add("The external HTTPS malware scanner requires a concrete ClamAV daily-<version> signature attestation.");
         if (!string.Equals(
                 Clean(Environment.GetEnvironmentVariable(
                     "PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE")),
