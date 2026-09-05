@@ -12,6 +12,7 @@ RUNTIME_TOKEN_FILE="$GATEWAY_CONFIG_DIR/runtime-token"
 RUNTIME_ENV_FILE="$GATEWAY_CONFIG_DIR/runtime.env"
 FIREWALL_RULES='/etc/iptables/rules.v4'
 CADDYFILE='/etc/caddy/Caddyfile'
+RUNTIME_MUTATION_LOCK='/run/celar-runtime-mutation.lock'
 
 fail() {
   echo "ERROR: $*" >&2
@@ -21,6 +22,7 @@ fail() {
 [[ "$(id -u)" -eq 0 ]] || fail 'Run deploy.sh as root.'
 [[ -s "$MANIFEST" ]] || fail 'release.json is missing.'
 command -v jq >/dev/null 2>&1 || fail 'jq is required before deployment.'
+command -v flock >/dev/null 2>&1 || fail 'flock is required before deployment.'
 
 ARCH="$(jq -r '.architecture' "$MANIFEST")"
 HOSTNAME_VALUE="$(jq -r '.hostname' "$MANIFEST")"
@@ -34,7 +36,9 @@ EMBEDDING_DIMENSION="$(jq -r '.embeddingDimension' "$MANIFEST")"
 OCR_MODEL="$(jq -r '.ocrModel' "$MANIFEST")"
 LOCAL_GENERATION_MODELS="$(jq -r '.localGenerationModels | join(",")' "$MANIFEST")"
 STRUCTURED_GENERATION_ORDER="$(jq -r '.structuredGenerationOrder | join(",")' "$MANIFEST")"
+STRUCTURED_MODEL_ATTEMPT_SECONDS="$(jq -r '.structuredModelAttemptSeconds | join(",")' "$MANIFEST")"
 GENERAL_GENERATION_ORDER="$(jq -r '.generalGenerationOrder | join(",")' "$MANIFEST")"
+GENERAL_MODEL_ATTEMPT_SECONDS="$(jq -r '.generalModelAttemptSeconds | join(",")' "$MANIFEST")"
 OLLAMA_HOST_VALUE="$(jq -r '.ollamaHost' "$MANIFEST")"
 OLLAMA_KEEP_ALIVE="$(jq -r '.ollamaKeepAlive' "$MANIFEST")"
 OLLAMA_MAX_LOADED_MODELS="$(jq -r '.ollamaMaxLoadedModels' "$MANIFEST")"
@@ -52,6 +56,7 @@ PDF_RASTER_MAX_EDGE="$(jq -r '.pdfRasterMaxEdge' "$MANIFEST")"
 OCR_TOTAL_TIMEOUT_SECONDS="$(jq -r '.ocrTotalTimeoutSeconds' "$MANIFEST")"
 CHAT_TIMEOUT_SECONDS="$(jq -r '.chatTimeoutSeconds' "$MANIFEST")"
 EMBEDDING_TIMEOUT_SECONDS="$(jq -r '.embeddingTimeoutSeconds' "$MANIFEST")"
+LOCK_WAIT_SECONDS="$(jq -r '.runtimeMutationLockWaitSeconds' "$MANIFEST")"
 
 [[ "$ARCH" == arm64 && "$(uname -m)" == aarch64 ]] || fail 'The release architecture does not match this host.'
 [[ "$HOSTNAME_VALUE" == celarai.onenecklab.com ]] || fail 'The governed Oracle hostname changed unexpectedly.'
@@ -63,21 +68,34 @@ done
 [[ "$EMBEDDING_DIMENSION" == 768 ]] || fail 'Embedding dimension must remain 768.'
 [[ "$OLLAMA_HOST_VALUE" == '127.0.0.1:11434' ]] || fail 'Ollama must remain bound to localhost.'
 [[ "$CLAMAV_HOST" == '127.0.0.1' && "$CLAMAV_PORT" == 3310 ]] || fail 'ClamAV must remain on localhost:3310.'
-for numeric in "$MAX_UPLOAD_BYTES" "$MAX_JSON_REQUEST_BYTES" "$MAX_GATEWAY_RESPONSE_BYTES" "$MAX_OCR_PAGES" "$MAX_OCR_IMAGE_PIXELS" "$MAX_OCR_IMAGE_EDGE" "$PDF_RASTER_MAX_EDGE" "$OCR_TOTAL_TIMEOUT_SECONDS" "$CHAT_TIMEOUT_SECONDS" "$EMBEDDING_TIMEOUT_SECONDS"; do
+for numeric in "$MAX_UPLOAD_BYTES" "$MAX_JSON_REQUEST_BYTES" "$MAX_GATEWAY_RESPONSE_BYTES" "$MAX_OCR_PAGES" "$MAX_OCR_IMAGE_PIXELS" "$MAX_OCR_IMAGE_EDGE" "$PDF_RASTER_MAX_EDGE" "$OCR_TOTAL_TIMEOUT_SECONDS" "$CHAT_TIMEOUT_SECONDS" "$EMBEDDING_TIMEOUT_SECONDS" "$LOCK_WAIT_SECONDS"; do
   [[ "$numeric" =~ ^[0-9]+$ && "$numeric" -gt 0 ]] || fail 'Invalid positive numeric runtime limit.'
 done
+[[ "$LOCK_WAIT_SECONDS" -ge 60 ]] || fail 'Runtime mutation lock wait is too short.'
 
 mapfile -t APPROVED_GENERATION_MODELS < <(jq -r '.localGenerationModels[]' "$MANIFEST")
 (( ${#APPROVED_GENERATION_MODELS[@]} >= 3 )) || fail 'At least three approved local generation specialists are required.'
 for required in "$GENERATION_MODEL" "$REASONING_MODEL" "$FAST_GENERAL_MODEL"; do
   printf '%s\n' "${APPROVED_GENERATION_MODELS[@]}" | grep -Fxq "$required" || fail "Required local model is absent from portfolio: $required"
 done
-jq -e '[.structuredGenerationOrder[], .generalGenerationOrder[]] - .localGenerationModels | length == 0' "$MANIFEST" >/dev/null || fail 'A local generation order references an unapproved model.'
+jq -e '
+  ([.structuredGenerationOrder[], .generalGenerationOrder[]] - .localGenerationModels | length) == 0 and
+  (.structuredGenerationOrder | length) == (.structuredModelAttemptSeconds | length) and
+  (.generalGenerationOrder | length) == (.generalModelAttemptSeconds | length) and
+  ([.structuredModelAttemptSeconds[], .generalModelAttemptSeconds[]] | all(. >= 10)) and
+  (.structuredModelAttemptSeconds | add) <= .chatTimeoutSeconds and
+  (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds
+' "$MANIFEST" >/dev/null || fail 'Local model order or bounded-attempt policy is invalid.'
+
+# GitOps deployment and scheduled Ollama/model maintenance must never mutate the
+# same runtime concurrently. Keep this descriptor open for the entire deploy.
+exec 8>"$RUNTIME_MUTATION_LOCK"
+flock -w "$LOCK_WAIT_SECONDS" 8 || fail 'Timed out waiting for the Celar runtime mutation lock.'
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y \
-  ca-certificates curl jq git unzip zstd netcat-openbsd rsync openssl \
+  ca-certificates curl jq git unzip zstd netcat-openbsd rsync openssl util-linux \
   python3 python3-venv python3-pip python3-flask python3-requests python3-pil gunicorn fonts-dejavu-core \
   tesseract-ocr tesseract-ocr-eng poppler-utils \
   clamav clamav-daemon clamav-freshclam \
@@ -86,7 +104,6 @@ apt-get install -y \
 install -d -m 0755 "$INSTALL_ROOT" "$STATE_DIR" /var/backups/celar-ai "$GATEWAY_ROOT"
 install -d -m 0700 /etc/celar-ai
 
-# Preserve Oracle-provided InstanceServices firewall rules and add only HTTPS.
 if [[ -s "$FIREWALL_RULES" ]]; then
   install -d -m 0700 /root/celar-firewall-backup
   if [[ ! -e /root/celar-firewall-backup/rules.v4.pre-gitops ]]; then
@@ -104,7 +121,6 @@ else
   fail 'Oracle iptables rules.v4 is missing; refusing to replace the host firewall blindly.'
 fi
 
-# Configure clamd TCP protocol only on loopback. Retain the distro socket too.
 if [[ ! -e /etc/clamav/clamd.conf.pre-celar-gitops ]]; then
   cp -a /etc/clamav/clamd.conf /etc/clamav/clamd.conf.pre-celar-gitops
 fi
@@ -114,7 +130,6 @@ systemctl enable clamav-freshclam clamav-daemon >/dev/null
 systemctl restart clamav-freshclam
 systemctl restart clamav-daemon
 
-# Install Ollama once. Version/model refreshes are handled by celar-ollama-update.timer.
 if ! command -v ollama >/dev/null 2>&1; then
   INSTALLER="$(mktemp)"
   trap 'rm -f "$INSTALLER"' EXIT
@@ -160,8 +175,6 @@ for model in "${APPROVED_GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
   fi
 done
 
-# Run the gateway with a dedicated non-login identity. The bearer token is
-# generated only when missing and is never written to Git or command output.
 getent group celar-ai >/dev/null 2>&1 || groupadd --system celar-ai
 if ! id celar-ai >/dev/null 2>&1; then
   useradd --system --gid celar-ai --home-dir "$GATEWAY_STATE_DIR" --shell /usr/sbin/nologin celar-ai
@@ -186,7 +199,9 @@ CELAR_REASONING_MODEL=$REASONING_MODEL
 CELAR_FAST_GENERAL_MODEL=$FAST_GENERAL_MODEL
 CELAR_LOCAL_GENERATION_MODELS=$LOCAL_GENERATION_MODELS
 CELAR_STRUCTURED_GENERATION_ORDER=$STRUCTURED_GENERATION_ORDER
+CELAR_STRUCTURED_MODEL_ATTEMPT_SECONDS=$STRUCTURED_MODEL_ATTEMPT_SECONDS
 CELAR_GENERAL_GENERATION_ORDER=$GENERAL_GENERATION_ORDER
+CELAR_GENERAL_MODEL_ATTEMPT_SECONDS=$GENERAL_MODEL_ATTEMPT_SECONDS
 CELAR_EMBEDDING_MODEL=$EMBEDDING_MODEL
 CELAR_EMBEDDING_DIMENSION=$EMBEDDING_DIMENSION
 CELAR_OCR_MODEL=$OCR_MODEL
