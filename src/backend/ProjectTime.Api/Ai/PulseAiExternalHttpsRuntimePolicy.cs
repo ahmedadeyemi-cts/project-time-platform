@@ -9,7 +9,7 @@ namespace ProjectTime.Api.Ai;
 /// <summary>
 /// Authorizes one temporary, deployment-managed HTTPS runtime for protected Test.
 /// This is deliberately narrower than the normal private-DNS policy: the exact
-/// DNS host, expected public IPv4 address, endpoint paths, models, bearer token,
+/// DNS host, validated public DNS addresses, endpoint paths, models, bearer token,
 /// and approval reference must agree before any request can leave Pulse.
 /// Production can never enable this mode.
 /// </summary>
@@ -17,6 +17,7 @@ public static class PulseAiExternalHttpsRuntimePolicy
 {
     public const string EnabledVariable = "PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED";
     public const string HostVariable = "PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST";
+    public const string AddressModeVariable = "PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ADDRESS_MODE";
     public const string ExpectedIpVariable = "PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_EXPECTED_IP";
     public const string ApprovalReferenceVariable = "PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_APPROVAL_REFERENCE";
     public const string ReadinessEndpointVariable = "PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_READINESS_ENDPOINT";
@@ -79,6 +80,7 @@ public static class PulseAiExternalHttpsRuntimePolicy
         Uri? ReadinessEndpoint,
         IReadOnlyList<string> Errors)
     {
+        public bool DnsManaged { get; init; }
         public bool Valid => Errors.Count == 0;
         public bool Active => Enabled && Valid;
     }
@@ -90,12 +92,15 @@ public static class PulseAiExternalHttpsRuntimePolicy
         var enabled = Boolean(EnabledVariable);
         var environment = Clean(Environment.GetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT"));
         var host = Clean(Environment.GetEnvironmentVariable(HostVariable)).TrimEnd('.').ToLowerInvariant();
+        var addressMode = Clean(Environment.GetEnvironmentVariable(AddressModeVariable));
+        var dnsManaged = string.Equals(addressMode, "dns", StringComparison.OrdinalIgnoreCase);
         var expectedIpText = Clean(Environment.GetEnvironmentVariable(ExpectedIpVariable));
         var approvalReference = Clean(Environment.GetEnvironmentVariable(ApprovalReferenceVariable));
         var errors = new List<string>();
 
         var externalConfigurationPresent =
-            !string.IsNullOrWhiteSpace(host)
+            !string.IsNullOrWhiteSpace(addressMode)
+            || !string.IsNullOrWhiteSpace(host)
             || !string.IsNullOrWhiteSpace(expectedIpText)
             || !string.IsNullOrWhiteSpace(approvalReference)
             || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ReadinessEndpointVariable))
@@ -126,8 +131,11 @@ public static class PulseAiExternalHttpsRuntimePolicy
         if (!string.Equals(host, ApprovedHost, StringComparison.Ordinal))
             errors.Add($"The external HTTPS runtime host must be exactly {ApprovedHost}.");
 
-        if (!IPAddress.TryParse(expectedIpText, out expectedAddress)
-            || !IsApprovedPublicIpv4(expectedAddress))
+        if (addressMode.Length > 0 && !dnsManaged && !string.Equals(addressMode, "pinned", StringComparison.OrdinalIgnoreCase))
+            errors.Add("The external HTTPS address mode must be dns or pinned.");
+
+        if (!dnsManaged && (!IPAddress.TryParse(expectedIpText, out expectedAddress)
+            || !IsApprovedPublicIpv4(expectedAddress)))
         {
             errors.Add("The external HTTPS runtime expected address must be one explicit public IPv4 address.");
             expectedAddress = null;
@@ -197,7 +205,7 @@ public static class PulseAiExternalHttpsRuntimePolicy
                 StringComparison.Ordinal))
             errors.Add("The malware-scan approval reference must match the external HTTPS runtime approval reference.");
 
-        return BuildSnapshot(true, externalConfigurationPresent, environment, host, expectedAddress, approvalReference, endpoints, errors);
+        return BuildSnapshot(true, externalConfigurationPresent, environment, host, expectedAddress, approvalReference, endpoints, errors) with { DnsManaged = dnsManaged };
     }
 
     public static Snapshot RequireValid()
@@ -216,7 +224,7 @@ public static class PulseAiExternalHttpsRuntimePolicy
         var snapshot = Evaluate();
         if (!snapshot.Enabled)
             return new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "external_https_runtime_disabled", 0);
-        if (!snapshot.Valid || snapshot.ExpectedAddress is null)
+        if (!snapshot.Valid || (!snapshot.DnsManaged && snapshot.ExpectedAddress is null))
             return new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "external_https_runtime_configuration_invalid", 0);
         if (!Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var endpoint)
             || !IsConfiguredEndpoint(snapshot, endpoint))
@@ -231,18 +239,18 @@ public static class PulseAiExternalHttpsRuntimePolicy
                 .Select(address => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address)
                 .Distinct()
                 .ToArray();
-            if (normalized.Any(address => !address.Equals(snapshot.ExpectedAddress)))
+            if (!AddressesApproved(snapshot, normalized))
             {
                 return new PulseAiPrivateEndpointPolicy.ResolutionResult(
                     false,
                     null,
-                    "external_https_dns_pin_mismatch",
+                    snapshot.DnsManaged ? "external_https_dns_unsafe_address" : "external_https_dns_pin_mismatch",
                     normalized.Length);
             }
             return new PulseAiPrivateEndpointPolicy.ResolutionResult(
                 true,
                 endpoint,
-                "test_external_https_dns_and_ip_pin_verified",
+                snapshot.DnsManaged ? "test_external_https_hostname_verified" : "test_external_https_dns_and_ip_pin_verified",
                 normalized.Length);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -253,6 +261,25 @@ public static class PulseAiExternalHttpsRuntimePolicy
         {
             return new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "external_https_dns_resolution_failed", 0);
         }
+    }
+
+    internal static bool AddressesApproved(Snapshot snapshot, IReadOnlyList<IPAddress> addresses) =>
+        addresses.Count > 0 && addresses.All(address => IsApprovedPublicIpv4(address)
+            && (snapshot.DnsManaged || address.Equals(snapshot.ExpectedAddress)));
+
+    public static async Task<IPAddress[]> ResolveConnectAddressesAsync(Uri? requestUri, CancellationToken token)
+    {
+        var snapshot = Evaluate();
+        if (!snapshot.Active || requestUri is null || !IsConfiguredEndpoint(snapshot, requestUri))
+            throw new HttpRequestException("The external HTTPS endpoint is not approved.");
+        var addresses = (await Dns.GetHostAddressesAsync(snapshot.Host, token))
+            .Select(address => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address)
+            .Distinct().ToArray();
+        if (!AddressesApproved(snapshot, addresses))
+            throw new HttpRequestException("The external HTTPS hostname did not resolve exclusively to approved public addresses.");
+        // The transport connects to this validated answer set directly. TLS still
+        // authenticates the configured hostname; no second DNS lookup can rebind it.
+        return addresses;
     }
 
     public static bool TryGetPinnedAddress(
@@ -372,6 +399,10 @@ public static class PulseAiExternalHttpsRuntimePolicy
         if (bytes[0] is 0 or >= 224) return false;
         if (bytes[0] == 169 && bytes[1] == 254) return false;
         if (bytes[0] == 100 && bytes[1] is >= 64 and <= 127) return false;
+        if (bytes[0] == 192 && bytes[1] == 0 && bytes[2] is 0 or 2) return false;
+        if (bytes[0] == 198 && bytes[1] is 18 or 19) return false;
+        if (bytes[0] == 198 && bytes[1] == 51 && bytes[2] == 100) return false;
+        if (bytes[0] == 203 && bytes[1] == 0 && bytes[2] == 113) return false;
         return true;
     }
 

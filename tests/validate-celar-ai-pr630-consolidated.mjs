@@ -145,7 +145,9 @@ const module064SystemwideFailoverMode = branchName === 'fix/module064-systemwide
 if (module064SystemwideFailoverMode) await import('./validate-module064-systemwide-failover-scope.mjs');
 const protectedUatRecoveryMode = branchName === 'fix/protected-uat-recovery-and-ai-readiness-20260905';
 if (protectedUatRecoveryMode) await import('./validate-protected-uat-recovery-scope.mjs');
-const scopedCompatibilityMode = protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const hostnameRecoveryMode = branchName === 'fix/celar-hostname-runtime-20260905';
+if (hostnameRecoveryMode) await import('./validate-celar-hostname-runtime-scope.mjs');
+const scopedCompatibilityMode = hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

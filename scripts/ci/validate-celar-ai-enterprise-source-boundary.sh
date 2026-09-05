@@ -540,6 +540,11 @@ if [[ "$HEAD_BRANCH" == 'fix/protected-uat-recovery-and-ai-readiness-20260905' ]
   node tests/validate-protected-uat-recovery.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
 fi
+if [[ "$HEAD_BRANCH" == 'fix/celar-hostname-runtime-20260905' ]]; then
+  node tests/validate-celar-hostname-runtime-scope.mjs
+  node tests/validate-protected-uat-recovery.mjs
+  PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
+fi
 if [[ -n "$PROHIBITED" ]]; then
   echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2
   printf '%s\n' "$PROHIBITED" >&2

@@ -26,7 +26,7 @@ They are deployment-managed settings on the **Azure Test API Container App**. Th
 | Malware scanning | `PROJECTPULSE_PRIVATE_MALWARE_SCAN_ENDPOINT` | `https://celarai.onenecklab.com/v1/scan` |
 | Startup readiness | `PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_READINESS_ENDPOINT` | `https://celarai.onenecklab.com/health` |
 
-Do not enter these URLs in Module 064. The Test integration is deployment-managed so a browser user cannot silently replace the exact host or bypass the IP pin.
+Do not enter these URLs in Module 064. The Test integration is deployment-managed so a browser user cannot silently replace the exact host or bypass the hostname and DNS address checks.
 
 ## One protected value the operator must add
 
@@ -63,7 +63,7 @@ The application refuses activation unless all of these agree:
 
 - `PROJECTPULSE_ENVIRONMENT=test`;
 - exact DNS host `celarai.onenecklab.com`;
-- one expected public IPv4 address, initially `129.213.82.144`;
+- deployment-managed `ADDRESS_MODE=dns`, which follows public IPv4 changes for that exact hostname;
 - standard HTTPS certificate validation;
 - exact endpoint paths shown above;
 - exact models `gemma3:4b`, `embeddinggemma`, and `tesseract-5-eng`;
@@ -73,13 +73,13 @@ The application refuses activation unless all of these agree:
 - ClamAV scan attestation and signature evidence; and
 - training disabled with no training endpoint or token.
 
-The HTTP transport performs DNS verification immediately before each request and then connects only to the configured IPv4 address while TLS continues to validate the original hostname. Redirects, proxies, cookies, custom certificate validators, and `--insecure` behavior remain disabled.
+The HTTP transport resolves the exact approved hostname before opening each connection, rejects the entire DNS answer if any address is private, loopback, link-local, reserved, or unsupported, and connects directly to the validated addresses while TLS verifies the hostname. Connections recycle within two minutes so new requests can follow DNS changes. Legacy pinned mode remains supported for existing revisions; the recovery stores its initially resolved address solely for compatibility while the new API is deployed. In DNS mode that legacy value does not constrain future connections. Redirects, proxies, cookies, custom certificate validators, and `--insecure` behavior remain disabled.
 
 Production cannot enable this mode. Any external-runtime variables left behind while the enable flag is false also fail closed, preventing a partial or ambiguous configuration.
 
 ## Protected recovery after merge
 
-The merge of PR #854 runs the authorized protected-Test recovery once, before normal deployment. Subsequent normal deployments preserve its configuration. It fails before Azure mutation if the protected token, DNS pin, or live capability checks fail. The retired one-time activation controller remains retired. To repeat recovery manually after the protected GitHub environment secret exists:
+The merge of the `fix/celar-hostname-runtime-20260905` branch runs the authorized protected-Test recovery once, before normal deployment. Subsequent normal deployments preserve its configuration. It fails before Azure mutation if the protected token, DNS address validation, or live capability checks fail. The retired one-time activation controller remains retired. To repeat recovery manually after the protected GitHub environment secret exists:
 
 1. Open **Actions**.
 2. Select **Deploy System-wide Enterprise Reliability and Utilization to Protected Test**.
@@ -94,3 +94,5 @@ No database migration, web deployment, Production mutation, Oracle infrastructur
 ## Certificate-renewal boundary
 
 Oracle TCP 443 remains publicly reachable because Caddy currently uses the TLS-ALPN ACME challenge on that port. Restricting 443 to Azure egress addresses would break automated certificate validation unless certificate issuance first moves to DNS-01 or another controlled renewal design.
+
+For future Oracle rebuilds, update the DNS-only A record for `celarai.onenecklab.com`; no application IP edit is required. Keep the hostname certificate and gateway token valid. The September 5 rebuild screenshot identifies `141.148.19.235`; the runtime uses DNS rather than storing this as its permanent destination.
