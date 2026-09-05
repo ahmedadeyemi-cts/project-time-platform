@@ -25,7 +25,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Validate shell and desired-state manifest
+      - name: Validate shell, Python, and desired-state manifest
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -39,17 +39,63 @@ jobs:
             deployment/oracle-celar/ollama-update.sh; do
             bash -n "$script"
           done
+          python3 -m py_compile deployment/oracle-celar/gateway/gateway.py
           jq -e '
             .schema == 1 and
             .environment == "protected-test-oracle-celar" and
             .hostname == "celarai.onenecklab.com" and
             .architecture == "arm64" and
+            .gatewayVersion == "1.0.0" and
+            .gatewayBind == "127.0.0.1:8787" and
             .generationModel == "gemma3:4b" and
             .embeddingModel == "embeddinggemma" and
+            .embeddingDimension == 768 and
+            .ocrModel == "tesseract-5-eng" and
             .ollamaHost == "127.0.0.1:11434" and
             .clamavHost == "127.0.0.1" and
-            .clamavPort == 3310
+            .clamavPort == 3310 and
+            .maxUploadBytes > 0 and
+            .maxJsonRequestBytes > 0 and
+            .maxGatewayResponseBytes > 0 and
+            .maxOcrPages > 0
           ' deployment/oracle-celar/release.json >/dev/null
+
+      - name: Validate exact authenticated gateway contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          GATEWAY=deployment/oracle-celar/gateway/gateway.py
+          CADDY=deployment/oracle-celar/caddy/Caddyfile
+          UNIT=deployment/oracle-celar/systemd/celar-ai-gateway.service
+
+          for route in '/health' '/v1/chat/completions' '/v1/embeddings' '/v1/extract' '/v1/scan'; do
+            grep -Fq "$route" "$GATEWAY"
+          done
+          ! grep -Fq '/train' "$GATEWAY"
+          grep -Fq 'hmac.compare_digest' "$GATEWAY"
+          grep -Fq 'X-Pulse-AI-Privacy-Boundary' "$GATEWAY"
+          grep -Fq 'private_pulse_runtime_only' "$GATEWAY"
+          grep -Fq 'MAX_CONTENT_LENGTH' "$GATEWAY"
+          grep -Fq 'MAX_GATEWAY_RESPONSE_BYTES' "$GATEWAY"
+          grep -Fq 'rawDocumentContentLogged' "$GATEWAY"
+          grep -Fq '"trainingEnabled": False' "$GATEWAY"
+          grep -Fq '"externalEscalationEnabled": False' "$GATEWAY"
+          grep -Fq 'streaming_not_supported' "$GATEWAY"
+          grep -Fq 'embedding_dimension_invalid' "$GATEWAY"
+          grep -Fq 'struct.pack(">I"' "$GATEWAY"
+          grep -Fq '/usr/bin/tesseract' "$GATEWAY"
+          grep -Fq '/usr/bin/pdftoppm' "$GATEWAY"
+
+          grep -Fq 'celarai.onenecklab.com' "$CADDY"
+          grep -Fq 'reverse_proxy 127.0.0.1:8787' "$CADDY"
+          grep -Fq 'max_size 33MB' "$CADDY"
+          grep -Fq 'auto_https disable_redirects' "$CADDY"
+
+          grep -Fq 'User=celar-ai' "$UNIT"
+          grep -Fq 'Group=celar-ai' "$UNIT"
+          grep -Fq '127.0.0.1:8787' "$UNIT"
+          grep -Fq 'NoNewPrivileges=true' "$UNIT"
+          grep -Fq 'CapabilityBoundingSet=' "$UNIT"
 
       - name: Reject embedded credentials and unsafe public service binds
         shell: bash
@@ -62,15 +108,18 @@ jobs:
             exit 1
           fi
           if grep -RInE \
-            '(0\.0\.0\.0:11434|0\.0\.0\.0.*3310|TCPAddr[[:space:]]+0\.0\.0\.0)' \
+            '(0\.0\.0\.0:11434|0\.0\.0\.0.*3310|TCPAddr[[:space:]]+0\.0\.0\.0|0\.0\.0\.0:8787)' \
             deployment/oracle-celar; then
-            echo 'Ollama or ClamAV would be exposed publicly.' >&2
+            echo 'A private Celar component would be exposed publicly.' >&2
             exit 1
           fi
+          grep -Fq 'openssl rand -hex 48' deployment/oracle-celar/deploy.sh
+          grep -Fq 'chmod 0640 "$RUNTIME_TOKEN_FILE"' deployment/oracle-celar/deploy.sh
+          grep -Fq 'CELAR_RUNTIME_TOKEN_VALUE=REDACTED' deployment/oracle-celar/deploy.sh
           grep -Fq 'Environment="OLLAMA_HOST=$OLLAMA_HOST_VALUE"' deployment/oracle-celar/deploy.sh
           grep -Fq "CLAMAV_HOST\" == '127.0.0.1'" deployment/oracle-celar/deploy.sh
 
-      - name: Verify GitOps is pull-based and backups are recoverable
+      - name: Verify GitOps, backups, updates, and live acceptance are recoverable
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -79,4 +128,9 @@ jobs:
           grep -Fq 'restic backup' deployment/oracle-celar/backup.sh
           grep -Fq 'restic restore' deployment/oracle-celar/restore.sh
           grep -Fq 'CELAR_OLLAMA_UPDATE=PASS' deployment/oracle-celar/ollama-update.sh
+          grep -Fq 'PUBLIC_HTTPS_AUTH_BOUNDARY=PASS' deployment/oracle-celar/health-check.sh
+          grep -Fq 'CHAT_GATEWAY=PASS' deployment/oracle-celar/health-check.sh
+          grep -Fq 'EMBEDDING_GATEWAY=PASS' deployment/oracle-celar/health-check.sh
+          grep -Fq 'MALWARE_GATEWAY=PASS' deployment/oracle-celar/health-check.sh
+          grep -Fq 'OCR_GATEWAY=PASS' deployment/oracle-celar/health-check.sh
           git diff --check "${{ github.event.pull_request.base.sha || github.sha }}"..HEAD || git diff --check
