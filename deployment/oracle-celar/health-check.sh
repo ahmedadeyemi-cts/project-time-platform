@@ -56,16 +56,26 @@ grep -Eq '127\.0\.0\.1:8787([[:space:]]|$)' <<<"$SOCKETS" || fail 'Celar gateway
 systemctl is-active --quiet celar-ai-gateway.service || fail 'Celar gateway service is not active.'
 systemctl is-active --quiet caddy.service || fail 'Caddy service is not active.'
 [[ -s "$TOKEN_FILE" ]] || fail 'Runtime token file is missing.'
+
+# Never place the bearer secret in curl argv. A root-only temporary curl config
+# carries the sensitive header through a file; ps/proc therefore expose only the
+# config path. Remove the shell copy as soon as those files have been written.
+TMP="$(mktemp -d)"
+chmod 0700 "$TMP"
+AUTH_CONFIG="$TMP/curl-auth.conf"
+AUTH_ONLY_CONFIG="$TMP/curl-auth-only.conf"
 RUNTIME_TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE")"
 [[ ${#RUNTIME_TOKEN} -ge 32 ]] || fail 'Runtime token is too short.'
-AUTH=(
-  -H "Authorization: Bearer $RUNTIME_TOKEN"
-  -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only'
-)
+umask 0077
+printf 'header = "Authorization: Bearer %s"\nheader = "X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only"\n' \
+  "$RUNTIME_TOKEN" > "$AUTH_CONFIG"
+printf 'header = "Authorization: Bearer %s"\n' "$RUNTIME_TOKEN" > "$AUTH_ONLY_CONFIG"
+chmod 0600 "$AUTH_CONFIG" "$AUTH_ONLY_CONFIG"
+unset RUNTIME_TOKEN
+trap 'rm -rf "$TMP"' EXIT
+
 RESOLVE=(--resolve "$HOSTNAME_VALUE:443:127.0.0.1")
 BASE="https://$HOSTNAME_VALUE"
-TMP="$(mktemp -d)"
-trap 'unset RUNTIME_TOKEN; rm -rf "$TMP"' EXIT
 
 # Wait for Caddy automatic HTTPS/TLS-ALPN issuance on a freshly rebuilt VM.
 TLS_READY=false
@@ -83,11 +93,11 @@ WRONG_STATUS="$(curl -sS --max-time 15 "${RESOLVE[@]}" -o /dev/null -w '%{http_c
   -H 'Authorization: Bearer intentionally-wrong-celar-health-token-value' \
   -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only' "$BASE/health" || true)"
 [[ "$WRONG_STATUS" == 401 ]] || fail "Incorrect-token readiness must return 401, got $WRONG_STATUS."
-BOUNDARY_STATUS="$(curl -sS --max-time 15 "${RESOLVE[@]}" -o /dev/null -w '%{http_code}' \
-  -H "Authorization: Bearer $RUNTIME_TOKEN" "$BASE/health" || true)"
+BOUNDARY_STATUS="$(curl -sS --max-time 15 "${RESOLVE[@]}" --config "$AUTH_ONLY_CONFIG" \
+  -o /dev/null -w '%{http_code}' "$BASE/health" || true)"
 [[ "$BOUNDARY_STATUS" == 403 ]] || fail "Missing privacy boundary must return 403, got $BOUNDARY_STATUS."
 
-curl -fsS --max-time 30 "${RESOLVE[@]}" "${AUTH[@]}" "$BASE/health" > "$TMP/health.json"
+curl -fsS --max-time 30 "${RESOLVE[@]}" --config "$AUTH_CONFIG" "$BASE/health" > "$TMP/health.json"
 jq -e \
   --arg gateway "$GATEWAY_VERSION" \
   --arg generation "$GENERATION_MODEL" \
@@ -110,12 +120,12 @@ jq -e \
     .externalEscalationEnabled == false
   ' "$TMP/health.json" >/dev/null || fail 'Authenticated health contract failed.'
 
-curl -fsS --max-time 840 "${RESOLVE[@]}" "${AUTH[@]}" -H 'Content-Type: application/json' \
+curl -fsS --max-time 840 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return only: CELAR ORACLE OK"}],stream:false,temperature:0,max_tokens:32}')" \
   "$BASE/v1/chat/completions" > "$TMP/chat.json"
 jq -e '.choices[0].message.content | strings | length > 0' "$TMP/chat.json" >/dev/null || fail 'Authenticated chat-completion gateway probe failed.'
 
-curl -fsS --max-time 240 "${RESOLVE[@]}" "${AUTH[@]}" -H 'Content-Type: application/json' \
+curl -fsS --max-time 240 "${RESOLVE[@]}" --config "$AUTH_CONFIG" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg model "$EMBEDDING_MODEL" '{model:$model,input:["Celar AI embedding health proof"],encoding_format:"float"}')" \
   "$BASE/v1/embeddings" > "$TMP/embed.json"
 jq -e --argjson dimension "$EMBEDDING_DIMENSION" \
@@ -124,7 +134,7 @@ jq -e --argjson dimension "$EMBEDDING_DIMENSION" \
 
 printf 'Celar AI protected Test clean-file validation.\n' > "$TMP/clean.txt"
 CLEAN_SIZE="$(stat -c '%s' "$TMP/clean.txt")"
-curl -fsS --max-time 90 "${RESOLVE[@]}" "${AUTH[@]}" \
+curl -fsS --max-time 90 "${RESOLVE[@]}" --config "$AUTH_CONFIG" \
   -F "file=@$TMP/clean.txt;filename=celar-clean.txt" \
   "$BASE/v1/scan" > "$TMP/scan.json"
 jq -e --argjson size "$CLEAN_SIZE" \
@@ -142,7 +152,7 @@ font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 64)
 draw.text((35, 45), 'CELAR OCR OK', fill='black', font=font)
 image.save(sys.argv[1], 'PNG')
 PY
-curl -fsS --max-time 300 "${RESOLVE[@]}" "${AUTH[@]}" \
+curl -fsS --max-time 300 "${RESOLVE[@]}" --config "$AUTH_CONFIG" \
   -F "file=@$TMP/ocr.png;filename=celar-ocr-health.png" \
   -F "model=$OCR_MODEL" \
   -F 'documentId=00000000-0000-0000-0000-000000000001' \
@@ -155,8 +165,6 @@ ROOT_FREE_KB="$(df -Pk / | awk 'NR==2 {print $4}')"
 [[ "$ROOT_FREE_KB" =~ ^[0-9]+$ && "$ROOT_FREE_KB" -ge 8388608 ]] || fail 'Less than 8 GiB free space remains on root.'
 MEM_AVAILABLE_KB="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)"
 [[ "$MEM_AVAILABLE_KB" =~ ^[0-9]+$ && "$MEM_AVAILABLE_KB" -ge 1048576 ]] || fail 'Less than 1 GiB available memory remains.'
-
-unset RUNTIME_TOKEN
 
 echo 'CELAR_ORACLE_HEALTH=PASS'
 echo 'PUBLIC_HTTPS_AUTH_BOUNDARY=PASS'
