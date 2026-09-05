@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'deployment/oracle-celar/deploy.sh'
+      - 'deployment/oracle-celar/bootstrap.sh'
       - 'deployment/oracle-celar/systemd/clamav-daemon.socket.d/**'
       - '.github/workflows/celar-ai-oracle-clamav-socket-ci.yml'
   workflow_dispatch:
@@ -26,9 +27,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           DEPLOY=deployment/oracle-celar/deploy.sh
+          BOOTSTRAP=deployment/oracle-celar/bootstrap.sh
           DROPIN=deployment/oracle-celar/systemd/clamav-daemon.socket.d/10-celar-tcp.conf
 
           bash -n "$DEPLOY"
+          bash -n "$BOOTSTRAP"
           test -s "$DROPIN"
           grep -Fxq '[Socket]' "$DROPIN"
           grep -Fxq 'ListenStream=127.0.0.1:3310' "$DROPIN"
@@ -41,7 +44,15 @@ jobs:
           grep -Fq 'systemctl start clamav-daemon.service' "$DEPLOY"
           grep -Fq "printf 'zPING\\0' | nc -N -w 3" "$DEPLOY"
           grep -Fq "fail 'ClamAV localhost TCP socket did not become ready on 127.0.0.1:3310.'" "$DEPLOY"
-          grep -Fq 'systemctl enable --now celar-backup.timer celar-ollama-update.timer celar-gitops.timer' "$DEPLOY"
+
+          grep -Fq 'systemctl enable --now celar-backup.timer celar-ollama-update.timer' "$DEPLOY"
+          grep -Fq 'systemctl enable celar-gitops.timer' "$DEPLOY"
+          if grep -Fq 'enable --now celar-gitops.timer' "$DEPLOY"; then
+            echo 'deploy.sh must not start GitOps before bootstrap records the applied tree.' >&2
+            exit 1
+          fi
+          grep -Fq 'gitops-applied-tree' "$BOOTSTRAP"
+          grep -Fq 'systemctl enable --now celar-gitops.timer' "$BOOTSTRAP"
 
           if grep -Fq 'ListenStream=0.0.0.0:3310' "$DROPIN"; then
             echo 'ClamAV TCP must never bind publicly.' >&2
