@@ -757,11 +757,31 @@ jobs:
           [[ "$ROUTING_SMOKE_STATUS" == 200 ]] || fail "Module 064 chat routing smoke returned HTTP $ROUTING_SMOKE_STATUS."
           jq -e '
             (.result.answer.directConclusion | test("\\b50\\b|\\bfifty\\b"; "i"))
+            and (.reliability.assessment.passed == true)
+            and (.result.sources | any(.sourceCode == "census_state_codes" and .statusCode == 200))
+          ' "$EVIDENCE_DIR/module064-chat-routing-smoke.json" >/dev/null || fail 'Celar chat did not return the officially verified state count.'
+          (( ROUTING_SMOKE_SECONDS < 55 )) || fail "Celar public fact exceeded the interactive deadline: $ROUTING_SMOKE_SECONDS seconds."
+          echo "MODULE064_PUBLIC_FACT_SMOKE=PASS durationSeconds=$ROUTING_SMOKE_SECONDS"
+
+          # A verified public fact can complete without an LLM. Separately
+          # require a model-backed answer and actual saved-order decisions.
+          ROUTING_SMOKE_PAYLOAD="$(mktemp)"
+          jq -n '{question:"Explain how rainbows form.",mode:"system_help",detailLevel:"standard",includeRepositoryContext:false,includeAuthorizedProjectDocuments:false,includeApiInventory:false,includeTroubleshooting:false,usePrivateModelWhenAvailable:true}' > "$ROUTING_SMOKE_PAYLOAD"
+          ROUTING_SMOKE_STARTED=$SECONDS
+          ROUTING_SMOKE_STATUS="$(auth_post '/api/celar-ai/v2/chat' "$ROUTING_SMOKE_PAYLOAD" "$EVIDENCE_DIR/module064-provider-routing-smoke.json")"
+          ROUTING_SMOKE_SECONDS=$((SECONDS - ROUTING_SMOKE_STARTED))
+          rm -f "$ROUTING_SMOKE_PAYLOAD"
+          [[ "$ROUTING_SMOKE_STATUS" == 200 ]] || fail "Module 064 provider routing returned HTTP $ROUTING_SMOKE_STATUS."
+          jq -e '
+            (.result.answer.directConclusion | test("rainbow"; "i"))
             and (.result.modelProvider as $provider | ["deepseek_v4","celar_ai","claude","openai"] | index($provider) != null)
             and ((.result.targetDecisions // []) | any(.outcome == "used"))
-          ' "$EVIDENCE_DIR/module064-chat-routing-smoke.json" >/dev/null || fail 'Module 064 chat did not return the correct model-generated answer and routing evidence.'
+            and (.providerConfiguration.targets as $order
+              | [.result.targetDecisions[].target | . as $target | $order | index($target)] as $positions
+              | ($positions | all(. != null)) and ($positions == ($positions | sort)))
+          ' "$EVIDENCE_DIR/module064-provider-routing-smoke.json" >/dev/null || fail 'Module 064 chat did not return a model-generated answer in saved provider order.'
           (( ROUTING_SMOKE_SECONDS < 55 )) || fail "Module 064 chat exceeded the interactive deadline: $ROUTING_SMOKE_SECONDS seconds."
-          jq '{status,provider:.result.modelProvider,targetDecisions:.result.targetDecisions}' "$EVIDENCE_DIR/module064-chat-routing-smoke.json"
+          jq '{status,provider:.result.modelProvider,targetDecisions:.result.targetDecisions}' "$EVIDENCE_DIR/module064-provider-routing-smoke.json"
           echo "MODULE064_CHAT_ROUTING_SMOKE=PASS durationSeconds=$ROUTING_SMOKE_SECONDS"
 
           require_get 'Project Management summary' '/api/project-management/summary' "$EVIDENCE_DIR/project-management-summary.json"
