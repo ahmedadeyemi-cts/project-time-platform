@@ -328,7 +328,9 @@ jobs:
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
-          if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
+          if [[ "$HEAD_BRANCH" == 'fix/ai-routing-sow-regeneration-20260905' ]]; then
+            node tests/validate-ai-routing-sow-release-scope.mjs
+          elif [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
             node tests/validate-deepseek-release-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/protected-uat-validation-defects-20260903' ]]; then
             cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-protected-uat-validation-defects-files" || {

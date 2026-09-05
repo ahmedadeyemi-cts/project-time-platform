@@ -244,6 +244,7 @@ export default function SowGsdWorkspace() {
   const [saveState, setSaveState] = useState({ state: 'idle', message: '', at: null });
   const [actionState, setActionState] = useState({ busy: '', message: '', error: '' });
   const dirtyRef = useRef(false);
+  const editVersion = useRef(0);
   const saveInFlight = useRef(false);
 
   const loadBootstrap = useCallback(async () => {
@@ -294,6 +295,7 @@ export default function SowGsdWorkspace() {
     try {
       const payload = await requestJson(`/api/module025/sow-gsd/${engagementId}`);
       setSelectedId(engagementId);
+      editVersion.current += 1;
       setEngagement(payload?.engagement || null);
       setAccess(payload?.access || null);
       dirtyRef.current = false;
@@ -307,6 +309,7 @@ export default function SowGsdWorkspace() {
   }, []);
 
   const markChanged = useCallback((updater) => {
+    editVersion.current += 1;
     setEngagement((current) => {
       if (!current) return current;
       const next = typeof updater === 'function' ? updater(current) : { ...current, ...updater };
@@ -318,9 +321,11 @@ export default function SowGsdWorkspace() {
   }, []);
 
   const saveNow = useCallback(async () => {
-    if (!engagement || !dirtyRef.current || !access?.canEdit || saveInFlight.current) return;
-    if (engagement.status === 'confirmed' || engagement.status === 'archived' || !engagement.isActive) return;
+    if (!dirtyRef.current) return true;
+    if (!engagement || !access?.canEdit || saveInFlight.current) return false;
+    if (engagement.status === 'confirmed' || engagement.status === 'archived' || !engagement.isActive) return false;
     saveInFlight.current = true;
+    const savingVersion = editVersion.current;
     setSaveState({ state: 'saving', message: 'Saving…', at: null });
     try {
       const payload = await requestJson(`/api/module025/sow-gsd/${engagement.engagementId}`, {
@@ -356,17 +361,28 @@ export default function SowGsdWorkspace() {
         })
       });
       const saved = payload?.engagement?.engagement;
-      if (saved) setEngagement(saved);
+      if (!saved) throw new Error('The saved SOW/GSD could not be verified. Reload before generating scope.');
+      if (editVersion.current !== savingVersion) {
+        // Preserve edits made while autosave was awaiting the server. Only
+        // advance their base revision so the next save can persist those edits.
+        setEngagement((current) => current?.engagementId === saved.engagementId
+          ? { ...current, revision: saved.revision }
+          : current);
+        return false;
+      }
+      setEngagement(saved);
       dirtyRef.current = false;
       setDirty(false);
       setSaveState({ state: 'saved', message: payload?.requiresRegeneration ? 'Saved · regenerate scope' : 'Saved', at: new Date().toISOString() });
       void loadList();
+      return true;
     } catch (error) {
       if (error?.status === 409) {
         setSaveState({ state: 'error', message: 'This record changed elsewhere. Reload before continuing.', at: null });
       } else {
         setSaveState({ state: 'error', message: error?.message || 'Autosave failed.', at: null });
       }
+      return false;
     } finally {
       saveInFlight.current = false;
     }
@@ -404,9 +420,11 @@ export default function SowGsdWorkspace() {
 
   const runAction = async (action, successMessage) => {
     if (!engagement || actionState.busy) return;
-    if (dirtyRef.current) await saveNow();
     setActionState({ busy: action, message: '', error: '' });
     try {
+      if (dirtyRef.current && !await saveNow()) {
+        throw new Error('Save the latest Service Overview and scope edits before continuing. If autosave is running, wait for Saved and try again.');
+      }
       let payload = await requestJson(`/api/module025/sow-gsd/${engagement.engagementId}/${action}`, { method: 'POST' });
       if (action === 'generate') {
         if (payload?.status !== 'module025_detailed_scope_generation_queued' || !payload?.generationId) {

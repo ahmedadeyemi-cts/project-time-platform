@@ -271,8 +271,8 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
-    private const int PrimaryMaximumOutputTokens = 4_200;
-    private const int RecoveryMaximumOutputTokens = 3_400;
+    private const int PrimaryMaximumOutputTokens = 12_000;
+    private const int RecoveryMaximumOutputTokens = 10_000;
     private const int MaximumBufferedResponseBytes = 1_000_000;
     private const int MaximumStreamedResponseBytes = 2_000_000;
     private const int MaximumSseLineBytes = 256_000;
@@ -733,8 +733,8 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
 
                 var content = message["content"]?.GetValue<string>() ?? string.Empty;
                 var boundedInstruction = recoveryAttempt
-                    ? "RECOVERY RESPONSE BUDGET: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required field and citationIds:[1]. Use exactly three implementation-grade detailedSteps per task. Use exactly one item in every other required task list and at most one item in each top-level list. Keep every string under 110 characters except objective and description. Close the JSON object. Do not invent unsupported customer facts."
-                    : "BOUNDED SOW RESPONSE: Return exactly ten substantive governed SOW/GSD work packages, exactly two under each of Plan, Design, Implement, Validate, and Release. Preserve every required field and citationIds:[1]. Use exactly three concise implementation-grade detailedSteps per task and exactly one concise item in every other required task list. Keep top-level lists to at most one concise item, avoid repetition, and do not invent unsupported customer facts.";
+                    ? "RECOVERY RESPONSE BUDGET: Return substantive technology-specific SOW/GSD work packages covering every service in the Service Overview, with at least two under each of Plan, Design, Implement, Validate, and Release. Do not cap the scope at ten packages. Preserve every required field and citationIds:[1]. Use at least three ordered implementation-grade detailedSteps per task and populate all required task lists. Include recommended engineering hours based on the activity, complexity, and explicit assumptions; never use a fixed phase allocation. Keep wording concise without omitting required work. Close the JSON object. Do not invent unsupported customer facts."
+                    : "BOUNDED SOW RESPONSE: Return substantive technology-specific SOW/GSD work packages covering every service in the Service Overview, with at least two under each of Plan, Design, Implement, Validate, and Release. Do not cap the scope at ten packages. Preserve every required field and citationIds:[1]. Use at least three ordered implementation-grade detailedSteps per task and populate all required task lists. Include recommended engineering hours based on the activity, complexity, and explicit assumptions; never use a fixed phase allocation. Avoid repetition, preserve technical detail and deliverables, and do not invent unsupported customer facts.";
                 message["content"] = $"{content}\n\n{boundedInstruction}";
                 break;
             }

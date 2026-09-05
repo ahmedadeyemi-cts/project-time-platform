@@ -48,3 +48,57 @@ finally
     Environment.SetEnvironmentVariable("PROJECTPULSE_AI_DEEPSEEK_ENABLED", null);
     Environment.SetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.PhaseVariable, null);
 }
+
+// A disabled Celar host must not disable the shared evidence service used by
+// the separately configured DeepSeek target. The global RAG switch still wins.
+var disabledCelar = new CelarAiPrivateModelProfile(
+    "test", false, "https://private.invalid/v1", "test-model", "bearer", "test-only",
+    [], true, 1, DateTimeOffset.UtcNow, null, "endpoint", "token", true);
+CelarAiPrivateModelRuntime.Apply(disabledCelar);
+var evidenceOptions = PulseAiPrivateRagOptions.FromEnvironment() with { Enabled = true };
+var appliedOptions = CelarAiPrivateModelRuntime.Apply(evidenceOptions);
+Check(appliedOptions.Enabled, "Disabling Celar must not disable DeepSeek evidence execution.");
+Check(!appliedOptions.InferenceConfigured && appliedOptions.InferenceBearerToken.Length == 0,
+    "Disabled Celar must not remain an eligible inference fallback.");
+Check(!CelarAiPrivateModelRuntime.Apply(evidenceOptions with { Enabled = false }).Enabled,
+    "The deployment-level RAG disable switch must remain authoritative.");
+Check(CelarAiCapabilityTargets.IsPrivate(CelarAiCapabilityTargets.DeepSeek),
+    "DeepSeek document-grounded results must be eligible for adoption.");
+Check(!CelarAiCapabilityTargets.IsPrivate(CelarAiCapabilityTargets.Claude),
+    "Generic public assistance must not become a private evidence result.");
+
+var healthConfig = new ProjectPulseAiConfiguration();
+healthConfig.ApplyStoredSecret(ProjectPulseAiProviders.DeepSeek, "test-only", "test", DateTimeOffset.UtcNow);
+healthConfig.ApplyStoredEnabled(ProjectPulseAiProviders.DeepSeek, true);
+var health = new ProjectPulseAiHealthRegistry(healthConfig);
+Check(health.CanAttempt(ProjectPulseAiProviders.DeepSeek, out _), "Configured DeepSeek is initially eligible.");
+health.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, false, "deepseek_http_503", "Unavailable", 503, null));
+Check(!health.CanAttempt(ProjectPulseAiProviders.DeepSeek, out var outageReason)
+    && outageReason == "provider_circuit_open", "Failed readiness must skip generation during cooldown.");
+health.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, true, "ready", "Ready", 200, null));
+Check(health.CanAttempt(ProjectPulseAiProviders.DeepSeek, out _), "A successful recovery probe restores eligibility.");
+health.ApplyPrivateConfiguration(disabledCelar);
+Check(!health.CanAttempt(CelarAiCapabilityTargets.CelarAi, out var disabledReason)
+    && disabledReason == "provider_disabled", "A disabled Celar target must be skipped before consumer execution.");
+Console.WriteLine("DEEPSEEK_EVIDENCE_AND_HEALTH_REGRESSIONS=PASS");
+var budgetMethod = typeof(ProjectPulseDeepSeekProvider).GetMethod("CompletionBudget", BindingFlags.Static | BindingFlags.NonPublic)!;
+int Budget(int finalTokens) => (int)budgetMethod.Invoke(null, [finalTokens])!;
+Check(Budget(520) > 520, "Short timesheet requests must reserve tokens for reasoning as well as final prose.");
+Check(Budget(12_000) >= 12_000 && Budget(int.MaxValue) == 16_384,
+    "Detailed scope retains its requested budget and oversized inputs remain bounded without integer overflow.");
+var readinessConfig = new ProjectPulseAiConfiguration();
+readinessConfig.ApplyStoredSecret(ProjectPulseAiProviders.DeepSeek, "test-only", "test", DateTimeOffset.UtcNow);
+readinessConfig.ApplyStoredEnabled(ProjectPulseAiProviders.DeepSeek, true);
+var readinessHealth = new ProjectPulseAiHealthRegistry(readinessConfig);
+var readinessClient = new PulseAiPrivateModelClient(null!,
+    Microsoft.Extensions.Logging.Abstractions.NullLogger<PulseAiPrivateModelClient>.Instance,
+    new ProjectPulseDeepSeekProvider(null!, readinessConfig), readinessHealth, readinessConfig);
+var readinessMethod = typeof(PulseAiPrivateModelClient).GetMethod("DeepSeekReadiness", BindingFlags.Instance | BindingFlags.NonPublic)!;
+(bool Configured, bool Ready) Readiness() => ((bool, bool))readinessMethod.Invoke(readinessClient, null)!;
+Check(Readiness() == (true, false), "Credentials alone must not claim DeepSeek runtime readiness.");
+readinessHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, true, "ready", "Ready", 200, null));
+Check(Readiness() == (true, true), "Healthy DeepSeek must satisfy inference readiness with Celar disabled.");
+readinessHealth.RecordProbe(new(ProjectPulseAiProviders.DeepSeek, false, "deepseek_http_503", "Unavailable", 503, null));
+Check(Readiness() == (true, false), "An outage must remove DeepSeek runtime readiness.");
+readinessConfig.ApplyStoredEnabled(ProjectPulseAiProviders.DeepSeek, false);
+Check(Readiness() == (false, false), "Disabled DeepSeek must not satisfy inference readiness.");

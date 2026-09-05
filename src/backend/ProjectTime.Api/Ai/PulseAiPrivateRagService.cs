@@ -44,6 +44,8 @@ public sealed class PulseAiPrivateRagService
     {
         var options = Options();
         var schemaReady = await _repository.IsSchemaReadyAsync(cancellationToken);
+        var deepSeekReadiness = _model.DeepSeekReadiness();
+        var inferenceConfigured = options.InferenceConfigured || deepSeekReadiness.Configured;
         var inferenceResolution = options.InferenceConfigured
             ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 options.InferenceEndpoint,
@@ -53,7 +55,7 @@ public sealed class PulseAiPrivateRagService
                 cancellationToken: cancellationToken)
             : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "private_inference_not_configured", 0);
         var inferenceReason = inferenceResolution.Reason;
-        var inferencePrivate = inferenceResolution.Approved;
+        var inferencePrivate = inferenceResolution.Approved || deepSeekReadiness.Ready;
         var runtimeOptions = PulseAiPrivateRuntimeOptions.FromEnvironment();
         var embeddingResolution = runtimeOptions.EmbeddingConfigured
             ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
@@ -65,7 +67,8 @@ public sealed class PulseAiPrivateRagService
             : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "private_embedding_not_configured", 0);
         var embeddingReason = embeddingResolution.Reason;
         var embeddingPrivate = embeddingResolution.Approved;
-        var inferenceAuthenticationConfigured = !string.IsNullOrWhiteSpace(options.InferenceBearerToken);
+        var inferenceAuthenticationConfigured = !string.IsNullOrWhiteSpace(options.InferenceBearerToken)
+            || deepSeekReadiness.Configured;
         var vectorIndexConfigured = !string.IsNullOrWhiteSpace(
             Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_VECTOR_INDEX"));
         var hybridRetrievalReady = embeddingPrivate && vectorIndexConfigured;
@@ -74,11 +77,13 @@ public sealed class PulseAiPrivateRagService
         var blockers = new List<string>();
         if (!schemaReady) blockers.Add("Migrations 052 and 053 and their private retrieval tables are not available.");
         if (!options.Enabled) blockers.Add("Private RAG execution is disabled by configuration.");
-        if (!options.InferenceConfigured) blockers.Add("A private inference endpoint and model are not configured.");
+        if (!inferenceConfigured) blockers.Add("A private inference endpoint and model are not configured.");
         if (!inferenceAuthenticationConfigured) blockers.Add("Private inference bearer authentication is not configured.");
         if (!options.RequirePrivateModelForDocumentAnswers) blockers.Add("Document-grounded answers are not configured to require private inference.");
         if (options.InferenceConfigured && !inferencePrivate)
             blockers.Add($"The inference endpoint was rejected by private endpoint policy ({inferenceReason}).");
+        if (!inferencePrivate && deepSeekReadiness.Configured)
+            blockers.Add("DeepSeek is configured but has not demonstrated current provider readiness.");
         if (runtimeOptions.EmbeddingConfigured && !embeddingPrivate)
             blockers.Add($"The embedding endpoint was rejected by private endpoint policy ({embeddingReason}).");
         if (!runtimeOptions.EmbeddingConfigured && !lexicalOnlyRetrievalApproved)
@@ -103,9 +108,11 @@ public sealed class PulseAiPrivateRagService
             promptContractVersion = PulseAiPrivateRagPolicy.PromptContractVersion,
             schemaReady,
             enabled = options.Enabled,
-            inferenceConfigured = options.InferenceConfigured,
+            inferenceConfigured,
             inferenceEndpointPrivate = inferencePrivate,
             inferenceAuthenticationConfigured,
+            deepSeekInferenceConfigured = deepSeekReadiness.Configured,
+            deepSeekInferenceReady = deepSeekReadiness.Ready,
             embeddingConfigured = runtimeOptions.EmbeddingConfigured,
             embeddingEndpointPrivate = embeddingPrivate,
             vectorIndexConfigured,

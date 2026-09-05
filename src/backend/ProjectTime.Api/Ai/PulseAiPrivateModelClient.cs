@@ -10,15 +10,34 @@ public sealed class PulseAiPrivateModelClient
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<PulseAiPrivateModelClient> _logger;
     private readonly ProjectPulseDeepSeekProvider? _deepSeek;
+    private readonly ProjectPulseAiHealthRegistry? _health;
+    private readonly ProjectPulseAiConfiguration? _configuration;
 
     public PulseAiPrivateModelClient(
         IHttpClientFactory httpClientFactory,
         ILogger<PulseAiPrivateModelClient> logger,
-        ProjectPulseDeepSeekProvider? deepSeek = null)
+        ProjectPulseDeepSeekProvider? deepSeek = null,
+        ProjectPulseAiHealthRegistry? health = null,
+        ProjectPulseAiConfiguration? configuration = null)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _deepSeek = deepSeek;
+        _health = health;
+        _configuration = configuration;
+    }
+
+    internal (bool Configured, bool Ready) DeepSeekReadiness()
+    {
+        var configuration = _configuration?.DeepSeek;
+        var configured = _deepSeek is not null
+            && configuration?.Enabled == true && configuration.Configured
+            && configuration.Endpoint == ProjectPulseDeepSeekProvider.Endpoint
+            && configuration.Model == ProjectPulseDeepSeekProvider.Model;
+        if (!configured || _health is null) return (configured, false);
+        _health.ApplyConfiguration(configuration!);
+        return (true, _health.CanAttempt(CelarAiCapabilityTargets.DeepSeek, out _)
+            && _health.Snapshot(CelarAiCapabilityTargets.DeepSeek).Status == "available");
     }
 
     public async Task<PulseAiPrivateModelResult> GenerateAsync(
@@ -52,7 +71,11 @@ public sealed class PulseAiPrivateModelClient
 
         if (_deepSeek is null && ProjectPulseDeepSeekProvider.PrivateTarget == CelarAiCapabilityTargets.DeepSeek)
             return Failure("private_model_failed", "deepseek_not_registered", DateTimeOffset.UtcNow);
-        if (_deepSeek is not null && ProjectPulseDeepSeekProvider.PrivateTarget != CelarAiCapabilityTargets.CelarAi)
+        if (_configuration is not null) _health?.ApplyConfiguration(_configuration.DeepSeek);
+        var deepSeekReady = _health is null || _health.CanAttempt(CelarAiCapabilityTargets.DeepSeek, out _);
+        if (!deepSeekReady && ProjectPulseDeepSeekProvider.PrivateTarget == CelarAiCapabilityTargets.DeepSeek)
+            return Failure("private_model_failed", "deepseek_unavailable", DateTimeOffset.UtcNow);
+        if (_deepSeek is not null && deepSeekReady && ProjectPulseDeepSeekProvider.PrivateTarget != CelarAiCapabilityTargets.CelarAi)
         {
             var deepSeek = await _deepSeek.GenerateAsync(
                 new(request.FeatureCode, request.SystemInstruction, userInstruction, request.MaximumOutputTokens, (double)request.Temperature),
@@ -74,6 +97,13 @@ public sealed class PulseAiPrivateModelClient
             }
             if (ProjectPulseDeepSeekProvider.PrivateTarget == CelarAiCapabilityTargets.DeepSeek)
                 return Failure("private_model_failed", deepSeek.Code ?? "deepseek_invalid_json", DateTimeOffset.UtcNow);
+        }
+
+        if (_health is not null && CelarAiPrivateModelRuntime.Snapshot() is { } profile)
+        {
+            _health.ApplyPrivateConfiguration(profile);
+            if (!_health.CanAttempt(CelarAiCapabilityTargets.CelarAi, out var reason))
+                return Failure("private_model_unavailable", reason, DateTimeOffset.UtcNow);
         }
 
         if (!options.InferenceConfigured)

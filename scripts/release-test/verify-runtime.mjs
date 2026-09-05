@@ -640,6 +640,17 @@ async function run() {
     status: String(providerHealth.json?.status || "unknown"),
     providers: remoteProviderHealth,
   };
+  const deepSeekHealth = (providerHealth.json?.providers || [])
+    .find((item) => item?.provider === "deepseek_v4");
+  evidence.authenticatedChecks.deepSeekReadiness = {
+    enabled: deepSeekHealth?.enabled === true,
+    configured: deepSeekHealth?.configured === true,
+    probeStatus: String(deepSeekHealth?.probeStatus || "not_checked"),
+    diagnosticCode: String(deepSeekHealth?.lastProbeFailureCode || ""),
+  };
+  if (deepSeekHealth?.enabled && deepSeekHealth?.configured) {
+    assert(deepSeekHealth.probeStatus === "available", "Configured DeepSeek did not pass live readiness; inspect its sanitized provider health diagnostic.");
+  }
 
   const externalProductionProbe = await request("/api/ai-configuration/sanitized-external-fallback/production-test", {
     method: "POST",
@@ -793,6 +804,14 @@ async function run() {
     "Timesheet AI suggestion did not include a matching successful target decision.",
   );
   evidence.authenticatedChecks.timesheetWorkingOnTrainingSuggestion = "passed";
+  evidence.authenticatedChecks.timesheetProviderRoute = {
+    provider: timesheetSuggestion.json.provider,
+    decisions: timesheetSuggestion.json.targetDecisions.map((decision) => ({
+      target: decision.target,
+      outcome: decision.outcome,
+      code: decision.code,
+    })),
+  };
 
   const closeoutDraft = await request("/api/project-closeout/ai/communication", {
     method: "POST",

@@ -152,17 +152,14 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
             CelarAiCapabilityTargets.Local,
             StringComparison.OrdinalIgnoreCase);
         var privateDocumentRouteNotCompleted = hasAssociatedDocuments
-            && !string.Equals(
-                routed.Provider,
-                CelarAiCapabilityTargets.CelarAi,
-                StringComparison.OrdinalIgnoreCase);
+            && !CelarAiCapabilityTargets.IsPrivate(routed.Provider);
         var suggestion = routed.Outcome == ProjectPulseAiOutcomes.Refusal
             || noAiTargetCompleted
             || privateDocumentRouteNotCompleted
             ? string.Empty
             : FinalizeCustomerSuggestion(routed.Content, request);
         var routeWarning = privateDocumentRouteNotCompleted
-            ? "Private project documents were available, but the private Celar AI target did not complete. No external-provider or governed-template result was presented as a document-grounded AI suggestion."
+            ? "Private project documents were available, but no private AI provider completed the request. Review the provider route details."
             : noAiTargetCompleted
             ? "No configured AI target completed this request. The governed template was not presented as an AI suggestion. Review the route details, provider configuration, and privacy readiness, then try again."
             : routed.Warning;

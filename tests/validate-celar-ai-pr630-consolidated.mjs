@@ -87,7 +87,9 @@ const celarInternalTrustEvidenceCompatibilityMode =
   branchName === 'fix/celar-internal-trust-evidence-20260903';
 const deepSeekProviderMode = branchName === 'feature/deepseek-v4-dgx-primary-20260904';
 if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');
-const scopedCompatibilityMode = deepSeekProviderMode || systemwideReliabilityMode
+const aiRoutingSowRepairMode = branchName === 'fix/ai-routing-sow-regeneration-20260905';
+if (aiRoutingSowRepairMode) await import('./validate-ai-routing-sow-release-scope.mjs');
+const scopedCompatibilityMode = aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode
