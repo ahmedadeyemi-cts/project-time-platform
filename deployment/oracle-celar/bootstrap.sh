@@ -4,6 +4,7 @@ set -Eeuo pipefail
 REPOSITORY_URL='https://github.com/ahmedadeyemi-cts/project-time-platform.git'
 SOURCE_DIR='/opt/celar-ai/source'
 STATE_DIR='/var/lib/celar-ai'
+GITOPS_DRAIN_TIMEOUT_SECONDS=600
 
 fail() {
   echo "ERROR: $*" >&2
@@ -39,12 +40,37 @@ git -C "$SOURCE_DIR" checkout --detach "$TARGET_COMMIT"
 
 test -x "$SOURCE_DIR/deployment/oracle-celar/deploy.sh" || fail 'Oracle Celar deployment package is not present on main.'
 
-# A retry may inherit an enabled/active timer from a prior failed bootstrap.
-# Stop future GitOps triggers before entering the long deployment. If an older
-# reconciliation is already active, let its runtime lock drain rather than
-# racing a second mutation path. deploy.sh also holds the same mutation lock.
+# A retry may inherit an active timer from a prior successful/partial runtime.
+# Remember that state before stopping future triggers. If this bootstrap fails,
+# restore only a timer that was active on entry so recovery automation is not
+# silently disabled by a failed retry.
+GITOPS_TIMER_WAS_ACTIVE=false
+if systemctl is-active --quiet celar-gitops.timer; then
+  GITOPS_TIMER_WAS_ACTIVE=true
+fi
+
+restore_timer_on_failure() {
+  local status=$?
+  trap - EXIT INT TERM
+  if [[ "$status" -ne 0 && "$GITOPS_TIMER_WAS_ACTIVE" == true ]]; then
+    systemctl start celar-gitops.timer >/dev/null 2>&1 || true
+  fi
+  exit "$status"
+}
+trap restore_timer_on_failure EXIT INT TERM
+
 systemctl stop celar-gitops.timer >/dev/null 2>&1 || true
+
+# Let an already-running reconciliation leave the shared runtime mutation path,
+# but never wait forever. A stuck fetch/package/model operation must surface as
+# a bounded, diagnosable bootstrap failure.
+DRAIN_DEADLINE=$((SECONDS + GITOPS_DRAIN_TIMEOUT_SECONDS))
 while systemctl is-active --quiet celar-gitops.service; do
+  if (( SECONDS >= DRAIN_DEADLINE )); then
+    systemctl --no-pager --full status celar-gitops.service >&2 || true
+    journalctl -u celar-gitops.service -n 80 --no-pager >&2 || true
+    fail "Timed out after ${GITOPS_DRAIN_TIMEOUT_SECONDS}s waiting for active GitOps reconciliation to drain."
+  fi
   sleep 2
 done
 
@@ -55,11 +81,13 @@ printf '%s\n' "$TARGET_COMMIT" > "$STATE_DIR/gitops-applied-commit"
 printf '%s\n' "$TARGET_TREE" > "$STATE_DIR/gitops-applied-tree"
 chmod 0644 "$STATE_DIR/gitops-applied-commit" "$STATE_DIR/gitops-applied-tree"
 
-# Start polling only after the successful deployment has an applied-state
-# marker. The immediate service invocation should therefore converge to a no-op
-# unless main advanced during bootstrap.
+# Start polling only after a successful deployment has an applied-state marker.
+# The immediate service invocation should therefore converge to a no-op unless
+# main advanced while the bootstrap was running.
 systemctl enable --now celar-gitops.timer
 systemctl start celar-gitops.service
+
+trap - EXIT INT TERM
 
 echo "CELAR_ORACLE_BOOTSTRAP=PASS"
 echo "APPLIED_COMMIT=$TARGET_COMMIT"
