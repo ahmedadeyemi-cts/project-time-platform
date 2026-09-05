@@ -100,6 +100,10 @@ Manual maintenance execution, if added later, must be a separate explicitly conf
 
 ## Delivery sequence
 
+The Module 084 CI acceptance path uses the repository's canonical `npm run build`
+command so its generated-composition prerequisites run before browser-contract
+validation. A direct Vite invocation is not an equivalent acceptance test.
+
 1. Govern the Oracle updater at Sunday 1:00 AM `America/Chicago` and validate it in CI.
 2. Add a sanitized Oracle runtime status contract for engine/model/component versions plus last-update evidence.
 3. Add Pulse administrator read-only status display.
