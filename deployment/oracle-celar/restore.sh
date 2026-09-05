@@ -4,6 +4,7 @@ set -Eeuo pipefail
 RESTIC_ENV='/etc/celar-ai/backup.env'
 RECOVERY_ROOT='/var/lib/celar-ai/recovery'
 SNAPSHOT="${1:-latest}"
+BACKUP_TAG='celar-oracle'
 
 fail() {
   echo "ERROR: $*" >&2
@@ -28,8 +29,11 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TARGET="$RECOVERY_ROOT/$STAMP"
 install -d -m 0700 "$TARGET"
 
-restic snapshots --tag celar-oracle
-restic restore "$SNAPSHOT" --target "$TARGET"
+# This repository may be shared with other backup sets. Scope both discovery and
+# restore selection to the Celar tag so `latest` can never resolve to another
+# host/application's newest snapshot.
+restic snapshots --tag "$BACKUP_TAG"
+restic restore "$SNAPSHOT" --tag "$BACKUP_TAG" --target "$TARGET"
 
 cat > "$TARGET/RESTORE-NOTICE.txt" <<EOF
 Celar AI recovery snapshot staged at $STAMP.
@@ -41,4 +45,4 @@ signatures are intentionally not part of the disaster-recovery snapshot.
 EOF
 chmod 0600 "$TARGET/RESTORE-NOTICE.txt"
 
-echo "CELAR_RESTORE_STAGED=PASS SNAPSHOT=$SNAPSHOT TARGET=$TARGET"
+echo "CELAR_RESTORE_STAGED=PASS SNAPSHOT=$SNAPSHOT TAG=$BACKUP_TAG TARGET=$TARGET"
