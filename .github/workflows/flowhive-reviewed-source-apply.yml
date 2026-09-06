@@ -37,6 +37,7 @@ jobs:
           patterns = [
               r'src/backend/ProjectTime\.Api/Modules/ProjectFlowHive[A-Za-z0-9]*\.cs',
               r'src/backend/ProjectTime\.Api/Modules/ProjectPlanning(AiOrchestrator|DocumentResolver)\.cs',
+              r'src/backend/ProjectTime\.Api/Modules/CelarAiProductionPlatformModule\.cs',
               r'src/backend/ProjectTime\.Api/Ai/ProjectFlowHive[A-Za-z0-9]*\.cs',
               r'src/frontend/project-time-web/src/(ProjectFlowHive[A-Za-z0-9]*\.jsx|(?:flowhive-|project-flowhive-|use-flowhive-)[A-Za-z0-9.-]+)',
               r'database/(migrations|rollback)/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution)(?:_rollback)?\.sql',
