@@ -41,7 +41,7 @@ await Sql("""
     CREATE UNIQUE INDEX ux_test_active_actor ON project_flowhive_ai_planner_runs(project_id,actual_actor_user_id) WHERE status IN ('queued','processing','generating');
     CREATE TABLE project_intake_documents(project_intake_document_id UUID,project_id UUID,document_category TEXT,
         original_file_name TEXT,pulse_ai_processing_status TEXT,pulse_ai_processing_error_code TEXT,pulse_ai_active_version_id UUID,
-        work_register_document_id UUID,pulse_ai_effective_at TIMESTAMPTZ,uploaded_at TIMESTAMPTZ,is_active BOOLEAN);
+        work_register_document_id UUID,pulse_ai_effective_at TIMESTAMPTZ,uploaded_at TIMESTAMPTZ,is_active BOOLEAN,engineering_visible BOOLEAN);
     CREATE TABLE work_register_documents(work_register_document_id UUID,document_type TEXT,status TEXT,upload_source TEXT,stored_file_path TEXT);
     CREATE TABLE pulse_ai_document_versions(pulse_ai_document_version_id UUID,authority_status TEXT,index_status TEXT,source_sha256 TEXT,document_version TEXT);
     CREATE TABLE pulse_ai_document_chunks(pulse_ai_document_version_id UUID,is_active BOOLEAN,index_status TEXT,section_title TEXT,citation_anchor TEXT,chunk_text TEXT);
@@ -54,10 +54,13 @@ var project = Guid.NewGuid(); var actor = Guid.NewGuid();
 await Sql("INSERT INTO projects VALUES(@p); INSERT INTO app_users VALUES(@a);", ("p", project), ("a", actor));
 var seed = new ProjectFlowHivePlanRequest(project,"TEST-104","Synthetic execution test","Test customer","Test plan","draft",
     new DateOnly(2026,9,7),new DateOnly(2026,10,7),
-    [new(Guid.NewGuid(),null,"1.1",null,"Validate the test fixture","Test-only work package.",1,false,"ASAP",null,0m,2m,"not_started",Phase:"Plan")],
+    [new(Guid.NewGuid(),null,"1",null,"Plan","Phase summary.",0,false,"ASAP",null,0m,0m,"not_started",IsSummary:true,Phase:"Plan"),
+     new(Guid.NewGuid(),null,"1.1","1","Validate the test fixture","Test-only work package.",1,false,"ASAP",null,0m,2m,"not_started",Phase:"Plan")],
     [],[new("1.1",null,"Test role",100m,2m)],null,"sow-v1","Test note");
 var validation = ProjectFlowHiveScheduleEngine.Validate(seed);
 var schedule = ProjectFlowHiveScheduleEngine.Calculate(seed);
+if (!validation.Valid || !schedule.Valid)
+    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { validation.Issues, ScheduleIssues = schedule.Issues }));
 Check(validation.Valid && schedule.Valid, "real scheduler accepts execution fixture");
 var fingerprint = ProjectFlowHiveExecutionPolicy.Fingerprint(seed,actor,actor,"scope","comprehensive","source");
 Check(fingerprint == ProjectFlowHiveExecutionPolicy.Fingerprint(seed,actor,actor,"scope","comprehensive","source"), "input fingerprints are deterministic");

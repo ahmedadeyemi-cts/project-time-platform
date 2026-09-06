@@ -131,7 +131,29 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
 
         // Polling is deliberately read-only. The background worker owns document
         // re-evaluation, AI generation, and mutable working-copy persistence.
-        return RunResult(stored);
+        return await ReadRunResultAsync(connection, stored, context, cancellationToken);
+    }
+
+    private static async Task<IResult> ReadRunResultAsync(NpgsqlConnection connection, PlannerRun run,
+        HttpContext context, CancellationToken token)
+    {
+        if (run.GeneratedPlan is not null)
+        {
+            var access = await context.RequestServices.GetRequiredService<PulseAiPrivateRagService>()
+                .LoadAccessAsync(run.EffectiveUserId, token);
+            var current = await ProjectPlanningDocumentResolver.ReadCurrentAsync(connection, run.ProjectId, token);
+            if (!access.IsActive || !access.CanFlowHive || !current.ReadyForGeneration
+                || current.SelectedDocuments.Any(document => !document.EngineeringVisible)
+                || ProjectFlowHiveExecutionPolicy.SelectionFingerprint(current) != run.SourceSelectionFingerprint
+                || ProjectFlowHiveExecutionPolicy.VersionFingerprint(current) != run.SourceVersionFingerprint)
+            {
+                // Projection only: GET never changes the terminal state, evidence or deadlines.
+                return Results.Conflict(new { status = "flowhive_source_access_changed", runId = run.RunId,
+                    projectId = run.ProjectId, terminal = true, stateChanged = false,
+                    message = "The saved AI result refers to evidence that is no longer current or authorized. No source-derived content was returned." });
+            }
+        }
+        return RunResult(run);
     }
 
     internal static async Task<Guid> QueueForActorAsync(NpgsqlConnection connection, Guid projectId,
@@ -170,7 +192,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         command.Parameters.AddWithValue("effective", opened.Access.EffectiveUserId);
         if (await command.ExecuteScalarAsync(token) is not Guid runId)
             return Results.Ok(new { runId = (Guid?)null, terminal = true });
-        return RunResult((await LoadRunAsync(connection, projectId, runId, token))!);
+        return await ReadRunResultAsync(connection, (await LoadRunAsync(connection, projectId, runId, token))!, context, token);
     }
 
     private static async Task<IResult> CancelAsync(Guid projectId, Guid runId, HttpContext context, CancellationToken token)
@@ -182,7 +204,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         if (run is null || run.ActualUserId != opened.Access!.ActualUserId || run.EffectiveUserId != opened.Access.EffectiveUserId)
             return Results.NotFound(new { status = "flowhive_ai_planner_run_not_found" });
         await StopRunAsync(connection, runId, "cancelled", "Generation was cancelled. No late result can replace the working copy.", token);
-        return RunResult((await LoadRunAsync(connection, projectId, runId, token))!);
+        return await ReadRunResultAsync(connection, (await LoadRunAsync(connection, projectId, runId, token))!, context, token);
     }
 
     internal static async Task ExpireRunsAsync(CancellationToken token)
@@ -398,6 +420,14 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         if (ProjectFlowHiveExecutionPolicy.SelectionFingerprint(currentDocuments) != stored.SourceSelectionFingerprint)
         {
             await StopRunAsync(connection, stored.RunId, "source_changed", "The selected SOW or supporting document changed during generation. Start a new reviewed run.", cancellationToken);
+            return;
+        }
+
+        // Check pinned source visibility before any admission helper can normalize metadata.
+        if (stored.SourceVersionFingerprint.Length > 0
+            && ProjectFlowHiveExecutionPolicy.VersionFingerprint(currentDocuments) != stored.SourceVersionFingerprint)
+        {
+            await StopRunAsync(connection, stored.RunId, "source_access_changed", "The source version or private visibility changed. Existing work is preserved; no evidence was re-admitted automatically.", cancellationToken);
             return;
         }
 
@@ -742,6 +772,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         var authority = await ProjectPlanningAccessResolver.ResolveForActorAsync(connection, actor, projectId, "066", cancellationToken);
         var evidence = await ProjectPlanningDocumentResolver.ReadCurrentAsync(connection, projectId, cancellationToken);
         if (current is null || !authority.CanEditPlanner || !evidence.ReadyForGeneration
+            || evidence.SelectedDocuments.Any(document => !document.EngineeringVisible)
             || ProjectFlowHiveExecutionPolicy.SelectionFingerprint(evidence) != current.SourceSelectionFingerprint
             || ProjectFlowHiveExecutionPolicy.VersionFingerprint(evidence) != current.SourceVersionFingerprint)
         {

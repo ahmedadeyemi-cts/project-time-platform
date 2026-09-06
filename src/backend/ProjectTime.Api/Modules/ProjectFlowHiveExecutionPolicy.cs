@@ -34,5 +34,5 @@ public static class ProjectFlowHiveExecutionPolicy
 
     internal static string VersionFingerprint(ProjectPlanningDocumentResolution documents) =>
         Hash(JsonSerializer.Serialize(documents.SelectedDocuments.OrderBy(d => d.DocumentId).Select(d => new
-        { d.DocumentId, d.ActiveVersionId, d.ActiveSourceSha256, d.ActiveDocumentVersion, d.AuthorityStatus, d.IndexStatus })));
+        { d.DocumentId, d.ActiveVersionId, d.ActiveSourceSha256, d.ActiveDocumentVersion, d.AuthorityStatus, d.IndexStatus, d.EngineeringVisible })));
 }

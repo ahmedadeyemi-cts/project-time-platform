@@ -269,7 +269,8 @@ internal static class ProjectPlanningDocumentResolver
                             OR chunk.citation_anchor ILIKE '%service%'
                             OR chunk.chunk_text ILIKE '%scope of service%'
                             OR chunk.chunk_text ILIKE '%scope of work%')),
-                   COALESCE(version.source_sha256,''), COALESCE(version.document_version,'')
+                   COALESCE(version.source_sha256,''), COALESCE(version.document_version,''),
+                   COALESCE(document.engineering_visible,FALSE)
               FROM project_intake_documents document
               LEFT JOIN work_register_documents work_register
                 ON work_register.work_register_document_id=document.work_register_document_id
@@ -302,7 +303,7 @@ internal static class ProjectPlanningDocumentResolver
                 reader.GetFieldValue<DateTimeOffset>(13),
                 reader.GetFieldValue<DateTimeOffset>(14),
                 reader.GetInt32(15),
-                reader.GetInt32(16), reader.GetString(17), reader.GetString(18)));
+                reader.GetInt32(16), reader.GetString(17), reader.GetString(18), reader.GetBoolean(19)));
         }
         return rows;
     }
@@ -494,7 +495,8 @@ internal sealed record ProjectPlanningDocumentEvidence(
     int CitationCount,
     int ScopeCitationCount,
     string ActiveSourceSha256 = "",
-    string ActiveDocumentVersion = "")
+    string ActiveDocumentVersion = "",
+    bool EngineeringVisible = false)
 {
     private string NormalizedCategory => ProjectPlanningDocumentResolver.NormalizeCategory(Category);
     private string NormalizedWorkRegisterType => ProjectPlanningDocumentResolver.NormalizeCategory(WorkRegisterDocumentType);
