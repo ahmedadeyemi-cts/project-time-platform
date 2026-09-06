@@ -1,5 +1,7 @@
 name: Deploy System-wide Enterprise Reliability and Utilization to Protected Test
 
+run-name: Protected Test ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}
+
 on:
   push:
     branches: [main]
@@ -55,6 +57,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  actions: read
 
 concurrency:
   group: projectpulse-deploy-test
@@ -86,6 +89,15 @@ jobs:
       TOKEN_SECRET_NAME: celar-oracle-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
+      - name: Check out trusted main control plane for the PSA candidate
+        if: github.event_name == 'workflow_dispatch' && inputs.release_branch == 'feature/flowhive-enterprise-psa-revamp-20260906'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Check out exact authorized release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -119,10 +131,30 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Admit the exact reviewed PSA candidate using trusted main controls
+        id: psa_admission
+        if: github.event_name == 'workflow_dispatch' && inputs.release_branch == 'feature/flowhive-enterprise-psa-revamp-20260906'
+        working-directory: control
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RECOVER_PRIVATE_RUNTIME: ${{ inputs.recover_private_runtime }}
+        run: node scripts/release-test/flowhive-psa-admission.mjs
+
+      - name: Install isolated live-browser acceptance dependencies
+        if: steps.psa_admission.outputs.authorized == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m venv "$RUNNER_TEMP/flowhive-psa-browser"
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/pip" install playwright==1.57.0
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" -m playwright install --with-deps chromium
+
       - name: Guard exact source and validate release
         id: release
         shell: bash
         working-directory: release
+        env:
+          PSA_RELEASE_AUTHORIZED: ${{ steps.psa_admission.outputs.authorized }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -134,6 +166,10 @@ jobs:
               git fetch --no-tags origin main
               [[ "$(git rev-parse origin/main)" == "$TARGET_RELEASE_COMMIT" ]] \
                 || fail 'The requested merged-main SHA is not the current main branch head.'
+            elif [[ "$TARGET_RELEASE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+              [[ "$GITHUB_REF" == 'refs/heads/main' && "$PSA_RELEASE_AUTHORIZED" == 'true' ]] \
+                || fail 'The exact PSA candidate requires trusted main admission and passing exact-SHA CI.'
+              [[ "$(git rev-parse HEAD)" == "$TARGET_RELEASE_COMMIT" ]] || fail 'PSA candidate identity changed.'
             else
               [[ "$TARGET_RELEASE_BRANCH" == 'fix/shared-project-document-planning-20260819' ]] \
                 || fail 'Only the authorized FlowHive V2 candidate branch or exact merged main may use manual Protected-Test deployment.'
@@ -783,6 +819,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          if [[ "$TARGET_RELEASE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+            [[ "$GITHUB_REF" == 'refs/heads/main' ]] || exit 1
+            PROJECTPULSE_RELEASE_ROOT="$PWD" bash "$GITHUB_WORKSPACE/control/scripts/release-test/build-and-run-flowhive-psa-migrations.sh"
+          fi
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
           jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
@@ -888,8 +928,45 @@ jobs:
           bash scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$REVISION" '${{ steps.build.outputs.web_image }}' 60 10
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
+      - name: Verify PSA candidate health and the live SOW-to-WBS lifecycle
+        id: psa_live_uat
+        if: steps.psa_admission.outputs.authorized == 'true'
+        timeout-minutes: 20
+        shell: bash
+        working-directory: control
+        env:
+          PSA_RELEASE_AUTHORIZED: ${{ steps.psa_admission.outputs.authorized }}
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          BASE: ${{ steps.contract.outputs.base }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+          EXPECTED_API_IMAGE: ${{ steps.build.outputs.api_image }}
+          EXPECTED_WEB_IMAGE: ${{ steps.build.outputs.web_image }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$PSA_RELEASE_AUTHORIZED" == true && "$BASE" == 'https://phd-west-test.onenecklab.com' ]]
+          API_JSON="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" -o json --only-show-errors)"
+          jq -e --arg image "$EXPECTED_API_IMAGE" --arg source "$TARGET_RELEASE_COMMIT" '
+            .tags.environment == "test" and .properties.template.containers[0].image == $image
+            and ([.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value] == [$source])
+          ' <<<"$API_JSON" >/dev/null
+          jq -e --arg image "$EXPECTED_WEB_IMAGE" '.tags.environment == "test" and .properties.template.containers[0].image == $image' <<<"$WEB_JSON" >/dev/null
+          unset API_JSON WEB_JSON
+          ready=false
+          for attempt in $(seq 1 18); do
+            if curl -fsS --max-time 15 --proto '=https' -H 'Cache-Control: no-cache' "$BASE/health" | jq -e '.status == "healthy"' >/dev/null; then ready=true; break; fi
+            sleep 5
+          done
+          [[ "$ready" == true ]]
+          echo 'deployment_health_verified=true' >> "$GITHUB_OUTPUT"
+          jq -n --arg source "$TARGET_RELEASE_COMMIT" '{deploymentHealthVerified:true,sourceCommit:$source,productionMutation:false}' > "$EVIDENCE_DIR/deployment-health-verified.json"
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-psa-live-uat.py
+
       - name: Run protected-Test authenticated functional UAT
         id: uat
+        if: steps.psa_admission.outputs.authorized != 'true'
         shell: bash
         env:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
@@ -1546,6 +1623,7 @@ jobs:
 
       - name: Enable exact-run Module 025 protected-Test authorization fixture
         id: module025_fixture
+        if: steps.psa_admission.outputs.authorized != 'true'
         shell: bash
         working-directory: release
         run: |
@@ -1580,6 +1658,7 @@ jobs:
 
       - name: Run protected-Test Module 025 SOW/GSD generation lifecycle UAT
         id: module025_uat
+        if: steps.psa_admission.outputs.authorized != 'true'
         shell: bash
         working-directory: release
         env:
@@ -1643,7 +1722,7 @@ jobs:
           bash scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
 
       - name: Restore exact prior Test images after application failure
-        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && steps.uat.outputs.deployment_health_verified != 'true' }}
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' }}
         shell: bash
         working-directory: release
         run: |
@@ -1719,6 +1798,17 @@ jobs:
             echo
             echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
             echo '- Environment: protected Test only'
+            if [[ "$TARGET_RELEASE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+              echo '- Release lane: exact pre-merge PSA candidate; feature PR #872 remains unmerged'
+              [[ -f "$EVIDENCE_DIR/flowhive-psa-migrations.json" ]] && echo '- Migrations 103/104: applied and verified'
+              if jq -e '.status == "passed" and .functionalLifecycleVerified == true' "$EVIDENCE_DIR/flowhive-psa-live-uat.json" >/dev/null 2>&1; then
+                echo '- Live SOW-to-working-copy API and real browser reload: passed'
+              else
+                echo '- Live SOW-to-working-copy lifecycle: failed or not reached; inspect sanitized evidence'
+              fi
+              echo '- Actual per-provider model-call telemetry and semantic SOW/estimate approval: not yet established'
+              echo '- Full enterprise PSA feature acceptance: incomplete; this is not a release-completion claim'
+            fi
             echo '- Target: https://phd-west-test.onenecklab.com'
             [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, and 093 through 100: applied and verified' || echo '- Migrations 086, 088, and 093 through 100: not completed'
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: passed' || echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: not completed'

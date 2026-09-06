@@ -27,6 +27,12 @@ publish_mode() {
   printf 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=%s\n' "$mode"
 }
 
+if [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
+  BASE_SHA="$BASE" node tests/flowhive-psa-release-control.mjs
+  publish_mode FLOWHIVE_PSA_RELEASE_CONTROL
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
   node tests/validate-deepseek-release-scope.mjs
   publish_mode DEEPSEEK_V4_PROVIDER
