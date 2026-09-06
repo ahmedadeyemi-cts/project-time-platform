@@ -682,7 +682,11 @@ public sealed class CelarAiInternalDataService
                     cancellationToken);
                 if (projectResolution.Outcome != ProjectResolutionOutcome.Resolved || projectResolution.Project is null)
                 {
-                    outcome = BuildProjectResolutionAnswer(query, projectResolution);
+                    outcome = query.Kind == CelarAiInternalDataQueryKind.ProjectStakeholderLookup
+                        && projectResolution.Outcome == ProjectResolutionOutcome.NotFound
+                        ? await TryCustomerStakeholdersAsync(connection, effectiveUserId, access, query, cancellationToken)
+                            ?? BuildProjectResolutionAnswer(query, projectResolution)
+                        : BuildProjectResolutionAnswer(query, projectResolution);
                 }
                 else
                 {
@@ -945,6 +949,81 @@ public sealed class CelarAiInternalDataService
             .Select(value => value.Label)
             .ToArray();
         return new ProjectResolution(ProjectResolutionOutcome.NotFound, null, closest);
+    }
+
+    private static async Task<AnswerOutcome?> TryCustomerStakeholdersAsync(
+        NpgsqlConnection connection,
+        Guid effectiveUserId,
+        PulseAiSystemAccess access,
+        CelarAiInternalDataQuery query,
+        CancellationToken cancellationToken)
+    {
+        // Customer identity is discoverable here only through projects the
+        // effective user can already read. Never query an unscoped portfolio.
+        var sql = ScopeCte + """
+            SELECT client.client_id, client.client_name, client.client_code,
+                   project.project_code, project.project_name,
+                   pm.display_name, ae.display_name, sa.display_name
+            FROM scoped_projects_all project
+            JOIN clients client ON client.client_id = project.client_id
+            LEFT JOIN app_users pm ON pm.user_id = project.project_manager_user_id AND pm.is_active
+            LEFT JOIN app_users ae ON ae.user_id = project.account_executive_user_id AND ae.is_active
+            LEFT JOIN app_users sa ON sa.user_id = project.solution_architect_user_id AND sa.is_active
+            WHERE client.is_active
+              AND (regexp_replace(lower(trim(client.client_code)), '[^a-z0-9]+', '', 'g') = @customer
+                OR regexp_replace(lower(trim(client.client_name)), '[^a-z0-9]+', '', 'g') = @customer)
+            ORDER BY client.client_id, project.project_code, project.project_id
+            LIMIT 501;
+            """;
+        var rows = new List<(Guid Id, string Name, string Code, string Project, string? Owner)>();
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.CommandTimeout = 15;
+        AddScopeParameters(command, effectiveUserId, access);
+        command.Parameters.AddWithValue("customer", NormalizeIdentity(query.ProjectReference));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var ownerColumn = query.RequestedProjectRole switch
+        {
+            "project_manager" => 5,
+            "solution_architect" => 7,
+            _ => 6
+        };
+        while (await reader.ReadAsync(cancellationToken))
+            rows.Add((reader.GetGuid(0), reader.GetString(1), reader.IsDBNull(2) ? "" : reader.GetString(2),
+                $"{reader.GetString(3)} — {reader.GetString(4)}",
+                reader.IsDBNull(ownerColumn) ? null : reader.GetString(ownerColumn)));
+        if (rows.Count == 0) return null;
+
+        var label = query.RequestedProjectRole switch
+        {
+            "project_manager" => "Project Manager",
+            "solution_architect" => "Solution Architect",
+            _ => "Account Executive / Sales Rep"
+        };
+        var ambiguous = rows.Select(row => row.Id).Distinct().Count() != 1;
+        var truncated = rows.Count > 500;
+        var now = DateTimeOffset.UtcNow;
+        var seed = BuildProjectStakeholderAnswer(query, new ProjectCandidate(
+            Guid.Empty, rows[0].Code, rows[0].Name, "customer scope", "", null, null, now, now, null, null, null));
+        var answer = seed.Answer with
+        {
+            DirectConclusion = ambiguous
+                ? "More than one authorized customer matches that name or code. Specify the customer code."
+                : truncated
+                    ? "This customer has more than 500 accessible project records. Narrow the project scope to verify its recorded stakeholders."
+                    : $"Recorded {label} assignments for {rows[0].Name} ({rows[0].Code}) are listed by authorized project below.",
+            ExecutiveSummary = "Customer identity comes from the Customer Directory. These are project-level role assignments, not an inferred customer-wide owner.",
+            ScopeAndFilters = ["Exact stored customer code or name; effective-user project permissions enforced.", "Current role fields across accessible project records, including historical projects."],
+            CurrentState = ambiguous || truncated ? [] : rows.Select(row => $"{row.Project}: {row.Owner ?? "No active owner recorded"}.").ToArray(),
+            SourceEvidence = ["Customer Directory joined to authorized projects and active stakeholder identities at request time."],
+            KnownUnknownAndStaleValues = ["Customer-wide ownership is not inferred from project assignments. Records outside your scope are excluded."],
+            RecommendedActions = ambiguous || truncated ? ["Specify an exact customer code and project scope."] : [],
+            Limitations = ["This lookup reports recorded project ownership within your access scope."],
+            CitationIds = ambiguous || truncated ? [] : [1],
+            Confidence = ambiguous || truncated ? 0.2m : 0.99m,
+            ConfidenceExplanation = "Direct parameterized retrieval from authorized current database records; no model-inferred owner."
+        };
+        return new AnswerOutcome(ambiguous || truncated ? "partial" : "completed", answer,
+            ambiguous || truncated ? [] : [Source(1, "authorized_customer_project_stakeholders", "Customer and authorized project ownership", "021/019", "internal:celar-ai/customer-stakeholders", now, "Stored customer identity and permission-scoped project role relationships")], []);
     }
 
     private static async Task<AnswerOutcome> BuildProjectAnswerAsync(

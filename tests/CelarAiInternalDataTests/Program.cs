@@ -57,6 +57,14 @@ AssertProjectQuery(
     CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
     "P-D",
     "account_executive");
+foreach (var role in new[] { "Sales Rep", "Account Executive", "AE" })
+{
+    AssertProjectQuery(
+        $"Who is the {role} for GLH?",
+        CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
+        "GLH",
+        "account_executive");
+}
 AssertProjectQuery(
     "Who is the sales person for P-D?",
     CelarAiInternalDataQueryKind.ProjectStakeholderLookup,

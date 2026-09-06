@@ -551,6 +551,10 @@ if [[ "$HEAD_BRANCH" == 'fix/celar-hostname-runtime-20260905' ]]; then
   node tests/validate-protected-uat-recovery.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
 fi
+if [[ "$HEAD_BRANCH" == 'fix/celar-runtime-preflight-evidence-20260906' ]]; then
+  node tests/validate-celar-runtime-preflight-evidence-scope.mjs
+  PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
+fi
 if [[ "$HEAD_BRANCH" == 'fix/celar-sow-cpu-inference-20260905' ]]; then
   node tests/validate-celar-sow-cpu-inference-scope.mjs
   for authorized in .github/workflows/projectpulse-deploy-test.yml deployment/oracle-celar/deploy.sh deployment/oracle-celar/gateway/gateway.py deployment/oracle-celar/gateway/wsgi.py deployment/oracle-celar/release.json deployment/oracle-celar/caddy/Caddyfile deployment/oracle-celar/systemd/celar-ai-gateway.service; do
