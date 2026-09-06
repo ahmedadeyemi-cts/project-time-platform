@@ -1,0 +1,218 @@
+.flowhive-psa-panel,
+.flowhive-psa-export-matrix,
+.flowhive-psa-financial-summary,
+.flowhive-psa-status-extras,
+.flowhive-psa-reminders {
+  --flowhive-ink: #0b2b4b;
+  --flowhive-accent: #0076a8;
+  --flowhive-line: #cbd9e5;
+  --flowhive-soft: #f4f8fb;
+}
+
+.flowhive-psa-empty {
+  border: 1px dashed var(--flowhive-line, #cbd9e5);
+  border-radius: 12px;
+  padding: 18px;
+  color: #5b7086;
+  background: #f8fbfd;
+}
+
+.flowhive-psa-readiness {
+  border: 1px solid #e4c36a;
+  border-radius: 14px;
+  background: #fff8e8;
+  padding: 20px;
+}
+
+.flowhive-psa-readiness strong,
+.flowhive-psa-readiness p,
+.flowhive-psa-readiness code { display: block; margin-bottom: 8px; }
+
+.flowhive-psa-kanban {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(240px, 1fr));
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+
+.flowhive-psa-kanban-column {
+  min-width: 240px;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 14px;
+  background: var(--flowhive-soft);
+  overflow: hidden;
+}
+
+.flowhive-psa-kanban-column > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 14px;
+  color: var(--flowhive-ink);
+  background: #e9f1f6;
+  border-bottom: 1px solid var(--flowhive-line);
+}
+
+.flowhive-psa-kanban-column.in_progress > header { background: #e8f5fb; }
+.flowhive-psa-kanban-column.blocked > header { background: #fff2e8; }
+.flowhive-psa-kanban-column.complete > header { background: #ebf8ef; }
+
+.flowhive-psa-kanban-column > div {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.flowhive-psa-kanban-column article {
+  border: 1px solid #d5e0e8;
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+  box-shadow: 0 2px 8px rgba(11, 43, 75, 0.06);
+}
+
+.flowhive-psa-kanban-column article > span {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #57748f;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.flowhive-psa-kanban-column article h4 { margin: 6px 0; color: var(--flowhive-ink); }
+.flowhive-psa-kanban-column article p { margin: 0 0 9px; color: #60778e; font-size: 0.87rem; }
+.flowhive-psa-kanban-column article dl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin: 0 0 10px; }
+.flowhive-psa-kanban-column article dl div { min-width: 0; }
+.flowhive-psa-kanban-column article dt { font-size: 0.68rem; text-transform: uppercase; color: #75889a; }
+.flowhive-psa-kanban-column article dd { margin: 2px 0 0; font-size: 0.82rem; font-weight: 700; color: #283e54; overflow-wrap: anywhere; }
+.flowhive-psa-kanban-column article select { width: 100%; }
+
+.flowhive-psa-calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.flowhive-psa-calendar-toolbar strong { font-size: 1.2rem; color: var(--flowhive-ink); }
+.flowhive-psa-calendar-weekdays,
+.flowhive-psa-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); min-width: 900px; }
+.flowhive-psa-calendar-weekdays { border: 1px solid var(--flowhive-line); border-bottom: 0; border-radius: 12px 12px 0 0; overflow: hidden; }
+.flowhive-psa-calendar-weekdays strong { padding: 8px 10px; background: var(--flowhive-ink); color: #fff; text-align: center; font-size: 0.8rem; }
+.flowhive-psa-calendar-grid { border-left: 1px solid var(--flowhive-line); border-top: 1px solid var(--flowhive-line); }
+.flowhive-psa-calendar-grid > section { min-height: 126px; padding: 6px; border-right: 1px solid var(--flowhive-line); border-bottom: 1px solid var(--flowhive-line); background: #fff; }
+.flowhive-psa-calendar-grid > section.blank { background: #f5f7f9; }
+.flowhive-psa-calendar-grid > section > header { text-align: right; font-weight: 800; color: #536a80; margin-bottom: 5px; }
+.flowhive-psa-calendar-grid article { display: flex; gap: 5px; align-items: center; border-left: 3px solid var(--flowhive-accent); border-radius: 4px; padding: 3px 5px; margin: 3px 0; background: #edf7fb; font-size: 0.72rem; min-width: 0; }
+.flowhive-psa-calendar-grid article span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flowhive-psa-calendar-grid small { font-size: 0.72rem; color: #60778e; }
+
+.flowhive-psa-meeting-upload {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(190px, 1fr) minmax(240px, 2fr) auto auto;
+  align-items: end;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 14px;
+  background: var(--flowhive-soft);
+  margin-bottom: 14px;
+}
+
+.flowhive-psa-meeting-upload label,
+.flowhive-psa-reminder-grid label { display: grid; gap: 5px; font-size: 0.78rem; font-weight: 700; color: #50677d; }
+.flowhive-psa-check { display: flex !important; flex-direction: row !important; gap: 8px !important; align-items: center; }
+.flowhive-psa-check input { width: auto; }
+.flowhive-psa-meetings { display: grid; gap: 12px; }
+.flowhive-psa-meetings > article { border: 1px solid var(--flowhive-line); border-radius: 14px; padding: 14px; background: #fff; }
+.flowhive-psa-meetings > article > header { display: flex; justify-content: space-between; gap: 14px; }
+.flowhive-psa-meetings > article h4 { margin: 3px 0; color: var(--flowhive-ink); }
+.flowhive-psa-meetings > article header span,
+.flowhive-psa-meetings > article header small { color: #667d91; }
+.flowhive-psa-meetings > article header > strong { align-self: flex-start; border-radius: 999px; padding: 5px 9px; background: #eef3f6; font-size: 0.76rem; }
+.flowhive-psa-meetings > article header > strong.transcript-completed { background: #e7f7ec; color: #21663c; }
+.flowhive-psa-meetings > article header > strong.transcript-failed { background: #fdebec; color: #9b2c34; }
+.flowhive-psa-meeting-meta { display: flex; flex-wrap: wrap; gap: 16px; margin: 10px 0; font-size: 0.82rem; color: #61768a; }
+.flowhive-psa-meetings footer { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+.flowhive-psa-export-matrix,
+.flowhive-psa-financial-summary,
+.flowhive-psa-status-extras > section,
+.flowhive-psa-reminders {
+  border: 1px solid var(--flowhive-line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.flowhive-psa-export-matrix > header,
+.flowhive-psa-financial-summary > header,
+.flowhive-psa-status-extras > section > header,
+.flowhive-psa-reminders > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 13px;
+}
+
+.flowhive-psa-export-matrix header span,
+.flowhive-psa-financial-summary header span,
+.flowhive-psa-status-extras header span,
+.flowhive-psa-reminders header span { display: block; color: #51728b; text-transform: uppercase; font-weight: 800; font-size: 0.72rem; letter-spacing: 0.05em; }
+.flowhive-psa-export-matrix h3,
+.flowhive-psa-financial-summary h3,
+.flowhive-psa-status-extras h3,
+.flowhive-psa-reminders h3 { margin: 3px 0; color: var(--flowhive-ink); }
+.flowhive-psa-export-matrix header p,
+.flowhive-psa-financial-summary header p,
+.flowhive-psa-status-extras header p,
+.flowhive-psa-reminders header p { margin: 0; color: #657a8d; }
+
+.flowhive-psa-export-matrix > div { display: grid; grid-template-columns: repeat(3, minmax(250px, 1fr)); gap: 10px; }
+.flowhive-psa-export-matrix article { border: 1px solid #d8e2ea; border-radius: 12px; padding: 12px; background: #f9fbfd; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; }
+.flowhive-psa-export-matrix article h4 { margin: 0 0 4px; color: var(--flowhive-ink); }
+.flowhive-psa-export-matrix article p { margin: 0; color: #63798c; font-size: 0.84rem; }
+.flowhive-psa-export-matrix article footer { display: flex; gap: 8px; }
+
+.flowhive-psa-financial-summary > div { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 10px; }
+.flowhive-psa-financial-summary article { padding: 12px; border: 1px solid #d8e3eb; border-radius: 12px; background: #f8fbfd; }
+.flowhive-psa-financial-summary article span { display: block; font-size: 0.74rem; text-transform: uppercase; color: #61788d; font-weight: 800; }
+.flowhive-psa-financial-summary article strong { display: block; margin-top: 5px; color: var(--flowhive-ink); font-size: 1.1rem; }
+
+.flowhive-psa-status-extras { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; }
+.flowhive-psa-status-extras > section { margin-bottom: 0; min-width: 0; }
+.flowhive-psa-table-wrap { overflow-x: auto; }
+.flowhive-psa-table-wrap table { width: 100%; border-collapse: collapse; min-width: 720px; }
+.flowhive-psa-table-wrap th,
+.flowhive-psa-table-wrap td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid #e1e8ed; font-size: 0.8rem; }
+.flowhive-psa-table-wrap th { color: #fff; background: var(--flowhive-ink); }
+.flowhive-psa-status-extras details { border-top: 1px solid #e0e7ed; padding: 8px 0; }
+.flowhive-psa-status-extras summary { cursor: pointer; font-weight: 700; color: #304a62; }
+.flowhive-psa-status-extras pre { max-height: 280px; overflow: auto; padding: 10px; border-radius: 8px; background: #0f263b; color: #e4eef6; font-size: 0.72rem; }
+
+.flowhive-psa-reminder-grid { display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.flowhive-psa-reminders footer { margin-top: 10px; }
+.flowhive-psa-reminders aside { margin-top: 13px; border-radius: 10px; padding: 10px 12px; background: #f1f7fb; color: #49667e; }
+.flowhive-psa-reminders aside p { margin: 4px 0 0; }
+
+@media (max-width: 1180px) {
+  .flowhive-psa-kanban { grid-template-columns: repeat(4, 280px); }
+  .flowhive-psa-meeting-upload { grid-template-columns: 1fr 1fr; }
+  .flowhive-psa-export-matrix > div { grid-template-columns: repeat(2, minmax(230px, 1fr)); }
+  .flowhive-psa-financial-summary > div { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+  .flowhive-psa-status-extras { grid-template-columns: 1fr; }
+  .flowhive-psa-reminder-grid { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .flowhive-psa-meeting-upload,
+  .flowhive-psa-export-matrix > div,
+  .flowhive-psa-financial-summary > div,
+  .flowhive-psa-reminder-grid { grid-template-columns: 1fr; }
+}
