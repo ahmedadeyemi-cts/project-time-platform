@@ -14,6 +14,7 @@ ALTER TABLE project_flowhive_ai_planner_runs
     DROP COLUMN execution_contract, DROP COLUMN deadline_at, DROP COLUMN input_fingerprint,
     DROP COLUMN source_selection_fingerprint, DROP COLUMN source_version_fingerprint,
     DROP COLUMN expected_working_row_version, DROP COLUMN attempt_count, DROP COLUMN next_attempt_at,
-    DROP COLUMN phase_started_at, DROP COLUMN retry_document_processing;
+    DROP COLUMN phase_started_at, DROP COLUMN retry_document_processing,
+    DROP COLUMN saved_working_row_version, DROP COLUMN saved_working_revision;
 DELETE FROM schema_migrations WHERE migration_id='104_flowhive_bounded_ai_execution';
 COMMIT;

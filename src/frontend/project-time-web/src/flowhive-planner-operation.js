@@ -12,6 +12,8 @@ export function abortableDelay(milliseconds, signal) {
 export async function observePlanner({ projectId, initial, read, onUpdate, signal,
   delay = abortableDelay, now = Date.now, maximumObservationMs = 330000 }) {
   if (!projectId || !initial?.runId || initial.projectId !== projectId) throw new Error('Planner project/run identity mismatch.');
+  if (signal?.aborted) throw new DOMException('Observation stopped', 'AbortError');
+  if (typeof initial.terminal !== 'boolean') throw new Error('Planner response contract invalid.');
   const until = now() + maximumObservationMs;
   let result = initial;
   let failures = 0;
@@ -21,14 +23,15 @@ export async function observePlanner({ projectId, initial, read, onUpdate, signa
     if (signal?.aborted) throw new DOMException('Observation stopped', 'AbortError');
     try {
       const next = await read(`/api/project-flowhive/projects/${projectId}/ai-planner/runs/${initial.runId}`, signal);
-      if (next.projectId !== projectId || next.runId !== initial.runId) throw new Error('Planner response identity mismatch.');
+      if (!next || next.projectId !== projectId || next.runId !== initial.runId) throw new Error('Planner response identity mismatch.');
+      if (typeof next.terminal !== 'boolean') throw new Error('Planner response contract invalid.');
       if (signal?.aborted) throw new DOMException('Observation stopped', 'AbortError');
       result = next;
       failures = 0;
       onUpdate(result);
     } catch (error) {
-      if (signal?.aborted || error.name === 'AbortError' || error.message.includes('identity mismatch')
-        || [400, 401, 403, 404].includes(error.status) || ++failures >= 3) throw error;
+      if (signal?.aborted || error.name === 'AbortError' || error.message.includes('identity mismatch') || error.message.includes('contract invalid')
+        || (Number.isInteger(error.status) && ![408, 425, 429, 500, 502, 503, 504].includes(error.status)) || ++failures >= 3) throw error;
     }
   }
   return result;

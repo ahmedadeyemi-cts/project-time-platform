@@ -68,3 +68,36 @@ test('empty 204 replies remain valid', async () => {
   const response = await boundedFetch('/api/test', {}, async () => new Response(null, { status: 204 }));
   assert.equal(response.status, 204);
 });
+
+
+test('an already-aborted observation cannot publish even its initial state', async () => {
+  const controller = new AbortController(); controller.abort();
+  const updates = []; let calls = 0;
+  await assert.rejects(observePlanner({ projectId: 'project-a', initial, signal: controller.signal,
+    onUpdate: value => updates.push(value), read: async () => { calls++; return complete; }, delay: noDelay }), { name: 'AbortError' });
+  assert.equal(calls, 0); assert.deepEqual(updates, []);
+});
+test('stale source, expired evidence and invalid input are never retried', async () => {
+  for (const status of [400, 401, 403, 404, 409, 410, 422]) {
+    let calls = 0;
+    await assert.rejects(observePlanner({ projectId: 'project-a', initial, delay: noDelay, onUpdate: () => {},
+      read: async () => { calls++; throw Object.assign(new Error('review required'), { status }); } }), /review required/);
+    assert.equal(calls, 1, `HTTP ${status} must stop observation`);
+  }
+});
+test('transient read failures recover within the same run without starting new work', async () => {
+  for (const status of [408, 425, 429, 500, 502, 503, 504]) {
+    let calls = 0;
+    const result = await observePlanner({ projectId: 'project-a', initial, delay: noDelay, onUpdate: () => {},
+      read: async () => { calls++; if(calls === 1) throw Object.assign(new Error('temporary'), { status }); return complete; } });
+    assert.equal(result, complete); assert.equal(calls, 2);
+  }
+});
+test('malformed terminal flags cannot masquerade as a completed operation', async () => {
+  for (const terminal of [undefined, null, 'false', 'true', 1]) {
+    let calls = 0; const updates = [];
+    await assert.rejects(observePlanner({ projectId: 'project-a', initial, delay: noDelay,
+      onUpdate: value => updates.push(value), read: async () => { calls++; return { ...initial, terminal }; } }), /contract invalid/);
+    assert.equal(calls, 1); assert.deepEqual(updates, [initial]);
+  }
+});

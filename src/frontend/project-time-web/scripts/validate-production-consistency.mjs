@@ -132,7 +132,11 @@ const flowHive = text(join(frontendRoot, 'src/ProjectFlowHiveCenter.jsx'));
 for (const contract of [
   '/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs',
   'runAiPlannerOperation',
-  'const result = await runAiPlannerOperation();',
+  'await runAiPlannerOperation();',
+  'plan: seed, requestedOutcome',
+  'expectedWorkingRowVersion: loadedWorkingVersion.current',
+  'hasWorkingCopyExpectation: true',
+  'await followPlanner(result, projectId, startedEdit, controller)',
   '/api/project-flowhive/plans/drafts',
   'AI Planning Workspace',
   'Save immutable version',

@@ -804,6 +804,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             await StopRunAsync(connection, runId, "deadline_exceeded", "The execution deadline expired before save. Existing work is preserved.", cancellationToken);
             return;
         }
+        await RecordWorkingCopyReceiptAsync(connection, transaction, runId, workingCopy.RowVersion,
+            workingCopy.WorkingRevision, cancellationToken);
         var warnings = sourceWarnings
             .Concat([
                 "The generated plan was saved only as the mutable FlowHive working draft.",
@@ -828,6 +830,23 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             completed: true,
             transaction: transaction);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    // The receipt is part of the same transaction as the payload and terminal status.
+    // It lets the browser distinguish this result from a newer PM save on readback.
+    private static async Task RecordWorkingCopyReceiptAsync(NpgsqlConnection connection,
+        NpgsqlTransaction transaction, Guid runId, Guid rowVersion, int revision, CancellationToken token)
+    {
+        await using var command = new NpgsqlCommand($"""
+            UPDATE {RunTable} SET saved_working_row_version=@version,saved_working_revision=@revision
+            WHERE run_id=@run AND status IN ('queued','processing','generating')
+              AND deadline_at>clock_timestamp() AND saved_working_row_version IS NULL;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("run", runId);
+        command.Parameters.AddWithValue("version", rowVersion);
+        command.Parameters.AddWithValue("revision", revision);
+        if (await command.ExecuteNonQueryAsync(token) != 1)
+            throw new TimeoutException("The planner receipt could not be committed within its active execution budget.");
     }
 
     private static string FinalStatus(ProjectFlowHiveScheduleResult schedule) =>
@@ -1105,7 +1124,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                    COALESCE(validation_payload::text,''),blockers::text,warnings::text,
                    operation_logs::text,correlation_id,created_at,updated_at,completed_at,
                    deadline_at,expected_working_row_version,input_fingerprint,source_selection_fingerprint,
-                   source_version_fingerprint,attempt_count,phase_started_at,retry_document_processing
+                   source_version_fingerprint,attempt_count,phase_started_at,retry_document_processing,
+                   saved_working_row_version,saved_working_revision
             FROM {RunTable}
             WHERE run_id=@run_id AND project_id=@project_id;
             """, connection);
@@ -1139,7 +1159,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             reader.IsDBNull(20) ? null : reader.GetFieldValue<DateTimeOffset>(20),
             reader.IsDBNull(21) ? null : reader.GetGuid(21),
             reader.GetString(22), reader.GetString(23), reader.GetString(24), reader.GetInt16(25),
-            reader.GetFieldValue<DateTimeOffset>(26), reader.GetBoolean(27));
+            reader.GetFieldValue<DateTimeOffset>(26), reader.GetBoolean(27),
+            reader.IsDBNull(28) ? null : reader.GetGuid(28), reader.IsDBNull(29) ? null : reader.GetInt32(29));
     }
 
     private static object ToResponse(PlannerRun run)
@@ -1182,6 +1203,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             workingDraft = new
             {
                 persisted = workingDraftPersisted,
+                rowVersion = workingDraftPersisted ? run.SavedWorkingRowVersion : null,
+                workingRevision = workingDraftPersisted ? run.SavedWorkingRevision : null,
                 immutableVersionCreated = false,
                 baselineCreated = false,
                 reviewRequired = true
@@ -1368,7 +1391,9 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         string SourceVersionFingerprint,
         short AttemptCount,
         DateTimeOffset PhaseStartedAt,
-        bool RetryDocumentProcessing);
+        bool RetryDocumentProcessing,
+        Guid? SavedWorkingRowVersion,
+        int? SavedWorkingRevision);
 
     private sealed class PlannerConflict(string code, string message) : Exception(message)
     {

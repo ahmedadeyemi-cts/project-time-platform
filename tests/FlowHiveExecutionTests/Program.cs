@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using Npgsql;
 using ProjectTime.Api.Modules;
 
@@ -134,6 +135,7 @@ await using(var c=new NpgsqlConnection(cs))
     var saved=(Task)save.Invoke(null,new object?[] {c,transaction,project,seed with {Notes="must roll back"},actor,currentVersion,validation,schedule,CancellationToken.None})!;
     await saved;
     try {
+        await Invoke("RecordWorkingCopyReceiptAsync",c,transaction,expired,currentVersion,1,CancellationToken.None);
         await Invoke("UpdateRunAsync",c,expired,"completed","working_draft_ready",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,transaction);
         throw new Exception("Expired completion was accepted");
     } catch(TimeoutException) { await transaction.RollbackAsync(); Check(true,"deadline during commit rolls back the working-copy transaction"); }
@@ -141,6 +143,32 @@ await using(var c=new NpgsqlConnection(cs))
 Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@p",("p",project)))! == currentVersion,"failed finalization preserves previous working revision");
 await Invoke("ExpireRunsAsync",CancellationToken.None);
 Check((string)(await Sql("SELECT phase FROM project_flowhive_ai_planner_runs WHERE run_id=@r",("r",expired)))! == "deadline_exceeded","independent watchdog ends abandoned runs");
+Check(await Sql("SELECT saved_working_row_version FROM project_flowhive_ai_planner_runs WHERE run_id=@r",("r",expired)) is DBNull,
+    "failed transaction never leaves a successful readback receipt");
+var successful = await Queue("receipt verification",currentVersion);
+Guid savedVersion;
+int savedRevision;
+await using(var c=new NpgsqlConnection(cs))
+{
+    await c.OpenAsync(); await using var transaction=await c.BeginTransactionAsync();
+    var saved = (await Invoke("SaveWorkingCopyAsync",c,transaction,project,seed,actor,currentVersion,validation,schedule,CancellationToken.None))!;
+    savedVersion=(Guid)saved.GetType().GetProperty("RowVersion")!.GetValue(saved)!;
+    savedRevision=(int)saved.GetType().GetProperty("WorkingRevision")!.GetValue(saved)!;
+    await Invoke("RecordWorkingCopyReceiptAsync",c,transaction,successful,savedVersion,savedRevision,CancellationToken.None);
+    await Invoke("UpdateRunAsync",c,successful,"completed","working_draft_ready",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,transaction);
+    await transaction.CommitAsync();
+    var loaded=(await Invoke("LoadRunAsync",c,project,successful,CancellationToken.None))!;
+    var response=module.GetMethod("ToResponse",BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,[loaded]);
+    var projection=JsonSerializer.SerializeToElement(response,new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    var receipt=projection.GetProperty("workingDraft");
+    Check(receipt.GetProperty("persisted").GetBoolean(),"successful finalization exposes a committed working draft");
+    Check(receipt.GetProperty("rowVersion").GetGuid()==savedVersion && receipt.GetProperty("workingRevision").GetInt32()==savedRevision,
+        "API readback receipt identifies the exact committed working copy");
+}
+Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@p",("p",project)))! == savedVersion,
+    "saved working-copy row version reconciles with the terminal run receipt");
+try { await Sql("UPDATE project_flowhive_ai_planner_runs SET saved_working_revision=saved_working_revision+1 WHERE run_id=@r",("r",successful)); throw new Exception("Receipt mutation accepted"); }
+catch(PostgresException) { Check(true,"database prevents rewriting the committed readback receipt"); }
 try { await Sql(File.ReadAllText(Path.Combine(root,"database/rollback/104_flowhive_bounded_ai_execution_rollback.sql"))); throw new Exception("Destructive rollback was accepted"); }
 catch(PostgresException) { Check(true,"rollback preserves execution evidence after use"); }
 Console.WriteLine($"FLOWHIVE_EXECUTION_ASSERTIONS_PASSED={count}");

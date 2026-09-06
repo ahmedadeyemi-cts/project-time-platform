@@ -19,7 +19,9 @@ ALTER TABLE project_flowhive_ai_planner_runs
     ADD COLUMN IF NOT EXISTS attempt_count SMALLINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     ADD COLUMN IF NOT EXISTS phase_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    ADD COLUMN IF NOT EXISTS retry_document_processing BOOLEAN NOT NULL DEFAULT FALSE;
+    ADD COLUMN IF NOT EXISTS retry_document_processing BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS saved_working_row_version UUID NULL,
+    ADD COLUMN IF NOT EXISTS saved_working_revision INTEGER NULL;
 
 -- Runs created under the obsolete execution contract cannot overwrite a new working copy.
 UPDATE project_flowhive_ai_planner_runs
@@ -55,6 +57,11 @@ BEGIN
     END IF;
     IF OLD.source_version_fingerprint<>'' AND NEW.source_version_fingerprint<>OLD.source_version_fingerprint THEN
         RAISE EXCEPTION 'Planner source versions are pinned for the entire run.';
+    END IF;
+    IF OLD.saved_working_row_version IS NOT NULL AND (
+        NEW.saved_working_row_version IS DISTINCT FROM OLD.saved_working_row_version
+        OR NEW.saved_working_revision IS DISTINCT FROM OLD.saved_working_revision) THEN
+        RAISE EXCEPTION 'A committed working-copy receipt cannot be replaced.';
     END IF;
     IF NEW.attempt_count<OLD.attempt_count OR NEW.attempt_count>2 THEN
         RAISE EXCEPTION 'Planner attempt budget cannot be reset or exceeded.';

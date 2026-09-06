@@ -320,7 +320,7 @@ export default function ProjectFlowHiveCenter() {
   const [baselineNote, setBaselineNote] = useState('Reviewed with project delivery and engineering stakeholders.');
   const [gsdExcerpt, setGsdExcerpt] = useState('');
   const [sowExcerpt, setSowExcerpt] = useState('');
-  const [requestedOutcome, setRequestedOutcome] = useState('Create a reviewable implementation plan with detailed tasks, dependencies, risks, assumptions, milestones, acceptance, operational handoff, and closeout.');
+  const [requestedOutcome, setRequestedOutcome] = useState('Create a detailed SOW-grounded work breakdown in Plan, Design, Implement, Validate, and Release with task-specific steps, estimates, dependencies, risks, assumptions, acceptance, operational handoff, and closeout. Do not automatically create project milestones.');
   const [enterprise, setEnterprise] = useState(null);
   const [enterpriseError, setEnterpriseError] = useState(null);
   const [financials, setFinancials] = useState(null);
@@ -398,16 +398,20 @@ export default function ProjectFlowHiveCenter() {
   }
 
   async function loadWorkingCopy() {
-    if (!selectedProjectId || !enterprise?.workingCopy) return;
+    if (!selectedProjectId) return;
+    const isCurrent = captureWorkspaceOperation();
     if (dirty && !window.confirm('Discard unsaved edits and load the saved working copy?')) return;
     plannerObservation.current?.abort();
     displayingVersion.current = null;
     editEpoch.current += 1;
-    await loadEnterpriseWorkspace(selectedProjectId, true, editEpoch.current);
-    setActiveView('planner');
+    setError('');
+    const readback = await loadEnterpriseWorkspace(selectedProjectId, true, editEpoch.current);
+    if (!isCurrent()) return;
+    if (readback?.applied) setActiveView('planner');
+    else if (readback?.status === 'empty') setError('This project has no saved working copy yet. Your current edits were preserved.');
   }
 
-  async function loadEnterpriseWorkspace(projectId, applyWorkingCopy = false, expectedEdit = editEpoch.current) {
+  async function loadEnterpriseWorkspace(projectId, applyWorkingCopy = false, expectedEdit = editEpoch.current, expectedSavedVersion = null) {
     const sequence = ++workspaceLoadSequence.current;
     const scope = selectionEpoch.current;
     const isCurrent = () => projectRef.current === projectId && sequence === workspaceLoadSequence.current
@@ -420,15 +424,22 @@ export default function ProjectFlowHiveCenter() {
       return;
     }
     setEnterpriseError(null);
+    let readback = { status: 'unavailable', applied: false };
     try {
       const result = await getJson(`/api/project-flowhive/projects/${projectId}/enterprise`);
-      if (!isCurrent()) return;
+      if (!isCurrent()) return { status: 'stale', applied: false };
+      if (result.project?.projectId !== projectId || (result.workingCopy?.plan && result.workingCopy.plan.projectId !== projectId))
+        throw new Error('Saved working-copy project identity mismatch. No returned plan was applied.');
+      readback = { status: result.workingCopy?.plan ? 'loaded' : 'empty', applied: false };
+      const matchesSavedVersion = !expectedSavedVersion || result.workingCopy?.rowVersion === expectedSavedVersion;
+      if (!matchesSavedVersion) readback.status = 'newer_revision';
       workingCopyReady.current = true;
       if (displayingVersion.current?.projectId === projectId) loadedWorkingVersion.current = result.workingCopy?.rowVersion || null;
       setEnterprise(result);
       setControls({ ...defaultControls, ...(result.controls || {}) });
       setShareDraft((current) => ({ ...current, customerLabel: result.project?.customerName || current.customerLabel }));
-      if (applyWorkingCopy && !displayingVersion.current && expectedEdit === editEpoch.current && result.workingCopy?.plan) {
+      if (applyWorkingCopy && matchesSavedVersion && !displayingVersion.current && expectedEdit === editEpoch.current && result.workingCopy?.plan) {
+        readback.applied = true;
         setDraftPlan(result.workingCopy.plan);
         setSchedule(result.workingCopy.schedule || null);
         setValidation(result.workingCopy.validation || null);
@@ -456,6 +467,7 @@ export default function ProjectFlowHiveCenter() {
       if (!isCurrent()) return;
       setFinancials({ status: 'financial_data_unavailable', message: financialError.message, project: null });
     }
+    return readback;
   }
 
   useEffect(() => {
@@ -1050,8 +1062,19 @@ export default function ProjectFlowHiveCenter() {
       if (!isCurrent()) return;
       if (canApplyPlannerResult(projectId, projectRef.current, startedEdit, editEpoch.current, result)) {
         // Read back the committed working copy and derived schedule together. Never clear the successful schedule.
-        await loadEnterpriseWorkspace(projectId, true, startedEdit);
+        const readback = await loadEnterpriseWorkspace(projectId, true, startedEdit, result.workingDraft.rowVersion);
         if (!isCurrent()) return;
+        if (startedEdit !== editEpoch.current || displayingVersion.current) {
+          setNotice('The AI draft is saved, but newer local edits or a selected immutable version were preserved. Load the working copy explicitly to review it.');
+          return;
+        }
+        if (!readback?.applied) {
+          setNotice('Generation saved a draft; saved work-breakdown readback still requires attention.');
+          setError(readback?.status === 'newer_revision'
+            ? 'Another Project Manager saved a newer working copy after this AI run. Load the working copy to review the current revision; no old result was applied.'
+            : 'The AI draft was saved, but its work breakdown could not be reloaded. Use Load working copy to retry the read without generating another plan.');
+          return;
+        }
         setActiveView('planner');
         setNotice(result.status === 'completed_with_schedule_overrun'
           ? 'The detailed working draft is saved. Its calculated finish exceeds the target; review the critical path without shrinking effort.'
@@ -1079,6 +1102,7 @@ export default function ProjectFlowHiveCenter() {
     const controller = new AbortController();
     plannerObservation.current = controller;
     const startedEdit = editEpoch.current;
+    const isCurrent = captureWorkspaceOperation();
     setBusy('ai-planner'); setError('');
     try {
       let result;
@@ -1104,9 +1128,9 @@ export default function ProjectFlowHiveCenter() {
       setBusy('');
       await followPlanner(result, projectId, startedEdit, controller);
     } catch (failure) {
-      if (!controller.signal.aborted && projectRef.current === projectId) setError(failure.message);
+      if (!controller.signal.aborted && isCurrent()) setError(failure.message);
     } finally {
-      if (projectRef.current === projectId) setBusy('');
+      if (isCurrent() && plannerObservation.current === controller) setBusy('');
     }
   }
 
@@ -1261,7 +1285,7 @@ export default function ProjectFlowHiveCenter() {
         <div className="flowhive-view-panel">
           <div className="flowhive-planner-toolbar">
             <label>Canonical project<select value={selectedProjectId} onChange={(event) => chooseProject(event.target.value)}><option value="">Select a project</option>{projects.map((project) => <option key={project.projectId} value={project.projectId}>{project.projectCode} — {project.projectName}</option>)}</select></label>
-            <button type="button" onClick={createLocalDraft} disabled={!selectedProject || !canEditPlanner}>Create/reset draft</button><button type="button" onClick={loadWorkingCopy} disabled={!enterprise?.workingCopy || busy}>Load working copy</button>
+            <button type="button" onClick={createLocalDraft} disabled={!selectedProject || !canEditPlanner}>Create/reset draft</button><button type="button" onClick={loadWorkingCopy} disabled={!selectedProjectId || busy}>Load working copy</button>
             <button type="button" className="primary flowhive-ai-planner-button" aria-label="AI Planner" onClick={previewAiRequest} disabled={!selectedProjectId || Boolean(busy) || plannerObserved || !canEditPlanner}>{busy === 'ai-planner' ? 'Building from SOW…' : 'AI Planner'}</button>
             <button type="button" onClick={validatePlan} disabled={!selectedProjectId || busy}>Validate</button>
             <button type="button" onClick={calculateSchedule} disabled={!draftPlan || busy}>Calculate schedule</button>

@@ -96,7 +96,7 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
       - name: Test resumable observation, identity fencing and bounded network requests
-        run: node --test tests/flowhive-psa-operation.test.mjs
+        run: node --test tests/flowhive-psa-*.test.mjs
       - name: Install locked frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci

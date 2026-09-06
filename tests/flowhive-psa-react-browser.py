@@ -18,6 +18,7 @@ B = '22222222-2222-4222-8222-222222222222'
 RUN = '33333333-3333-4333-8333-333333333333'
 V1 = '44444444-4444-4444-8444-444444444444'
 V2 = '55555555-5555-4555-8555-555555555555'
+V3 = '88888888-8888-4888-8888-888888888888'
 ACTOR = '66666666-6666-4666-8666-666666666666'
 SAVED = '77777777-7777-4777-8777-777777777777'
 
@@ -42,14 +43,14 @@ def schedule(seed):
         'tasks':[{**t,'startDate':seed['projectStartDate'],'endDate':'2026-09-18','earliestStartIndex':0,'totalFloatWorkingDays':0,'isCritical':True}
                  for t in seed['tasks']]}
 
-async def main():
+async def main(readback_mode=None):
     async with async_playwright() as p:
         launch={'headless':True}
         if os.getenv('CHROME_PATH'):launch['executable_path']=os.environ['CHROME_PATH']
         browser=await p.chromium.launch(**launch)
         try:
             state={'plans':{A:plan(A),B:plan(B)},'versions':{A:V1,B:V1},'run':None,'posts':[],
-                   'complete':False,'late_schedule':False,'delayed':None,'view_as':False,'errors':[],'polls':0}
+                   'readback_mode':readback_mode,'complete':False,'late_schedule':False,'delayed':None,'view_as':False,'errors':[],'polls':0}
             page=await browser.new_page(viewport={'width':1440,'height':1000})
             page.set_default_timeout(5000)
             page.on('pageerror',lambda error:state['errors'].append(str(error)))
@@ -70,10 +71,18 @@ async def main():
                     body={'plan':frozen,'summary':{'projectId':A,'currentVersion':3},'schedule':schedule(frozen),'validation':{'valid':True,'issues':[]}}
                 elif path.endswith('/enterprise'):
                     pid=path.split('/')[4];seed=state['plans'][pid]
+                    completed = state['run'] and state['run'].get('terminal') and pid == A
+                    if completed and state['readback_mode']=='newer_revision':
+                        seed=plan(A,'Newer remote task');seed['projectStartDate']='2026-09-10'
+                        state['plans'][A]=seed;state['versions'][A]=V3
                     body={'project':{'projectId':pid,'customerName':'Synthetic customer'},
                         'access':{'canEditPlanner':not state['view_as'],'canAdministerPlanner':not state['view_as'],'canAdoptBaseline':not state['view_as'],'isViewAs':state['view_as']},
                         'workingCopy':{'plan':seed,'schedule':schedule(seed),'validation':{'valid':True,'issues':[]},'workingRevision':1,'rowVersion':state['versions'][pid]},
                         'raidItems':[],'statusReports':[],'shares':[],'sowEvidence':{'items':[]},'controls':{}}
+                    if completed and state['readback_mode']=='unavailable':
+                        status=503;body={'message':'Synthetic saved-working-copy readback failure'}
+                    if completed and state['readback_mode']=='wrong_project':
+                        body['workingCopy']['plan']={**seed,'projectId':B}
                 elif path.startswith('/api/project-financials/'):body={'status':'financial_data_unavailable','project':None}
                 elif path.endswith('/ai-planner/runs/latest'):body=state['run'] or {'runId':None,'terminal':True}
                 elif path.endswith('/ai-planner/runs') and request.method=='POST':
@@ -90,7 +99,7 @@ async def main():
                         new=copy.deepcopy(state['posts'][-1]['plan']);new['tasks']=plan(A,'Generated unique task')['tasks']
                         state['plans'][A]=new;state['versions'][A]=V2
                         state['run']={**state['run'],'terminal':True,'status':'completed','phase':'working_draft_ready','plan':new,'schedule':schedule(new),
-                            'workingDraft':{'persisted':True},'validation':{'valid':True,'issues':[]}}
+                            'workingDraft':{'persisted':True,'rowVersion':V2,'workingRevision':2},'validation':{'valid':True,'issues':[]}}
                     body=state['run'];status=200 if body['terminal'] else 202
                 elif path.endswith('/schedule/calculate'):
                     posted=request.post_data_json
@@ -155,6 +164,23 @@ async def main():
             assert state['posts'][0]['hasWorkingCopyExpectation'] is True
             print('PASSED: actual React start posts edited dates and exact working-copy revision',flush=True)
             state['complete']=True
+            if readback_mode:
+                await page.get_by_text('Generation saved a draft; saved work-breakdown readback still requires attention.',exact=True).wait_for()
+                assert await page.locator('input[value="Stored project task Plan"]').count()==1
+                assert not await page.locator('input[value="Generated unique task Plan"]').count()
+                assert 'work breakdown is saved and reloaded' not in await page.locator('body').inner_text()
+                assert len(state['posts'])==1
+                print(f'PASSED: {readback_mode} does not replace the displayed WBS or claim verified readback',flush=True)
+                state['readback_mode']=None
+                page.once('dialog',lambda dialog:dialog.accept())
+                await page.get_by_role('button',name='Load working copy',exact=True).click()
+                task='Newer remote task Plan' if readback_mode=='newer_revision' else 'Generated unique task Plan'
+                await page.locator(f'input[value="{task}"]').wait_for()
+                assert len(state['posts'])==1
+                assert await page.locator('.flowhive-work-row input[type=date]').first.input_value()=='2026-09-10'
+                assert not state['errors'],state['errors']
+                print(f'PASSED: {readback_mode} recovers by reading the saved copy without another AI request',flush=True)
+                return
             await page.locator('input[value="Generated unique task Plan"]').wait_for()
             assert await page.get_by_label('Start date',exact=True).input_value()=='2026-09-10'
             assert await page.locator('.flowhive-work-row input[type=date]').first.input_value()=='2026-09-10'
@@ -201,4 +227,8 @@ async def main():
             raise
         finally:await browser.close()
 
-if __name__=='__main__':asyncio.run(main())
+async def run_all():
+    for mode in (None,'unavailable','newer_revision','wrong_project'):
+        await main(mode)
+
+if __name__=='__main__':asyncio.run(run_all())
