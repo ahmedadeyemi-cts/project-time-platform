@@ -24,6 +24,8 @@ This change extends the post-PR-864 internal-first answer path. An entry in the 
 
 ## Evidence semantics
 
+Business questions without requested document context use private structured synthesis with their retrieved records. They do not enter the no-document Help procedure fallback. Explicit document/database questions use private RAG with the structured supplement. Operating instructions such as “How do I submit my timesheet?” retain procedure guidance without requiring a date-range query or owning-module data access.
+
 - HTTP failure bodies do not enter synthesis or summaries. Forbidden, failed, malformed, degraded, paginated, capped and budget-omitted evidence is unknown, never a fabricated zero.
 - Genuine empty successful time queries return zero from SQL. Recorded hours include draft and other statuses unless the answer explicitly selects the reported status breakdown.
 - Complete structured entries, provenance, scope and observation time are supplied to private RAG within a bounded budget. Omitting a required entry makes the combined answer partial. Retrieved content is data, not instructions.

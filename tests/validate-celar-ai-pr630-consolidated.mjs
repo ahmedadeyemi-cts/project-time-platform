@@ -88,7 +88,7 @@ const celarInternalTrustEvidenceCompatibilityMode =
   branchName === 'fix/celar-internal-trust-evidence-20260903';
 const deepSeekProviderMode = branchName === 'feature/deepseek-v4-dgx-primary-20260904';
 const customerPublicAnswerMode = branchName === 'fix/celar-public-answer-fallback-20260906';
-const enterpriseRetrievalMode = branchName === 'feature/celar-enterprise-retrieval-20260906';
+const enterpriseRetrievalMode = branchName === 'feature/celar-enterprise-retrieval-20260906' || branchName === 'fix/celar-enterprise-synthesis-20260906';
 if (enterpriseRetrievalMode) await import('./validate-celar-enterprise-retrieval-scope.mjs');
 if (customerPublicAnswerMode) await import('./validate-celar-customer-public-answer-scope.mjs');
 if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');

@@ -61,9 +61,11 @@ public static class CelarAiEnterpriseEvidenceCatalog
     public static IReadOnlyList<PulseAiSystemToolDefinition> Select(
         string question, PulseAiSystemIntentPlan plan, string? clientTimeZone = null)
     {
-        if (plan.IntentCode == "general_knowledge") return [];
+        if (plan.IntentCode == "general_knowledge" || IsProcedureQuestion(question)) return [];
         var selected = Adapters.Where(adapter => adapter.Signals.Any(signal => Matches(question, signal)))
-            .Where(adapter => !adapter.Weekly || !HasUnsupportedPeriod(question));
+            .Where(adapter => !adapter.Weekly || !HasUnsupportedPeriod(question))
+            .Where(adapter => adapter.Code != "enterprise_own_time" || !Matches(question,"timesheet")
+                || CelarAiEnterprisePeriod.Parse(question,clientTimeZone) is not null || HasUnsupportedPeriod(question));
         return selected.Select(adapter => Definition(adapter, question, clientTimeZone)).ToArray();
     }
 
@@ -73,7 +75,11 @@ public static class CelarAiEnterpriseEvidenceCatalog
         || Regex.Matches(question, @"\b\d{4}-\d{2}-\d{2}\b").Count > 1
         || (Regex.IsMatch(question,@"\b\d{4}-\d{2}-\d{2}\b") && CelarAiEnterprisePeriod.Parse(question,"UTC") is null);
 
-    public static bool NeedsPeriodClarification(string question) => HasUnsupportedPeriod(question)
+    public static bool IsProcedureQuestion(string question) => Regex.IsMatch(question,
+        @"^\s*(?:how\s+(?:do|can|should)\s+(?:i|we)|how\s+to|where\s+(?:do|can)\s+(?:i|we))\s+(?:submit|enter|edit|save|add|create|upload|download|approve|reject|open|view|see|find|navigate|configure|enable|disable|delete|remove|assign)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    public static bool NeedsPeriodClarification(string question) => !IsProcedureQuestion(question) && HasUnsupportedPeriod(question)
         && Adapters.Any(adapter => adapter.Weekly && adapter.Signals.Any(signal => Matches(question, signal)));
 
     public static bool IsEnterpriseTool(string code) => Adapters.Any(adapter => adapter.Code == code);

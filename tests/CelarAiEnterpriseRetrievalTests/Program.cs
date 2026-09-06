@@ -32,6 +32,23 @@ foreach (var (question, expected) in cases)
     Require(selected.All(tool => (tool.Method == "GET" || tool.Method == "INTERNAL") && tool.SafeReadOnly), "Only registered read adapters selected");
 }
 var publicQuestion = "Explain photosynthesis.";
+foreach(var procedure in new[] {"How do I submit my timesheet?", "How can I approve time for last month?", "Where can I see invoices?"})
+{
+    Require(CelarAiEnterpriseEvidenceCatalog.Select(procedure,PulseAiSystemKnowledgeCatalog.Analyze(procedure)).Count==0,
+        "Procedure guidance does not require business-record retrieval");
+    Require(!CelarAiEnterpriseEvidenceCatalog.NeedsPeriodClarification(procedure),
+        "Procedure guidance is not blocked by date-range requirements");
+}
+Require(!CelarAiEnterpriseEvidencePolicy.UseDocumentRag(false,"product_help",2),
+    "Retrieved business records use structured synthesis instead of the data-free procedure fallback");
+Require(CelarAiEnterpriseEvidenceCatalog.Select("How can we reduce our project costs?",PulseAiSystemKnowledgeCatalog.Analyze("How can we reduce our project costs?")).Any(tool=>tool.Code=="enterprise_financials"),
+    "Business analysis phrased as how can we still retrieves current financial evidence");
+Require(CelarAiEnterpriseEvidencePolicy.UseDocumentRag(true,"product_help",2),
+    "Explicit mixed document/database questions retain private RAG with structured evidence");
+Require(CelarAiEnterpriseEvidencePolicy.UseDocumentRag(false,"product_help",0),
+    "Procedure-only questions retain existing Help RAG behavior");
+Require(CelarAiEnterpriseEvidenceCatalog.Select("Show my timesheet",PulseAiSystemKnowledgeCatalog.Analyze("Show my timesheet"))
+    .All(tool=>tool.Code!="enterprise_own_time"),"Unqualified timesheet status uses the declared weekly snapshot without an unnecessary date-range read");
 Require(CelarAiInternalDataService.ParseQuestion("What is my team working on?") is null,
     "Team request reaches enterprise planner rather than the single-person resolver");
 Require(CelarAiInternalDataService.ParseQuestion("Who is the account executive for GLH and what is its budget?") is null,

@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
-const manifest = readFileSync(new URL('../.github/celar-enterprise-retrieval-files.txt', import.meta.url), 'utf8').trim().split('\n');
+const branch = process.env.GITHUB_HEAD_REF || git('branch','--show-current');
+const manifestName = branch === 'fix/celar-enterprise-synthesis-20260906'
+  ? 'celar-enterprise-synthesis-files.txt' : 'celar-enterprise-retrieval-files.txt';
+const manifest = readFileSync(new URL(`../.github/${manifestName}`, import.meta.url), 'utf8').trim().split('\n');
 assert.deepEqual(manifest, [...new Set(manifest)].sort(), 'Manifest must be sorted and unique');
 const base = process.env.BASE_SHA || git('merge-base', 'origin/main', 'HEAD');
 assert.match(base, /^[a-f0-9]{40}$/);
