@@ -8,6 +8,7 @@ on:
       - 'src/frontend/project-time-web/src/*[Ff]low[Hh]ive*'
       - 'tests/FlowHiveExecutablePlanTests/**'
       - 'tests/flowhive-psa-*.test.mjs'
+      - 'tests/flowhive-psa-*.py'
       - 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql'
       - '.github/workflows/flowhive-enterprise-psa-ci.yml'
   workflow_dispatch:
@@ -48,3 +49,17 @@ jobs:
       - name: Build the application
         working-directory: src/frontend/project-time-web
         run: npm run build
+  planner-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned browser test runner
+        run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Test WBS geometry in light and dark desktop and mobile layouts
+        run: python tests/flowhive-psa-planner-layout.py
