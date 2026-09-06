@@ -34,23 +34,33 @@ jobs:
           changes = json.loads(payload)
           if not isinstance(changes, list) or not 1 <= len(changes) <= 80:
               raise SystemExit('Invalid edit package')
-          patterns = [
-              r'src/backend/ProjectTime\.Api/Modules/ProjectFlowHive[A-Za-z0-9]*\.cs',
-              r'src/backend/ProjectTime\.Api/Modules/ProjectPlanning(AiOrchestrator|DocumentResolver)\.cs',
-              r'src/backend/ProjectTime\.Api/Modules/CelarAiProductionPlatformModule\.cs',
-              r'src/backend/ProjectTime\.Api/Ai/ProjectFlowHive[A-Za-z0-9]*\.cs',
-              r'src/frontend/project-time-web/src/(ProjectFlowHive[A-Za-z0-9]*\.jsx|(?:flowhive-|project-flowhive-|use-flowhive-)[A-Za-z0-9.-]+)',
-              r'src/frontend/project-time-web/scripts/validate-(module-066-project-flowhive|celar-ai-production-platform)\.mjs',
-              r'database/(migrations|rollback)/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution)(?:_rollback)?\.sql',
-              r'tests/(FlowHive[A-Za-z0-9]+/[A-Za-z0-9._-]+|flowhive-psa-[A-Za-z0-9._-]+)',
-              r'tests/(validate-flowhive-sow-evidence-autoadmission\.mjs|test-pulse-ai-runtime-job-query-shape\.sh)',
-              r'docs/modules/module-066-project-flowhive/[A-Za-z0-9._-]+'
-          ]
+          allowed = {
+              '.github/flowhive-enterprise-psa-release-files.txt',
+              '.github/workflows/celar-ai-production-platform-ci.yml',
+              '.github/workflows/flowhive-enterprise-psa-ci.yml',
+              '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+              '.github/workflows/projectpulse-release-test-control-ci.yml',
+              'database/migrations/104_flowhive_bounded_ai_execution.sql',
+              'database/rollback/104_flowhive_bounded_ai_execution_rollback.sql',
+              'docs/modules/module-066-project-flowhive/BOUNDED-PLANNER-VALIDATION.md',
+              'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh',
+              'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs',
+              'src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs',
+              'src/frontend/project-time-web/scripts/validate-production-consistency.mjs',
+              'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx',
+              'src/frontend/project-time-web/src/flowhive-planner-operation.js',
+              'tests/FlowHiveExecutionTests/Program.cs',
+              'tests/flowhive-psa-operation.test.mjs',
+              'tests/flowhive-psa-react-browser.py',
+              'tests/flowhive-psa-scope.mjs',
+              'tests/flowhive-psa-scope.test.mjs',
+              'tests/validate-celar-ai-pr630-consolidated.mjs',
+          }
           prepared = {}
           for change in changes:
               name = change['path']
               path = pathlib.Path(name)
-              if '..' in path.parts or name in prepared or not any(re.fullmatch(p,name) for p in patterns):
+              if '..' in path.parts or name in prepared or name not in allowed:
                   raise SystemExit('Out-of-scope or duplicate path: '+name)
               if path.is_symlink() or any(p.is_symlink() for p in path.parents):
                   raise SystemExit('Symbolic link is not permitted')
