@@ -1185,7 +1185,11 @@ jobs:
           [[ "$FLOWHIVE_RUN_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'FlowHive AI Planner did not return a durable run identifier.'
 
           FLOWHIVE_READY=false
-          for attempt in $(seq 1 120); do
+          attempt=0
+          # Durable DeepSeek + Oracle generation has a bounded 80-minute window.
+          FLOWHIVE_DEADLINE=$((SECONDS + 4800))
+          while (( SECONDS < FLOWHIVE_DEADLINE )); do
+            attempt=$(( ${attempt:-0} + 1 ))
             if jq -e '
               (.status == "completed" or .status == "completed_with_schedule_overrun")
               and .phase == "working_draft_ready"

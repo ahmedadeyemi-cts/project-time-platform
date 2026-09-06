@@ -28,13 +28,13 @@ gateway = SimpleNamespace(CHAT_TIMEOUT_SECONDS=manifest['chatTimeoutSeconds'], M
 request = SimpleNamespace(headers={})
 ns = dict(Any=object, os=os, gateway=gateway, request=request, jsonify=Response,
     time=SimpleNamespace(monotonic=lambda: clock[0]), CONTRACT_MODEL='gemma3:4b',
-    STRUCTURED_FEATURES={'sow_gsd_planning', 'project_flowhive_plan'},
+    STRUCTURED_FEATURES={'sow_gsd_planning', 'project_flowhive_plan', 'project_forge_plan_estimate'},
     STRUCTURED_ORDER=manifest['structuredGenerationOrder'], GENERAL_ORDER=manifest['generalGenerationOrder'],
     STRUCTURED_ATTEMPT_SECONDS=manifest['structuredModelAttemptSeconds'], GENERAL_ATTEMPT_SECONDS=manifest['generalModelAttemptSeconds'],
     SOW_CONTEXT_TOKENS=manifest['sowContextTokens'], SOW_ATTEMPT_SECONDS=manifest['sowModelAttemptSeconds'], SOW_TIMEOUT_SECONDS=manifest['sowTimeoutSeconds'],
     APPROVED_GENERATION_MODELS=set(manifest['localGenerationModels']))
 exec(compile(ast.Module(body=selected, type_ignores=[]), str(source), 'exec'), ns)
-for feature, expected in [('sow_gsd_planning',[3000,600]), ('project_flowhive_plan',[150,60,20]), ('help_assistant',[140,70,20])]:
+for feature, expected in [('sow_gsd_planning',[3000,600]), ('project_flowhive_plan',[3000,600]), ('project_forge_plan_estimate',[150,60,20]), ('help_assistant',[140,70,20])]:
     clock[0] = 0
     attempts.clear()
     request.headers = {'X-Pulse-AI-Feature':feature}

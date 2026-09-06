@@ -3,7 +3,7 @@
   "environment": "protected-test-oracle-celar",
   "hostname": "celarai.onenecklab.com",
   "architecture": "arm64",
-  "gatewayVersion": "1.1.5",
+  "gatewayVersion": "1.1.6",
   "gatewayBind": "127.0.0.1:8787",
   "generationModel": "gemma3:4b",
   "reasoningModel": "qwen3:4b-instruct",
