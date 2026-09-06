@@ -64,7 +64,7 @@ public sealed class ProjectPulseDeepSeekProvider(
                 },
                 // Consumer budgets describe final prose. DeepSeek reasoning
                 // shares max_tokens and must not consume that entire allowance.
-                max_tokens = CompletionBudget(request.MaxOutputTokens),
+                max_tokens = CompletionBudget(request.MaxOutputTokens, request.Feature),
                 stream = false
             }), Encoding.UTF8, "application/json");
             using var response = await clients.CreateClient("DeepSeekDgx").SendAsync(
@@ -114,8 +114,18 @@ public sealed class ProjectPulseDeepSeekProvider(
         _ => TimeSpan.FromMinutes(10)
     };
 
-    internal static int CompletionBudget(int finalOutputTokens) =>
-        (int)Math.Clamp((long)finalOutputTokens + 2_048, 2_048, 16_384);
+    internal static int CompletionBudget(int finalOutputTokens, string feature)
+    {
+        // Structured planning needs room for reasoning and the cited JSON plan.
+        // Keep interactive requests small and never accept a length-truncated result.
+        var planning = feature is CelarAiCapabilityCatalog.SowGsdPlanning
+            or CelarAiCapabilityCatalog.ProjectFlowHivePlan
+            or CelarAiCapabilityCatalog.ProjectForgePlanEstimate;
+        return (int)Math.Clamp(
+            (long)finalOutputTokens + (planning ? 8_192 : 2_048),
+            planning ? 16_384 : 2_048,
+            16_384);
+    }
 
     private static ProjectPulseAiProviderResult Failure(string code) => new(
         ProjectPulseAiProviders.DeepSeek, ProjectPulseAiOutcomes.Unavailable,

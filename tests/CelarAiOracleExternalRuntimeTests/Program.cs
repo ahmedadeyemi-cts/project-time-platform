@@ -69,6 +69,24 @@ try
     // Exercise the real transport handler without DNS or an inference service.
     var handlerType = typeof(PulseAiExternalHttpsRuntimePolicy).Assembly.GetType(
         "ProjectTime.Api.Ai.PulseAiPrivateSowInferenceBudgetHandler")!;
+    var cloneMethod = handlerType.GetMethod("CloneWithBudget", BindingFlags.NonPublic | BindingFlags.Static)!;
+    const string multiCitationPrompt = "Use scope [1], design [2], and acceptance evidence [3].";
+    foreach (var recovery in new[] { false, true })
+    {
+        using var source = new HttpRequestMessage(HttpMethod.Post, inference);
+        source.Headers.Add("X-Pulse-AI-Feature", CelarAiCapabilityCatalog.ProjectFlowHivePlan);
+        var body = JsonSerializer.Serialize(new {
+            max_tokens = 12000, stream = true,
+            messages = new[] { new { role = "user", content = multiCitationPrompt } }
+        });
+        using var cloned = (HttpRequestMessage)cloneMethod.Invoke(null, [source, body, 8192, recovery])!;
+        using var payload = JsonDocument.Parse(await cloned.Content!.ReadAsStringAsync());
+        Require(payload.RootElement.GetProperty("messages")[0].GetProperty("content").GetString() == multiCitationPrompt,
+            "FlowHive retains its exact multi-document citation prompt on primary and recovery paths");
+        Require(payload.RootElement.GetProperty("max_tokens").GetInt32() == 8192
+            && !payload.RootElement.GetProperty("stream").GetBoolean(),
+            "FlowHive retains the bounded Oracle transport contract");
+    }
     async Task<int> CountSowAttempts(Uri endpoint, bool cancelUpstream = false)
     {
         var transport = new SowTestTransport(cancelUpstream);

@@ -82,10 +82,23 @@ Check(!health.CanAttempt(CelarAiCapabilityTargets.CelarAi, out var disabledReaso
     && disabledReason == "provider_disabled", "A disabled Celar target must be skipped before consumer execution.");
 Console.WriteLine("DEEPSEEK_EVIDENCE_AND_HEALTH_REGRESSIONS=PASS");
 var budgetMethod = typeof(ProjectPulseDeepSeekProvider).GetMethod("CompletionBudget", BindingFlags.Static | BindingFlags.NonPublic)!;
-int Budget(int finalTokens) => (int)budgetMethod.Invoke(null, [finalTokens])!;
+int Budget(int finalTokens, string feature = "timesheet_description") =>
+    (int)budgetMethod.Invoke(null, [finalTokens, feature])!;
 Check(Budget(520) > 520, "Short timesheet requests must reserve tokens for reasoning as well as final prose.");
 Check(Budget(12_000) >= 12_000 && Budget(int.MaxValue) == 16_384,
     "Detailed scope retains its requested budget and oversized inputs remain bounded without integer overflow.");
+foreach (var planningFeature in new[] {
+    CelarAiCapabilityCatalog.SowGsdPlanning,
+    CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+    CelarAiCapabilityCatalog.ProjectForgePlanEstimate })
+{
+    Check(Budget(4_000, planningFeature) == 16_384,
+        "Structured planning reserves the bounded window for reasoning plus cited JSON.");
+    Check(Budget(int.MaxValue, planningFeature) == 16_384,
+        "Planning token arithmetic cannot overflow the bounded window.");
+}
+Check(Budget(520, "help_assistant") == 2_568,
+    "Interactive requests retain the existing small completion budget.");
 var readinessConfig = new ProjectPulseAiConfiguration();
 readinessConfig.ApplyStoredSecret(ProjectPulseAiProviders.DeepSeek, "test-only", "test", DateTimeOffset.UtcNow);
 readinessConfig.ApplyStoredEnabled(ProjectPulseAiProviders.DeepSeek, true);
