@@ -22,6 +22,9 @@ internal static class EnterpriseDatabaseChecks
             ('10000000-0000-0000-0000-000000000002','2026-08-31','draft',false,2.25),
             ('10000000-0000-0000-0000-000000000002','2026-09-01','approved',true,40),
             ('10000000-0000-0000-0000-000000000099','2026-08-01','approved',true,100);
+            INSERT INTO reporting_relationships(employee_user_id,manager_user_id,effective_start_date,effective_end_date) VALUES
+            ('10000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001',CURRENT_DATE,NULL),
+            ('10000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001',CURRENT_DATE-30,CURRENT_DATE-1);
             """, connection,transaction)) await setup.ExecuteNonQueryAsync();
         async Task<JsonDocument> Time(Guid effective, DateOnly start, DateOnly end)
         {
@@ -58,6 +61,10 @@ internal static class EnterpriseDatabaseChecks
             Check(scoped.RootElement.GetProperty("totalPeople").GetInt32()>0,"Authorized people query executes against actual schema");
             Check(admin.RootElement.GetProperty("totalPeople").GetInt32()>=scoped.RootElement.GetProperty("totalPeople").GetInt32(),"Portfolio scope does not reduce visible set");
             Check(!scoped.RootElement.GetProperty("hasMore").GetBoolean(),"Fixture directory fits declared limit");
+            var relationships = scoped.RootElement.GetProperty("records").EnumerateArray()
+                .Where(row=>row.GetProperty("user_id").GetGuid()==user && row.GetProperty("manager_user_id").ValueKind != JsonValueKind.Null).ToArray();
+            Check(relationships.Length==1 && relationships[0].GetProperty("effective_end_date").ValueKind==JsonValueKind.Null,
+                "Only current reporting relationships enter evidence; expired assignments are excluded");
         }
         await transaction.RollbackAsync();
         Console.WriteLine("CELAR_AI_ENTERPRISE_DATABASE=PASS");

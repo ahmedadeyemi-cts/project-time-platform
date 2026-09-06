@@ -125,13 +125,15 @@ SQL
 
 HOST_PORT="$(docker port "$CONTAINER" 5432/tcp | head -n 1)"
 HOST_PORT="${HOST_PORT##*:}"
-CELAR_AI_TEST_CONNECTION_STRING="Host=127.0.0.1;Port=$HOST_PORT;Database=$DB_NAME;Username=$DB_USER;Password=$DB_PASSWORD" \
-  dotnet run --project "$ROOT/tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj" --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
-
+# Run the complete-source suite before the legacy suite deliberately drops a source table.
 if [[ "${CELAR_AI_RUN_ENTERPRISE_RETRIEVAL:-0}" == 1 ]]; then
   CELAR_AI_TEST_CONNECTION_STRING="Host=127.0.0.1;Port=$HOST_PORT;Database=$DB_NAME;Username=$DB_USER;Password=$DB_PASSWORD" \
     dotnet run --project "$ROOT/tests/CelarAiEnterpriseRetrievalTests/CelarAiEnterpriseRetrievalTests.csproj" --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
 fi
+
+CELAR_AI_TEST_CONNECTION_STRING="Host=127.0.0.1;Port=$HOST_PORT;Database=$DB_NAME;Username=$DB_USER;Password=$DB_PASSWORD" \
+  dotnet run --project "$ROOT/tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj" --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+
 
 expect_failure normalized_duplicate 'duplicate key value' psql_exec -qc "INSERT INTO celar_ai_identity_aliases(user_id,alias_text) VALUES('10000000-0000-0000-0000-000000000002',' Kevin-Damisch ')"
 expect_failure invalid_verification 'chk_celar_ai_identity_alias_verification' psql_exec -qc "INSERT INTO celar_ai_identity_aliases(user_id,alias_text,is_verified) VALUES('10000000-0000-0000-0000-000000000002','K. Damisch',TRUE)"
