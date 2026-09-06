@@ -23,8 +23,11 @@ function formatUtc(value, timeZone) {
   if (Number.isNaN(date.getTime())) return 'Unavailable';
   return new Intl.DateTimeFormat(undefined, {
     timeZone,
-    dateStyle: 'medium',
-    timeStyle: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
     timeZoneName: 'short'
   }).format(date);
 }
@@ -34,8 +37,11 @@ function localFormat(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Unavailable';
   return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
     timeZoneName: 'short'
   }).format(date);
 }
