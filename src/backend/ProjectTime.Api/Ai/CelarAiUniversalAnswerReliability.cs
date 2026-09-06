@@ -477,15 +477,16 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             Math.Min(result.Answer.Confidence, Math.Min(score, confidenceCap)),
             0m,
             1m);
-        // A successful Module 064 provider response is useful public-answer
-        // content even when a changing fact could not be independently
-        // verified by an allowlisted live source. Preserve that content as an
-        // explicitly evidence-limited answer; never relabel it as verified.
-        // Pulse/private facts, missing provider output, and safety refusals keep
-        // the existing fail-closed replacement behavior.
+        // Stable public explanations may be useful without authoritative citations;
+        // never relabel it as verified. Changing facts still need current evidence.
+        // Only missing attribution may use this exception, never conflicts,
+        // stale evidence, calculation failures, or execution budget violations.
         var preserveEvidenceLimitedPublicProviderAnswer =
-            plan.QuestionClass is CelarAiAnswerQuestionClass.PublicCurrent
-                or CelarAiAnswerQuestionClass.PublicStable
+            plan.QuestionClass == CelarAiAnswerQuestionClass.PublicStable
+            && !plan.RequireDeterministicCalculation
+            && findings.All(finding => finding.Code is
+                "insufficient_authoritative_evidence" or "required_citation_missing"
+                or "material_claim_citation_support_missing")
             && result.Status.Equals("completed", StringComparison.OrdinalIgnoreCase)
             && result.ModelProvider is CelarAiCapabilityTargets.DeepSeek
                 or CelarAiCapabilityTargets.CelarAi
