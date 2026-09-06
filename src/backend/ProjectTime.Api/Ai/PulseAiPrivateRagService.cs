@@ -1568,6 +1568,7 @@ public sealed class PulseAiPrivateRagService
         {
             var phase = Module025DeliveryPhases[index];
             var feedback = string.Empty;
+            var validationDiagnostic = string.Empty;
             PulseAiPrivateFlowHivePlan? accepted = null;
             for (var attempt = 0; attempt < 2; attempt++)
             {
@@ -1586,9 +1587,19 @@ public sealed class PulseAiPrivateRagService
                 };
                 last = await generate(phaseRequest, cancellationToken);
                 inputCharacters += last.InputCharacters;
-                // Refusals and transport failures remain terminal for this private
-                // target; the shared router retains control of provider fallback.
-                if (!last.Succeeded) return last;
+                // Retry only a transient runtime failure, within the existing
+                // two-attempt phase budget. Retain validated earlier phases.
+                // Refusal, authentication, policy and other 4xx failures remain
+                // terminal; this never chooses or reorders providers.
+                if (!last.Succeeded)
+                {
+                    if (attempt == 0 && IsTransientModule025ModelFailure(last))
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                        continue;
+                    }
+                    return last;
+                }
                 try
                 {
                     accepted = ParseModule025PlanContent(last.Content, retrieval, [phase]);
@@ -1596,12 +1607,13 @@ public sealed class PulseAiPrivateRagService
                 }
                 catch (JsonException exception)
                 {
-                    feedback = $"The prior response failed validation ({Module025DetailedPlanDiagnosticCode(exception)}). Regenerate this phase with all required fields and at least two complete, distinct tasks.";
+                    validationDiagnostic = Module025DetailedPlanDiagnosticCode(exception);
+                    feedback = $"The prior response failed validation ({validationDiagnostic}). Regenerate this phase with all required fields and at least two complete, distinct tasks.";
                 }
             }
             if (accepted is null)
                 return last! with { Status = "private_model_failed", Content = string.Empty,
-                    DiagnosticCode = $"private_module025_phase_{phase.ToLowerInvariant()}_detail_invalid" };
+                    DiagnosticCode = $"{validationDiagnostic}_phase_{phase.ToLowerInvariant()}" };
             plans.Add(accepted);
         }
         var combined = plans[0] with
@@ -1632,6 +1644,13 @@ public sealed class PulseAiPrivateRagService
         return last! with { Content = content, InputCharacters = inputCharacters,
             OutputCharacters = content.Length, CompletedAt = DateTimeOffset.UtcNow };
     }
+
+    private static bool IsTransientModule025ModelFailure(PulseAiPrivateModelResult result) =>
+        result.Status == "private_model_failed"
+        && (result.DiagnosticCode is "private_model_timeout" or "private_model_http_502" or "private_model_http_503" or "private_model_http_504"
+            || result.DiagnosticCode.StartsWith("private_model_http_502_private_runtime_", StringComparison.Ordinal)
+            || result.DiagnosticCode.StartsWith("private_model_http_503_private_runtime_", StringComparison.Ordinal)
+            || result.DiagnosticCode.StartsWith("private_model_http_504_private_runtime_", StringComparison.Ordinal));
 
     private static PulseAiPrivateFlowHivePlan ParseModule025DetailedPlan(
         string content,

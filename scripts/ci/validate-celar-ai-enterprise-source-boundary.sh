@@ -15,7 +15,7 @@ if [[ "$HEAD_BRANCH" == 'feature/celar-enterprise-retrieval-20260906' || "$HEAD_
   node tests/validate-celar-enterprise-retrieval-scope.mjs
 fi
 
-if [[ "$HEAD_BRANCH" == 'fix/sow-generation-uat-20260906' ]]; then
+if [[ "$HEAD_BRANCH" == 'fix/sow-transport-prompt-20260906' || "$HEAD_BRANCH" == 'fix/sow-generation-uat-20260906' || "$HEAD_BRANCH" == 'fix/sow-phase-runtime-retry-20260906' ]]; then
   node tests/validate-sow-generation-uat-scope.mjs
 fi
 

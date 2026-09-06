@@ -196,6 +196,48 @@ var repairedResult = await RunPhases((request, token) =>
     return phaseModel(request, token);
 });
 Assert(repairedResult.Succeeded && repairCalls == 6, "module025_invalid_phase_repaired_then_complete");
+phaseCalls = 0;
+var transientCalls = 0;
+var transientResult = await RunPhases((request, token) =>
+{
+    transientCalls++;
+    // Fail after the Plan phase to prove earlier accepted work is retained.
+    if (transientCalls == 2)
+        return Task.FromResult(new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model",
+            "", 100, 0, "private_model_http_502", DateTimeOffset.UtcNow));
+    return phaseModel(request, token);
+});
+Assert(transientResult.Succeeded && transientCalls == 6 && phaseCalls == 5,
+    "module025_transient_phase_retry_preserves_prior_work");
+var exhaustedCalls = 0;
+var exhausted = await RunPhases((request, token) =>
+{
+    exhaustedCalls++;
+    return Task.FromResult(new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model",
+        "", 100, 0, "private_model_http_503", DateTimeOffset.UtcNow));
+});
+Assert(!exhausted.Succeeded && exhaustedCalls == 2, "module025_transient_retry_is_bounded");
+var unauthorizedCalls = 0;
+var unauthorized = await RunPhases((request, token) =>
+{
+    unauthorizedCalls++;
+    return Task.FromResult(new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model",
+        "", 100, 0, "private_model_http_401", DateTimeOffset.UtcNow));
+});
+Assert(!unauthorized.Succeeded && unauthorizedCalls == 1, "module025_authentication_failure_not_retried");
+var responsePolicy = typeof(PulseAiPrivateModelClient).Assembly.GetType("ProjectTime.Api.Ai.PulseAiPrivateModelResponsePolicy")!;
+var failureDiagnostic = responsePolicy.GetMethod("RuntimeFailureDiagnosticAsync", BindingFlags.Public | BindingFlags.Static)!;
+foreach (var (errorBody, expected) in new[]
+{
+    ("{\"error\":{\"code\":\"private_runtime_response_invalid\"}}", "private_model_http_502_private_runtime_response_invalid"),
+    ("{\"error\":{\"code\":\"private customer prompt content\"}}", "private_model_http_502"),
+    ("<html>private proxy details</html>", "private_model_http_502")
+})
+{
+    using var response = new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway) { Content = new StringContent(errorBody) };
+    var diagnostic = await (Task<string>)failureDiagnostic.Invoke(null, new object[] { response, CancellationToken.None })!;
+    Assert(diagnostic == expected, "module025_runtime_diagnostic_closed_allowlist");
+}
 using (var cancelled = new CancellationTokenSource())
 {
     cancelled.Cancel();
