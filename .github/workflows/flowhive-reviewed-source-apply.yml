@@ -1,0 +1,65 @@
+name: Apply reviewed FlowHive source patch
+on:
+  push:
+    branches: ['feature/flowhive-enterprise-psa-revamp-20260906']
+    paths: ['.github/flowhive-reviewed-source.patch']
+permissions:
+  contents: write
+concurrency:
+  group: flowhive-reviewed-source-apply-872
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.ref == 'refs/heads/feature/flowhive-enterprise-psa-revamp-20260906'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Validate and apply only the reviewed FlowHive source paths
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f .github/flowhive-reviewed-source.patch
+          python3 - <<'PY'
+          import pathlib, re, subprocess
+          patch = pathlib.Path('.github/flowhive-reviewed-source.patch')
+          text = patch.read_text()
+          if len(text) > 1500000 or any(x in text for x in ['GIT binary patch', 'rename from ', 'rename to ', 'new file mode 120000']):
+              raise SystemExit('Unsupported patch structure')
+          output = subprocess.check_output(['git','apply','--numstat',str(patch)], text=True)
+          paths = [line.split('\t',2)[2] for line in output.splitlines()]
+          patterns = [
+              r'src/backend/ProjectTime\.Api/Modules/ProjectFlowHive[A-Za-z0-9]*\.cs',
+              r'src/backend/ProjectTime\.Api/Modules/ProjectPlanning(AiOrchestrator|DocumentResolver)\.cs',
+              r'src/backend/ProjectTime\.Api/Ai/ProjectFlowHive[A-Za-z0-9]*\.cs',
+              r'src/frontend/project-time-web/src/(ProjectFlowHive[A-Za-z0-9]*\.jsx|(?:flowhive-|project-flowhive-|use-flowhive-)[A-Za-z0-9.-]+)',
+              r'database/(migrations|rollback)/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution)(?:_rollback)?\.sql',
+              r'tests/(FlowHive[A-Za-z0-9]+/[A-Za-z0-9._-]+|flowhive-psa-[A-Za-z0-9._-]+)',
+              r'docs/modules/module-066-project-flowhive/[A-Za-z0-9._-]+'
+          ]
+          if not paths or len(paths) > 80:
+              raise SystemExit('Invalid patch file count')
+          for path in paths:
+              if '..' in pathlib.PurePosixPath(path).parts or not any(re.fullmatch(p,path) for p in patterns):
+                  raise SystemExit('Out-of-scope source path: '+path)
+          subprocess.run(['git','apply','--check','--index',str(patch)],check=True)
+          subprocess.run(['git','apply','--index',str(patch)],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          print('Reviewed FlowHive source files applied:',len(paths))
+          PY
+      - name: Commit on the same feature branch without force or deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          branch='feature/flowhive-enterprise-psa-revamp-20260906'
+          expected="$(git rev-parse HEAD)"
+          actual="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          test "$actual" = "$expected" || { echo 'Branch advanced; refusing to overwrite another change.'; exit 1; }
+          git rm .github/flowhive-reviewed-source.patch
+          git config user.name 'FlowHive source automation'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(flowhive): apply reviewed PSA implementation batch'
+          git push origin "HEAD:refs/heads/$branch"
+          git rev-parse HEAD
