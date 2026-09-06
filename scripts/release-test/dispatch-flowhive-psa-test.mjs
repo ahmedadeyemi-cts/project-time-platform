@@ -30,6 +30,49 @@ async function request(path, method = 'GET', body) {
   assert.ok(response.ok, `GitHub dispatch operation failed: HTTP ${response.status}`);
   return response.status === 204 ? null : response.json();
 }
+function verifyWorkflow(workflow) {
+  assert.equal(workflow?.id, workflowId, 'PSA_WORKFLOW_IDENTITY_OR_STATE');
+  assert.equal(workflow.path, workflowPath, 'PSA_WORKFLOW_IDENTITY_OR_STATE');
+  assert.ok(['active', 'disabled_manually'].includes(workflow.state), 'PSA_WORKFLOW_IDENTITY_OR_STATE');
+  return workflow;
+}
+async function requireIdleRuns(api) {
+  for (const status of ['queued', 'in_progress', 'waiting', 'pending', 'requested']) {
+    for (let page = 1; page <= 10; page++) {
+      const runs = await api(`actions/workflows/${workflowId}/runs?status=${status}&per_page=100&page=${page}`);
+      assert.ok(Array.isArray(runs.workflow_runs), 'PSA_ACTIVE_RUN_INVENTORY_INVALID');
+      for (const run of runs.workflow_runs) {
+        if (run.status === 'completed') continue;
+        if (run.id === knownNonexecutingRun) {
+          const jobs = await api(`actions/runs/${run.id}/jobs?per_page=1`);
+          assert.ok(jobs.total_count === 0 && Array.isArray(jobs.jobs) && jobs.jobs.length === 0,
+            'PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE');
+          continue;
+        }
+        throw new Error('PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE');
+      }
+      if (runs.workflow_runs.length < 100) break;
+      assert.ok(page < 10, 'Active-run pagination exceeded the bounded admission limit.');
+    }
+  }
+}
+export async function inspectIdleController(api = request) {
+  const workflow = verifyWorkflow(await api(`actions/workflows/${workflowId}`));
+  await requireIdleRuns(api);
+  return { id: workflow.id, path: workflow.path, state: workflow.state, executableActiveRuns: 0,
+    requiresSealing: workflow.state === 'active' };
+}
+// The owner-authorized main supervisor holds the shared admission lock before
+// calling this. Only admissions are disabled; no run or cloud resource changes.
+export async function sealIdleController(api = request) {
+  const inspection = await inspectIdleController(api);
+  if (inspection.requiresSealing) await api(`actions/workflows/${workflowId}/disable`, 'PUT');
+  const sealed = verifyWorkflow(await api(`actions/workflows/${workflowId}`));
+  assert.equal(sealed.state, 'disabled_manually', 'PSA_ADMISSION_MUST_BEGIN_SEALED');
+  // Fail closed if another source admitted a run between inventory and sealing.
+  await requireIdleRuns(api);
+  return { ...inspection, state: sealed.state, requiresSealing: false };
+}
 async function main() {
   assert.equal(process.env.GITHUB_ACTOR, 'ahmedadeyemi-cts');
   assert.equal(process.env.GITHUB_EVENT_NAME, 'issue_comment');
@@ -43,26 +86,7 @@ async function main() {
   process.env.TARGET_RELEASE_BRANCH = candidateBranch;
   await authorize();
   const controlSha = process.env.GITHUB_SHA;
-  const workflow = await request(`actions/workflows/${workflowId}`);
-  assert.equal(workflow.id, workflowId);
-  assert.equal(workflow.path, workflowPath);
-  assert.equal(workflow.state, 'disabled_manually', 'Protected Test admissions must initially be sealed.');
-  for (const status of ['queued', 'in_progress', 'waiting', 'pending', 'requested']) {
-    for (let page = 1; page <= 10; page++) {
-      const runs = await request(`actions/workflows/${workflowId}/runs?status=${status}&per_page=100&page=${page}`);
-      for (const run of runs.workflow_runs) {
-        if (run.status === 'completed') continue;
-        if (run.id === knownNonexecutingRun) {
-          const jobs = await request(`actions/runs/${run.id}/jobs?per_page=1`);
-          assert.equal(jobs.total_count, 0, 'The previously quarantined run is no longer nonexecuting.');
-          continue;
-        }
-        throw new Error(`Another Protected Test deployment is active: ${run.id}`);
-      }
-      if (runs.workflow_runs.length < 100) break;
-      assert.ok(page < 10, 'Active-run pagination exceeded the bounded admission limit.');
-    }
-  }
+  await sealIdleController();
   const controlCheck = await request('git/ref/heads/main');
   assert.equal(controlCheck.object.sha, controlSha, 'Main changed during admission; re-review is required.');
   let resealed = false;
@@ -104,5 +128,8 @@ async function main() {
   console.log(`FLOWHIVE_PSA_CANDIDATE_DISPATCHED=${dispatched.runId}`);
 }
 if (process.argv[1]?.endsWith('/dispatch-flowhive-psa-test.mjs')) {
-  main().catch(error => { console.error(error.message); process.exitCode = 1; });
+  const operation = process.argv.length === 3 && process.argv[2] === '--inspect-only'
+    ? inspectIdleController().then(result => console.log(JSON.stringify(result)))
+    : main();
+  operation.catch(error => { console.error(error.message); process.exitCode = 1; });
 }

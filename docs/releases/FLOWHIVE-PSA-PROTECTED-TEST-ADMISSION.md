@@ -23,8 +23,12 @@ new application changes require a refreshed candidate and approval. The current
 feature branch is not renamed or implicitly approved by a prefix match.
 
 The supervisor shares the existing admission lock, refuses any executable active
-Protected Test deployment, enables the canonical workflow for one dispatch only,
-and reseals it. The previously quarantined zero-job run can be disregarded only
+Protected Test deployment, restores the admission fence if the canonical workflow
+is active but idle, verifies the sealed state and repeats the idle-run check,
+enables the canonical workflow for one dispatch only, and reseals it. Restoring
+this fence only disables workflow admissions; it never cancels or alters a run.
+The CI probe is strictly read-only and reports whether sealing is needed. The
+main-owned supervisor performs and verifies that sealing before any dispatch. The previously quarantined zero-job run can be disregarded only
 while it still has zero jobs. No run is cancelled. A lost dispatch response is an
 unknown outcome to inspect, never a reason to dispatch again automatically.
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, verifyDispatchedRun } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { parseCommand, verifyDispatchedRun, inspectIdleController, sealIdleController } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
@@ -64,4 +64,54 @@ test('environment job remains serialized and cannot publish source or target pro
   assert.throws(()=>verifyController(controller.replace('environment: test','environment: production')));
   assert.throws(()=>verifyController(controller.replace('cancel-in-progress: false','cancel-in-progress: true')));
   assert.throws(()=>verifyController(controller.replace('contents: read','contents: write')));
+});
+
+function controllerApi({state='active',runs=[],quarantinedJobs=0,metadata={},onDisable}={}) {
+  const calls=[];
+  const request=async (url,method='GET')=>{
+    calls.push({url,method});
+    if(url.endsWith('/disable') && method==='PUT') {state='disabled_manually';onDisable?.();return null;}
+    if(url==='actions/workflows/315562561')return {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state,...metadata};
+    if(url.includes('/runs?'))return {workflow_runs:runs};
+    if(url.includes('/jobs?'))return {total_count:quarantinedJobs,jobs:quarantinedJobs ? [{id:1}] : []};
+    throw new Error('UNEXPECTED_TEST_REQUEST');
+  };
+  return {request,calls,runs};
+}
+test('read-only probe reports active idle admissions without changing workflow state',async()=>{
+  const a=controllerApi();const result=await inspectIdleController(a.request);
+  assert.equal(result.requiresSealing,true);assert.equal(result.executableActiveRuns,0);
+  assert.ok(a.calls.every(c=>c.method==='GET'));
+});
+test('idle active controller is sealed and verified with one disable and no dispatch',async()=>{
+  const a=controllerApi();const result=await sealIdleController(a.request);
+  assert.equal(result.state,'disabled_manually');assert.equal(result.requiresSealing,false);
+  assert.deepEqual(a.calls.filter(c=>c.method!=='GET'),[{url:'actions/workflows/315562561/disable',method:'PUT'}]);
+});
+test('already sealed admissions remain read-only',async()=>{
+  const a=controllerApi({state:'disabled_manually'});await sealIdleController(a.request);
+  assert.ok(a.calls.every(c=>c.method==='GET'));
+});
+test('any executable active run blocks sealing; the quarantined id must still have zero jobs',async()=>{
+  for(const options of [{runs:[{id:123}]},{runs:[{id:33654881418}],quarantinedJobs:1}]) {
+    const a=controllerApi(options);await assert.rejects(sealIdleController(a.request),/ANOTHER_DEPLOYMENT/);
+    assert.ok(a.calls.every(c=>c.method==='GET'));
+  }
+  const a=controllerApi({runs:[{id:33654881418}]});await sealIdleController(a.request);
+  assert.equal(a.calls.filter(c=>c.method==='PUT').length,1);
+});
+test('wrong workflow identity or unknown state cannot be sealed',async()=>{
+  for(const metadata of [{id:42},{path:'.github/workflows/production.yml'},{state:'disabled_inactivity'}]) {
+    const a=controllerApi({metadata});await assert.rejects(sealIdleController(a.request),/IDENTITY_OR_STATE/);
+    assert.ok(a.calls.every(c=>c.method==='GET'));
+  }
+});
+test('a deployment that arrives while sealing blocks subsequent admission',async()=>{
+  const runs=[];const a=controllerApi({runs,onDisable:()=>runs.push({id:456})});
+  await assert.rejects(sealIdleController(a.request),/ANOTHER_DEPLOYMENT/);
+  assert.deepEqual(a.calls.filter(c=>c.method!=='GET').map(c=>c.url),['actions/workflows/315562561/disable']);
+});
+test('unverifiable active-run inventory cannot pass as idle',async()=>{
+  await assert.rejects(inspectIdleController(async url=> url.includes('/runs?')?{}:
+    {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active'}),/INVENTORY_INVALID/);
 });

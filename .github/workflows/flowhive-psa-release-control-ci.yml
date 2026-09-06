@@ -43,22 +43,12 @@ jobs:
           bash -n scripts/release-test/apply-flowhive-psa-migrations.sh
           bash -n scripts/release-test/build-and-run-flowhive-psa-migrations.sh
           git diff --check
-      - name: Confirm canonical deployment admissions are sealed without changing them
+      - name: Verify canonical Test identity and idle admissions without modifying state
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -Eeuo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/315562561" \
-            --jq '{id,path,state}' > "$RUNNER_TEMP/flowhive-psa-controller-state.json"
-          cat "$RUNNER_TEMP/flowhive-psa-controller-state.json"
-          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/projectpulse-deploy-test.yml" \
-            --jq '{id,path,state}'
-          for status in queued in_progress waiting pending requested; do
-            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/projectpulse-deploy-test.yml/runs?status=$status&per_page=100" \
-              --jq '.workflow_runs[] | {id,status,head_sha,head_branch,created_at}'
-          done
-          jq -e '.id == 315562561 and .path == ".github/workflows/projectpulse-deploy-test.yml" and .state == "disabled_manually"' \
-            "$RUNNER_TEMP/flowhive-psa-controller-state.json"
+          node scripts/release-test/dispatch-flowhive-psa-test.mjs --inspect-only
   migrations:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
