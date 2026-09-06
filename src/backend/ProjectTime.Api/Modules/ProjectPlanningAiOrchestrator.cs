@@ -104,6 +104,33 @@ internal static class ProjectPlanningAiOrchestrator
                 ]).ToArray());
         }
 
+        // Preserve the terminal route outcome before evaluating evidence coverage.
+        // A refusal is not a missing-document problem and must never trigger retry.
+        if (composition.Status == "celar_ai_solution_draft_refused")
+        {
+            var provider = composition.SelectedTarget switch
+            {
+                CelarAiCapabilityTargets.DeepSeek => "DeepSeek",
+                CelarAiCapabilityTargets.CelarAi => "Celar AI",
+                CelarAiCapabilityTargets.Claude => "Claude",
+                CelarAiCapabilityTargets.OpenAi => "OpenAI",
+                _ => "The selected AI provider"
+            };
+            var message = $"{provider} reported a safety refusal. Generation stopped without provider failover, automatic retry, or changes to the planning draft. Use this run's correlation ID to review the provider diagnostic.";
+            return new ProjectPlanningGenerationResult(
+                false,
+                "project_planning_safety_refusal",
+                message,
+                composition,
+                null,
+                null,
+                null,
+                [message],
+                composition.Warnings.Concat(documents.Warnings)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray());
+        }
+
         var currentDocumentIds = documents.CurrentDocumentIds;
         var currentCitations = composition.Citations
             .Where(citation => currentDocumentIds.Contains(citation.DocumentId))

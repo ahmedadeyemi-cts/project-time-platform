@@ -372,6 +372,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             || generation.Validation is null
             || generation.Schedule is null)
         {
+            var refused = generation.Status == "project_planning_safety_refusal";
             var transient = generation.Status == "project_planning_ai_temporarily_unavailable";
             var priorRetryCount = stored.Logs.Count(log =>
                 log.StartsWith("AI route retry ", StringComparison.Ordinal));
@@ -385,7 +386,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 connection,
                 stored.RunId,
                 retry ? "processing" : "needs_attention",
-                retry ? "ai_route_retry" : "evidence_review",
+                retry ? "ai_route_retry" : refused ? "safety_refusal" : "evidence_review",
                 retry ? 70 : 100,
                 generation.MissingEvidence,
                 generation.Warnings,
