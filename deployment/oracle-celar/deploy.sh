@@ -59,6 +59,7 @@ PDF_RASTER_MAX_EDGE="$(jq -r '.pdfRasterMaxEdge' "$MANIFEST")"
 OCR_TOTAL_TIMEOUT_SECONDS="$(jq -r '.ocrTotalTimeoutSeconds' "$MANIFEST")"
 SOW_MODEL_ATTEMPT_SECONDS="$(jq -r '.sowModelAttemptSeconds | join(",")' "$MANIFEST")"
 SOW_TIMEOUT_SECONDS="$(jq -r '.sowTimeoutSeconds' "$MANIFEST")"
+SOW_CONTEXT_TOKENS="$(jq -r '.sowContextTokens' "$MANIFEST")"
 CHAT_TIMEOUT_SECONDS="$(jq -r '.chatTimeoutSeconds' "$MANIFEST")"
 EMBEDDING_TIMEOUT_SECONDS="$(jq -r '.embeddingTimeoutSeconds' "$MANIFEST")"
 LOCK_WAIT_SECONDS="$(jq -r '.runtimeMutationLockWaitSeconds' "$MANIFEST")"
@@ -102,8 +103,9 @@ jq -e '
   (.generalModelAttemptSeconds | add) <= .chatTimeoutSeconds and
   (.sowModelAttemptSeconds | length) == (.structuredGenerationOrder | length) and
   (.sowModelAttemptSeconds | all(. >= 10)) and
-  (.sowModelAttemptSeconds | add) < .sowTimeoutSeconds and
-  .sowTimeoutSeconds <= 640 and
+  (.sowModelAttemptSeconds | max) < .sowTimeoutSeconds and
+  .sowTimeoutSeconds <= 3600 and
+  .sowContextTokens == 16384 and
   .modelMaintenance.cadence == "weekly" and
   .modelMaintenance.timeZone == "America/Chicago" and
   .modelMaintenance.automaticEngineUpdate == true and
@@ -288,6 +290,7 @@ CELAR_OCR_TOTAL_TIMEOUT_SECONDS=$OCR_TOTAL_TIMEOUT_SECONDS
 CELAR_CHAT_TIMEOUT_SECONDS=$CHAT_TIMEOUT_SECONDS
 CELAR_SOW_MODEL_ATTEMPT_SECONDS=$SOW_MODEL_ATTEMPT_SECONDS
 CELAR_SOW_TIMEOUT_SECONDS=$SOW_TIMEOUT_SECONDS
+CELAR_SOW_CONTEXT_TOKENS=$SOW_CONTEXT_TOKENS
 CELAR_EMBED_TIMEOUT_SECONDS=$EMBEDDING_TIMEOUT_SECONDS
 EOF
 chown root:celar-ai "$RUNTIME_ENV_FILE"

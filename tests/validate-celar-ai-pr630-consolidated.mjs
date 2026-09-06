@@ -147,13 +147,15 @@ const protectedUatRecoveryMode = branchName === 'fix/protected-uat-recovery-and-
 if (protectedUatRecoveryMode) await import('./validate-protected-uat-recovery-scope.mjs');
 const hostnameRecoveryMode = branchName === 'fix/celar-hostname-runtime-20260905';
 if (hostnameRecoveryMode) await import('./validate-celar-hostname-runtime-scope.mjs');
+const sowCpuInferenceMode = branchName === 'fix/celar-sow-cpu-inference-20260905';
+if (sowCpuInferenceMode) await import('./validate-celar-sow-cpu-inference-scope.mjs');
 const sowRuntimeDeadlinesMode = branchName === 'fix/celar-sow-runtime-deadlines-20260905';
 if (sowRuntimeDeadlinesMode) await import('./validate-celar-sow-runtime-deadlines-scope.mjs');
 const oracleTokenBudgetMode = branchName === 'fix/celar-oracle-token-budget-20260905';
 if (oracleTokenBudgetMode) await import('./validate-celar-oracle-token-budget-scope.mjs');
 const routedModelReadinessMode = branchName === 'fix/celar-routed-model-readiness-20260905';
 if (routedModelReadinessMode) await import('./validate-celar-routed-model-readiness-scope.mjs');
-const scopedCompatibilityMode = sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const scopedCompatibilityMode = sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

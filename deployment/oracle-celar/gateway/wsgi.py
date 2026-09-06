@@ -136,7 +136,7 @@ def _order(name: str, default: list[str]) -> list[str]:
     return result
 
 
-def _budgets(name: str, default: list[int], expected: int, deadline_seconds: int | None = None) -> list[int]:
+def _budgets(name: str, default: list[int], expected: int, deadline_seconds: int | None = None, shared_deadline: bool = False) -> list[int]:
     raw = os.environ.get(name, "").strip()
     try:
         values = [int(value.strip()) for value in raw.split(",") if value.strip()] if raw else list(default)
@@ -144,7 +144,7 @@ def _budgets(name: str, default: list[int], expected: int, deadline_seconds: int
         raise RuntimeError(f"Invalid model-attempt budget: {name}") from exc
     if len(values) != expected or any(value < 10 for value in values):
         raise RuntimeError(f"Model-attempt budget does not match route order: {name}")
-    if sum(values) > (gateway.CHAT_TIMEOUT_SECONDS if deadline_seconds is None else deadline_seconds):
+    if (max(values) if shared_deadline else sum(values)) > (gateway.CHAT_TIMEOUT_SECONDS if deadline_seconds is None else deadline_seconds):
         raise RuntimeError(f"Model-attempt budget exceeds end-to-end chat timeout: {name}")
     return values
 
@@ -167,12 +167,16 @@ GENERAL_ATTEMPT_SECONDS = _budgets(
     [360, 240, 180],
     len(GENERAL_ORDER),
 )
-SOW_TIMEOUT_SECONDS = int(os.environ.get("CELAR_SOW_TIMEOUT_SECONDS", "640"))
-if not 1 <= SOW_TIMEOUT_SECONDS <= 640:
+SOW_TIMEOUT_SECONDS = int(os.environ.get("CELAR_SOW_TIMEOUT_SECONDS", "3600"))
+if not 1 <= SOW_TIMEOUT_SECONDS <= 3600:
     raise RuntimeError("Invalid bounded SOW timeout")
 SOW_ATTEMPT_SECONDS = _budgets(
-    "CELAR_SOW_MODEL_ATTEMPT_SECONDS", [420, 120, 90], len(STRUCTURED_ORDER), SOW_TIMEOUT_SECONDS
+    "CELAR_SOW_MODEL_ATTEMPT_SECONDS", [3000, 3000, 3000], len(STRUCTURED_ORDER), SOW_TIMEOUT_SECONDS, shared_deadline=True
 )
+
+SOW_CONTEXT_TOKENS = int(os.environ.get("CELAR_SOW_CONTEXT_TOKENS", "16384"))
+if SOW_CONTEXT_TOKENS != 16384:
+    raise RuntimeError("Invalid bounded SOW context")
 
 APPROVED_GENERATION_MODELS = set(STRUCTURED_ORDER + GENERAL_ORDER)
 
@@ -323,6 +327,34 @@ def _serialized_extract() -> Any:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
+def _sow_completion(payload: dict[str, Any], timeout: int) -> tuple[dict[str, Any], int]:
+    options = {"num_ctx": SOW_CONTEXT_TOKENS, "num_predict": payload["max_tokens"]}
+    for key in ("temperature", "top_p", "seed", "stop"):
+        if key in payload:
+            options[key] = payload[key]
+    native = {"model": payload["model"], "messages": payload["messages"],
+              "stream": False, "options": options, "format": "json"}
+    body, status = gateway._ollama_post(
+        "/api/chat", native, timeout, gateway.MAX_GATEWAY_RESPONSE_BYTES)
+    if status != 200:
+        return body, status
+    message = body.get("message")
+    if (body.get("model") != payload["model"] or body.get("done") is not True
+            or not isinstance(message, dict) or message.get("role") != "assistant"
+            or not isinstance(message.get("content"), str)):
+        return {"error": {"code": "private_runtime_response_invalid"}}, 502
+    # Retain explicit refusals and truncation for the caller's fail-closed
+    # validator. Never promote an incomplete response to a successful draft.
+    reason = body.get("done_reason")
+    if reason not in {"stop", "length"}:
+        return {"error": {"code": "private_runtime_response_invalid"}}, 502
+    completion = {"role": "assistant", "content": message["content"]}
+    if message.get("refusal"):
+        completion["refusal"] = message["refusal"]
+    return {"model": body["model"], "choices": [
+        {"index": 0, "message": completion, "finish_reason": reason}]}, 200
+
+
 def _local_chat_completions() -> Any:
     """Route to local specialists inside one bounded end-to-end deadline.
 
@@ -396,12 +428,16 @@ def _local_chat_completions() -> Any:
         attempted.append(candidate)
         candidate_payload = dict(base_payload)
         candidate_payload["model"] = candidate
-        body, status = gateway._ollama_post(
-            "/v1/chat/completions",
-            candidate_payload,
-            attempt_timeout,
-            gateway.MAX_GATEWAY_RESPONSE_BYTES,
-        )
+        # The native API supports a per-request context window; the OpenAI
+        # adapter otherwise leaves this CPU runtime at 4096 tokens. Keep chat
+        # and Planner on their existing adapter and context settings.
+        if sow:
+            body, status = _sow_completion(candidate_payload, attempt_timeout)
+        else:
+            body, status = gateway._ollama_post(
+                "/v1/chat/completions", candidate_payload, attempt_timeout,
+                gateway.MAX_GATEWAY_RESPONSE_BYTES,
+            )
         if status == 200:
             response = jsonify(body)
             response.headers["X-Celar-Local-Model"] = candidate

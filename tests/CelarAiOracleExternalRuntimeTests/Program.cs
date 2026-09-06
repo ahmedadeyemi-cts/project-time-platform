@@ -66,6 +66,34 @@ try
         "configured public IPv4 pin is retained");
 
     var inference = new Uri("https://celarai.onenecklab.com/v1/chat/completions");
+    // Exercise the real transport handler without DNS or an inference service.
+    var handlerType = typeof(PulseAiExternalHttpsRuntimePolicy).Assembly.GetType(
+        "ProjectTime.Api.Ai.PulseAiPrivateSowInferenceBudgetHandler")!;
+    async Task<int> CountSowAttempts(Uri endpoint, bool cancelUpstream = false)
+    {
+        var transport = new SowTestTransport(cancelUpstream);
+        var handler = (DelegatingHandler)Activator.CreateInstance(handlerType, nonPublic: true)!;
+        handler.InnerHandler = transport;
+        using var invoker = new HttpMessageInvoker(handler);
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent("""{"model":"gemma3:4b","max_tokens":8192,"messages":[],"response_format":{"type":"json_object"}}""")
+        };
+        try
+        {
+            using var response = await invoker.SendAsync(request, CancellationToken.None);
+            Require(response.StatusCode == HttpStatusCode.GatewayTimeout, "upstream failure stays visible");
+        }
+        catch (TimeoutException) when (cancelUpstream) { }
+        return transport.Attempts;
+    }
+    Require(await CountSowAttempts(inference) == 1,
+        "Oracle fallback exhaustion is not followed by a duplicate model chain");
+    Require(await CountSowAttempts(inference, cancelUpstream: true) == 1,
+        "an Oracle timeout does not launch a second orphaned generation");
+    Require(await CountSowAttempts(new Uri("https://private.example/v1/chat/completions")) == 2,
+        "other private providers retain their existing bounded recovery");
+
     Require(PulseAiExternalHttpsRuntimePolicy.CompletionBudget(inference, 12000) == 8192,
         "SOW requests fit the Oracle gateway output limit");
     Require(PulseAiExternalHttpsRuntimePolicy.CompletionBudget(inference, 520) == 520,
@@ -260,4 +288,18 @@ static void Require(bool condition, string evidence)
 {
     if (!condition)
         throw new InvalidOperationException($"Oracle external-runtime assertion failed: {evidence}.");
+}
+
+sealed class SowTestTransport(bool cancelUpstream) : HttpMessageHandler
+{
+    public int Attempts { get; private set; }
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Attempts++;
+        if (cancelUpstream) throw new OperationCanceledException(cancellationToken);
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.GatewayTimeout)
+        {
+            Content = new StringContent("{}")
+        });
+    }
 }

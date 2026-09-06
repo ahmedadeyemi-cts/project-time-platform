@@ -57,7 +57,7 @@ public static class ProjectPulseAiServiceCollectionExtensions
         // gateway before the strict Module 025 parser sees it.
         services.AddHttpClient("PulseAiPrivateSowInference", client =>
         {
-            client.Timeout = TimeSpan.FromMinutes(12);
+            client.Timeout = TimeSpan.FromSeconds(3640);
         })
         .AddHttpMessageHandler<PulseAiPrivateSowInferenceBudgetHandler>()
         .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
@@ -292,7 +292,10 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         }
 
         using var overallCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        overallCancellation.CancelAfter(OverallInferenceBudget);
+        var oracleSow = request.RequestUri is { } endpoint
+            && PulseAiExternalHttpsRuntimePolicy.Evaluate() is { Active: true } runtime
+            && endpoint == runtime.InferenceEndpoint;
+        overallCancellation.CancelAfter(oracleSow ? TimeSpan.FromSeconds(3620) : OverallInferenceBudget);
 
         try
         {
@@ -306,15 +309,15 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                 using var primaryCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                     overallCancellation.Token);
                 primaryCancellation.CancelAfter(
-                    request.RequestUri is { } endpoint
-                        && PulseAiExternalHttpsRuntimePolicy.Evaluate() is { Active: true } runtime
-                        && endpoint == runtime.InferenceEndpoint
-                            ? TimeSpan.FromSeconds(650)
+                    oracleSow
+                            ? TimeSpan.FromSeconds(3610)
                             : PrimaryAttemptBudget);
                 var primaryResponse = await SendBoundedAttemptAsync(
                     primaryRequest,
                     primaryCancellation.Token);
-                if (!IsTransientGatewayFailure(primaryResponse.StatusCode)
+                // Oracle already owns the bounded local-model fallback chain. A
+                // second transport attempt repeats all work and can outlive the job.
+                if (oracleSow || !IsTransientGatewayFailure(primaryResponse.StatusCode)
                     && !await IsOutputLimitedCompletionAsync(
                         primaryResponse,
                         primaryCancellation.Token)
@@ -327,7 +330,8 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
                 primaryResponse.Dispose();
             }
             catch (OperationCanceledException) when (
-                !cancellationToken.IsCancellationRequested
+                !oracleSow
+                && !cancellationToken.IsCancellationRequested
                 && !overallCancellation.IsCancellationRequested)
             {
                 // Retry once with a smaller complete JSON contract. The same
