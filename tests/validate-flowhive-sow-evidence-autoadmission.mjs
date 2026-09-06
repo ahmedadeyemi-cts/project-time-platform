@@ -14,6 +14,8 @@ import {
 const source = fs.readFileSync('src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js', 'utf8');
 const plannerOrchestration = fs.readFileSync('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs', 'utf8');
 const plannerWorkspace = fs.readFileSync('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx', 'utf8');
+const executionPolicy = fs.readFileSync('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveExecutionPolicy.cs', 'utf8');
+const observation = fs.readFileSync('src/frontend/project-time-web/src/flowhive-planner-operation.js', 'utf8');
 const plannerStyles = fs.readFileSync('src/frontend/project-time-web/src/project-flowhive-center.css', 'utf8');
 assert.equal(serverOwnedAiPlannerAdmission, true);
 assert(!source.includes('window.fetch = async'), 'Browser-global FlowHive admission interception must remain retired.');
@@ -26,12 +28,15 @@ assert(
   !plannerOrchestration.includes('request.RetryTerminalDocumentProcessing\n            && release.IsCandidate'),
   'FlowHive must not add a release.IsCandidate gate that blocks governed unscoped exact-SHA Protected-Test recovery.'
 );
-assert.match(plannerOrchestration, /MaximumAiRouteRetries = 2/);
-assert.match(
-  plannerOrchestration,
-  /priorRetryCount < MaximumAiRouteRetries[\s\S]*?retry \? "processing" : "needs_attention"[\s\S]*?completed: !retry/,
-  'Transient private-generation failures must retry only within the bound and then become terminal needs-attention results.'
-);
+// A two-attempt total budget replaces the old three-call (initial + two retries) path.
+assert.match(executionPolicy, /MaximumAttempts = 2/);
+assert.match(executionPolicy, /OverallBudget = TimeSpan.FromMinutes\(5\)/);
+assert.match(plannerOrchestration, /attempt_count=attempt_count\+1[\s\S]*?deadline_at>clock_timestamp\(\) AND attempt_count<2/);
+assert.match(plannerOrchestration, /attempt < ProjectFlowHiveExecutionPolicy.MaximumAttempts/);
+assert.match(plannerOrchestration, /retry \? "processing" : "needs_attention"[\s\S]*?completed: !retry/);
+assert.match(plannerOrchestration, /project_flowhive_working_copies.row_version=@expected/);
+assert.match(plannerOrchestration, /"working_copy_changed"/);
+assert.match(plannerOrchestration, /"deadline_exceeded"/);
 assert.match(
   plannerOrchestration,
   /catch \(Exception exception\)[\s\S]*?"failed",[\s\S]*?"background_generation_failed",[\s\S]*?completed: true/,
@@ -47,18 +52,20 @@ assert.match(
   /var workingDraftPersisted = run\.GeneratedPlan is not null[\s\S]*?run\.Phase == "working_draft_ready"[\s\S]*?run\.Status is "completed" or "completed_with_schedule_overrun"[\s\S]*?plan = workingDraftPersisted \? run\.GeneratedPlan : null[\s\S]*?validation = workingDraftPersisted \? run\.Validation : null/,
   'Checkpointed generation payloads must remain hidden until the atomic working-draft transaction reaches a successful terminal state.'
 );
-assert.match(
-  plannerWorkspace,
-  /if \(result\.workingDraft\?\.persisted && result\.plan\)/,
-  'The browser must only present a generated plan as saved after the server confirms durable working-draft persistence.'
-);
+assert.match(plannerWorkspace, /canApplyPlannerResult\(/,
+  'The browser must fence completion by project, edit epoch and durable server confirmation.');
+assert.match(observation, /result\.workingDraft\?\.persisted === true/);
+assert.match(observation, /startedEdit === currentEdit/);
 assert.match(plannerOrchestration, /status is "completed" or "completed_with_schedule_overrun" or "needs_attention" or "failed"/);
-assert.match(plannerWorkspace, /AI_PLANNER_POLL_INTERVAL_MS = 1500/);
-assert.match(plannerWorkspace, /AI_PLANNER_POLL_ATTEMPTS = 800/);
-assert.match(plannerWorkspace, /AI Planner is still running in the governed background worker/);
+assert.doesNotMatch(plannerWorkspace, /AI_PLANNER_POLL_ATTEMPTS\s*=\s*800/);
+assert.match(plannerWorkspace, /observePlanner\(/);
+assert.match(plannerWorkspace, /async function cancelPlanner\(/);
+assert.match(observation, /maximumObservationMs = 330000/);
+assert.match(observation, /\+\+failures >= 3/);
+assert.match(observation, /options\.signal\?\.removeEventListener/);
 assert.match(plannerWorkspace, /aria-live="polite"/);
-assert.match(plannerWorkspace, /This private generation phase can take several minutes/);
-assert.match(plannerWorkspace, /bounded automatic retry/);
+assert.match(plannerWorkspace, /deadlineAt/);
+assert.match(plannerWorkspace, /hasWorkingCopyExpectation: true/);
 assert.match(
   plannerStyles,
   /\.flowhive-ai-operation-progress[^\n]*background:var\(--flowhive-surface\);color:var\(--flowhive-ink\)/,

@@ -408,7 +408,9 @@ assertInvariant(
   'MODULE_066_FRONTEND_COMPUTE_AND_ARTIFACT_ROUTES',
   frontend.includes("postJson('/api/project-flowhive/planning/validate'") &&
     frontend.includes("postJson('/api/project-flowhive/schedule/calculate'") &&
-    frontend.includes('postJson(`/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs`') &&
+    frontend.includes('postJson(`/api/project-flowhive/projects/${projectId}/ai-planner/runs`')
+    && frontend.includes('hasWorkingCopyExpectation: true')
+    && frontend.includes('canApplyPlannerResult(') &&
     frontend.includes('/api/project-flowhive/artifacts/${format}-preview'),
   'validation, deterministic schedule, governed Celar generation, and reviewed artifact actions'
 );
