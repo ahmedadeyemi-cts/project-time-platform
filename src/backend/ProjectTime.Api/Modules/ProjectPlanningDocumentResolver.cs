@@ -28,6 +28,10 @@ internal static class ProjectPlanningDocumentResolver
         "mop"
     };
 
+    internal static async Task<ProjectPlanningDocumentResolution> ReadCurrentAsync(
+        NpgsqlConnection connection, Guid projectId, CancellationToken cancellationToken) =>
+        BuildResolution(SelectCurrent(await LoadAsync(connection, projectId, cancellationToken)), 0);
+
     internal static async Task<ProjectPlanningDocumentResolution> ResolveAndPrepareAsync(
         NpgsqlConnection connection,
         Guid projectId,
@@ -264,7 +268,8 @@ internal static class ProjectPlanningDocumentResolver
                             OR chunk.citation_anchor ILIKE '%scope%'
                             OR chunk.citation_anchor ILIKE '%service%'
                             OR chunk.chunk_text ILIKE '%scope of service%'
-                            OR chunk.chunk_text ILIKE '%scope of work%'))
+                            OR chunk.chunk_text ILIKE '%scope of work%')),
+                   COALESCE(version.source_sha256,''), COALESCE(version.document_version,'')
               FROM project_intake_documents document
               LEFT JOIN work_register_documents work_register
                 ON work_register.work_register_document_id=document.work_register_document_id
@@ -297,7 +302,7 @@ internal static class ProjectPlanningDocumentResolver
                 reader.GetFieldValue<DateTimeOffset>(13),
                 reader.GetFieldValue<DateTimeOffset>(14),
                 reader.GetInt32(15),
-                reader.GetInt32(16)));
+                reader.GetInt32(16), reader.GetString(17), reader.GetString(18)));
         }
         return rows;
     }
@@ -487,7 +492,9 @@ internal sealed record ProjectPlanningDocumentEvidence(
     DateTimeOffset EffectiveAt,
     DateTimeOffset UploadedAt,
     int CitationCount,
-    int ScopeCitationCount)
+    int ScopeCitationCount,
+    string ActiveSourceSha256 = "",
+    string ActiveDocumentVersion = "")
 {
     private string NormalizedCategory => ProjectPlanningDocumentResolver.NormalizeCategory(Category);
     private string NormalizedWorkRegisterType => ProjectPlanningDocumentResolver.NormalizeCategory(WorkRegisterDocumentType);

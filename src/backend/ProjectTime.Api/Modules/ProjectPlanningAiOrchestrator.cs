@@ -60,7 +60,7 @@ internal static class ProjectPlanningAiOrchestrator
                 effectiveUserId,
                 seed,
                 documents,
-                outcome,
+                requestedOutcome?.Trim() ?? string.Empty,
                 detailLevel,
                 context,
                 cancellationToken);
@@ -134,7 +134,11 @@ internal static class ProjectPlanningAiOrchestrator
 
         var currentDocumentIds = documents.CurrentDocumentIds;
         var currentCitations = composition.Citations
-            .Where(citation => currentDocumentIds.Contains(citation.DocumentId))
+            .Where(citation => currentDocumentIds.Contains(citation.DocumentId)
+                && documents.SelectedDocuments.Any(document => document.DocumentId == citation.DocumentId
+                    && document.ActiveSourceSha256.Length == 64
+                    && string.Equals(document.ActiveSourceSha256, citation.SourceSha256, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(document.ActiveDocumentVersion, citation.DocumentVersion, StringComparison.Ordinal)))
             .ToArray();
         var currentCitationIds = currentCitations
             .Select(citation => citation.CitationId)
@@ -145,9 +149,8 @@ internal static class ProjectPlanningAiOrchestrator
             .ToArray();
 
         var privatePlan = composition.FlowHivePlan;
-        var completedStatus = composition.Status is
-            "celar_ai_solution_draft_completed" or
-            "celar_ai_solution_draft_partial";
+        // A partial scaffold is not a successful executable plan, regardless of schema shape.
+        var completedStatus = composition.Status == "celar_ai_solution_draft_completed";
         var citedPlan = privatePlan is not null
             && privatePlan.Tasks.Count > 0
             && privatePlan.CitationIds.Count > 0
@@ -310,6 +313,9 @@ internal static class ProjectPlanningAiOrchestrator
                  WHERE project_id=@project_id
                    AND actual_actor_user_id=@actual
                    AND effective_actor_user_id=@effective
+                   AND requested_outcome=@outcome AND detail_level=@detail
+                   AND execution_contract=@execution_contract
+                   AND (source_version_fingerprint=@source_versions OR status IN ('queued','processing','generating'))
                    AND status IN ('queued','processing','generating','completed','completed_with_schedule_overrun')
                  ORDER BY created_at DESC
                  LIMIT 12
@@ -319,6 +325,10 @@ internal static class ProjectPlanningAiOrchestrator
                 command.Parameters.AddWithValue("project_id", projectId);
                 command.Parameters.AddWithValue("actual", actualUserId);
                 command.Parameters.AddWithValue("effective", effectiveUserId);
+                command.Parameters.AddWithValue("outcome", Clean(outcome, 4_000, string.Empty));
+                command.Parameters.AddWithValue("detail", Clean(detailLevel, 80, "comprehensive"));
+                command.Parameters.AddWithValue("execution_contract", ProjectFlowHiveExecutionPolicy.Contract);
+                command.Parameters.AddWithValue("source_versions", ProjectFlowHiveExecutionPolicy.VersionFingerprint(documents));
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
                 {
@@ -367,37 +377,11 @@ internal static class ProjectPlanningAiOrchestrator
                     ]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
             }
 
-            var runId = Guid.NewGuid();
-            var queuedSeed = seed with
-            {
-                SowVersion = currentSowVersion,
-                GsdVersion = currentGsdVersion.Length == 0 ? null : currentGsdVersion
-            };
-            await using (var insert = new NpgsqlCommand($"""
-                INSERT INTO {DurableRunTable}(
-                    run_id,project_id,status,phase,progress_percent,requested_plan,
-                    requested_outcome,detail_level,actual_actor_user_id,effective_actor_user_id,
-                    correlation_id,operation_logs)
-                VALUES(@run_id,@project_id,'queued','resolve_project',5,@plan::jsonb,
-                    @outcome,@detail,@actual,@effective,@correlation,@logs::jsonb);
-                """, connection, transaction))
-            {
-                insert.Parameters.AddWithValue("run_id", runId);
-                insert.Parameters.AddWithValue("project_id", projectId);
-                insert.Parameters.AddWithValue("plan", JsonSerializer.Serialize(queuedSeed, DurablePlannerJson));
-                insert.Parameters.AddWithValue("outcome", Clean(outcome, 4_000, string.Empty));
-                insert.Parameters.AddWithValue("detail", Clean(detailLevel, 80, "comprehensive"));
-                insert.Parameters.AddWithValue("actual", actualUserId);
-                insert.Parameters.AddWithValue("effective", effectiveUserId);
-                insert.Parameters.AddWithValue("correlation", correlationId);
-                insert.Parameters.AddWithValue("logs", JsonSerializer.Serialize(new[]
-                {
-                    "Project Forge queued the shared durable FlowHive planner instead of running AI inside the gateway request."
-                }, DurablePlannerJson));
-                await insert.ExecuteNonQueryAsync(cancellationToken);
-            }
-
+            // Release the read transaction before the shared queue captures its own starting revision.
             await transaction.CommitAsync(cancellationToken);
+            var runId = await ProjectFlowHiveAiPlannerOrchestrationModule.QueueForActorAsync(
+                connection, projectId, actualUserId, effectiveUserId, seed,
+                outcome, detailLevel, correlationId, cancellationToken);
             return ProjectPlanningGenerationResult.Failed(
                 "project_planning_ai_temporarily_unavailable",
                 "Project Forge queued the shared durable planner in the background. Retry this request while the planner completes; no second synchronous AI request was started.",

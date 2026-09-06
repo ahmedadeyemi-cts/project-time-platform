@@ -9,13 +9,14 @@ public sealed record ProjectFlowHiveAiPlannerRunRequest(
     ProjectFlowHivePlanRequest? Plan,
     string? RequestedOutcome,
     string? DetailLevel = "comprehensive",
-    bool RetryTerminalDocumentProcessing = false);
+    bool RetryTerminalDocumentProcessing = false,
+    Guid? ExpectedWorkingRowVersion = null,
+    bool HasWorkingCopyExpectation = false);
 
 internal static class ProjectFlowHiveAiPlannerOrchestrationModule
 {
-    private const string MigrationId = "095_project_planning_collaboration_access";
+    private const string MigrationId = ProjectFlowHiveExecutionPolicy.Migration;
     private const string RunTable = "project_flowhive_ai_planner_runs";
-    private const int MaximumAiRouteRetries = 2;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -30,6 +31,12 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         endpoints.MapGet(
             "/api/project-flowhive/projects/{projectId:guid}/ai-planner/runs/{runId:guid}",
             (Func<Guid, Guid, HttpContext, CancellationToken, Task<IResult>>)GetAsync);
+        endpoints.MapGet(
+            "/api/project-flowhive/projects/{projectId:guid}/ai-planner/runs/latest",
+            (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)LatestAsync);
+        endpoints.MapPost(
+            "/api/project-flowhive/projects/{projectId:guid}/ai-planner/runs/{runId:guid}/cancel",
+            (Func<Guid, Guid, HttpContext, CancellationToken, Task<IResult>>)CancelAsync);
         return endpoints;
     }
 
@@ -63,17 +70,21 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             && seed.ProjectEndDate.Value < seed.ProjectStartDate.Value)
             return Validation("The requested project finish date cannot precede the project Start Date.");
 
-        // The authenticated start action may perform the bounded document-admission
-        // pass so the governed Protected-Test retry can be honored once. Long-running
-        // AI inference is never executed inside this request.
-        request = request with { Plan = seed, RetryTerminalDocumentProcessing = true };
-        var runId = await GetOrCreateRunAsync(
-            connection,
-            projectId,
-            request,
-            access,
-            CorrelationId(context),
-            cancellationToken);
+        if ((request.RequestedOutcome?.Length ?? 0) > 4_000)
+            return Validation("The requested outcome exceeds the 4,000-character planning limit.");
+        if (request.DetailLevel is not (null or "standard" or "detailed" or "comprehensive" or "executive_and_detailed"))
+            return Validation("Choose a supported planning detail level.");
+        request = request with { Plan = seed, RequestedOutcome = request.RequestedOutcome?.Trim() ?? "", DetailLevel = request.DetailLevel ?? "comprehensive" };
+        Guid runId;
+        try
+        {
+            runId = await GetOrCreateRunAsync(connection, projectId, request, access,
+                CorrelationId(context), cancellationToken);
+        }
+        catch (PlannerConflict exception)
+        {
+            return Results.Conflict(new { status = exception.Code, message = exception.Message, stateChanged = false });
+        }
 
         var stored = await LoadRunAsync(connection, projectId, runId, cancellationToken);
         if (stored is null)
@@ -83,21 +94,6 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 message = "The durable AI Planner operation could not be reloaded.",
                 stateChanged = false
             }, statusCode: StatusCodes.Status500InternalServerError);
-
-        if (!stored.Terminal
-            && stored.Status != "generating"
-            && stored.GeneratedPlan is null)
-        {
-            await AdvanceAdmissionAsync(
-                connection,
-                projectId,
-                runId,
-                request,
-                access,
-                context,
-                cancellationToken);
-            stored = (await LoadRunAsync(connection, projectId, runId, cancellationToken))!;
-        }
 
         return RunResult(stored);
     }
@@ -129,9 +125,97 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 stateChanged = false
             }, statusCode: StatusCodes.Status500InternalServerError);
 
+        if (stored.ActualUserId != opened.Access!.ActualUserId
+            || stored.EffectiveUserId != opened.Access.EffectiveUserId)
+            return Results.NotFound(new { status = "flowhive_ai_planner_run_not_found" });
+
         // Polling is deliberately read-only. The background worker owns document
         // re-evaluation, AI generation, and mutable working-copy persistence.
         return RunResult(stored);
+    }
+
+    internal static async Task<Guid> QueueForActorAsync(NpgsqlConnection connection, Guid projectId,
+        Guid actual, Guid effective, ProjectFlowHivePlanRequest plan, string outcome, string? detail,
+        string correlation, CancellationToken token)
+    {
+        if (actual != effective) throw new InvalidOperationException("View-As cannot queue a planner operation.");
+        var access = await ProjectPlanningAccessResolver.ResolveForActorAsync(connection, actual, projectId, "066", token);
+        if (!access.CanEditPlanner) throw new UnauthorizedAccessException("Planning permission is required.");
+        await using var schema = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id=@migration);", connection);
+        schema.Parameters.AddWithValue("migration", MigrationId);
+        if (await schema.ExecuteScalarAsync(token) is not true) throw new InvalidOperationException("The bounded planner migration is required.");
+        return await GetOrCreateRunAsync(connection, projectId,
+            new ProjectFlowHiveAiPlannerRunRequest(plan, outcome, detail ?? "comprehensive"),
+            new PlannerAccess(actual, effective), correlation, token);
+    }
+
+    internal static Task<IResult> QueueLegacyAsync(CelarAiFlowHiveProductionRequest request, HttpContext context,
+        PulseAiSystemIntelligenceService system, CelarAiEnterprisePlatformService enterprise,
+        CelarAiCapabilityRoutingStore routing, CancellationToken token) => request.Plan?.ProjectId is Guid projectId
+            ? CreateOrResumeAsync(projectId, new ProjectFlowHiveAiPlannerRunRequest(request.Plan, request.RequestedOutcome, request.DetailLevel), context, token)
+            : Task.FromResult<IResult>(Validation("An exact project identifier is required for durable AI planning."));
+
+    private static async Task<IResult> LatestAsync(Guid projectId, HttpContext context, CancellationToken token)
+    {
+        var opened = await OpenAsync(projectId, context, requireEdit: true, token);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        await using var command = new NpgsqlCommand($"""
+            SELECT run_id FROM {RunTable}
+            WHERE project_id=@project AND actual_actor_user_id=@actual AND effective_actor_user_id=@effective
+            ORDER BY created_at DESC LIMIT 1;
+            """, connection);
+        command.Parameters.AddWithValue("project", projectId);
+        command.Parameters.AddWithValue("actual", opened.Access!.ActualUserId);
+        command.Parameters.AddWithValue("effective", opened.Access.EffectiveUserId);
+        if (await command.ExecuteScalarAsync(token) is not Guid runId)
+            return Results.Ok(new { runId = (Guid?)null, terminal = true });
+        return RunResult((await LoadRunAsync(connection, projectId, runId, token))!);
+    }
+
+    private static async Task<IResult> CancelAsync(Guid projectId, Guid runId, HttpContext context, CancellationToken token)
+    {
+        var opened = await OpenAsync(projectId, context, requireEdit: true, token);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        var run = await LoadRunAsync(connection, projectId, runId, token);
+        if (run is null || run.ActualUserId != opened.Access!.ActualUserId || run.EffectiveUserId != opened.Access.EffectiveUserId)
+            return Results.NotFound(new { status = "flowhive_ai_planner_run_not_found" });
+        await StopRunAsync(connection, runId, "cancelled", "Generation was cancelled. No late result can replace the working copy.", token);
+        return RunResult((await LoadRunAsync(connection, projectId, runId, token))!);
+    }
+
+    internal static async Task ExpireRunsAsync(CancellationToken token)
+    {
+        var config = ProjectFlowHiveDatabaseConfig.FromEnvironment();
+        if (config.Missing.Count > 0) return;
+        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await connection.OpenAsync(token);
+        await using var schema = new NpgsqlCommand(
+            "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id=@migration);", connection);
+        schema.Parameters.AddWithValue("migration", MigrationId);
+        if (await schema.ExecuteScalarAsync(token) is not true) return;
+        await using var command = new NpgsqlCommand($"""
+            UPDATE {RunTable} SET status='needs_attention',phase='deadline_exceeded',progress_percent=100,
+                completed_at=NOW(),updated_at=NOW(),row_version=gen_random_uuid(),
+                blockers='["The five-minute planner deadline expired. Existing work is preserved; inspect the last stage before an explicit retry."]'::jsonb
+            WHERE status IN ('queued','processing','generating') AND (deadline_at IS NULL OR deadline_at<=clock_timestamp());
+            """, connection);
+        command.CommandTimeout = 5;
+        await command.ExecuteNonQueryAsync(token);
+    }
+
+    private static async Task StopRunAsync(NpgsqlConnection connection, Guid runId, string code, string message, CancellationToken token)
+    {
+        await using var command = new NpgsqlCommand($"""
+            UPDATE {RunTable} SET status='needs_attention',phase=@phase,progress_percent=100,
+                completed_at=NOW(),updated_at=NOW(),row_version=gen_random_uuid(),blockers=@blockers::jsonb
+            WHERE run_id=@run AND status IN ('queued','processing','generating');
+            """, connection);
+        command.Parameters.AddWithValue("run", runId);
+        command.Parameters.AddWithValue("phase", code);
+        command.Parameters.AddWithValue("blockers", JsonSerializer.Serialize(new[] { message }, Json));
+        await command.ExecuteNonQueryAsync(token);
     }
 
     private static async Task AdvanceAdmissionAsync(
@@ -177,7 +261,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         await connection.OpenAsync(cancellationToken);
 
         await using (var schema = new NpgsqlCommand(
-            $"SELECT to_regclass('public.{RunTable}') IS NOT NULL;",
+            $"SELECT to_regclass('public.{RunTable}') IS NOT NULL AND EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='{MigrationId}');",
             connection))
         {
             var present = await schema.ExecuteScalarAsync(cancellationToken);
@@ -189,7 +273,9 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             SELECT run_id,project_id
             FROM {RunTable}
             WHERE status IN ('queued','processing','generating')
-              AND (phase <> 'ai_route_retry' OR updated_at <= NOW() - INTERVAL '30 seconds')
+              AND deadline_at > clock_timestamp()
+              AND execution_contract='flowhive-bounded-execution-v1-20260906'
+              AND next_attempt_at <= clock_timestamp()
             ORDER BY CASE status
                          WHEN 'generating' THEN 0
                          WHEN 'queued' THEN 1
@@ -221,12 +307,26 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                     cancellationToken);
                 if (stored is null || stored.Terminal) return true;
 
-                await AdvanceWorkerAsync(connection, stored, services, cancellationToken);
+                using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var remaining = stored.DeadlineAt!.Value - DateTimeOffset.UtcNow;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    await StopRunAsync(connection, stored.RunId, "deadline_exceeded", "The planner deadline expired; existing work is preserved.", cancellationToken);
+                    return true;
+                }
+                budget.CancelAfter(remaining);
+                await AdvanceWorkerAsync(connection, stored, services, budget.Token);
                 return true;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (OperationCanceledException)
+            {
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await StopRunAsync(connection, candidate.RunId, "deadline_exceeded", "The bounded planner execution stopped. Existing work is preserved.", cleanup.Token);
+                return true;
             }
             catch (Exception exception)
             {
@@ -287,6 +387,20 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             return;
         }
 
+        var currentAccess = await ProjectPlanningAccessResolver.ResolveForActorAsync(
+            connection, stored.ActualUserId, stored.ProjectId, "066", cancellationToken);
+        if (stored.ActualUserId != stored.EffectiveUserId || !currentAccess.CanEditPlanner)
+        {
+            await StopRunAsync(connection, stored.RunId, "access_revoked", "Planning permission changed. No generated work was applied.", cancellationToken);
+            return;
+        }
+        var currentDocuments = await ProjectPlanningDocumentResolver.ReadCurrentAsync(connection, stored.ProjectId, cancellationToken);
+        if (ProjectFlowHiveExecutionPolicy.SelectionFingerprint(currentDocuments) != stored.SourceSelectionFingerprint)
+        {
+            await StopRunAsync(connection, stored.RunId, "source_changed", "The selected SOW or supporting document changed during generation. Start a new reviewed run.", cancellationToken);
+            return;
+        }
+
         if (stored.GeneratedPlan is not null
             && stored.Schedule is not null
             && stored.Validation is not null)
@@ -304,6 +418,14 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             return;
         }
 
+        var retryDocument = stored.RetryDocumentProcessing
+            && PulseAiProtectedTestCandidatePolicy.AllowsPrivateDocumentProcessing(ProjectPulseAiReleaseRuntimePolicy.RequireValid());
+        if (stored.RetryDocumentProcessing)
+        {
+            await using var consumeRetry = new NpgsqlCommand($"UPDATE {RunTable} SET retry_document_processing=FALSE WHERE run_id=@run;", connection);
+            consumeRetry.Parameters.AddWithValue("run", stored.RunId);
+            await consumeRetry.ExecuteNonQueryAsync(cancellationToken);
+        }
         var documents = await ProjectPlanningDocumentResolver.ResolveAndPrepareAsync(
             connection,
             stored.ProjectId,
@@ -313,7 +435,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             stored.CorrelationId,
             queuePending: true,
             cancellationToken,
-            retryTerminalSow: false);
+            retryTerminalSow: retryDocument);
 
         if (!documents.HasAuthoritativeSow
             || documents.HasTerminalProcessingFailure
@@ -326,6 +448,31 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 cancellationToken,
                 readyPhase: "queued_for_generation");
             return;
+        }
+
+        var sourceVersions = ProjectFlowHiveExecutionPolicy.VersionFingerprint(documents);
+        if (stored.SourceVersionFingerprint.Length > 0 && stored.SourceVersionFingerprint != sourceVersions)
+        {
+            await StopRunAsync(connection, stored.RunId, "source_changed", "Source versions changed before retry; no stale result was applied.", cancellationToken);
+            return;
+        }
+        int attempt;
+        await using (var claim = new NpgsqlCommand($"""
+            UPDATE {RunTable} SET attempt_count=attempt_count+1,
+                source_version_fingerprint=CASE WHEN source_version_fingerprint='' THEN @versions ELSE source_version_fingerprint END
+            WHERE run_id=@run AND status IN ('queued','processing','generating')
+                AND deadline_at>clock_timestamp() AND attempt_count<2
+            RETURNING attempt_count;
+            """, connection))
+        {
+            claim.Parameters.AddWithValue("run", stored.RunId);
+            claim.Parameters.AddWithValue("versions", sourceVersions);
+            if (await claim.ExecuteScalarAsync(cancellationToken) is not short claimed)
+            {
+                await StopRunAsync(connection, stored.RunId, "attempt_budget_exhausted", "The two-attempt AI budget was exhausted. Existing work is preserved.", cancellationToken);
+                return;
+            }
+            attempt = claimed;
         }
 
         await UpdateRunAsync(
@@ -354,8 +501,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             context.Request.Headers["X-Correlation-Id"] = stored.CorrelationId;
 
         var enterprise = services.GetRequiredService<CelarAiEnterprisePlatformService>();
-        var generation = await ProjectPlanningAiOrchestrator.GenerateAsync(
-            enterprise,
+        var generation = await GenerateBoundedAsync(
+            connection, stored, enterprise,
             stored.ActualUserId,
             stored.EffectiveUserId,
             stored.Plan,
@@ -374,11 +521,10 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         {
             var refused = generation.Status == "project_planning_safety_refusal";
             var transient = generation.Status == "project_planning_ai_temporarily_unavailable";
-            var priorRetryCount = stored.Logs.Count(log =>
-                log.StartsWith("AI route retry ", StringComparison.Ordinal));
-            var retry = transient && priorRetryCount < MaximumAiRouteRetries;
+            var retry = transient && attempt < ProjectFlowHiveExecutionPolicy.MaximumAttempts
+                && DateTimeOffset.UtcNow.AddSeconds(30) < stored.DeadlineAt;
             var retryLog = retry
-                ? $"AI route retry {priorRetryCount + 1} of {MaximumAiRouteRetries} is scheduled after a transient private-generation failure."
+                ? $"AI route retry {attempt} is scheduled within the fixed two-attempt and five-minute budgets."
                 : transient
                     ? "The bounded AI route retry limit was reached. Review the evidence status and start AI Planner again when private generation is available."
                     : generation.Message;
@@ -426,6 +572,55 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             generation.Validation,
             generation.Warnings,
             cancellationToken);
+    }
+
+    private static async Task<ProjectPlanningGenerationResult> GenerateBoundedAsync(
+        NpgsqlConnection connectionUnused, PlannerRun run, CelarAiEnterprisePlatformService enterprise,
+        Guid actual, Guid effective, ProjectFlowHivePlanRequest seed, ProjectPlanningDocumentResolution documents,
+        string outcome, string detail, string capability, bool allowSanitizedExternalFallback,
+        HttpContext context, CancellationToken token)
+    {
+        using var generationToken = CancellationTokenSource.CreateLinkedTokenSource(token);
+        generationToken.CancelAfter(ProjectFlowHiveExecutionPolicy.InferenceBudget);
+        using var observation = CancellationTokenSource.CreateLinkedTokenSource(generationToken.Token);
+        var observer = ObserveCancellationAsync(run.RunId, generationToken, observation.Token);
+        var generation = ProjectPlanningAiOrchestrator.GenerateAsync(enterprise, actual, effective, seed, documents,
+            outcome, detail, capability, allowSanitizedExternalFallback, context, generationToken.Token);
+        try
+        {
+            return await generation.WaitAsync(generationToken.Token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            // The durable status and commit fence decide cancellation vs retry; late provider output is never applied.
+            _ = generation.ContinueWith(task => { _ = task.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+            return ProjectPlanningGenerationResult.Failed("project_planning_ai_temporarily_unavailable",
+                "The private inference stage exceeded its bounded budget or was cancelled.", [], documents.Warnings);
+        }
+        finally
+        {
+            observation.Cancel();
+            try { await observer; } catch (OperationCanceledException) { }
+        }
+    }
+
+    private static async Task ObserveCancellationAsync(Guid runId, CancellationTokenSource generation, CancellationToken token)
+    {
+        try
+        {
+            await using var connection = new NpgsqlConnection(ProjectFlowHiveDatabaseConfig.FromEnvironment().ConnectionString);
+            await connection.OpenAsync(token);
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), token);
+                await using var command = new NpgsqlCommand($"SELECT status IN ('queued','processing','generating') AND deadline_at>clock_timestamp() FROM {RunTable} WHERE run_id=@run;", connection);
+                command.CommandTimeout = 5;
+                command.Parameters.AddWithValue("run", runId);
+                if (await command.ExecuteScalarAsync(token) is not true) { generation.Cancel(); return; }
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch { generation.Cancel(); }
     }
 
     private static async Task PersistDocumentStateAsync(
@@ -531,16 +726,53 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         // overwrite a saved draft that the operation incorrectly reported as
         // absent or failed.
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var timeout = new NpgsqlCommand("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='15s';", connection, transaction))
+            await timeout.ExecuteNonQueryAsync(cancellationToken);
+        PlannerRun? current;
+        await using (var guard = new NpgsqlCommand($"SELECT run_id FROM {RunTable} WHERE run_id=@run AND status IN ('queued','processing','generating') AND deadline_at>clock_timestamp() FOR UPDATE;", connection, transaction))
+        {
+            guard.Parameters.AddWithValue("run", runId);
+            if (await guard.ExecuteScalarAsync(cancellationToken) is not Guid)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return;
+            }
+        }
+        current = await LoadRunAsync(connection, projectId, runId, cancellationToken);
+        var authority = await ProjectPlanningAccessResolver.ResolveForActorAsync(connection, actor, projectId, "066", cancellationToken);
+        var evidence = await ProjectPlanningDocumentResolver.ReadCurrentAsync(connection, projectId, cancellationToken);
+        if (current is null || !authority.CanEditPlanner || !evidence.ReadyForGeneration
+            || ProjectFlowHiveExecutionPolicy.SelectionFingerprint(evidence) != current.SourceSelectionFingerprint
+            || ProjectFlowHiveExecutionPolicy.VersionFingerprint(evidence) != current.SourceVersionFingerprint)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            await StopRunAsync(connection, runId, "authority_changed", "Permission or current document authority changed; the generated candidate was not applied.", cancellationToken);
+            return;
+        }
         var workingCopy = await SaveWorkingCopyAsync(
             connection,
             transaction,
             projectId,
             generated,
             actor,
+            current.ExpectedWorkingRowVersion,
             validation,
             schedule,
             cancellationToken);
 
+        if (workingCopy is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            await StopRunAsync(connection, runId, "working_copy_changed", "A Project Manager saved newer work during generation. The candidate is retained for review; no existing edits were replaced.", cancellationToken);
+            return;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (DateTimeOffset.UtcNow >= current.DeadlineAt)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            await StopRunAsync(connection, runId, "deadline_exceeded", "The execution deadline expired before save. Existing work is preserved.", cancellationToken);
+            return;
+        }
         var warnings = sourceWarnings
             .Concat([
                 "The generated plan was saved only as the mutable FlowHive working draft.",
@@ -662,6 +894,8 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         CancellationToken cancellationToken)
     {
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var timeout = new NpgsqlCommand("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='15s';", connection, transaction))
+            await timeout.ExecuteNonQueryAsync(cancellationToken);
         await using (var guard = new NpgsqlCommand(
             "SELECT pg_advisory_xact_lock(hashtextextended(@project_id::text,734));",
             connection,
@@ -670,37 +904,58 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             guard.Parameters.AddWithValue("project_id", projectId);
             await guard.ExecuteNonQueryAsync(cancellationToken);
         }
+        var documents = await ProjectPlanningDocumentResolver.ReadCurrentAsync(connection, projectId, cancellationToken);
+        var selection = ProjectFlowHiveExecutionPolicy.SelectionFingerprint(documents);
+        var fingerprint = ProjectFlowHiveExecutionPolicy.Fingerprint(request.Plan!, access.ActualUserId,
+            access.EffectiveUserId, request.RequestedOutcome ?? "", request.DetailLevel ?? "comprehensive", selection);
         await using (var existing = new NpgsqlCommand($"""
-            SELECT run_id
-            FROM {RunTable}
-            WHERE project_id=@project_id
-              AND actual_actor_user_id=@actual
+            SELECT run_id,input_fingerprint,effective_actor_user_id FROM {RunTable}
+            WHERE project_id=@project_id AND actual_actor_user_id=@actual
               AND status IN ('queued','processing','generating')
-            ORDER BY created_at DESC
-            LIMIT 1
-            FOR UPDATE;
+            ORDER BY created_at DESC LIMIT 1 FOR UPDATE;
             """, connection, transaction))
         {
             existing.Parameters.AddWithValue("project_id", projectId);
             existing.Parameters.AddWithValue("actual", access.ActualUserId);
-            var found = await existing.ExecuteScalarAsync(cancellationToken);
-            if (found is Guid run)
+            await using var reader = await existing.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
             {
+                var found = reader.GetGuid(0);
+                if (reader.GetString(1) != fingerprint || reader.GetGuid(2) != access.EffectiveUserId)
+                    throw new PlannerConflict("planner_input_conflict", "A run with different dates, scope, or source documents is active. Resume or cancel that operation before starting another.");
+                await reader.DisposeAsync();
                 await transaction.CommitAsync(cancellationToken);
-                return run;
+                return found;
             }
         }
+
+        Guid? expectedVersion;
+        await using (var working = new NpgsqlCommand("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@project FOR UPDATE;", connection, transaction))
+        {
+            working.Parameters.AddWithValue("project", projectId);
+            expectedVersion = await working.ExecuteScalarAsync(cancellationToken) as Guid?;
+        }
+        if (request.HasWorkingCopyExpectation && request.ExpectedWorkingRowVersion != expectedVersion)
+            throw new PlannerConflict("working_copy_version_conflict", "The working copy changed after it was loaded. Reload before generating.");
 
         var runId = Guid.NewGuid();
         await using (var insert = new NpgsqlCommand($"""
             INSERT INTO {RunTable}(
                 run_id,project_id,status,phase,progress_percent,requested_plan,
                 requested_outcome,detail_level,actual_actor_user_id,effective_actor_user_id,
-                correlation_id,operation_logs)
+                correlation_id,operation_logs,execution_contract,deadline_at,input_fingerprint,
+                source_selection_fingerprint,expected_working_row_version,retry_document_processing)
             VALUES(@run_id,@project_id,'queued','resolve_project',5,@plan::jsonb,
-                @outcome,@detail,@actual,@effective,@correlation,@logs::jsonb);
+                @outcome,@detail,@actual,@effective,@correlation,@logs::jsonb,@contract,@deadline,@fingerprint,
+                @selection,@expected,@retry_document);
             """, connection, transaction))
         {
+            insert.Parameters.AddWithValue("contract", ProjectFlowHiveExecutionPolicy.Contract);
+            insert.Parameters.AddWithValue("deadline", DateTimeOffset.UtcNow + ProjectFlowHiveExecutionPolicy.OverallBudget);
+            insert.Parameters.AddWithValue("fingerprint", fingerprint);
+            insert.Parameters.AddWithValue("selection", selection);
+            insert.Parameters.Add("expected", NpgsqlDbType.Uuid).Value = (object?)expectedVersion ?? DBNull.Value;
+            insert.Parameters.AddWithValue("retry_document", request.RetryTerminalDocumentProcessing);
             insert.Parameters.AddWithValue("run_id", runId);
             insert.Parameters.AddWithValue("project_id", projectId);
             insert.Parameters.AddWithValue("plan", JsonSerializer.Serialize(request.Plan, Json));
@@ -716,44 +971,35 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         return runId;
     }
 
-    private static async Task<WorkingCopyResult> SaveWorkingCopyAsync(
+    private static async Task<WorkingCopyResult?> SaveWorkingCopyAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid projectId,
         ProjectFlowHivePlanRequest plan,
         Guid actor,
+        Guid? expectedVersion,
         ProjectFlowHivePlanValidationResult validation,
         ProjectFlowHiveScheduleResult schedule,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("""
-            WITH upsert AS (
-                INSERT INTO project_flowhive_working_copies(
-                    project_id,plan_id,working_payload,updated_by_user_id)
-                VALUES(@project_id,@plan_id,@payload::jsonb,@actor)
-                ON CONFLICT(project_id) DO UPDATE
-                SET plan_id=EXCLUDED.plan_id,
-                    working_payload=EXCLUDED.working_payload,
-                    updated_by_user_id=EXCLUDED.updated_by_user_id
-                WHERE project_flowhive_working_copies.working_payload IS DISTINCT FROM EXCLUDED.working_payload
-                RETURNING working_revision,row_version,updated_at
-            )
-            SELECT working_revision,row_version,updated_at
-            FROM upsert
-            UNION ALL
-            SELECT working_revision,row_version,updated_at
-            FROM project_flowhive_working_copies
-            WHERE project_id=@project_id
-              AND NOT EXISTS(SELECT 1 FROM upsert)
-            LIMIT 1;
+            INSERT INTO project_flowhive_working_copies(project_id,plan_id,working_payload,updated_by_user_id)
+            SELECT @project_id,@plan_id,@payload::jsonb,@actor
+            WHERE @expected::uuid IS NULL OR EXISTS(
+                SELECT 1 FROM project_flowhive_working_copies WHERE project_id=@project_id AND row_version=@expected)
+            ON CONFLICT(project_id) DO UPDATE
+            SET plan_id=EXCLUDED.plan_id,working_payload=EXCLUDED.working_payload,updated_by_user_id=EXCLUDED.updated_by_user_id
+            WHERE project_flowhive_working_copies.row_version=@expected
+            RETURNING working_revision,row_version,updated_at;
             """, connection, transaction);
         command.Parameters.AddWithValue("project_id", projectId);
         command.Parameters.Add("plan_id", NpgsqlDbType.Uuid).Value = plan.PlanId.HasValue ? plan.PlanId.Value : DBNull.Value;
+        command.Parameters.Add("expected", NpgsqlDbType.Uuid).Value = (object?)expectedVersion ?? DBNull.Value;
         command.Parameters.AddWithValue("payload", JsonSerializer.Serialize(plan, Json));
         command.Parameters.AddWithValue("actor", actor);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
-            throw new InvalidOperationException("FlowHive working-copy persistence returned no durable row.");
+            return null;
         var result = new WorkingCopyResult(
             reader.GetInt32(0),
             reader.GetGuid(1),
@@ -793,8 +1039,10 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 validation_payload=COALESCE(@validation::jsonb,validation_payload),
                 updated_at=NOW(),
                 completed_at=CASE WHEN @completed THEN NOW() ELSE completed_at END,
-                row_version=gen_random_uuid()
-            WHERE run_id=@run_id;
+                row_version=gen_random_uuid(),
+                next_attempt_at=CASE WHEN @phase='ai_route_retry' THEN NOW()+INTERVAL '30 seconds' ELSE NOW()+INTERVAL '3 seconds' END
+            WHERE run_id=@run_id AND status IN ('queued','processing','generating')
+              AND ((@completed AND @phase<>'working_draft_ready') OR deadline_at>clock_timestamp());
             """, connection, transaction);
         command.Parameters.AddWithValue("status", status);
         command.Parameters.AddWithValue("phase", phase);
@@ -807,7 +1055,9 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         command.Parameters.Add("validation", NpgsqlDbType.Text).Value = validation is null ? DBNull.Value : JsonSerializer.Serialize(validation, Json);
         command.Parameters.AddWithValue("completed", completed);
         command.Parameters.AddWithValue("run_id", runId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var changed = await command.ExecuteNonQueryAsync(cancellationToken);
+        if (changed != 1 && phase == "working_draft_ready")
+            throw new TimeoutException("The planner was cancelled or its deadline expired before the working-copy transaction committed.");
     }
 
     private static async Task<PlannerRun?> LoadRunAsync(
@@ -822,7 +1072,9 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                    actual_actor_user_id,effective_actor_user_id,
                    COALESCE(generated_plan::text,''),COALESCE(schedule_payload::text,''),
                    COALESCE(validation_payload::text,''),blockers::text,warnings::text,
-                   operation_logs::text,correlation_id,created_at,updated_at,completed_at
+                   operation_logs::text,correlation_id,created_at,updated_at,completed_at,
+                   deadline_at,expected_working_row_version,input_fingerprint,source_selection_fingerprint,
+                   source_version_fingerprint,attempt_count,phase_started_at,retry_document_processing
             FROM {RunTable}
             WHERE run_id=@run_id AND project_id=@project_id;
             """, connection);
@@ -852,7 +1104,11 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             reader.GetFieldValue<DateTimeOffset>(17),
             reader.GetFieldValue<DateTimeOffset>(18),
             reader.IsDBNull(19) ? null : reader.GetFieldValue<DateTimeOffset>(19),
-            status is "completed" or "completed_with_schedule_overrun" or "needs_attention" or "failed");
+            status is "completed" or "completed_with_schedule_overrun" or "needs_attention" or "failed",
+            reader.IsDBNull(20) ? null : reader.GetFieldValue<DateTimeOffset>(20),
+            reader.IsDBNull(21) ? null : reader.GetGuid(21),
+            reader.GetString(22), reader.GetString(23), reader.GetString(24), reader.GetInt16(25),
+            reader.GetFieldValue<DateTimeOffset>(26), reader.GetBoolean(27));
     }
 
     private static object ToResponse(PlannerRun run)
@@ -928,7 +1184,14 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             createdAt = run.CreatedAt,
             updatedAt = run.UpdatedAt,
             completedAt = run.CompletedAt,
-            stateChanged = run.GeneratedPlan is not null
+            deadlineAt = run.DeadlineAt,
+            phaseStartedAt = run.PhaseStartedAt,
+            attemptCount = run.AttemptCount,
+            maximumAttempts = ProjectFlowHiveExecutionPolicy.MaximumAttempts,
+            executionContract = ProjectFlowHiveExecutionPolicy.Contract,
+            candidateAvailable = run.Phase == "working_copy_changed" && run.GeneratedPlan is not null,
+            candidate = run.Phase == "working_copy_changed" ? new { plan = run.GeneratedPlan, schedule = run.Schedule, validation = run.Validation, reviewRequired = true } : null,
+            stateChanged = workingDraftPersisted
         };
     }
 
@@ -971,9 +1234,9 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 await connection.DisposeAsync();
                 return OpenOutcome.Fail(Results.Json(new
                 {
-                    status = "migration_095_required",
+                    status = "migration_104_required",
                     requiredMigration = MigrationId,
-                    message = "FlowHive AI Planner orchestration requires the protected-Test planning migration.",
+                    message = "Apply the bounded FlowHive execution migration before starting AI Planner.",
                     stateChanged = false
                 }, statusCode: StatusCodes.Status503ServiceUnavailable));
             }
@@ -1066,7 +1329,20 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         DateTimeOffset CreatedAt,
         DateTimeOffset UpdatedAt,
         DateTimeOffset? CompletedAt,
-        bool Terminal);
+        bool Terminal,
+        DateTimeOffset? DeadlineAt,
+        Guid? ExpectedWorkingRowVersion,
+        string InputFingerprint,
+        string SourceSelectionFingerprint,
+        string SourceVersionFingerprint,
+        short AttemptCount,
+        DateTimeOffset PhaseStartedAt,
+        bool RetryDocumentProcessing);
+
+    private sealed class PlannerConflict(string code, string message) : Exception(message)
+    {
+        public string Code { get; } = code;
+    }
 
     private sealed record CriticalPathItem(
         string WbsNumber,
