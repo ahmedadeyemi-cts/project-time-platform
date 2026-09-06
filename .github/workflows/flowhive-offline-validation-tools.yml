@@ -1,0 +1,60 @@
+name: FlowHive isolated validation tools
+on:
+  push:
+    branches: ['feature/flowhive-enterprise-psa-revamp-20260906']
+    paths: ['.github/workflows/flowhive-offline-validation-tools.yml']
+permissions:
+  contents: read
+jobs:
+  prepare:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.ref == 'refs/heads/feature/flowhive-enterprise-psa-revamp-20260906'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Restore locked application dependencies without application credentials
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          (cd src/frontend/project-time-web && npm ci --no-audit --no-fund)
+      - name: Package SDK and dependencies only; exclude credentials and settings
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/flowhive-tools"
+          python3 - <<'PY'
+          import os, pathlib, subprocess, tarfile
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'flowhive-tools'
+          root=pathlib.Path(os.environ.get('DOTNET_ROOT','/usr/share/dotnet'))
+          sdk=subprocess.check_output(['dotnet','--version'],text=True).strip()
+          selected=[root/'dotnet',root/'sdk'/sdk]
+          for relative in ['host/fxr','shared/Microsoft.NETCore.App','shared/Microsoft.AspNetCore.App']:
+              selected += list((root/relative).glob('10.*'))
+          for pack in ['Microsoft.NETCore.App.Ref','Microsoft.AspNetCore.App.Ref','Microsoft.NETCore.App.Host.linux-x64','NETStandard.Library.Ref']:
+              selected += list((root/'packs'/pack).glob('*'))
+          with tarfile.open(out/'dotnet-tools.tar.gz','w:gz') as archive:
+              for source in selected:
+                  archive.add(source,arcname='dotnet/'+str(source.relative_to(root)))
+              packages=pathlib.Path.home()/'.nuget/packages'
+              archive.add(packages,arcname='packages')
+          with tarfile.open(out/'frontend-tools.tar.gz','w:gz') as archive:
+              archive.add('src/frontend/project-time-web/node_modules',arcname='node_modules')
+          (out/'SDK_VERSION').write_text(sdk+'\n')
+          PY
+          cd "$RUNNER_TEMP/flowhive-tools"
+          sha256sum *.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-validation-tools
+          path: ${{ runner.temp }}/flowhive-tools/
+          retention-days: 1
+          if-no-files-found: error
