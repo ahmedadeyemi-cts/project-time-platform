@@ -365,11 +365,20 @@ GENERATION_TERMINAL=false
 GENERATION_POLL_ATTEMPTS=0
 # This is an asynchronous document job on the Oracle CPU runtime. Use a
 # wall-clock ceiling so slow polling requests cannot extend the acceptance window.
-GENERATION_DEADLINE="$(( GENERATION_POLL_STARTED_AT + 3900 ))"
+# Finish before the existing short-lived fixture expires, reserving three
+# minutes for archival cleanup. Never extend the authorization to fit inference.
+GENERATION_DEADLINE="$(( GENERATION_POLL_STARTED_AT + 2520 ))"
+if [[ "${MODULE025_UAT_EXPIRES_AT:-}" =~ ^[0-9]+$ ]]; then
+  FIXTURE_GENERATION_DEADLINE="$(( MODULE025_UAT_EXPIRES_AT - 180 ))"
+  (( FIXTURE_GENERATION_DEADLINE >= GENERATION_DEADLINE )) || GENERATION_DEADLINE="$FIXTURE_GENERATION_DEADLINE"
+fi
 for attempt in $(seq 1 780); do
-  (( $(date +%s) < GENERATION_DEADLINE )) || break
+  GENERATION_REMAINING_SECONDS="$(( GENERATION_DEADLINE - $(date +%s) ))"
+  (( GENERATION_REMAINING_SECONDS > 0 )) || break
+  GENERATION_POLL_TIMEOUT=55
+  (( GENERATION_REMAINING_SECONDS >= GENERATION_POLL_TIMEOUT )) || GENERATION_POLL_TIMEOUT="$GENERATION_REMAINING_SECONDS"
   GENERATION_POLL_ATTEMPTS="$attempt"
-  GENERATION_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID/generations/$GENERATION_ID" "$GENERATION_RESPONSE" "$SA_SESSION" 55)"
+  GENERATION_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID/generations/$GENERATION_ID" "$GENERATION_RESPONSE" "$SA_SESSION" "$GENERATION_POLL_TIMEOUT")"
   IFS='|' read -r GENERATION_CURL_EXIT GENERATION_STATUS <<<"$GENERATION_RESULT"
   if [[ "$GENERATION_CURL_EXIT" != 0 || "$GENERATION_STATUS" != 200 ]]; then
     if [[ "$GENERATION_CURL_EXIT" != 0 ]]; then
@@ -405,12 +414,15 @@ for attempt in $(seq 1 780); do
 done
 GENERATION_TOTAL_ELAPSED_SECONDS="$(( $(date +%s) - GENERATION_POLL_STARTED_AT + GENERATE_ELAPSED_SECONDS ))"
 [[ "$GENERATION_TERMINAL" == true ]] \
-  || fail 'Module 025 durable generation did not reach a terminal state within 65 minutes.'
+  || fail 'Module 025 durable generation did not reach a terminal state within 42 minutes or before the authorization cleanup reserve.'
 jq -e --arg id "$GENERATION_ID" '
   .status == "module025_detailed_scope_generated"
   and .generationId == $id
   and .terminal == true
   and .stateChanged == true
+  and (.targetDecisions | type == "array" and length > 0)
+  and (.targetDecisions[0].Target == "deepseek_v4")
+  and any(.targetDecisions[]; (.Target == "deepseek_v4" or .Target == "celar_ai") and .Outcome == "used" and .ReasonCode == "generation_succeeded")
   and (.revision | type == "number" and . > 1)
   and (.correlationId | type == "string" and length > 0)
 ' "$GENERATION_RESPONSE" >/dev/null \
@@ -487,6 +499,7 @@ jq -e --arg id "$ENGAGEMENT_ID" '
   || fail 'Module 025 cleanup did not persist the fixture in the archived queue.'
 
 jq -n \
+  --argjson targetDecisions "$(jq -c '.targetDecisions' "$GENERATION_RESPONSE")" \
   --arg identity "$SA_EMAIL" \
   --arg userId "$SA_USER_ID" \
   --arg engagementId "$ENGAGEMENT_ID" \
@@ -513,6 +526,8 @@ jq -n \
     createStatus:"draft",
     queueStatus:"module025_detailed_scope_generation_queued",
     generateStatus:"module025_detailed_scope_generated",
+    targetDecisions:$targetDecisions,
+    draftProvider:([$targetDecisions[] | select((.Target == "deepseek_v4" or .Target == "celar_ai") and .Outcome == "used") | .Target] | first),
     readbackStatus:"review_ready",
     generatedRevision:$generatedRevision,
     generationQueueElapsedSeconds:$generationQueueElapsedSeconds,

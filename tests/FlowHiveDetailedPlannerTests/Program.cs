@@ -217,6 +217,63 @@ var exhausted = await RunPhases((request, token) =>
         "", 100, 0, "private_model_http_503", DateTimeOffset.UtcNow));
 });
 Assert(!exhausted.Succeeded && exhaustedCalls == 2, "module025_transient_retry_is_bounded");
+foreach (var runtimeDiagnostic in new[] {
+    "private_model_http_502_private_runtime_unavailable",
+    "private_model_http_504_private_runtime_timeout",
+    "private_model_http_502_private_runtime_response_invalid",
+    "private_model_timeout" })
+{
+    var chainCalls = 0;
+    var chainResult = await RunPhases((request, token) => {
+        chainCalls++;
+        return Task.FromResult(new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model",
+            "", 100, 0, runtimeDiagnostic, DateTimeOffset.UtcNow));
+    });
+    Assert(chainCalls == 1 && chainResult.DiagnosticCode == runtimeDiagnostic + "_phase_plan",
+        "module025_exhausted_runtime_chain_is_terminal_and_phase_identified");
+}
+var phaseCore = typeof(PulseAiPrivateRagService).GetMethod(
+    "GenerateModule025PhasesCoreAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+async Task<PulseAiPrivateModelResult> RunBoundedPhases(
+    Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> model,
+    TimeSpan total, TimeSpan phase, CancellationToken token = default) =>
+    await (Task<PulseAiPrivateModelResult>)phaseCore.Invoke(null,
+        new object?[] { phaseRequest, module025Retrieval, model, token, total, phase, null })!;
+// A non-cooperative provider must not hold the worker or publish partial phases.
+phaseCalls = 0;
+var blockedCalls = 0;
+var observedPhaseToken = CancellationToken.None;
+var phaseTimeoutResult = await RunBoundedPhases((request, token) => {
+    blockedCalls++;
+    if (blockedCalls == 1) return phaseModel(request, token);
+    observedPhaseToken = token;
+    return new TaskCompletionSource<PulseAiPrivateModelResult>().Task;
+}, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(50));
+Assert(blockedCalls == 2 && observedPhaseToken.IsCancellationRequested
+    && phaseTimeoutResult.DiagnosticCode == "private_module025_phase_deadline_exceeded_phase_design"
+    && phaseTimeoutResult.Content.Length == 0, "module025_hung_phase_cancelled_no_partial_draft");
+var totalTimeoutResult = await RunBoundedPhases((request, token) =>
+    new TaskCompletionSource<PulseAiPrivateModelResult>().Task,
+    TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(5));
+Assert(totalTimeoutResult.DiagnosticCode == "private_module025_generation_deadline_exceeded_phase_plan",
+    "module025_total_budget_is_distinct_from_phase_budget");
+var repairDeadlineCalls = 0;
+var repairDeadlineResult = await RunBoundedPhases(async (request, token) => {
+    repairDeadlineCalls++;
+    if (repairDeadlineCalls > 1) await Task.Delay(Timeout.Infinite, token);
+    return new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+        "{\"tasks\":[]}", 100, 12, "", DateTimeOffset.UtcNow);
+}, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(50));
+Assert(repairDeadlineCalls == 2 && repairDeadlineResult.DiagnosticCode.Contains("phase_deadline_exceeded"),
+    "module025_repair_obeys_phase_deadline");
+using (var shutdown = new CancellationTokenSource())
+{
+    shutdown.Cancel();
+    var propagated = false;
+    try { await RunBoundedPhases(phaseModel, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(1), shutdown.Token); }
+    catch (OperationCanceledException) { propagated = true; }
+    Assert(propagated, "module025_host_cancellation_is_not_converted_to_generation_timeout");
+}
 var unauthorizedCalls = 0;
 var unauthorized = await RunPhases((request, token) =>
 {
@@ -225,6 +282,41 @@ var unauthorized = await RunPhases((request, token) =>
         "", 100, 0, "private_model_http_401", DateTimeOffset.UtcNow));
 });
 Assert(!unauthorized.Succeeded && unauthorizedCalls == 1, "module025_authentication_failure_not_retried");
+var generationFailure = typeof(Module025SowGsdModule).GetMethod("GenerationFailureOutcome", BindingFlags.NonPublic | BindingFlags.Static)!;
+foreach (var (diagnostic, expectedHttp) in new[] {
+    ("private_model_http_502_private_runtime_unavailable_phase_design", 503),
+    ("private_module025_generation_deadline_exceeded", 503),
+    ("deepseek_timeout_phase_plan", 503),
+    ("deepseek_queue_busy_phase_design", 503),
+    ("deepseek_http_503", 503),
+    ("deepseek_output_budget_exhausted_phase_plan", 422),
+    ("deepseek_http_401", 422),
+    ("private_module025_phase_deadline_exceeded_phase_plan", 503),
+    ("private_module025_detailed_plan_invalid_phase_coverage", 422),
+    ("private_model_safety_refusal", 422),
+    ("private_model_http_401", 422) })
+{
+    var outcome = generationFailure.Invoke(null, new object[] { diagnostic, "test-correlation" })!;
+    var type = outcome.GetType();
+    Assert((int)type.GetProperty("HttpStatus")!.GetValue(outcome)! == expectedHttp
+        && (string)type.GetProperty("DiagnosticCode")!.GetValue(outcome)! == diagnostic
+        && !(bool)type.GetProperty("Completed")!.GetValue(outcome)!,
+        "module025_runtime_failure_distinguished_from_evidence_failure_without_state_change");
+}
+var privateDiagnostic = typeof(Module025SowGsdModule).GetMethod("PrivateGenerationDiagnostic", BindingFlags.NonPublic | BindingFlags.Static)!;
+string Diagnostic(params ProjectPulseAiTargetDecision[] decisions) =>
+    (string)privateDiagnostic.Invoke(null, new object[] { decisions, "composition_failed" })!;
+Assert(Diagnostic(new("deepseek_v4", "failed", "deepseek_timeout"),
+    new("celar_ai", "skipped", "provider_circuit_open")) == "deepseek_timeout",
+    "module025_deepseek_failure_survives_skipped_celar");
+Assert(Diagnostic(new("deepseek_v4", "failed", "deepseek_timeout"),
+    new("celar_ai", "failed", "private_model_http_502")) == "private_model_http_502",
+    "module025_last_attempted_private_failure_is_reported");
+Assert(Diagnostic(new("deepseek_v4", "refused", "deepseek_safety_refusal"),
+    new("celar_ai", "failed", "private_model_http_502")) == "deepseek_safety_refusal",
+    "module025_refusal_remains_terminal");
+Assert(Diagnostic(new ProjectPulseAiTargetDecision("claude", "failed", "external_failure")) == "composition_failed",
+    "module025_external_checklist_failure_is_not_private_generation_failure");
 var responsePolicy = typeof(PulseAiPrivateModelClient).Assembly.GetType("ProjectTime.Api.Ai.PulseAiPrivateModelResponsePolicy")!;
 var failureDiagnostic = responsePolicy.GetMethod("RuntimeFailureDiagnosticAsync", BindingFlags.Public | BindingFlags.Static)!;
 foreach (var (errorBody, expected) in new[]

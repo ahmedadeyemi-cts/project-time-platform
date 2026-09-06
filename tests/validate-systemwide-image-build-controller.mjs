@@ -129,7 +129,7 @@ assert.match(module025Uat, /generationTotalElapsedSeconds/);
 assert.match(module025Uat, /generationPollAttempts/);
 assert.match(module025Uat, /generationResponseServer/);
 assert.match(module025Uat, /seq 1 780/);
-assert.match(module025Uat, /terminal state within 65 minutes/);
+assert.match(module025Uat, /terminal state within 42 minutes/);
 assert.match(module025Uat, /Cisco Unified Communications Manager \(Cisco CallManager \/ CUCM\) from version 14\.0 to version 15\.0/);
 assert.match(module025Uat, /\.insideSalesRepresentatives \| type == "array" and length > 0/);
 assert.match(module025Uat, /\.resalePeople == \.insideSalesRepresentatives/);

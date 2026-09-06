@@ -607,6 +607,15 @@ async function run() {
     assert(route.targets.at(-1) === "local_template", "Module 064 governed local fallback is not last for " + feature + ".");
     configuredRoutes.set(feature, route.targets);
   }
+  const sowRoute = configuredRoutes.get("sow_gsd_planning");
+  assert(JSON.stringify(sowRoute) === JSON.stringify(["deepseek_v4", "celar_ai", "claude", "openai", "local_template"]),
+    "Module 064 SOW must use DeepSeek first, Celar private fallback, then governed external assistance and local fallback.");
+  evidence.authenticatedChecks.module025ProviderPolicy = {
+    primary: "deepseek_v4",
+    privateFallback: "celar_ai",
+    externalRole: "generic_scope_quality_only",
+    fullSowAcceptance: "requires_separate_review_ready_generation",
+  };
   evidence.authenticatedChecks.module064Routes = Object.fromEntries(configuredRoutes);
   evidence.authenticatedChecks.module064SelectedOrderPreserved = "passed";
   evidence.authenticatedChecks.module064SuperAdministratorAuthority = "passed";

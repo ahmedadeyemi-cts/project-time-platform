@@ -521,6 +521,7 @@ public static class Module025SowGsdModule
             currentRevision = engagement.Revision,
             correlationId,
             diagnosticCode,
+            targetDecisions = JsonArray(latest.Evidence, "targetDecisions").ToArray(),
             failureStage,
             message,
             queuedAt = first.CreatedAt,
@@ -620,6 +621,8 @@ public static class Module025SowGsdModule
         }
 
         CelarAiComposeResult composition;
+        using var generationDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        generationDeadline.CancelAfter(TimeSpan.FromMinutes(40));
         try
         {
             var enterprise = context.RequestServices.GetRequiredService<CelarAiEnterprisePlatformService>();
@@ -645,9 +648,15 @@ public static class Module025SowGsdModule
                     current.ServiceOverview,
                     current.UpdatedAt),
                 context,
-                cancellationToken);
+                generationDeadline.Token).WaitAsync(generationDeadline.Token);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) when (generationDeadline.IsCancellationRequested)
+        {
+            return new(StatusCodes.Status504GatewayTimeout, "module025_ai_temporarily_unavailable",
+                "Detailed scope generation exceeded its time limit. The saved SOW/GSD draft was not changed.",
+                queueCorrelationId, false, "private_module025_generation_deadline_exceeded");
+        }
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Module 025 detailed SOW/GSD generation failed without logging customer or Service Overview content. EngagementId={EngagementId} Diagnostic={Diagnostic}", engagementId, exception.GetType().Name.ToLowerInvariant());
@@ -661,15 +670,8 @@ public static class Module025SowGsdModule
         }
 
         if (composition.SowDraft is null)
-        {
-            return new(
-                StatusCodes.Status422UnprocessableEntity,
-                "module025_ai_evidence_limited",
-                "Celar AI did not return a reviewable SOW draft. No generic scope or fabricated level of effort was substituted.",
-                Clean(composition.CorrelationId, 160),
-                false,
-                CompositionDiagnosticCode(composition));
-        }
+            return GenerationFailureOutcome(CompositionDiagnosticCode(composition), Clean(composition.CorrelationId, 160))
+                with { TargetDecisions = composition.TargetDecisions ?? [] };
 
         Dictionary<string, GeneratedPhase> generated;
         JsonElement sowSections;
@@ -757,6 +759,7 @@ public static class Module025SowGsdModule
                 composition.SelectedTarget,
                 composition.AttemptedTargets,
                 composition.SkippedTargets,
+                composition.TargetDecisions,
                 composition.Warnings,
                 composition.MissingEvidence,
                 composition.Conflicts,
@@ -897,6 +900,7 @@ public static class Module025SowGsdModule
                 revision,
                 correlationId = composition.CorrelationId,
                 message = completionMessage,
+                targetDecisions = composition.TargetDecisions ?? [],
                 completedAt = DateTimeOffset.UtcNow
             }, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -1462,7 +1466,8 @@ public static class Module025SowGsdModule
                     outcome.CorrelationId.Length > 0 ? outcome.CorrelationId : correlationId,
                     outcome.DiagnosticCode,
                     "execute_generation",
-                    cancellationToken);
+                    cancellationToken,
+                    outcome.TargetDecisions);
                 return true;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1569,7 +1574,7 @@ public static class Module025SowGsdModule
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static async Task RecordGenerationTerminalAsync(string connectionString, Module025QueuedGeneration candidate, Guid generationId, string eventType, string apiStatus, int httpStatus, string message, string correlationId, string diagnosticCode, string failureStage, CancellationToken cancellationToken)
+    private static async Task RecordGenerationTerminalAsync(string connectionString, Module025QueuedGeneration candidate, Guid generationId, string eventType, string apiStatus, int httpStatus, string message, string correlationId, string diagnosticCode, string failureStage, CancellationToken cancellationToken, IReadOnlyList<ProjectPulseAiTargetDecision>? targetDecisions = null)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -1590,6 +1595,7 @@ public static class Module025SowGsdModule
                 correlationId,
                 message,
                 diagnosticCode = Clean(diagnosticCode, 160),
+                targetDecisions = targetDecisions ?? [],
                 failureStage = Clean(failureStage, 160),
                 completedAt = DateTimeOffset.UtcNow
             },
@@ -1716,17 +1722,41 @@ public static class Module025SowGsdModule
     private static string PhaseLabel(string phaseCode) => phaseCode switch { "plan" => "Plan", "design" => "Design", "implement" => "Implement", "validate" => "Validate", "release" => "Release", _ => phaseCode };
     private static IReadOnlyList<string> CleanList(IEnumerable<string>? values) => (values ?? Array.Empty<string>()).Select(value => Clean(value, 12_000)).Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Take(500).ToArray();
     private static string Clean(string? value, int maximum) { var clean = value?.Trim() ?? string.Empty; return clean.Length <= maximum ? clean : clean[..maximum]; }
+    private static Module025GenerationExecutionOutcome GenerationFailureOutcome(string diagnostic, string correlationId)
+    {
+        // Infrastructure failures are not evidence deficiencies. Preserve the
+        // real closed diagnostic and the unchanged draft, without masking it as 422.
+        var runtimeFailure = new[] {
+            "private_model_http_502", "private_model_http_503", "private_model_http_504",
+            "private_model_timeout", "private_model_transport_failure",
+            "deepseek_timeout", "deepseek_connection_failed", "deepseek_queue_busy",
+            "deepseek_queue_unavailable", "deepseek_http_429", "deepseek_http_502",
+            "deepseek_http_503", "deepseek_http_504",
+            "private_module025_generation_deadline_exceeded", "private_module025_phase_deadline_exceeded"
+        }.Any(code => string.Equals(diagnostic, code, StringComparison.Ordinal)
+            || diagnostic.StartsWith(code + "_phase_", StringComparison.Ordinal)
+            || diagnostic.StartsWith(code + "_private_runtime_", StringComparison.Ordinal));
+        return new(runtimeFailure ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status422UnprocessableEntity,
+            runtimeFailure ? "module025_ai_temporarily_unavailable" : "module025_ai_evidence_limited",
+            runtimeFailure
+                ? "The private inference service could not complete SOW generation. The saved draft was not changed."
+                : "Celar AI did not return a reviewable SOW draft. No generic scope or fabricated level of effort was substituted.",
+            correlationId, false, diagnostic);
+    }
+
     private static string CompositionDiagnosticCode(CelarAiComposeResult composition)
     {
-        var privateDecision = (composition.TargetDecisions ?? [])
-            .FirstOrDefault(decision =>
-                string.Equals(decision.Target, CelarAiCapabilityTargets.CelarAi, StringComparison.OrdinalIgnoreCase)
-                && (string.Equals(decision.Outcome, "failed", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(decision.Outcome, "refused", StringComparison.OrdinalIgnoreCase)));
-        var privateReason = privateDecision?.ReasonCode;
-        return Clean(string.IsNullOrWhiteSpace(privateReason)
-            ? composition.Status
-            : privateReason, 160);
+        return PrivateGenerationDiagnostic(composition.TargetDecisions ?? [], composition.Status);
+    }
+
+    private static string PrivateGenerationDiagnostic(IReadOnlyList<ProjectPulseAiTargetDecision> decisions, string status)
+    {
+        // Report the last actual private failure, regardless of provider. A
+        // refusal is terminal and must never be masked by a transport failure.
+        var privateDecisions = decisions.Where(decision => CelarAiCapabilityTargets.IsPrivate(decision.Target));
+        var decision = privateDecisions.LastOrDefault(value => value.Outcome == "refused")
+            ?? privateDecisions.LastOrDefault(value => value.Outcome == "failed");
+        return Clean(string.IsNullOrWhiteSpace(decision?.ReasonCode) ? status : decision.ReasonCode, 160);
     }
     private static DateTimeOffset? NullableTimestamp(NpgsqlDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetFieldValue<DateTimeOffset>(ordinal);
     private static void AddNullableGuid(NpgsqlCommand command, string name, Guid? value) => command.Parameters.AddWithValue(name, value.HasValue ? (object)value.Value : DBNull.Value);
@@ -1779,7 +1809,7 @@ public static class Module025SowGsdModule
     private sealed record PersonSelection(Guid? UserId, string DisplayName);
     private sealed record Module025GenerationEvent(string EventType, int Revision, JsonElement Evidence, DateTimeOffset CreatedAt);
     private sealed record Module025QueuedGeneration(long EventId, Guid EngagementId, Guid ActorUserId, int ExpectedRevision, JsonElement Evidence);
-    private sealed record Module025GenerationExecutionOutcome(int HttpStatus, string ApiStatus, string Message, string CorrelationId, bool Completed, string DiagnosticCode = "");
+    private sealed record Module025GenerationExecutionOutcome(int HttpStatus, string ApiStatus, string Message, string CorrelationId, bool Completed, string DiagnosticCode = "", IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null);
 
     private sealed class GeneratedPhase
     {

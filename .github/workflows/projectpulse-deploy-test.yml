@@ -1544,8 +1544,35 @@ jobs:
             }' > "$EVIDENCE_DIR/uat-summary.json"
           unset COORDINATOR_SESSION TEST_LOGIN_PASSWORD
 
+      - name: Run protected-Test assigned-work visibility UAT
+        id: assigned_work_uat
+        if: ${{ !cancelled() && steps.uat.outcome == 'success' }}
+        shell: bash
+        working-directory: release
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          BASE: ${{ steps.contract.outputs.base }}
+          EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
+        run: |
+          set -Eeuo pipefail
+          bash scripts/release-test/run-assigned-work-protected-test-uat.sh
+
+      - name: Run protected-Test utilization role-scoping UAT
+        id: utilization_uat
+        if: ${{ !cancelled() && steps.uat.outcome == 'success' }}
+        shell: bash
+        working-directory: release
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          BASE: ${{ steps.contract.outputs.base }}
+          EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
+        run: |
+          set -Eeuo pipefail
+          bash scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
+
       - name: Enable exact-run Module 025 protected-Test authorization fixture
         id: module025_fixture
+        if: ${{ !cancelled() && steps.uat.outcome == 'success' }}
         shell: bash
         working-directory: release
         run: |
@@ -1560,6 +1587,7 @@ jobs:
           fi
           echo 'started=true' >> "$GITHUB_OUTPUT"
           FIXTURE_EXPIRES_AT="$(( $(date +%s) + 2700 ))"
+          echo "expires_at=$FIXTURE_EXPIRES_AT" >> "$GITHUB_OUTPUT"
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --set-env-vars \
               PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED=true \
@@ -1580,6 +1608,7 @@ jobs:
 
       - name: Run protected-Test Module 025 SOW/GSD generation lifecycle UAT
         id: module025_uat
+        if: ${{ !cancelled() && steps.module025_fixture.outcome == 'success' }}
         shell: bash
         working-directory: release
         env:
@@ -1587,6 +1616,7 @@ jobs:
           BASE: ${{ steps.contract.outputs.base }}
           EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
           MODULE025_UAT_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          MODULE025_UAT_EXPIRES_AT: ${{ steps.module025_fixture.outputs.expires_at }}
         run: |
           set -Eeuo pipefail
           bash scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
@@ -1617,30 +1647,6 @@ jobs:
             '{status:"disabled",revision:$revision,sourceCommit:$source,persistentRoleAssignmentMutation:false,productionMutation:false}' \
             > "$EVIDENCE_DIR/module025-protected-test-uat-fixture-disabled.json"
           echo "MODULE025_PROTECTED_TEST_UAT_FIXTURE=disabled revision=$API_REVISION"
-
-      - name: Run protected-Test assigned-work visibility UAT
-        id: assigned_work_uat
-        shell: bash
-        working-directory: release
-        env:
-          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
-          BASE: ${{ steps.contract.outputs.base }}
-          EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
-        run: |
-          set -Eeuo pipefail
-          bash scripts/release-test/run-assigned-work-protected-test-uat.sh
-
-      - name: Run protected-Test utilization role-scoping UAT
-        id: utilization_uat
-        shell: bash
-        working-directory: release
-        env:
-          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
-          BASE: ${{ steps.contract.outputs.base }}
-          EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
-        run: |
-          set -Eeuo pipefail
-          bash scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
 
       - name: Restore exact prior Test images after application failure
         if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && steps.uat.outputs.deployment_health_verified != 'true' }}
