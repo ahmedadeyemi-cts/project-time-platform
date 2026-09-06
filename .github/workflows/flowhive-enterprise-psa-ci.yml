@@ -1,0 +1,50 @@
+name: FlowHive Enterprise PSA CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHive*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs'
+      - 'src/frontend/project-time-web/src/*[Ff]low[Hh]ive*'
+      - 'tests/FlowHiveExecutablePlanTests/**'
+      - 'tests/flowhive-psa-*.test.mjs'
+      - 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql'
+      - '.github/workflows/flowhive-enterprise-psa-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flowhive-enterprise-psa-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  executable-wbs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Execute native WBS behavior regressions against the real API
+        run: dotnet run --project tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj --configuration Release
+      - name: Preserve existing detailed-planner and Module 025 regressions
+        run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+      - name: Build the application
+        working-directory: src/frontend/project-time-web
+        run: npm run build
