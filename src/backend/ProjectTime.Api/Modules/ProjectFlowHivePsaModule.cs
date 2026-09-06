@@ -142,7 +142,7 @@ internal static class ProjectFlowHivePsaModule
         var title = Clean(form["title"].FirstOrDefault(), 240);
         if (title.Length < 3) title = Path.GetFileNameWithoutExtension(file.FileName);
         var meetingAt = DateTimeOffset.TryParse(form["meetingAt"].FirstOrDefault(), out var parsedMeetingAt)
-            ? parsedMeetingAt
+            ? parsedMeetingAt.ToUniversalTime()
             : DateTimeOffset.UtcNow;
         var customerVisible = bool.TryParse(form["customerVisible"].FirstOrDefault(), out var parsedVisible) && parsedVisible;
         var meetingId = Guid.NewGuid();
@@ -283,7 +283,7 @@ internal static class ProjectFlowHivePsaModule
             FROM changed CROSS JOIN prior;
 
             SELECT meeting_id, project_id, title, meeting_at, original_file_name, size_bytes, sha256,
-                   customer_visible, transcript_status, transcript_language, action_items, transcription_diagnostic, updated_at
+                   customer_visible, transcript_status, transcript_language, action_items, transcription_diagnostic, created_at, updated_at
             FROM project_flowhive_meetings
             WHERE meeting_id = @meeting_id AND project_id = @project_id;
             """;
@@ -291,7 +291,7 @@ internal static class ProjectFlowHivePsaModule
         command.Parameters.AddWithValue("meeting_id", meetingId);
         command.Parameters.AddWithValue("project_id", projectId);
         command.Parameters.AddWithValue("title", Clean(request.Title, 240));
-        command.Parameters.AddWithValue("meeting_at", NpgsqlDbType.TimestampTz, request.MeetingAt is null ? DBNull.Value : request.MeetingAt.Value);
+        command.Parameters.AddWithValue("meeting_at", NpgsqlDbType.TimestampTz, request.MeetingAt is null ? DBNull.Value : request.MeetingAt.Value.ToUniversalTime());
         command.Parameters.AddWithValue("customer_visible", NpgsqlDbType.Boolean, request.CustomerVisible is null ? DBNull.Value : request.CustomerVisible.Value);
         command.Parameters.AddWithValue("retry_transcription", request.RetryTranscription);
         command.Parameters.AddWithValue("retry_status", configured ? "queued" : "unavailable");
@@ -563,11 +563,17 @@ internal static class ProjectFlowHivePsaModule
             customerVisible = reader.GetBoolean(7),
             transcriptStatus = reader.GetString(8),
             transcriptLanguage = reader.GetString(9),
-            actionItems = JsonDocument.Parse(reader.GetString(10)).RootElement.Clone(),
+            actionItems = ReadJson(reader, 10),
             transcriptionDiagnostic = reader.GetString(11),
             createdAt = reader.GetFieldValue<DateTimeOffset>(12),
             updatedAt = reader.GetFieldValue<DateTimeOffset>(13)
         };
+    }
+
+    private static JsonElement ReadJson(NpgsqlDataReader reader, int ordinal)
+    {
+        using var document = JsonDocument.Parse(reader.GetString(ordinal));
+        return document.RootElement.Clone();
     }
 
     private static async Task<List<object>> LoadRaidHistoryAsync(NpgsqlConnection connection, Guid projectId, CancellationToken cancellationToken)
@@ -588,9 +594,9 @@ internal static class ProjectFlowHivePsaModule
             rows.Add(new
             {
                 raidEventId = reader.GetGuid(0), raidItemId = reader.GetGuid(1), actionCode = reader.GetString(2),
-                actorUserId = reader.IsDBNull(3) ? null : reader.GetGuid(3),
-                prior = reader.IsDBNull(4) ? null : JsonDocument.Parse(reader.GetString(4)).RootElement.Clone(),
-                current = reader.IsDBNull(5) ? null : JsonDocument.Parse(reader.GetString(5)).RootElement.Clone(),
+                actorUserId = reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3),
+                prior = reader.IsDBNull(4) ? (JsonElement?)null : ReadJson(reader, 4),
+                current = reader.IsDBNull(5) ? (JsonElement?)null : ReadJson(reader, 5),
                 occurredAt = reader.GetFieldValue<DateTimeOffset>(6)
             });
         }
