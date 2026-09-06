@@ -33,7 +33,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         summary.Cell("C1").Style.Font.Bold = true;
         summary.Cell("C1").Style.Font.FontSize = 18;
         summary.Cell("C1").Style.Font.FontColor = XLColor.FromHtml("#0B2B4B");
-        summary.Cell("C2").Value = CONTROLLabel();
+        summary.Cell("C2").Value = ControlLabel;
         summary.Cell("C2").Style.Font.Bold = true;
         summary.Cell("C2").Style.Font.FontColor = XLColor.FromHtml("#0B6E99");
         var summaryRows = new[]
@@ -83,7 +83,12 @@ internal static class ProjectFlowHivePsaArtifactRenderer
             header.Style.Fill.BackgroundColor = XLColor.FromHtml("#0B2B4B");
             sheet.SheetView.FreezeRows(1);
             sheet.Range(1, 1, Math.Max(2, artifact.Rows.Count + 1), artifact.Columns.Count).SetAutoFilter();
-            sheet.Columns().AdjustToContents(8, 48);
+            sheet.Columns().AdjustToContents();
+            foreach (var column in sheet.ColumnsUsed())
+            {
+                if (column.Width < 8) column.Width = 8;
+                if (column.Width > 48) column.Width = 48;
+            }
             sheet.Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
             sheet.Style.Alignment.WrapText = true;
         }
@@ -111,7 +116,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         var content = new StringBuilder();
         content.Append("q 86 0 0 57 36 520 cm /Im1 Do Q\n");
         PdfText(content, 135, 568, 18, "US Signal Project FlowHive", true, "0.04 0.17 0.29");
-        PdfText(content, 135, 548, 9, CONTROLLabel(), true, "0.04 0.43 0.60");
+        PdfText(content, 135, 548, 9, ControlLabel, true, "0.04 0.43 0.60");
         PdfText(content, 36, 512, 13, Truncate(artifact.Title, 110), true, "0.04 0.17 0.29");
         PdfText(content, 36, 494, 8, $"Project: {Truncate(Join(artifact.ProjectCode, artifact.ProjectName), 90)}", false, "0.18 0.25 0.34");
         PdfText(content, 520, 494, 8, $"Customer: {Truncate(artifact.CustomerName, 60)}", false, "0.18 0.25 0.34");
@@ -206,9 +211,8 @@ internal static class ProjectFlowHivePsaArtifactRenderer
     private static string SafeSheetName(string value)
     {
         var invalid = new[] { ':', '\\', '/', '?', '*', '[', ']' };
-        var safe = new string((value ?? "Artifact").Select(character => invalid.Contains(character) ? '-' : character).ToArray());
-        return safe[..Math.Min(Math.Max(1, safe.Length), 31)];
+        var safe = new string((value ?? "Artifact").Select(character => invalid.Contains(character) ? '-' : character).ToArray()).Trim();
+        if (safe.Length == 0) safe = "Artifact";
+        return safe[..Math.Min(safe.Length, 31)];
     }
-    private static string CONTROLLabel() => CONTROLLabelValue;
-    private const string CONTROLLabelValue = CONTROLLabel;
 }
