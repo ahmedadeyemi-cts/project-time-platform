@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify the coupled Oracle runtime and retain only allowlisted health evidence."""
 import json
+import http.client
 import os
 import re
 import time
@@ -70,7 +71,7 @@ def main():
     for attempt in range(1, 11):
         try:
             status, raw = fetch(token)
-        except (OSError, ValueError, urllib.error.URLError):
+        except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException):
             status, raw = 0, b''
         result = evaluate(status, raw, expected)
         result['attempt'] = attempt

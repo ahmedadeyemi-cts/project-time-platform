@@ -31,3 +31,11 @@ with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, EVIDENCE_DIR=t
         assert 'runtime_authentication_rejected' in p.read_text()
     assert secret not in output.getvalue()
 print('ORACLE_RUNTIME_PREFLIGHT_EVIDENCE=PASS')
+
+with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, EVIDENCE_DIR=tmp, RUNTIME_TOKEN=secret), patch.object(m, 'fetch', side_effect=m.http.client.IncompleteRead(secret.encode())) as fetch, patch.object(m.time,'sleep') as sleep:
+    output=io.StringIO()
+    with contextlib.redirect_stdout(output): assert m.main() == 1
+    assert fetch.call_count == 10 and sleep.call_count == 9
+    assert secret not in output.getvalue()
+    result=json.loads((Path(tmp)/'oracle-sow-runtime.json').read_text())
+    assert result['diagnosticCode'] == 'runtime_transport_unavailable' and result['attempt'] == 10
