@@ -68,9 +68,10 @@ public static class CelarAiEnterpriseEvidenceCatalog
     }
 
     public static bool HasUnsupportedPeriod(string question) => Regex.IsMatch(question,
-        @"\b(?:month|year|quarter|yesterday|today|daily|on \d{4}-\d{2}-\d{2}|between|from .* to)\b",
+        @"\b(?:month|year|quarter|yesterday|today|daily|on \d{4}-\d{2}-\d{2}|between|from .* to|since|until|before|after|next week|past|last \d+|january|february|march|april|may|june|july|august|september|october|november|december)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
-        || Regex.Matches(question, @"\b\d{4}-\d{2}-\d{2}\b").Count > 1;
+        || Regex.Matches(question, @"\b\d{4}-\d{2}-\d{2}\b").Count > 1
+        || (Regex.IsMatch(question,@"\b\d{4}-\d{2}-\d{2}\b") && CelarAiEnterprisePeriod.Parse(question,"UTC") is null);
 
     public static bool NeedsPeriodClarification(string question) => HasUnsupportedPeriod(question)
         && Adapters.Any(adapter => adapter.Weekly && adapter.Signals.Any(signal => Matches(question, signal)));

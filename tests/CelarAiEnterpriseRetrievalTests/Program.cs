@@ -34,6 +34,12 @@ foreach (var (question, expected) in cases)
 var publicQuestion = "Explain photosynthesis.";
 Require(CelarAiInternalDataService.ParseQuestion("What is my team working on?") is null,
     "Team request reaches enterprise planner rather than the single-person resolver");
+Require(CelarAiInternalDataService.ParseQuestion("Who is the account executive for GLH and what is its budget?") is null,
+    "Mixed ownership and financial request reaches cross-domain retrieval");
+Require(CelarAiEnterpriseEvidenceCatalog.NeedsPeriodClarification("Approvals for August"),
+    "Named month cannot be replaced by current-week approvals");
+Require(CelarAiEnterpriseEvidenceCatalog.NeedsPeriodClarification("Approvals for week 2026-02-30"),
+    "Invalid weekly date cannot become the current week");
 Require(CelarAiExecutionAdapterRegistry.Describe("reporting_relationships").State == "adapter_ready",
     "Capability availability reflects the executable relationship adapter");
 Require(CelarAiEnterpriseEvidenceCatalog.Select(publicQuestion, PulseAiSystemKnowledgeCatalog.Analyze(publicQuestion)).Count == 0,

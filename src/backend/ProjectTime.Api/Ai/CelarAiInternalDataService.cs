@@ -611,6 +611,7 @@ public sealed partial class CelarAiInternalDataService
         // A team is a set of authorized people, not an ambiguous person name.
         // Leave group questions to the enterprise evidence planner.
         if (Regex.IsMatch(value, @"\b(?:my team|our team|team members|my direct reports|our engineers)\b", Options)) return null;
+        if (Regex.IsMatch(value, @"\b(?:and|compare|versus)\b.*\b(?:budget|cost|invoice|contract|sow|gsd|document|risk|capacity|approval)\b", Options)) return null;
 
         return MatchPerson(value, PersonWorkSummaryPatterns, CelarAiInternalDataQueryKind.PersonWorkSummary, true)
             ?? MatchPerson(value, PersonProjectCountPatterns, CelarAiInternalDataQueryKind.PersonProjectCount, true)

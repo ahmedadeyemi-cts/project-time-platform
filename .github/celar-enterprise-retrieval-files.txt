@@ -1,5 +1,7 @@
 .github/celar-enterprise-retrieval-files.txt
 .github/workflows/celar-ai-enterprise-retrieval-ci.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
 docs/modules/module-011-pulse-ai/ENTERPRISE-RETRIEVAL-COVERAGE.md
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
 src/backend/ProjectTime.Api/Ai/CelarAiEnterpriseEvidenceCatalog.cs
