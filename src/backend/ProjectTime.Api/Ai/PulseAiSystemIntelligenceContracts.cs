@@ -165,7 +165,8 @@ public sealed record PulseAiSystemQuestionRequest(
     bool IncludeAssumptions = true,
     bool IncludeSourceCitations = true,
     string? AnswerPreferenceSource = null,
-    IReadOnlyList<Guid>? AttachmentIds = null);
+    IReadOnlyList<Guid>? AttachmentIds = null,
+    string? ClientTimeZone = null);
 
 public sealed record PulseAiConversationCreateRequest(
     string? Title,

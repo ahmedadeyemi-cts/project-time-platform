@@ -161,8 +161,17 @@ public static class CelarAiUniversalToolCatalog
         bool privateOnly,
         string[] querySignals,
         string[] sourceTypes,
-        string[] routes) =>
-        new(code, displayName, domain, modules, authority, availability, accessPolicy,
+        string[] routes)
+    {
+        var executable = CelarAiEnterpriseEvidenceCatalog.ForCapability(code);
+        if (executable.Count > 0)
+        {
+            availability = "available_existing_adapter_bounded";
+            routes = executable.Select(adapter=>adapter.Path).ToArray();
+            accessPolicy += "; Implemented read scope: " + string.Join("; ",executable.Select(adapter=>adapter.Scope));
+        }
+        return new(code, displayName, domain, modules, authority, availability, accessPolicy,
             freshnessClass, deterministic, citationRequired, privateOnly,
             MutationAllowed: false, querySignals, sourceTypes, routes);
+    }
 }

@@ -50,6 +50,16 @@ public sealed class PulseAiSystemToolExecutor
     {
         var observedAt = DateTimeOffset.UtcNow;
         var stopwatch = Stopwatch.StartNew();
+        if ((context.Request.Headers.ContainsKey("X-ProjectPulse-View-As-User")
+                || (context.Items.TryGetValue("ProjectPulseIsViewAs",out var viewAs) && viewAs is true))
+            && definition.Code is "enterprise_contracts" or "enterprise_billing")
+        {
+            // These legacy owning endpoints read ProjectPulseSessionUserId,
+            // not ProjectPulseEffectiveUserId. Never let an administrator's
+            // actual-session records masquerade as the viewed user's scope.
+            return Result(definition,"forbidden",403,stopwatch,0,"view_as_adapter_scope_unavailable",string.Empty,
+                ["This owning-module read does not support effective-user evidence in View-As. Return to the actual session to query it."],observedAt);
+        }
         if (!definition.SafeReadOnly || !HttpMethods.IsGet(definition.Method))
         {
             return Result(
@@ -107,13 +117,27 @@ public sealed class PulseAiSystemToolExecutor
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
                 timeout.Token);
-            var bytes = await ReadBoundedAsync(
+            var bounded = await ReadBoundedAsync(
                 response.Content,
                 options.MaximumToolResponseCharacters,
                 timeout.Token);
             stopwatch.Stop();
+            var bytes = bounded.Bytes;
             var body = Encoding.UTF8.GetString(bytes);
-            var summary = SummarizeResponse(body, response.StatusCode, definition);
+            if (bounded.Truncated || body.Length > options.MaximumToolResponseCharacters)
+                return Result(definition, "incomplete", (int)response.StatusCode, stopwatch, bytes.Length,
+                    "tool_response_incomplete", string.Empty,
+                    ["The source exceeded the response budget. No partial body or inferred total was promoted."], observedAt);
+            if (response.IsSuccessStatusCode && CelarAiEnterpriseEvidenceCatalog.IsEnterpriseTool(definition.Code))
+            {
+                var evidenceDiagnostic = CelarAiEnterpriseEvidencePolicy.ValidateResponse(body, definition.Code);
+                if (evidenceDiagnostic.Length > 0)
+                    return Result(definition, "incomplete", (int)response.StatusCode, stopwatch, bytes.Length,
+                        evidenceDiagnostic, string.Empty, ["The owning source did not provide complete usable JSON evidence. Narrow the query or check source readiness."], observedAt);
+            }
+            var summary = response.IsSuccessStatusCode
+                ? SummarizeResponse(body, response.StatusCode, definition)
+                : new[] { $"{definition.Name} returned HTTP {(int)response.StatusCode}. Error content was excluded." };
             var status = response.IsSuccessStatusCode
                 ? "succeeded"
                 : response.StatusCode is System.Net.HttpStatusCode.Unauthorized
@@ -134,7 +158,7 @@ public sealed class PulseAiSystemToolExecutor
                 stopwatch,
                 bytes.Length,
                 diagnostic,
-                body,
+                response.IsSuccessStatusCode ? body : string.Empty,
                 summary,
                 observedAt);
         }
@@ -398,7 +422,7 @@ public sealed class PulseAiSystemToolExecutor
             || decodedPath.Equals("/health", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<byte[]> ReadBoundedAsync(
+    private static async Task<(byte[] Bytes, bool Truncated)> ReadBoundedAsync(
         HttpContent content,
         int maximumCharacters,
         CancellationToken cancellationToken)
@@ -416,7 +440,10 @@ public sealed class PulseAiSystemToolExecutor
             if (read == 0) break;
             await memory.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
         }
-        return memory.ToArray();
+        var extra = new byte[1];
+        var truncated = memory.Length == maximumBytes
+            && await stream.ReadAsync(extra.AsMemory(), cancellationToken) > 0;
+        return (memory.ToArray(), truncated);
     }
 
     private static IReadOnlyList<string> SummarizeResponse(
@@ -426,7 +453,8 @@ public sealed class PulseAiSystemToolExecutor
     {
         var summary = new List<string>
         {
-            $"{definition.Name} returned HTTP {(int)statusCode} ({statusCode})."
+            $"{definition.Name} returned HTTP {(int)statusCode} ({statusCode}).",
+            definition.Purpose
         };
         if (string.IsNullOrWhiteSpace(body))
         {
@@ -438,6 +466,7 @@ public sealed class PulseAiSystemToolExecutor
         {
             using var document = JsonDocument.Parse(body, new JsonDocumentOptions { MaxDepth = 128 });
             var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return summary;
             AddString(root, "status", "Status", summary);
             AddString(root, "module", "Module", summary);
             AddString(root, "moduleName", "Module name", summary);
