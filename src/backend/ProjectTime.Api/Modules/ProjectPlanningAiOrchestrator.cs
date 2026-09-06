@@ -7,12 +7,12 @@ namespace ProjectTime.Api.Modules;
 /// <summary>
 /// One source-backed planning engine for FlowHive and Project Forge. The private
 /// project documents are resolved before this service is called. This service
-/// enforces current-document citations, deterministic five-phase expansion, and
+/// enforces current-document citations, phase-native executable WBS assembly, and
 /// schedule calculation without silently compressing effort or duration.
 /// </summary>
 internal static class ProjectPlanningAiOrchestrator
 {
-    internal const string Contract = "project-planning-ai-orchestrator-v1-20260819";
+    internal const string Contract = "project-planning-ai-orchestrator-v2-20260906";
     private const string DurableRunTable = "project_flowhive_ai_planner_runs";
     private static readonly JsonSerializerOptions DurablePlannerJson = new(JsonSerializerDefaults.Web)
     {
@@ -43,7 +43,8 @@ internal static class ProjectPlanningAiOrchestrator
         var outcome = Clean(
             requestedOutcome,
             4_000,
-            "Create a complete source-backed project planning draft. Extract each cited SOW work package once, then expand it into Plan, Design, Implement, Validate, and Release. Include detailed steps, products, platforms, versions, licensing, quantities, tools, systems, interfaces, access, inputs, outputs, responsibilities, acceptance, validation, rollback, risks, assumptions, open questions, roles, effort, duration, dependencies, milestones, and citations. Never fabricate missing information; convert it into open questions.");
+            "Create a complete source-backed project planning draft. Return distinct, project-specific executable tasks in Plan, Design, Implement, Validate, and Release. Assign each task to its own phase exactly once; never repeat every work package across all five phases. Include detailed steps, products, platforms, versions, licensing, quantities, tools, systems, interfaces, access, inputs, outputs, responsibilities, acceptance, validation, rollback, risks, assumptions, open questions, roles, effort, duration, predecessors, and citations. Never fabricate missing information; convert it into open questions.");
+        outcome += "\nReturn at least one detailed child task in each of Plan, Design, Implement, Validate, and Release, with unique WBS references, at least two distinct execution steps, inputs, outputs, acceptance criteria, validation steps, required roles, positive effort/duration estimates, and current evidence citations. Use task-specific technical descriptions, not document titles, repeated phase boilerplate, or instructions to convert scope into work. Do not automatically create project milestones. The PM reviews proposed estimates and scope before baseline approval.";
 
         // Project Forge is a review projection of the same governed planning graph,
         // not a reason to invoke the model a second time behind an HTTP gateway.
@@ -183,14 +184,22 @@ internal static class ProjectPlanningAiOrchestrator
         ProjectFlowHivePlanRequest generated;
         try
         {
-            generated = ProjectFlowHiveDetailedPlanBuilder.Build(seed, privatePlan!);
+            // Bind identity to the exact SOW version before deriving stable task IDs.
+            // FlowHive must preserve native task phases, not multiply a scaffold.
+            generated = string.Equals(capabilityCode, CelarAiCapabilityCatalog.ProjectFlowHivePlan, StringComparison.OrdinalIgnoreCase)
+                ? ProjectFlowHiveExecutablePlanBuilder.Build(seed with
+                {
+                    SowVersion = documents.StatementOfWork?.ActiveVersionId?.ToString("D"),
+                    GsdVersion = documents.GeneralSolutionDesign?.ActiveVersionId?.ToString("D")
+                }, privatePlan!, currentCitationIds)
+                : ProjectFlowHiveDetailedPlanBuilder.Build(seed, privatePlan!);
         }
         catch (Exception exception)
         {
             return new ProjectPlanningGenerationResult(
                 false,
                 "project_planning_expansion_failed",
-                "The cited work packages could not be expanded into the governed five-phase plan. No planning draft was changed.",
+                "The AI result did not meet the executable five-phase work-breakdown contract. No planning draft was changed.",
                 composition,
                 null,
                 null,
@@ -333,6 +342,9 @@ internal static class ProjectPlanningAiOrchestrator
                     || row.Plan is null
                     || row.Schedule is null
                     || row.Validation is null
+                    || row.Plan.RevisionLabel != ProjectFlowHiveExecutablePlanBuilder.Contract
+                    || row.Plan.ProjectStartDate != seed.ProjectStartDate
+                    || row.Plan.ProjectEndDate != seed.ProjectEndDate
                     || !MatchesCurrentAuthority(row.Plan, projectId, currentSowVersion, currentGsdVersion))
                 {
                     continue;
