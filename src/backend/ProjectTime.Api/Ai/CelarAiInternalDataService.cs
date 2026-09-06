@@ -1002,8 +1002,8 @@ public sealed class CelarAiInternalDataService
         var ambiguous = rows.Select(row => row.Id).Distinct().Count() != 1;
         var truncated = rows.Count > 500;
         var now = DateTimeOffset.UtcNow;
-        var seed = BuildProjectStakeholderAnswer(query, new ProjectCandidate(
-            Guid.Empty, rows[0].Code, rows[0].Name, "customer scope", "", null, null, now, now, null, null, null));
+        var seed = BuildProjectResolutionAnswer(query,
+            new ProjectResolution(ProjectResolutionOutcome.NotFound, null, []));
         var answer = seed.Answer with
         {
             DirectConclusion = ambiguous
