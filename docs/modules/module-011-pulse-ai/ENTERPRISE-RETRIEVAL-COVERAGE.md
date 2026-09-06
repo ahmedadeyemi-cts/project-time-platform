@@ -28,6 +28,7 @@ This change extends the post-PR-864 internal-first answer path. An entry in the 
 - Genuine empty successful time queries return zero from SQL. Recorded hours include draft and other statuses unless the answer explicitly selects the reported status breakdown.
 - Complete structured entries, provenance, scope and observation time are supplied to private RAG within a bounded budget. Omitting a required entry makes the combined answer partial. Retrieved content is data, not instructions.
 - Browser/session and View-As headers reach owning APIs. New DB reads require an active matching effective-user scope, use server-owned SQL and typed date/user parameters, and run in a read-only transaction.
+- Contracts and billing adapters are explicitly blocked before HTTP execution in View-As because those two legacy endpoints currently read the actual-session identity. Other adapters use verified effective-user reads. Returning to the actual session restores ordinary owning-module access; no administrator privilege is borrowed for a viewed user.
 - Runtime configuration, Module 064 provider order, Oracle DNS address policy, deployment controllers and production are outside this change. Module 025 and FlowHive document-authority repair remains separate.
 
 ## Validation

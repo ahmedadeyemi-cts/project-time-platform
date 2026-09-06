@@ -50,6 +50,16 @@ public sealed class PulseAiSystemToolExecutor
     {
         var observedAt = DateTimeOffset.UtcNow;
         var stopwatch = Stopwatch.StartNew();
+        if ((context.Request.Headers.ContainsKey("X-ProjectPulse-View-As-User")
+                || (context.Items.TryGetValue("ProjectPulseIsViewAs",out var viewAs) && viewAs is true))
+            && definition.Code is "enterprise_contracts" or "enterprise_billing")
+        {
+            // These legacy owning endpoints read ProjectPulseSessionUserId,
+            // not ProjectPulseEffectiveUserId. Never let an administrator's
+            // actual-session records masquerade as the viewed user's scope.
+            return Result(definition,"forbidden",403,stopwatch,0,"view_as_adapter_scope_unavailable",string.Empty,
+                ["This owning-module read does not support effective-user evidence in View-As. Return to the actual session to query it."],observedAt);
+        }
         if (!definition.SafeReadOnly || !HttpMethods.IsGet(definition.Method))
         {
             return Result(

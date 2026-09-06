@@ -83,6 +83,15 @@ var result = await executor.ExecuteOneAsync(context, definition, options);
 Require(result.Succeeded, "Registered adapter executes through bounded HTTP transport");
 Require(handler.Session == "synthetic-session" && handler.ViewAs == "synthetic-effective-user", "Actual session and effective-user scope reach owning endpoint");
 Require(handler.Uri?.Host == "test.example", "Tool stays on configured trusted origin");
+foreach (var legacyCode in new[] {"enterprise_contracts","enterprise_billing"})
+{
+    var legacy = CelarAiEnterpriseEvidenceCatalog.Select("our contracts and invoices",PulseAiSystemKnowledgeCatalog.Analyze("our contracts and invoices"))
+        .First(tool=>tool.Code==legacyCode);
+    var calls = handler.Calls;
+    var blocked = await executor.ExecuteOneAsync(context,legacy,options);
+    Require(blocked.Forbidden && blocked.DiagnosticCode=="view_as_adapter_scope_unavailable" && handler.Calls==calls,
+        "Legacy actual-session endpoint is never called for View-As enterprise evidence");
+}
 handler.Body = new string('x', 8_001);
 result = await executor.ExecuteOneAsync(context, definition, options);
 Require(!result.Succeeded && result.ResponseJson.Length == 0 && result.DiagnosticCode == "tool_response_incomplete", "Oversized source is not a successful truncated snapshot");
@@ -134,8 +143,10 @@ sealed class FakeHandler : HttpMessageHandler
     public string? Session { get; private set; }
     public string? ViewAs { get; private set; }
     public Uri? Uri { get; private set; }
+    public int Calls { get; private set; }
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        Calls++;
         Uri = request.RequestUri;
         Session = request.Headers.GetValues("X-ProjectPulse-Session").Single();
         ViewAs = request.Headers.GetValues("X-ProjectPulse-View-As-User").Single();
