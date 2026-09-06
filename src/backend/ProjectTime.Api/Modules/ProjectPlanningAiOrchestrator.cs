@@ -125,7 +125,7 @@ internal static class ProjectPlanningAiOrchestrator
                 null,
                 null,
                 null,
-                [message],
+                [],
                 composition.Warnings.Concat(documents.Warnings)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray());
