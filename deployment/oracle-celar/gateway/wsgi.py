@@ -398,7 +398,7 @@ def _local_chat_completions() -> Any:
     candidates = STRUCTURED_ORDER if structured else GENERAL_ORDER
     attempt_budgets = STRUCTURED_ATTEMPT_SECONDS if structured else GENERAL_ATTEMPT_SECONDS
 
-    sow = feature == "sow_gsd_planning"
+    sow = feature in {"sow_gsd_planning", "project_flowhive_plan"}
     if sow:
         attempt_budgets = SOW_ATTEMPT_SECONDS
 
@@ -429,8 +429,8 @@ def _local_chat_completions() -> Any:
         candidate_payload = dict(base_payload)
         candidate_payload["model"] = candidate
         # The native API supports a per-request context window; the OpenAI
-        # adapter otherwise leaves this CPU runtime at 4096 tokens. Keep chat
-        # and Planner on their existing adapter and context settings.
+        # adapter otherwise leaves this CPU runtime at 4096 tokens. Durable
+        # SOW and FlowHive jobs share this profile; interactive chat is unchanged.
         if sow:
             body, status = _sow_completion(candidate_payload, attempt_timeout)
         else:

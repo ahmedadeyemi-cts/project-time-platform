@@ -1,0 +1,15 @@
+.github/flowhive-generation-recovery-files.txt
+.github/workflows/projectpulse-deploy-test.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+deployment/oracle-celar/gateway/wsgi.py
+deployment/oracle-celar/release.json
+scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs
+src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
+src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+tests/DeepSeekProviderTests/Program.cs
+tests/test-celar-sow-runtime-deadlines.py
+tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-flowhive-generation-recovery-scope.mjs

@@ -551,6 +551,12 @@ if [[ "$HEAD_BRANCH" == 'fix/celar-hostname-runtime-20260905' ]]; then
   node tests/validate-protected-uat-recovery.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
 fi
+if [[ "$HEAD_BRANCH" == 'fix/flowhive-terminal-refusal-diagnostics-20260906' ]]; then
+  node tests/validate-flowhive-generation-recovery-scope.mjs
+  for authorized in .github/workflows/projectpulse-deploy-test.yml deployment/oracle-celar/gateway/wsgi.py deployment/oracle-celar/release.json; do
+    PROHIBITED="$(grep -Fvx "$authorized" <<<"$PROHIBITED" || true)"
+  done
+fi
 if [[ "$HEAD_BRANCH" == 'fix/celar-runtime-preflight-evidence-20260906' ]]; then
   node tests/validate-celar-runtime-preflight-evidence-scope.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
