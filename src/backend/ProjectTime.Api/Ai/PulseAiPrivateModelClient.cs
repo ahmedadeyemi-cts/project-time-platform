@@ -241,10 +241,10 @@ public sealed class PulseAiPrivateModelClient
                         PulseAiPrivateModelResponsePolicy.SafetyRefusalDiagnostic,
                         DateTimeOffset.UtcNow);
                 }
-                return Failure(
-                    "private_model_failed",
-                    $"private_model_http_{(int)response.StatusCode}",
-                    DateTimeOffset.UtcNow);
+                var diagnostic = await PulseAiPrivateModelResponsePolicy.RuntimeFailureDiagnosticAsync(response, cancellationToken);
+                _logger.LogWarning("Private model HTTP failure. Feature={Feature} CorrelationId={CorrelationId} Diagnostic={Diagnostic}",
+                    request.FeatureCode, request.CorrelationId, diagnostic);
+                return Failure("private_model_failed", diagnostic, DateTimeOffset.UtcNow);
             }
 
             using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(
@@ -534,6 +534,26 @@ internal static class PulseAiPrivateModelResponsePolicy
             // failure. Do not promote it to a safety refusal or log its text.
             return false;
         }
+    }
+
+    public static async Task<string> RuntimeFailureDiagnosticAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var diagnostic = $"private_model_http_{(int)response.StatusCode}";
+        if ((int)response.StatusCode < 500) return diagnostic;
+        try
+        {
+            using var json = await ReadBoundedJsonAsync(response.Content, cancellationToken);
+            if (json.RootElement.TryGetProperty("error", out var error)
+                && error.ValueKind == JsonValueKind.Object
+                && error.TryGetProperty("code", out var code)
+                && code.ValueKind == JsonValueKind.String
+                && code.GetString() is "private_runtime_timeout" or "private_runtime_unavailable" or "private_runtime_response_invalid"
+                    or "private_runtime_http_500" or "private_runtime_http_502" or "private_runtime_http_503" or "private_runtime_http_504")
+                return $"{diagnostic}_{code.GetString()}";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception) { /* Never expose arbitrary error bodies or parser details. */ }
+        return diagnostic;
     }
 
     public static bool IsSafetyRefusal(JsonElement root)
