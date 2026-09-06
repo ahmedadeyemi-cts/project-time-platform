@@ -1,0 +1,11 @@
+.github/celar-customer-public-answer-files.txt
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs
+src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs
+src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx
+tests/CelarAiInternalDataTests/Program.cs
+tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-celar-ai-public-question-resilience.mjs
+tests/validate-celar-customer-public-answer-scope.mjs

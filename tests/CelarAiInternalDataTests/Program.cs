@@ -57,6 +57,14 @@ AssertProjectQuery(
     CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
     "P-D",
     "account_executive");
+foreach (var role in new[] { "Sales Rep", "Account Executive", "AE" })
+{
+    AssertProjectQuery(
+        $"Who is the {role} for GLH?",
+        CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
+        "GLH",
+        "account_executive");
+}
 AssertProjectQuery(
     "Who is the sales person for P-D?",
     CelarAiInternalDataQueryKind.ProjectStakeholderLookup,
@@ -195,6 +203,9 @@ Require(
 Require(
     PulseAiSystemKnowledgeCatalog.Analyze("Who is the president of Jordan?").IntentCode == "general_knowledge",
     "country officeholder question resolves to general knowledge");
+Require(
+    PulseAiSystemKnowledgeCatalog.Analyze("Who is the president of Brazil?").IntentCode == "general_knowledge",
+    "Brazil officeholder question resolves to governed general knowledge fallback");
 Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the king of Jordan?"),
     "country monarch question is external eligible");
@@ -415,6 +426,61 @@ static async Task AssertDatabaseResolverAsync(string connectionString)
         Require(await reader.ReadAsync(), "P-D immutable lifecycle history returned");
         Require(reader.GetString(2) == "project_updated", "P-D lifecycle event type returned");
         Require(reader.GetString(5).Contains("stakeholder", StringComparison.OrdinalIgnoreCase), "P-D lifecycle event summary returned");
+    }
+
+    // Synthetic customer records in the isolated resolver fixture. Roll back
+    // all fixture changes before the existing degradation assertions.
+    await using (var transaction = await connection.BeginTransactionAsync())
+    {
+        await using (var fixture = new NpgsqlCommand("""
+            CREATE TEMP TABLE clients(client_id uuid PRIMARY KEY, client_name text,
+                client_code text, is_active boolean NOT NULL DEFAULT true);
+            ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_id uuid;
+            INSERT INTO clients VALUES
+                ('30000000-0000-0000-0000-000000000001', 'Example Healthcare', 'GLH', true);
+            UPDATE projects SET client_id = '30000000-0000-0000-0000-000000000001'
+                WHERE project_code IN ('P-A', 'P-D');
+            """, connection, transaction))
+            await fixture.ExecuteNonQueryAsync();
+
+        async Task<List<(Guid Id, string Project, string? Owner)>> CustomerRows(
+            string reference, bool broad = true)
+        {
+            await using var command = new NpgsqlCommand(PrivateSql("CustomerStakeholdersSql"), connection, transaction);
+            command.Parameters.AddWithValue("effective_user_id", broad ? effectiveUserId : Guid.Empty);
+            command.Parameters.AddWithValue("is_broad_scope", broad);
+            command.Parameters.AddWithValue("can_view_managed_projects", broad);
+            command.Parameters.AddWithValue("can_view_team_scope", broad);
+            command.Parameters.AddWithValue("customer", reference);
+            await using var reader = await command.ExecuteReaderAsync();
+            var rows = new List<(Guid, string, string?)>();
+            while (await reader.ReadAsync())
+                rows.Add((reader.GetGuid(0), reader.GetString(3), reader.IsDBNull(6) ? null : reader.GetString(6)));
+            return rows;
+        }
+
+        var byCode = await CustomerRows("glh");
+        var byName = await CustomerRows("examplehealthcare");
+        Require(byCode.SequenceEqual(byName) && byCode.Count == 2,
+            "customer code and stored name resolve the same project portfolio");
+        Require(byCode.Single(row => row.Project == "P-D").Owner == "Sales Owner",
+            "customer lookup retrieves recorded Account Executive");
+        Require(byCode.Single(row => row.Project == "P-A").Owner is null,
+            "missing owner stays missing instead of borrowing another project's owner");
+        Require((await CustomerRows("glh", false)).Count == 0,
+            "customer records outside effective-user project scope are not exposed");
+        Require((await CustomerRows("glh' OR true --")).Count == 0,
+            "customer reference is a parameter, never executable SQL");
+        await using (var collision = new NpgsqlCommand("""
+            INSERT INTO clients VALUES
+                ('30000000-0000-0000-0000-000000000002', 'Different Customer', 'G-L-H', true);
+            UPDATE projects SET client_id = '30000000-0000-0000-0000-000000000002'
+                WHERE project_code = 'P-A';
+            """, connection, transaction))
+            await collision.ExecuteNonQueryAsync();
+        Require((await CustomerRows("glh")).Select(row => row.Id).Distinct().Count() == 2,
+            "normalization collisions retain distinct customer identities for clarification");
+        await transaction.RollbackAsync();
     }
 
     await using (var degrade = new NpgsqlCommand("DROP TABLE engineering_resource_request_assignments;", connection))

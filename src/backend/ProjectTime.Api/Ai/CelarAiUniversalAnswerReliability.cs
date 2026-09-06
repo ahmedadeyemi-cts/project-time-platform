@@ -477,7 +477,29 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             Math.Min(result.Answer.Confidence, Math.Min(score, confidenceCap)),
             0m,
             1m);
+        // Stable public explanations may be useful without authoritative citations;
+        // never relabel it as verified. Changing facts still need current evidence.
+        // Only missing attribution may use this exception, never conflicts,
+        // stale evidence, calculation failures, or execution budget violations.
+        var preserveEvidenceLimitedPublicProviderAnswer =
+            plan.QuestionClass == CelarAiAnswerQuestionClass.PublicStable
+            && !plan.RequireDeterministicCalculation
+            && findings.All(finding => finding.Code is
+                "insufficient_authoritative_evidence" or "required_citation_missing"
+                or "material_claim_citation_support_missing")
+            && result.Status.Equals("completed", StringComparison.OrdinalIgnoreCase)
+            && result.ModelProvider is CelarAiCapabilityTargets.DeepSeek
+                or CelarAiCapabilityTargets.CelarAi
+                or CelarAiCapabilityTargets.Claude
+                or CelarAiCapabilityTargets.OpenAi
+            && result.Sources.Any(source =>
+                source.SourceType.Equals("governed_public_ai", StringComparison.OrdinalIgnoreCase)
+                || source.SourceType.Equals("governed_private_ai", StringComparison.OrdinalIgnoreCase)
+                || source.SourceType.Equals("provider_knowledge", StringComparison.OrdinalIgnoreCase)
+                || source.SourceType.Equals("narrative_provider_response", StringComparison.OrdinalIgnoreCase))
+            && !string.IsNullOrWhiteSpace(result.Answer.DirectConclusion);
         var replaceConclusion = !preservedBlocked
+            && !preserveEvidenceLimitedPublicProviderAnswer
             && findings.Any(finding => finding.Code is
                 "insufficient_authoritative_evidence"
                 or "current_public_fact_not_live_verified"

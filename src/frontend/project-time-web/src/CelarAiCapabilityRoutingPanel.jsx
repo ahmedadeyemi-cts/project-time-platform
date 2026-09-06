@@ -285,7 +285,9 @@ export default function CelarAiCapabilityRoutingPanel() {
         </div>
 
         <div className="celar-ai-routing__private-summary">
-          <article><span>Model</span><strong>{profile?.model || 'Not configured'}</strong></article>
+          <article><span>Gateway compatibility model</span><strong>{profile?.model || 'Not configured'}</strong><small>Default OpenAI-compatible target; not the complete Oracle inventory</small></article>
+          <article><span>Generation portfolio</span><strong>Gemma · Qwen · Llama</strong><small>Structured: Gemma → Qwen → Llama · General: Qwen → Llama → Gemma</small></article>
+          <article><span>Embedding model</span><strong>EmbeddingGemma</strong><small>Live installed versions and digests are authoritative in Module 084</small></article>
           <article><span>Endpoint</span><strong>{profile?.endpointConfigured ? 'Configured' : 'Not configured'}</strong><small>Fingerprint: {profile?.endpointHostFingerprint || 'Not recorded'}</small></article>
           <article><span>Authentication</span><strong>{profile?.bearerTokenConfigured ? 'Token configured' : 'No bearer token'}</strong><small>Token value is write-only</small></article>
           <article><span>Revision</span><strong>{profile?.revision ?? 0}</strong><small>Updated {formatDate(profile?.updatedAt)}</small></article>

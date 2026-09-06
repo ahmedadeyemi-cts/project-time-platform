@@ -214,6 +214,36 @@ var memoryOnlyPublic = reliability.Enforce(
     true);
 Require(!memoryOnlyPublic.Assessment.Passed, "current public answer from model memory fails");
 Require(HasFinding(memoryOnlyPublic, "current_public_fact_not_live_verified"), "live public verification finding exists");
+Require(
+    memoryOnlyPublic.Result.Answer.DirectConclusion == currentPublicPlan.FailClosedConclusion,
+    "changing public fact cannot be answered from unverified model memory");
+Require(
+    memoryOnlyPublic.Result.Status == "partial",
+    "unverified current public provider answer remains explicitly partial");
+
+var stablePublicPlan = reliability.Plan(
+    "Explain photosynthesis.", "general_knowledge", null, null, null, false, 0);
+Require(stablePublicPlan.QuestionClass == CelarAiAnswerQuestionClass.PublicStable,
+    "general explanation is a stable public question");
+var stableProviderResult = Result(
+    "completed", "general_knowledge", "Plants convert light energy into chemical energy.",
+    sources: [Source(30, "provider_knowledge", "model-memory", "Model memory", "064",
+        "provider_knowledge_not_live_web_verified", DateTimeOffset.UtcNow)],
+    provider: CelarAiCapabilityTargets.OpenAi);
+var stablePublic = reliability.Enforce(stableProviderResult, stablePublicPlan, true, true);
+Require(stablePublic.Result.Answer.DirectConclusion == stableProviderResult.Answer.DirectConclusion,
+    "stable public explanation remains useful without claiming authoritative verification");
+Require(!stablePublic.Assessment.Passed && stablePublic.Result.Status == "partial",
+    "provider memory is still explicitly evidence-limited");
+var conflictingPublic = reliability.Enforce(stableProviderResult with
+{
+    Answer = stableProviderResult.Answer with { Conflicts = ["Sources disagree."] }
+}, stablePublicPlan, true, true);
+Require(conflictingPublic.Result.Answer.DirectConclusion == stablePublicPlan.FailClosedConclusion,
+    "public provider exception cannot bypass conflicting evidence");
+var blockedPublic = reliability.Enforce(stableProviderResult with { Status = "blocked" },
+    stablePublicPlan, true, true);
+Require(blockedPublic.Result.Status == "blocked", "public safety refusal remains terminal");
 
 var livePublic = reliability.Enforce(
     Result(
