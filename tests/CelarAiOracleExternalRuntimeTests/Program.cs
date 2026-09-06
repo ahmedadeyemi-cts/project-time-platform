@@ -87,6 +87,28 @@ try
             && !payload.RootElement.GetProperty("stream").GetBoolean(),
             "FlowHive retains the bounded Oracle transport contract");
     }
+    const string phasePrompt = "Expand only the Design phase. Return two to four complete work packages with citationIds:[1].";
+    foreach (var recovery in new[] { false, true })
+    {
+        using var source = new HttpRequestMessage(HttpMethod.Post, inference);
+        source.Headers.Add("X-Pulse-AI-Feature", CelarAiCapabilityCatalog.SowGsdPlanning);
+        var body = JsonSerializer.Serialize(new {
+            max_tokens = 4096, stream = true,
+            messages = new[] {
+                new { role = "system", content = "Return ONLY Design tasks with WBS 2.1 and 2.2." },
+                new { role = "user", content = phasePrompt }
+            }
+        });
+        using var cloned = (HttpRequestMessage)cloneMethod.Invoke(null, [source, body, 8192, recovery])!;
+        using var payload = JsonDocument.Parse(await cloned.Content!.ReadAsStringAsync());
+        using var original = JsonDocument.Parse(body);
+        Require(payload.RootElement.GetProperty("messages").GetRawText()
+            == original.RootElement.GetProperty("messages").GetRawText(),
+            "SOW phase and repair instructions survive transport without conflicting all-phase instructions");
+        Require(payload.RootElement.GetProperty("max_tokens").GetInt32() == 4096
+            && !payload.RootElement.GetProperty("stream").GetBoolean(),
+            "SOW preserves the per-phase budget and non-streaming gateway contract");
+    }
     async Task<int> CountSowAttempts(Uri endpoint, bool cancelUpstream = false)
     {
         var transport = new SowTestTransport(cancelUpstream);
