@@ -21,6 +21,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  source-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Archive tracked source only with revision and checksum
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/flowhive-source-evidence
+          git rev-parse HEAD > /tmp/flowhive-source-evidence/REVISION
+          git archive --format=tar.gz HEAD > /tmp/flowhive-source-evidence/source.tar.gz
+          cd /tmp/flowhive-source-evidence
+          sha256sum source.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flowhive-source-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/flowhive-source-evidence/
+          retention-days: 1
+          if-no-files-found: error
   executable-wbs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
