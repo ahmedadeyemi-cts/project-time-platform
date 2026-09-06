@@ -951,16 +951,8 @@ public sealed class CelarAiInternalDataService
         return new ProjectResolution(ProjectResolutionOutcome.NotFound, null, closest);
     }
 
-    private static async Task<AnswerOutcome?> TryCustomerStakeholdersAsync(
-        NpgsqlConnection connection,
-        Guid effectiveUserId,
-        PulseAiSystemAccess access,
-        CelarAiInternalDataQuery query,
-        CancellationToken cancellationToken)
-    {
-        // Customer identity is discoverable here only through projects the
-        // effective user can already read. Never query an unscoped portfolio.
-        var sql = ScopeCte + """
+    // Customer identity is discoverable only through authorized projects.
+    private static readonly string CustomerStakeholdersSql = ScopeCte + """
             SELECT client.client_id, client.client_name, client.client_code,
                    project.project_code, project.project_name,
                    pm.display_name, ae.display_name, sa.display_name
@@ -975,8 +967,15 @@ public sealed class CelarAiInternalDataService
             ORDER BY client.client_id, project.project_code, project.project_id
             LIMIT 501;
             """;
+    private static async Task<AnswerOutcome?> TryCustomerStakeholdersAsync(
+        NpgsqlConnection connection,
+        Guid effectiveUserId,
+        PulseAiSystemAccess access,
+        CelarAiInternalDataQuery query,
+        CancellationToken cancellationToken)
+    {
         var rows = new List<(Guid Id, string Name, string Code, string Project, string? Owner)>();
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(CustomerStakeholdersSql, connection);
         command.CommandTimeout = 15;
         AddScopeParameters(command, effectiveUserId, access);
         command.Parameters.AddWithValue("customer", NormalizeIdentity(query.ProjectReference));
