@@ -1,4 +1,5 @@
 .github/flowhive-generation-recovery-files.txt
+.github/workflows/celar-ai-oracle-gitops-ci.yml
 .github/workflows/projectpulse-deploy-test.yml
 .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml

@@ -40,7 +40,7 @@ jobs:
             .environment == "protected-test-oracle-celar" and
             .hostname == "celarai.onenecklab.com" and
             .architecture == "arm64" and
-            .gatewayVersion == "1.1.5" and
+            .gatewayVersion == "1.1.6" and
             .gatewayBind == "127.0.0.1:8787" and
             .generationModel == "gemma3:4b" and
             .reasoningModel == "qwen3:4b-instruct" and
