@@ -6,5 +6,6 @@ src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs
 src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx
 tests/CelarAiInternalDataTests/Program.cs
 tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+tests/validate-celar-ai-pr630-consolidated.mjs
 tests/validate-celar-ai-public-question-resilience.mjs
 tests/validate-celar-customer-public-answer-scope.mjs

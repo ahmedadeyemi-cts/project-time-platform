@@ -87,6 +87,8 @@ const protectedUatValidationDefectsCompatibilityMode =
 const celarInternalTrustEvidenceCompatibilityMode =
   branchName === 'fix/celar-internal-trust-evidence-20260903';
 const deepSeekProviderMode = branchName === 'feature/deepseek-v4-dgx-primary-20260904';
+const customerPublicAnswerMode = branchName === 'fix/celar-public-answer-fallback-20260906';
+if (customerPublicAnswerMode) await import('./validate-celar-customer-public-answer-scope.mjs');
 if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');
 const aiRoutingSowRepairMode = branchName === 'fix/ai-routing-sow-regeneration-20260905';
 if (aiRoutingSowRepairMode) await import('./validate-ai-routing-sow-release-scope.mjs');
@@ -159,7 +161,7 @@ const oracleTokenBudgetMode = branchName === 'fix/celar-oracle-token-budget-2026
 if (oracleTokenBudgetMode) await import('./validate-celar-oracle-token-budget-scope.mjs');
 const routedModelReadinessMode = branchName === 'fix/celar-routed-model-readiness-20260905';
 if (routedModelReadinessMode) await import('./validate-celar-routed-model-readiness-scope.mjs');
-const scopedCompatibilityMode = flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const scopedCompatibilityMode = customerPublicAnswerMode || flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode
