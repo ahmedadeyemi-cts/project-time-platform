@@ -722,12 +722,15 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         // enough to finish inside the governed request window.
         payload["stream"] = false;
 
-        // FlowHive supplies its own ranked multi-document citation contract.
-        // Reuse only transport bounds, never Module 025 prompt instructions.
-        var preserveFlowHivePrompt = source.Headers.TryGetValues("X-Pulse-AI-Feature", out var features)
+        // Both planners own their semantic contracts. Module 025 now requests
+        // one phase at a time; appending the legacy five-phase instruction
+        // contradicts that request and exhausts its per-phase output budget.
+        // FlowHive likewise owns its ranked multi-document citation contract.
+        var preservePlannerPrompt = source.Headers.TryGetValues("X-Pulse-AI-Feature", out var features)
             && features.Any(feature => string.Equals(feature,
-                CelarAiCapabilityCatalog.ProjectFlowHivePlan, StringComparison.OrdinalIgnoreCase));
-        if (!preserveFlowHivePrompt && payload["messages"] is JsonArray messages)
+                CelarAiCapabilityCatalog.ProjectFlowHivePlan, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(feature, CelarAiCapabilityCatalog.SowGsdPlanning, StringComparison.OrdinalIgnoreCase));
+        if (!preservePlannerPrompt && payload["messages"] is JsonArray messages)
         {
             for (var index = messages.Count - 1; index >= 0; index--)
             {
