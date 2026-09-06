@@ -4,12 +4,16 @@ on:
   pull_request:
     paths:
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHive*.cs'
-      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanning*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
       - 'src/frontend/project-time-web/src/*[Ff]low[Hh]ive*'
       - 'tests/FlowHiveExecutablePlanTests/**'
+      - 'tests/FlowHiveExecutionTests/**'
       - 'tests/flowhive-psa-*.test.mjs'
       - 'tests/flowhive-psa-*.py'
       - 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql'
+      - 'database/migrations/104_flowhive_bounded_ai_execution.sql'
+      - 'database/rollback/104_flowhive_bounded_ai_execution_rollback.sql'
       - '.github/workflows/flowhive-enterprise-psa-ci.yml'
   workflow_dispatch:
 
@@ -56,6 +60,30 @@ jobs:
         run: dotnet run --project tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj --configuration Release
       - name: Preserve existing detailed-planner and Module 025 regressions
         run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+  execution-database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flowhive
+          POSTGRES_PASSWORD: flowhive-ci-only
+          POSTGRES_DB: flowhive_execution_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flowhive -d flowhive_execution_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      FLOWHIVE_TEST_DB: Host=127.0.0.1;Port=5432;Database=flowhive_execution_test;Username=flowhive;Password=flowhive-ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Execute real database deadline, cancellation and concurrent-save regressions
+        run: dotnet run --project tests/FlowHiveExecutionTests/FlowHiveExecutionTests.csproj --configuration Release
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -66,6 +94,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Test resumable observation, identity fencing and bounded network requests
+        run: node --test tests/flowhive-psa-operation.test.mjs
       - name: Install locked frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci
