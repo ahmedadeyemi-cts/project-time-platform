@@ -6,7 +6,8 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/projectpulse-deploy-test.yml'
+      # Controller-only changes are reviewed separately; deploy applications
+      # through the exact owner-authorized workflow_dispatch path.
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'

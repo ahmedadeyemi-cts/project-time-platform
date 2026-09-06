@@ -67,6 +67,15 @@ class WorkflowContract(unittest.TestCase):
         job=doc['jobs']['admit'];assert 'environment' not in job
         assert "github.actor == 'ahmedadeyemi-cts'" in job['if'] and 'github.event.issue.number == 872' in job['if']
         assert all('azure/login' not in s.get('uses','') for s in job['steps'])
+    def test_control_only_merge_cannot_trigger_an_unintended_deployment(self):
+        from fnmatch import fnmatchcase
+        triggers=self.doc['on']['push']['paths']
+        controls=(ROOT/'.github/flowhive-psa-release-control-files.txt').read_text().splitlines()
+        self.assertFalse(any(fnmatchcase(name,pattern) for name in controls for pattern in triggers))
+        self.assertEqual(self.doc['on']['push']['branches'],['main'])
+        for name in ['src/backend/ProjectTime.Api/Modules/Example.cs','src/frontend/project-time-web/src/Example.jsx']:
+            self.assertTrue(any(fnmatchcase(name,pattern) for pattern in triggers))
+        self.assertIn('workflow_dispatch',self.doc['on'])
     def test_all_unrelated_original_steps_remain_unchanged(self):
         base=os.environ.get('CONTROL_BASE')
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
@@ -79,7 +88,9 @@ class WorkflowContract(unittest.TestCase):
             if a.get('id') in {'uat','module025_fixture','module025_uat'}:
                 b=copy.deepcopy(b);b.pop('if',None)
             if a.get('name') not in allowed:self.assertEqual(a,b,a.get('name'))
-        for name in ('on',):self.assertEqual(old[name],self.doc[name])
+        expected_on=copy.deepcopy(old['on'])
+        expected_on['push']['paths'].remove(CONTROLLER)
+        self.assertEqual(expected_on,self.doc['on'])
         self.assertEqual(old['jobs']['deploy']['env'],self.doc['jobs']['deploy']['env'])
 
 if __name__=='__main__':unittest.main()

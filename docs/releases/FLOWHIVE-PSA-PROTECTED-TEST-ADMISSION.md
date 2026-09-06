@@ -32,6 +32,11 @@ main-owned supervisor performs and verifies that sealing before any dispatch. Th
 while it still has zero jobs. No run is cancelled. A lost dispatch response is an
 unknown outcome to inspect, never a reason to dispatch again automatically.
 
+Controller-only changes no longer trigger automatic main-push deployment. All
+existing application/migration source triggers remain unchanged, and the control
+PR is tested not to match any automatic deployment path. Its merge therefore
+does not race the explicit candidate admission.
+
 The canonical deployment still owns `projectpulse-deploy-test` concurrency,
 `environment: test`, environment protections, Test-only Azure identities and tag
 checks, immutable image builds, exact source provenance and health rollback.
