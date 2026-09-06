@@ -6,7 +6,10 @@ namespace ProjectTime.Api.Ai;
 
 public sealed class PulseAiSystemIntelligenceService
 {
-    private const int PublicGeneralKnowledgeMaximumOutputTokens = 256;
+    // Leave room for complete multi-step explanations; configured RAG and
+    // provider limits still cap the request. The old 256-token ceiling cut
+    // valid public responses off before their final steps.
+    private const int PublicGeneralKnowledgeMaximumOutputTokens = 1_024;
     private const string PublicGeneralKnowledgeSystemInstruction =
         "Answer the public general-knowledge question directly in plain text. " +
         "Lead with the answer, then add only useful context or qualifications. " +

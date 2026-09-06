@@ -18,7 +18,7 @@ function requireMarker(name, condition) {
 requireMarker('CELAR_PUBLIC_COUNTRY_REGISTRY', files.registry.includes('CultureTypes.SpecificCultures') && files.registry.includes('DefaultApprovedCountries'));
 requireMarker('CELAR_PUBLIC_OFFICEHOLDER_ROLES', files.registry.includes('prime\\s+minister') && files.registry.includes('king|queen|monarch'));
 requireMarker('CELAR_JORDAN_CLASSIFICATION_TEST', files.tests.includes('Who is the president of Jordan?') && files.tests.includes('Who is the king of Jordan?'));
-requireMarker('CELAR_PUBLIC_PRIVATE_PROMPT', files.service.includes('PublicGeneralKnowledgeSystemInstruction') && files.service.includes('PublicGeneralKnowledgeMaximumOutputTokens = 256'));
+requireMarker('CELAR_PUBLIC_PRIVATE_PROMPT', files.service.includes('PublicGeneralKnowledgeSystemInstruction') && files.service.includes('PublicGeneralKnowledgeMaximumOutputTokens = 1_024'));
 requireMarker('CELAR_PUBLIC_PRIVATE_EVIDENCE', files.service.includes('module064:public-general-knowledge-private') && files.service.includes('governed_private_ai'));
 requireMarker('CELAR_PUBLIC_GRACEFUL_FALLBACK', files.service.includes('PublicKnowledgeUnavailableAnswer') && files.service.includes('intentionally did not fabricate an answer'));
 requireMarker('CELAR_PUBLIC_GENERATION_TIMEOUT', files.routing.includes('PROJECTPULSE_CELAR_AI_HELP_GENERATION_TIMEOUT_SECONDS') && files.routing.includes('celar_ai_private_generation_timeout'));
