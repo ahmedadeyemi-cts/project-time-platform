@@ -139,6 +139,72 @@ Assert(parsedModule025.Milestones.Count == 1, "module025_model_milestone_preserv
 Assert(parsedModule025.Milestones[0].CitationIds.SequenceEqual(new[] { 1 }), "module025_milestone_citation_bound");
 Assert(parsedModule025.Milestones[0].Name.Contains("CUCM", StringComparison.Ordinal), "module025_milestone_content_preserved");
 
+// Exercise orchestration with actual parser-valid model payloads. A failed
+// phase must never produce an assembled draft; refusals must not be retried.
+var phaseGenerator = typeof(PulseAiPrivateRagService).GetMethod(
+    "GenerateModule025PhasesAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+var phaseRequest = new PulseAiPrivateModelRequest(CelarAiCapabilityCatalog.SowGsdPlanning,
+    "sow_draft", "comprehensive", "Return at least two tasks for every phase and at least ten tasks total.",
+    "Generate the requested service", [module025Source], "PulseAiPrivateFlowHivePlan", 12000, 0.05m, "phase-test");
+var phaseNames = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
+var phaseCalls = 0;
+Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> phaseModel = (request, token) =>
+{
+    var phase = phaseNames[phaseCalls++];
+    Assert(request.MaximumOutputTokens == 4096, "module025_phase_completion_bounded");
+    Assert(request.SystemInstruction.Contains($"Return ONLY {phase} tasks"), "module025_phase_request_scoped");
+    Assert(request.Sources.Single() == module025Source, "module025_phase_source_authority_preserved");
+    var payload = JsonSerializer.Serialize(parsedModule025 with
+    { Tasks = parsedModule025.Tasks.Where(task => task.Phase == phase).ToArray() });
+    return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+        payload, 100, payload.Length, "", DateTimeOffset.UtcNow));
+};
+async Task<PulseAiPrivateModelResult> RunPhases(Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> model,
+    CancellationToken token = default) => await (Task<PulseAiPrivateModelResult>)phaseGenerator.Invoke(null,
+        new object[] { phaseRequest, module025Retrieval, model, token })!;
+var phasedResult = await RunPhases(phaseModel);
+Assert(phasedResult.Succeeded && phaseCalls == 5, "module025_five_validated_phases_complete");
+var phasedPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(null, new object[] { phasedResult.Content, module025Retrieval })!;
+Assert(phasedPlan.Tasks.Count == 10, "module025_assembled_contract_passes");
+var invalidCalls = 0;
+var invalidResult = await RunPhases((request, token) =>
+{
+    invalidCalls++;
+    return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+        "{\"tasks\":[]}", 100, 12, "", DateTimeOffset.UtcNow));
+});
+Assert(!invalidResult.Succeeded && invalidCalls == 2 && invalidResult.Content.Length == 0,
+    "module025_invalid_phase_bounded_retry_no_draft");
+var refusalCalls = 0;
+var refusalResult = await RunPhases((request, token) =>
+{
+    refusalCalls++;
+    return Task.FromResult(new PulseAiPrivateModelResult("private_model_refused", "celar_ai", "test-model",
+        "", 100, 0, "private_model_safety_refusal", DateTimeOffset.UtcNow));
+});
+Assert(!refusalResult.Succeeded && refusalCalls == 1 && refusalResult.Status == "private_model_refused",
+    "module025_refusal_terminal");
+phaseCalls = 0;
+var repairCalls = 0;
+var repairedResult = await RunPhases((request, token) =>
+{
+    repairCalls++;
+    if (repairCalls == 1)
+        return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+            "{\"tasks\":[]}", 100, 12, "", DateTimeOffset.UtcNow));
+    if (repairCalls == 2) Assert(request.UserInstruction.Contains("prior response failed validation"), "module025_repair_feedback");
+    return phaseModel(request, token);
+});
+Assert(repairedResult.Succeeded && repairCalls == 6, "module025_invalid_phase_repaired_then_complete");
+using (var cancelled = new CancellationTokenSource())
+{
+    cancelled.Cancel();
+    var cancellationObserved = false;
+    try { await RunPhases(phaseModel, cancelled.Token); }
+    catch (OperationCanceledException) { cancellationObserved = true; }
+    Assert(cancellationObserved, "module025_phase_cancellation_preserved");
+}
+
 var rejectedGenericModule025 = false;
 try
 {

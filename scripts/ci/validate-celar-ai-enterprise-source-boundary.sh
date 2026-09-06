@@ -15,6 +15,10 @@ if [[ "$HEAD_BRANCH" == 'feature/celar-enterprise-retrieval-20260906' || "$HEAD_
   node tests/validate-celar-enterprise-retrieval-scope.mjs
 fi
 
+if [[ "$HEAD_BRANCH" == 'fix/sow-generation-uat-20260906' ]]; then
+  node tests/validate-sow-generation-uat-scope.mjs
+fi
+
 publish_mode() {
   local mode="$1"
   if [[ -n "${GITHUB_ENV:-}" ]]; then
