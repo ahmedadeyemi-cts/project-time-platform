@@ -346,17 +346,27 @@ public sealed class PulseAiSystemIntelligenceService
                 request.MaximumTools ?? options.MaximumTools,
                 1,
                 options.MaximumTools);
-            var selectedTools = PulseAiSystemKnowledgeCatalog.SelectTools(
+            var enterpriseTools = CelarAiEnterpriseEvidenceCatalog.Select(question, plan, request.ClientTimeZone);
+            var selectedTools = enterpriseTools.Concat(PulseAiSystemKnowledgeCatalog.SelectTools(
                 plan,
                 access,
-                maximumTools)
+                maximumTools))
+                .DistinctBy(tool => tool.Path)
+                .Where(tool => !tool.RequiresTroubleshootingPermission || access.CanTroubleshoot)
                 .Where(tool => request.IncludeTroubleshooting || !tool.RequiresTroubleshootingPermission)
+                .Take(maximumTools)
                 .ToArray();
-            var toolResults = await _toolExecutor.ExecuteAsync(
+            var httpToolResults = await _toolExecutor.ExecuteAsync(
                 context,
-                selectedTools,
+                selectedTools.Where(tool => tool.Method == "GET").ToArray(),
                 options,
                 cancellationToken);
+            var enterpriseResults = new List<PulseAiSystemToolResult>();
+            foreach (var definition in selectedTools.Where(tool => tool.Method == "INTERNAL"))
+                enterpriseResults.Add(await _internalData.ReadEnterpriseEvidenceAsync(
+                    effectiveUserId, access, definition, question, request.ClientTimeZone,
+                    options.MaximumToolResponseCharacters, cancellationToken));
+            IReadOnlyList<PulseAiSystemToolResult> toolResults = httpToolResults.Concat(enterpriseResults).ToArray();
             if (persisted)
             {
                 foreach (var toolResult in toolResults)
@@ -372,7 +382,7 @@ public sealed class PulseAiSystemIntelligenceService
             PulseAiPrivateRagAnswer? privateRagAnswer = null;
             PulseAiPrivateRagAnswer? acceptedPrivateRagAnswer = null;
             var projectDocumentContextRequested = request.IncludeAuthorizedProjectDocuments
-                && request.IncludeRepositoryContext
+                && (request.IncludeRepositoryContext || plan.WantsProjectDocuments)
                 && (plan.WantsProjectDocuments
                     || !string.IsNullOrWhiteSpace(request.ProjectCode)
                     || !string.IsNullOrWhiteSpace(request.ProjectName));
@@ -484,7 +494,8 @@ public sealed class PulseAiSystemIntelligenceService
                                     UsePrivateModelWhenAvailable: request.UsePrivateModelWhenAvailable,
                                     ConversationId: request.ConversationId,
                                     AttachmentIds: attachmentIds),
-                                privateCancellationToken);
+                                privateCancellationToken,
+                                structuredEvidence: toolResults);
                             return PrivateHelpRagTargetResult(privateRagAnswer, ragOptions);
                         },
                         localFallback: () => RenderPlainText(deterministic),
@@ -650,6 +661,31 @@ public sealed class PulseAiSystemIntelligenceService
             {
                 finalAnswer = PublicKnowledgeUnavailableAnswer(correlationId);
                 sources = [];
+            }
+
+            var incompleteEnterpriseEvidence = enterpriseTools.Any(definition =>
+                !toolResults.Any(result => result.ToolCode == definition.Code && result.Succeeded));
+            var unsupportedPeriod = CelarAiEnterpriseEvidenceCatalog.NeedsPeriodClarification(question)
+                && !toolResults.Any(result => result.ToolCode == "enterprise_own_time" && result.Succeeded);
+            var incompleteCombinedContext = privateRagRequested && enterpriseTools.Count > 0
+                && !CelarAiEnterpriseEvidencePolicy.BuildContext(toolResults,
+                    Math.Min(12_000, _privateRag.Options().MaximumContextCharacters / 3)).Complete;
+            if (routeOutcome != ProjectPulseAiOutcomes.Refusal
+                && (incompleteEnterpriseEvidence || unsupportedPeriod || incompleteCombinedContext))
+            {
+                finalAnswer = BuildDeterministicAnswer(question, detailLevel, plan, relevantApis, selectedTools, toolResults, null, sources) with
+                {
+                    DirectConclusion = unsupportedPeriod
+                        ? "The requested time period is not covered by the weekly read adapter. Specify a week (YYYY-MM-DD) or use the owning time report for that period."
+                        : "Some required enterprise evidence could not be retrieved within your access scope and the request budget. The answer is incomplete.",
+                    DetailedAnalysis = toolResults.Where(result => result.Succeeded)
+                        .SelectMany(result => result.EvidenceSummary).ToArray(),
+                    Confidence = Math.Min(deterministic.Confidence, 0.35m),
+                    KnownUnknownAndStaleValues = ["Unavailable, forbidden, omitted, and incomplete sources are unknown; no missing value is treated as zero."],
+                    RecommendedActions = ["Narrow the question to a customer, project, domain or supported week; check owning-module access and source readiness."],
+                    ConfidenceExplanation = "Required enterprise evidence is incomplete; generated claims were not promoted."
+                };
+                warnings.Add("Enterprise answer remains partial because required evidence or the requested period was unavailable.");
             }
 
             finalAnswer = SuppressApiDetailUnlessRequested(

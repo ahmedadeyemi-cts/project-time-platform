@@ -88,6 +88,8 @@ const celarInternalTrustEvidenceCompatibilityMode =
   branchName === 'fix/celar-internal-trust-evidence-20260903';
 const deepSeekProviderMode = branchName === 'feature/deepseek-v4-dgx-primary-20260904';
 const customerPublicAnswerMode = branchName === 'fix/celar-public-answer-fallback-20260906';
+const enterpriseRetrievalMode = branchName === 'feature/celar-enterprise-retrieval-20260906';
+if (enterpriseRetrievalMode) await import('./validate-celar-enterprise-retrieval-scope.mjs');
 if (customerPublicAnswerMode) await import('./validate-celar-customer-public-answer-scope.mjs');
 if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');
 const aiRoutingSowRepairMode = branchName === 'fix/ai-routing-sow-regeneration-20260905';
@@ -169,7 +171,8 @@ const scopedCompatibilityMode = customerPublicAnswerMode || flowHiveRecoveryMode
   || internalEnterpriseFactsCompatibilityMode
   || module025ProtectedUatCompatibilityMode
   || protectedUatValidationDefectsCompatibilityMode
-  || celarInternalTrustEvidenceCompatibilityMode;
+  || celarInternalTrustEvidenceCompatibilityMode
+  || enterpriseRetrievalMode;
 const pr630AllowedPrefixes = [
   '.github/workflows/celar-ai-',
   'database/migrations/084_module_076_',

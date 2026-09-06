@@ -567,7 +567,8 @@ public static partial class CelarAiProductionPlatformModule
             request.IncludeAssumptions,
             request.IncludeSourceCitations,
             request.AnswerPreferenceSource,
-            attachmentIds);
+            attachmentIds,
+            request.ClientTimeZone);
     }
 
     private static Intent ResolveIntent(string question)

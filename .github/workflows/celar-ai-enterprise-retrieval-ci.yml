@@ -1,0 +1,36 @@
+name: Celar AI Enterprise Retrieval CI
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Ai/**'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
+      - 'tests/CelarAiEnterpriseRetrievalTests/**'
+      - 'tests/test-celar-ai-internal-data-migration-080.sh'
+      - '.github/workflows/celar-ai-enterprise-retrieval-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: celar-enterprise-retrieval-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Compile and verify enterprise reads, calendar periods and evidence boundaries
+        run: dotnet run --project tests/CelarAiEnterpriseRetrievalTests/CelarAiEnterpriseRetrievalTests.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+      - name: Verify actual PostgreSQL queries, scope and deterministic totals
+        env:
+          CELAR_AI_RUN_ENTERPRISE_RETRIEVAL: '1'
+        run: bash tests/test-celar-ai-internal-data-migration-080.sh
+      - name: Verify existing internal-first privacy contract
+        run: node tests/validate-celar-ai-internal-data-intelligence.mjs
+      - name: Verify clean tracked source
+        run: git diff --check && git diff --exit-code
