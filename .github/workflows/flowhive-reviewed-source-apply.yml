@@ -17,19 +17,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - name: Validate and apply only the reviewed FlowHive source paths
+      - name: Verify exact source hashes and apply scoped text edits
         shell: bash
         run: |
           set -Eeuo pipefail
-          test -f .github/flowhive-reviewed-source.patch
           python3 - <<'PY'
-          import pathlib, re, subprocess
-          patch = pathlib.Path('.github/flowhive-reviewed-source.patch')
-          text = patch.read_text()
-          if len(text) > 1500000 or any(x in text for x in ['GIT binary patch', 'rename from ', 'rename to ', 'new file mode 120000']):
-              raise SystemExit('Unsupported patch structure')
-          output = subprocess.check_output(['git','apply','--numstat',str(patch)], text=True)
-          paths = [line.split('\t',2)[2] for line in output.splitlines()]
+          import hashlib, json, pathlib, re, subprocess
+          request = pathlib.Path('.github/flowhive-reviewed-source.patch')
+          if request.stat().st_size > 1500000:
+              raise SystemExit('Edit package exceeds limit')
+          changes = json.loads(request.read_text())
+          if not isinstance(changes, list) or not 1 <= len(changes) <= 80:
+              raise SystemExit('Invalid edit package')
           patterns = [
               r'src/backend/ProjectTime\.Api/Modules/ProjectFlowHive[A-Za-z0-9]*\.cs',
               r'src/backend/ProjectTime\.Api/Modules/ProjectPlanning(AiOrchestrator|DocumentResolver)\.cs',
@@ -39,15 +38,37 @@ jobs:
               r'tests/(FlowHive[A-Za-z0-9]+/[A-Za-z0-9._-]+|flowhive-psa-[A-Za-z0-9._-]+)',
               r'docs/modules/module-066-project-flowhive/[A-Za-z0-9._-]+'
           ]
-          if not paths or len(paths) > 80:
-              raise SystemExit('Invalid patch file count')
-          for path in paths:
-              if '..' in pathlib.PurePosixPath(path).parts or not any(re.fullmatch(p,path) for p in patterns):
-                  raise SystemExit('Out-of-scope source path: '+path)
-          subprocess.run(['git','apply','--check','--index',str(patch)],check=True)
-          subprocess.run(['git','apply','--index',str(patch)],check=True)
+          prepared = {}
+          for change in changes:
+              name = change['path']
+              path = pathlib.Path(name)
+              if '..' in path.parts or name in prepared or not any(re.fullmatch(p,name) for p in patterns):
+                  raise SystemExit('Out-of-scope or duplicate path: '+name)
+              if path.is_symlink() or any(p.is_symlink() for p in path.parents):
+                  raise SystemExit('Symbolic link is not permitted')
+              before = path.read_bytes() if path.exists() else None
+              digest = hashlib.sha256(before).hexdigest() if before is not None else None
+              if digest != change['before']:
+                  raise SystemExit('Source changed; refusing overwrite: '+name)
+              text = (before or b'').decode('utf-8')
+              boundary = len(text)
+              for edit in sorted(change['edits'], key=lambda e:e['offset'], reverse=True):
+                  offset, count = edit['offset'], edit['delete']
+                  if not isinstance(offset,int) or not isinstance(count,int) or offset<0 or count<0 or offset+count>boundary:
+                      raise SystemExit('Invalid or overlapping edit')
+                  text = text[:offset]+edit['text']+text[offset+count:]
+                  boundary=offset
+              data=text.encode('utf-8')
+              if hashlib.sha256(data).hexdigest()!=change['after']:
+                  raise SystemExit('Postimage checksum mismatch: '+name)
+              prepared[name]=data
+          for name,data in prepared.items():
+              path=pathlib.Path(name)
+              path.parent.mkdir(parents=True,exist_ok=True)
+              path.write_bytes(data)
+          subprocess.run(['git','add','--',*prepared],check=True)
           subprocess.run(['git','diff','--cached','--check'],check=True)
-          print('Reviewed FlowHive source files applied:',len(paths))
+          print('Verified source files:',len(prepared))
           PY
       - name: Commit on the same feature branch without force or deployment
         shell: bash
@@ -60,6 +81,6 @@ jobs:
           git rm .github/flowhive-reviewed-source.patch
           git config user.name 'FlowHive source automation'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(flowhive): apply reviewed PSA implementation batch'
+          git commit -m 'fix(flowhive): apply hash-verified PSA implementation batch'
           git push origin "HEAD:refs/heads/$branch"
           git rev-parse HEAD
