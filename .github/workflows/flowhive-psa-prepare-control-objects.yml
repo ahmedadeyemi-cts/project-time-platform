@@ -46,10 +46,32 @@ jobs:
             'tests/flowhive-psa-release-workflow.test.py',
             'tests/validate-celar-ai-pr630-consolidated.mjs'
           }
-          raw=pathlib.Path('.github/flowhive-psa-control-edits.b64').read_bytes().strip()
-          if len(raw)>500000:raise SystemExit('Package too large')
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'}
+          root='https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs'
+          def request_json(url, body=None):
+              request=urllib.request.Request(url,data=body,method='POST' if body is not None else 'GET',headers=headers)
+              with urllib.request.urlopen(request,timeout=30) as response:
+                  raw=response.read(1000001)
+              if len(raw)>1000000:raise SystemExit('Response too large')
+              return json.loads(raw)
+          manifest_path=pathlib.Path('.github/flowhive-psa-control-edits.b64')
+          if manifest_path.stat().st_size>10000:raise SystemExit('Manifest too large')
+          manifest=json.loads(manifest_path.read_bytes())
+          if manifest.get('sha256')!='ec7d480af676b53794b7904453650c7d01a50f89f92914ce8d2e3d578d13dc52':raise SystemExit('Unreviewed payload')
+          parts=manifest.get('parts')
+          if not isinstance(parts,list) or not 1<=len(parts)<=64:raise SystemExit('Invalid parts')
+          packed=bytearray()
+          for sha in parts:
+              if not isinstance(sha,str) or not re.fullmatch('[0-9a-f]{40}',sha):raise SystemExit('Invalid object')
+              obj=request_json(root+'/'+sha)
+              if obj.get('encoding')!='base64' or obj.get('size',1000001)>50000:raise SystemExit('Invalid part')
+              part=base64.b64decode(''.join(obj['content'].split()),validate=True)
+              if hashlib.sha1(b'blob '+str(len(part)).encode()+b'\0'+part).hexdigest()!=sha:raise SystemExit('Part checksum mismatch')
+              packed.extend(part)
+              if len(packed)>500000:raise SystemExit('Package too large')
+          if hashlib.sha256(packed).hexdigest()!=manifest['sha256']:raise SystemExit('Package checksum mismatch')
           decoder=zlib.decompressobj(16+zlib.MAX_WBITS)
-          payload=decoder.decompress(base64.b64decode(raw,validate=True),500001)
+          payload=decoder.decompress(packed,500001)
           if len(payload)>500000 or not decoder.eof or decoder.unused_data:raise SystemExit('Invalid bounded package')
           edits=json.loads(payload)
           if not isinstance(edits,list) or len(edits)!=len(allowed):raise SystemExit('Unexpected file count')
@@ -71,9 +93,7 @@ jobs:
               prepared[name]=(text,blob)
           result=[]
           for name,(text,blob) in prepared.items():
-              body=json.dumps({'content':text,'encoding':'utf-8'}).encode()
-              request=urllib.request.Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',data=body,method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
-              with urllib.request.urlopen(request,timeout=30) as response:actual=json.load(response)['sha']
+              actual=request_json(root,json.dumps({'content':text,'encoding':'utf-8'}).encode())['sha']
               if actual!=blob:raise SystemExit('Published object checksum mismatch')
               result.append({'path':name,'sha':blob,'mode':'100644','type':'blob'})
           out=pathlib.Path(os.environ['RUNNER_TEMP'])/'flowhive-psa-control-objects';out.mkdir()
