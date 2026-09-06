@@ -1,0 +1,22 @@
+{
+  "state": "deployment-failed",
+  "headSha": "2ec3bcb67069a51b2139d5b0060b0772afdc06d1",
+  "prState": "open",
+  "merged": false,
+  "repair": {
+    "status": "completed",
+    "conclusion": "failure",
+    "runId": "32695189469"
+  },
+  "supervisor": {
+    "status": "completed",
+    "conclusion": "failure",
+    "runId": "32695451321"
+  },
+  "deployment": {
+    "status": "completed",
+    "conclusion": "failure",
+    "runId": "32690749354"
+  },
+  "productionMutation": false
+}
