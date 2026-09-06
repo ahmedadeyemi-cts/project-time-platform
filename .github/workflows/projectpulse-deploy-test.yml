@@ -559,6 +559,13 @@ jobs:
 
           jq -n --arg base "$BASE" --arg oldSource "$OLD_SOURCE" --arg oldApiImage "$OLD_API_IMAGE" --arg oldWebImage "$OLD_WEB_IMAGE" '{base:$base,oldSource:$oldSource,oldApiImage:$oldApiImage,oldWebImage:$oldWebImage,preDeploymentHealthValidated:true,runtimeContractCaptured:true}' > "$EVIDENCE_DIR/test-contract.json"
 
+      - name: Verify the matching Oracle SOW runtime before API rollout
+        shell: bash
+        working-directory: release
+        env:
+          RUNTIME_TOKEN: ${{ secrets.PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN }}
+        run: python3 scripts/release-test/verify-oracle-sow-runtime.py
+
       - name: Build immutable API, web, and migration images
         id: build
         shell: bash
@@ -778,34 +785,6 @@ jobs:
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
           jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
-
-      - name: Verify the matching Oracle SOW runtime before API rollout
-        shell: bash
-        working-directory: release
-        env:
-          RUNTIME_TOKEN: ${{ secrets.PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN }}
-        run: |
-          set -Eeuo pipefail
-          [[ ${#RUNTIME_TOKEN} -ge 32 ]]
-          EXPECTED_VERSION="$(jq -r '.gatewayVersion' deployment/oracle-celar/release.json)"
-          umask 077
-          AUTH_HEADERS="$(mktemp "$RUNNER_TEMP/sow-auth-headers.XXXXXX")"
-          trap 'rm -f "$AUTH_HEADERS" "$RUNNER_TEMP/sow-runtime-health.json"' EXIT
-          printf 'Authorization: Bearer %s\n' "$RUNTIME_TOKEN" > "$AUTH_HEADERS"
-          ready=false
-          for attempt in $(seq 1 10); do
-            HTTP="$(curl -sS --max-time 30 --header "@$AUTH_HEADERS" \
-              -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only' \
-              -o "$RUNNER_TEMP/sow-runtime-health.json" -w '%{http_code}' \
-              https://celarai.onenecklab.com/health || true)"
-            if [[ "$HTTP" == 200 ]] && jq -e --arg version "$EXPECTED_VERSION" \
-              '.gatewayVersion == $version and .sowTimeoutSeconds == 3600 and .sowModelAttemptSeconds == [3000,3000,3000] and .sowContextTokens == 16384' \
-              "$RUNNER_TEMP/sow-runtime-health.json" >/dev/null 2>&1; then ready=true; break; fi
-            sleep 15
-          done
-          [[ "$ready" == true ]] || { echo 'Oracle GitOps has not activated the matching SOW runtime.' >&2; exit 1; }
-          jq '{gatewayVersion,sowTimeoutSeconds,sowModelAttemptSeconds,sowContextTokens}' "$RUNNER_TEMP/sow-runtime-health.json" > "$EVIDENCE_DIR/oracle-sow-runtime.json"
-          rm -f "$RUNNER_TEMP/sow-runtime-health.json"
 
       - name: Deploy immutable Test API image
         id: deploy_api

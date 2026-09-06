@@ -94,4 +94,5 @@ print('CELAR_SOW_RUNTIME_DEADLINES=PASS')
 controller = (root / '.github/workflows/projectpulse-deploy-test.yml').read_text()
 gate = controller.split('      - name: Verify the matching Oracle SOW runtime before API rollout', 1)[1].split('      - name:', 1)[0]
 assert '\n        if:' not in gate
-assert 'sowContextTokens == 16384' in gate
+assert 'verify-oracle-sow-runtime.py' in gate
+assert controller.index('Verify the matching Oracle SOW runtime') < controller.index('Build immutable API')

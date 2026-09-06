@@ -147,6 +147,8 @@ const protectedUatRecoveryMode = branchName === 'fix/protected-uat-recovery-and-
 if (protectedUatRecoveryMode) await import('./validate-protected-uat-recovery-scope.mjs');
 const hostnameRecoveryMode = branchName === 'fix/celar-hostname-runtime-20260905';
 if (hostnameRecoveryMode) await import('./validate-celar-hostname-runtime-scope.mjs');
+const runtimePreflightMode = branchName === 'fix/celar-runtime-preflight-evidence-20260906';
+if (runtimePreflightMode) await import('./validate-celar-runtime-preflight-evidence-scope.mjs');
 const sowCpuInferenceMode = branchName === 'fix/celar-sow-cpu-inference-20260905';
 if (sowCpuInferenceMode) await import('./validate-celar-sow-cpu-inference-scope.mjs');
 const sowRuntimeDeadlinesMode = branchName === 'fix/celar-sow-runtime-deadlines-20260905';
@@ -155,7 +157,7 @@ const oracleTokenBudgetMode = branchName === 'fix/celar-oracle-token-budget-2026
 if (oracleTokenBudgetMode) await import('./validate-celar-oracle-token-budget-scope.mjs');
 const routedModelReadinessMode = branchName === 'fix/celar-routed-model-readiness-20260905';
 if (routedModelReadinessMode) await import('./validate-celar-routed-model-readiness-scope.mjs');
-const scopedCompatibilityMode = sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const scopedCompatibilityMode = runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

@@ -1,0 +1,10 @@
+.github/celar-runtime-preflight-evidence-files.txt
+.github/workflows/projectpulse-deploy-test.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+scripts/release-test/verify-oracle-sow-runtime.py
+tests/test-celar-sow-runtime-deadlines.py
+tests/test-oracle-runtime-preflight.py
+tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-celar-runtime-preflight-evidence-scope.mjs
