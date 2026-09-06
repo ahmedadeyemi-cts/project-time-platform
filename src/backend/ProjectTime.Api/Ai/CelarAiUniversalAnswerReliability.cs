@@ -477,7 +477,28 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             Math.Min(result.Answer.Confidence, Math.Min(score, confidenceCap)),
             0m,
             1m);
+        // A successful Module 064 provider response is useful public-answer
+        // content even when a changing fact could not be independently
+        // verified by an allowlisted live source. Preserve that content as an
+        // explicitly evidence-limited answer; never relabel it as verified.
+        // Pulse/private facts, missing provider output, and safety refusals keep
+        // the existing fail-closed replacement behavior.
+        var preserveEvidenceLimitedPublicProviderAnswer =
+            plan.QuestionClass is CelarAiAnswerQuestionClass.PublicCurrent
+                or CelarAiAnswerQuestionClass.PublicStable
+            && result.Status.Equals("completed", StringComparison.OrdinalIgnoreCase)
+            && result.ModelProvider is CelarAiCapabilityTargets.DeepSeek
+                or CelarAiCapabilityTargets.CelarAi
+                or CelarAiCapabilityTargets.Claude
+                or CelarAiCapabilityTargets.OpenAi
+            && result.Sources.Any(source =>
+                source.SourceType.Equals("governed_public_ai", StringComparison.OrdinalIgnoreCase)
+                || source.SourceType.Equals("governed_private_ai", StringComparison.OrdinalIgnoreCase)
+                || source.SourceType.Equals("provider_knowledge", StringComparison.OrdinalIgnoreCase)
+                || source.SourceType.Equals("narrative_provider_response", StringComparison.OrdinalIgnoreCase))
+            && !string.IsNullOrWhiteSpace(result.Answer.DirectConclusion);
         var replaceConclusion = !preservedBlocked
+            && !preserveEvidenceLimitedPublicProviderAnswer
             && findings.Any(finding => finding.Code is
                 "insufficient_authoritative_evidence"
                 or "current_public_fact_not_live_verified"

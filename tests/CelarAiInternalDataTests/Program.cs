@@ -196,6 +196,9 @@ Require(
     PulseAiSystemKnowledgeCatalog.Analyze("Who is the president of Jordan?").IntentCode == "general_knowledge",
     "country officeholder question resolves to general knowledge");
 Require(
+    PulseAiSystemKnowledgeCatalog.Analyze("Who is the president of Brazil?").IntentCode == "general_knowledge",
+    "Brazil officeholder question resolves to governed general knowledge fallback");
+Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the king of Jordan?"),
     "country monarch question is external eligible");
 Require(

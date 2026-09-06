@@ -214,6 +214,12 @@ var memoryOnlyPublic = reliability.Enforce(
     true);
 Require(!memoryOnlyPublic.Assessment.Passed, "current public answer from model memory fails");
 Require(HasFinding(memoryOnlyPublic, "current_public_fact_not_live_verified"), "live public verification finding exists");
+Require(
+    memoryOnlyPublic.Result.Answer.DirectConclusion == "The current officeholder is Example Person.",
+    "evidence-limited public provider answer remains visible instead of being discarded");
+Require(
+    memoryOnlyPublic.Result.Status == "partial",
+    "unverified current public provider answer remains explicitly partial");
 
 var livePublic = reliability.Enforce(
     Result(
