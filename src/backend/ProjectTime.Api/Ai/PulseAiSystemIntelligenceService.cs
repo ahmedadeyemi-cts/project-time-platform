@@ -388,8 +388,8 @@ public sealed class PulseAiSystemIntelligenceService
                     || !string.IsNullOrWhiteSpace(request.ProjectName));
             var privateDocumentContextRequested = attachmentIds.Length > 0
                 || projectDocumentContextRequested;
-            var privateRagRequested = privateDocumentContextRequested
-                || plan.IntentCode == "product_help";
+            var privateRagRequested = CelarAiEnterpriseEvidencePolicy.UseDocumentRag(
+                privateDocumentContextRequested, plan.IntentCode, enterpriseTools.Count);
 
             var sources = BuildSources(relevantApis, toolResults, privateRagAnswer);
             var deterministic = BuildDeterministicAnswer(

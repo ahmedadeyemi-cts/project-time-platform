@@ -1,0 +1,11 @@
+.github/celar-enterprise-synthesis-files.txt
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+docs/modules/module-011-pulse-ai/ENTERPRISE-RETRIEVAL-COVERAGE.md
+scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+src/backend/ProjectTime.Api/Ai/CelarAiEnterpriseEvidenceCatalog.cs
+src/backend/ProjectTime.Api/Ai/CelarAiEnterpriseEvidencePolicy.cs
+src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs
+tests/CelarAiEnterpriseRetrievalTests/Program.cs
+tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-celar-enterprise-retrieval-scope.mjs

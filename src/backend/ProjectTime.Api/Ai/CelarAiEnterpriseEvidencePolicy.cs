@@ -6,6 +6,11 @@ public static class CelarAiEnterpriseEvidencePolicy
 {
     public sealed record Context(string Text, bool Complete);
 
+    // Without requested document context, business facts must use structured
+    // synthesis. Help RAG's no-document procedure fallback has no record data.
+    public static bool UseDocumentRag(bool documentContextRequested, string intent, int enterpriseToolCount) =>
+        documentContextRequested || (intent == "product_help" && enterpriseToolCount == 0);
+
     public static string ValidateResponse(string body, string? toolCode = null)
     {
         try
