@@ -1,0 +1,90 @@
+name: Prepare reviewed FlowHive control objects
+on:
+  push:
+    branches: ['release/flowhive-psa-protected-test-admission-20260906']
+    paths: ['.github/flowhive-psa-control-edits.b64']
+permissions:
+  contents: write
+concurrency:
+  group: flowhive-psa-control-object-preparation
+  cancel-in-progress: false
+jobs:
+  objects:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.ref == 'refs/heads/release/flowhive-psa-protected-test-admission-20260906'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate reviewed text edits and prepare immutable blob objects only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, re, urllib.request, zlib
+          allowed={
+            '.github/flowhive-psa-protected-test-candidate.json',
+            '.github/flowhive-psa-release-control-files.txt',
+            '.github/workflows/flowhive-psa-protected-test-admission.yml',
+            '.github/workflows/flowhive-psa-release-control-ci.yml',
+            '.github/workflows/projectpulse-deploy-test.yml',
+            '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+            '.github/workflows/projectpulse-release-test-control-ci.yml',
+            'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+            'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh',
+            'scripts/release-test/apply-flowhive-psa-migrations.sh',
+            'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
+            'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+            'scripts/release-test/flowhive-psa-admission.mjs',
+            'scripts/release-test/run-flowhive-psa-live-uat.py',
+            'tests/flowhive-psa-admission.test.mjs',
+            'tests/flowhive-psa-live-uat.test.py',
+            'tests/flowhive-psa-migration-fixture.py',
+            'tests/flowhive-psa-release-control.mjs',
+            'tests/flowhive-psa-release-workflow.test.py',
+            'tests/validate-celar-ai-pr630-consolidated.mjs'
+          }
+          raw=pathlib.Path('.github/flowhive-psa-control-edits.b64').read_bytes().strip()
+          if len(raw)>500000:raise SystemExit('Package too large')
+          decoder=zlib.decompressobj(16+zlib.MAX_WBITS)
+          payload=decoder.decompress(base64.b64decode(raw,validate=True),500001)
+          if len(payload)>500000 or not decoder.eof or decoder.unused_data:raise SystemExit('Invalid bounded package')
+          edits=json.loads(payload)
+          if not isinstance(edits,list) or len(edits)!=len(allowed):raise SystemExit('Unexpected file count')
+          prepared={}
+          for change in edits:
+              name=change['path'];p=pathlib.Path(name)
+              if name not in allowed or name in prepared or p.is_symlink() or any(x.is_symlink() for x in p.parents):raise SystemExit('Unapproved source path')
+              before=p.read_bytes() if p.exists() else None
+              if (hashlib.sha256(before).hexdigest() if before is not None else None)!=change['before']:raise SystemExit('Before-image mismatch: '+name)
+              text=(before or b'').decode();boundary=len(text)
+              for edit in sorted(change['edits'],key=lambda x:x['offset'],reverse=True):
+                  offset,count=edit['offset'],edit['delete']
+                  if type(offset)!=int or type(count)!=int or offset<0 or count<0 or offset+count>boundary:raise SystemExit('Invalid edit')
+                  text=text[:offset]+edit['text']+text[offset+count:];boundary=offset
+              after=text.encode()
+              if hashlib.sha256(after).hexdigest()!=change['after']:raise SystemExit('After-image mismatch: '+name)
+              blob=hashlib.sha1(b'blob '+str(len(after)).encode()+b'\0'+after).hexdigest()
+              if blob!=change['blob']:raise SystemExit('Git-object mismatch')
+              prepared[name]=(text,blob)
+          result=[]
+          for name,(text,blob) in prepared.items():
+              body=json.dumps({'content':text,'encoding':'utf-8'}).encode()
+              request=urllib.request.Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',data=body,method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(request,timeout=30) as response:actual=json.load(response)['sha']
+              if actual!=blob:raise SystemExit('Published object checksum mismatch')
+              result.append({'path':name,'sha':blob,'mode':'100644','type':'blob'})
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'flowhive-psa-control-objects';out.mkdir()
+          (out/'objects.json').write_text(json.dumps(result,indent=2)+'\n')
+          (out/'source-revision').write_text(os.environ['GITHUB_SHA']+'\n')
+          print('HASH_VERIFIED_CONTROL_BLOBS='+str(len(result)))
+          print('REF_UPDATES=0 ENVIRONMENT_MUTATIONS=0 SOURCE_EXECUTION=0')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-psa-control-objects-${{ github.sha }}
+          path: ${{ runner.temp }}/flowhive-psa-control-objects/
+          retention-days: 1
+          if-no-files-found: error
