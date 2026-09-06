@@ -40,8 +40,10 @@ jobs:
               r'src/backend/ProjectTime\.Api/Modules/CelarAiProductionPlatformModule\.cs',
               r'src/backend/ProjectTime\.Api/Ai/ProjectFlowHive[A-Za-z0-9]*\.cs',
               r'src/frontend/project-time-web/src/(ProjectFlowHive[A-Za-z0-9]*\.jsx|(?:flowhive-|project-flowhive-|use-flowhive-)[A-Za-z0-9.-]+)',
+              r'src/frontend/project-time-web/scripts/validate-(module-066-project-flowhive|celar-ai-production-platform)\.mjs',
               r'database/(migrations|rollback)/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution)(?:_rollback)?\.sql',
               r'tests/(FlowHive[A-Za-z0-9]+/[A-Za-z0-9._-]+|flowhive-psa-[A-Za-z0-9._-]+)',
+              r'tests/(validate-flowhive-sow-evidence-autoadmission\.mjs|test-pulse-ai-runtime-job-query-shape\.sh)',
               r'docs/modules/module-066-project-flowhive/[A-Za-z0-9._-]+'
           ]
           prepared = {}
