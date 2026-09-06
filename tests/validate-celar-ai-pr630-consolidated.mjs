@@ -153,7 +153,7 @@ const hostnameRecoveryMode = branchName === 'fix/celar-hostname-runtime-20260905
 if (hostnameRecoveryMode) await import('./validate-celar-hostname-runtime-scope.mjs');
 const flowHiveRecoveryMode = branchName === 'fix/flowhive-terminal-refusal-diagnostics-20260906';
 if (flowHiveRecoveryMode) await import('./validate-flowhive-generation-recovery-scope.mjs');
-const sowPhaseMode = branchName === 'fix/sow-generation-uat-20260906';
+const sowPhaseMode = branchName === 'fix/sow-generation-uat-20260906' || branchName === 'fix/sow-phase-runtime-retry-20260906';
 if (sowPhaseMode) await import('./validate-sow-generation-uat-scope.mjs');
 const runtimePreflightMode = branchName === 'fix/celar-runtime-preflight-evidence-20260906';
 if (runtimePreflightMode) await import('./validate-celar-runtime-preflight-evidence-scope.mjs');
