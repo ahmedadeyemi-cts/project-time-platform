@@ -1,0 +1,95 @@
+name: Validate FlowHive PSA Protected Test admission
+on:
+  pull_request:
+    paths:
+      - '.github/flowhive-psa-*'
+      - '.github/workflows/flowhive-psa-*'
+      - '.github/workflows/projectpulse-deploy-test.yml'
+      - 'scripts/release-test/*flowhive-psa*'
+      - 'tests/flowhive-psa-*'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: flowhive-psa-admission-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Exact control-only scope and negative admission tests
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CONTROL_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          python -m pip install PyYAML==6.0.3
+          node tests/flowhive-psa-release-control.mjs
+          node --test tests/flowhive-psa-admission.test.mjs
+          python tests/flowhive-psa-live-uat.test.py
+          python tests/flowhive-psa-release-workflow.test.py
+          bash -n scripts/release-test/apply-flowhive-psa-migrations.sh
+          bash -n scripts/release-test/build-and-run-flowhive-psa-migrations.sh
+          git diff --check
+      - name: Verify canonical Test identity and idle admissions without modifying state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          node scripts/release-test/dispatch-flowhive-psa-test.mjs --inspect-only
+  migrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flowhive
+          POSTGRES_PASSWORD: flowhive-ci-only
+          POSTGRES_DB: flowhive_migrations_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flowhive -d flowhive_migrations_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: flowhive_migrations_test
+      PGUSER: flowhive
+      PGPASSWORD: flowhive-ci-only
+      FLOWHIVE_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+          persist-credentials: false
+      - name: Read the pinned candidate SHA
+        id: candidate
+        working-directory: control
+        run: echo "sha=$(jq -er '.sha | select(test("^[a-f0-9]{40}$"))' .github/flowhive-psa-protected-test-candidate.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+          path: candidate
+          persist-credentials: false
+      - name: Exercise approved SQL and the real image entrypoint in disposable PostgreSQL
+        working-directory: control
+        run: |
+          set -Eeuo pipefail
+          sudo mkdir -p /opt/projectpulse/release
+          sudo chown "$(id -u):$(id -g)" /opt/projectpulse/release
+          python3 tests/flowhive-psa-migration-fixture.py

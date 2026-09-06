@@ -1,0 +1,48 @@
+{
+  "contract": "flowhive-psa-protected-test-candidate-v1",
+  "repository": "ahmedadeyemi-cts/project-time-platform",
+  "pullRequest": 872,
+  "branch": "feature/flowhive-enterprise-psa-revamp-20260906",
+  "sha": "d0ab4380dc4b243e8914a08e719556ec71123885",
+  "sourceBase": "d58d08f29e52b3d8992301b27b9ba8f95dd91e33",
+  "environment": "test",
+  "publicOrigin": "https://phd-west-test.onenecklab.com",
+  "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
+  "projectManagerLogin": "heather.schrock@ussignal.local",
+  "allowPrivateRuntimeMutation": false,
+  "allowCustomerPublication": false,
+  "allowCanonicalTaskAdoption": false,
+  "requiredWorkflows": [
+    ".github/workflows/celar-ai-ask-operations-ci.yml",
+    ".github/workflows/celar-ai-enterprise-api-diagnostics.yml",
+    ".github/workflows/celar-ai-enterprise-platform-ci.yml",
+    ".github/workflows/celar-ai-enterprise-retrieval-ci.yml",
+    ".github/workflows/celar-ai-internal-data-intelligence-ci.yml",
+    ".github/workflows/celar-ai-production-hardening-ci.yml",
+    ".github/workflows/celar-ai-production-platform-ci.yml",
+    ".github/workflows/celar-ai-runtime-rebrand-ci.yml",
+    ".github/workflows/celar-ai-universal-answer-reliability-ci.yml",
+    ".github/workflows/flowhive-detailed-planner-ci.yml",
+    ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/post-pr465-live-uat-repair-ci.yml",
+    ".github/workflows/project-planning-collaboration-ci.yml",
+    ".github/workflows/projectpulse-ci.yml",
+    ".github/workflows/projectpulse-release-test-control-ci-reregistered.yml",
+    ".github/workflows/projectpulse-release-test-control-ci.yml",
+    ".github/workflows/pulse-ai-system-intelligence-ci.yml",
+    ".github/workflows/runtime-navigation-work-register-responsive-ci.yml",
+    ".github/workflows/security-posture-ci.yml",
+    ".github/workflows/shared-project-document-planning-ci.yml",
+    ".github/workflows/systemwide-enterprise-reliability-ci.yml"
+  ],
+  "migrations": [
+    {
+      "file": "103_module_066_flowhive_enterprise_psa_revamp.sql",
+      "sha256": "d0f11a62f081f26b6bbc9eb589f6387f6098674353c27d6b7f8cce4ddd89229a"
+    },
+    {
+      "file": "104_flowhive_bounded_ai_execution.sql",
+      "sha256": "53897dcac37294599339770a3ade51d6af3c26b240d5706c939d443eacad5486"
+    }
+  ]
+}
