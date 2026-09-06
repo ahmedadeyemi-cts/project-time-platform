@@ -22,11 +22,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
-          import hashlib, json, pathlib, re, subprocess
+          import base64, hashlib, json, pathlib, re, subprocess, zlib
           request = pathlib.Path('.github/flowhive-reviewed-source.patch')
           if request.stat().st_size > 1500000:
               raise SystemExit('Edit package exceeds limit')
-          changes = json.loads(request.read_text())
+          packed=base64.b64decode(request.read_bytes().strip(),validate=True)
+          decoder=zlib.decompressobj(16+zlib.MAX_WBITS)
+          payload=decoder.decompress(packed,1500001)
+          if len(payload)>1500000 or not decoder.eof or decoder.unused_data:
+              raise SystemExit('Invalid bounded edit package')
+          changes = json.loads(payload)
           if not isinstance(changes, list) or not 1 <= len(changes) <= 80:
               raise SystemExit('Invalid edit package')
           patterns = [
