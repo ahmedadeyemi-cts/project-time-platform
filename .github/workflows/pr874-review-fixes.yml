@@ -1,0 +1,90 @@
+name: Verify PR874 review fixes
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/pr874-review-edits.b64', '.github/workflows/pr874-review-fixes.yml']
+permissions:
+  contents: write
+concurrency:
+  group: pr874-review-fixes
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 1da65e75cf7bcd12e51abadc8422dfe676fe15ab
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Apply exact reviewed before and after images
+        working-directory: source
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,pathlib,subprocess,zlib
+          p=pathlib.Path('../tools/.github/pr874-review-edits.b64')
+          assert p.stat().st_size<10000
+          z=zlib.decompressobj(16+zlib.MAX_WBITS)
+          data=z.decompress(base64.b64decode(p.read_bytes().strip(),validate=True),20001)
+          assert len(data)<20000 and z.eof and not z.unused_data
+          changes=json.loads(data)
+          allowed={'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh','src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs','tests/FlowHiveDetailedPlannerTests/Program.cs','tests/test-sow-uat-isolation.py'}
+          assert len(changes)==4 and {x['path'] for x in changes}==allowed
+          for change in changes:
+              p=pathlib.Path(change['path']);before=p.read_bytes()
+              assert not p.is_symlink() and hashlib.sha256(before).hexdigest()==change['before']
+              text=before.decode();boundary=len(text)
+              for edit in sorted(change['edits'],key=lambda x:x['offset'],reverse=True):
+                  i,n=edit['offset'],edit['delete'];assert 0<=i<=i+n<=boundary
+                  text=text[:i]+edit['text']+text[i+n:];boundary=i
+              assert hashlib.sha256(text.encode()).hexdigest()==change['after']
+              p.write_text(text)
+          subprocess.run(['git','add','--',*allowed],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()=='508a616c8d6240445f33bef603d0277f3f79e437'
+          PY
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Execute actual Bash deadline behavior and backend diagnostic regressions
+        working-directory: source
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+          python3 tests/test-sow-uat-isolation.py
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+      - name: Publish verified source blobs only
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,subprocess,urllib.request
+          git=lambda *a:subprocess.check_output(['git',*a],text=True).strip()
+          assert git('write-tree')=='508a616c8d6240445f33bef603d0277f3f79e437'
+          names=git('diff','--cached','--name-only').splitlines();assert len(names)==4
+          objects=[]
+          for name in names:
+              data=pathlib.Path(name).read_bytes();sha=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+              assert git('rev-parse',':'+name)==sha
+              req=urllib.request.Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',data=json.dumps({'content':base64.b64encode(data).decode(),'encoding':'base64'}).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(req,timeout=30) as response:assert json.load(response)['sha']==sha
+              objects.append({'path':name,'sha':sha,'type':'blob','mode':git('ls-files','-s',name).split()[0]})
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'pr874-review';out.mkdir()
+          (out/'objects.json').write_text(json.dumps(objects,indent=2)+'\n')
+          print('VERIFIED_BLOBS=4 REMOTE_REF_UPDATES=0 ENVIRONMENT_MUTATIONS=0')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr874-review-fixes
+          path: ${{ runner.temp }}/pr874-review/
+          retention-days: 1
+          if-no-files-found: error
