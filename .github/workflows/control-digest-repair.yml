@@ -1,0 +1,94 @@
+name: Verify bounded FlowHive migration observer repair
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/control-digest-edits.b64', '.github/workflows/control-digest-repair.yml']
+permissions:
+  contents: write
+concurrency:
+  group: flowhive-control-digest-repair
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 55ebb51fda1917f202ce6561ed5f5e635468d01c
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact before and after images without remote ref changes
+        working-directory: source
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,pathlib,subprocess,zlib
+          p=pathlib.Path('../tools/.github/control-digest-edits.b64');assert p.stat().st_size<20000
+          z=zlib.decompressobj(16+zlib.MAX_WBITS)
+          data=z.decompress(base64.b64decode(p.read_bytes().strip(),validate=True),100001)
+          assert len(data)<100000 and z.eof and not z.unused_data
+          changes=json.loads(data)
+          allowed={'.github/flowhive-psa-protected-test-candidate.json','docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md','scripts/release-test/build-and-run-flowhive-psa-migrations.sh','tests/flowhive-psa-admission.test.mjs','tests/flowhive-psa-migration-fixture.py','tests/flowhive-psa-release-control.mjs','tests/flowhive-psa-release-workflow.test.py'}
+          assert len(changes)==7 and {x['path'] for x in changes}==allowed
+          for change in changes:
+              p=pathlib.Path(change['path']);before=p.read_bytes()
+              assert not p.is_symlink() and hashlib.sha256(before).hexdigest()==change['before']
+              text=before.decode();boundary=len(text)
+              for edit in sorted(change['edits'],key=lambda x:x['offset'],reverse=True):
+                  i,n=edit['offset'],edit['delete'];assert 0<=i<=i+n<=boundary
+                  text=text[:i]+edit['text']+text[i+n:];boundary=i
+              assert hashlib.sha256(text.encode()).hexdigest()==change['after']
+              p.write_text(text)
+          subprocess.run(['git','add','--',*allowed],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()=='1f0d5cea5a527e2c72a7697df90d6f29399099bb'
+          subprocess.run(['git','-c','user.name=FlowHive source verification','-c','user.email=41898282+github-actions[bot]@users.noreply.github.com','commit','-m','Verify seven-file source repair locally'],check=True)
+          PY
+      - name: Execute real Bash retry behavior and negative release contracts
+        working-directory: source
+        env:
+          BASE_SHA: 55ebb51fda1917f202ce6561ed5f5e635468d01c
+          CONTROL_BASE: 55ebb51fda1917f202ce6561ed5f5e635468d01c
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install PyYAML==6.0.3
+          bash -n scripts/release-test/build-and-run-flowhive-psa-migrations.sh
+          python3 tests/flowhive-psa-migration-fixture.py --digest-only
+          node tests/flowhive-psa-release-control.mjs
+          node --test tests/flowhive-psa-admission.test.mjs
+          python3 tests/flowhive-psa-release-workflow.test.py
+          python3 tests/flowhive-psa-live-uat.test.py
+      - name: Publish exact text blobs only
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,subprocess,urllib.request
+          git=lambda *a:subprocess.check_output(['git',*a],text=True).strip()
+          assert git('rev-parse','HEAD^{tree}')=='1f0d5cea5a527e2c72a7697df90d6f29399099bb'
+          names=git('diff','--name-only','HEAD^','HEAD').splitlines();assert len(names)==7
+          objects=[]
+          for name in names:
+              data=pathlib.Path(name).read_bytes();sha=git('rev-parse','HEAD:'+name)
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+              req=urllib.request.Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',data=json.dumps({'content':base64.b64encode(data).decode(),'encoding':'base64'}).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(req,timeout=30) as response:assert json.load(response)['sha']==sha
+              objects.append({'path':name,'sha':sha,'mode':git('ls-tree','HEAD',name).split()[0],'type':'blob'})
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'flowhive-control-digest';out.mkdir()
+          (out/'objects.json').write_text(json.dumps(objects,indent=2)+'\n')
+          print('EXACT_CONTROL_BLOBS=7 REMOTE_REF_UPDATES=0 ENVIRONMENT_MUTATIONS=0')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-control-digest-repair
+          path: ${{ runner.temp }}/flowhive-control-digest/
+          retention-days: 1
+          if-no-files-found: error
