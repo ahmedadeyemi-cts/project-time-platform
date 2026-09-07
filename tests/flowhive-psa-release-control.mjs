@@ -27,9 +27,19 @@ export const files = [
   'tests/flowhive-psa-release-workflow.test.py',
   'tests/validate-celar-ai-pr630-consolidated.mjs'
 ].sort();
-export function verifyFiles(changed, manifest) {
+export const repairFiles = [
+  '.github/flowhive-psa-protected-test-candidate.json',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-migration-fixture.py',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
+export function verifyFiles(changed, manifest, mode = 'initial') {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.deepEqual([...changed].sort(), files, 'Unexpected or missing file in the release-control PR.');
+  assert.ok(['initial','pr874-digest-repair'].includes(mode), 'Unrecognized control repair.');
+  assert.deepEqual([...changed].sort(), mode === 'initial' ? files : repairFiles, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
   for (const token of [
@@ -49,7 +59,14 @@ export function validate() {
   assert.match(base, /^[0-9a-f]{40}$/);
   const changed = git('diff', '--name-only', base, 'HEAD').split(/\r?\n/).filter(Boolean);
   const manifest = fs.readFileSync(controlManifest, 'utf8').trim().split(/\r?\n/);
-  verifyFiles(changed, manifest);
+  const isRepair = changed.length === repairFiles.length;
+  verifyFiles(changed, manifest, isRepair ? 'pr874-digest-repair' : 'initial');
+  if (isRepair) {
+    // The repair cannot alter the admitted environment workflow, permissions,
+    // migration bytes or dispatcher. Only its exact seven-file list is allowed.
+    assert.equal(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml','utf8').trimEnd(),
+      git('show', `${base}:.github/workflows/projectpulse-deploy-test.yml`));
+  }
   for (const file of files) assert.ok(fs.statSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink());
   const approval = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-test-candidate.json', 'utf8'));
   verifyApproval(approval, approval.sha);

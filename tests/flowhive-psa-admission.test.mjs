@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, verifyDispatchedRun, inspectIdleController, sealIdleController } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
 const pr = { number: 872, state: 'open', merged: false, draft: true,
@@ -114,4 +114,13 @@ test('a deployment that arrives while sealing blocks subsequent admission',async
 test('unverifiable active-run inventory cannot pass as idle',async()=>{
   await assert.rejects(inspectIdleController(async url=> url.includes('/runs?')?{}:
     {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active'}),/INVENTORY_INVALID/);
+});
+
+test('PR874 digest repair retains the full boundary and accepts only its seven exact paths',()=>{
+  verifyFiles(repairFiles,files,'pr874-digest-repair');
+  for(const extra of ['.github/workflows/projectpulse-deploy-test.yml','src/backend/ProjectTime.Api/Program.cs','database/migrations/104_flowhive_bounded_ai_execution.sql'])
+    assert.throws(()=>verifyFiles([...repairFiles,extra],files,'pr874-digest-repair'));
+  assert.throws(()=>verifyFiles(repairFiles.slice(1),files,'pr874-digest-repair'));
+  assert.throws(()=>verifyFiles(repairFiles,repairFiles,'pr874-digest-repair'));
+  assert.throws(()=>verifyFiles(repairFiles,files,'unknown'));
 });
