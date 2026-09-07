@@ -1,0 +1,91 @@
+name: Verify exact FlowHive CI repair
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/flowhive-ci-repair.py', '.github/workflows/flowhive-ci-repair-objects.yml']
+permissions:
+  contents: write
+concurrency:
+  group: flowhive-ci-repair-objects
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 2914eeeb7265e2d6998d2e68d2f723e6ad56c922
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reconstruct reviewed source without changing any remote ref
+        working-directory: candidate
+        env:
+          CONTROL_BASE: 55ebb51fda1917f202ce6561ed5f5e635468d01c
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install PyYAML==6.0.3
+          python3 ../tools/.github/flowhive-ci-repair.py
+          git add -u
+          test "$(git write-tree)" = e30be83afc01d7b8c82ebb5a24805c5a64d03994
+          test "$(git diff --cached --name-only | wc -l)" = 6
+          git config user.name 'FlowHive source verification'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Verify reviewed CI parser and database fixture repair'
+          node tests/flowhive-psa-scope.mjs
+          node --test tests/flowhive-psa-*.test.mjs
+          python3 tests/flowhive-psa-release-workflow.test.py
+          python3 tests/flowhive-psa-live-uat.test.py
+          git diff --check 2914eeeb7265e2d6998d2e68d2f723e6ad56c922 HEAD
+      - name: Publish checked immutable blobs and read the existing control source
+        working-directory: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,subprocess,urllib.request
+          git=lambda *args:subprocess.check_output(['git',*args],text=True).strip()
+          expected_tree='e30be83afc01d7b8c82ebb5a24805c5a64d03994'
+          assert git('rev-parse','HEAD^{tree}')==expected_tree
+          names=git('diff','--name-only','2914eeeb7265e2d6998d2e68d2f723e6ad56c922','HEAD').splitlines()
+          allowed=sorted(['.github/workflows/flowhive-enterprise-psa-ci.yml','.github/workflows/flowhive-psa-release-control-ci.yml','.github/workflows/projectpulse-release-test-control-ci-reregistered.yml','.github/workflows/projectpulse-release-test-control-ci.yml','docs/modules/module-066-project-flowhive/BOUNDED-PLANNER-VALIDATION.md','tests/flowhive-psa-release-workflow.test.py'])
+          assert names==allowed
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'flowhive-ci-repair';out.mkdir()
+          objects=[]
+          for name in names:
+              p=pathlib.Path(name);assert p.is_file() and not p.is_symlink()
+              data=p.read_bytes();expected=git('rev-parse','HEAD:'+name)
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==expected
+              payload=json.dumps({'content':base64.b64encode(data).decode(),'encoding':'base64'}).encode()
+              req=urllib.request.Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',data=payload,method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(req,timeout=30) as response:actual=json.load(response)['sha']
+              assert actual==expected
+              objects.append({'path':name,'sha':actual,'mode':git('ls-tree','HEAD',name).split()[0],'type':'blob'})
+          (out/'objects.json').write_text(json.dumps(objects,indent=2)+'\n')
+          (out/'tree').write_text(expected_tree+'\n')
+          control='aa7ac96a3922cb2242047007a4eb8bfb0c508fcb'
+          assert git('rev-parse',control+'^{tree}')=='1f0d5cea5a527e2c72a7697df90d6f29399099bb'
+          control_files=git('diff','--name-only','55ebb51fda1917f202ce6561ed5f5e635468d01c',control).splitlines()
+          assert len(control_files)==7
+          for name in control_files:
+              dest=out/'control-source'/name;dest.parent.mkdir(parents=True,exist_ok=True)
+              dest.write_bytes(subprocess.check_output(['git','show',control+':'+name]))
+          (out/'control-commit.raw').write_bytes(subprocess.check_output(['git','cat-file','commit',control]))
+          (out/'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p.relative_to(out))+'\n' for p in sorted(out.rglob('*')) if p.is_file()))
+          print('SOURCE_BLOBS=6 REMOTE_REF_UPDATES=0 CLOUD_MUTATIONS=0 DEPLOYMENT_DISPATCHES=0')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-ci-repair-verified
+          path: ${{ runner.temp }}/flowhive-ci-repair/
+          retention-days: 1
+          if-no-files-found: error
