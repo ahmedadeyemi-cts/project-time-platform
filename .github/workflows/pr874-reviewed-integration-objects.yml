@@ -1,0 +1,94 @@
+name: Verify reviewed PR874 integration objects
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/pr874-reviewed-integration.py', '.github/workflows/pr874-reviewed-integration-objects.yml']
+permissions:
+  contents: write
+concurrency:
+  group: pr874-reviewed-integration-objects
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 5f7f731aea64226dab791ad3602b9c9cfd8afd44
+          path: integration
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reconstruct the reviewed three-way merge without updating remote refs
+        working-directory: integration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'FlowHive integration verification'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git update-ref refs/remotes/origin/evidence-main 8c84d91b8a4f7d1583118f6d701185b355c9684f
+          set +e
+          git merge --no-commit --no-ff origin/evidence-main
+          result=$?
+          set -e
+          test "$result" = 1
+          test "$(git diff --name-only --diff-filter=U)" = '.github/workflows/projectpulse-deploy-test.yml'
+          python3 ../tools/.github/pr874-reviewed-integration.py
+          test "$(git write-tree)" = 8c0acef5d74a46f51834f68c0d5312fd0458cb61
+          git commit -m 'Verify reviewed PR874 integration tree locally'
+          test "$(git diff --name-only 8c84d91b8a4f7d1583118f6d701185b355c9684f HEAD | wc -l)" = 25
+      - name: Verify exact scope and isolated regression contracts
+        working-directory: integration
+        env:
+          BASE_SHA: 8c84d91b8a4f7d1583118f6d701185b355c9684f
+          CONTROL_BASE: 8c84d91b8a4f7d1583118f6d701185b355c9684f
+          GITHUB_HEAD_REF: fix/sow-runtime-diagnostics-and-uat-isolation-20260906
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install PyYAML==6.0.3
+          node tests/validate-sow-generation-uat-scope.mjs
+          node --test tests/flowhive-psa-admission.test.mjs
+          python3 tests/flowhive-psa-live-uat.test.py
+          python3 tests/flowhive-psa-release-workflow.test.py
+          node tests/validate-systemwide-image-build-controller.mjs
+      - name: Publish immutable source blobs only
+        working-directory: integration
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, subprocess, urllib.request
+          git=lambda *args:subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD^{tree}')=='8c0acef5d74a46f51834f68c0d5312fd0458cb61'
+          names=git('diff','--name-only','8c84d91b8a4f7d1583118f6d701185b355c9684f','HEAD').splitlines()
+          assert len(names)==25
+          assert names==pathlib.Path('.github/sow-runtime-isolation-files.txt').read_text().splitlines()
+          objects=[]
+          for name in names:
+              p=pathlib.Path(name)
+              assert not p.is_symlink() and not any(x.is_symlink() for x in p.parents)
+              data=p.read_bytes()
+              expected=git('rev-parse','HEAD:'+name)
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==expected
+              body=json.dumps({'content':base64.b64encode(data).decode(),'encoding':'base64'}).encode()
+              req=urllib.request.Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',data=body,method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(req,timeout=30) as response:actual=json.load(response)['sha']
+              assert actual==expected
+              objects.append({'path':name,'sha':actual,'mode':git('ls-tree','HEAD',name).split()[0],'type':'blob'})
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'pr874-integration-objects';out.mkdir()
+          (out/'objects.json').write_text(json.dumps(objects,indent=2)+'\n')
+          (out/'tree').write_text(git('rev-parse','HEAD^{tree}')+'\n')
+          print('REVIEWED_SOURCE_BLOBS=25 REMOTE_REF_UPDATES=0 ENVIRONMENT_MUTATIONS=0')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr874-reviewed-integration-objects
+          path: ${{ runner.temp }}/pr874-integration-objects/
+          retention-days: 1
+          if-no-files-found: error
