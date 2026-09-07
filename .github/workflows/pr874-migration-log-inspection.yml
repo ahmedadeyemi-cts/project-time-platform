@@ -22,7 +22,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/migration-inspection"
           gh api 'repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/101580331315' --jq '{id,run_id,head_sha,status,conclusion,steps}' > "$RUNNER_TEMP/migration-inspection/job.json"
           jq -e '.id==101580331315 and .run_id==34068097426 and .status=="completed"' "$RUNNER_TEMP/migration-inspection/job.json" >/dev/null
-          gh api 'repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/101580331315/logs' > "$RUNNER_TEMP/job.log"
+          gh api --allow-escape-sequences 'repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/101580331315/logs' > "$RUNNER_TEMP/job.log"
           python3 - <<'PY'
           import json,os,pathlib,re
           root=pathlib.Path(os.environ['RUNNER_TEMP'])
