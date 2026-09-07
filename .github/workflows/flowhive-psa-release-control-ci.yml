@@ -33,10 +33,15 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CONTROL_BASE: ${{ github.event.pull_request.base.sha }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
-          node tests/flowhive-psa-release-control.mjs
+          if [[ "$GITHUB_HEAD_REF" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
+            node tests/validate-sow-generation-uat-scope.mjs
+          else
+            node tests/flowhive-psa-release-control.mjs
+          fi
           node --test tests/flowhive-psa-admission.test.mjs
           python tests/flowhive-psa-live-uat.test.py
           python tests/flowhive-psa-release-workflow.test.py

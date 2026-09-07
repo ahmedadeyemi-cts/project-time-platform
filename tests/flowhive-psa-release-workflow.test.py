@@ -33,8 +33,12 @@ def verify(doc):
     assert 'build-and-run-flowhive-psa-migrations.sh' in byid['migration']['run']
     assert byid['psa_live_uat']['working-directory']=='control'
     assert byid['psa_live_uat']['timeout-minutes']=='20'
-    for key in ['uat','module025_fixture','module025_uat']:
-        assert byid[key]['if']=="steps.psa_admission.outputs.authorized != 'true'"
+    assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true'"
+    assert byid['module025_fixture']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.uat.outcome == 'success' }}"
+    assert byid['module025_uat']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.module025_fixture.outcome == 'success' }}"
+    for key in ['assigned_work_uat','utilization_uat']:
+        assert byid[key]['if']=="${{ !cancelled() && (steps.uat.outcome == 'success' || steps.psa_live_uat.outputs.deployment_health_verified == 'true') }}"
+    assert steps.index(byid['assigned_work_uat'])<steps.index(byid['utilization_uat'])<steps.index(byid['module025_fixture'])
     rb=next(s for s in steps if s.get('name')=='Restore exact prior Test images after application failure')
     assert "steps.psa_live_uat.outputs.deployment_health_verified != 'true'" in rb['if']
     assert "steps.uat.outputs.deployment_health_verified != 'true'" in rb['if']
@@ -80,17 +84,26 @@ class WorkflowContract(unittest.TestCase):
         base=os.environ.get('CONTROL_BASE')
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
-        before=old['jobs']['deploy']['steps']; after=[s for s in self.doc['jobs']['deploy']['steps'] if s.get('name') not in NEW_NAMES]
-        self.assertEqual([s.get('name') for s in before],[s.get('name') for s in after])
-        allowed={'Guard exact source and validate release','Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network',
-                 'Restore exact prior Test images after application failure','Publish protected-Test release summary'}
-        for a,b in zip(before,after):
-            if a.get('id') in {'uat','module025_fixture','module025_uat'}:
-                b=copy.deepcopy(b);b.pop('if',None)
-            if a.get('name') not in allowed:self.assertEqual(a,b,a.get('name'))
-        expected_on=copy.deepcopy(old['on'])
-        expected_on['push']['paths'].remove(CONTROLLER)
-        self.assertEqual(expected_on,self.doc['on'])
+        # This integration starts from the already merged #875 controller.
+        # Compare by unique step name because #874 deliberately moves the work
+        # gates before SOW composition; never accept adding/dropping a step.
+        before=old['jobs']['deploy']['steps']; after=self.doc['jobs']['deploy']['steps']
+        old_steps={step['name']:step for step in before}
+        self.assertEqual(len(old_steps),len(before))
+        self.assertEqual(len(after),len(before))
+        self.assertEqual(set(old_steps),{step['name'] for step in after})
+        revised={'assigned_work_uat','utilization_uat','module025_fixture','module025_uat'}
+        for step in after:
+            a=copy.deepcopy(old_steps[step['name']]);b=copy.deepcopy(step)
+            if b.get('id') in revised:
+                a.pop('if',None);b.pop('if',None)
+                if b['id']=='module025_fixture':
+                    b['run']=b['run'].replace('echo "expires_at=$FIXTURE_EXPIRES_AT" >> "$GITHUB_OUTPUT"\n','')
+                if b['id']=='module025_uat':
+                    b['env'].pop('MODULE025_UAT_EXPIRES_AT',None)
+            self.assertEqual(a,b,step['name'])
+        self.assertEqual(old['on'],self.doc['on'])
         self.assertEqual(old['jobs']['deploy']['env'],self.doc['jobs']['deploy']['env'])
+
 
 if __name__=='__main__':unittest.main()

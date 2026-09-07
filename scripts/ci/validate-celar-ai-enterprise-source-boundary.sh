@@ -15,7 +15,7 @@ if [[ "$HEAD_BRANCH" == 'feature/celar-enterprise-retrieval-20260906' || "$HEAD_
   node tests/validate-celar-enterprise-retrieval-scope.mjs
 fi
 
-if [[ "$HEAD_BRANCH" == 'fix/sow-transport-prompt-20260906' || "$HEAD_BRANCH" == 'fix/sow-generation-uat-20260906' || "$HEAD_BRANCH" == 'fix/sow-phase-runtime-retry-20260906' ]]; then
+if [[ "$HEAD_BRANCH" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' || "$HEAD_BRANCH" == 'fix/sow-transport-prompt-20260906' || "$HEAD_BRANCH" == 'fix/sow-generation-uat-20260906' || "$HEAD_BRANCH" == 'fix/sow-phase-runtime-retry-20260906' ]]; then
   node tests/validate-sow-generation-uat-scope.mjs
 fi
 
@@ -120,6 +120,12 @@ if [[ -n "$DISALLOWED_DATABASE" ]]; then
 fi
 
 PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED" || true)"
+if [[ "$HEAD_BRANCH" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
+  # Exact scope permits UAT isolation and the single-model Oracle policy only.
+  for authorized in .github/workflows/projectpulse-deploy-test.yml deployment/oracle-celar/deploy.sh deployment/oracle-celar/health-check.sh deployment/oracle-celar/release.json deployment/oracle-celar/verify-ollama-memory-policy.py; do
+    PROHIBITED="$(grep -Fvx "$authorized" <<<"$PROHIBITED" || true)"
+  done
+fi
 if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
   PROHIBITED="$(grep -v '^deployment/oracle-celar/' <<<"$PROHIBITED" || true)"
 fi

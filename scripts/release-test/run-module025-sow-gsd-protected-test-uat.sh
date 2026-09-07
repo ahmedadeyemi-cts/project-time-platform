@@ -10,6 +10,9 @@ fail() {
 : "${TEST_LOGIN_PASSWORD:?TEST_LOGIN_PASSWORD is required}"
 : "${EVIDENCE_DIR:?EVIDENCE_DIR is required}"
 : "${MODULE025_UAT_RUN_ID:?MODULE025_UAT_RUN_ID is required}"
+: "${MODULE025_UAT_EXPIRES_AT:?MODULE025_UAT_EXPIRES_AT is required}"
+[[ "$MODULE025_UAT_EXPIRES_AT" =~ ^[0-9]{10}$ ]] \
+  || fail 'MODULE025_UAT_EXPIRES_AT must be the exact fixture expiry epoch.'
 
 BASE="${BASE%/}"
 [[ "$BASE" == 'https://phd-west-test.onenecklab.com' ]] \
@@ -34,9 +37,10 @@ login() {
     '{username:$username,password:$password}' > "$payload"
   : > "$output"
   chmod 0600 "$payload" "$output"
-  local status curl_exit
+  local status curl_exit max_time
+  max_time="$(fixture_request_budget 90)" || { rm -f "$payload"; printf '28|000\n'; return 0; }
   set +e
-  status="$(curl -sS --http1.1 --connect-timeout 30 --max-time 90 \
+  status="$(curl -sS --http1.1 --connect-timeout 30 --max-time "$max_time" \
     -o "$output" -w '%{http_code}' \
     -H 'Cache-Control: no-cache' \
     -H 'Content-Type: application/json' \
@@ -50,10 +54,34 @@ login() {
   printf '%s|%s\n' "$curl_exit" "${status:-000}"
 }
 
+# All normal requests (including post-terminal readback) stop before the
+# cleanup reserve. Archival gets its own bounded window; no retry can consume it.
+fixture_request_budget() {
+  local requested="$1" reserve="${2:-180}" remaining
+  remaining="$(( MODULE025_UAT_EXPIRES_AT - reserve - $(date +%s) ))"
+  (( remaining > 0 )) || return 1
+  (( requested <= remaining )) || requested="$remaining"
+  printf '%s\n' "$requested"
+}
+fixture_retry_pause() {
+  local pause
+  pause="$(fixture_request_budget 5)" || return 1
+  sleep "$pause"
+}
 auth_request() {
   local method="$1" path="$2" output="$3" session="$4" max_time="${5:-120}" body="${6:-}"
   local headers="${7:-}"
-  local status curl_exit
+  local status curl_exit reserve=180
+  if [[ "$method" == POST && -n "$ENGAGEMENT_ID" && "$path" == "/api/module025/sow-gsd/$ENGAGEMENT_ID/archive" ]]; then
+    reserve=60
+  elif [[ "$method" == POST && "$path" == '/api/auth/session/logout' ]]; then
+    reserve=5
+  fi
+  if ! max_time="$(fixture_request_budget "$max_time" "$reserve")"; then
+    printf '{}\n' > "$output"
+    printf '28|000\n'
+    return 0
+  fi
   local args=(
     -sS --http1.1 --connect-timeout 30 --max-time "$max_time"
     -o "$output" -w '%{http_code}'
@@ -99,7 +127,7 @@ auth_get_with_transient_retry() {
       printf 'request=%s attempt=%s curlExit=%s httpStatus=%s\n' \
         "$label" "$attempt" "$curl_exit" "$status" \
         >> "$EVIDENCE_DIR/module025-transient-gateway-retries.log"
-      sleep 5
+      fixture_retry_pause || break
       continue
     fi
 
@@ -108,7 +136,7 @@ auth_get_with_transient_retry() {
         printf 'request=%s attempt=%s curlExit=%s httpStatus=%s\n' \
           "$label" "$attempt" "$curl_exit" "$status" \
           >> "$EVIDENCE_DIR/module025-transient-gateway-retries.log"
-        sleep 5
+        fixture_retry_pause || break
         ;;
       *)
         printf '%s|%s\n' "$curl_exit" "$status"
@@ -130,8 +158,10 @@ wait_for_fixture_public_revision() {
   # has refreshed its backend pool. Require three consecutive live-origin responses
   # so the exact-run fixture is exercised only after public ingress has converged.
   for attempt in $(seq 1 36); do
+    local max_time
+    max_time="$(fixture_request_budget 30)" || break
     set +e
-    status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 30 \
+    status="$(curl -sS --http1.1 --connect-timeout 20 --max-time "$max_time" \
       -o "$response" -w '%{http_code}' \
       -H 'Cache-Control: no-cache, no-store, max-age=0' \
       "$BASE/health?module025-fixture=$MODULE025_UAT_RUN_ID-$attempt")"
@@ -159,8 +189,7 @@ wait_for_fixture_public_revision() {
     fi
 
     case "$status" in
-      000|502|503|504) sleep 5 ;;
-      *) sleep 3 ;;
+      *) fixture_retry_pause || break ;;
     esac
   done
 
@@ -365,18 +394,27 @@ GENERATION_TERMINAL=false
 GENERATION_POLL_ATTEMPTS=0
 # This is an asynchronous document job on the Oracle CPU runtime. Use a
 # wall-clock ceiling so slow polling requests cannot extend the acceptance window.
-GENERATION_DEADLINE="$(( GENERATION_POLL_STARTED_AT + 3900 ))"
+# Finish before the existing short-lived fixture expires, reserving three
+# minutes for archival cleanup. Never extend the authorization to fit inference.
+GENERATION_DEADLINE="$(( GENERATION_POLL_STARTED_AT + 2520 ))"
+if [[ "${MODULE025_UAT_EXPIRES_AT:-}" =~ ^[0-9]+$ ]]; then
+  FIXTURE_GENERATION_DEADLINE="$(( MODULE025_UAT_EXPIRES_AT - 180 ))"
+  (( FIXTURE_GENERATION_DEADLINE >= GENERATION_DEADLINE )) || GENERATION_DEADLINE="$FIXTURE_GENERATION_DEADLINE"
+fi
 for attempt in $(seq 1 780); do
-  (( $(date +%s) < GENERATION_DEADLINE )) || break
+  GENERATION_REMAINING_SECONDS="$(( GENERATION_DEADLINE - $(date +%s) ))"
+  (( GENERATION_REMAINING_SECONDS > 0 )) || break
+  GENERATION_POLL_TIMEOUT=55
+  (( GENERATION_REMAINING_SECONDS >= GENERATION_POLL_TIMEOUT )) || GENERATION_POLL_TIMEOUT="$GENERATION_REMAINING_SECONDS"
   GENERATION_POLL_ATTEMPTS="$attempt"
-  GENERATION_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID/generations/$GENERATION_ID" "$GENERATION_RESPONSE" "$SA_SESSION" 55)"
+  GENERATION_RESULT="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID/generations/$GENERATION_ID" "$GENERATION_RESPONSE" "$SA_SESSION" "$GENERATION_POLL_TIMEOUT")"
   IFS='|' read -r GENERATION_CURL_EXIT GENERATION_STATUS <<<"$GENERATION_RESULT"
   if [[ "$GENERATION_CURL_EXIT" != 0 || "$GENERATION_STATUS" != 200 ]]; then
     if [[ "$GENERATION_CURL_EXIT" != 0 ]]; then
       printf 'request=generation-status attempt=%s curlExit=%s httpStatus=%s\n' \
         "$attempt" "$GENERATION_CURL_EXIT" "$GENERATION_STATUS" \
         >> "$EVIDENCE_DIR/module025-transient-gateway-retries.log"
-      sleep 5
+      fixture_retry_pause || break
       continue
     fi
     case "$GENERATION_STATUS" in
@@ -384,7 +422,7 @@ for attempt in $(seq 1 780); do
         printf 'request=generation-status attempt=%s curlExit=%s httpStatus=%s\n' \
           "$attempt" "$GENERATION_CURL_EXIT" "$GENERATION_STATUS" \
           >> "$EVIDENCE_DIR/module025-transient-gateway-retries.log"
-        sleep 5
+        fixture_retry_pause || break
         continue
         ;;
       *)
@@ -401,16 +439,19 @@ for attempt in $(seq 1 780); do
     and (.status == "module025_detailed_scope_generation_queued" or .status == "module025_detailed_scope_generation_running")
   ' "$GENERATION_RESPONSE" >/dev/null \
     || fail "Module 025 generation status poll $attempt returned an invalid non-terminal contract."
-  sleep 5
+  fixture_retry_pause || break
 done
 GENERATION_TOTAL_ELAPSED_SECONDS="$(( $(date +%s) - GENERATION_POLL_STARTED_AT + GENERATE_ELAPSED_SECONDS ))"
 [[ "$GENERATION_TERMINAL" == true ]] \
-  || fail 'Module 025 durable generation did not reach a terminal state within 65 minutes.'
+  || fail 'Module 025 durable generation did not reach a terminal state within 42 minutes or before the authorization cleanup reserve.'
 jq -e --arg id "$GENERATION_ID" '
   .status == "module025_detailed_scope_generated"
   and .generationId == $id
   and .terminal == true
   and .stateChanged == true
+  and (.targetDecisions | type == "array" and length > 0)
+  and (.targetDecisions[0].Target == "deepseek_v4")
+  and any(.targetDecisions[]; (.Target == "deepseek_v4" or .Target == "celar_ai") and .Outcome == "used" and .ReasonCode == "generation_succeeded")
   and (.revision | type == "number" and . > 1)
   and (.correlationId | type == "string" and length > 0)
 ' "$GENERATION_RESPONSE" >/dev/null \
@@ -487,6 +528,7 @@ jq -e --arg id "$ENGAGEMENT_ID" '
   || fail 'Module 025 cleanup did not persist the fixture in the archived queue.'
 
 jq -n \
+  --argjson targetDecisions "$(jq -c '.targetDecisions' "$GENERATION_RESPONSE")" \
   --arg identity "$SA_EMAIL" \
   --arg userId "$SA_USER_ID" \
   --arg engagementId "$ENGAGEMENT_ID" \
@@ -513,6 +555,8 @@ jq -n \
     createStatus:"draft",
     queueStatus:"module025_detailed_scope_generation_queued",
     generateStatus:"module025_detailed_scope_generated",
+    targetDecisions:$targetDecisions,
+    draftProvider:([$targetDecisions[] | select((.Target == "deepseek_v4" or .Target == "celar_ai") and .Outcome == "used") | .Target] | first),
     readbackStatus:"review_ready",
     generatedRevision:$generatedRevision,
     generationQueueElapsedSeconds:$generationQueueElapsedSeconds,
