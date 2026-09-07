@@ -11,6 +11,57 @@ import subprocess
 import sys
 
 root=Path(__file__).resolve().parents[1]
+def digest_read_tests():
+    import tempfile
+    text=(root/'scripts/release-test/build-and-run-flowhive-psa-migrations.sh').read_text()
+    function=text[text.index('resolve_migration_digest() ('):text.index('\nCONTROL_ROOT=')]
+    assert text.count('az acr build ')==1
+    assert 'DIGEST="$(resolve_migration_digest "$ACR" "$IMAGE")"' in text
+    assert text.index('DIGEST="$(resolve_migration_digest')<text.index('bash "$CONTROL_ROOT/scripts/release-test/run-migration-job.sh"')
+    assert '${IMAGE%%:*}@$DIGEST' in text
+    digest='sha256:'+'a'*64
+    cases=[('ready',1,True),('propagation',3,True),('absent',12,False),('malformed',1,False),
+           ('authorization',1,False),('slow',5,False)]
+    for scenario,expected_calls,success in cases:
+        with tempfile.TemporaryDirectory() as temp:
+            # Execute the actual function with isolated deterministic shell
+            # commands. No Azure credentials, cloud requests or wall-clock waits.
+            harness=r'''set -Eeuo pipefail
+SECONDS=0
+sleep() { SECONDS=$((SECONDS+$1)); }
+timeout() {
+  [[ "$1" == --kill-after=2s && "$2" =~ ^[0-9]+s$ ]] || exit 91
+  shift 2
+  [[ "$*" == "az acr repository show --name fixture --image image:tag --query digest -o tsv --only-show-errors" ]] || exit 92
+  count=0
+  [[ ! -f "$RUNNER_TEMP/count" ]] || count="$(cat "$RUNNER_TEMP/count")"
+  count=$((count+1)); echo "$count" > "$RUNNER_TEMP/count"
+  case "$SCENARIO" in
+    ready) echo "$EXPECTED_DIGEST" ;;
+    propagation) if ((count<3));then echo 'tag does not exist' >&2;return 3;else echo "$EXPECTED_DIGEST";fi ;;
+    absent) echo 'tag does not exist' >&2;return 3 ;;
+    malformed) echo 'tag:latest' ;;
+    authorization) echo 'AuthorizationFailed' >&2;return 3 ;;
+    slow) echo 'read timed out' >&2;return 124 ;;
+  esac
+}
+'''
+            # Simulate slow calls without mutating time in a command-substitution
+            # subshell: each parent sleep advances the read duration plus sleep.
+            if scenario=='slow':harness=harness.replace('SECONDS=$((SECONDS+$1))','SECONDS=$((SECONDS+$1+15))')
+            env={**os.environ,'RUNNER_TEMP':temp,'SCENARIO':scenario,'EXPECTED_DIGEST':digest}
+            out=subprocess.run(['bash'],input=harness+function+'\nresolve_migration_digest fixture image:tag\n',
+                text=True,capture_output=True,env=env,timeout=10)
+            assert (out.returncode==0)==success,(scenario,out.stderr)
+            assert int((Path(temp)/'count').read_text())==expected_calls,(scenario,out.stderr)
+            assert out.stdout.strip()==(digest if success else ''),(scenario,out.stdout)
+            assert list(Path(temp).glob('flowhive-acr-read-*'))==[],'Private diagnostic file was not removed.'
+    print('FLOWHIVE_PSA_DIGEST_READ_BEHAVIOR=PASS readOnly=true buildRetries=0')
+
+digest_read_tests()
+if sys.argv[1:]==['--digest-only']:
+    raise SystemExit(0)
+
 source=Path(os.environ['FLOWHIVE_CANDIDATE_ROOT']).resolve()
 assert os.environ.get('PGHOST')=='127.0.0.1'
 assert os.environ.get('PGDATABASE')=='flowhive_migrations_test'

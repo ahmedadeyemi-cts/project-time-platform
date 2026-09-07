@@ -27,9 +27,41 @@ export const files = [
   'tests/flowhive-psa-release-workflow.test.py',
   'tests/validate-celar-ai-pr630-consolidated.mjs'
 ].sort();
-export function verifyFiles(changed, manifest) {
+export const repairFiles = [
+  '.github/flowhive-psa-protected-test-candidate.json',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-migration-fixture.py',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
+export const repairBase = '55ebb51fda1917f202ce6561ed5f5e635468d01c';
+const repairRepository = 'ahmedadeyemi-cts/project-time-platform';
+const repairBranch = 'release/flowhive-psa-protected-test-admission-20260906';
+export function verifyRepairContext(context) {
+  assert.equal(context?.eventName, 'pull_request', 'PR876 repair requires a pull-request event.');
+  assert.equal(context?.repository, repairRepository, 'Wrong repair repository.');
+  assert.equal(context?.base, repairBase, 'PR876 repair is bound to the reviewed PR874 merge base.');
+  assert.match(context?.head || '', /^[0-9a-f]{40}$/, 'Exact repair head is required.');
+  const event = context?.event;
+  assert.equal(event?.number, 876, 'The seven-file exception is exclusive to PR876.');
+  assert.equal(event?.repository?.full_name, repairRepository, 'Wrong event repository.');
+  const pr = event?.pull_request;
+  assert.equal(pr?.number, 876, 'Wrong repair pull request.');
+  assert.equal(pr?.state, 'open', 'The repair must still be open.');
+  assert.equal(pr?.base?.ref, 'main', 'Wrong repair base branch.');
+  assert.equal(pr?.base?.sha, repairBase, 'The event base is not the reviewed repair base.');
+  assert.equal(pr?.base?.repo?.full_name, repairRepository, 'Wrong repair base repository.');
+  assert.equal(pr?.head?.ref, repairBranch, 'Wrong repair source branch.');
+  assert.equal(pr?.head?.repo?.full_name, repairRepository, 'Forked repair source is not admitted.');
+  assert.equal(pr?.head?.sha, context.head, 'The checked-out repair head does not match the event.');
+}
+export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.deepEqual([...changed].sort(), files, 'Unexpected or missing file in the release-control PR.');
+  assert.ok(['initial','pr874-digest-repair'].includes(mode), 'Unrecognized control repair.');
+  if (mode === 'pr874-digest-repair') verifyRepairContext(context);
+  assert.deepEqual([...changed].sort(), mode === 'initial' ? files : repairFiles, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
   for (const token of [
@@ -49,7 +81,18 @@ export function validate() {
   assert.match(base, /^[0-9a-f]{40}$/);
   const changed = git('diff', '--name-only', base, 'HEAD').split(/\r?\n/).filter(Boolean);
   const manifest = fs.readFileSync(controlManifest, 'utf8').trim().split(/\r?\n/);
-  verifyFiles(changed, manifest);
+  const event = process.env.GITHUB_EVENT_PATH
+    ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : null;
+  const context = { event, eventName: process.env.GITHUB_EVENT_NAME,
+    repository: process.env.GITHUB_REPOSITORY, base, head: git('rev-parse', 'HEAD') };
+  const isRepair = event?.number === 876;
+  verifyFiles(changed, manifest, isRepair ? 'pr874-digest-repair' : 'initial', context);
+  if (isRepair) {
+    // The repair cannot alter the admitted environment workflow, permissions,
+    // migration bytes or dispatcher. Only its exact seven-file list is allowed.
+    assert.equal(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml','utf8').trimEnd(),
+      git('show', `${base}:.github/workflows/projectpulse-deploy-test.yml`));
+  }
   for (const file of files) assert.ok(fs.statSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink());
   const approval = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-test-candidate.json', 'utf8'));
   verifyApproval(approval, approval.sha);

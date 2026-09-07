@@ -12,11 +12,11 @@ The repository owner may post this exact command on PR #872 after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA d0ab4380dc4b243e8914a08e719556ec71123885
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 1538548d5bc85c83c5ceb14795e1cfc8536d721c
 ```
 
 The admission workflow executes main-owned code only. It checks the exact open PR,
-repository, branch, candidate SHA, 21 required successful exact-SHA PR workflows,
+repository, branch, candidate SHA, 22 required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
@@ -105,3 +105,54 @@ A disposable PostgreSQL job executes the approved migrations and actual migratio
 entrypoint, reapplication, legacy-run retirement, immutable RAID evidence,
 execution fences, rollback refusal and corrupt-payload/disabled-trigger detection.
 None of those isolated tests is represented as live model acceptance.
+
+
+## PR874 combined candidate and migration-image resolution repair
+
+PR874 merged as `55ebb51fda1917f202ce6561ed5f5e635468d01c`. Candidate
+`1538548d5bc85c83c5ceb14795e1cfc8536d721c` includes that actual merge parent,
+the reviewed SOW/Oracle changes, and both post-review cleanup/HTTP500 repairs.
+The exact candidate source base is that merged main revision, not the old
+pre-PR874 application. PR872 remains draft and unmerged. Required exact-source
+CI now also includes the PSA admission/migration contract workflow (22 total).
+
+The failed previous candidate deployment `34068097426`, job `101580331315`,
+successfully completed historical migrations and built the PSA migration image,
+but its immediate registry tag lookup reported `the specified tag does not exist`
+after ACR build `ds1ca` had reported a successful push. The exact job log was
+recovered read-only in inspection run `34071865725`; this was not evidence of
+missing database columns. No candidate API/web image had been deployed.
+
+The migration builder now resolves its digest with at most twelve READ attempts,
+a ninety-second overall budget, fifteen-second request limits and a two-second
+kill grace reserved inside that budget. Recognized authorization errors and
+successful but malformed digests fail immediately. Exhaustion stops before any
+migration job; no tag fallback, image rebuild or migration-write retry occurs.
+This handles a possible registry visibility delay without treating it as proven
+until a subsequent deployment succeeds. ACR success by itself is not acceptance.
+
+The exact follow-up diff is seven control/test/document paths; the canonical
+controller, dispatcher, private identities, environment protections, migration
+bytes and twenty-path overall control boundary remain unchanged. Deterministic
+Bash tests exercise immediate success, delayed visibility, missing tags,
+malformed digests, authorization failure and time-budget exhaustion, while the
+existing PostgreSQL fixture continues to execute migrations103/104 and their
+failure/reapply/immutability checks. These tests are not live AI evidence.
+
+
+### PR876 review closure and exact-head refresh
+
+The seven-path digest repair is now limited to open PR876 from the reviewed
+repository and release branch onto main at the exact PR874 merge base
+`55ebb51fda1917f202ce6561ed5f5e635468d01c`. Validation compares the actual checkout,
+resolved Git base and GitHub pull-request event, not just a seven-file count.
+Missing context, a different PR/base/branch/repository, a fork, a closed PR or a
+stale checked-out head is rejected. The original twenty-file control boundary is
+unchanged. Negative tests exercise each identity mismatch separately.
+
+The refreshed candidate also repairs both required controller workflows' GitHub
+expression-length failure and removes static PostgreSQL CI fixture credentials.
+The historical test-credential finding in GitGuardian must be classified and the
+exact-head security check cleared before the combined candidate is deployed.
+No failed check is waived; the application PR remains draft. This control refresh
+preserves the canonical deployment/dispatcher bytes and approved migration hashes.

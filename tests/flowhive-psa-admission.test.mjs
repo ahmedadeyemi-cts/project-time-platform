@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, verifyDispatchedRun, inspectIdleController, sealIdleController } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
 const pr = { number: 872, state: 'open', merged: false, draft: true,
@@ -114,4 +114,50 @@ test('a deployment that arrives while sealing blocks subsequent admission',async
 test('unverifiable active-run inventory cannot pass as idle',async()=>{
   await assert.rejects(inspectIdleController(async url=> url.includes('/runs?')?{}:
     {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active'}),/INVENTORY_INVALID/);
+});
+
+function repairContext() {
+  const repository = 'ahmedadeyemi-cts/project-time-platform';
+  const head = 'a'.repeat(40);
+  return { eventName: 'pull_request', repository, base: repairBase, head,
+    event: { number: 876, repository: { full_name: repository },
+      pull_request: { number: 876, state: 'open',
+        base: { ref: 'main', sha: repairBase, repo: { full_name: repository } },
+        head: { ref: 'release/flowhive-psa-protected-test-admission-20260906', sha: head,
+          repo: { full_name: repository } } } } };
+}
+test('PR874 digest repair retains the full boundary and accepts only its seven exact paths',()=>{
+  verifyFiles(repairFiles,files,'pr874-digest-repair',repairContext());
+  for(const extra of ['.github/workflows/projectpulse-deploy-test.yml','src/backend/ProjectTime.Api/Program.cs','database/migrations/104_flowhive_bounded_ai_execution.sql'])
+    assert.throws(()=>verifyFiles([...repairFiles,extra],files,'pr874-digest-repair',repairContext()));
+  assert.throws(()=>verifyFiles(repairFiles.slice(1),files,'pr874-digest-repair',repairContext()));
+  assert.throws(()=>verifyFiles(repairFiles,repairFiles,'pr874-digest-repair',repairContext()));
+  assert.throws(()=>verifyFiles(repairFiles,files,'unknown'));
+});
+
+test('PR876 repair cannot be reused on another base, identity, event or checkout',()=>{
+  assert.throws(()=>verifyFiles(repairFiles,files,'pr874-digest-repair'));
+  const mutations = [
+    x=>{ x.base='b'.repeat(40); },
+    x=>{ x.eventName='push'; },
+    x=>{ x.repository='outsider/project-time-platform'; },
+    x=>{ x.event.number=877; },
+    x=>{ x.event.repository.full_name='outsider/project-time-platform'; },
+    x=>{ x.event.pull_request.number=877; },
+    x=>{ x.event.pull_request.state='closed'; },
+    x=>{ x.event.pull_request.base.ref='release'; },
+    x=>{ x.event.pull_request.base.sha='b'.repeat(40); },
+    x=>{ x.event.pull_request.base.repo.full_name='outsider/project-time-platform'; },
+    x=>{ x.event.pull_request.head.ref='unrelated-repair'; },
+    x=>{ x.event.pull_request.head.repo.full_name='outsider/project-time-platform'; },
+    x=>{ x.event.pull_request.head.sha='b'.repeat(40); },
+    x=>{ x.head=''; },
+    x=>{ x.event=null; }
+  ];
+  for (const mutate of mutations) {
+    const context=repairContext();mutate(context);
+    assert.throws(()=>verifyFiles(repairFiles,files,'pr874-digest-repair',context));
+  }
+  verifyFiles(files,files,'initial');
+  assert.throws(()=>verifyFiles(repairFiles,files,'initial',repairContext()));
 });
