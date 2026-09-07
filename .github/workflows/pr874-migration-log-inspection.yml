@@ -1,0 +1,50 @@
+name: Inspect prior FlowHive migration failure
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/workflows/pr874-migration-log-inspection.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read the exact completed job and retain only its migration step
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/migration-inspection"
+          gh api 'repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/101580331315' --jq '{id,run_id,head_sha,status,conclusion,steps}' > "$RUNNER_TEMP/migration-inspection/job.json"
+          jq -e '.id==101580331315 and .run_id==34068097426 and .status=="completed"' "$RUNNER_TEMP/migration-inspection/job.json" >/dev/null
+          gh api 'repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/101580331315/logs' > "$RUNNER_TEMP/job.log"
+          python3 - <<'PY'
+          import json,os,pathlib,re
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          meta=json.loads((root/'migration-inspection/job.json').read_text())
+          step=next(x for x in meta['steps'] if x['number']==19)
+          assert step['conclusion']=='failure'
+          rows=[]
+          for line in (root/'job.log').read_text(errors='replace').splitlines():
+              stamp=line.split(' ',1)[0]
+              if step['started_at'][:19]<=stamp[:19]<=step['completed_at'][:19]:
+                  line=re.sub(r'\x1b\[[0-9;]*m','',line)
+                  if any(x in line.lower() for x in ('password','authorization:','bearer ','secretref','keyvault','sessiontoken')):continue
+                  rows.append(line)
+          assert rows
+          (root/'migration-inspection/migration-step.log').write_text('\n'.join(rows)+'\n')
+          print('EXACT_FAILED_JOB=101580331315 MIGRATION_LOG_LINES='+str(len(rows)))
+          print('ENVIRONMENT_MUTATIONS=0 WORKFLOW_DISPATCHES=0')
+          PY
+          rm -f "$RUNNER_TEMP/job.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: exact-flowhive-migration-inspection
+          path: ${{ runner.temp }}/migration-inspection/
+          retention-days: 1
+          if-no-files-found: error
