@@ -1,0 +1,27 @@
+name: Inspect FlowHive validation annotations
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/workflows/pr874-check-annotations-read.yml']
+permissions:
+  contents: read
+  actions: read
+  checks: read
+jobs:
+  inspect:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read workflow validation errors and secret finding metadata only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/check-suites/92307867459/check-runs" --jq '.check_runs[] | {id,name,summary:.output.summary}'
+          gh api "repos/$GITHUB_REPOSITORY/check-runs/101592521557" --jq '{id,details_url,title:.output.title,annotationCount:.output.annotations_count}'
+          gh api "repos/$GITHUB_REPOSITORY/check-runs/101592521557/annotations" --jq '.[] | {path,start_line,end_line,title,annotation_level}'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/34072579284" --jq '{id,check_suite_id,status,conclusion}'
+          curl -fsSL --max-time 30 'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/34072579284' \
+            | python3 -c "import re,sys; s=sys.stdin.read(); print('\n'.join(re.findall(r'.{0,100}(?:workflow is not valid|exceeds|21000|Unexpected value|Unrecognized named-value|Invalid workflow file).{0,250}',s,flags=re.I)))"
+          echo 'SOURCE_CHANGES=0 WORKFLOW_CHANGES=0 ENVIRONMENT_MUTATIONS=0'
