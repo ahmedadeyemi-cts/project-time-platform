@@ -39,3 +39,27 @@ The source scope is checked against a sorted exact manifest. This work does not 
 Use the real configured private provider, current authorized SOW and PM session in Protected UAT/Test. Record provider/model, source versions, stage timing, run IDs, actual inference attempts, saved revision and browser readback. A synthetic-model, fixture-browser or isolated-database test cannot be counted as live SOW-to-plan acceptance. Cancellation and deadlines prevent persistence of late output; their configured budgets are not successful-generation latency measurements.
 
 The full enterprise PSA acceptance matrix remains open. No deployment, real-customer notification/publication, or full product-parity claim is made by this change.
+
+
+## Combined PR874 candidate: CI repair (2026-09-07)
+
+The combined candidate retains merge `55ebb51fda1917f202ce6561ed5f5e635468d01c`.
+Two required controller workflows failed before jobs were created. Their first
+run block was 20,920 characters with embedded PR-number expressions. Read-only
+inspection run `34073102940` recovered GitHub's exact diagnostic: line 99,
+column 14 exceeded the maximum expression length of 21,000. PR numbers now
+enter through a step environment variable; the existing validation commands and
+release boundaries remain intact. Parsed-workflow regressions reject overlong
+run blocks and embedded expressions in long scripts.
+
+The two disposable PostgreSQL CI jobs now generate a masked random password per
+job, bind to a dynamic loopback-only port and remove the container after testing.
+No application/provider credential is introduced or read. GitGuardian incident
+37039936 refers to the historical localhost execution-test credential in commit
+`662ff01516fd15686a6162ef39db9389cbefb0f4`. Removing it from the current workflow
+is not evidence that a history-scanning check has cleared. Its test-credential
+classification and a successful exact-head check are still required before
+release; no scanner bypass or history rewrite is part of this repair.
+
+Engineering CI, protected deployment and live SOW-to-WBS acceptance are separate
+gates. These workflow repairs do not establish live AI or complete PSA acceptance.

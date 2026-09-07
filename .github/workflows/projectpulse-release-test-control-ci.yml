@@ -96,6 +96,7 @@ jobs:
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -Eeuo pipefail
           CIT="$RUNNER_TEMP"
@@ -387,7 +388,7 @@ jobs:
               fail 'Temporary recovery or publisher artifacts are forbidden from the clean release.'
             fi
             echo 'EXACT_SHARED_PROJECT_DOCUMENT_PLANNING_SCOPE=PASSED'
-          elif [[ "${{ github.event.pull_request.number }}" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
+          elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
             grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-pr734-governed-release-files.txt | LC_ALL=C sort -u > "$CIT/flowhive-pr734-files"
             cmp -s "$CIT/diff" "$CIT/flowhive-pr734-files" || {
               echo 'PR #734 governed release scope differs from its exact reviewed manifest.' >&2
@@ -395,7 +396,7 @@ jobs:
               exit 1
             }
             echo 'FLOWHIVE_PR734_GOVERNED_RELEASE_SCOPE=PASSED'
-          elif [[ "${{ github.event.pull_request.number }}" == '777' ]]; then
+          elif [[ "$PR_NUMBER" == '777' ]]; then
             cmp -s "$CIT/diff" "$CIT/e-777-workspace" || {
               echo 'PR #777 Module 025 workspace repair differs from its exact governed file set.' >&2
               diff -u "$CIT/e-777-workspace" "$CIT/diff" >&2 || true
