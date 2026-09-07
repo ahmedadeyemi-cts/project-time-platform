@@ -1,0 +1,36 @@
+name: Capture reviewed FlowHive control source
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/workflows/flowhive-reviewed-control-snapshot.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 7e5c378dcb15b2b2a00511fa69f90d2411eec336
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Capture tracked source and local Git objects only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = 7e5c378dcb15b2b2a00511fa69f90d2411eec336
+          mkdir -p "$RUNNER_TEMP/flowhive-control-source"
+          git branch evidence-main HEAD
+          git bundle create "$RUNNER_TEMP/flowhive-control-source/main.bundle" evidence-main
+          git rev-parse HEAD > "$RUNNER_TEMP/flowhive-control-source/REVISION"
+          cd "$RUNNER_TEMP/flowhive-control-source"
+          sha256sum main.bundle > SHA256SUMS
+          echo 'REMOTE_REF_WRITES=0 ENVIRONMENT_CHANGES=0'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-reviewed-main-7e5c378
+          path: ${{ runner.temp }}/flowhive-control-source/
+          retention-days: 1
+          if-no-files-found: error
