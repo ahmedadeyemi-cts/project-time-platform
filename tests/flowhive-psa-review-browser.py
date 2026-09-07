@@ -25,6 +25,10 @@ def check(value, description):
     COUNT+=1
     print('PASSED:',description)
 
+async def wait_for_disabled(page, label):
+    await page.wait_for_function("""label => [...document.querySelectorAll('button')].some(button =>
+        button.textContent.includes(label) && button.disabled)""", label)
+
 def fixture(project=PROJECT):
     current={'projectId':project,'tasks':[{'wbsNumber':'1.1','phase':'Plan','isSummary':False,'name':'Existing scoped activity',
         'status':'in_progress','percentComplete':50,'remainingEffortHours':4}],
@@ -107,13 +111,11 @@ async def run_case(browser, mode='normal', width=1400, dark=False):
         await page.get_by_label('Regeneration review note').fill('Synthetic reviewed retention decision.')
         if mode=='local-edits':
             await page.evaluate('window.remount({hasLocalEdits:true})')
-            await page.wait_for_function("""() => [...document.querySelectorAll('button')].some(button =>
-                button.textContent.includes('Preview merged work breakdown') && button.disabled)""")
+            await wait_for_disabled(page, 'Preview merged work breakdown')
             check(await preview.is_disabled(),'unsaved local work blocks preview and save')
         elif mode=='no-edit':
             await page.evaluate('window.remount({canEdit:false})')
-            await page.wait_for_function("""() => [...document.querySelectorAll('button')].some(button =>
-                button.textContent.includes('Preview merged work breakdown') && button.disabled)""")
+            await wait_for_disabled(page, 'Preview merged work breakdown')
             check(await preview.is_disabled(),'read-only permissions block preview and save')
         else:
             await preview.click()
