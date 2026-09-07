@@ -80,3 +80,28 @@ Required live acceptance remains: saved scope -> five technology-specific
 phases and plausible reviewable LOE -> persisted review_ready readback ->
 archive fixture, with actual provider decisions retained. Assigned-work and
 utilization execute independently before this long-running SOW test.
+
+
+## Combined FlowHive release reconciliation
+
+PR #874 is being integrated with the already merged #875 Protected Test control
+plane, at base `8c84d91b8a4f7d1583118f6d701185b355c9684f`, before inclusion in the
+unmerged #872 candidate. The independent assigned-work and utilization checks
+remain ahead of Module 025 composition and also run when the PSA lane establishes
+deployment health, even if its AI acceptance fails. The PSA candidate must never
+enable Module 025 authorization fixtures. The fixture expiration output and
+cleanup reserve remain enforced for normal main releases.
+
+The Oracle validator now checks the intended `1.1.7` gateway manifest, one loaded
+model and one inference lane, and executes the memory-policy and privacy tests.
+Its former `1.1.6` equality was a stale test, not evidence that the new runtime
+policy was invalid. No runtime setting, provider order or timeout was relaxed to
+pass that check. FlowHive's separate five-minute durable operation limit is not
+changed by Module 025's longer multi-phase SOW budget.
+
+The exact integration scope is 25 files. The original release permissions,
+triggers, environment, concurrency, image ownership and rollback are compared
+against the merged controller. Local scope, parsed workflow, false-success and
+Oracle shell contracts passed; final combined CI and authenticated live provider
+acceptance must still be recorded. Repository merge does not itself prove the
+Oracle GitOps host applied the new manifest or that either live AI flow passed.

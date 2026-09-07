@@ -1,4 +1,6 @@
 .github/sow-runtime-isolation-files.txt
+.github/workflows/celar-ai-oracle-gitops-ci.yml
+.github/workflows/flowhive-psa-release-control-ci.yml
 .github/workflows/projectpulse-deploy-test.yml
 .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
@@ -14,6 +16,7 @@ scripts/release-test/verify-runtime.mjs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
 src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
 tests/FlowHiveDetailedPlannerTests/Program.cs
+tests/flowhive-psa-release-workflow.test.py
 tests/test-celar-runtime-evidence.py
 tests/test-ollama-memory-policy.py
 tests/test-sow-uat-isolation.py

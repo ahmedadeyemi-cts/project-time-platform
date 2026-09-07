@@ -17,12 +17,14 @@ for block in blocks:
     steps.append(step)
 by_id = {s['id']: s for s in steps if 'id' in s}
 ids = [s.get('id') for s in steps]
-for name in ('assigned_work_uat', 'utilization_uat', 'module025_fixture'):
+for name in ('assigned_work_uat', 'utilization_uat'):
     condition = by_id[name]['if']
-    assert condition == "${{ !cancelled() && steps.uat.outcome == 'success' }}", (name, condition)
+    assert condition == "${{ !cancelled() && (steps.uat.outcome == 'success' || steps.psa_live_uat.outputs.deployment_health_verified == 'true') }}", (name, condition)
     assert by_id[name].get('continue-on-error', 'false') == 'false'
 assert ids.index('assigned_work_uat') < ids.index('utilization_uat') < ids.index('module025_fixture') < ids.index('module025_uat')
-assert by_id['module025_uat']['if'] == "${{ !cancelled() && steps.module025_fixture.outcome == 'success' }}"
+assert by_id['module025_fixture']['if'] == "${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.uat.outcome == 'success' }}"
+assert by_id['module025_fixture'].get('continue-on-error', 'false') == 'false'
+assert by_id['module025_uat']['if'] == "${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.module025_fixture.outcome == 'success' }}"
 assert by_id['module025_uat'].get('continue-on-error', 'false') == 'false'
 cleanup = next(s for s in steps if s['name'].startswith('Disable exact-run Module 025'))
 assert cleanup['if'] == "always() && steps.module025_fixture.outputs.started == 'true'"

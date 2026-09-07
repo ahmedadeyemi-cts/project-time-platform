@@ -35,12 +35,16 @@ jobs:
           done
           python3 -m py_compile deployment/oracle-celar/gateway/gateway.py deployment/oracle-celar/gateway/wsgi.py
           python3 tests/test-celar-sow-runtime-deadlines.py
+          python3 tests/test-ollama-memory-policy.py
+          python3 tests/test-celar-runtime-evidence.py
           jq -e '
             .schema == 1 and
             .environment == "protected-test-oracle-celar" and
             .hostname == "celarai.onenecklab.com" and
             .architecture == "arm64" and
-            .gatewayVersion == "1.1.6" and
+            .gatewayVersion == "1.1.7" and
+            .ollamaMaxLoadedModels == 1 and
+            .ollamaNumParallel == 1 and
             .gatewayBind == "127.0.0.1:8787" and
             .generationModel == "gemma3:4b" and
             .reasoningModel == "qwen3:4b-instruct" and

@@ -31,6 +31,13 @@ if (isolationMode) {
     ollamaMaxLoadedModels:previousRuntime.ollamaMaxLoadedModels}, previousRuntime,
     'only runtime version and model residence count may change');
   execFileSync('python3', ['tests/test-ollama-memory-policy.py'], {cwd: root, stdio:'inherit'});
+  const oracleCi = '.github/workflows/celar-ai-oracle-gitops-ci.yml';
+  const oldCi = git('show', `${base}:${oracleCi}`);
+  const expectedCi = oldCi.replace('.gatewayVersion == "1.1.6"', '.gatewayVersion == "1.1.7" and\n            .ollamaMaxLoadedModels == 1 and\n            .ollamaNumParallel == 1')
+    .replace('          python3 tests/test-celar-sow-runtime-deadlines.py', '          python3 tests/test-celar-sow-runtime-deadlines.py\n          python3 tests/test-ollama-memory-policy.py\n          python3 tests/test-celar-runtime-evidence.py');
+  assert.equal(readFileSync(new URL(`../${oracleCi}`, import.meta.url), 'utf8').trimEnd(), expectedCi,
+    'Oracle validation changes must only correct the pinned manifest and add policy/privacy tests');
+
 
   const controller = '.github/workflows/projectpulse-deploy-test.yml';
   const before = git('show', `${base}:${controller}`).split(/(?=^      - name: )/m);
@@ -53,7 +60,7 @@ if (isolationMode) {
         .replace(/^          echo "expires_at=\$FIXTURE_EXPIRES_AT" >> "\$GITHUB_OUTPUT"\n/m, '')
         .replace(/^          MODULE025_UAT_EXPIRES_AT:.*\n/m, '');
     }
-    assert.equal(normalized, oldSteps.get(key), `${key}: only gate conditions/order and fixture expiry propagation may change`);
+    assert.equal(normalized, revisedGates.has(key) ? oldSteps.get(key)?.replace(/^        if:.*\n/m, '') : oldSteps.get(key), `${key}: only gate conditions/order and fixture expiry propagation may change`);
     oldSteps.delete(key);
   }
   assert.equal(oldSteps.size, 0, 'every original deployment step is retained exactly once');

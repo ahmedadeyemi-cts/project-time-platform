@@ -334,7 +334,9 @@ jobs:
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$CIT/diff"
-          if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
+          if [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
             echo 'EXACT_CELAR_RUNTIME_VERSION_CENTER_SCOPE=PASSED'
