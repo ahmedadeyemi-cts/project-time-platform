@@ -39,7 +39,11 @@ if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
   exit 0
 fi
 
-if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
+if [[ "$HEAD_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+  node tests/flowhive-psa-scope.mjs
+  ALLOWED_DATABASE='^(database/(migrations/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution)\.sql|rollback/(103_module_066_flowhive_enterprise_psa_revamp_rollback|104_flowhive_bounded_ai_execution_rollback)\.sql))$'
+  publish_mode FLOWHIVE_ENTERPRISE_PSA
+elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
   ALLOWED_DATABASE='a^'
   publish_mode CELAR_RUNTIME_VERSION_CENTER
 elif [[ "$HEAD_BRANCH" == 'fix/module025-protected-uat-generation-verification-detailed-plan-parser-20260903' ]]; then

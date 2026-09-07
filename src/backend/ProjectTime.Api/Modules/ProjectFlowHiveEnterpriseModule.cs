@@ -180,13 +180,14 @@ internal static class ProjectFlowHiveEnterpriseModule
         const string sql = """
             INSERT INTO project_flowhive_working_copies(
                 project_id,plan_id,working_payload,updated_by_user_id)
-            VALUES(@project_id,@plan_id,@payload::jsonb,@actor)
+            SELECT @project_id,@plan_id,@payload::jsonb,@actor
+            WHERE @expected_row_version::uuid IS NULL OR EXISTS(
+                SELECT 1 FROM project_flowhive_working_copies WHERE project_id=@project_id AND row_version=@expected_row_version)
             ON CONFLICT(project_id) DO UPDATE
             SET plan_id=EXCLUDED.plan_id,
                 working_payload=EXCLUDED.working_payload,
                 updated_by_user_id=EXCLUDED.updated_by_user_id
-            WHERE @expected_row_version::uuid IS NULL
-               OR project_flowhive_working_copies.row_version=@expected_row_version
+            WHERE project_flowhive_working_copies.row_version=@expected_row_version
             RETURNING working_revision,row_version,updated_at;
             """;
         await using var command = new NpgsqlCommand(sql, connection, transaction);
@@ -1097,6 +1098,8 @@ internal static class ProjectFlowHiveEnterpriseModule
         {
             planId = reader.IsDBNull(0) ? (Guid?)null : reader.GetGuid(0),
             plan = ParseJson(reader.GetString(1)),
+            schedule = ProjectFlowHiveScheduleEngine.Calculate(JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(1), Json)),
+            validation = ProjectFlowHiveScheduleEngine.Validate(JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(1), Json)),
             workingRevision = reader.GetInt32(2),
             rowVersion = reader.GetGuid(3),
             updatedByUserId = reader.GetGuid(4),

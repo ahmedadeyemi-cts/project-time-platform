@@ -1,3 +1,5 @@
+@import './project-flowhive-planner-layout.css';
+
 .flowhive-confidence-help {
   display: grid;
   gap: .3rem;

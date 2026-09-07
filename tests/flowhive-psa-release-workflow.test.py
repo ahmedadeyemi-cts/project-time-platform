@@ -84,6 +84,9 @@ class WorkflowContract(unittest.TestCase):
         base=os.environ.get('CONTROL_BASE')
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
+        # Feature integration inherits the entire reviewed main controller unchanged.
+        if old == self.doc:
+            return
         # This integration starts from the already merged #875 controller.
         # Compare by unique step name because #874 deliberately moves the work
         # gates before SOW composition; never accept adding/dropping a step.

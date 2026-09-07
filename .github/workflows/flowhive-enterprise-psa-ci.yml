@@ -1,0 +1,151 @@
+name: FlowHive Enterprise PSA CI
+
+on:
+  push:
+    branches: ['feature/flowhive-enterprise-psa-revamp-20260906']
+    paths: ['.github/workflows/flowhive-enterprise-psa-ci.yml']
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHive*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanning*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
+      - 'src/frontend/project-time-web/src/*[Ff]low[Hh]ive*'
+      - 'src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
+      - 'tests/FlowHiveExecutablePlanTests/**'
+      - 'tests/FlowHiveExecutionTests/**'
+      - 'tests/flowhive-psa-*.mjs'
+      - 'tests/flowhive-psa-*.py'
+      - 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql'
+      - 'database/migrations/104_flowhive_bounded_ai_execution.sql'
+      - 'database/rollback/104_flowhive_bounded_ai_execution_rollback.sql'
+      - '.github/workflows/flowhive-enterprise-psa-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flowhive-enterprise-psa-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Archive tracked source and pinned integration history without credentials
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/flowhive-source-evidence
+          git rev-parse HEAD > /tmp/flowhive-source-evidence/REVISION
+          git archive --format=tar.gz HEAD > /tmp/flowhive-source-evidence/source.tar.gz
+          git update-ref refs/heads/evidence-flowhive HEAD
+          git update-ref refs/heads/evidence-main refs/remotes/origin/main
+          git bundle create /tmp/flowhive-source-evidence/integration.bundle refs/heads/evidence-flowhive refs/heads/evidence-main
+          git bundle verify /tmp/flowhive-source-evidence/integration.bundle
+          cd /tmp/flowhive-source-evidence
+          sha256sum source.tar.gz integration.bundle > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-source-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/flowhive-source-evidence/
+          retention-days: 1
+          if-no-files-found: error
+  executable-wbs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Execute native WBS behavior regressions against the real API
+        run: dotnet run --project tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj --configuration Release
+      - name: Preserve existing detailed-planner and Module 025 regressions
+        run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+  execution-database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flowhive
+          POSTGRES_PASSWORD: flowhive-ci-only
+          POSTGRES_DB: flowhive_execution_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flowhive -d flowhive_execution_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      FLOWHIVE_TEST_DB: Host=127.0.0.1;Port=5432;Database=flowhive_execution_test;Username=flowhive;Password=flowhive-ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Execute real database deadline, cancellation and concurrent-save regressions
+        run: dotnet run --project tests/FlowHiveExecutionTests/FlowHiveExecutionTests.csproj --configuration Release
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Test resumable observation, identity fencing and bounded network requests
+        run: node --test tests/flowhive-psa-*.test.mjs
+      - name: Install locked frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+      - name: Build the application
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+  planner-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned browser test runner
+        run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Test WBS geometry in light and dark desktop and mobile layouts
+        run: python tests/flowhive-psa-planner-layout.py
+  planner-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated browser and frontend dependencies
+        run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+          (cd src/frontend/project-time-web && npm ci)
+      - name: Build actual React component fixture
+        env:
+          FLOWHIVE_TEST_BUNDLE: /tmp/flowhive-react-test
+        run: node tests/flowhive-psa-browser-bundle.mjs
+      - name: Execute edited-date, saved-readback and identity-race regressions
+        env:
+          FLOWHIVE_OFFLINE_BUNDLE: /tmp/flowhive-react-test
+        run: python tests/flowhive-psa-react-browser.py

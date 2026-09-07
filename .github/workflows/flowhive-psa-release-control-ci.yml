@@ -39,6 +39,8 @@ jobs:
           python -m pip install PyYAML==6.0.3
           if [[ "$GITHUB_HEAD_REF" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
             node tests/validate-sow-generation-uat-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+            node tests/flowhive-psa-scope.mjs
           else
             node tests/flowhive-psa-release-control.mjs
           fi
@@ -85,7 +87,17 @@ jobs:
       - name: Read the pinned candidate SHA
         id: candidate
         working-directory: control
-        run: echo "sha=$(jq -er '.sha | select(test("^[a-f0-9]{40}$"))' .github/flowhive-psa-protected-test-candidate.json)" >> "$GITHUB_OUTPUT"
+        env:
+          FEATURE_HEAD: ${{ github.event.pull_request.head.sha }}
+          FEATURE_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$FEATURE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+            [[ "$FEATURE_HEAD" =~ ^[a-f0-9]{40}$ ]]
+            echo "sha=$FEATURE_HEAD" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$(jq -er '.sha | select(test("^[a-f0-9]{40}$"))' .github/flowhive-psa-protected-test-candidate.json)" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ steps.candidate.outputs.sha }}

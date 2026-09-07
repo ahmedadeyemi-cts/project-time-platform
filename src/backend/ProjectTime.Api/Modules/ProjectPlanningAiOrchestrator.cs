@@ -7,12 +7,12 @@ namespace ProjectTime.Api.Modules;
 /// <summary>
 /// One source-backed planning engine for FlowHive and Project Forge. The private
 /// project documents are resolved before this service is called. This service
-/// enforces current-document citations, deterministic five-phase expansion, and
+/// enforces current-document citations, phase-native executable WBS assembly, and
 /// schedule calculation without silently compressing effort or duration.
 /// </summary>
 internal static class ProjectPlanningAiOrchestrator
 {
-    internal const string Contract = "project-planning-ai-orchestrator-v1-20260819";
+    internal const string Contract = "project-planning-ai-orchestrator-v2-20260906";
     private const string DurableRunTable = "project_flowhive_ai_planner_runs";
     private static readonly JsonSerializerOptions DurablePlannerJson = new(JsonSerializerDefaults.Web)
     {
@@ -43,7 +43,8 @@ internal static class ProjectPlanningAiOrchestrator
         var outcome = Clean(
             requestedOutcome,
             4_000,
-            "Create a complete source-backed project planning draft. Extract each cited SOW work package once, then expand it into Plan, Design, Implement, Validate, and Release. Include detailed steps, products, platforms, versions, licensing, quantities, tools, systems, interfaces, access, inputs, outputs, responsibilities, acceptance, validation, rollback, risks, assumptions, open questions, roles, effort, duration, dependencies, milestones, and citations. Never fabricate missing information; convert it into open questions.");
+            "Create a complete source-backed project planning draft. Return distinct, project-specific executable tasks in Plan, Design, Implement, Validate, and Release. Assign each task to its own phase exactly once; never repeat every work package across all five phases. Include detailed steps, products, platforms, versions, licensing, quantities, tools, systems, interfaces, access, inputs, outputs, responsibilities, acceptance, validation, rollback, risks, assumptions, open questions, roles, effort, duration, predecessors, and citations. Never fabricate missing information; convert it into open questions.");
+        outcome += "\nReturn at least one detailed child task in each of Plan, Design, Implement, Validate, and Release, with unique WBS references, at least two distinct execution steps, inputs, outputs, acceptance criteria, validation steps, required roles, positive effort/duration estimates, and current evidence citations. Use task-specific technical descriptions, not document titles, repeated phase boilerplate, or instructions to convert scope into work. Do not automatically create project milestones. The PM reviews proposed estimates and scope before baseline approval.";
 
         // Project Forge is a review projection of the same governed planning graph,
         // not a reason to invoke the model a second time behind an HTTP gateway.
@@ -59,7 +60,7 @@ internal static class ProjectPlanningAiOrchestrator
                 effectiveUserId,
                 seed,
                 documents,
-                outcome,
+                requestedOutcome?.Trim() ?? string.Empty,
                 detailLevel,
                 context,
                 cancellationToken);
@@ -133,7 +134,11 @@ internal static class ProjectPlanningAiOrchestrator
 
         var currentDocumentIds = documents.CurrentDocumentIds;
         var currentCitations = composition.Citations
-            .Where(citation => currentDocumentIds.Contains(citation.DocumentId))
+            .Where(citation => currentDocumentIds.Contains(citation.DocumentId)
+                && documents.SelectedDocuments.Any(document => document.DocumentId == citation.DocumentId
+                    && document.ActiveSourceSha256.Length == 64
+                    && string.Equals(document.ActiveSourceSha256, citation.SourceSha256, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(document.ActiveDocumentVersion, citation.DocumentVersion, StringComparison.Ordinal)))
             .ToArray();
         var currentCitationIds = currentCitations
             .Select(citation => citation.CitationId)
@@ -144,9 +149,8 @@ internal static class ProjectPlanningAiOrchestrator
             .ToArray();
 
         var privatePlan = composition.FlowHivePlan;
-        var completedStatus = composition.Status is
-            "celar_ai_solution_draft_completed" or
-            "celar_ai_solution_draft_partial";
+        // A partial scaffold is not a successful executable plan, regardless of schema shape.
+        var completedStatus = composition.Status == "celar_ai_solution_draft_completed";
         var citedPlan = privatePlan is not null
             && privatePlan.Tasks.Count > 0
             && privatePlan.CitationIds.Count > 0
@@ -183,14 +187,22 @@ internal static class ProjectPlanningAiOrchestrator
         ProjectFlowHivePlanRequest generated;
         try
         {
-            generated = ProjectFlowHiveDetailedPlanBuilder.Build(seed, privatePlan!);
+            // Bind identity to the exact SOW version before deriving stable task IDs.
+            // FlowHive must preserve native task phases, not multiply a scaffold.
+            generated = string.Equals(capabilityCode, CelarAiCapabilityCatalog.ProjectFlowHivePlan, StringComparison.OrdinalIgnoreCase)
+                ? ProjectFlowHiveExecutablePlanBuilder.Build(seed with
+                {
+                    SowVersion = documents.StatementOfWork?.ActiveVersionId?.ToString("D"),
+                    GsdVersion = documents.GeneralSolutionDesign?.ActiveVersionId?.ToString("D")
+                }, privatePlan!, currentCitationIds)
+                : ProjectFlowHiveDetailedPlanBuilder.Build(seed, privatePlan!);
         }
         catch (Exception exception)
         {
             return new ProjectPlanningGenerationResult(
                 false,
                 "project_planning_expansion_failed",
-                "The cited work packages could not be expanded into the governed five-phase plan. No planning draft was changed.",
+                "The AI result did not meet the executable five-phase work-breakdown contract. No planning draft was changed.",
                 composition,
                 null,
                 null,
@@ -301,6 +313,9 @@ internal static class ProjectPlanningAiOrchestrator
                  WHERE project_id=@project_id
                    AND actual_actor_user_id=@actual
                    AND effective_actor_user_id=@effective
+                   AND requested_outcome=@outcome AND detail_level=@detail
+                   AND execution_contract=@execution_contract
+                   AND (source_version_fingerprint=@source_versions OR status IN ('queued','processing','generating'))
                    AND status IN ('queued','processing','generating','completed','completed_with_schedule_overrun')
                  ORDER BY created_at DESC
                  LIMIT 12
@@ -310,6 +325,10 @@ internal static class ProjectPlanningAiOrchestrator
                 command.Parameters.AddWithValue("project_id", projectId);
                 command.Parameters.AddWithValue("actual", actualUserId);
                 command.Parameters.AddWithValue("effective", effectiveUserId);
+                command.Parameters.AddWithValue("outcome", Clean(outcome, 4_000, string.Empty));
+                command.Parameters.AddWithValue("detail", Clean(detailLevel, 80, "comprehensive"));
+                command.Parameters.AddWithValue("execution_contract", ProjectFlowHiveExecutionPolicy.Contract);
+                command.Parameters.AddWithValue("source_versions", ProjectFlowHiveExecutionPolicy.VersionFingerprint(documents));
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
                 {
@@ -333,6 +352,9 @@ internal static class ProjectPlanningAiOrchestrator
                     || row.Plan is null
                     || row.Schedule is null
                     || row.Validation is null
+                    || row.Plan.RevisionLabel != ProjectFlowHiveExecutablePlanBuilder.Contract
+                    || row.Plan.ProjectStartDate != seed.ProjectStartDate
+                    || row.Plan.ProjectEndDate != seed.ProjectEndDate
                     || !MatchesCurrentAuthority(row.Plan, projectId, currentSowVersion, currentGsdVersion))
                 {
                     continue;
@@ -355,37 +377,11 @@ internal static class ProjectPlanningAiOrchestrator
                     ]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
             }
 
-            var runId = Guid.NewGuid();
-            var queuedSeed = seed with
-            {
-                SowVersion = currentSowVersion,
-                GsdVersion = currentGsdVersion.Length == 0 ? null : currentGsdVersion
-            };
-            await using (var insert = new NpgsqlCommand($"""
-                INSERT INTO {DurableRunTable}(
-                    run_id,project_id,status,phase,progress_percent,requested_plan,
-                    requested_outcome,detail_level,actual_actor_user_id,effective_actor_user_id,
-                    correlation_id,operation_logs)
-                VALUES(@run_id,@project_id,'queued','resolve_project',5,@plan::jsonb,
-                    @outcome,@detail,@actual,@effective,@correlation,@logs::jsonb);
-                """, connection, transaction))
-            {
-                insert.Parameters.AddWithValue("run_id", runId);
-                insert.Parameters.AddWithValue("project_id", projectId);
-                insert.Parameters.AddWithValue("plan", JsonSerializer.Serialize(queuedSeed, DurablePlannerJson));
-                insert.Parameters.AddWithValue("outcome", Clean(outcome, 4_000, string.Empty));
-                insert.Parameters.AddWithValue("detail", Clean(detailLevel, 80, "comprehensive"));
-                insert.Parameters.AddWithValue("actual", actualUserId);
-                insert.Parameters.AddWithValue("effective", effectiveUserId);
-                insert.Parameters.AddWithValue("correlation", correlationId);
-                insert.Parameters.AddWithValue("logs", JsonSerializer.Serialize(new[]
-                {
-                    "Project Forge queued the shared durable FlowHive planner instead of running AI inside the gateway request."
-                }, DurablePlannerJson));
-                await insert.ExecuteNonQueryAsync(cancellationToken);
-            }
-
+            // Release the read transaction before the shared queue captures its own starting revision.
             await transaction.CommitAsync(cancellationToken);
+            var runId = await ProjectFlowHiveAiPlannerOrchestrationModule.QueueForActorAsync(
+                connection, projectId, actualUserId, effectiveUserId, seed,
+                outcome, detailLevel, correlationId, cancellationToken);
             return ProjectPlanningGenerationResult.Failed(
                 "project_planning_ai_temporarily_unavailable",
                 "Project Forge queued the shared durable planner in the background. Retry this request while the planner completes; no second synchronous AI request was started.",

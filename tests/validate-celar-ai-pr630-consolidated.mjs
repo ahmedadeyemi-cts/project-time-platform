@@ -167,7 +167,12 @@ const routedModelReadinessMode = branchName === 'fix/celar-routed-model-readines
 if (routedModelReadinessMode) await import('./validate-celar-routed-model-readiness-scope.mjs');
 const flowHivePsaControlMode = branchName === 'release/flowhive-psa-protected-test-admission-20260906';
 if (flowHivePsaControlMode) (await import('./flowhive-psa-release-control.mjs')).validate();
-const scopedCompatibilityMode = flowHivePsaControlMode || sowPhaseMode || customerPublicAnswerMode || flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const flowHiveEnterprisePsaMode = branchName === 'feature/flowhive-enterprise-psa-revamp-20260906';
+if (flowHiveEnterprisePsaMode) {
+  const { verifyRepositoryScope } = await import('./flowhive-psa-scope.mjs');
+  verifyRepositoryScope();
+}
+const scopedCompatibilityMode = flowHivePsaControlMode || flowHiveEnterprisePsaMode || sowPhaseMode || customerPublicAnswerMode || flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

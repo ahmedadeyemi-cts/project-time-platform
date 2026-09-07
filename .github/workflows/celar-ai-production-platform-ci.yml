@@ -138,6 +138,10 @@ jobs:
 
           CHANGED_MIGRATIONS="$(grep -E '^database/(migrations|rollback)/' <<<"$CHANGED" || true)"
           case "$HEAD_BRANCH" in
+            feature/flowhive-enterprise-psa-revamp-20260906)
+              node tests/flowhive-psa-scope.mjs
+              echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=FLOWHIVE_ENTERPRISE_PSA'
+              ;;
             security/celar-ai-production-readiness-*)
               UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/(migrations/071_ai_runtime_production_hardening\.sql|rollback/071_ai_runtime_production_hardening_rollback\.sql)$' <<<"$CHANGED_MIGRATIONS" || true)"
               if [[ -n "$UNEXPECTED_MIGRATIONS" ]]; then
