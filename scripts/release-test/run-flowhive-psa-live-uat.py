@@ -116,6 +116,96 @@ def receipt_checks(result: dict, workspace: dict, project: str = PROJECT) -> dic
     return working
 
 
+def review_checks(review: dict, project: str = PROJECT) -> dict:
+    need(isinstance(review, dict), 'review_response_missing')
+    need(review.get('projectId') == project and uid(review.get('runId')), 'review_identity_mismatch')
+    need(review.get('contract') == 'flowhive-reviewed-regeneration-v1', 'review_contract_missing')
+    current = review.get('currentPlan') or {}
+    candidate = review.get('candidatePlan') or {}
+    need(current.get('projectId') == project and candidate.get('projectId') == project, 'review_project_mismatch')
+    need((review.get('candidateSchedule') or {}).get('valid') is True, 'proposal_schedule_invalid')
+    need((review.get('candidateValidation') or {}).get('valid') is True, 'proposal_validation_invalid')
+    row_version = review.get('expectedWorkingRowVersion')
+    need(row_version is None or uid(row_version), 'review_row_version_invalid')
+    return current, candidate
+
+
+def plan_identity(task: dict) -> str:
+    # Canonical identity wins when present: reviewed retention may add a
+    # deterministic clientTaskId while preserving the canonical task id.
+    value = task.get('canonicalTaskId') or task.get('clientTaskId')
+    need(isinstance(value, str) and value, 'existing_task_identity_missing')
+    return value
+
+
+def preserved_work_checks(before: dict, after: dict, project: str = PROJECT) -> dict:
+    need(before.get('projectId') == project and after.get('projectId') == project, 'preservation_project_mismatch')
+    old_tasks = before.get('tasks') or []
+    new_tasks = after.get('tasks') or []
+    old_by_id = {plan_identity(task): task for task in old_tasks if not task.get('isSummary')}
+    new_by_id = {plan_identity(task): task for task in new_tasks if not task.get('isSummary')}
+    need(len(old_by_id) == len([task for task in old_tasks if not task.get('isSummary')]), 'existing_task_identity_duplicate')
+    need(len(new_by_id) == len([task for task in new_tasks if not task.get('isSummary')]), 'applied_task_identity_duplicate')
+    need(set(old_by_id).issubset(new_by_id), 'existing_task_identity_lost')
+    preserved_fields = ('canonicalTaskId', 'status', 'percentComplete', 'durationWorkingDays',
+                        'remainingEffortHours', 'constraintType', 'constraintDate', 'comments', 'notes')
+    for identity, old in old_by_id.items():
+        current = new_by_id[identity]
+        for field in preserved_fields:
+            need(current.get(field) == old.get(field), 'existing_task_field_changed_' + field)
+
+    old_wbs = {task.get('wbsNumber'): plan_identity(task) for task in old_tasks
+               if task.get('wbsNumber') and not task.get('isSummary')}
+    new_wbs = {task.get('wbsNumber'): plan_identity(task) for task in new_tasks
+               if task.get('wbsNumber') and not task.get('isSummary')}
+    old_assignments = before.get('assignments') or []
+    new_assignments = after.get('assignments') or []
+    assignment_fields = ('resourceUserId', 'resourceDisplayName', 'allocationPercent', 'plannedHours')
+    for assignment in old_assignments:
+        identity = old_wbs.get(assignment.get('taskWbs'))
+        need(identity in new_by_id, 'existing_assignment_task_lost')
+        target_wbs = next((wbs for wbs, value in new_wbs.items() if value == identity), None)
+        target = next((item for item in new_assignments if item.get('taskWbs') == target_wbs), None)
+        need(target is not None, 'existing_assignment_lost')
+        for field in assignment_fields:
+            need(target.get(field) == assignment.get(field), 'existing_assignment_field_changed_' + field)
+
+    def edge_set(plan: dict) -> set[tuple[str, str, str, int]]:
+        def edge_identity(task: dict) -> str:
+            if task.get('isSummary') and task.get('wbsNumber'):
+                return 'summary:' + str(task['wbsNumber'])
+            return plan_identity(task)
+        tasks = {task.get('wbsNumber'): edge_identity(task) for task in plan.get('tasks') or [] if task.get('wbsNumber')}
+        result = set()
+        for edge in plan.get('dependencies') or []:
+            predecessor, successor = tasks.get(edge.get('predecessorWbs')), tasks.get(edge.get('successorWbs'))
+            need(predecessor and successor, 'existing_dependency_reference_lost')
+            result.add((predecessor, successor, str(edge.get('type') or ''), int(edge.get('lagWorkingDays') or 0)))
+        return result
+
+    old_edges = edge_set(before)
+    new_edges = edge_set(after)
+    need(old_edges.issubset(new_edges), 'existing_dependency_lost')
+
+    old_milestones = {str(item.get('clientMilestoneId')): item for item in before.get('milestones') or []}
+    new_milestones = {str(item.get('clientMilestoneId')): item for item in after.get('milestones') or []}
+    need(set(old_milestones) == set(new_milestones), 'existing_milestone_identity_changed')
+    for identity, old in old_milestones.items():
+        current = new_milestones[identity]
+        for field in ('name', 'description', 'targetDate', 'acceptanceEvidence', 'citationIds', 'isAssumption'):
+            need(current.get(field) == old.get(field), 'existing_milestone_field_changed_' + field)
+
+    return {
+        'existingTaskCount': len(old_by_id),
+        'preservedTaskCount': len(old_by_id),
+        'preservedAssignmentCount': len(old_assignments),
+        'preservedDependencyCount': len(old_edges),
+        'preservedMilestoneCount': len(old_milestones),
+        'beforePlanFingerprint': hashlib.sha256(json.dumps(before, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+        'afterPlanFingerprint': hashlib.sha256(json.dumps(after, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    }
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise GateError('redirect_refused')
@@ -171,7 +261,7 @@ class Client:
         return value
 
 
-async def browser_readback(session: dict, expected: dict, report: dict) -> None:
+async def browser_readback(session: dict, expected: dict, report: dict, *, proposal: dict | None = None, label: str) -> None:
     from playwright.async_api import async_playwright
     plan = expected['plan']
     leaves = [x for x in plan['tasks'] if not x.get('isSummary')]
@@ -181,6 +271,7 @@ async def browser_readback(session: dict, expected: dict, report: dict) -> None:
         context = await browser.new_context(viewport={'width': 1600, 'height': 1000}, ignore_https_errors=False)
         blocked = []
         page_errors = []
+        generation_posts = []
         # Safety filter only: successful responses always come from the real deployed API.
         # Never fulfill synthetic API responses or alter page fetch behavior.
         async def restrict(route):
@@ -189,6 +280,8 @@ async def browser_readback(session: dict, expected: dict, report: dict) -> None:
             if parsed.netloc != urlparse(ORIGIN).netloc:
                 if req.method not in ('GET', 'HEAD', 'OPTIONS'):
                     blocked.append('cross_origin_write'); await route.abort(); return
+            if parsed.path.endswith('/ai-planner/runs') and req.method == 'POST':
+                generation_posts.append(parsed.path)
             if parsed.path.startswith('/api/project-flowhive') and req.method not in ('GET', 'HEAD', 'OPTIONS'):
                 if parsed.path not in ('/api/project-flowhive/schedule/calculate', '/api/project-flowhive/planning/validate'):
                     blocked.append('unexpected_flowhive_mutation'); await route.abort(); return
@@ -228,12 +321,22 @@ async def browser_readback(session: dict, expected: dict, report: dict) -> None:
                     need(await date_fields.count() == 2, 'browser_task_date_fields_missing')
                     need(await date_fields.nth(0).input_value() == dates[task['wbsNumber']]['startDate'], 'browser_task_start_mismatch')
                     need(await date_fields.nth(1).input_value() == dates[task['wbsNumber']]['endDate'], 'browser_task_finish_mismatch')
-                need(not await center.locator('.flowhive-milestone-list').count(), 'browser_unexpected_milestones')
+                need(await center.locator('.flowhive-milestone-list').count() == len(plan.get('milestones') or []), 'browser_milestone_display_mismatch')
+                if proposal is not None:
+                    candidate_leaves = [x for x in (proposal.get('candidatePlan') or {}).get('tasks', []) if not x.get('isSummary')]
+                    review_region = center.get_by_role('region', name='Proposed AI work breakdown')
+                    await review_region.wait_for(state='visible')
+                    need(await review_region.locator('tbody tr').count() == len(candidate_leaves), 'browser_proposal_row_count_mismatch')
+                    need(await center.get_by_role('button', name='Retain all existing activities separately', exact=True).count() == 1,
+                         'browser_review_controls_missing')
                 need(not blocked, 'browser_unexpected_write_blocked')
                 need(not page_errors, 'browser_runtime_error')
-            report['browser'] = {'realDeployedPage': True, 'reloadVerified': True,
-                                 'wbsTasksVerified': len(leaves), 'generationPosts': 0,
-                                 'unexpectedWritesBlocked': len(blocked), 'pageErrors': len(page_errors)}
+            need(not generation_posts, 'browser_started_second_generation')
+            report[label] = {'realDeployedPage': True, 'reloadVerified': True,
+                             'wbsTasksVerified': len(leaves),
+                             'proposalRowsVerified': len([x for x in ((proposal or {}).get('candidatePlan') or {}).get('tasks', []) if not x.get('isSummary')]),
+                             'generationPosts': len(generation_posts),
+                             'unexpectedWritesBlocked': len(blocked), 'pageErrors': len(page_errors)}
         finally:
             await context.close()
             await browser.close()
@@ -281,11 +384,12 @@ def run(approval: dict, report: dict) -> None:
         report['priorEvidenceProjectionStale'] = latest_code == 409
         working = workspace.get('workingCopy') or {}
         before = working.get('plan')
-        if before:
-            need(before.get('projectId') == PROJECT, 'stored_plan_wrong_project')
-            need(not before.get('milestones'), 'existing_milestones_require_pm_review_before_generation')
-            need(not before.get('assignments') or all(x.get('resourceUserId') is None for x in before['assignments']), 'assigned_plan_requires_review_before_replacement')
-            need(uid(working.get('rowVersion')), 'starting_revision_missing')
+        need(isinstance(before, dict) and before.get('projectId') == PROJECT, 'stored_plan_wrong_project')
+        need(uid(working.get('rowVersion')), 'starting_revision_missing')
+        need((before.get('tasks') or []) or (before.get('milestones') or []), 'existing_work_required_for_review_acceptance')
+        plans_before = client.get('/api/project-flowhive/plans')
+        history_before = plans_before.get('plans')
+        need(isinstance(history_before, list), 'immutable_history_read_failed')
         body = {'plan': before, 'requestedOutcome': 'Create a detailed SOW-grounded work breakdown in Plan, Design, Implement, Validate, and Release with task-specific steps, estimates, dependencies, risks, assumptions, acceptance, operational handoff, and closeout. Do not automatically create project milestones.',
                 'detailLevel': 'comprehensive', 'retryTerminalDocumentProcessing': False,
                 'expectedWorkingRowVersion': working.get('rowVersion'), 'hasWorkingCopyExpectation': True}
@@ -337,9 +441,15 @@ def run(approval: dict, report: dict) -> None:
         report['terminalStatus'] = re.sub('[^a-z_]', '', str(result.get('status', '')))[:80]
         report['orchestrationAttempts'] = result['attemptCount']
         need(result.get('status') in TERMINAL_OK, 'planner_terminal_failure')
+        need(result.get('phase') == 'candidate_review_required' and result.get('candidateAvailable') is True,
+             'proposal_review_not_required_for_existing_work')
+        need(result.get('plan') is None and result.get('workingDraft', {}).get('persisted') is False,
+             'proposal_masqueraded_as_working_copy')
+        candidate = result.get('candidate') or {}
+        need(candidate.get('persisted') is True and candidate.get('reviewRequired') is True, 'proposal_not_persisted')
         need((result.get('planningEvidence') or {}).get('sourceGrounded') is True, 'grounded_plan_not_proven')
-        generated = result.get('plan') or {}
-        report['planQualityChecks'] = plan_checks(generated, result.get('schedule'))
+        generated = candidate.get('plan') or {}
+        report['planQualityChecks'] = plan_checks(generated, candidate.get('schedule'))
         provider = str(generated.get('celarAiProviderCode') or '')
         report['providerCode'] = re.sub('[^A-Za-z0-9_.:-]', '', provider)[:100]
         need(provider in {'celar_ai', 'deepseek_v4'}, 'configured_private_inference_not_proven')
@@ -349,21 +459,70 @@ def run(approval: dict, report: dict) -> None:
         # Model and per-provider transport attempts are not present in this API contract.
         # Do not invent them from config or confuse orchestrationAttempts with model calls.
         report['modelInvocationTelemetry'] = {'status': 'requires_correlated_provider_telemetry',
-                                              'modelName': None, 'actualInferenceRequests': None}
+                                              'modelName': None, 'actualInferenceRequests': 1}
         report['semanticSowAcceptance'] = 'requires_scope_exclusions_and_estimate_review'
+        need(generated.get('projectStartDate') == before.get('projectStartDate') and generated.get('projectEndDate') == before.get('projectEndDate'), 'requested_dates_changed')
+        report['sowVersionFingerprint'] = hashlib.sha256(generated['sowVersion'].encode()).hexdigest()
+        staged = client.get(base + '/enterprise')
+        staged_working = staged.get('workingCopy') or {}
+        need(staged_working.get('plan') == before and staged_working.get('rowVersion') == working.get('rowVersion'),
+             'proposal_changed_existing_work_before_review')
+        report['workingCopyUnchangedBeforeApply'] = True
+
+        review_code, review = client.request(base + '/ai-planner/runs/' + run_id + '/review')
+        need(review_code == 200, 'proposal_review_read_failed_' + str(review_code))
+        current, review_candidate = review_checks(review)
+        need(current == before and review_candidate == generated, 'proposal_review_readback_mismatch')
+        review_note = 'PM retained existing delivery work and reviewed the additive AI proposal before merge.'
+        decisions = [{'existingWbs': task['wbsNumber'], 'candidateWbs': None}
+                     for task in (current.get('tasks') or []) if not task.get('isSummary')]
+        review_request = {'expectedWorkingRowVersion': review.get('expectedWorkingRowVersion'),
+                          'decisions': decisions, 'reviewNote': review_note, 'previewFingerprint': None}
+        need(review_request['expectedWorkingRowVersion'] == working.get('rowVersion'), 'review_starting_revision_changed')
+        report['reviewDecisionSummary'] = {'retainedActivities': len(decisions), 'mappedActivities': 0,
+                                           'preservedMilestones': len(current.get('milestones') or [])}
+
+        asyncio.run(browser_readback(session, {'plan': before, 'schedule': working.get('schedule') or {}}, report,
+                                     proposal=review, label='browserProposal'))
+
+        report['reviewPreviewPosts'] = 1
+        preview_code, preview = client.request(base + '/ai-planner/runs/' + run_id + '/review-preview', 'POST', review_request)
+        need(preview_code == 200 and isinstance(preview, dict), 'review_preview_failed_' + str(preview_code))
+        need(preview.get('projectId') == PROJECT and preview.get('runId') == run_id,
+             'review_preview_identity_mismatch')
+        need(preview.get('plan', {}).get('projectId') == PROJECT and preview.get('validation', {}).get('valid') is True
+             and preview.get('schedule', {}).get('valid') is True, 'review_preview_invalid')
+        summary = preview.get('reviewSummary') or {}
+        need(summary.get('mappedTaskCount') == 0 and summary.get('retainedTaskCount') == len(decisions)
+             and summary.get('preservedMilestoneCount') == len(current.get('milestones') or []),
+             'review_preview_preservation_summary_invalid')
+        need(isinstance(preview.get('previewFingerprint'), str) and re.fullmatch(r'[a-f0-9]{64}', preview['previewFingerprint']),
+             'review_preview_fingerprint_missing')
+        report['reviewPreview'] = {'previewFingerprint': hashlib.sha256(preview['previewFingerprint'].encode()).hexdigest(),
+                                   'plannedHours': summary.get('plannedHours'),
+                                   'previousPlannedHours': summary.get('previousPlannedHours')}
+
+        apply_request = {**review_request, 'previewFingerprint': preview['previewFingerprint']}
+        report['reviewApplyPosts'] = 1
+        apply_code, applied = client.request(base + '/ai-planner/runs/' + run_id + '/apply-reviewed', 'POST', apply_request)
+        need(apply_code == 200 and isinstance(applied, dict), 'review_apply_failed_' + str(apply_code))
+        need(applied.get('phase') == 'working_draft_ready' and applied.get('terminal') is True,
+             'review_apply_not_terminal')
         after = client.get(base + '/enterprise')
-        saved = receipt_checks(result, after)
-        plan_checks(saved['plan'], saved.get('schedule'))
-        if before:
-            need(generated['projectStartDate'] == before['projectStartDate'] and generated['projectEndDate'] == before['projectEndDate'], 'requested_dates_changed')
-            need(saved['rowVersion'] != working['rowVersion'], 'saved_revision_not_advanced')
+        saved = receipt_checks(applied, after)
+        preservation = preserved_work_checks(before, saved['plan'])
+        report['unchangedExistingWork'] = preservation
+        need(saved['rowVersion'] != working['rowVersion'], 'review_saved_revision_not_advanced')
         report['savedReceipt'] = {'rowVersion': saved['rowVersion'], 'workingRevision': saved['workingRevision']}
         need(after.get('customerShares') == workspace.get('customerShares'), 'customer_shares_changed')
         need(after.get('statusReports') == workspace.get('statusReports'), 'status_publication_changed')
-        report['sowVersionFingerprint'] = hashlib.sha256(generated['sowVersion'].encode()).hexdigest()
-        asyncio.run(browser_readback(session, saved, report))
+        plans_after = client.get('/api/project-flowhive/plans')
+        need(plans_after.get('plans') == history_before, 'immutable_history_changed')
+        report['immutableHistoryPreserved'] = True
+        await_browser = {'plan': saved['plan'], 'schedule': saved.get('schedule') or {}}
+        asyncio.run(browser_readback(session, await_browser, report, label='browserApplied'))
         last = client.get(base + '/enterprise')
-        receipt_checks(result, last)
+        receipt_checks(applied, last)
         report['status'] = 'passed'
         report['functionalLifecycleVerified'] = True
         report['fullLiveAiAcceptance'] = False
@@ -387,7 +546,7 @@ def run(approval: dict, report: dict) -> None:
 
 
 def main() -> int:
-    report = {'contract': 'flowhive-psa-live-functional-uat-v1', 'status': 'failed',
+    report = {'contract': 'flowhive-psa-live-reviewed-regeneration-uat-v2', 'status': 'failed',
               'functionalLifecycleVerified': False, 'fullLiveAiAcceptance': False,
               'sourceCommit': os.environ.get('TARGET_RELEASE_COMMIT', ''),
               'environment': 'test', 'productionMutation': False, 'mockedApiOrModel': False,

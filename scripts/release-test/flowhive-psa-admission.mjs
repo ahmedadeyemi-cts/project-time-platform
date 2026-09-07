@@ -14,7 +14,8 @@ const sha = /^[a-f0-9]{40}$/;
 const hash = /^[a-f0-9]{64}$/;
 const migrations = [
   '103_module_066_flowhive_enterprise_psa_revamp.sql',
-  '104_flowhive_bounded_ai_execution.sql'
+  '104_flowhive_bounded_ai_execution.sql',
+  '105_flowhive_reviewed_regeneration.sql'
 ];
 
 export function verifyApproval(approval, requestedSha) {
