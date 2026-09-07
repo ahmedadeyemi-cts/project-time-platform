@@ -48,9 +48,9 @@ jobs:
         env:
           BASE_SHA: 8c84d91b8a4f7d1583118f6d701185b355c9684f
           CONTROL_BASE: 8c84d91b8a4f7d1583118f6d701185b355c9684f
-          GITHUB_HEAD_REF: fix/sow-runtime-diagnostics-and-uat-isolation-20260906
         run: |
           set -Eeuo pipefail
+          export GITHUB_HEAD_REF='fix/sow-runtime-diagnostics-and-uat-isolation-20260906'
           python3 -m pip install PyYAML==6.0.3
           node tests/validate-sow-generation-uat-scope.mjs
           node --test tests/flowhive-psa-admission.test.mjs
