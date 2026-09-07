@@ -1,0 +1,62 @@
+name: Inspect exact FlowHive deployed acceptance failures
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/workflows/flowhive-deployment-acceptance-read.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read exact completed run and allowlisted failure diagnostics
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json,re,subprocess
+          repo='ahmedadeyemi-cts/project-time-platform'
+          def api(path):
+              p=subprocess.run(['gh','api','repos/'+repo+'/'+path],capture_output=True,timeout=60)
+              if p.returncode:raise SystemExit('READ_ONLY_GITHUB_EVIDENCE_UNAVAILABLE')
+              if len(p.stdout)>25000000:raise SystemExit('LOG_SIZE_LIMIT')
+              return p.stdout
+          run=json.loads(api('actions/runs/34133502917'))
+          assert run['id']==34133502917 and run['head_sha']=='7e5c378dcb15b2b2a00511fa69f90d2411eec336'
+          assert run['workflow_id']==315562561 and run['status']=='completed' and run['run_attempt']==1
+          print(json.dumps({k:run[k] for k in ['id','head_sha','status','conclusion','run_attempt']}))
+          job=json.loads(api('actions/jobs/101778983084'))
+          assert job['run_id']==run['id'] and job['status']=='completed'
+          print(json.dumps({'steps':[{k:s.get(k) for k in ['number','name','status','conclusion']} for s in job['steps']]}))
+          text=api('actions/jobs/101778983084/logs').decode('utf-8-sig',errors='replace')
+          text=re.sub(r'\x1b\[[0-9;]*m','',text)
+          # Never print raw logs, login bodies, SOW/task text or secret-bearing command lines.
+          patterns=[
+            r'ERROR: Expected exactly one protected-Test API app pinned to [0-9a-f]{40}; found [0-9]+\.',
+            r'ERROR: Module 001B UAT requires the exact protected-Test release SHA\.',
+            r'ERROR: No Azure Container App tagged as protected Test was found\.',
+            r'ERROR: Module 001B enabled revision did not converge as the sole active Test API revision\.',
+            r'ERROR: Failed to force the Module 001B Protected-Test fixture surface closed\.',
+            r'ERROR: Coordinator login returned HTTP [0-9]{3}\.',
+            r'ERROR: Protected-Test Module 001B fixture creation returned HTTP [0-9]{3}\.',
+            r'ERROR: (?:Live Module 001B /move|Module 001B capabilities|Module 001B persisted workspace reload|Protected-Test Module 001B fixture cleanup) returned HTTP [0-9]{3}\.',
+            r'MODULE001B_PROTECTED_TEST_FIXTURE_SURFACE=ENABLING',
+            r'MODULE001B_(?:SINGLE_REVISION_CONVERGED|ENABLED_REVISION|DISABLED_REVISION|LIVE_REALLOCATION_UAT)=[^\r\n]{1,350}',
+            r'ASSIGNED_WORK_PROTECTED_TEST_UAT=PASS[^\r\n]{0,400}',
+            r'FLOWHIVE_PSA_[A-Z0-9_]+=[^\r\n]{0,350}',
+            r'existing_milestones_require_pm_review_before_generation',
+            r'Error: Process completed with exit code [0-9]+\.'
+          ]
+          hits=[]
+          for line in text.splitlines():
+              clean=re.sub(r'^\d{4}-\d\d-\d\dT[^ ]+\s*','',line).strip()
+              if any(x in clean for x in ['echo ',"printf ",'|| fail','if [[','--arg','pattern','r\'']):continue
+              for pattern in patterns:
+                  match=re.fullmatch(pattern,clean)
+                  if match:hits.append(match.group(0));break
+          print(json.dumps({'allowlistedDiagnostics':hits[:40],'logRetrieved':True,'rawLogPublished':False}))
+          print('ENVIRONMENT_MUTATIONS=0 DEPLOYMENT_DISPATCHES=0 SECRET_READS=0')
+          PY
