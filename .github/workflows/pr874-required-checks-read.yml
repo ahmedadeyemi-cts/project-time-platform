@@ -1,0 +1,25 @@
+name: Inspect exact FlowHive required check registration
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/workflows/pr874-required-checks-read.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read required controller workflow registrations and current candidate checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          for id in 328061974 347181890; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$id" --jq '{id,path,state}'
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$id/runs?per_page=3" --jq '.workflow_runs[] | {id,event,status,conclusion,head_sha,created_at}'
+          done
+          gh api "repos/$GITHUB_REPOSITORY/commits/2914eeeb7265e2d6998d2e68d2f723e6ad56c922/check-runs?per_page=100" --jq '.check_runs[] | {id,name,status,conclusion,summary:.output.summary}'
+          echo 'WORKFLOW_CHANGES=0 DISPATCHES=0 ENVIRONMENT_MUTATIONS=0'
