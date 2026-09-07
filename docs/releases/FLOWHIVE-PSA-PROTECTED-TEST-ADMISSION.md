@@ -12,7 +12,7 @@ The repository owner may post this exact command on PR #872 after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 2914eeeb7265e2d6998d2e68d2f723e6ad56c922
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 1538548d5bc85c83c5ceb14795e1cfc8536d721c
 ```
 
 The admission workflow executes main-owned code only. It checks the exact open PR,
@@ -110,7 +110,7 @@ None of those isolated tests is represented as live model acceptance.
 ## PR874 combined candidate and migration-image resolution repair
 
 PR874 merged as `55ebb51fda1917f202ce6561ed5f5e635468d01c`. Candidate
-`2914eeeb7265e2d6998d2e68d2f723e6ad56c922` includes that actual merge parent,
+`1538548d5bc85c83c5ceb14795e1cfc8536d721c` includes that actual merge parent,
 the reviewed SOW/Oracle changes, and both post-review cleanup/HTTP500 repairs.
 The exact candidate source base is that merged main revision, not the old
 pre-PR874 application. PR872 remains draft and unmerged. Required exact-source
@@ -138,3 +138,21 @@ Bash tests exercise immediate success, delayed visibility, missing tags,
 malformed digests, authorization failure and time-budget exhaustion, while the
 existing PostgreSQL fixture continues to execute migrations103/104 and their
 failure/reapply/immutability checks. These tests are not live AI evidence.
+
+
+### PR876 review closure and exact-head refresh
+
+The seven-path digest repair is now limited to open PR876 from the reviewed
+repository and release branch onto main at the exact PR874 merge base
+`55ebb51fda1917f202ce6561ed5f5e635468d01c`. Validation compares the actual checkout,
+resolved Git base and GitHub pull-request event, not just a seven-file count.
+Missing context, a different PR/base/branch/repository, a fork, a closed PR or a
+stale checked-out head is rejected. The original twenty-file control boundary is
+unchanged. Negative tests exercise each identity mismatch separately.
+
+The refreshed candidate also repairs both required controller workflows' GitHub
+expression-length failure and removes static PostgreSQL CI fixture credentials.
+The historical test-credential finding in GitGuardian must be classified and the
+exact-head security check cleared before the combined candidate is deployed.
+No failed check is waived; the application PR remains draft. This control refresh
+preserves the canonical deployment/dispatcher bytes and approved migration hashes.
