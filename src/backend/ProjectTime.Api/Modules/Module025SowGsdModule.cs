@@ -1727,10 +1727,10 @@ public static class Module025SowGsdModule
         // Infrastructure failures are not evidence deficiencies. Preserve the
         // real closed diagnostic and the unchanged draft, without masking it as 422.
         var runtimeFailure = new[] {
-            "private_model_http_502", "private_model_http_503", "private_model_http_504",
+            "private_model_http_500", "private_model_http_502", "private_model_http_503", "private_model_http_504",
             "private_model_timeout", "private_model_transport_failure",
             "deepseek_timeout", "deepseek_connection_failed", "deepseek_queue_busy",
-            "deepseek_queue_unavailable", "deepseek_http_429", "deepseek_http_502",
+            "deepseek_queue_unavailable", "deepseek_http_429", "deepseek_http_500", "deepseek_http_502",
             "deepseek_http_503", "deepseek_http_504",
             "private_module025_generation_deadline_exceeded", "private_module025_phase_deadline_exceeded"
         }.Any(code => string.Equals(diagnostic, code, StringComparison.Ordinal)
