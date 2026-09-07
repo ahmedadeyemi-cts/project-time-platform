@@ -26,7 +26,7 @@ const componentPaths = [
   /^src\/backend\/ProjectTime\.Api\/Modules\/ProjectPlanning(AiOrchestrator|DocumentResolver)\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/CelarAiProductionPlatformModule\.cs$/,
   /^src\/frontend\/project-time-web\/src\/(ProjectFlowHive[A-Za-z0-9]+\.jsx|(?:flowhive-|project-flowhive-|use-flowhive-)[a-z0-9.-]+)$/,
-  /^database\/(migrations|rollback)\/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution)(?:_rollback)?\.sql$/,
+  /^database\/(migrations|rollback)\/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution|105_flowhive_reviewed_regeneration)(?:_rollback)?\.sql$/,
   /^tests\/FlowHive[A-Za-z0-9]+\/[A-Za-z0-9._-]+$/,
   /^tests\/flowhive-psa-[a-z0-9.-]+$/,
   /^docs\/modules\/module-066-project-flowhive\/[A-Za-z0-9._-]+$/

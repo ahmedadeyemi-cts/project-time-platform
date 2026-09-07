@@ -17,6 +17,8 @@ on:
       - 'tests/flowhive-psa-*.py'
       - 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql'
       - 'database/migrations/104_flowhive_bounded_ai_execution.sql'
+      - 'database/migrations/105_flowhive_reviewed_regeneration.sql'
+      - 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql'
       - 'database/rollback/104_flowhive_bounded_ai_execution_rollback.sql'
       - '.github/workflows/flowhive-enterprise-psa-ci.yml'
   workflow_dispatch:
@@ -181,3 +183,7 @@ jobs:
         env:
           FLOWHIVE_OFFLINE_BUNDLE: /tmp/flowhive-react-test
         run: python tests/flowhive-psa-react-browser.py
+      - name: Build and exercise the actual reviewed-regeneration UI
+        run: |
+          node tests/flowhive-psa-review-browser-bundle.mjs
+          python tests/flowhive-psa-review-browser.py

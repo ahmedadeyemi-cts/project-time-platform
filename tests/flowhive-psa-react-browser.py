@@ -51,6 +51,8 @@ async def main(readback_mode=None):
         try:
             state={'plans':{A:plan(A),B:plan(B)},'versions':{A:V1,B:V1},'run':None,'posts':[],
                    'readback_mode':readback_mode,'complete':False,'late_schedule':False,'delayed':None,'view_as':False,'errors':[],'polls':0}
+            if readback_mode=='review_proposal':
+                state['plans'][A]['milestones']=[{'milestoneId':SAVED,'name':'Retained customer gate','description':'Synthetic prior commitment','predecessorWbs':'1.1','targetDate':'2026-10-30','requiredEvidence':['Existing approval']} ]
             page=await browser.new_page(viewport={'width':1440,'height':1000})
             page.set_default_timeout(5000)
             page.on('pageerror',lambda error:state['errors'].append(str(error)))
@@ -93,13 +95,22 @@ async def main(readback_mode=None):
                     body=state['run'];status=202
                 elif path.endswith('/cancel'):
                     state['run']={**state['run'],'terminal':True,'status':'needs_attention','phase':'cancelled'};body=state['run']
+                elif path.endswith(f'/ai-planner/runs/{RUN}/review'):
+                    body={'projectId':A,'runId':RUN,'contract':'flowhive-reviewed-regeneration-v1',
+                        'expectedWorkingRowVersion':state['versions'][A],'currentPlan':state['plans'][A],
+                        'candidatePlan':state['run']['plan'],'candidateSchedule':state['run']['schedule'],'candidateValidation':{'valid':True}}
                 elif f'/ai-planner/runs/{RUN}' in path:
                     state['polls']+=1
                     if state['complete']:
                         new=copy.deepcopy(state['posts'][-1]['plan']);new['tasks']=plan(A,'Generated unique task')['tasks']
-                        state['plans'][A]=new;state['versions'][A]=V2
-                        state['run']={**state['run'],'terminal':True,'status':'completed','phase':'working_draft_ready','plan':new,'schedule':schedule(new),
-                            'workingDraft':{'persisted':True,'rowVersion':V2,'workingRevision':2},'validation':{'valid':True,'issues':[]}}
+                        if state['readback_mode']=='review_proposal':
+                            new['milestones']=[]
+                            state['run']={**state['run'],'terminal':True,'status':'completed','phase':'candidate_review_required','plan':new,'schedule':schedule(new),
+                                'workingDraft':{'persisted':False},'candidateAvailable':True,'candidate':{'plan':new,'persisted':True,'reviewRequired':True},'validation':{'valid':True,'issues':[]}}
+                        else:
+                            state['plans'][A]=new;state['versions'][A]=V2
+                            state['run']={**state['run'],'terminal':True,'status':'completed','phase':'working_draft_ready','plan':new,'schedule':schedule(new),
+                                'workingDraft':{'persisted':True,'rowVersion':V2,'workingRevision':2},'validation':{'valid':True,'issues':[]}}
                     body=state['run'];status=200 if body['terminal'] else 202
                 elif path.endswith('/schedule/calculate'):
                     posted=request.post_data_json
@@ -164,6 +175,26 @@ async def main(readback_mode=None):
             assert state['posts'][0]['hasWorkingCopyExpectation'] is True
             print('PASSED: actual React start posts edited dates and exact working-copy revision',flush=True)
             state['complete']=True
+            if readback_mode=='review_proposal':
+                review=page.get_by_role('region',name='Review generated work breakdown',exact=True)
+                await review.get_by_text('Generated unique task Plan',exact=True).wait_for()
+                assert state['versions'][A]==V1 and len(state['plans'][A]['milestones'])==1
+                assert state['posts'][0]['plan']['milestones'][0]['milestoneId']==SAVED
+                assert await page.locator('input[value="Stored project task Plan"]').count()==1
+                assert not await page.locator('input[value="Generated unique task Plan"]').count()
+                assert await review.locator('summary').count()==5
+                assert 'work breakdown is saved and reloaded' not in await page.locator('body').inner_text()
+                print('PASSED: actual FlowHive mounts a five-phase proposal inside AI Planner while preserving the working copy and milestone',flush=True)
+                await page.get_by_role('button',name='AI Planner',exact=True).click()
+                assert len(state['posts'])==1
+                print('PASSED: reopening a saved proposal does not start another AI operation',flush=True)
+                await reload_page();await page.get_by_role('button',name='Planner',exact=True).click()
+                await page.get_by_role('region',name='Review generated work breakdown',exact=True).get_by_text('Generated unique task Plan',exact=True).wait_for()
+                assert await page.locator('input[value="Stored project task Plan"]').count()==1
+                assert len(state['posts'])==1 and state['versions'][A]==V1
+                assert not state['errors'],state['errors']
+                print('PASSED: saved proposal and untouched original work survive page reload without inference',flush=True)
+                return
             if readback_mode:
                 await page.get_by_text('Generation saved a draft; saved work-breakdown readback still requires attention.',exact=True).wait_for()
                 assert await page.locator('input[value="Stored project task Plan"]').count()==1
@@ -228,7 +259,7 @@ async def main(readback_mode=None):
         finally:await browser.close()
 
 async def run_all():
-    for mode in (None,'unavailable','newer_revision','wrong_project'):
+    for mode in (None,'unavailable','newer_revision','wrong_project','review_proposal'):
         await main(mode)
 
 if __name__=='__main__':asyncio.run(run_all())

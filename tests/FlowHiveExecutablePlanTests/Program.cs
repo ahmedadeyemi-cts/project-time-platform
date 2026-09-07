@@ -111,4 +111,69 @@ Reject(() => ProjectFlowHiveExecutablePlanBuilder.Build(seed with { ProjectStart
 Reject(() => ProjectFlowHiveExecutablePlanBuilder.Build(seed with { ProjectEndDate = new DateOnly(2026, 1, 1) }, plan, authorized), "project_dates");
 Reject(() => ProjectFlowHiveExecutablePlanBuilder.Build(seed with { Milestones = [new(Guid.NewGuid(), "Reviewed gate", "Existing reviewed gate", "1.1", null, ["PM review"], [1], false)] }, plan, authorized), "milestone_merge_required");
 Check(JsonSerializer.Serialize(new { seed, plan }) == before, "rejected generation cannot mutate the working input");
+// The model result is a detached proposal when delivery work already exists.
+var oldTaskId = Guid.NewGuid(); var oldCanonical = Guid.NewGuid(); var owner = Guid.NewGuid();
+var milestone = new ProjectFlowHivePlanMilestoneInput(Guid.NewGuid(), "Customer review gate", "Retained acceptance milestone", "1.1",
+    new DateOnly(2026,9,18), ["Customer acceptance evidence"], [1], false);
+var existing = result with {
+    Tasks = result.Tasks!.Select(t => t.WbsNumber == "1.1" ? t with {
+        ClientTaskId=oldTaskId,CanonicalTaskId=oldCanonical,PercentComplete=45m,Status="in_progress",
+        RemainingEffortHours=3m,Comments="PM progress comment",Notes="Existing delivery note",ConstraintType="SNET",ConstraintDate=new DateOnly(2026,9,9)
+    } : t).ToArray(),
+    Assignments=[new("1.1",owner,"Assigned Engineer",50m,7m), ..result.Assignments!.Where(a=>a.TaskWbs!="1.1")],
+    Milestones=[milestone],Notes="Existing PM context"
+};
+var snapshot=JsonSerializer.Serialize(existing);
+var proposal=ProjectFlowHiveExecutablePlanBuilder.BuildCandidate(existing,plan,authorized);
+Check(proposal.Milestones!.Count==0 && JsonSerializer.Serialize(existing)==snapshot,"detached generation leaves original milestones and tasks untouched");
+Check(ProjectFlowHivePlannerReview.RequiresReview(existing,Guid.NewGuid()),"existing persisted delivery work requires review");
+Check(ProjectFlowHivePlannerReview.RequiresReview(seed,Guid.NewGuid()),"omitting tasks in a request cannot bypass a persisted-copy review");
+Check(!ProjectFlowHivePlannerReview.RequiresReview(seed,null),"a genuinely new empty plan retains automatic persistence");
+var decisions=existing.Tasks!.Where(t=>!t.IsSummary).Select(t=>new ProjectFlowHiveExistingTaskDecision(t.WbsNumber!,t.WbsNumber)).ToArray();
+var reviewRun=Guid.NewGuid();
+var reviewed=ProjectFlowHivePlannerReview.Merge(reviewRun,existing,proposal,decisions);
+var retained=reviewed.Tasks!.Single(t=>t.ClientTaskId==oldTaskId);
+Check(reviewed.Tasks!.Count(t=>!t.IsSummary)==5,"one-to-one mapping does not duplicate old work or estimates");
+Check(retained.CanonicalTaskId==oldCanonical && retained.PercentComplete==45m && retained.Status=="in_progress","mapped task retains canonical identity and progress");
+Check(retained.RemainingEffortHours==3m && retained.ConstraintDate==new DateOnly(2026,9,9) && retained.Comments=="PM progress comment" && retained.Notes=="Existing delivery note","mapped task retains delivery fields and notes");
+Check(reviewed.Assignments!.Single(a=>a.TaskWbs==retained.WbsNumber).ResourceUserId==owner && reviewed.Assignments!.Sum(a=>a.PlannedHours)==25m,"mapped assignments and authoritative planned hours survive exactly once");
+Check(reviewed.Milestones!.Single()==milestone,"milestone identity dates evidence and mapped predecessor preserved");
+Check(reviewed.Dependencies!.Count==4,"duplicate generated and retained edges reconcile once");
+Check(reviewed.Notes==existing.Notes && JsonSerializer.Serialize(existing)==snapshot,"review does not alter baseline metadata or its input graph");
+Check(reviewed.Tasks!.All(t=>t.EstimatedStartDate.HasValue && t.EstimatedFinishDate.HasValue),"reviewed merge recalculates every task date without inference");
+var allKept=decisions.Select(d=>d with {CandidateWbs=null}).ToArray();
+var separate=ProjectFlowHivePlannerReview.Merge(reviewRun,existing,proposal,allKept);
+var oldKept=separate.Tasks!.Single(t=>t.ClientTaskId==oldTaskId);
+Check(separate.Tasks!.Count(t=>!t.IsSummary)==10 && oldKept.WbsNumber=="1.2","explicit retain keeps old work separately in its lifecycle phase");
+Check(separate.Milestones!.Single().PredecessorWbs==oldKept.WbsNumber,"retained milestone predecessor follows old task renumbering");
+Check(separate.Milestones!.Single() with {PredecessorWbs=milestone.PredecessorWbs} == milestone,"milestone content never regenerated during retention");
+Check(separate.Tasks!.Select(t=>t.ClientTaskId).Distinct().Count()==separate.Tasks.Count,"candidate IDs cannot collide with stable IDs from earlier generation");
+Check(separate.Assignments!.Sum(a=>a.PlannedHours)==45m,"explicit retention exposes additive hours rather than hiding duplicate scope");
+Check(ProjectFlowHiveScheduleEngine.Calculate(separate).Valid,"retained dependency graph remains schedulable");
+var row=Guid.NewGuid();var note="Reviewed mapping of synthetic tasks only.";
+var fp=ProjectFlowHivePlannerReview.Fingerprint(reviewRun,row,reviewed,decisions,note);
+Check(fp==ProjectFlowHivePlannerReview.Fingerprint(reviewRun,row,reviewed,decisions.Reverse().ToArray(),note),"review receipt canonicalizes decision order");
+Check(fp!=ProjectFlowHivePlannerReview.Fingerprint(reviewRun,Guid.NewGuid(),reviewed,decisions,note),"new working-copy version invalidates review receipt");
+Check(fp!=ProjectFlowHivePlannerReview.Fingerprint(reviewRun,row,reviewed,decisions,note+" changed"),"changing the review note requires a fresh preview");
+void RejectReview(Action action,string code) {
+    try {action();} catch(InvalidOperationException e) {Check(e.Message.StartsWith("flowhive_review_"+code+":"),"review rejection: "+code);return;}
+    throw new Exception("Missing review rejection: "+code);
+}
+RejectReview(()=>ProjectFlowHivePlannerReview.Merge(reviewRun,existing,proposal,null),"decisions");
+RejectReview(()=>ProjectFlowHivePlannerReview.Merge(reviewRun,existing,proposal,decisions[..^1]),"decisions");
+RejectReview(()=>ProjectFlowHivePlannerReview.Merge(reviewRun,existing,proposal,[decisions[0],decisions[0],..decisions.Skip(2)]),"decisions");
+RejectReview(()=>ProjectFlowHivePlannerReview.Merge(reviewRun,existing,proposal,[decisions[0] with {CandidateWbs="missing"},..decisions.Skip(1)]),"mapping");
+RejectReview(()=>ProjectFlowHivePlannerReview.Merge(reviewRun,existing,proposal,[decisions[0],decisions[1] with {CandidateWbs="1.1"},..decisions.Skip(2)]),"mapping");
+RejectReview(()=>ProjectFlowHivePlannerReview.Merge(reviewRun,existing,proposal with {ProjectId=Guid.NewGuid()},decisions),"project");
+RejectReview(()=>ProjectFlowHivePlannerReview.Merge(reviewRun,existing with {Milestones=[milestone with {PredecessorWbs="missing"}]},proposal,decisions),"predecessor");
+var cyclicChoices=decisions.Select(d=>d.ExistingWbs=="1.1" ? d with {CandidateWbs="2.1"} : d.ExistingWbs=="2.1" ? d with {CandidateWbs="1.1"} : d).ToArray();
+RejectReview(()=>ProjectFlowHivePlannerReview.Merge(reviewRun,existing,proposal,cyclicChoices),"schedule");
+RejectReview(()=>ProjectFlowHivePlannerReview.Merge(reviewRun,existing with {Tasks=existing.Tasks!.Select(t=>t.WbsNumber=="1.1" ? t with {ParentWbsNumber="1.1"}:t).ToArray()},proposal,decisions),"protected_structure");
+var replayNote="Tested review replay.";
+var replayRequest=new ProjectFlowHivePlannerReviewRequest(row,decisions,replayNote,fp);
+Check(ProjectFlowHivePlannerReview.MatchesAppliedReview(fp,replayNote,row,decisions,replayRequest),"identical review replays its original receipt");
+Check(ProjectFlowHivePlannerReview.MatchesAppliedReview(fp,replayNote,row,decisions,replayRequest with {Decisions=decisions.Reverse().ToArray()}),"review replay ignores only decision ordering");
+foreach(var changedRequest in new[]{replayRequest with {PreviewFingerprint="different"}, replayRequest with {ReviewNote="Different review note."},
+    replayRequest with {ExpectedWorkingRowVersion=Guid.NewGuid()},replayRequest with {Decisions=decisions[..^1]}, replayRequest with {Decisions=null}})
+    Check(!ProjectFlowHivePlannerReview.MatchesAppliedReview(fp,replayNote,row,decisions,changedRequest),"changed review request cannot reuse a receipt");
 Console.WriteLine($"FLOWHIVE_EXECUTABLE_WBS_ASSERTIONS_PASSED={assertions}");

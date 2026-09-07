@@ -13,7 +13,7 @@ public sealed record ProjectFlowHiveAiPlannerRunRequest(
     Guid? ExpectedWorkingRowVersion = null,
     bool HasWorkingCopyExpectation = false);
 
-internal static class ProjectFlowHiveAiPlannerOrchestrationModule
+internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
 {
     private const string MigrationId = ProjectFlowHiveExecutionPolicy.Migration;
     private const string RunTable = "project_flowhive_ai_planner_runs";
@@ -37,6 +37,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         endpoints.MapPost(
             "/api/project-flowhive/projects/{projectId:guid}/ai-planner/runs/{runId:guid}/cancel",
             (Func<Guid, Guid, HttpContext, CancellationToken, Task<IResult>>)CancelAsync);
+        MapReviewEndpoints(endpoints);
         return endpoints;
     }
 
@@ -780,6 +781,15 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             await StopRunAsync(connection, runId, "authority_changed", "Permission or current document authority changed; the generated candidate was not applied.", cancellationToken);
             return;
         }
+        if (ProjectFlowHivePlannerReview.RequiresReview(current.Plan, current.ExpectedWorkingRowVersion))
+        {
+            await UpdateRunAsync(connection, runId, FinalStatus(schedule), "candidate_review_required", 100, [],
+                sourceWarnings.Concat(["The AI work breakdown is saved as a separate proposal. Existing tasks, milestones, assignments and dates have not been replaced."]).ToArray(),
+                ["Generation finished. Review retained work and predecessor mappings before applying this candidate."],
+                generated, schedule, validation, cancellationToken, completed: true, transaction: transaction);
+            await transaction.CommitAsync(cancellationToken);
+            return;
+        }
         var workingCopy = await SaveWorkingCopyAsync(
             connection,
             transaction,
@@ -1092,7 +1102,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 row_version=gen_random_uuid(),
                 next_attempt_at=CASE WHEN @phase='ai_route_retry' THEN NOW()+INTERVAL '30 seconds' ELSE NOW()+INTERVAL '3 seconds' END
             WHERE run_id=@run_id AND status IN ('queued','processing','generating')
-              AND ((@completed AND @phase<>'working_draft_ready') OR deadline_at>clock_timestamp());
+              AND ((@completed AND @phase NOT IN ('working_draft_ready','candidate_review_required')) OR deadline_at>clock_timestamp());
             """, connection, transaction);
         command.Parameters.AddWithValue("status", status);
         command.Parameters.AddWithValue("phase", phase);
@@ -1106,7 +1116,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
         command.Parameters.AddWithValue("completed", completed);
         command.Parameters.AddWithValue("run_id", runId);
         var changed = await command.ExecuteNonQueryAsync(cancellationToken);
-        if (changed != 1 && phase == "working_draft_ready")
+        if (changed != 1 && phase is "working_draft_ready" or "candidate_review_required")
             throw new TimeoutException("The planner was cancelled or its deadline expired before the working-copy transaction committed.");
     }
 
@@ -1231,7 +1241,7 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
                 phaseOrder = new[] { "Plan", "Design", "Implement", "Validate", "Release" },
                 sourceGrounded = run.GeneratedPlan?.CelarAiCitationIds?.Count > 0,
                 automaticPrivateProcessing = true,
-                automaticWorkingCopyPersistence = true,
+                automaticWorkingCopyPersistence = !ProjectFlowHivePlannerReview.RequiresReview(run.Plan, run.ExpectedWorkingRowVersion),
                 requestPollingReadOnly = true,
                 backgroundGeneration = true
             },
@@ -1243,8 +1253,10 @@ internal static class ProjectFlowHiveAiPlannerOrchestrationModule
             attemptCount = run.AttemptCount,
             maximumAttempts = ProjectFlowHiveExecutionPolicy.MaximumAttempts,
             executionContract = ProjectFlowHiveExecutionPolicy.Contract,
-            candidateAvailable = run.Phase == "working_copy_changed" && run.GeneratedPlan is not null,
-            candidate = run.Phase == "working_copy_changed" ? new { plan = run.GeneratedPlan, schedule = run.Schedule, validation = run.Validation, reviewRequired = true } : null,
+            candidateAvailable = (run.Phase is "working_copy_changed" or "candidate_review_required") && run.GeneratedPlan is not null,
+            candidate = run.Phase is "working_copy_changed" or "candidate_review_required"
+                ? new { plan = run.GeneratedPlan, schedule = run.Schedule, validation = run.Validation, reviewRequired = true,
+                    contract = ProjectFlowHivePlannerReview.Contract, persisted = true } : null,
             stateChanged = workingDraftPersisted
         };
     }

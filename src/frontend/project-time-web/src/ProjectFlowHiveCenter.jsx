@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import ProjectFlowHivePlannerReview from './ProjectFlowHivePlannerReview.jsx';
 import { boundedFetch, canApplyPlannerResult, observePlanner } from './flowhive-planner-operation.js';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import IdentityAvatar from './identity/IdentityAvatar.jsx';
@@ -1079,6 +1080,9 @@ export default function ProjectFlowHiveCenter() {
         setNotice(result.status === 'completed_with_schedule_overrun'
           ? 'The detailed working draft is saved. Its calculated finish exceeds the target; review the critical path without shrinking effort.'
           : 'The detailed five-phase work breakdown is saved and reloaded. Review before creating an immutable version or baseline.');
+      } else if (result.candidateAvailable && result.candidate?.persisted && result.candidate?.plan?.projectId === projectId) {
+        setActiveView('planner');
+        setNotice('The detailed AI proposal is saved in the work breakdown for review. Existing milestones and delivery work were preserved; preview the merge before applying it.');
       } else if (result.workingDraft?.persisted) {
         setNotice('AI generation finished, but you have newer unsaved edits. Your screen was not overwritten. Review the saved result before merging.');
       } else if (result.terminal) {
@@ -1094,9 +1098,14 @@ export default function ProjectFlowHiveCenter() {
   }
 
   async function runAiPlannerOperation() {
+    await generatePlannerProposal(false);
+  }
+
+  async function generatePlannerProposal(forceNew = false) {
     const projectId = selectedProjectId;
     if (!projectId || !canEditPlanner || plannerObserved) return;
     if (!workingCopyReady.current) { setError('Wait for the current working-copy revision before generating.'); return; }
+    if (!forceNew && aiPreview?.candidateAvailable && aiPreview?.projectId === projectId) { setActiveView('planner'); return; }
     displayingVersion.current = null;
     plannerObservation.current?.abort();
     const controller = new AbortController();
@@ -1132,6 +1141,15 @@ export default function ProjectFlowHiveCenter() {
     } finally {
       if (isCurrent() && plannerObservation.current === controller) setBusy('');
     }
+  }
+
+  async function acceptReviewedPlanner(result) {
+    if (result.projectId !== projectRef.current) return;
+    plannerObservation.current?.abort();
+    const controller = new AbortController();
+    plannerObservation.current = controller;
+    setAiPreview(result);
+    await followPlanner(result, result.projectId, editEpoch.current, controller);
   }
 
   async function previewAiRequest() {
@@ -1297,6 +1315,11 @@ export default function ProjectFlowHiveCenter() {
             <label>Saved FlowHive plan<select value={draftPlan?.planId || ''} onChange={(event) => loadSavedPlan(event.target.value)}><option value="">New unsaved plan</option>{savedPlans.filter((plan) => !selectedProjectId || plan.projectId === selectedProjectId).map((plan) => <option key={plan.planId} value={plan.planId}>{plan.planName} · v{plan.currentVersion}{plan.baselineVersion ? ` · baseline v${plan.baselineVersion}` : ''}</option>)}</select></label>
             <label>Baseline review note<input value={baselineNote} onChange={(event) => setBaselineNote(event.target.value)} placeholder="Required reviewer decision note" /></label>
           </div>
+          {aiPreview?.candidateAvailable && aiPreview?.projectId === selectedProjectId ? <ProjectFlowHivePlannerReview
+            key={`${selectedProjectId}:${aiPreview.runId}:${enterprise?.workingCopy?.rowVersion || ''}`}
+            projectId={selectedProjectId} runId={aiPreview.runId} getJson={getJson} postJson={postJson}
+            canEdit={canEditPlanner} hasLocalEdits={dirty} onApplied={acceptReviewedPlanner}
+            onRegenerate={() => generatePlannerProposal(true)} /> : null}
           {!draftPlan ? <EmptyState>Select an authorized project and create or load a FlowHive draft.</EmptyState> : (
             <>
               <div className="flowhive-plan-metadata flowhive-planner-metadata">

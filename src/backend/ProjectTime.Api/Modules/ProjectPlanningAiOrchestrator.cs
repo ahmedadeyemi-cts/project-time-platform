@@ -190,7 +190,7 @@ internal static class ProjectPlanningAiOrchestrator
             // Bind identity to the exact SOW version before deriving stable task IDs.
             // FlowHive must preserve native task phases, not multiply a scaffold.
             generated = string.Equals(capabilityCode, CelarAiCapabilityCatalog.ProjectFlowHivePlan, StringComparison.OrdinalIgnoreCase)
-                ? ProjectFlowHiveExecutablePlanBuilder.Build(seed with
+                ? ProjectFlowHiveExecutablePlanBuilder.BuildCandidate(seed with
                 {
                     SowVersion = documents.StatementOfWork?.ActiveVersionId?.ToString("D"),
                     GsdVersion = documents.GeneralSolutionDesign?.ActiveVersionId?.ToString("D")

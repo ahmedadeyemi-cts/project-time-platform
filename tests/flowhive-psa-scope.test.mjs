@@ -22,6 +22,8 @@ test('a manifest cannot authorize deployment, secrets, source transport or unrel
 });
 test('only specified FlowHive migrations are accepted', () => {
   const name='database/migrations/104_flowhive_bounded_ai_execution.sql';verifyPaths([name], [name]);
+  for (const name of ['database/migrations/105_flowhive_reviewed_regeneration.sql', 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql']) verifyPaths([name], [name]);
+  assert.throws(() => verifyPaths(['database/migrations/106_unreviewed.sql'], ['database/migrations/106_unreviewed.sql']));
   assert.throws(() => verifyPaths(['database/migrations/999_unreviewed.sql'], ['database/migrations/999_unreviewed.sql']));
 });
 test('read-only validation cannot acquire deployment privileges', () => {

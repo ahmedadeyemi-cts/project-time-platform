@@ -171,4 +171,62 @@ try { await Sql("UPDATE project_flowhive_ai_planner_runs SET saved_working_revis
 catch(PostgresException) { Check(true,"database prevents rewriting the committed readback receipt"); }
 try { await Sql(File.ReadAllText(Path.Combine(root,"database/rollback/104_flowhive_bounded_ai_execution_rollback.sql"))); throw new Exception("Destructive rollback was accepted"); }
 catch(PostgresException) { Check(true,"rollback preserves execution evidence after use"); }
+// These checks execute only against the explicitly supplied disposable database.
+// They exercise the actual atomic review write helper, not substitute SQL success.
+var reviewMigration=File.ReadAllText(Path.Combine(root,"database/migrations/105_flowhive_reviewed_regeneration.sql"));
+await Sql(reviewMigration);await Sql(reviewMigration);
+Check((long)(await Sql("SELECT count(*) FROM schema_migrations WHERE migration_id='105_flowhive_reviewed_regeneration'"))! == 1,"review migration is idempotent");
+var reviewRun=await Queue("explicit reviewed proposal",savedVersion);
+await using(var c=new NpgsqlConnection(cs))
+{
+    await c.OpenAsync();
+    await Invoke("UpdateRunAsync",c,reviewRun,"completed","candidate_review_required",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,null);
+    var loaded=(await Invoke("LoadRunAsync",c,project,reviewRun,CancellationToken.None))!;
+    var projected=JsonSerializer.SerializeToElement(module.GetMethod("ToResponse",BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,[loaded]),new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    Check(projected.GetProperty("candidateAvailable").GetBoolean() && projected.GetProperty("candidate").GetProperty("persisted").GetBoolean(),"staged proposal has an observable durable candidate receipt");
+    Check(!projected.GetProperty("workingDraft").GetProperty("persisted").GetBoolean(),"staged proposal cannot masquerade as an adopted working copy");
+}
+Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@p",("p",project)))! == savedVersion,"candidate staging does not rewrite the working plan");
+var reviewChoices=new[]{new ProjectFlowHiveExistingTaskDecision("1.1","1.1")};
+var reviewed=ProjectFlowHivePlannerReview.Merge(reviewRun,seed,seed,reviewChoices);
+var reviewNote="Explicit synthetic mapping approved for this database transaction test.";
+var previewHash=ProjectFlowHivePlannerReview.Fingerprint(reviewRun,savedVersion,reviewed,reviewChoices,reviewNote);
+var reviewRequest=new ProjectFlowHivePlannerReviewRequest(savedVersion,reviewChoices,reviewNote,previewHash);
+async Task CommitReview(Guid candidateRun,ProjectFlowHivePlannerReviewRequest request)
+{
+    await using var c=new NpgsqlConnection(cs);await c.OpenAsync();await using var t=await c.BeginTransactionAsync();
+    try {
+        await Invoke("CommitReviewedCandidateAsync",c,t,candidateRun,project,actor,seed,seed,reviewed,request,
+            reviewNote,previewHash,ProjectFlowHiveScheduleEngine.Validate(reviewed),ProjectFlowHiveScheduleEngine.Calculate(reviewed),CancellationToken.None);
+        await t.CommitAsync();
+    } catch { await t.RollbackAsync();throw; }
+}
+await CommitReview(reviewRun,reviewRequest);
+var reviewedVersion=(Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@p",("p",project)))!;
+Check(reviewedVersion!=savedVersion,"explicit review advances the working revision exactly once");
+Check((Guid)(await Sql("SELECT applied_row_version FROM project_flowhive_ai_plan_reviews WHERE run_id=@r",("r",reviewRun)))! == reviewedVersion,"immutable review receipt matches the saved working revision");
+Check((Guid)(await Sql("SELECT saved_working_row_version FROM project_flowhive_ai_planner_runs WHERE run_id=@r",("r",reviewRun)))! == reviewedVersion,"terminal run receipt and review audit reconcile");
+Check((bool)(await Sql("SELECT prior_plan=@prior::jsonb AND candidate_plan=@prior::jsonb AND applied_plan=@applied::jsonb FROM project_flowhive_ai_plan_reviews WHERE run_id=@r",
+    ("r",reviewRun),("prior",JsonSerializer.Serialize(seed,new JsonSerializerOptions(JsonSerializerDefaults.Web))),
+    ("applied",JsonSerializer.Serialize(reviewed,new JsonSerializerOptions(JsonSerializerDefaults.Web)))))!,"immutable review retains complete prior, candidate and applied snapshots");
+try {await CommitReview(reviewRun,reviewRequest);throw new Exception("Stale duplicate review was written");}
+catch(InvalidOperationException){Check(true,"a stale or duplicate direct commit cannot replace newer work");}
+Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@p",("p",project)))! == reviewedVersion,"rejected duplicate leaves the saved revision unchanged");
+foreach(var mutation in new[]{"UPDATE project_flowhive_ai_plan_reviews SET review_note='changed later' WHERE run_id=@r", "DELETE FROM project_flowhive_ai_plan_reviews WHERE run_id=@r"})
+{
+    try{await Sql(mutation,("r",reviewRun));throw new Exception("Review audit mutation allowed");}
+    catch(PostgresException){Check(true,"review audit rejects later mutation or deletion");}
+}
+var interruptedReview=await Queue("interrupted reviewed proposal",reviewedVersion);
+await using(var c=new NpgsqlConnection(cs))
+{
+    await c.OpenAsync();
+    await Invoke("UpdateRunAsync",c,interruptedReview,"needs_attention","cancelled",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,null);
+}
+try{await CommitReview(interruptedReview,reviewRequest with {ExpectedWorkingRowVersion=reviewedVersion});throw new Exception("Cancelled review committed");}
+catch(InvalidOperationException){Check(true,"failed final review guard rolls back working-copy and audit writes together");}
+Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@p",("p",project)))! == reviewedVersion,"failed review preserves the prior working revision");
+Check((long)(await Sql("SELECT count(*) FROM project_flowhive_ai_plan_reviews WHERE run_id=@r",("r",interruptedReview)))! == 0,"failed review does not leave a false immutable success receipt");
+try{await Sql(File.ReadAllText(Path.Combine(root,"database/rollback/105_flowhive_reviewed_regeneration_rollback.sql")));throw new Exception("Destructive review rollback allowed");}
+catch(PostgresException){Check(true,"migration rollback cannot remove retained review evidence");}
 Console.WriteLine($"FLOWHIVE_EXECUTION_ASSERTIONS_PASSED={count}");

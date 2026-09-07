@@ -23,6 +23,14 @@ public static class ProjectFlowHiveExecutablePlanBuilder
         "Translate the cited scope"
     ];
 
+    /// <summary>Produces an isolated proposal; persistence/review owns reconciliation of the prior graph.</summary>
+    public static ProjectFlowHivePlanRequest BuildCandidate(ProjectFlowHivePlanRequest seed,
+        PulseAiPrivateFlowHivePlan plan, IReadOnlySet<int> authorizedCitationIds)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        return Build(seed with { Milestones = [] }, plan, authorizedCitationIds);
+    }
+
     public static ProjectFlowHivePlanRequest Build(
         ProjectFlowHivePlanRequest seed,
         PulseAiPrivateFlowHivePlan plan,
