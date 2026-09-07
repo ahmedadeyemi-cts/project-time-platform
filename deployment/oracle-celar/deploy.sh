@@ -310,6 +310,7 @@ caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null
 install -m 0755 \
   "$ROOT/gitops.sh" \
   "$ROOT/health-check.sh" \
+  "$ROOT/verify-ollama-memory-policy.py" \
   "$ROOT/backup.sh" \
   "$ROOT/restore.sh" \
   "$ROOT/ollama-update.sh" \

@@ -1,0 +1,35 @@
+name: Admit exact FlowHive PSA candidate to Protected Test
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  actions: write
+  contents: read
+  issues: write
+concurrency:
+  group: module025-protected-uat-control
+  queue: max
+  cancel-in-progress: false
+jobs:
+  admit:
+    if: >-
+      github.repository == 'ahmedadeyemi-cts/project-time-platform' &&
+      github.event.issue.number == 872 && github.event.issue.pull_request &&
+      github.actor == 'ahmedadeyemi-cts' &&
+      startsWith(github.event.comment.body, 'DEPLOY FLOWHIVE PSA PROTECTED TEST SHA ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out trusted main admission controls only
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Authorize, dispatch once and reseal the canonical Test controller
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release-test/dispatch-flowhive-psa-test.mjs

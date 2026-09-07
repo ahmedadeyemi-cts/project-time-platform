@@ -46,9 +46,8 @@ jobs:
           git rev-parse HEAD > /tmp/flowhive-source-evidence/REVISION
           git archive --format=tar.gz HEAD > /tmp/flowhive-source-evidence/source.tar.gz
           git update-ref refs/heads/evidence-flowhive HEAD
-          git update-ref refs/heads/evidence-main 8c84d91b8a4f7d1583118f6d701185b355c9684f
-          git update-ref refs/heads/evidence-sow-874 5f7f731aea64226dab791ad3602b9c9cfd8afd44
-          git bundle create /tmp/flowhive-source-evidence/integration.bundle refs/heads/evidence-flowhive refs/heads/evidence-main refs/heads/evidence-sow-874
+          git update-ref refs/heads/evidence-main refs/remotes/origin/main
+          git bundle create /tmp/flowhive-source-evidence/integration.bundle refs/heads/evidence-flowhive refs/heads/evidence-main
           git bundle verify /tmp/flowhive-source-evidence/integration.bundle
           cd /tmp/flowhive-source-evidence
           sha256sum source.tar.gz integration.bundle > SHA256SUMS

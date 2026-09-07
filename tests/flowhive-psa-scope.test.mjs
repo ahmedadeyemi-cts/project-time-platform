@@ -31,3 +31,12 @@ test('read-only validation cannot acquire deployment privileges', () => {
     '    id-token: write\n', '    token: ${{ secrets.PRODUCTION_KEY }}\n'])
     assert.throws(() => verifyReadOnlyWorkflow(good+addition, 'fixture'));
 });
+
+test('inherited admission CI may inspect with a read-only repository token only', () => {
+  const name='.github/workflows/flowhive-psa-release-control-ci.yml';
+  const text='permissions:\n  contents: read\n  actions: read\njobs:\n  test:\n    env:\n      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n';
+  verifyReadOnlyWorkflow(text,name);
+  assert.throws(()=>verifyReadOnlyWorkflow(text.replace('actions: read','actions: write'),name));
+  assert.throws(()=>verifyReadOnlyWorkflow(text.replace('secrets.GITHUB_TOKEN','secrets.AZURE_PASSWORD'),name));
+  assert.throws(()=>verifyReadOnlyWorkflow(text,'.github/workflows/other.yml'));
+});

@@ -77,6 +77,10 @@ CLAM_PING="$(printf 'zPING\0' | nc -N -w 5 "$CLAMAV_HOST" "$CLAMAV_PORT" 2>/dev/
 [[ "$CLAM_PING" == PONG ]] || fail "ClamAV TCP health failed: ${CLAM_PING:-no-response}"
 
 systemctl is-active --quiet ollama.service || fail 'Ollama is not active.'
+# Verify the running daemon, not merely a drop-in that may not have been applied.
+OLLAMA_MAIN_PID="$(systemctl show ollama.service --property=MainPID --value)"
+python3 "$ROOT/verify-ollama-memory-policy.py" "$MANIFEST" "$OLLAMA_MAIN_PID" \
+  || fail 'The running Ollama daemon does not satisfy the memory concurrency policy.'
 OLLAMA_VERSION_JSON="$(curl -fsS --max-time 5 http://127.0.0.1:11434/api/version)" || fail 'Ollama version endpoint failed.'
 jq -e '.version | strings | length > 0' <<<"$OLLAMA_VERSION_JSON" >/dev/null || fail 'Ollama version response is invalid.'
 MODEL_LIST="$(ollama list 2>/dev/null || true)"

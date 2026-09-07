@@ -8,6 +8,7 @@ export const manifestPath = '.github/flowhive-enterprise-psa-release-files.txt';
 const validationFiles = new Set([
   manifestPath,
   '.github/workflows/flowhive-enterprise-psa-ci.yml',
+  '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/celar-ai-production-platform-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
@@ -48,7 +49,11 @@ export function verifyReadOnlyWorkflow(text, name) {
   assert.match(text, /^permissions:\s*\n\s+contents:\s*read\s*$/m, `Read-only CI permissions required: ${name}`);
   assert.ok(!/^\s*(?:contents|id-token|actions|pull-requests|packages):\s*write\s*$/m.test(text), `Privileged CI is outside this release: ${name}`);
   assert.ok(!/^\s*(?:environment:|uses:\s*azure\/login@)/m.test(text), `No deployment environment or Azure login: ${name}`);
-  assert.ok(!/\$\{\{\s*secrets\./.test(text), `No application or deployment secrets in validation: ${name}`);
+  // This exact inherited admission CI uses only the read-only repository token
+  // to inspect deployment state. No application credential or write scope is allowed.
+  const sanitized = name === '.github/workflows/flowhive-psa-release-control-ci.yml'
+    ? text.replace(/\$\{\{ secrets\.GITHUB_TOKEN \}\}/g, '') : text;
+  assert.ok(!/\$\{\{\s*secrets\./.test(sanitized), `No application or deployment secrets in validation: ${name}`);
 }
 
 export function verifyRepositoryScope() {

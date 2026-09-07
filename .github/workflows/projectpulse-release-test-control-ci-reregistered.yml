@@ -334,11 +334,13 @@ jobs:
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$CIT/diff"
-          if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
+          if [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
             echo 'EXACT_CELAR_RUNTIME_VERSION_CENTER_SCOPE=PASSED'
-          elif [[ "$HEAD_BRANCH" == fix/sow-transport-prompt-20260906 || "$HEAD_BRANCH" == fix/sow-phase-runtime-retry-20260906 || "$HEAD_BRANCH" == fix/sow-generation-uat-20260906 || "$HEAD_BRANCH" == fix/flowhive-terminal-refusal-diagnostics-20260906 || "$HEAD_BRANCH" == fix/celar-runtime-preflight-evidence-20260906 || "$HEAD_BRANCH" == fix/celar-sow-cpu-inference-20260905 || "$HEAD_BRANCH" == fix/celar-sow-runtime-deadlines-20260905 || "$HEAD_BRANCH" == fix/celar-oracle-token-budget-20260905 || "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
+          elif [[ "$HEAD_BRANCH" == fix/sow-runtime-diagnostics-and-uat-isolation-20260906 || "$HEAD_BRANCH" == fix/sow-transport-prompt-20260906 || "$HEAD_BRANCH" == fix/sow-phase-runtime-retry-20260906 || "$HEAD_BRANCH" == fix/sow-generation-uat-20260906 || "$HEAD_BRANCH" == fix/flowhive-terminal-refusal-diagnostics-20260906 || "$HEAD_BRANCH" == fix/celar-runtime-preflight-evidence-20260906 || "$HEAD_BRANCH" == fix/celar-sow-cpu-inference-20260905 || "$HEAD_BRANCH" == fix/celar-sow-runtime-deadlines-20260905 || "$HEAD_BRANCH" == fix/celar-oracle-token-budget-20260905 || "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
           elif [[ "$HEAD_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
             node tests/flowhive-psa-scope.mjs

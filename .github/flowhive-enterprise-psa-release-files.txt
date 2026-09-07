@@ -1,6 +1,7 @@
 .github/flowhive-enterprise-psa-release-files.txt
 .github/workflows/celar-ai-production-platform-ci.yml
 .github/workflows/flowhive-enterprise-psa-ci.yml
+.github/workflows/flowhive-psa-release-control-ci.yml
 .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
 database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql
@@ -38,6 +39,7 @@ tests/flowhive-psa-browser-bundle.mjs
 tests/flowhive-psa-operation.test.mjs
 tests/flowhive-psa-planner-layout.py
 tests/flowhive-psa-react-browser.py
+tests/flowhive-psa-release-workflow.test.py
 tests/flowhive-psa-scope.mjs
 tests/flowhive-psa-scope.test.mjs
 tests/test-pulse-ai-runtime-job-query-shape.sh
