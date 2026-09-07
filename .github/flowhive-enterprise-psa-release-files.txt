@@ -36,6 +36,7 @@ tests/FlowHiveExecutablePlanTests/Program.cs
 tests/FlowHiveExecutionTests/FlowHiveExecutionTests.csproj
 tests/FlowHiveExecutionTests/Program.cs
 tests/flowhive-psa-browser-bundle.mjs
+tests/flowhive-psa-migration-fixture.py
 tests/flowhive-psa-operation.test.mjs
 tests/flowhive-psa-planner-layout.py
 tests/flowhive-psa-react-browser.py

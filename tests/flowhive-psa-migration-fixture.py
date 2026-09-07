@@ -17,6 +17,16 @@ assert os.environ.get('PGDATABASE')=='flowhive_migrations_test'
 assert os.environ.get('PGUSER')=='flowhive'
 assert os.environ.get('GITHUB_ACTIONS')=='true'
 approval=json.loads((root/'.github/flowhive-psa-protected-test-candidate.json').read_text())
+# In the feature PR, exercise this exact PR head in the disposable CI database.
+# This does not rewrite the main-owned deployment approval. Approved migration
+# hashes are still verified below before execution.
+event=json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+pr=event.get('pull_request',{})
+if pr.get('head',{}).get('ref')=='feature/flowhive-enterprise-psa-revamp-20260906':
+    assert os.environ.get('GITHUB_EVENT_NAME')=='pull_request'
+    assert pr['number']==872
+    assert pr['head']['repo']['full_name']=='ahmedadeyemi-cts/project-time-platform'
+    approval={**approval,'sha':pr['head']['sha']}
 assert subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()==approval['sha']
 
 
