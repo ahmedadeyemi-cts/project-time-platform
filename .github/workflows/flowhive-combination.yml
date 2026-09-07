@@ -1,0 +1,85 @@
+name: Verify combined FlowHive and PR874 source
+on:
+  push:
+    branches: ['tooling/pr874-reviewed-integration-20260907']
+    paths: ['.github/flowhive-combination.py', '.github/workflows/flowhive-combination.yml']
+permissions:
+  contents: write
+concurrency:
+  group: flowhive-pr874-combination
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 0a3e7547f0e602476d421c97d7250ffe82bdd662
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reconstruct the reviewed combined tree without remote ref changes
+        working-directory: source
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'FlowHive combination verification'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git branch reviewed-874 0311019df5caf3fe1cd5679ebe479bce9c756798
+          git update-ref refs/remotes/origin/main reviewed-874
+          set +e
+          git merge --no-commit --no-ff reviewed-874
+          result=$?
+          set -e
+          test "$result" = 1
+          test "$(git diff --name-only --diff-filter=U)" = 'tests/validate-celar-ai-pr630-consolidated.mjs'
+          python3 ../tools/.github/flowhive-combination.py
+          git commit -m 'Verify exact combined FlowHive and PR874 tree locally'
+          test "$(git rev-parse HEAD^{tree})" = 9881683270bc62d00f99c67404e5acd25d71451f
+      - name: Exercise exact feature scope and combined operation contracts
+        working-directory: source
+        env:
+          CONTROL_BASE: 0311019df5caf3fe1cd5679ebe479bce9c756798
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install PyYAML==6.0.3
+          node tests/flowhive-psa-scope.mjs
+          node --test tests/flowhive-psa-*.test.mjs
+          python3 tests/flowhive-psa-release-workflow.test.py
+          python3 tests/flowhive-psa-live-uat.test.py
+          python3 tests/test-sow-uat-isolation.py
+          git diff --exit-code
+      - name: Publish exact feature text blobs only
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,subprocess,urllib.request
+          git=lambda *a:subprocess.check_output(['git',*a],text=True).strip()
+          assert git('rev-parse','HEAD^{tree}')=='9881683270bc62d00f99c67404e5acd25d71451f'
+          names=git('diff','--name-only','reviewed-874','HEAD').splitlines()
+          assert len(names)==47 and names==pathlib.Path('.github/flowhive-enterprise-psa-release-files.txt').read_text().splitlines()
+          objects=[]
+          for name in names:
+              data=pathlib.Path(name).read_bytes();sha=git('rev-parse','HEAD:'+name)
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+              req=urllib.request.Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',data=json.dumps({'content':base64.b64encode(data).decode(),'encoding':'base64'}).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(req,timeout=30) as response:assert json.load(response)['sha']==sha
+              objects.append({'path':name,'sha':sha,'mode':git('ls-tree','HEAD',name).split()[0],'type':'blob'})
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'flowhive-combined';out.mkdir()
+          (out/'objects.json').write_text(json.dumps(objects,indent=2)+'\n')
+          print('EXACT_FEATURE_BLOBS=47 REMOTE_REF_UPDATES=0 ENVIRONMENT_MUTATIONS=0')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-pr874-combined-source
+          path: ${{ runner.temp }}/flowhive-combined/
+          retention-days: 1
+          if-no-files-found: error
