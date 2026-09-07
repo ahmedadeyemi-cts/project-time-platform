@@ -1,6 +1,9 @@
 name: FlowHive Enterprise PSA CI
 
 on:
+  push:
+    branches: ['feature/flowhive-enterprise-psa-revamp-20260906']
+    paths: ['.github/workflows/flowhive-enterprise-psa-ci.yml']
   pull_request:
     paths:
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHive*.cs'
@@ -22,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: flowhive-enterprise-psa-${{ github.event.pull_request.number || github.ref }}
+  group: flowhive-enterprise-psa-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -30,20 +33,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - name: Archive tracked source only with revision and checksum
+      - name: Archive tracked source and pinned integration history without credentials
         shell: bash
         run: |
           set -Eeuo pipefail
           mkdir -p /tmp/flowhive-source-evidence
           git rev-parse HEAD > /tmp/flowhive-source-evidence/REVISION
           git archive --format=tar.gz HEAD > /tmp/flowhive-source-evidence/source.tar.gz
+          git update-ref refs/heads/evidence-flowhive HEAD
+          git update-ref refs/heads/evidence-main 8c84d91b8a4f7d1583118f6d701185b355c9684f
+          git update-ref refs/heads/evidence-sow-874 5f7f731aea64226dab791ad3602b9c9cfd8afd44
+          git bundle create /tmp/flowhive-source-evidence/integration.bundle refs/heads/evidence-flowhive refs/heads/evidence-main refs/heads/evidence-sow-874
+          git bundle verify /tmp/flowhive-source-evidence/integration.bundle
           cd /tmp/flowhive-source-evidence
-          sha256sum source.tar.gz > SHA256SUMS
-      - uses: actions/upload-artifact@v4
+          sha256sum source.tar.gz integration.bundle > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: flowhive-source-${{ github.event.pull_request.head.sha || github.sha }}
           path: /tmp/flowhive-source-evidence/
