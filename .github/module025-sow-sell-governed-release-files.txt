@@ -1,5 +1,6 @@
 .github/module025-sow-sell-governed-release-files.txt
 .github/workflows/module025-governed-protected-test-release-ci.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
 database/migrations/106_module025_sow_sell_register.sql
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
