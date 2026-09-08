@@ -706,26 +706,70 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
     var pdfLongDescription =
         $"Detailed scope for {artifactKind}: Café's quoted delivery description / formula-like text =SUM(A1) " +
         "must wrap across lines without losing punctuation or the final acceptance phrase.";
-    var pdfRows = Enumerable.Range(1, 26)
-        .Select(index => (IReadOnlyList<object?>)new object?[]
-        {
-            $"T-{index:00}",
-            index == 1 ? pdfLongDescription : $"Résumé task {index:00} - 東京 review",
-            new DateOnly(2026, 9, Math.Min(index, 30)),
-            index * 1.5m,
-            index == 1 ? "Names, punctuation (quoted), and wrapping" : "Review",
-            index == 1 ? "München 東京" : "é東京",
-            $"Owner {index:00}"
-        })
-        .ToArray();
+    IReadOnlyList<string> pdfColumns;
+    IReadOnlyList<IReadOnlyList<object?>> pdfRows;
+    if (artifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase))
+    {
+        pdfColumns = ["WBS", "Task", "Start", "End", "Duration", "Start Offset", "Critical", "Float", "Predecessor"];
+        pdfRows = Enumerable.Range(1, 26)
+            .Select(index => (IReadOnlyList<object?>)new object?[]
+            {
+                $"T-{index:00}",
+                index == 1 ? pdfLongDescription : $"Résumé task {index:00} - 東京 review",
+                new DateOnly(2026, 9, Math.Min(index, 30)),
+                new DateOnly(2026, 9, Math.Min(index + 2, 30)),
+                index + 2,
+                index,
+                index == 1 ? "Yes" : "No",
+                0,
+                ""
+            })
+            .ToArray();
+    }
+    else if (artifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase))
+    {
+        pdfColumns = ["Start Date", "End Date", "WBS", "Phase", "Task", "Assigned Identity", "Status"];
+        pdfRows = Enumerable.Range(1, 26)
+            .Select(index => (IReadOnlyList<object?>)new object?[]
+            {
+                index <= 15
+                    ? new DateOnly(2026, 9, index)
+                    : new DateOnly(2026, 10, index - 15),
+                index <= 15
+                    ? new DateOnly(2026, 9, Math.Min(index + 2, 30))
+                    : new DateOnly(2026, 10, Math.Min(index - 13, 30)),
+                $"T-{index:00}",
+                $"Phase {index:00}",
+                index == 1 ? pdfLongDescription : $"Résumé task {index:00} - 東京 review",
+                $"Owner {index:00}",
+                index == 1 ? "At risk" : "Ready"
+            })
+            .ToArray();
+    }
+    else
+    {
+        pdfColumns = ["ID", "Description", "Due date", "Hours", "Notes", "Unicode", "Owner"];
+        pdfRows = Enumerable.Range(1, 26)
+            .Select(index => (IReadOnlyList<object?>)new object?[]
+            {
+                $"T-{index:00}",
+                index == 1 ? pdfLongDescription : $"Résumé task {index:00} - 東京 review",
+                new DateOnly(2026, 9, Math.Min(index, 30)),
+                index * 1.5m,
+                index == 1 ? "Names, punctuation (quoted), and wrapping" : "Review",
+                index == 1 ? "München 東京" : "é東京",
+                $"Owner {index:00}"
+            })
+            .ToArray();
+    }
     var pdfArtifact = exportArtifact with
     {
         Title = "München - 東京 delivery plan",
         ProjectName = "Résumé program - 東京",
         CustomerName = "株式会社 東京",
-        Columns = ["ID", "Description", "Due date", "Hours", "Notes", "Unicode", "Owner"],
+        Columns = pdfColumns,
         Rows = pdfRows,
-        Notes = ["Résumé note - 東京", "Punctuation: quoted scope / 100% ready"]
+        Notes = [pdfLongDescription, "Résumé note - 東京"]
     };
 
     var exportBytes = ProjectFlowHivePsaArtifactRenderer.BuildExcel(exportArtifact);
@@ -808,6 +852,20 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
     Assert(pdfText.Contains("=SUM(A1)", StringComparison.Ordinal)
         && !pdfText.Contains("'=SUM(A1)", StringComparison.Ordinal),
         $"pdf_{artifactKind}_does_not_apply_spreadsheet_apostrophe_escaping");
+    if (artifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase))
+    {
+        Assert(pdfText.Contains("Graphical Gantt schedule", StringComparison.Ordinal)
+            && pdfText.Contains("SCHEDULE / DATES", StringComparison.Ordinal)
+            && pdfText.Contains("critical", StringComparison.Ordinal),
+            "pdf_gantt_uses_graphical_schedule_layout");
+    }
+    if (artifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase))
+    {
+        Assert(pdfText.Contains("Graphical monthly calendar", StringComparison.Ordinal)
+            && pdfText.Contains("SUN", StringComparison.Ordinal)
+            && pdfText.Contains("SAT", StringComparison.Ordinal),
+            "pdf_monthly_calendar_uses_graphical_month_grid");
+    }
     if (!string.IsNullOrWhiteSpace(evidenceDirectory))
         Console.WriteLine($"PDF_EVIDENCE_{artifactKind}={Path.Combine(evidenceDirectory, $"{artifactKind}.pdf")}");
 }

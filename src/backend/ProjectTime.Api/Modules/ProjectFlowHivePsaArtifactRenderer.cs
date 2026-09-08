@@ -128,15 +128,46 @@ internal static class ProjectFlowHivePsaArtifactRenderer
             ?? throw new InvalidOperationException("The embedded US Signal logo could not be decoded.");
 
         var visibleColumns = artifact.Columns.Take(8).ToArray();
-        var pages = PaginateRows(artifact, visibleColumns, regularFont, textPaint);
         using var output = new MemoryStream();
         using var document = SKDocument.CreatePdf(output);
-        for (var index = 0; index < pages.Count; index++)
+        if (artifact.ArtifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase)
+            && TryBuildScheduleRows(artifact, isMonthlyCalendar: false, out var ganttRows))
         {
-            using var canvas = document.BeginPage(PdfWidth, PdfHeight);
-            DrawPdfPage(canvas, artifact, pages[index], visibleColumns, index + 1, pages.Count,
-                regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
-            document.EndPage();
+            var firstDate = ganttRows.Min(row => row.Start);
+            var lastDate = ganttRows.Max(row => row.End);
+            var pages = ganttRows.Chunk(13).Select(rows => rows.ToArray()).ToArray();
+            for (var index = 0; index < pages.Length; index++)
+            {
+                using var canvas = document.BeginPage(PdfWidth, PdfHeight);
+                DrawGanttPage(canvas, artifact, pages[index], firstDate, lastDate, index + 1, pages.Length,
+                    regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
+                document.EndPage();
+            }
+        }
+        else if (artifact.ArtifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase)
+            && TryBuildScheduleRows(artifact, isMonthlyCalendar: true, out var calendarRows))
+        {
+            var firstDate = calendarRows.Min(row => row.Start);
+            var lastDate = calendarRows.Max(row => row.End);
+            var months = EnumerateMonths(firstDate, lastDate);
+            for (var index = 0; index < months.Count; index++)
+            {
+                using var canvas = document.BeginPage(PdfWidth, PdfHeight);
+                DrawMonthlyCalendarPage(canvas, artifact, calendarRows, months[index], index + 1, months.Count,
+                    regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
+                document.EndPage();
+            }
+        }
+        else
+        {
+            var pages = PaginateRows(artifact, visibleColumns, regularFont, textPaint);
+            for (var index = 0; index < pages.Count; index++)
+            {
+                using var canvas = document.BeginPage(PdfWidth, PdfHeight);
+                DrawPdfPage(canvas, artifact, pages[index], visibleColumns, index + 1, pages.Count,
+                    regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
+                document.EndPage();
+            }
         }
         document.Close();
         return output.ToArray();
@@ -204,14 +235,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         var muted = new SKColor(0x57, 0x6A, 0x7B);
         var pale = new SKColor(0xF2, 0xF8, 0xFC);
 
-        canvas.DrawBitmap(logo, PdfRect(36, 520, 122, 577), new SKSamplingOptions(SKFilterMode.Linear));
-        DrawText(canvas, boldFont, textPaint, "US Signal Project FlowHive", 135, 568, navy);
-        DrawText(canvas, boldFont, textPaint, ControlLabel, 135, 548, cyan);
-        DrawWrappedText(canvas, boldFont, textPaint, artifact.Title, 36, 516, 936, navy, 1);
-        DrawText(canvas, regularFont, textPaint, $"Project: {Join(artifact.ProjectCode, artifact.ProjectName)}", 36, 496, body);
-        DrawText(canvas, regularFont, textPaint, $"Customer: {artifact.CustomerName}", 520, 496, body);
-        DrawText(canvas, regularFont, textPaint, $"Generated UTC: {DateTimeOffset.UtcNow:O}", 36, 480, muted);
-        DrawWrappedText(canvas, regularFont, textPaint, $"Notes: {string.Join(" - ", artifact.Notes)}", 36, 464, 936, muted, 2);
+        DrawPdfHeader(canvas, artifact, regularFont, boldFont, textPaint, logo, navy, cyan, body, muted);
 
         var left = PdfLeft;
         var tableWidth = PdfRight - PdfLeft;
@@ -241,10 +265,277 @@ internal static class ProjectFlowHivePsaArtifactRenderer
             top -= rowHeight;
         }
 
+        DrawPdfFooter(canvas, artifact, pageNumber, pageCount, regularFont, textPaint, strokePaint, muted);
+    }
+
+    private static void DrawPdfHeader(
+        SKCanvas canvas,
+        ProjectFlowHivePsaArtifactTable artifact,
+        SKFont regularFont,
+        SKFont boldFont,
+        SKPaint textPaint,
+        SKBitmap logo,
+        SKColor navy,
+        SKColor cyan,
+        SKColor body,
+        SKColor muted)
+    {
+        canvas.DrawBitmap(logo, PdfRect(36, 520, 122, 577), new SKSamplingOptions(SKFilterMode.Linear));
+        DrawText(canvas, boldFont, textPaint, "US Signal Project FlowHive", 135, 568, navy);
+        DrawText(canvas, boldFont, textPaint, ControlLabel, 135, 548, cyan);
+        DrawWrappedText(canvas, boldFont, textPaint, artifact.Title, 36, 516, 936, navy, 1);
+        DrawText(canvas, regularFont, textPaint, $"Project: {Join(artifact.ProjectCode, artifact.ProjectName)}", 36, 496, body);
+        DrawText(canvas, regularFont, textPaint, $"Customer: {artifact.CustomerName}", 520, 496, body);
+        DrawText(canvas, regularFont, textPaint, $"Generated UTC: {DateTimeOffset.UtcNow:O}", 36, 480, muted);
+        DrawWrappedText(canvas, regularFont, textPaint, $"Notes: {string.Join(" - ", artifact.Notes)}", 36, 464, 936, muted, 2);
+    }
+
+    private static void DrawPdfFooter(
+        SKCanvas canvas,
+        ProjectFlowHivePsaArtifactTable artifact,
+        int pageNumber,
+        int pageCount,
+        SKFont regularFont,
+        SKPaint textPaint,
+        SKPaint strokePaint,
+        SKColor muted)
+    {
         strokePaint.Color = new SKColor(0xAD, 0xC4, 0xD3);
         canvas.DrawLine(36, PdfScreenY(53), 972, PdfScreenY(53), strokePaint);
         DrawText(canvas, regularFont, textPaint, $"Artifact type: {artifact.ArtifactKind} · Logo SHA-256 {ProjectFlowHiveBrandAssets.LogoSha256}", 36, 35, muted);
         DrawText(canvas, regularFont, textPaint, $"Page {pageNumber} of {pageCount}", 915, 35, muted);
+    }
+
+    private sealed record PdfScheduleRow(
+        DateOnly Start,
+        DateOnly End,
+        string Label,
+        string Secondary,
+        string Status,
+        bool Critical);
+
+    private static bool TryBuildScheduleRows(
+        ProjectFlowHivePsaArtifactTable artifact,
+        bool isMonthlyCalendar,
+        out List<PdfScheduleRow> scheduleRows)
+    {
+        scheduleRows = [];
+        var startColumn = isMonthlyCalendar ? 0 : 2;
+        var endColumn = isMonthlyCalendar ? 1 : 3;
+        var labelColumn = isMonthlyCalendar ? 4 : 1;
+        var secondaryColumn = isMonthlyCalendar ? 5 : 0;
+        var statusColumn = isMonthlyCalendar ? 6 : 6;
+
+        foreach (var row in artifact.Rows)
+        {
+            if (row.Count <= Math.Max(Math.Max(startColumn, endColumn), labelColumn)
+                || !TryReadPdfDate(row[startColumn], out var start)
+                || !TryReadPdfDate(row[endColumn], out var end))
+                continue;
+
+            if (end < start) (start, end) = (end, start);
+            var label = DisplayValue(row[labelColumn]).Trim();
+            if (label.Length == 0) label = "Unlabeled task";
+            var secondary = row.Count > secondaryColumn ? DisplayValue(row[secondaryColumn]).Trim() : string.Empty;
+            var status = row.Count > statusColumn ? DisplayValue(row[statusColumn]).Trim() : string.Empty;
+            var critical = !isMonthlyCalendar
+                && row.Count > 6
+                && string.Equals(DisplayValue(row[6]), "Yes", StringComparison.OrdinalIgnoreCase);
+            scheduleRows.Add(new PdfScheduleRow(start, end, label, secondary, status, critical));
+        }
+
+        return scheduleRows.Count > 0;
+    }
+
+    private static bool TryReadPdfDate(object? value, out DateOnly date)
+    {
+        switch (value)
+        {
+            case DateOnly dateOnly:
+                date = dateOnly;
+                return true;
+            case DateTimeOffset dateTimeOffset:
+                date = DateOnly.FromDateTime(dateTimeOffset.UtcDateTime);
+                return true;
+            case DateTime dateTime:
+                date = DateOnly.FromDateTime(dateTime);
+                return true;
+        }
+
+        return DateOnly.TryParse(
+            DisplayValue(value),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AllowWhiteSpaces,
+            out date);
+    }
+
+    private static List<DateOnly> EnumerateMonths(DateOnly firstDate, DateOnly lastDate)
+    {
+        var month = new DateOnly(firstDate.Year, firstDate.Month, 1);
+        var lastMonth = new DateOnly(lastDate.Year, lastDate.Month, 1);
+        var months = new List<DateOnly>();
+        while (month <= lastMonth)
+        {
+            months.Add(month);
+            month = month.AddMonths(1);
+        }
+        return months;
+    }
+
+    private static void DrawGanttPage(
+        SKCanvas canvas,
+        ProjectFlowHivePsaArtifactTable artifact,
+        IReadOnlyList<PdfScheduleRow> rows,
+        DateOnly firstDate,
+        DateOnly lastDate,
+        int pageNumber,
+        int pageCount,
+        SKFont regularFont,
+        SKFont boldFont,
+        SKPaint textPaint,
+        SKPaint fillPaint,
+        SKPaint strokePaint,
+        SKBitmap logo)
+    {
+        var navy = new SKColor(0x0B, 0x2B, 0x4B);
+        var cyan = new SKColor(0x0B, 0x6E, 0x99);
+        var body = new SKColor(0x0F, 0x29, 0x44);
+        var muted = new SKColor(0x57, 0x6A, 0x7B);
+        var pale = new SKColor(0xF2, 0xF8, 0xFC);
+        var critical = new SKColor(0xB7, 0x3A, 0x3A);
+
+        DrawPdfHeader(canvas, artifact, regularFont, boldFont, textPaint, logo, navy, cyan, body, muted);
+        DrawText(canvas, boldFont, textPaint, "Graphical Gantt schedule", 36, 438, navy);
+
+        const float labelLeft = 36f;
+        const float labelRight = 308f;
+        const float timelineLeft = 316f;
+        const float timelineRight = 972f;
+        const float headerBottom = 406f;
+        const float headerTop = 428f;
+        const float rowHeight = 23f;
+        const float firstRowTop = 402f;
+        var totalDays = Math.Max(1, lastDate.DayNumber - firstDate.DayNumber + 1);
+        var timelineWidth = timelineRight - timelineLeft;
+
+        fillPaint.Color = navy;
+        canvas.DrawRect(PdfRect(labelLeft, headerBottom, timelineRight, headerTop), fillPaint);
+        DrawText(canvas, boldFont, textPaint, "WBS / TASK", labelLeft + 4, 419, SKColors.White);
+        DrawText(canvas, boldFont, textPaint, "SCHEDULE / DATES", timelineLeft + 4, 420, SKColors.White);
+
+        for (var dayOffset = 0; dayOffset <= totalDays; dayOffset += 7)
+        {
+            var x = timelineLeft + (dayOffset / (float)totalDays * timelineWidth);
+            if (dayOffset < totalDays)
+            {
+                var tickDate = firstDate.AddDays(dayOffset);
+                DrawText(canvas, regularFont, textPaint, tickDate.ToString("MM/dd", CultureInfo.InvariantCulture), x + 2, 410, SKColors.White);
+            }
+        }
+
+        var top = firstRowTop;
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        {
+            var row = rows[rowIndex];
+            var bottom = top - rowHeight;
+            fillPaint.Color = rowIndex % 2 == 0 ? pale : SKColors.White;
+            canvas.DrawRect(PdfRect(labelLeft, bottom, timelineRight, top), fillPaint);
+            strokePaint.Color = new SKColor(0xD0, 0xDD, 0xE6);
+            canvas.DrawRect(PdfRect(labelLeft, bottom, timelineRight, top), strokePaint);
+            for (var dayOffset = 0; dayOffset <= totalDays; dayOffset += 7)
+            {
+                var x = timelineLeft + (dayOffset / (float)totalDays * timelineWidth);
+                strokePaint.Color = new SKColor(0xC4, 0xD5, 0xE0);
+                canvas.DrawLine(x, PdfScreenY(bottom), x, PdfScreenY(top), strokePaint);
+            }
+            DrawWrappedText(canvas, regularFont, textPaint, row.Label, labelLeft + 4, top - 8, labelRight - labelLeft - 8, body, 2);
+
+            var startOffset = Math.Clamp(row.Start.DayNumber - firstDate.DayNumber, 0, totalDays - 1);
+            var endOffset = Math.Clamp(row.End.DayNumber - firstDate.DayNumber + 1, 1, totalDays);
+            var barLeft = timelineLeft + (startOffset / (float)totalDays * timelineWidth) + 1;
+            var barRight = timelineLeft + (endOffset / (float)totalDays * timelineWidth) - 1;
+            fillPaint.Color = row.Critical ? critical : cyan;
+            canvas.DrawRoundRect(PdfRect(barLeft, bottom + 6, Math.Max(barLeft + 4, barRight), top - 6), 3, 3, fillPaint);
+            if (row.Critical)
+                DrawText(canvas, regularFont, textPaint, "critical", timelineRight - 38, top - 8, critical);
+            top = bottom;
+        }
+
+        DrawText(canvas, regularFont, textPaint, "Blue = scheduled work   Red = critical path", 36, 70, muted);
+        DrawPdfFooter(canvas, artifact, pageNumber, pageCount, regularFont, textPaint, strokePaint, muted);
+    }
+
+    private static void DrawMonthlyCalendarPage(
+        SKCanvas canvas,
+        ProjectFlowHivePsaArtifactTable artifact,
+        IReadOnlyList<PdfScheduleRow> rows,
+        DateOnly month,
+        int pageNumber,
+        int pageCount,
+        SKFont regularFont,
+        SKFont boldFont,
+        SKPaint textPaint,
+        SKPaint fillPaint,
+        SKPaint strokePaint,
+        SKBitmap logo)
+    {
+        var navy = new SKColor(0x0B, 0x2B, 0x4B);
+        var cyan = new SKColor(0x0B, 0x6E, 0x99);
+        var body = new SKColor(0x0F, 0x29, 0x44);
+        var muted = new SKColor(0x57, 0x6A, 0x7B);
+        var pale = new SKColor(0xF2, 0xF8, 0xFC);
+        var monthStart = month;
+        var monthEnd = month.AddDays(DateTime.DaysInMonth(month.Year, month.Month) - 1);
+
+        DrawPdfHeader(canvas, artifact, regularFont, boldFont, textPaint, logo, navy, cyan, body, muted);
+        DrawText(canvas, boldFont, textPaint, $"Graphical monthly calendar - {month:MMMM yyyy}", 36, 438, navy);
+
+        const float calendarLeft = 36f;
+        const float calendarRight = 972f;
+        const float weekdayBottom = 398f;
+        const float weekdayTop = 420f;
+        const float gridTop = 395f;
+        const float gridBottom = 90f;
+        var cellWidth = (calendarRight - calendarLeft) / 7f;
+        var cellHeight = (gridTop - gridBottom) / 6f;
+        var weekdays = new[] { "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT" };
+
+        fillPaint.Color = navy;
+        canvas.DrawRect(PdfRect(calendarLeft, weekdayBottom, calendarRight, weekdayTop), fillPaint);
+        for (var weekday = 0; weekday < weekdays.Length; weekday++)
+            DrawText(canvas, boldFont, textPaint, weekdays[weekday], calendarLeft + weekday * cellWidth + 4, 411, SKColors.White);
+
+        for (var cell = 0; cell < 42; cell++)
+        {
+            var week = cell / 7;
+            var weekday = cell % 7;
+            var date = monthStart.AddDays(cell - (int)monthStart.DayOfWeek);
+            var cellTop = gridTop - week * cellHeight;
+            var cellBottom = cellTop - cellHeight;
+            var cellLeft = calendarLeft + weekday * cellWidth;
+            var cellRight = cellLeft + cellWidth;
+            var inMonth = date >= monthStart && date <= monthEnd;
+            fillPaint.Color = inMonth ? (week % 2 == 0 ? SKColors.White : pale) : new SKColor(0xFA, 0xFB, 0xFC);
+            canvas.DrawRect(PdfRect(cellLeft, cellBottom, cellRight, cellTop), fillPaint);
+            strokePaint.Color = new SKColor(0xD0, 0xDD, 0xE6);
+            canvas.DrawRect(PdfRect(cellLeft, cellBottom, cellRight, cellTop), strokePaint);
+            if (!inMonth) continue;
+
+            DrawText(canvas, boldFont, textPaint, date.Day.ToString(CultureInfo.InvariantCulture), cellLeft + 4, cellTop - 10, body);
+            var activeRows = rows.Where(row => row.Start <= date && row.End >= date).Take(3).ToArray();
+            for (var taskIndex = 0; taskIndex < activeRows.Length; taskIndex++)
+            {
+                var row = activeRows[taskIndex];
+                var chipTop = cellTop - 16 - (taskIndex * 11);
+                var chipBottom = chipTop - 9;
+                fillPaint.Color = row.Critical ? new SKColor(0xB7, 0x3A, 0x3A) : cyan;
+                canvas.DrawRoundRect(PdfRect(cellLeft + 3, chipBottom, cellRight - 3, chipTop), 2, 2, fillPaint);
+                DrawText(canvas, regularFont, textPaint, Truncate(row.Label, 22), cellLeft + 6, chipTop - 7, SKColors.White);
+            }
+        }
+
+        DrawText(canvas, regularFont, textPaint, "Tasks spanning a date remain visible in each active day cell.", 36, 70, muted);
+        DrawPdfFooter(canvas, artifact, pageNumber, pageCount, regularFont, textPaint, strokePaint, muted);
     }
 
     private static void DrawText(SKCanvas canvas, SKFont font, SKPaint paint, string value, float x, float y, SKColor color)
