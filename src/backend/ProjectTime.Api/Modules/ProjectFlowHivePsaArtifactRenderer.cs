@@ -206,7 +206,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
     private static byte[] Ascii(string value) => Encoding.ASCII.GetBytes(value);
     private static void WriteAscii(Stream stream, string value) => stream.Write(Ascii(value));
     private static string EscapePdf(string value) => (value ?? string.Empty).Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)").Replace("\r", " ").Replace("\n", " ");
-    private static void SetSpreadsheetText(IXLCell cell, string? value) => SetSpreadsheetValue(cell, SpreadsheetText(value));
+    private static void SetSpreadsheetText(IXLCell cell, string? value) => SetSpreadsheetTextCore(cell, value);
 
     private static void SetSpreadsheetValue(IXLCell cell, object? value)
     {
