@@ -35,7 +35,14 @@ const projectIntake = readBackend('Modules', 'ProjectIntakeModule.cs');
 const brandModule = readBackend('Modules', 'CelarAiBrandModule.cs');
 const secretStore = readBackend('Ai', 'ProjectPulseAiSecretStore.cs');
 const aiDatabaseConnection = readBackend('Ai', 'ProjectPulseAiDatabaseConnection.cs');
-const buildTransforms = readBackend('Directory.Build.targets');
+// Directory.Build.targets is an import boundary on Module 025 branches. Read
+// the effective imported targets as well; validating only the wrapper can
+// falsely report that reviewed generated-source safeguards are absent.
+const buildTransforms = [
+  readBackend('Directory.Build.targets'),
+  readBackend('build', 'PlatformRuntime.targets'),
+  readBackend('build', 'Module025SowSell.targets')
+].join('\n');
 const releaseRuntimeVerifier = readRepository('scripts', 'release-test', 'verify-runtime.mjs');
 
 const checks = [];

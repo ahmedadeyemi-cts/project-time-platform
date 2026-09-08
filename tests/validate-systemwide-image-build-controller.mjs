@@ -16,6 +16,7 @@ const module025UatAccessPath = 'src/backend/ProjectTime.Api/Modules/Module025Pro
 const module025ModulePath = 'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs';
 const apiProgramPath = 'src/backend/ProjectTime.Api/Program.cs';
 const module025WorkspacePath = 'src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx';
+const module025AuthoringWorkspacePath = 'src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx';
 const celarContractsPath = 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs';
 const celarServicePath = 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs';
 const privateRagContractsPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs';
@@ -43,7 +44,10 @@ const module025Uat = fs.readFileSync(module025UatPath, 'utf8');
 const module025UatAccess = fs.readFileSync(module025UatAccessPath, 'utf8');
 const module025Module = fs.readFileSync(module025ModulePath, 'utf8');
 const apiProgram = fs.readFileSync(apiProgramPath, 'utf8');
-const module025Workspace = fs.readFileSync(module025WorkspacePath, 'utf8');
+const module025Workspace = [
+  fs.readFileSync(module025WorkspacePath, 'utf8'),
+  fs.readFileSync(module025AuthoringWorkspacePath, 'utf8')
+].join('\n');
 const celarContracts = fs.readFileSync(celarContractsPath, 'utf8');
 const celarService = fs.readFileSync(celarServicePath, 'utf8');
 const privateRagContracts = fs.readFileSync(privateRagContractsPath, 'utf8');
