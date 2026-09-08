@@ -8,6 +8,7 @@ on:
       - '.github/workflows/module-management-owner-drawer-ci.yml'
       - '.github/workflows/module025-protected-uat-control.yml'
       - '.github/workflows/module033-project-forge-ci.yml'
+      - '.github/workflows/deep-intelligence-read-contract-ci.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
