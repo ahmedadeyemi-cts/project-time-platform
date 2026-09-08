@@ -70,8 +70,9 @@ public static partial class ProjectForgeModule
 
         decimal? approvedBudget = null;
         decimal? recordedForecast = null;
+        string? projectCurrency = null;
         await using (var control = new NpgsqlCommand("""
-            SELECT approved_budget, forecast_at_completion
+            SELECT currency_code, approved_budget, forecast_at_completion
             FROM project_flowhive_project_controls
             WHERE project_id=@project_id
             """, connection))
@@ -80,18 +81,19 @@ public static partial class ProjectForgeModule
             await using var reader = await control.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
             {
-                approvedBudget = reader.IsDBNull(0) ? null : reader.GetDecimal(0);
-                recordedForecast = reader.IsDBNull(1) ? null : reader.GetDecimal(1);
+                projectCurrency = reader.IsDBNull(0) ? null : reader.GetString(0);
+                approvedBudget = reader.IsDBNull(1) ? null : reader.GetDecimal(1);
+                recordedForecast = reader.IsDBNull(2) ? null : reader.GetDecimal(2);
             }
         }
 
         var taskSources = new List<ProjectFlowHiveCanonicalTaskFinancialSource>();
         await using (var tasks = new NpgsqlCommand("""
-            SELECT task.task_id, task.task_code, detail.estimated_hours,
-                   NULLIF(detail.hourly_rate, 0)::numeric
+            SELECT task.task_id, task.task_code, task.is_active,
+                   detail.estimated_hours, detail.hourly_rate
             FROM project_tasks task
             LEFT JOIN project_forge_task_details detail ON detail.task_id=task.task_id
-            WHERE task.project_id=@project_id AND task.is_active=TRUE
+            WHERE task.project_id=@project_id
             ORDER BY task.task_code, task.task_id
             """, connection))
         {
@@ -99,16 +101,26 @@ public static partial class ProjectForgeModule
             await using var reader = await tasks.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
                 taskSources.Add(new ProjectFlowHiveCanonicalTaskFinancialSource(
-                    reader.GetGuid(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetDecimal(2),
-                    reader.IsDBNull(3) ? null : reader.GetDecimal(3)));
+                    reader.GetGuid(0),
+                    reader.GetString(1),
+                    null,
+                    reader.IsDBNull(3) ? null : reader.GetDecimal(3),
+                    null,
+                    reader.GetBoolean(2),
+                    new ProjectFlowHiveRateSource(
+                        reader.IsDBNull(4) ? null : reader.GetDecimal(4),
+                        "task_hourly_rate_unclassified",
+                        projectCurrency,
+                        null,
+                        "project_forge_task_details",
+                        false)));
         }
 
         var approvedTime = new List<ProjectFlowHiveApprovedTimeSource>();
         await using (var time = new NpgsqlCommand("""
-            SELECT time_entry_id, task_id, hours, status
+            SELECT time_entry_id, task_id, hours, status, work_date
             FROM time_entries
             WHERE project_id=@project_id
-              AND status IN ('pm_approved','accounting_ready','reconciled','locked')
             ORDER BY work_date, time_entry_id
             """, connection))
         {
@@ -116,10 +128,20 @@ public static partial class ProjectForgeModule
             await using var reader = await time.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
                 approvedTime.Add(new ProjectFlowHiveApprovedTimeSource(
-                    reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetGuid(1), reader.GetDecimal(2), reader.GetString(3)));
+                    reader.GetGuid(0),
+                    reader.IsDBNull(1) ? null : reader.GetGuid(1),
+                    reader.GetDecimal(2),
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetFieldValue<DateOnly>(4)));
         }
 
-        var readback = ProjectFlowHiveFinancialReadback.Calculate(approvedBudget, recordedForecast, taskSources, approvedTime);
+        var readback = ProjectFlowHiveFinancialReadback.Calculate(
+            approvedBudget,
+            recordedForecast,
+            taskSources,
+            approvedTime,
+            projectCurrency,
+            "project_flowhive_project_controls.forecast_at_completion");
         return Results.Ok(new
         {
             module = "033",
@@ -128,9 +150,10 @@ public static partial class ProjectForgeModule
             source = new
             {
                 canonicalTasks = "project_tasks + project_forge_task_details",
-                approvedTime = "time_entries with pm_approved/accounting_ready/reconciled/locked status",
+                approvedTime = "time_entries; approved totals use pm_approved/accounting_ready/reconciled/locked status",
                 projectControls = "project_flowhive_project_controls",
-                authorization = "server_scoped_project_manager_financial_access"
+                authorization = "server_scoped_project_manager_financial_access",
+                rateBasis = "project_forge_task_details.hourly_rate is unclassified and is not treated as internal labor cost without rate authority metadata"
             },
             readback
         });

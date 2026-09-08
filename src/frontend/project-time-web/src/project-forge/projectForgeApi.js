@@ -80,6 +80,10 @@ export const projectForgeApi = Object.freeze({
     return projectForgeRequest(`/api/project-forge/bootstrap?${query}`, { signal });
   },
 
+  financialReadback(projectId, options = {}) {
+    return projectForgeRequest(`/api/project-forge/projects/${encodeURIComponent(projectId)}/financial-readback`, options);
+  },
+
   createTask(projectId, task) {
     return projectForgeSend(`/api/project-forge/projects/${projectId}/tasks`, 'POST', {
       clientMutationId: clientMutationId(),

@@ -396,6 +396,21 @@
 .forge-dialog-validation { min-height: 1.2em; margin: 0; color: var(--forge-error-ink); font-weight: 750; }
 .forge-task-dialog > form > footer { position: sticky; bottom: -20px; z-index: 3; display: flex; justify-content: flex-end; gap: 9px; padding: 12px 0 0; background: color-mix(in srgb, var(--forge-panel) 94%, transparent); border-top: 1px solid var(--forge-line); backdrop-filter: blur(12px); }
 .forge-task-dialog > form > footer .forge-danger-button { margin-right: auto; }
+.forge-financial-readback { display: grid; gap: 14px; margin: 16px 0; padding: 16px; background: var(--forge-subtle); border: 1px solid var(--forge-line); border-radius: 12px; }
+.forge-financial-readback__heading { display: flex; align-items: start; justify-content: space-between; gap: 14px; }
+.forge-financial-readback__heading span { color: var(--forge-muted); font-size: .72rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+.forge-financial-readback__heading h3 { margin: 4px 0; }
+.forge-financial-readback__heading p { margin: 0; color: var(--forge-muted); }
+.forge-financial-readback__status { padding: 6px 9px; border-radius: 999px; background: var(--forge-panel); border: 1px solid var(--forge-line); white-space: nowrap; }
+.forge-financial-readback__status.is-complete { color: var(--forge-success-ink); }
+.forge-financial-readback__status.is-incomplete, .forge-financial-readback__status.is-unknown { color: var(--forge-error-ink); }
+.forge-financial-readback__metrics { margin: 0; }
+.forge-financial-readback__basis { margin: 0; }
+.forge-financial-readback__warnings, .forge-financial-readback__assumptions { padding: 11px 13px; background: var(--forge-panel); border: 1px solid var(--forge-line); border-radius: 9px; }
+.forge-financial-readback__warnings { color: var(--forge-error-ink); }
+.forge-financial-readback__assumptions { color: var(--forge-muted); }
+.forge-financial-readback__warnings ul, .forge-financial-readback__assumptions ul { margin: 6px 0 0; padding-left: 20px; }
+.forge-financial-readback caption { padding: 9px; color: var(--forge-muted); text-align: left; font-weight: 800; }
 
 @media (max-width: 1100px) {
   .project-forge.projectpulse-module-standard > .forge-header { align-items: stretch; flex-direction: column; }
