@@ -681,7 +681,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
             {
                 var overflowTop = cellTop - 16 - (visibleRows.Length * 11);
                 DrawText(canvas, regularFont, textPaint,
-                    $"+{activeRows.Length - visibleRows.Length} more; see appendix",
+                    $"OVERFLOW-{activeRows.Length - visibleRows.Length}-MORE-SEE-APPENDIX",
                     cellLeft + 5, overflowTop - 7, muted);
             }
         }

@@ -896,7 +896,7 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
             && pdfText.Contains("Task details appendix", StringComparison.Ordinal)
             && pdfText.Contains("CAL-MISSING-START", StringComparison.Ordinal)
             && pdfText.Contains("CAL-REVERSED", StringComparison.Ordinal)
-            && pdfText.Contains("+5 more", StringComparison.Ordinal)
+            && pdfText.Contains("OVERFLOW-5-MORE-SEE-APPENDIX", StringComparison.Ordinal)
             && pdfText.Contains("dates were not swapped", StringComparison.Ordinal),
             "pdf_monthly_calendar_uses_graphical_month_grid");
         var exportedIds = Regex.Matches(pdfText, @"ID:\s*(CAL-[A-Z0-9-]+)\s*\|")

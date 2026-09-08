@@ -111,7 +111,7 @@ jobs:
           grep -Fq 'Task details appendix' "$monthly_text"
           grep -Fq 'CAL-MISSING-START' "$monthly_text"
           grep -Fq 'CAL-REVERSED' "$monthly_text"
-          grep -Fq '+5 more' "$monthly_text"
+          grep -Fq 'OVERFLOW-5-MORE-SEE-APPENDIX' "$monthly_text"
           rendered=("$FLOWHIVE_EXPORT_EVIDENCE_DIR/rendered"/*.png)
           [[ "${#rendered[@]}" -ge 12 ]]
           for page in "${rendered[@]}"; do
