@@ -754,7 +754,7 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
 
     var pdfBytes = ProjectFlowHivePsaArtifactRenderer.BuildPdf(exportArtifact);
     var pdfText = Encoding.ASCII.GetString(pdfBytes);
-    Assert(pdfText.Contains("=SUM(A1)", StringComparison.Ordinal)
+    Assert(pdfText.Contains(@"=SUM\(A1\)", StringComparison.Ordinal)
         && !pdfText.Contains("'=SUM(A1)", StringComparison.Ordinal),
         $"pdf_{artifactKind}_does_not_apply_spreadsheet_apostrophe_escaping");
 }
