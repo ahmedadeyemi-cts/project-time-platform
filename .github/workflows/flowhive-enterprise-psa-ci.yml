@@ -102,6 +102,16 @@ jobs:
           PY
             pdftoppm -png -r 144 "$pdf" "$FLOWHIVE_EXPORT_EVIDENCE_DIR/rendered/$(basename "$pdf" .pdf)"
           done
+          gantt_text="$FLOWHIVE_EXPORT_EVIDENCE_DIR/gantt.txt"
+          monthly_text="$FLOWHIVE_EXPORT_EVIDENCE_DIR/monthly-calendar.txt"
+          grep -Fq 'Task details appendix' "$gantt_text"
+          grep -Fq 'GANTT-MISSING-START' "$gantt_text"
+          grep -Fq 'GANTT-REVERSED' "$gantt_text"
+          grep -Fq 'dates were not swapped' "$gantt_text"
+          grep -Fq 'Task details appendix' "$monthly_text"
+          grep -Fq 'CAL-MISSING-START' "$monthly_text"
+          grep -Fq 'CAL-REVERSED' "$monthly_text"
+          grep -Fq '+5 more' "$monthly_text"
           rendered=("$FLOWHIVE_EXPORT_EVIDENCE_DIR/rendered"/*.png)
           [[ "${#rendered[@]}" -ge 12 ]]
           for page in "${rendered[@]}"; do

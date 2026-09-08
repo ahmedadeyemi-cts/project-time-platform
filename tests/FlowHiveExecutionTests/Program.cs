@@ -229,4 +229,35 @@ Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies 
 Check((long)(await Sql("SELECT count(*) FROM project_flowhive_ai_plan_reviews WHERE run_id=@r",("r",interruptedReview)))! == 0,"failed review does not leave a false immutable success receipt");
 try{await Sql(File.ReadAllText(Path.Combine(root,"database/rollback/105_flowhive_reviewed_regeneration_rollback.sql")));throw new Exception("Destructive review rollback allowed");}
 catch(PostgresException){Check(true,"migration rollback cannot remove retained review evidence");}
+var readbackTaskOne = Guid.NewGuid();
+var readbackTaskTwo = Guid.NewGuid();
+var financialSources = new[]
+{
+    new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-001", 10m, 100m),
+    new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskTwo, "CAN-002", 8m, 80m)
+};
+var approvedTimeSources = new[]
+{
+    new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "pm_approved"),
+    new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskTwo, 2m, "locked"),
+    new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 1m, "draft")
+};
+var financialReadback = ProjectFlowHiveFinancialReadback.Calculate(1000m, null, financialSources, approvedTimeSources);
+Check(financialReadback.ApprovedHours == 5m && financialReadback.ActualHours == 5m, "readback counts only approved canonical time");
+Check(financialReadback.ApprovedLaborCost == 460m, "readback calculates approved labor cost from task rates");
+Check(financialReadback.EstimatedEffortRemainingHours == 13m, "readback distinguishes estimated effort remaining");
+Check(financialReadback.ForecastAtCompletion == 1640m && financialReadback.BudgetRemaining == -640m, "readback distinguishes forecast and budget remaining");
+var replayedReadback = ProjectFlowHiveFinancialReadback.Calculate(1000m, null, financialSources, approvedTimeSources);
+Check(JsonSerializer.Serialize(financialReadback) == JsonSerializer.Serialize(replayedReadback), "readback replay is deterministic and idempotent");
+var unknownRate = ProjectFlowHiveFinancialReadback.Calculate(null, null,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-001", 10m, null)],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "pm_approved")]);
+Check(unknownRate.ApprovedLaborCost is null && unknownRate.ForecastAtCompletion is null
+    && unknownRate.UnknownReasons.Contains("missing_rate:CAN-001"), "missing production rate remains unknown");
+var recordedForecast = ProjectFlowHiveFinancialReadback.Calculate(null, 900m,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-001", 10m, null)],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "pm_approved")]);
+Check(recordedForecast.ForecastAtCompletion == 900m
+    && recordedForecast.ForecastSource == "project_flowhive_project_controls",
+    "recorded project-control forecast remains authoritative when task rates are unavailable");
 Console.WriteLine($"FLOWHIVE_EXECUTION_ASSERTIONS_PASSED={count}");

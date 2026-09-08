@@ -133,28 +133,55 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         if (artifact.ArtifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase)
             && TryBuildScheduleRows(artifact, isMonthlyCalendar: false, out var ganttRows))
         {
-            var firstDate = ganttRows.Min(row => row.Start);
-            var lastDate = ganttRows.Max(row => row.End);
-            var pages = ganttRows.Chunk(13).Select(rows => rows.ToArray()).ToArray();
-            for (var index = 0; index < pages.Length; index++)
+            var scheduledRows = ganttRows.Where(row => row.IsScheduled).ToArray();
+            var graphPages = scheduledRows.Length == 0
+                ? []
+                : scheduledRows.Chunk(10).Select(rows => rows.ToArray()).ToArray();
+            var detailPages = PaginateScheduleDetails(ganttRows, regularFont, textPaint);
+            var totalPages = graphPages.Length + detailPages.Count;
+            if (scheduledRows.Length > 0)
+            {
+                var firstDate = scheduledRows.Min(row => row.Start!.Value);
+                var lastDate = scheduledRows.Max(row => row.End!.Value);
+                for (var index = 0; index < graphPages.Length; index++)
+                {
+                    using var canvas = document.BeginPage(PdfWidth, PdfHeight);
+                    DrawGanttPage(canvas, artifact, graphPages[index], firstDate, lastDate,
+                        index + 1, totalPages, regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
+                    document.EndPage();
+                }
+            }
+            for (var index = 0; index < detailPages.Count; index++)
             {
                 using var canvas = document.BeginPage(PdfWidth, PdfHeight);
-                DrawGanttPage(canvas, artifact, pages[index], firstDate, lastDate, index + 1, pages.Length,
-                    regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
+                DrawScheduleDetailsPage(canvas, artifact, detailPages[index],
+                    graphPages.Length + index + 1, totalPages, regularFont, boldFont, textPaint,
+                    fillPaint, strokePaint, logo);
                 document.EndPage();
             }
         }
         else if (artifact.ArtifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase)
             && TryBuildScheduleRows(artifact, isMonthlyCalendar: true, out var calendarRows))
         {
-            var firstDate = calendarRows.Min(row => row.Start);
-            var lastDate = calendarRows.Max(row => row.End);
-            var months = EnumerateMonths(firstDate, lastDate);
-            for (var index = 0; index < months.Count; index++)
+            var scheduledRows = calendarRows.Where(row => row.IsScheduled).ToArray();
+            var graphPages = scheduledRows.Length == 0
+                ? []
+                : EnumerateMonths(scheduledRows.Min(row => row.Start!.Value), scheduledRows.Max(row => row.End!.Value));
+            var detailPages = PaginateScheduleDetails(calendarRows, regularFont, textPaint);
+            var totalPages = graphPages.Count + detailPages.Count;
+            for (var index = 0; index < graphPages.Count; index++)
             {
                 using var canvas = document.BeginPage(PdfWidth, PdfHeight);
-                DrawMonthlyCalendarPage(canvas, artifact, calendarRows, months[index], index + 1, months.Count,
-                    regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
+                DrawMonthlyCalendarPage(canvas, artifact, scheduledRows, graphPages[index],
+                    index + 1, totalPages, regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
+                document.EndPage();
+            }
+            for (var index = 0; index < detailPages.Count; index++)
+            {
+                using var canvas = document.BeginPage(PdfWidth, PdfHeight);
+                DrawScheduleDetailsPage(canvas, artifact, detailPages[index],
+                    graphPages.Count + index + 1, totalPages, regularFont, boldFont, textPaint,
+                    fillPaint, strokePaint, logo);
                 document.EndPage();
             }
         }
@@ -307,12 +334,21 @@ internal static class ProjectFlowHivePsaArtifactRenderer
     }
 
     private sealed record PdfScheduleRow(
-        DateOnly Start,
-        DateOnly End,
+        string Id,
         string Label,
         string Secondary,
         string Status,
-        bool Critical);
+        bool Critical,
+        DateOnly? Start,
+        DateOnly? End,
+        string StartText,
+        string EndText,
+        string Issue)
+    {
+        public bool IsScheduled => Start.HasValue && End.HasValue && string.IsNullOrEmpty(Issue);
+    }
+
+    private sealed record PdfScheduleDetailPage(IReadOnlyList<PdfScheduleRow> Rows);
 
     private static bool TryBuildScheduleRows(
         ProjectFlowHivePsaArtifactTable artifact,
@@ -322,29 +358,133 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         scheduleRows = [];
         var startColumn = isMonthlyCalendar ? 0 : 2;
         var endColumn = isMonthlyCalendar ? 1 : 3;
+        var idColumn = isMonthlyCalendar ? 2 : 0;
         var labelColumn = isMonthlyCalendar ? 4 : 1;
         var secondaryColumn = isMonthlyCalendar ? 5 : 0;
-        var statusColumn = isMonthlyCalendar ? 6 : 6;
+        var statusColumn = 6;
 
-        foreach (var row in artifact.Rows)
+        for (var rowIndex = 0; rowIndex < artifact.Rows.Count; rowIndex++)
         {
-            if (row.Count <= Math.Max(Math.Max(startColumn, endColumn), labelColumn)
-                || !TryReadPdfDate(row[startColumn], out var start)
-                || !TryReadPdfDate(row[endColumn], out var end))
-                continue;
-
-            if (end < start) (start, end) = (end, start);
-            var label = DisplayValue(row[labelColumn]).Trim();
+            var row = artifact.Rows[rowIndex];
+            var id = row.Count > idColumn ? DisplayValue(row[idColumn]).Trim() : string.Empty;
+            if (id.Length == 0) id = $"ROW-{rowIndex + 1:000}";
+            var label = row.Count > labelColumn ? DisplayValue(row[labelColumn]).Trim() : string.Empty;
             if (label.Length == 0) label = "Unlabeled task";
             var secondary = row.Count > secondaryColumn ? DisplayValue(row[secondaryColumn]).Trim() : string.Empty;
             var status = row.Count > statusColumn ? DisplayValue(row[statusColumn]).Trim() : string.Empty;
-            var critical = !isMonthlyCalendar
-                && row.Count > 6
-                && string.Equals(DisplayValue(row[6]), "Yes", StringComparison.OrdinalIgnoreCase);
-            scheduleRows.Add(new PdfScheduleRow(start, end, label, secondary, status, critical));
+            var startValue = row.Count > startColumn ? row[startColumn] : null;
+            var endValue = row.Count > endColumn ? row[endColumn] : null;
+            var startText = DisplayValue(startValue).Trim();
+            var endText = DisplayValue(endValue).Trim();
+            var startValid = TryReadPdfDate(startValue, out var start);
+            var endValid = TryReadPdfDate(endValue, out var end);
+            var issue = string.Empty;
+            if (row.Count <= Math.Max(Math.Max(startColumn, endColumn), labelColumn))
+                issue = "Unscheduled: required schedule fields are missing.";
+            else if (string.IsNullOrWhiteSpace(startText) || string.IsNullOrWhiteSpace(endText))
+                issue = "Unscheduled: start or end date is missing.";
+            else if (!startValid || !endValid)
+                issue = "Unscheduled: start or end date is invalid.";
+            else if (end < start)
+                issue = "Invalid schedule: end date precedes start date; dates were not swapped.";
+
+            scheduleRows.Add(new PdfScheduleRow(
+                id, label, secondary, status,
+                !isMonthlyCalendar && row.Count > 6 && string.Equals(DisplayValue(row[6]), "Yes", StringComparison.OrdinalIgnoreCase),
+                startValid ? start : null,
+                endValid ? end : null,
+                startText.Length == 0 ? "(missing)" : startText,
+                endText.Length == 0 ? "(missing)" : endText,
+                issue));
         }
 
         return scheduleRows.Count > 0;
+    }
+
+    private static List<PdfScheduleDetailPage> PaginateScheduleDetails(
+        IReadOnlyList<PdfScheduleRow> rows,
+        SKFont regularFont,
+        SKPaint paint)
+    {
+        var pages = new List<PdfScheduleDetailPage>();
+        var current = new List<PdfScheduleRow>();
+        var remaining = 350f;
+        foreach (var row in rows)
+        {
+            var height = ScheduleDetailRowHeight(row, regularFont, paint);
+            if (current.Count > 0 && height > remaining)
+            {
+                pages.Add(new PdfScheduleDetailPage(current.ToArray()));
+                current = [];
+                remaining = 350f;
+            }
+            current.Add(row);
+            remaining -= Math.Min(height, 350f);
+        }
+        if (current.Count > 0 || pages.Count == 0) pages.Add(new PdfScheduleDetailPage(current.ToArray()));
+        return pages;
+    }
+
+    private static float ScheduleDetailRowHeight(PdfScheduleRow row, SKFont font, SKPaint paint)
+    {
+        var labelLines = WrapText(row.Label, font, paint, PdfRight - PdfLeft - 12).Count;
+        var issueLines = WrapText(row.Issue, font, paint, PdfRight - PdfLeft - 12).Count;
+        return 24f + ((labelLines + issueLines) * 7.2f);
+    }
+
+    private static void DrawScheduleDetailsPage(
+        SKCanvas canvas,
+        ProjectFlowHivePsaArtifactTable artifact,
+        PdfScheduleDetailPage page,
+        int pageNumber,
+        int pageCount,
+        SKFont regularFont,
+        SKFont boldFont,
+        SKPaint textPaint,
+        SKPaint fillPaint,
+        SKPaint strokePaint,
+        SKBitmap logo)
+    {
+        var navy = new SKColor(0x0B, 0x2B, 0x4B);
+        var body = new SKColor(0x0F, 0x29, 0x44);
+        var muted = new SKColor(0x57, 0x6A, 0x7B);
+        var pale = new SKColor(0xF2, 0xF8, 0xFC);
+        DrawPdfHeader(canvas, artifact, regularFont, boldFont, textPaint, logo, navy,
+            new SKColor(0x0B, 0x6E, 0x99), body, muted);
+        DrawText(canvas, boldFont, textPaint, "Task details appendix", 36, 438, navy);
+        DrawText(canvas, regularFont, textPaint,
+            "Complete task identity and schedule evidence. Invalid or unscheduled rows are reported without invented dates.",
+            36, 425, muted);
+
+        var top = 405f;
+        for (var index = 0; index < page.Rows.Count; index++)
+        {
+            var row = page.Rows[index];
+            var rowHeight = ScheduleDetailRowHeight(row, regularFont, textPaint);
+            var bottom = top - rowHeight;
+            fillPaint.Color = index % 2 == 0 ? pale : SKColors.White;
+            canvas.DrawRect(PdfRect(PdfLeft, bottom, PdfRight, top), fillPaint);
+            strokePaint.Color = new SKColor(0xD0, 0xDD, 0xE6);
+            canvas.DrawRect(PdfRect(PdfLeft, bottom, PdfRight, top), strokePaint);
+            DrawText(canvas, boldFont, textPaint, $"ID: {row.Id}", PdfLeft + 6, top - 10, navy);
+            var labelLines = WrapText(row.Label, regularFont, textPaint, PdfRight - PdfLeft - 12);
+            for (var line = 0; line < labelLines.Count; line++)
+                DrawText(canvas, regularFont, textPaint, $"Task: {labelLines[line]}", PdfLeft + 6,
+                    top - 18 - (line * 7.2f), body);
+            var metadataY = top - 18 - (labelLines.Count * 7.2f);
+            DrawText(canvas, regularFont, textPaint,
+                $"Dates: {row.StartText} -> {row.EndText}   Owner/WBS: {row.Secondary}   Status: {row.Status}",
+                PdfLeft + 6, metadataY, body);
+            if (!string.IsNullOrEmpty(row.Issue))
+            {
+                var issueLines = WrapText(row.Issue, regularFont, textPaint, PdfRight - PdfLeft - 12);
+                for (var line = 0; line < issueLines.Count; line++)
+                    DrawText(canvas, regularFont, textPaint, $"Issue: {issueLines[line]}", PdfLeft + 6,
+                        metadataY - 8 - (line * 7.2f), new SKColor(0xB7, 0x3A, 0x3A));
+            }
+            top = bottom;
+        }
+        DrawPdfFooter(canvas, artifact, pageNumber, pageCount, regularFont, textPaint, strokePaint, muted);
     }
 
     private static bool TryReadPdfDate(object? value, out DateOnly date)
@@ -448,10 +588,11 @@ internal static class ProjectFlowHivePsaArtifactRenderer
                 strokePaint.Color = new SKColor(0xC4, 0xD5, 0xE0);
                 canvas.DrawLine(x, PdfScreenY(bottom), x, PdfScreenY(top), strokePaint);
             }
-            DrawWrappedText(canvas, regularFont, textPaint, row.Label, labelLeft + 4, top - 8, labelRight - labelLeft - 8, body, 2);
+            DrawWrappedText(canvas, regularFont, textPaint, $"{row.Id}: {row.Label}", labelLeft + 4, top - 8,
+                labelRight - labelLeft - 8, body, 3);
 
-            var startOffset = Math.Clamp(row.Start.DayNumber - firstDate.DayNumber, 0, totalDays - 1);
-            var endOffset = Math.Clamp(row.End.DayNumber - firstDate.DayNumber + 1, 1, totalDays);
+            var startOffset = Math.Clamp(row.Start!.Value.DayNumber - firstDate.DayNumber, 0, totalDays - 1);
+            var endOffset = Math.Clamp(row.End!.Value.DayNumber - firstDate.DayNumber + 1, 1, totalDays);
             var barLeft = timelineLeft + (startOffset / (float)totalDays * timelineWidth) + 1;
             var barRight = timelineLeft + (endOffset / (float)totalDays * timelineWidth) - 1;
             fillPaint.Color = row.Critical ? critical : cyan;
@@ -462,6 +603,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         }
 
         DrawText(canvas, regularFont, textPaint, "Blue = scheduled work   Red = critical path", 36, 70, muted);
+        DrawText(canvas, regularFont, textPaint, "Full task details and unscheduled rows: Task details appendix", 36, 59, muted);
         DrawPdfFooter(canvas, artifact, pageNumber, pageCount, regularFont, textPaint, strokePaint, muted);
     }
 
@@ -522,19 +664,30 @@ internal static class ProjectFlowHivePsaArtifactRenderer
             if (!inMonth) continue;
 
             DrawText(canvas, boldFont, textPaint, date.Day.ToString(CultureInfo.InvariantCulture), cellLeft + 4, cellTop - 10, body);
-            var activeRows = rows.Where(row => row.Start <= date && row.End >= date).Take(3).ToArray();
-            for (var taskIndex = 0; taskIndex < activeRows.Length; taskIndex++)
+            var activeRows = rows.Where(row => row.IsScheduled && row.Start <= date && row.End >= date).ToArray();
+            var visibleRows = activeRows.Take(3).ToArray();
+            for (var taskIndex = 0; taskIndex < visibleRows.Length; taskIndex++)
             {
-                var row = activeRows[taskIndex];
+                var row = visibleRows[taskIndex];
                 var chipTop = cellTop - 16 - (taskIndex * 11);
                 var chipBottom = chipTop - 9;
                 fillPaint.Color = row.Critical ? new SKColor(0xB7, 0x3A, 0x3A) : cyan;
                 canvas.DrawRoundRect(PdfRect(cellLeft + 3, chipBottom, cellRight - 3, chipTop), 2, 2, fillPaint);
-                DrawText(canvas, regularFont, textPaint, Truncate(row.Label, 22), cellLeft + 6, chipTop - 7, SKColors.White);
+                DrawText(canvas, regularFont, textPaint,
+                    FitText($"{row.Id}: {row.Label}", regularFont, textPaint, cellWidth - 12, $"{row.Id} (appendix)"),
+                    cellLeft + 6, chipTop - 7, SKColors.White);
+            }
+            if (activeRows.Length > visibleRows.Length)
+            {
+                var overflowTop = cellTop - 16 - (visibleRows.Length * 11);
+                DrawText(canvas, regularFont, textPaint,
+                    $"+{activeRows.Length - visibleRows.Length} more; see appendix",
+                    cellLeft + 5, overflowTop - 7, muted);
             }
         }
 
         DrawText(canvas, regularFont, textPaint, "Tasks spanning a date remain visible in each active day cell.", 36, 70, muted);
+        DrawText(canvas, regularFont, textPaint, "Full task details and overflow/unscheduled rows: Task details appendix", 36, 59, muted);
         DrawPdfFooter(canvas, artifact, pageNumber, pageCount, regularFont, textPaint, strokePaint, muted);
     }
 
@@ -600,6 +753,12 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         }
         return lines.Count == 0 ? [string.Empty] : lines;
     }
+
+    private static string FitText(string value, SKFont font, SKPaint paint, float width, string overflowLabel)
+    {
+        if (font.MeasureText(value, paint) <= width) return value;
+        return font.MeasureText(overflowLabel, paint) <= width ? overflowLabel : "(appendix)";
+    }
     private static void SetSpreadsheetText(IXLCell cell, string? value) => SetSpreadsheetTextCore(cell, value);
 
     private static void SetSpreadsheetValue(IXLCell cell, object? value)
@@ -662,7 +821,6 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty,
         _ => value.ToString() ?? string.Empty
     };
-    private static string Truncate(string? value, int length) => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim()[..Math.Min(value.Trim().Length, length)];
     private static string Join(string? left, string? right) => string.Join(" · ", new[] { left, right }.Where(value => !string.IsNullOrWhiteSpace(value)));
     private static string SafeSheetName(string value)
     {
