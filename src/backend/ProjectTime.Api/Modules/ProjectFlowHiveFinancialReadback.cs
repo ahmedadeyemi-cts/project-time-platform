@@ -152,7 +152,7 @@ public static class ProjectFlowHiveFinancialReadback
         IReadOnlyList<ProjectFlowHiveCanonicalTaskFinancialSource> tasks,
         IReadOnlyList<ProjectFlowHiveApprovedTimeSource> timeEntries,
         string? projectCurrencyCode = "USD",
-        string recordedForecastProvenance = "project_flowhive_project_controls")
+        string recordedForecastProvenance = "project_flowhive_project_controls.forecast_at_completion")
     {
         var normalizedCurrency = NormalizeCurrency(projectCurrencyCode);
         var taskById = tasks.ToDictionary(task => task.TaskId);
