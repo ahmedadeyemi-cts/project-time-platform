@@ -67,7 +67,7 @@ public static class ProjectFlowHiveFinancialReadback
             var remaining = task.EstimatedHours.HasValue
                 ? Math.Max(task.EstimatedHours.Value - approvedHours, 0m)
                 : (decimal?)null;
-            var actualCost = approvedHours == 0m
+            decimal? actualCost = approvedHours == 0m
                 ? 0m
                 : task.HourlyRate.HasValue
                     ? Math.Round(approvedHours * task.HourlyRate.Value, 2, MidpointRounding.AwayFromZero)
@@ -79,7 +79,7 @@ public static class ProjectFlowHiveFinancialReadback
         }).ToArray();
 
         var approvedHoursTotal = approved.Sum(entry => entry.Hours);
-        var approvedCost = approvedHoursTotal == 0m
+        decimal? approvedCost = approvedHoursTotal == 0m
             ? 0m
             : taskReadback.All(task => task.ActualCost.HasValue)
                 ? taskReadback.Sum(task => task.ActualCost!.Value)
@@ -87,7 +87,7 @@ public static class ProjectFlowHiveFinancialReadback
         if (approvedHoursTotal > 0m && !approvedCost.HasValue)
             unknownReasons.Add("approved_labor_cost_requires_a_rate_for_each_approved_task");
 
-        var remainingEffort = taskReadback.All(task => task.EstimatedEffortRemainingHours.HasValue)
+        decimal? remainingEffort = taskReadback.All(task => task.EstimatedEffortRemainingHours.HasValue)
             ? taskReadback.Sum(task => task.EstimatedEffortRemainingHours!.Value)
             : null;
         if (!remainingEffort.HasValue)
@@ -117,7 +117,7 @@ public static class ProjectFlowHiveFinancialReadback
             unknownReasons.Add("forecast_requires_a_recorded_forecast_or_complete_task_rates");
         }
 
-        var budgetRemaining = approvedBudget.HasValue && forecast.HasValue
+        decimal? budgetRemaining = approvedBudget.HasValue && forecast.HasValue
             ? Math.Round(approvedBudget.Value - forecast.Value, 2, MidpointRounding.AwayFromZero)
             : null;
         if (!budgetRemaining.HasValue)
