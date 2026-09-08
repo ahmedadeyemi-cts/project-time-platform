@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Image entrypoint. The immutable image contains only approved 103/104 SQL and checksums.
+# Image entrypoint. The immutable image contains only approved 103/104/105 SQL and checksums.
 set -Eeuo pipefail
 ROOT=/opt/projectpulse/release
 fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -15,13 +15,14 @@ if [[ "$MAIN_RELEASE_MIGRATION_MODE" == apply ]]; then
 SELECT pg_advisory_lock(660103104);
 \i database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql
 \i database/migrations/104_flowhive_bounded_ai_execution.sql
+\i database/migrations/105_flowhive_reviewed_regeneration.sql
 SELECT pg_advisory_unlock(660103104);
 SQL
 fi
 verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT (
   (SELECT count(*) FROM schema_migrations WHERE migration_id IN (
-    '103_module_066_flowhive_enterprise_psa_revamp','104_flowhive_bounded_ai_execution')) = 2
+    '103_module_066_flowhive_enterprise_psa_revamp','104_flowhive_bounded_ai_execution','105_flowhive_reviewed_regeneration')) = 3
   AND to_regclass('public.project_flowhive_raid_events') IS NOT NULL
   AND to_regclass('public.project_flowhive_meetings') IS NOT NULL
   AND to_regclass('public.project_flowhive_meeting_events') IS NOT NULL
@@ -32,6 +33,9 @@ SELECT (
     'trg_project_flowhive_meeting_events_immutable_103','trg_project_flowhive_task_reminder_events_immutable_103',
     'trg_flowhive_104_execution_fence')) = 5
   AND to_regprocedure('public.projectpulse104_fence_planner_execution()') IS NOT NULL
+  AND to_regclass('public.project_flowhive_ai_plan_reviews') IS NOT NULL
+  AND (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled IN ('O','A')
+    AND tgname='trg_flowhive_105_immutable_review') = 1
   AND to_regclass('public.ix_flowhive_104_deadline') IS NOT NULL
   AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public'
     AND table_name='project_flowhive_ai_planner_runs' AND column_name IN (
@@ -48,5 +52,5 @@ SELECT (
 SQL
 )"
 [[ "$verified" == true ]] || fail 'FlowHive PSA migrations are not fully applied and enforced.'
-echo 'FLOWHIVE_PSA_MIGRATIONS_103_104=APPLIED_AND_VERIFIED'
+echo 'FLOWHIVE_PSA_MIGRATIONS_103_104_105=APPLIED_AND_VERIFIED'
 echo 'PRODUCTION_MUTATION=NONE'

@@ -12,11 +12,11 @@ The repository owner may post this exact command on PR #872 after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA d0ab4380dc4b243e8914a08e719556ec71123885
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 70af7b8eff1018aa19c3c3e955b7dde92d690a5d
 ```
 
 The admission workflow executes main-owned code only. It checks the exact open PR,
-repository, branch, candidate SHA, 21 required successful exact-SHA PR workflows,
+repository, branch, candidate SHA, 22 required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
@@ -44,7 +44,7 @@ Candidate admission is independently repeated before its code is built. The
 trusted controller revision and candidate application revision are separate
 identities, both recorded in evidence.
 
-## Migrations 103/104
+## Migrations 103/104/105
 
 Approved migration bytes are selected from the exact candidate checkout and
 matched to the SHA-256 values in main approval. A separate migration image carries
@@ -55,8 +55,10 @@ Key Vault secret **references**, with exact job ownership and cleanup checks.
 
 The entrypoint serializes migration application, bounds database locks/statements,
 uses `ON_ERROR_STOP`, and verifies tables, execution fields, triggers, index and
-migration receipts. Reapplication is supported. Application rollback does not
-attempt to delete immutable evidence or destructively reverse these migrations.
+migration receipts. Reapplication is supported. Migration 105 adds immutable
+prior/candidate/applied plan-review receipts and refuses rollback once a receipt
+exists. Application rollback does not attempt to delete immutable evidence or
+destructively reverse these migrations.
 Migration or deployment-health failure stops release; a healthy candidate is
 retained after a functional failure for diagnosis.
 
@@ -70,19 +72,24 @@ utilization gates remain in the canonical job.
 
 The new test authenticates the existing assigned PM, rejects View-As and anonymous
 project access, selects the approved project, and posts exactly one generation
-request. It captures the current working-copy revision and dates, rejects unsafe
-replacement of assigned/milestone work, and never retries an uncertain POST.
+request. Generation stores a separate detailed Plan/Design/Implement/Validate/Release
+proposal when existing work is present; it does not replace the working copy. The
+test captures the current working-copy revision and dates, reads the explicit review,
+previews a retain-or-map merge, and applies only the reviewed result. It preserves
+existing milestone identities, task identities, assignments, progress, dependencies
+and immutable history, and never retries an uncertain POST.
 Status observation is bounded, checks run/project identity and the backend's
 five-minute execution contract, and records stage timings. An unfinished known
 operation is cancelled on test failure; a late result cannot be called successful.
 
 On successful generation the test checks five-phase detailed cited work, effort
 and schedule reconciliation, absence of automatic milestones and canonical task
-adoption, and exact atomic saved-revision readback. It then opens the actual
-deployed React application with the PM session, checks task names and dates in
-AI Planner work breakdown, reloads the page, and proves no additional generation
-or publication was requested. A browser network safety filter aborts unexpected
-writes; it never fabricates API responses or substitutes a test model.
+adoption, and unchanged existing work before review. It then opens the actual
+deployed React application with the PM session, checks the saved proposal and
+working plan in AI Planner, reloads both proposal and applied views, and proves no
+additional generation or publication was requested. A browser network safety filter
+aborts unexpected writes; it never fabricates API responses or substitutes a test
+model.
 
 Artifacts contain fixed diagnostic codes, IDs/fingerprints and aggregate metrics.
 No raw SOWs, task text, session tokens, recordings, HAR files or screenshots of
@@ -104,4 +111,58 @@ parsed workflow safety, shell syntax, and unchanged unrelated controller steps.
 A disposable PostgreSQL job executes the approved migrations and actual migration
 entrypoint, reapplication, legacy-run retirement, immutable RAID evidence,
 execution fences, rollback refusal and corrupt-payload/disabled-trigger detection.
-None of those isolated tests is represented as live model acceptance.
+None of those isolated tests is represented as live model acceptance. Live
+acceptance additionally requires one real configured private-provider generation,
+proposal/review/preview/apply receipts, browser display of the proposal, and reload
+without another generation request.
+
+
+## PR874 combined candidate and migration-image resolution repair
+
+PR874 merged as `55ebb51fda1917f202ce6561ed5f5e635468d01c`. Candidate
+`70af7b8eff1018aa19c3c3e955b7dde92d690a5d` includes that actual merge parent,
+the reviewed SOW/Oracle changes, and both post-review cleanup/HTTP500 repairs.
+The exact candidate source base is that merged main revision, not the old
+pre-PR874 application. PR872 remains draft and unmerged. Required exact-source
+CI now also includes the PSA admission/migration contract workflow (22 total).
+
+The failed previous candidate deployment `34068097426`, job `101580331315`,
+successfully completed historical migrations and built the PSA migration image,
+but its immediate registry tag lookup reported `the specified tag does not exist`
+after ACR build `ds1ca` had reported a successful push. The exact job log was
+recovered read-only in inspection run `34071865725`; this was not evidence of
+missing database columns. No candidate API/web image had been deployed.
+
+The migration builder now resolves its digest with at most twelve READ attempts,
+a ninety-second overall budget, fifteen-second request limits and a two-second
+kill grace reserved inside that budget. Recognized authorization errors and
+successful but malformed digests fail immediately. Exhaustion stops before any
+migration job; no tag fallback, image rebuild or migration-write retry occurs.
+This handles a possible registry visibility delay without treating it as proven
+until a subsequent deployment succeeds. ACR success by itself is not acceptance.
+
+The exact follow-up diff is the separately reviewed regeneration-control set; the canonical
+controller, dispatcher, private identities, environment protections, migration
+bytes and twenty-path overall control boundary remain unchanged. Deterministic
+Bash tests exercise immediate success, delayed visibility, missing tags,
+malformed digests, authorization failure and time-budget exhaustion, while the
+existing PostgreSQL fixture continues to execute migrations103/104/105 and their
+failure/reapply/immutability checks. These tests are not live AI evidence.
+
+
+### PR876 review closure and exact-head refresh
+
+The seven-path digest repair is now limited to open PR876 from the reviewed
+repository and release branch onto main at the exact PR874 merge base
+`55ebb51fda1917f202ce6561ed5f5e635468d01c`. Validation compares the actual checkout,
+resolved Git base and GitHub pull-request event, not just a seven-file count.
+Missing context, a different PR/base/branch/repository, a fork, a closed PR or a
+stale checked-out head is rejected. The original twenty-file control boundary is
+unchanged. Negative tests exercise each identity mismatch separately.
+
+The refreshed candidate also repairs both required controller workflows' GitHub
+expression-length failure and removes static PostgreSQL CI fixture credentials.
+The historical test-credential finding in GitGuardian must be classified and the
+exact-head security check cleared before the combined candidate is deployed.
+No failed check is waived; the application PR remains draft. This control refresh
+preserves the canonical deployment/dispatcher bytes and approved migration hashes.

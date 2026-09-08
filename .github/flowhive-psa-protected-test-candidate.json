@@ -3,8 +3,8 @@
   "repository": "ahmedadeyemi-cts/project-time-platform",
   "pullRequest": 872,
   "branch": "feature/flowhive-enterprise-psa-revamp-20260906",
-  "sha": "d0ab4380dc4b243e8914a08e719556ec71123885",
-  "sourceBase": "d58d08f29e52b3d8992301b27b9ba8f95dd91e33",
+  "sha": "70af7b8eff1018aa19c3c3e955b7dde92d690a5d",
+  "sourceBase": "55ebb51fda1917f202ce6561ed5f5e635468d01c",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -24,6 +24,7 @@
     ".github/workflows/celar-ai-universal-answer-reliability-ci.yml",
     ".github/workflows/flowhive-detailed-planner-ci.yml",
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/post-pr465-live-uat-repair-ci.yml",
     ".github/workflows/project-planning-collaboration-ci.yml",
     ".github/workflows/projectpulse-ci.yml",
@@ -43,6 +44,10 @@
     {
       "file": "104_flowhive_bounded_ai_execution.sql",
       "sha256": "53897dcac37294599339770a3ade51d6af3c26b240d5706c939d443eacad5486"
+    },
+    {
+      "file": "105_flowhive_reviewed_regeneration.sql",
+      "sha256": "64c1a1c0ca77816207be2d0c873367c8e6d3a61a38cc41b1df88923774da688e"
     }
   ]
 }

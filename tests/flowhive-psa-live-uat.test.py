@@ -57,6 +57,44 @@ class AcceptanceDecisions(unittest.TestCase):
                          lambda w:w['workingCopy']['plan'].update(sourceKind='other')]:
             w=copy.deepcopy(workspace);mutation(w)
             with self.assertRaises(live.GateError):live.receipt_checks(result,w)
+    def test_review_requires_persisted_project_matched_proposal(self):
+        review = {'projectId': live.PROJECT, 'runId': '11111111-1111-4111-8111-111111111111',
+                  'contract': 'flowhive-reviewed-regeneration-v1',
+                  'currentPlan': {'projectId': live.PROJECT}, 'candidatePlan': {'projectId': live.PROJECT},
+                  'candidateSchedule': {'valid': True}, 'candidateValidation': {'valid': True},
+                  'expectedWorkingRowVersion': None}
+        self.assertEqual(live.review_checks(review)[0]['projectId'], live.PROJECT)
+        for mutation in [lambda r:r.update(contract='wrong'),
+                         lambda r:r.update(candidateSchedule={'valid': False}),
+                         lambda r:r.update(expectedWorkingRowVersion='not-a-uuid'),
+                         lambda r:r.update(candidatePlan={'projectId': 'other'})]:
+            candidate = copy.deepcopy(review); mutation(candidate)
+            with self.assertRaises(live.GateError): live.review_checks(candidate)
+
+    def test_existing_work_is_preserved_by_stable_identity(self):
+        before, _ = fixture()
+        leaves = [task for task in before['tasks'] if not task.get('isSummary')]
+        for index, task in enumerate(leaves):
+            task['clientTaskId'] = f'11111111-1111-4111-8111-{index + 1:012d}'
+            task.update(status='in_progress', percentComplete=20, durationWorkingDays=2,
+                        constraintType='start_no_earlier_than', constraintDate='2026-09-08',
+                        comments='Existing comment', notes='Existing note')
+        before['milestones'] = [{'clientMilestoneId': '22222222-2222-4222-8222-222222222222',
+                                 'name': 'Existing gate', 'description': 'Existing milestone',
+                                 'targetDate': '2026-09-30', 'acceptanceEvidence': 'Existing evidence',
+                                 'citationIds': [1], 'isAssumption': False}]
+        before['assignments'] = [{'taskWbs': leaves[0]['wbsNumber'], 'resourceUserId': '33333333-3333-4333-8333-333333333333',
+                                  'resourceDisplayName': 'Existing owner', 'allocationPercent': 50, 'plannedHours': 4}]
+        before['dependencies'] = [{'predecessorWbs': leaves[0]['wbsNumber'], 'successorWbs': leaves[1]['wbsNumber'],
+                                   'type': 'FS', 'lagWorkingDays': 1}]
+        after = copy.deepcopy(before)
+        after['tasks'].append({'name': 'New reviewed work', 'phase': 'Release', 'isSummary': False,
+                               'wbsNumber': '5.2', 'clientTaskId': '44444444-4444-4444-8444-444444444444'})
+        result = live.preserved_work_checks(before, after)
+        self.assertEqual(result['existingTaskCount'], 5)
+        self.assertEqual(result['preservedMilestoneCount'], 1)
+        self.assertEqual(result['preservedAssignmentCount'], 1)
+        self.assertEqual(result['preservedDependencyCount'], 1)
     def test_network_rejects_unapproved_paths(self):
         for path in ['https://unapproved.invalid/', '//unapproved.invalid/api']:
             with self.assertRaises(live.GateError):live.Client().request(path)
@@ -70,7 +108,13 @@ class AcceptanceDecisions(unittest.TestCase):
         self.assertNotIn('route.fulfill(',source)
         self.assertNotIn('window.fetch =',source)
         self.assertIn("report['fullLiveAiAcceptance'] = False",source)
-        self.assertIn("'modelName': None, 'actualInferenceRequests': None",source)
+        self.assertIn("'modelName': None, 'actualInferenceRequests': 1",source)
+        self.assertIn("/review-preview",source)
+        self.assertIn("/apply-reviewed",source)
+        self.assertIn("workingCopyUnchangedBeforeApply",source)
+        self.assertIn("browserProposal",source)
+        self.assertIn("browserApplied",source)
+        self.assertNotIn('existing_milestones_require_pm_review_before_generation',source)
         self.assertNotIn('storage_state(',source)
     def test_error_evidence_never_contains_upstream_body(self):
         source=Path(spec.origin).read_text()

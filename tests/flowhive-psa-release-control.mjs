@@ -27,15 +27,70 @@ export const files = [
   'tests/flowhive-psa-release-workflow.test.py',
   'tests/validate-celar-ai-pr630-consolidated.mjs'
 ].sort();
-export function verifyFiles(changed, manifest) {
+export const repairFiles = [
+  '.github/flowhive-psa-protected-test-candidate.json',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-migration-fixture.py',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
+export const repairBase = '55ebb51fda1917f202ce6561ed5f5e635468d01c';
+export const reviewedRegenerationBase = '7e5c378dcb15b2b2a00511fa69f90d2411eec336';
+export const reviewedRegenerationBranch = 'fix/flowhive-reviewed-regeneration-control-20260907';
+export const reviewedRegenerationFiles = [
+  '.github/flowhive-psa-protected-test-candidate.json',
+  '.github/workflows/projectpulse-deploy-test.yml',
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'scripts/release-test/apply-flowhive-psa-migrations.sh',
+  'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
+  'scripts/release-test/flowhive-psa-admission.mjs',
+  'scripts/release-test/run-flowhive-psa-live-uat.py',
+  'tests/flowhive-psa-live-uat.test.py',
+  'tests/flowhive-psa-migration-fixture.py',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
+const repairRepository = 'ahmedadeyemi-cts/project-time-platform';
+const repairBranch = 'release/flowhive-psa-protected-test-admission-20260906';
+export function verifyRepairContext(context) {
+  assert.equal(context?.eventName, 'pull_request', 'PR876 repair requires a pull-request event.');
+  assert.equal(context?.repository, repairRepository, 'Wrong repair repository.');
+  assert.equal(context?.base, repairBase, 'PR876 repair is bound to the reviewed PR874 merge base.');
+  assert.match(context?.head || '', /^[0-9a-f]{40}$/, 'Exact repair head is required.');
+  const event = context?.event;
+  assert.equal(event?.number, 876, 'The seven-file exception is exclusive to PR876.');
+  assert.equal(event?.repository?.full_name, repairRepository, 'Wrong event repository.');
+  const pr = event?.pull_request;
+  assert.equal(pr?.number, 876, 'Wrong repair pull request.');
+  assert.equal(pr?.state, 'open', 'The repair must still be open.');
+  assert.equal(pr?.base?.ref, 'main', 'Wrong repair base branch.');
+  assert.equal(pr?.base?.sha, repairBase, 'The event base is not the reviewed repair base.');
+  assert.equal(pr?.base?.repo?.full_name, repairRepository, 'Wrong repair base repository.');
+  assert.equal(pr?.head?.ref, repairBranch, 'Wrong repair source branch.');
+  assert.equal(pr?.head?.repo?.full_name, repairRepository, 'Forked repair source is not admitted.');
+  assert.equal(pr?.head?.sha, context.head, 'The checked-out repair head does not match the event.');
+}
+export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.deepEqual([...changed].sort(), files, 'Unexpected or missing file in the release-control PR.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105'].includes(mode), 'Unrecognized control repair.');
+  if (mode === 'pr874-digest-repair') verifyRepairContext(context);
+  if (mode === 'reviewed-regeneration-105') {
+    assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
+    assert.equal(context?.branch, reviewedRegenerationBranch, 'Wrong reviewed regeneration control branch.');
+  }
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : reviewedRegenerationFiles;
+  assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
   for (const token of [
     'group: projectpulse-deploy-test', 'queue: max', 'cancel-in-progress: false', 'environment: test',
     'node scripts/release-test/flowhive-psa-admission.mjs', 'PSA_RELEASE_AUTHORIZED',
-    'refs/heads/main', 'build-and-run-flowhive-psa-migrations.sh', 'run-flowhive-psa-live-uat.py',
+    'refs/heads/main', '105_flowhive_reviewed_regeneration.sql', 'build-and-run-flowhive-psa-migrations.sh',
+    'run-flowhive-psa-live-uat.py', 'RELIABILITY_RELEASE_COMMIT:',
     "steps.psa_live_uat.outputs.deployment_health_verified != 'true'",
   ]) {
     assert.ok(text.includes(token), `The Test controller is missing a required control: ${token}`);
@@ -49,7 +104,21 @@ export function validate() {
   assert.match(base, /^[0-9a-f]{40}$/);
   const changed = git('diff', '--name-only', base, 'HEAD').split(/\r?\n/).filter(Boolean);
   const manifest = fs.readFileSync(controlManifest, 'utf8').trim().split(/\r?\n/);
-  verifyFiles(changed, manifest);
+  const event = process.env.GITHUB_EVENT_PATH
+    ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : null;
+  const context = { event, eventName: process.env.GITHUB_EVENT_NAME,
+    repository: process.env.GITHUB_REPOSITORY, base, branch: process.env.GITHUB_HEAD_REF,
+    head: git('rev-parse', 'HEAD') };
+  const isRepair = event?.number === 876;
+  const isReviewedRegeneration = process.env.GITHUB_HEAD_REF === reviewedRegenerationBranch;
+  verifyFiles(changed, manifest,
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : 'initial', context);
+  if (isRepair) {
+    // The repair cannot alter the admitted environment workflow, permissions,
+    // migration bytes or dispatcher. Only its exact seven-file list is allowed.
+    assert.equal(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml','utf8').trimEnd(),
+      git('show', `${base}:.github/workflows/projectpulse-deploy-test.yml`));
+  }
   for (const file of files) assert.ok(fs.statSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink());
   const approval = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-test-candidate.json', 'utf8'));
   verifyApproval(approval, approval.sha);

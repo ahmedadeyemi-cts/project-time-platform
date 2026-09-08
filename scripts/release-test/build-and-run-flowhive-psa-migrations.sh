@@ -1,6 +1,48 @@
 #!/usr/bin/env bash
 # Reuses the governed private-network migration job, UAMI and cleanup protocol.
 set -Eeuo pipefail
+# Registry publication may briefly precede tag lookup visibility. Retry only
+# this read, never the build, job creation or migration write. A mutable tag is
+# never handed to the migration runner, even when the read budget is exhausted.
+resolve_migration_digest() (
+  set -Eeuo pipefail
+  local registry="$1" image="$2" deadline=$((SECONDS + 90)) attempt remaining limit result
+  local diagnostic
+  diagnostic="$(mktemp "${RUNNER_TEMP:-/tmp}/flowhive-acr-read-XXXXXX")"
+  chmod 0600 "$diagnostic"
+  trap 'rm -f -- "$diagnostic"' EXIT
+  for attempt in {1..12}; do
+    remaining=$((deadline - SECONDS - 2))
+    (( remaining > 0 )) || break
+    limit=15
+    (( limit <= remaining )) || limit="$remaining"
+    if result="$(timeout --kill-after=2s "${limit}s" az acr repository show \
+      --name "$registry" --image "$image" --query digest -o tsv --only-show-errors 2>"$diagnostic")"; then
+      result="${result//$'\r'/}"
+      if [[ "$result" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        printf 'FLOWHIVE_PSA_DIGEST_LOOKUP=verified attempts=%s\n' "$attempt" >&2
+        printf '%s\n' "$result"
+        exit 0
+      fi
+      # A successful lookup with an invalid value is not a propagation delay.
+      echo 'ERROR: FLOWHIVE_PSA_DIGEST_LOOKUP_INVALID' >&2
+      exit 1
+    fi
+    if grep -Eiq 'unauthorized|forbidden|authorizationfailed|authentication|AADSTS|denied|az login' "$diagnostic"; then
+      echo 'ERROR: FLOWHIVE_PSA_DIGEST_LOOKUP_AUTHORIZATION' >&2
+      exit 1
+    fi
+    (( attempt < 12 )) || break
+    remaining=$((deadline - SECONDS - 2))
+    (( remaining > 0 )) || break
+    limit=5
+    (( limit <= remaining )) || limit="$remaining"
+    sleep "$limit"
+  done
+  echo 'ERROR: FLOWHIVE_PSA_DIGEST_LOOKUP_EXHAUSTED; no migration job was dispatched.' >&2
+  exit 1
+)
+
 CONTROL_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 RELEASE_ROOT="${PROJECTPULSE_RELEASE_ROOT:?Exact candidate checkout is required.}"
 RELEASE="${RELIABILITY_RELEASE_COMMIT:?Exact release commit is required.}"
@@ -16,7 +58,7 @@ import hashlib,json,pathlib,shutil,sys
 control,source,out=map(pathlib.Path,sys.argv[1:4]); release=sys.argv[4]
 approval=json.loads((control/'.github/flowhive-psa-protected-test-candidate.json').read_text())
 if approval['sha']!=release or approval['environment']!='test': raise SystemExit('Unapproved migration candidate')
-expected=['103_module_066_flowhive_enterprise_psa_revamp.sql','104_flowhive_bounded_ai_execution.sql']
+expected=['103_module_066_flowhive_enterprise_psa_revamp.sql','104_flowhive_bounded_ai_execution.sql','105_flowhive_reviewed_regeneration.sql']
 if [x['file'] for x in approval['migrations']]!=expected: raise SystemExit('Unexpected migration set')
 checks=[]
 for item in approval['migrations']:
@@ -38,11 +80,11 @@ ENTRYPOINT ["/opt/projectpulse/release/entrypoint.sh"]
 DOCKERFILE
 IMAGE="project-health-dashboard-flowhive-psa-migrator:rel-${RELEASE:0:12}-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
 az acr build --registry "$ACR" --image "$IMAGE" --file "$CONTEXT/Dockerfile" --timeout 1800 "$CONTEXT"
-DIGEST="$(az acr repository show --name "$ACR" --image "$IMAGE" --query digest -o tsv --only-show-errors)"
+DIGEST="$(resolve_migration_digest "$ACR" "$IMAGE")"
 [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'ERROR: Immutable migration digest unavailable.' >&2; exit 1; }
 export MAIN_RELEASE_EXPECTED_RELEASE_COMMIT="$RELEASE"
 export MAIN_RELEASE_CONTROL_SHA="${RELIABILITY_CONTROL_SHA:?Trusted controller revision is required.}"
-export MAIN_RELEASE_MIGRATION_SCOPE=flowhive-enterprise-psa-103-104-test
+export MAIN_RELEASE_MIGRATION_SCOPE=flowhive-enterprise-psa-103-105-test
 export MAIN_RELEASE_MIGRATION_IMAGE="$ACR.azurecr.io/${IMAGE%%:*}@$DIGEST"
 export MAIN_RELEASE_MIGRATION_JOB_NAME="fhpsa-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 export MAIN_RELEASE_MIGRATION_MODE=apply
@@ -51,5 +93,5 @@ export MAIN_RELEASE_MIGRATION_MODE=apply
 bash "$CONTROL_ROOT/scripts/release-test/run-migration-job.sh"
 mkdir -p "${EVIDENCE_DIR:?Evidence directory is required.}"
 jq -n --arg releaseCommit "$RELEASE" --arg controlCommit "$MAIN_RELEASE_CONTROL_SHA" --arg image "$MAIN_RELEASE_MIGRATION_IMAGE" \
-  '{status:"applied_and_verified",environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,image:$image,migrations:["103_module_066_flowhive_enterprise_psa_revamp","104_flowhive_bounded_ai_execution"],productionMutation:false}' \
+  '{status:"applied_and_verified",environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,image:$image,migrations:["103_module_066_flowhive_enterprise_psa_revamp","104_flowhive_bounded_ai_execution","105_flowhive_reviewed_regeneration"],productionMutation:false}' \
   > "$EVIDENCE_DIR/flowhive-psa-migrations.json"

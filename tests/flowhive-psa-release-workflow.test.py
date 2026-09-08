@@ -31,6 +31,9 @@ def verify(doc):
     assert steps.index(admission)<steps.index(byid['release'])
     assert steps.index(byid['migration'])<steps.index(byid['deploy_api'])<steps.index(byid['deploy_web'])<steps.index(byid['psa_live_uat'])
     assert 'build-and-run-flowhive-psa-migrations.sh' in byid['migration']['run']
+    release_guard=next(s for s in steps if s.get('name')=='Guard exact source and validate release')
+    assert 'database/migrations/105_flowhive_reviewed_regeneration.sql' in release_guard['run']
+    assert 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql' in release_guard['run']
     assert byid['psa_live_uat']['working-directory']=='control'
     assert byid['psa_live_uat']['timeout-minutes']=='20'
     assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true'"
@@ -38,6 +41,7 @@ def verify(doc):
     assert byid['module025_uat']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.module025_fixture.outcome == 'success' }}"
     for key in ['assigned_work_uat','utilization_uat']:
         assert byid[key]['if']=="${{ !cancelled() && (steps.uat.outcome == 'success' || steps.psa_live_uat.outputs.deployment_health_verified == 'true') }}"
+    assert byid['assigned_work_uat']['env']['RELIABILITY_RELEASE_COMMIT']=='${{ env.TARGET_RELEASE_COMMIT }}'
     assert steps.index(byid['assigned_work_uat'])<steps.index(byid['utilization_uat'])<steps.index(byid['module025_fixture'])
     rb=next(s for s in steps if s.get('name')=='Restore exact prior Test images after application failure')
     assert "steps.psa_live_uat.outputs.deployment_health_verified != 'true'" in rb['if']
@@ -129,8 +133,9 @@ class WorkflowContract(unittest.TestCase):
         base=os.environ.get('CONTROL_BASE')
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
-        # Feature integration inherits the entire reviewed main controller unchanged.
-        if old == self.doc:
+        reviewed = os.environ.get('GITHUB_HEAD_REF') == 'fix/flowhive-reviewed-regeneration-control-20260907'
+        # No controller changes are permitted in the exact seven-file digest repair.
+        if old==self.doc:
             return
         # This integration starts from the already merged #875 controller.
         # Compare by unique step name because #874 deliberately moves the work
@@ -146,11 +151,30 @@ class WorkflowContract(unittest.TestCase):
             if b.get('id') in revised:
                 a.pop('if',None);b.pop('if',None)
                 if b['id']=='module025_fixture':
+                    a['run']=a['run'].replace('echo "expires_at=$FIXTURE_EXPIRES_AT" >> "$GITHUB_OUTPUT"\n','')
                     b['run']=b['run'].replace('echo "expires_at=$FIXTURE_EXPIRES_AT" >> "$GITHUB_OUTPUT"\n','')
                 if b['id']=='module025_uat':
+                    a['env'].pop('MODULE025_UAT_EXPIRES_AT',None)
                     b['env'].pop('MODULE025_UAT_EXPIRES_AT',None)
+            if reviewed and b.get('id') == 'assigned_work_uat':
+                b['env'].pop('RELIABILITY_RELEASE_COMMIT',None)
+            if reviewed and (b.get('id') == 'migration' or b.get('name') == 'Guard exact source and validate release'):
+                ending='\n' if b['run'].endswith('\n') else ''
+                b['run']='\n'.join(line for line in b['run'].splitlines()
+                                    if 'database/migrations/103_' not in line
+                                    and 'database/migrations/104_' not in line
+                                    and 'database/migrations/105_' not in line
+                                    and 'database/rollback/103_' not in line
+                                    and 'database/rollback/104_' not in line
+                                    and 'database/rollback/105_' not in line) + ending
+            if reviewed and step['name'] == 'Publish protected-Test release summary':
+                b['run']=b['run'].replace("- Migrations 103/104/105: applied and verified", "- Migrations 103/104: applied and verified")
             self.assertEqual(a,b,step['name'])
-        self.assertEqual(old['on'],self.doc['on'])
+        before_on=copy.deepcopy(old['on']);after_on=copy.deepcopy(self.doc['on'])
+        if reviewed:
+            after_on['push']['paths'].remove('database/migrations/105_flowhive_reviewed_regeneration.sql')
+            after_on['push']['paths'].remove('database/rollback/105_flowhive_reviewed_regeneration_rollback.sql')
+        self.assertEqual(before_on,after_on)
         self.assertEqual(old['jobs']['deploy']['env'],self.doc['jobs']['deploy']['env'])
 
 

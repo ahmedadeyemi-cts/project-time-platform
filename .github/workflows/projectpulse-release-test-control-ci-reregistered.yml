@@ -331,11 +331,39 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$CIT/e-celar-internal-trust-evidence-files"
           LC_ALL=C sort -u "$CIT/e-celar-internal-trust-evidence-files" -o "$CIT/e-celar-internal-trust-evidence-files"
 
+          cat > "$CIT/e-flowhive-reviewed-regeneration-files" <<'FILES'
+          .github/flowhive-psa-protected-test-candidate.json
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md
+          scripts/release-test/apply-flowhive-psa-migrations.sh
+          scripts/release-test/build-and-run-flowhive-psa-migrations.sh
+          scripts/release-test/flowhive-psa-admission.mjs
+          scripts/release-test/run-flowhive-psa-live-uat.py
+          tests/flowhive-psa-live-uat.test.py
+          tests/flowhive-psa-migration-fixture.py
+          tests/flowhive-psa-release-control.mjs
+          tests/flowhive-psa-release-workflow.test.py
+          FILES
+          sed -i 's/^[[:space:]]*//' "$CIT/e-flowhive-reviewed-regeneration-files"
+          LC_ALL=C sort -u "$CIT/e-flowhive-reviewed-regeneration-files" -o "$CIT/e-flowhive-reviewed-regeneration-files"
+
           git fetch --no-tags origin main
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$CIT/diff"
-          if [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
+          if [[ "$HEAD_BRANCH" == 'fix/flowhive-reviewed-regeneration-control-20260907' ]]; then
+            [[ "$CURRENT_BASE_SHA" == '7e5c378dcb15b2b2a00511fa69f90d2411eec336' ]] \
+              || fail 'Reviewed regeneration control is not based on current main.'
+            cmp -s "$CIT/diff" "$CIT/e-flowhive-reviewed-regeneration-files" || {
+              echo 'Reviewed regeneration control differs from its exact governed file set.' >&2
+              diff -u "$CIT/e-flowhive-reviewed-regeneration-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_REVIEWED_REGENERATION_CONTROL_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/flowhive-psa-release-control.mjs
           elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
