@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using ProjectTime.Api.Modules;
 
@@ -381,6 +382,7 @@ async Task<IResult> InvokeResultAsync(MethodInfo method, params object?[] argume
 async Task<(int StatusCode, JsonElement Body)> ExecuteResultAsync(IResult result)
 {
     var context = new DefaultHttpContext();
+    context.RequestServices = new ServiceCollection().AddLogging().AddOptions().BuildServiceProvider();
     context.Response.Body = new MemoryStream();
     await result.ExecuteAsync(context);
     context.Response.Body.Position = 0;
