@@ -41,6 +41,25 @@ test('later failed rerun or unknown failed workflow cannot hide behind older gre
 test('source drift allows only reviewed control paths; application drift is rejected', () => {
   verifySourceDrift(files,files);assert.throws(()=>verifySourceDrift([...files,'src/backend/ProjectTime.Api/Program.cs'],files));
 });
+test('frozen candidate binds to integrated PR880 main and rejects unincorporated application drift', () => {
+  const reviewedMain = '4871d47fbeaad0fd5c08ddca27f193d682a0ea92';
+  const currentMain = '040709cdac0a940ad8feffbd730f1be35ce50280';
+  const candidate = 'b4a976751eb2cb5bc68c6a7057ca28148f1cf58a';
+  const actualCurrentMainControlDelta = [
+    '.github/flowhive-psa-protected-test-candidate.json',
+    'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+    'tests/flowhive-psa-release-control.mjs'
+  ];
+  assert.equal(approval.sourceBase, reviewedMain);
+  assert.equal(approval.sha, candidate);
+  assert.match(currentMain, /^[a-f0-9]{40}$/);
+  verifySourceDrift(actualCurrentMainControlDelta, files);
+  for (const unrelated of [
+    'src/backend/ProjectTime.Api/Program.cs',
+    'src/frontend/project-time-web/src/App.jsx',
+    'scripts/release-test/unincorporated-application-change.sh'
+  ]) assert.throws(() => verifySourceDrift([...actualCurrentMainControlDelta, unrelated], files));
+});
 test('release scope cannot absorb application files, unknown workflows or production changes', () => {
   verifyFiles(files,files);
   for(const extra of ['src/frontend/project-time-web/src/App.jsx','.github/workflows/random-deploy.yml','deployment/production/main.bicep'])
