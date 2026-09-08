@@ -118,6 +118,18 @@ env={**os.environ,'MAIN_RELEASE_EXPECTED_RELEASE_COMMIT':approval['sha'],'MAIN_R
 for attempt in range(2):
     subprocess.run(['bash',str(payload/'entrypoint.sh')],env=env,check=True)
 assert sql("SELECT phase FROM project_flowhive_ai_planner_runs WHERE run_id='33333333-3333-4333-8333-333333333333'")=='execution_upgrade_required'
+assert sql("SELECT count(*) FROM project_flowhive_ai_plan_reviews")=='0'
+sql('''INSERT INTO project_flowhive_ai_plan_reviews(
+    run_id,project_id,actor_user_id,expected_row_version,applied_row_version,applied_revision,
+    preview_fingerprint,prior_plan,candidate_plan,applied_plan,decisions,review_note)
+VALUES('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111',
+       '22222222-2222-4222-8222-222222222222',NULL,'66666666-6666-4666-8666-666666666666',1,
+       repeat('a',64),'{}','{}','{}','[]','Synthetic immutable review receipt');''')
+assert sql("SELECT count(*) FROM project_flowhive_ai_plan_reviews")=='1'
+for text in ["UPDATE project_flowhive_ai_plan_reviews SET review_note='changed'",
+             'DELETE FROM project_flowhive_ai_plan_reviews']:
+    sql(text,success=False)
+sql((source/'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql').read_text(),success=False)
 # Exact execution-image guards fail closed without modifying the database.
 for field,value in [('MAIN_RELEASE_EXPECTED_RELEASE_COMMIT','0'*40),('PGDATABASE','not_the_test_database'),('MAIN_RELEASE_MIGRATION_MODE','rollback')]:
     result=subprocess.run(['bash',str(payload/'entrypoint.sh')],env={**env,field:value},capture_output=True)

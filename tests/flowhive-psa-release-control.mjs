@@ -37,6 +37,23 @@ export const repairFiles = [
   'tests/flowhive-psa-release-workflow.test.py'
 ].sort();
 export const repairBase = '55ebb51fda1917f202ce6561ed5f5e635468d01c';
+export const reviewedRegenerationBase = '7e5c378dcb15b2b2a00511fa69f90d2411eec336';
+export const reviewedRegenerationBranch = 'fix/flowhive-reviewed-regeneration-control-20260907';
+export const reviewedRegenerationFiles = [
+  '.github/flowhive-psa-protected-test-candidate.json',
+  '.github/workflows/projectpulse-deploy-test.yml',
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'scripts/release-test/apply-flowhive-psa-migrations.sh',
+  'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
+  'scripts/release-test/flowhive-psa-admission.mjs',
+  'scripts/release-test/run-flowhive-psa-live-uat.py',
+  'tests/flowhive-psa-live-uat.test.py',
+  'tests/flowhive-psa-migration-fixture.py',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
 const repairRepository = 'ahmedadeyemi-cts/project-time-platform';
 const repairBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export function verifyRepairContext(context) {
@@ -59,15 +76,21 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
-  assert.deepEqual([...changed].sort(), mode === 'initial' ? files : repairFiles, 'Unexpected or missing file in the release-control PR.');
+  if (mode === 'reviewed-regeneration-105') {
+    assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
+    assert.equal(context?.branch, reviewedRegenerationBranch, 'Wrong reviewed regeneration control branch.');
+  }
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : reviewedRegenerationFiles;
+  assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
   for (const token of [
     'group: projectpulse-deploy-test', 'queue: max', 'cancel-in-progress: false', 'environment: test',
     'node scripts/release-test/flowhive-psa-admission.mjs', 'PSA_RELEASE_AUTHORIZED',
-    'refs/heads/main', 'build-and-run-flowhive-psa-migrations.sh', 'run-flowhive-psa-live-uat.py',
+    'refs/heads/main', '105_flowhive_reviewed_regeneration.sql', 'build-and-run-flowhive-psa-migrations.sh',
+    'run-flowhive-psa-live-uat.py', 'RELIABILITY_RELEASE_COMMIT:',
     "steps.psa_live_uat.outputs.deployment_health_verified != 'true'",
   ]) {
     assert.ok(text.includes(token), `The Test controller is missing a required control: ${token}`);
@@ -84,9 +107,12 @@ export function validate() {
   const event = process.env.GITHUB_EVENT_PATH
     ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : null;
   const context = { event, eventName: process.env.GITHUB_EVENT_NAME,
-    repository: process.env.GITHUB_REPOSITORY, base, head: git('rev-parse', 'HEAD') };
+    repository: process.env.GITHUB_REPOSITORY, base, branch: process.env.GITHUB_HEAD_REF,
+    head: git('rev-parse', 'HEAD') };
   const isRepair = event?.number === 876;
-  verifyFiles(changed, manifest, isRepair ? 'pr874-digest-repair' : 'initial', context);
+  const isReviewedRegeneration = process.env.GITHUB_HEAD_REF === reviewedRegenerationBranch;
+  verifyFiles(changed, manifest,
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.

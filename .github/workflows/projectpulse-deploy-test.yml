@@ -19,8 +19,10 @@ on:
       - 'database/migrations/095_project_planning_collaboration_access.sql'
       - 'database/migrations/096_project_planning_document_authority.sql'
       - 'database/migrations/097_project_planning_identity_safe_admission.sql'
+      - 'database/migrations/105_flowhive_reviewed_regeneration.sql'
       - 'database/rollback/096_project_planning_document_authority_rollback.sql'
       - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
+      - 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql'
       - 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'
       - 'scripts/release-test/run-flowhive-authority-migration-094-job.sh'
       - 'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'
@@ -196,8 +198,14 @@ jobs:
             database/migrations/095_project_planning_collaboration_access.sql \
             database/migrations/096_project_planning_document_authority.sql \
             database/migrations/097_project_planning_identity_safe_admission.sql \
+            database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql \
+            database/migrations/104_flowhive_bounded_ai_execution.sql \
+            database/migrations/105_flowhive_reviewed_regeneration.sql \
             database/rollback/096_project_planning_document_authority_rollback.sql \
             database/rollback/097_project_planning_identity_safe_admission_rollback.sql \
+            database/rollback/103_module_066_flowhive_enterprise_psa_revamp_rollback.sql \
+            database/rollback/104_flowhive_bounded_ai_execution_rollback.sql \
+            database/rollback/105_flowhive_reviewed_regeneration_rollback.sql \
             scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh \
             scripts/release-test/run-flowhive-authority-migration-094-job.sh \
             scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh \
@@ -1631,6 +1639,7 @@ jobs:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
           BASE: ${{ steps.contract.outputs.base }}
           EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
+          RELIABILITY_RELEASE_COMMIT: ${{ env.TARGET_RELEASE_COMMIT }}
         run: |
           set -Eeuo pipefail
           bash scripts/release-test/run-assigned-work-protected-test-uat.sh
@@ -1805,7 +1814,7 @@ jobs:
             echo '- Environment: protected Test only'
             if [[ "$TARGET_RELEASE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
               echo '- Release lane: exact pre-merge PSA candidate; feature PR #872 remains unmerged'
-              [[ -f "$EVIDENCE_DIR/flowhive-psa-migrations.json" ]] && echo '- Migrations 103/104: applied and verified'
+              [[ -f "$EVIDENCE_DIR/flowhive-psa-migrations.json" ]] && echo '- Migrations 103/104/105: applied and verified'
               if jq -e '.status == "passed" and .functionalLifecycleVerified == true' "$EVIDENCE_DIR/flowhive-psa-live-uat.json" >/dev/null 2>&1; then
                 echo '- Live SOW-to-working-copy API and real browser reload: passed'
               else
