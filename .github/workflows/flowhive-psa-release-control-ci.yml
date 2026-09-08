@@ -39,7 +39,7 @@ jobs:
           python -m pip install PyYAML==6.0.3
           if [[ "$GITHUB_HEAD_REF" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
             node tests/validate-sow-generation-uat-scope.mjs
-          elif [[ "$GITHUB_HEAD_REF" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$GITHUB_HEAD_REF" == 'feature/flowhive-psa-graphical-exports-20260908' ]]; then
             node tests/flowhive-psa-scope.mjs
           else
             node tests/flowhive-psa-release-control.mjs
