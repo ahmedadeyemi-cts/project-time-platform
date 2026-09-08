@@ -12,7 +12,7 @@ The repository owner may post this exact command on PR #872 after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 70af7b8eff1018aa19c3c3e955b7dde92d690a5d
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA b4a976751eb2cb5bc68c6a7057ca28148f1cf58a
 ```
 
 The admission workflow executes main-owned code only. It checks the exact open PR,
@@ -120,8 +120,9 @@ without another generation request.
 ## PR874 combined candidate and migration-image resolution repair
 
 PR874 merged as `55ebb51fda1917f202ce6561ed5f5e635468d01c`. Candidate
-`70af7b8eff1018aa19c3c3e955b7dde92d690a5d` includes that actual merge parent,
-the reviewed SOW/Oracle changes, and both post-review cleanup/HTTP500 repairs.
+`b4a976751eb2cb5bc68c6a7057ca28148f1cf58a` includes that actual merge parent,
+the reviewed SOW/Oracle changes, both post-review cleanup/HTTP500 repairs, and
+the reviewed PR880 control merge integrated into PR872.
 The exact candidate source base is that merged main revision, not the old
 pre-PR874 application. PR872 remains draft and unmerged. Required exact-source
 CI now also includes the PSA admission/migration contract workflow (22 total).
