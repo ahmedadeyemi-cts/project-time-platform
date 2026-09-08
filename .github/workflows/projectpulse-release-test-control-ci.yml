@@ -37,6 +37,8 @@ on:
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs'
