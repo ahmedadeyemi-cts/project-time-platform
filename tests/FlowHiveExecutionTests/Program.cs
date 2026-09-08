@@ -58,6 +58,18 @@ await Sql("""
     """);
 await Sql(Block("database/migrations/086_module_066_flowhive_enterprise_pm.sql", "CREATE TABLE IF NOT EXISTS project_flowhive_working_copies (", "\n);"));
 await Sql(Block("database/migrations/086_module_066_flowhive_enterprise_pm.sql", "CREATE OR REPLACE FUNCTION projectpulse086_touch_working_copy()", "FOR EACH ROW EXECUTE FUNCTION projectpulse086_touch_working_copy();"));
+await Sql("""
+    CREATE TABLE IF NOT EXISTS project_flowhive_project_controls(
+        project_id UUID PRIMARY KEY,
+        currency_code TEXT NULL,
+        approved_budget NUMERIC NULL,
+        forecast_at_completion NUMERIC NULL,
+        updated_by_user_id UUID NULL
+    );
+    INSERT INTO schema_migrations(migration_id,description,applied_at)
+    VALUES('086_module_066_flowhive_enterprise_pm','Synthetic fixture readiness marker for the extracted 086 schema','2026-09-08T00:00:00Z')
+    ON CONFLICT (migration_id) DO NOTHING;
+    """);
 await Sql(Block("database/migrations/095_project_planning_collaboration_access.sql", "CREATE TABLE IF NOT EXISTS project_flowhive_ai_planner_runs (", "\n);"));
 await Sql("""
     CREATE UNIQUE INDEX ux_test_active_actor ON project_flowhive_ai_planner_runs(project_id,actual_actor_user_id) WHERE status IN ('queued','processing','generating');
