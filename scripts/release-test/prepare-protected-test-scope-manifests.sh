@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 CIT="${1:?runner temporary directory is required}"
+HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 cat > "$CIT/allowed-release-files" <<'FILES'
 .github/workflows/module-loading-assignment-propagation-ci.yml
 .github/workflows/module-management-owner-drawer-ci.yml
