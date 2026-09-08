@@ -101,6 +101,10 @@ elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
     grep -Fxq "$required" "$FLOWHIVE_RELEASE_MANIFEST"
   done
   publish_mode FLOWHIVE_V2_SHARED_PLANNING
+elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' ]]; then
+  ALLOWED_DATABASE='^database/migrations/106_module025_sow_sell_register\.sql$'
+  node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+  publish_mode MODULE025_SOW_SELL_REGISTER
 elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then
   ALLOWED_DATABASE='^(database/migrations/(070_module_033_project_forge|073_module_033_project_forge_interactive)\.sql|database/rollback/(070_module_033_project_forge_rollback|073_module_033_project_forge_interactive_rollback)\.sql)$'
   publish_mode MODULE_033_PROJECT_FORGE
