@@ -123,9 +123,13 @@ PR874 merged as `55ebb51fda1917f202ce6561ed5f5e635468d01c`. Candidate
 `b4a976751eb2cb5bc68c6a7057ca28148f1cf58a` includes that actual merge parent,
 the reviewed SOW/Oracle changes, both post-review cleanup/HTTP500 repairs, and
 the reviewed PR880 control merge integrated into PR872.
-The exact candidate source base is that merged main revision, not the old
-pre-PR874 application. PR872 remains draft and unmerged. Required exact-source
-CI now also includes the PSA admission/migration contract workflow (22 total).
+The approved `sourceBase` is `4871d47fbeaad0fd5c08ddca27f193d682a0ea92`, the
+reviewed PR880 main merge already contained in the candidate. The PR874 merge
+remains an ancestor and is retained as historical repair evidence. Current main
+`040709cdac0a940ad8feffbd730f1be35ce50280` adds only the reviewed candidate-
+approval control delta; an application path is still rejected by source drift.
+PR872 remains draft and unmerged. Required exact-source CI now also includes
+the PSA admission/migration contract workflow (22 total).
 
 The failed previous candidate deployment `34068097426`, job `101580331315`,
 successfully completed historical migrations and built the PSA migration image,
