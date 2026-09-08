@@ -880,11 +880,12 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
             && pdfText.Contains("GANTT-REVERSED", StringComparison.Ordinal)
             && pdfText.Contains("dates were not swapped", StringComparison.Ordinal),
             "pdf_gantt_uses_graphical_schedule_layout");
-        var exportedIds = Regex.Matches(pdfText, @"GANTT-[A-Z0-9-]+")
-            .Select(match => match.Value)
-            .Where(expectedScheduleIds.Contains)
+        var exportedIds = Regex.Matches(pdfText, @"ID:\s*(GANTT-[A-Z0-9-]+)\s*\|")
+            .Select(match => match.Groups[1].Value)
             .ToHashSet(StringComparer.Ordinal);
-        Assert(exportedIds.SetEquals(expectedScheduleIds), "pdf_gantt_reconciles_all_expected_task_ids");
+        var presentIds = expectedScheduleIds.Where(pdfText.Contains).ToHashSet(StringComparer.Ordinal);
+        Assert(presentIds.SetEquals(expectedScheduleIds) && exportedIds.SetEquals(expectedScheduleIds),
+            "pdf_gantt_reconciles_all_expected_task_ids");
         Assert(pdfDocument.NumberOfPages >= 4, "pdf_gantt_has_graph_and_detail_continuation_pages");
     }
     if (artifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase))
@@ -898,11 +899,12 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
             && pdfText.Contains("+5 more", StringComparison.Ordinal)
             && pdfText.Contains("dates were not swapped", StringComparison.Ordinal),
             "pdf_monthly_calendar_uses_graphical_month_grid");
-        var exportedIds = Regex.Matches(pdfText, @"CAL-[A-Z0-9-]+")
-            .Select(match => match.Value)
-            .Where(expectedScheduleIds.Contains)
+        var exportedIds = Regex.Matches(pdfText, @"ID:\s*(CAL-[A-Z0-9-]+)\s*\|")
+            .Select(match => match.Groups[1].Value)
             .ToHashSet(StringComparer.Ordinal);
-        Assert(exportedIds.SetEquals(expectedScheduleIds), "pdf_monthly_calendar_reconciles_all_expected_task_ids");
+        var presentIds = expectedScheduleIds.Where(pdfText.Contains).ToHashSet(StringComparer.Ordinal);
+        Assert(presentIds.SetEquals(expectedScheduleIds) && exportedIds.SetEquals(expectedScheduleIds),
+            "pdf_monthly_calendar_reconciles_all_expected_task_ids");
         Assert(pdfDocument.NumberOfPages >= 4, "pdf_monthly_calendar_has_month_and_detail_continuation_pages");
     }
     if (!string.IsNullOrWhiteSpace(evidenceDirectory))

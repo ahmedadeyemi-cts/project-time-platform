@@ -466,7 +466,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
             canvas.DrawRect(PdfRect(PdfLeft, bottom, PdfRight, top), fillPaint);
             strokePaint.Color = new SKColor(0xD0, 0xDD, 0xE6);
             canvas.DrawRect(PdfRect(PdfLeft, bottom, PdfRight, top), strokePaint);
-            DrawText(canvas, boldFont, textPaint, $"ID: {row.Id}", PdfLeft + 6, top - 10, navy);
+            DrawText(canvas, boldFont, textPaint, $"ID: {row.Id} |", PdfLeft + 6, top - 10, navy);
             var labelLines = WrapText(row.Label, regularFont, textPaint, PdfRight - PdfLeft - 12);
             for (var line = 0; line < labelLines.Count; line++)
                 DrawText(canvas, regularFont, textPaint, $"Task: {labelLines[line]}", PdfLeft + 6,
