@@ -249,7 +249,7 @@ public static class ProjectFlowHiveFinancialReadback
             .Sum(task => task.ActualLaborCost!.Value);
         var completeLaborCost = unmatchedApproved == 0m
             && taskReadback.All(task => task.ApprovedHours == 0m || task.ActualLaborCost.HasValue);
-        var approvedLaborCost = completeLaborCost ? knownApprovedLaborCost : null;
+        decimal? approvedLaborCost = completeLaborCost ? knownApprovedLaborCost : null;
         if (!completeLaborCost)
             unknownReasons.Add("approved_labor_cost_is_incomplete");
 
@@ -257,12 +257,12 @@ public static class ProjectFlowHiveFinancialReadback
         var approvedEstimateHours = SumIfComplete(tasks.Select(task => task.ApprovedEstimateHours), "approved_estimate_hours", unknownReasons);
         var budgetHoursRemaining = SumIfComplete(taskReadback.Select(task => task.BudgetHoursRemaining), "budget_hours_remaining", unknownReasons);
         var currentEstimateToCompleteHours = SumIfComplete(taskReadback.Select(task => task.CurrentEstimateToCompleteHours), "current_estimate_to_complete_hours", unknownReasons);
-        var budgetRemainingAfterKnownActualCosts = approvedBudget.HasValue
+        decimal? budgetRemainingAfterKnownActualCosts = approvedBudget.HasValue
             ? Math.Round(approvedBudget.Value - knownApprovedLaborCost, 2, MidpointRounding.AwayFromZero)
             : null;
         if (!approvedBudget.HasValue)
             unknownReasons.Add("budget_remaining_requires_approved_budget");
-        var budgetRemainingAfterActualCosts = approvedBudget.HasValue && approvedLaborCost.HasValue
+        decimal? budgetRemainingAfterActualCosts = approvedBudget.HasValue && approvedLaborCost.HasValue
             ? Math.Round(approvedBudget.Value - approvedLaborCost.Value, 2, MidpointRounding.AwayFromZero)
             : null;
 
@@ -296,12 +296,12 @@ public static class ProjectFlowHiveFinancialReadback
             unknownReasons.Add("forecast_requires_recorded_forecast_or_complete_current_estimate_and_rate_basis");
         }
 
-        var forecastVariance = approvedBudget.HasValue && forecast.HasValue
+        decimal? forecastVariance = approvedBudget.HasValue && forecast.HasValue
             ? Math.Round(approvedBudget.Value - forecast.Value, 2, MidpointRounding.AwayFromZero)
             : null;
         if (!forecastVariance.HasValue)
             unknownReasons.Add("forecast_variance_requires_approved_budget_and_forecast");
-        if (!normalizedCurrency.HasValue)
+        if (normalizedCurrency is null)
             unknownReasons.Add("project_currency_unknown");
         if (unmatchedApproved > 0m)
             derivedAssumptions.Add("Known task subtotals exclude approved time that cannot be matched to a canonical task.");
