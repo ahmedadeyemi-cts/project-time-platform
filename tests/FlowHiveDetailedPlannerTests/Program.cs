@@ -4,12 +4,17 @@ using System.Text.Json;
 using ClosedXML.Excel;
 using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
+using UglyToad.PdfPig;
 
 static void Assert(bool condition, string label)
 {
     if (!condition) throw new InvalidOperationException($"ASSERTION_FAILED {label}");
     Console.WriteLine($"ASSERTION_PASSED {label}");
 }
+
+static string NormalizePdfText(string value) => string.Join(
+    ' ',
+    value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
 var module025Parser = typeof(PulseAiPrivateRagService).GetMethod(
     "ParseModule025DetailedPlan",
@@ -698,6 +703,31 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
         },
         ["=Injected note", "é漢 note"]);
 
+    var pdfLongDescription =
+        $"Detailed scope for {artifactKind}: Café's quoted delivery description / formula-like text =SUM(A1) " +
+        "must wrap across lines without losing punctuation or the final acceptance phrase.";
+    var pdfRows = Enumerable.Range(1, 26)
+        .Select(index => (IReadOnlyList<object?>)new object?[]
+        {
+            $"T-{index:00}",
+            index == 1 ? pdfLongDescription : $"Résumé task {index:00} - 東京 review",
+            new DateOnly(2026, 9, Math.Min(index, 30)),
+            index * 1.5m,
+            index == 1 ? "Names, punctuation (quoted), and wrapping" : "Review",
+            index == 1 ? "München 東京" : "é東京",
+            $"Owner {index:00}"
+        })
+        .ToArray();
+    var pdfArtifact = exportArtifact with
+    {
+        Title = "München - 東京 delivery plan",
+        ProjectName = "Résumé program - 東京",
+        CustomerName = "株式会社 東京",
+        Columns = ["ID", "Description", "Due date", "Hours", "Notes", "Unicode", "Owner"],
+        Rows = pdfRows,
+        Notes = ["Résumé note - 東京", "Punctuation: quoted scope / 100% ready"]
+    };
+
     var exportBytes = ProjectFlowHivePsaArtifactRenderer.BuildExcel(exportArtifact);
     using var exportWorkbook = new XLWorkbook(new MemoryStream(exportBytes));
     var exportSheet = exportWorkbook.Worksheet(artifactKind);
@@ -752,11 +782,34 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
     Assert(exportWorkbook.Worksheets.SelectMany(sheet => sheet.CellsUsed()).All(cell => !cell.HasFormula),
         $"xlsx_{artifactKind}_all_cells_remain_text_or_values");
 
-    var pdfBytes = ProjectFlowHivePsaArtifactRenderer.BuildPdf(exportArtifact);
-    var pdfText = Encoding.ASCII.GetString(pdfBytes);
-    Assert(pdfText.Contains(@"=SUM\(A1\)", StringComparison.Ordinal)
+    var pdfBytes = ProjectFlowHivePsaArtifactRenderer.BuildPdf(pdfArtifact);
+    var evidenceDirectory = Environment.GetEnvironmentVariable("FLOWHIVE_EXPORT_EVIDENCE_DIR");
+    if (!string.IsNullOrWhiteSpace(evidenceDirectory))
+    {
+        Directory.CreateDirectory(evidenceDirectory);
+        File.WriteAllBytes(Path.Combine(evidenceDirectory, $"{artifactKind}.xlsx"), exportBytes);
+        File.WriteAllBytes(Path.Combine(evidenceDirectory, $"{artifactKind}.pdf"), pdfBytes);
+    }
+
+    using var pdfDocument = PdfDocument.Open(new MemoryStream(pdfBytes));
+    var pdfText = string.Join("\n", pdfDocument.GetPages().Select(page => page.Text));
+    Assert(pdfDocument.NumberOfPages >= 2, $"pdf_{artifactKind}_paginates_long_report");
+    Assert(pdfText.Contains("US Signal Project FlowHive", StringComparison.Ordinal)
+        && pdfText.Contains("US SIGNAL PROJECT DELIVERY ARTIFACT", StringComparison.Ordinal),
+        $"pdf_{artifactKind}_contains_us_signal_branding");
+    Assert(pdfText.Contains("München", StringComparison.Ordinal)
+        && pdfText.Contains("東京", StringComparison.Ordinal)
+        && pdfText.Contains("株式会社", StringComparison.Ordinal),
+        $"pdf_{artifactKind}_preserves_accented_and_non_latin_text");
+    var pdfDescriptionTokens = NormalizePdfText(pdfLongDescription)
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    Assert(pdfDescriptionTokens.All(token => pdfText.Contains(token, StringComparison.Ordinal)),
+        $"pdf_{artifactKind}_preserves_wrapped_long_description_tokens");
+    Assert(pdfText.Contains("=SUM(A1)", StringComparison.Ordinal)
         && !pdfText.Contains("'=SUM(A1)", StringComparison.Ordinal),
         $"pdf_{artifactKind}_does_not_apply_spreadsheet_apostrophe_escaping");
+    if (!string.IsNullOrWhiteSpace(evidenceDirectory))
+        Console.WriteLine($"PDF_EVIDENCE_{artifactKind}={Path.Combine(evidenceDirectory, $"{artifactKind}.pdf")}");
 }
 
 Console.WriteLine("FLOWHIVE_DETAILED_PLANNER_TESTS=PASS");
