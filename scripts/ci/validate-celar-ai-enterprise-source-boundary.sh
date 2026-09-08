@@ -41,7 +41,7 @@ fi
 
 if [[ "$HEAD_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
   node tests/flowhive-psa-scope.mjs
-  ALLOWED_DATABASE='^(database/(migrations/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution)\.sql|rollback/(103_module_066_flowhive_enterprise_psa_revamp_rollback|104_flowhive_bounded_ai_execution_rollback)\.sql))$'
+  ALLOWED_DATABASE='^(database/(migrations/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution|105_flowhive_reviewed_regeneration)\.sql|rollback/(103_module_066_flowhive_enterprise_psa_revamp_rollback|104_flowhive_bounded_ai_execution_rollback|105_flowhive_reviewed_regeneration_rollback)\.sql))$'
   publish_mode FLOWHIVE_ENTERPRISE_PSA
 elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
   ALLOWED_DATABASE='a^'
