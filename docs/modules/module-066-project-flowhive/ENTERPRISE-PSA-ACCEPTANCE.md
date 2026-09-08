@@ -33,7 +33,7 @@ controller has completed and the deployed API and web image digests have been
 recorded. The register must be updated in the same change that records each live
 acceptance result.
 
-Current candidate: `f594ba0c5a2901672bffa4168d44a98e770278d8`.
+Current candidate: `f0f1953545cbd00d51c317fb23b62dc04cf9355a`.
 
 | Requirement | Implementation location | Automated evidence | Deployed revision | Live acceptance | Remaining blocker |
 |---|---|---|---|---|---|
