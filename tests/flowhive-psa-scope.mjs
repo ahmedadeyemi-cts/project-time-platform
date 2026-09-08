@@ -19,9 +19,16 @@ const validationFiles = new Set([
   'src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs',
   'src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs',
   'src/frontend/project-time-web/scripts/validate-production-consistency.mjs',
-  'src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
+  'src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs',
+  'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs',
+  'src/backend/ProjectTime.Api/ProjectTime.Api.csproj',
+  'src/backend/ProjectTime.Api/Properties/AssemblyInfo.cs',
+  'src/frontend/project-time-web/src/ProjectForgeCenter.jsx',
+  'src/frontend/project-time-web/src/project-forge-center.css',
+  'src/frontend/project-time-web/src/project-forge/projectForgeApi.js'
 ]);
 const componentPaths = [
+  /^src\/backend\/ProjectTime\.Api\/Assets\/Fonts\/[A-Za-z0-9._-]+$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/ProjectFlowHive[A-Za-z0-9]+\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/ProjectPlanning(AiOrchestrator|DocumentResolver)\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/CelarAiProductionPlatformModule\.cs$/,

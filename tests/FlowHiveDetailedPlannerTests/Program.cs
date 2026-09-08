@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
@@ -706,26 +707,87 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
     var pdfLongDescription =
         $"Detailed scope for {artifactKind}: Café's quoted delivery description / formula-like text =SUM(A1) " +
         "must wrap across lines without losing punctuation or the final acceptance phrase.";
-    var pdfRows = Enumerable.Range(1, 26)
-        .Select(index => (IReadOnlyList<object?>)new object?[]
-        {
-            $"T-{index:00}",
-            index == 1 ? pdfLongDescription : $"Résumé task {index:00} - 東京 review",
-            new DateOnly(2026, 9, Math.Min(index, 30)),
-            index * 1.5m,
-            index == 1 ? "Names, punctuation (quoted), and wrapping" : "Review",
-            index == 1 ? "München 東京" : "é東京",
-            $"Owner {index:00}"
-        })
-        .ToArray();
+    IReadOnlyList<string> pdfColumns;
+    IReadOnlyList<IReadOnlyList<object?>> pdfRows;
+    var expectedScheduleIds = new HashSet<string>(StringComparer.Ordinal);
+    if (artifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase))
+    {
+        pdfColumns = ["WBS", "Task", "Start", "End", "Duration", "Start Offset", "Critical", "Float", "Predecessor"];
+        var ganttRows = Enumerable.Range(1, 12)
+            .Select(index => (IReadOnlyList<object?>)new object?[]
+            {
+                $"GANTT-{index:00}",
+                index == 1
+                    ? $"GANTT-LONG-TASK-DETAIL-MARKER-ALPHA — {pdfLongDescription} with a distinct appendix-only ending."
+                    : $"GANTT-TASK-{index:00}-DISTINCT-NAME — Résumé 東京 review",
+                index <= 8
+                    ? new DateOnly(2026, 9, 15)
+                    : index == 9 ? new DateOnly(2026, 9, 29)
+                    : index == 10 ? new DateOnly(2026, 10, 1)
+                    : new DateOnly(2026, 10, 15),
+                index <= 8
+                    ? new DateOnly(2026, 9, 17)
+                    : index == 9 ? new DateOnly(2026, 10, 2)
+                    : index == 10 ? new DateOnly(2026, 10, 5)
+                    : new DateOnly(2026, 10, 20),
+                index + 2, index, index is 1 or 9 ? "Yes" : "No", 0, ""
+            })
+            .ToList();
+        ganttRows.AddRange([
+            (IReadOnlyList<object?>)["GANTT-MISSING-START", "GANTT-MISSING-START unique unscheduled marker", null, new DateOnly(2026, 10, 7), 1, 0, "No", 0, ""],
+            (IReadOnlyList<object?>)["GANTT-REVERSED", "GANTT-REVERSED unique invalid marker", new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 1), 1, 0, "No", 0, ""],
+            (IReadOnlyList<object?>)["GANTT-INVALID-DATE", "GANTT-INVALID-DATE unique invalid marker", "not-a-date", new DateOnly(2026, 10, 8), 1, 0, "No", 0, ""]
+        ]);
+        pdfRows = ganttRows;
+        expectedScheduleIds = ganttRows.Select(row => row[0]!.ToString()!).ToHashSet(StringComparer.Ordinal);
+    }
+    else if (artifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase))
+    {
+        pdfColumns = ["Start Date", "End Date", "WBS", "Phase", "Task", "Assigned Identity", "Status"];
+        var calendarRows = Enumerable.Range(1, 12)
+            .Select(index => (IReadOnlyList<object?>)new object?[]
+            {
+                index <= 8 ? new DateOnly(2026, 9, 15) : index == 9 ? new DateOnly(2026, 9, 29) : new DateOnly(2026, 10, 1),
+                index <= 8 ? new DateOnly(2026, 9, 17) : index == 9 ? new DateOnly(2026, 10, 2) : new DateOnly(2026, 10, 5),
+                $"CAL-{index:00}", $"Phase {index:00}",
+                index == 1
+                    ? $"CAL-LONG-TASK-DETAIL-MARKER-ALPHA — {pdfLongDescription} with a distinct appendix-only ending."
+                    : $"CAL-TASK-{index:00}-DISTINCT-NAME — Résumé 東京 review",
+                $"Owner {index:00}", index == 1 ? "At risk" : "Ready"
+            })
+            .ToList();
+        calendarRows.AddRange([
+            (IReadOnlyList<object?>)[null, new DateOnly(2026, 10, 7), "CAL-MISSING-START", "Phase missing", "CAL-MISSING-START unique unscheduled marker", "Owner missing", "Blocked"],
+            (IReadOnlyList<object?>)[new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 1), "CAL-REVERSED", "Phase reversed", "CAL-REVERSED unique invalid marker", "Owner reversed", "Blocked"],
+            (IReadOnlyList<object?>)["not-a-date", new DateOnly(2026, 10, 8), "CAL-INVALID-DATE", "Phase invalid", "CAL-INVALID-DATE unique invalid marker", "Owner invalid", "Blocked"]
+        ]);
+        pdfRows = calendarRows;
+        expectedScheduleIds = calendarRows.Select(row => row[2]!.ToString()!).ToHashSet(StringComparer.Ordinal);
+    }
+    else
+    {
+        pdfColumns = ["ID", "Description", "Due date", "Hours", "Notes", "Unicode", "Owner"];
+        pdfRows = Enumerable.Range(1, 26)
+            .Select(index => (IReadOnlyList<object?>)new object?[]
+            {
+                $"T-{index:00}",
+                index == 1 ? pdfLongDescription : $"Résumé task {index:00} - 東京 review",
+                new DateOnly(2026, 9, Math.Min(index, 30)),
+                index * 1.5m,
+                index == 1 ? "Names, punctuation (quoted), and wrapping" : "Review",
+                index == 1 ? "München 東京" : "é東京",
+                $"Owner {index:00}"
+            })
+            .ToArray();
+    }
     var pdfArtifact = exportArtifact with
     {
         Title = "München - 東京 delivery plan",
         ProjectName = "Résumé program - 東京",
         CustomerName = "株式会社 東京",
-        Columns = ["ID", "Description", "Due date", "Hours", "Notes", "Unicode", "Owner"],
+        Columns = pdfColumns,
         Rows = pdfRows,
-        Notes = ["Résumé note - 東京", "Punctuation: quoted scope / 100% ready"]
+        Notes = ["Synthetic export validation only; task markers appear only in task rows.", "Résumé note - 東京"]
     };
 
     var exportBytes = ProjectFlowHivePsaArtifactRenderer.BuildExcel(exportArtifact);
@@ -808,6 +870,43 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
     Assert(pdfText.Contains("=SUM(A1)", StringComparison.Ordinal)
         && !pdfText.Contains("'=SUM(A1)", StringComparison.Ordinal),
         $"pdf_{artifactKind}_does_not_apply_spreadsheet_apostrophe_escaping");
+    if (artifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase))
+    {
+        Assert(pdfText.Contains("Graphical Gantt schedule", StringComparison.Ordinal)
+            && pdfText.Contains("SCHEDULE / DATES", StringComparison.Ordinal)
+            && pdfText.Contains("critical", StringComparison.Ordinal)
+            && pdfText.Contains("Task details appendix", StringComparison.Ordinal)
+            && pdfText.Contains("GANTT-MISSING-START", StringComparison.Ordinal)
+            && pdfText.Contains("GANTT-REVERSED", StringComparison.Ordinal)
+            && pdfText.Contains("dates were not swapped", StringComparison.Ordinal),
+            "pdf_gantt_uses_graphical_schedule_layout");
+        var exportedIds = Regex.Matches(pdfText, @"ID:\s*(GANTT-[A-Z0-9-]+)\s*\|")
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+        var presentIds = expectedScheduleIds.Where(pdfText.Contains).ToHashSet(StringComparer.Ordinal);
+        Assert(presentIds.SetEquals(expectedScheduleIds) && exportedIds.SetEquals(expectedScheduleIds),
+            "pdf_gantt_reconciles_all_expected_task_ids");
+        Assert(pdfDocument.NumberOfPages >= 4, "pdf_gantt_has_graph_and_detail_continuation_pages");
+    }
+    if (artifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase))
+    {
+        Assert(pdfText.Contains("Graphical monthly calendar", StringComparison.Ordinal)
+            && pdfText.Contains("SUN", StringComparison.Ordinal)
+            && pdfText.Contains("SAT", StringComparison.Ordinal)
+            && pdfText.Contains("Task details appendix", StringComparison.Ordinal)
+            && pdfText.Contains("CAL-MISSING-START", StringComparison.Ordinal)
+            && pdfText.Contains("CAL-REVERSED", StringComparison.Ordinal)
+            && pdfText.Contains("OVERFLOW-5-MORE-SEE-APPENDIX", StringComparison.Ordinal)
+            && pdfText.Contains("dates were not swapped", StringComparison.Ordinal),
+            "pdf_monthly_calendar_uses_graphical_month_grid");
+        var exportedIds = Regex.Matches(pdfText, @"ID:\s*(CAL-[A-Z0-9-]+)\s*\|")
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+        var presentIds = expectedScheduleIds.Where(pdfText.Contains).ToHashSet(StringComparer.Ordinal);
+        Assert(presentIds.SetEquals(expectedScheduleIds) && exportedIds.SetEquals(expectedScheduleIds),
+            "pdf_monthly_calendar_reconciles_all_expected_task_ids");
+        Assert(pdfDocument.NumberOfPages >= 4, "pdf_monthly_calendar_has_month_and_detail_continuation_pages");
+    }
     if (!string.IsNullOrWhiteSpace(evidenceDirectory))
         Console.WriteLine($"PDF_EVIDENCE_{artifactKind}={Path.Combine(evidenceDirectory, $"{artifactKind}.pdf")}");
 }

@@ -85,6 +85,45 @@ function belongsToProject(row, selectedProjectId) {
   return !selectedProjectId || String(row.projectId) === String(selectedProjectId);
 }
 
+function nullableHours(value) {
+  return value == null ? 'Unknown' : hours(value);
+}
+
+function nullableMoney(value, currency) {
+  return value == null ? 'Unknown' : money(value, currency);
+}
+
+function FlowHiveFinancialReadbackPanel({ response, currency }) {
+  const readback = response?.readback;
+  if (!readback) {
+    return <section className="forge-financial-readback forge-note-panel"><h3>Canonical financial readback</h3><p>Financial readback is unavailable. No zero or inferred total is shown.</p></section>;
+  }
+  const effectiveCurrency = normalizeCurrencyCode(readback.currencyCode || currency);
+  const completeness = readback.completeness || {};
+  const unknownReasons = readback.unknownReasons || completeness.unknownReasons || [];
+  const assumptions = readback.derivedAssumptions || completeness.derivedAssumptions || [];
+  return <section className="forge-financial-readback" aria-label="Canonical financial readback">
+    <div className="forge-financial-readback__heading"><div><span>Authoritative Project Forge sources</span><h3>Canonical task, approved time, and cost readback</h3><p>Totals are server-scoped and reconcile canonical tasks, all logged time, approved time, verified internal-cost rates, and recorded project controls.</p></div><strong className={`forge-financial-readback__status is-${completeness.status || 'unknown'}`}>{title(completeness.status || 'unknown')}</strong></div>
+    <div className="forge-metrics forge-financial-readback__metrics">
+      <Metric label="Original estimate" value={nullableHours(readback.originalEstimateHours)} />
+      <Metric label="Approved estimate" value={nullableHours(readback.approvedEstimateHours)} />
+      <Metric label="Logged hours" value={nullableHours(readback.loggedHours)} />
+      <Metric label="Approved hours" value={nullableHours(readback.approvedHours)} />
+      <Metric label="Budget hours remaining" value={nullableHours(readback.budgetHoursRemaining)} hint="Approved estimate less approved hours; may be negative." />
+      <Metric label="Current estimate to complete" value={nullableHours(readback.currentEstimateToCompleteHours)} hint="Explicit PM/current estimate; never inferred from the original estimate." />
+      <Metric label="Known approved labor cost" value={nullableMoney(readback.knownApprovedLaborCost, effectiveCurrency)} />
+      <Metric label="Budget remaining after known actual costs" value={nullableMoney(readback.budgetRemainingAfterKnownActualCosts, effectiveCurrency)} hint="Known labor subtotal only when other actual-cost sources are unavailable." />
+      <Metric label="Budget remaining after actual costs" value={nullableMoney(readback.budgetRemainingAfterActualCosts, effectiveCurrency)} />
+      <Metric label="Forecast at completion" value={nullableMoney(readback.forecastAtCompletion, effectiveCurrency)} hint={`${title(readback.forecastSource || 'unknown')} · ${readback.forecastProvenance || 'provenance unavailable'}`} />
+      <Metric label="Forecast variance" value={nullableMoney(readback.forecastVariance, effectiveCurrency)} hint="Approved budget less forecast; distinct from remaining budget after actual cost." />
+    </div>
+    <p className="forge-note forge-financial-readback__basis"><b>Rate basis:</b> internal labor cost requires purpose, currency, effective date, and authority. Billing or unclassified task rates remain unknown. Expenses and commitments are not added to derived labor forecasts or counted twice.</p>
+    {unknownReasons.length ? <div className="forge-financial-readback__warnings"><strong>Incomplete source evidence</strong><ul>{unknownReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div> : null}
+    {assumptions.length ? <div className="forge-financial-readback__assumptions"><strong>Derived assumptions</strong><ul>{assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}</ul></div> : null}
+    {readback.tasks?.length ? <div className="forge-table-wrap"><table className="forge-table"><caption>Task-level financial attribution</caption><thead><tr><th>Task</th><th>State</th><th>Original / approved estimate</th><th>Logged / approved</th><th>Current ETC</th><th>Rate basis</th><th>Actual labor cost</th></tr></thead><tbody>{readback.tasks.map((task) => <tr key={task.taskId}><td>{task.taskCode}</td><td>{task.isActive ? 'Active' : 'Inactive history'}</td><td>{nullableHours(task.originalEstimateHours)} / {nullableHours(task.approvedEstimateHours)}</td><td>{nullableHours(task.loggedHours)} / {nullableHours(task.approvedHours)}</td><td>{nullableHours(task.currentEstimateToCompleteHours)}</td><td>{task.rateVerified ? `${nullableMoney(task.rate, task.rateCurrency)} · ${task.ratePurpose} · ${task.rateEffectiveFrom || 'date unknown'} · ${task.rateAuthority || 'authority unknown'}` : 'Unknown — rate basis not verified'}</td><td>{nullableMoney(task.actualLaborCost, effectiveCurrency)}</td></tr>)}</tbody></table></div> : null}
+  </section>;
+}
+
 const waitForProjectPlanning = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
 function aiDraftNotice(result) {
@@ -207,12 +246,21 @@ export default function ProjectForgeCenter() {
     try {
       const result = await projectForgeApi.bootstrap({ projectManagerUserId: pm, projectId: project, workspace: workspaceValue, planId: planIdValue, signal: controller.signal });
       if (sequence !== loadSequence.current) return;
-      commitData(result);
       const availableProjects = result.projects || [];
       const serverSelectedProject = result.selectedProjectId || result.summary?.selectedProjectId || '';
       const nextProject = availableProjects.some((item) => String(projectId(item)) === String(serverSelectedProject || project))
         ? String(serverSelectedProject || project)
         : projectId(availableProjects[0]) || '';
+      let financialReadback = null;
+      if (nextProject && result.access?.canViewFinancials && !result.access?.isViewAs) {
+        try {
+          financialReadback = await projectForgeApi.financialReadback(nextProject, { signal: controller.signal });
+        } catch (financialError) {
+          if (financialError?.name === 'AbortError') throw financialError;
+          financialReadback = { status: 'financial_readback_unavailable', message: financialError.message || 'Financial readback is unavailable.' };
+        }
+      }
+      commitData({ ...result, financialReadback });
       setSelectedProject(String(nextProject || ''));
       if (result.access?.selectedProjectManagerUserId !== undefined) setSelectedPm(String(result.access.selectedProjectManagerUserId || pm || ''));
       if (workspaceValue === 'review_plan') setSelectedPlan(String(planIdValue || result.selectedPlanId || result.plan?.planId || ''));
@@ -289,6 +337,7 @@ export default function ProjectForgeCenter() {
   const canMoveWorkflow = canEditWorkspace || Boolean(data?.access?.canUpdateAssignedTaskStatus && !data?.access?.isViewAs);
   const canEditEstimate = Boolean(data?.access?.canEditAssignedEstimate && !data?.access?.isViewAs) || canEditReviewPlan || canManage;
   const canViewCosts = Boolean((data?.access?.canViewFinancials || data?.access?.canViewCosts) && !data?.access?.isViewAs) || canManage;
+  const financialReadback = data?.financialReadback || null;
   const canSelectPm = Boolean(data?.access?.canSelectProjectManager);
   const aiConnection = data?.ai?.module064Connection || null;
   const projectEvidenceMissing = Boolean(
@@ -672,7 +721,7 @@ export default function ProjectForgeCenter() {
       case 'weekly-calendar': return <CalendarWeek tasks={projectTasks} holidays={holidays} canManage={canEditWorkspace} onOpenTask={setSelectedTask} onMoveSchedule={moveSchedule} />;
       case 'project-overview': return currentProject ? <><div className="forge-project-hero"><div><span>{currentProject.projectCode}</span><h3>{currentProject.projectName}</h3><p>{currentProject.projectDescription || currentProject.description || 'No project description is available.'}</p></div><Progress value={progress} /></div><div className="forge-metrics"><Metric label="Status" value={title(currentProject.status)} /><Metric label="Project Manager" value={currentProject.projectManagerName || 'Unassigned'} /><Metric label="Start" value={shortDate(currentProject.startDate)} /><Metric label="End" value={shortDate(currentProject.endDate)} /><Metric label="Estimated" value={hours(estimatedHours)} /><Metric label="Actual" value={hours(actualHours)} /></div><TaskTable tasks={projectTasks} onOpenTask={setSelectedTask} /></> : <Empty>Select a project within your authorized scope.</Empty>;
       case 'project-manager': return <div className="forge-table-wrap"><table className="forge-table"><thead><tr><th>Project</th><th>PM</th><th>Status</th><th>Dates</th><th>Tasks</th><th>Progress</th>{canViewCosts ? <th>Planned cost</th> : null}</tr></thead><tbody>{projects.map((project) => <tr key={projectId(project)}><td><button type="button" className="forge-project-link" onClick={() => { changeProject(String(projectId(project))); setActiveTab('project-overview'); }}><b>{project.projectCode}</b><span>{project.projectName}</span></button></td><td>{project.projectManagerName || 'Unassigned'}</td><td>{title(project.status)}</td><td>{shortDate(project.startDate)} – {shortDate(project.endDate)}</td><td>{Number(project.taskCount || 0)}</td><td><Progress value={Number(project.progressPercent || 0)} /></td>{canViewCosts ? <td>{project.plannedTotalProjectCost == null && project.plannedCost == null ? 'Not available' : money(project.plannedTotalProjectCost ?? project.plannedCost, currency)}</td> : null}</tr>)}</tbody></table></div>;
-      case 'project-budget': return canViewCosts ? <><div className="forge-metrics"><Metric label="Planned project cost" value={plannedCost == null ? 'Not available' : money(plannedCost, currency)} hint={currency ? `Governed project currency: ${currency}` : 'Authoritative currency unavailable'} />{expenseTotalsByCurrency.map((total) => <Metric key={total.key} label={`${total.currency ? 'Current uploads' : 'Current upload'} · ${total.currency || 'Currency unavailable'}`} value={money(total.total, total.currency)} hint={total.currency && total.currency === currency ? `Included in the ${currency} variance` : 'Planned-cost variance unavailable for this total'} />)}<Metric label="Estimated labor" value={hours(estimatedHours)} /><Metric label="Actual labor" value={hours(actualHours)} /><Metric label={currency ? `Planned cost less ${currency} uploads` : 'Planned cost variance'} value={plannedVarianceAvailable ? money(plannedCost - matchingExpenseTotal, currency) : 'Unavailable'} /></div><p className="forge-note forge-budget-currency-note">Expense uploads are totaled separately by their recorded currency. Project Forge does not convert or sum unlike currencies. Uploads without a valid currency remain individual amounts and are never combined.{expenseTotalsByCurrency.some((total) => total.currency !== currency) ? ` Only ${currency || 'a matching project currency'} uploads are included in the planned-cost variance; other totals remain separate.` : ''}{!plannedVarianceAvailable ? ' Variance is unavailable because an authoritative planned amount and currency are both required.' : ''}</p><div className="forge-budget-bars">{['labor', 'materials', 'fixed', 'travel', 'equipment', 'miscellaneous'].map((bucket) => { const value = projectTasks.reduce((sum, task) => sum + estimatedCost(task, bucket), 0); return <div key={bucket}><span>{title(bucket)}</span><b>{money(value, currency)}</b><i style={{ width: `${plannedCost ? Math.min(100, (value / plannedCost) * 100) : 0}%` }} /></div>; })}</div><section className="forge-expenses"><h3>Expense tracker</h3><p className="forge-note">These are current project-linked uploads. Approval and accounting status come from the expense authority and are not inferred by Project Forge.</p>{currentExpenses.length ? <div className="forge-table-wrap"><table className="forge-table"><thead><tr><th>Period / upload</th><th>Owner</th><th>Lines</th><th>Total</th><th>Approval status</th></tr></thead><tbody>{currentExpenses.map((item) => <tr key={item.expenseUploadId || item.projectExpenseUploadId || item.uploadId}><td>{shortDate(item.periodStart || item.uploadedAt)}</td><td>{item.ownerName || item.expenseOwnerName || 'Project team'}</td><td>{item.lineCount || 0}</td><td>{money(item.totalAmount, item.currency)}</td><td>{title(item.approvalStatus || item.status || 'not_available')}</td></tr>)}</tbody></table></div> : <Empty />}</section></> : <Empty>Project budget and expense amounts are restricted to authorized financial and project-management roles.</Empty>;
+      case 'project-budget': return canViewCosts ? <><div className="forge-metrics"><Metric label="Planned project cost" value={plannedCost == null ? 'Not available' : money(plannedCost, currency)} hint={currency ? `Governed project currency: ${currency}` : 'Authoritative currency unavailable'} />{expenseTotalsByCurrency.map((total) => <Metric key={total.key} label={`${total.currency ? 'Current uploads' : 'Current upload'} · ${total.currency || 'Currency unavailable'}`} value={money(total.total, total.currency)} hint={total.currency && total.currency === currency ? `Shown separately from canonical labor readback` : 'Planned-cost variance unavailable for this total; unlike currencies are never combined.'} />)}<Metric label="Estimated labor" value={hours(estimatedHours)} /><Metric label="Actual labor" value={hours(actualHours)} /><Metric label={currency ? `Planned cost less ${currency} uploads` : 'Planned cost variance'} value={plannedVarianceAvailable ? money(plannedCost - matchingExpenseTotal, currency) : 'Unavailable'} /></div><FlowHiveFinancialReadbackPanel response={financialReadback} currency={currency} /><p className="forge-note forge-budget-currency-note">Expense uploads are totaled separately by their recorded currency. Project Forge does not convert or sum unlike currencies. Uploads without a valid currency remain individual amounts and are never combined.{expenseTotalsByCurrency.some((total) => total.currency !== currency) ? ` Only ${currency || 'a matching project currency'} uploads are included in the planned-cost variance; other totals remain separate.` : ''}{!plannedVarianceAvailable ? ' Variance is unavailable because an authoritative planned amount and currency are both required.' : ''}</p><div className="forge-budget-bars">{['labor', 'materials', 'fixed', 'travel', 'equipment', 'miscellaneous'].map((bucket) => { const value = projectTasks.reduce((sum, task) => sum + estimatedCost(task, bucket), 0); return <div key={bucket}><span>{title(bucket)}</span><b>{money(value, currency)}</b><i style={{ width: `${plannedCost ? Math.min(100, (value / plannedCost) * 100) : 0}%` }} /></div>; })}</div><section className="forge-expenses"><h3>Expense tracker</h3><p className="forge-note">These are current project-linked uploads. Approval and accounting status come from the expense authority and are not inferred by Project Forge.</p>{currentExpenses.length ? <div className="forge-table-wrap"><table className="forge-table"><thead><tr><th>Period / upload</th><th>Owner</th><th>Lines</th><th>Total</th><th>Approval status</th></tr></thead><tbody>{currentExpenses.map((item) => <tr key={item.expenseUploadId || item.projectExpenseUploadId || item.uploadId}><td>{shortDate(item.periodStart || item.uploadedAt)}</td><td>{item.ownerName || item.expenseOwnerName || 'Project team'}</td><td>{item.lineCount || 0}</td><td>{money(item.totalAmount, item.currency)}</td><td>{title(item.approvalStatus || item.status || 'not_available')}</td></tr>)}</tbody></table></div> : <Empty />}</section></> : <Empty>Project budget and expense amounts are restricted to authorized financial and project-management roles.</Empty>;
       case 'variable-tasks': return <TaskTable tasks={projectTasks.filter((task) => normalize(task.taskType) !== 'recurring')} onOpenTask={setSelectedTask} showDecision />;
       case 'recurring-tasks': return <TaskTable tasks={projectTasks.filter(hasRecurrence)} onOpenTask={setSelectedTask} showRecurrence />;
       case 'tasks-schedule': return <TaskTable tasks={[...projectTasks].sort((a, b) => taskStart(a).localeCompare(taskStart(b)))} onOpenTask={setSelectedTask} />;

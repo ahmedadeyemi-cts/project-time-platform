@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using ProjectTime.Api.Modules;
 
@@ -31,12 +33,44 @@ string Block(string path, string start, string end)
 await Sql("""
     CREATE EXTENSION IF NOT EXISTS pgcrypto;
     CREATE TABLE schema_migrations(migration_id TEXT PRIMARY KEY,description TEXT,applied_at TIMESTAMPTZ);
-    CREATE TABLE projects(project_id UUID PRIMARY KEY);
-    CREATE TABLE app_users(user_id UUID PRIMARY KEY);
+    CREATE TABLE projects(project_id UUID PRIMARY KEY,project_code TEXT NOT NULL DEFAULT 'TEST',project_name TEXT NOT NULL DEFAULT 'Synthetic test project',status TEXT NOT NULL DEFAULT 'active',project_manager_user_id UUID NULL,account_executive_user_id UUID NULL,solution_architect_user_id UUID NULL);
+    CREATE TABLE app_users(user_id UUID PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',email TEXT NOT NULL DEFAULT '',is_active BOOLEAN NOT NULL DEFAULT TRUE,team_name TEXT NOT NULL DEFAULT '',department_name TEXT NOT NULL DEFAULT '',department TEXT NOT NULL DEFAULT '');
+    CREATE TABLE app_roles(app_role_id UUID PRIMARY KEY,role_code TEXT NOT NULL,is_active BOOLEAN NOT NULL DEFAULT TRUE);
+    CREATE TABLE app_permissions(app_permission_id UUID PRIMARY KEY,permission_code TEXT NOT NULL);
+    CREATE TABLE app_user_role_assignments(user_id UUID,app_role_id UUID,is_active BOOLEAN NOT NULL DEFAULT TRUE);
+    CREATE TABLE app_role_permissions(app_role_id UUID,app_permission_id UUID);
+    CREATE TABLE project_assignments(project_assignment_id UUID PRIMARY KEY,project_id UUID,task_id UUID,user_id UUID,assigned_by_user_id UUID,effective_start_date DATE,effective_end_date DATE,allocation_percent NUMERIC,assigned_hours NUMERIC,is_primary_assignee BOOLEAN,updated_by_user_id UUID);
+    CREATE TABLE project_planning_collaborators(project_id UUID,user_id UUID,module_code TEXT,collaboration_level TEXT,is_active BOOLEAN,effective_start_date DATE,effective_end_date DATE);
+    CREATE TABLE reporting_relationships(employee_user_id UUID,manager_user_id UUID,team_lead_user_id UUID,effective_start_date DATE,effective_end_date DATE);
+    CREATE TABLE projectpulse_team_scope_assignments(scoped_user_id UUID,is_active BOOLEAN,scope_type TEXT,manager_user_id UUID,team_name TEXT,department_name TEXT);
+    CREATE TABLE project_tasks(task_id UUID PRIMARY KEY,project_id UUID,task_code TEXT,task_name TEXT,task_description TEXT,billable BOOLEAN,is_active BOOLEAN,revision_number INTEGER,updated_by_user_id UUID);
     CREATE TABLE project_flowhive_plans(plan_id UUID PRIMARY KEY);
+    CREATE TABLE project_forge_plans(plan_id UUID PRIMARY KEY,project_id UUID,plan_name TEXT,plan_status TEXT,source_kind TEXT,revision_number INTEGER,adopted_by_user_id UUID NULL,adopted_at TIMESTAMPTZ NULL,review_notes TEXT NOT NULL DEFAULT '',updated_by_user_id UUID,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+    CREATE TABLE project_forge_plan_tasks(plan_task_id UUID PRIMARY KEY,plan_id UUID,project_id UUID,wbs_code TEXT,parent_wbs_code TEXT,task_name TEXT,task_description TEXT,task_type TEXT,phase_name TEXT,priority_code TEXT,task_status TEXT,kanban_category TEXT,decision_action TEXT,planned_start_date DATE,planned_end_date DATE,duration_working_days INTEGER,recurrence_rule JSONB,percent_complete NUMERIC,estimated_hours NUMERIC,hourly_rate NUMERIC,material_units NUMERIC,material_unit_cost NUMERIC,fixed_cost NUMERIC,travel_cost NUMERIC,equipment_cost NUMERIC,miscellaneous_cost NUMERIC,is_important BOOLEAN,is_urgent BOOLEAN,reviewer_user_id UUID NULL,source_kind TEXT,ai_correlation_id TEXT NULL,canonical_task_id UUID NULL,blocked_reason TEXT,display_order INTEGER,revision_number INTEGER,updated_by_user_id UUID,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+    CREATE TABLE project_forge_plan_assignments(plan_id UUID,plan_task_id UUID,project_id UUID,user_id UUID,assignment_type TEXT,review_status TEXT,reviewed_task_revision INTEGER NULL);
+    CREATE TABLE project_forge_task_details(task_id UUID PRIMARY KEY,project_id UUID,source_plan_task_id UUID NULL,parent_task_id UUID NULL,task_type TEXT,phase_name TEXT,priority_code TEXT,task_status TEXT,kanban_category TEXT,decision_action TEXT,planned_start_date DATE,planned_end_date DATE,duration_working_days INTEGER,display_order INTEGER,blocked_reason TEXT,recurrence_rule JSONB,percent_complete NUMERIC,estimated_hours NUMERIC,hourly_rate NUMERIC,material_units NUMERIC,material_unit_cost NUMERIC,fixed_cost NUMERIC,travel_cost NUMERIC,equipment_cost NUMERIC,miscellaneous_cost NUMERIC,is_important BOOLEAN,is_urgent BOOLEAN,source_kind TEXT,ai_correlation_id TEXT,created_by_user_id UUID,updated_by_user_id UUID,revision_number INTEGER,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+    CREATE TABLE project_forge_task_dependencies(dependency_id UUID PRIMARY KEY,plan_id UUID,predecessor_plan_task_id UUID,successor_plan_task_id UUID,dependency_type TEXT,lag_working_days INTEGER,created_at TIMESTAMPTZ DEFAULT NOW());
+    CREATE TABLE project_task_dependencies(project_task_dependency_id UUID PRIMARY KEY,project_id UUID,predecessor_task_id UUID,successor_task_id UUID,dependency_type TEXT,lag_working_days INTEGER,created_by_user_id UUID,updated_by_user_id UUID);
+    CREATE TABLE project_forge_audit_events(audit_event_id UUID PRIMARY KEY,project_id UUID,plan_id UUID NULL,plan_task_id UUID NULL,event_code TEXT,entity_type TEXT,entity_id UUID,actual_actor_user_id UUID,effective_actor_user_id UUID,event_metadata JSONB,correlation_id TEXT);
+    CREATE TABLE enterprise_notification_policies(policy_code TEXT PRIMARY KEY,enabled BOOLEAN NOT NULL DEFAULT TRUE);
+    CREATE TABLE enterprise_notification_events(enterprise_notification_event_id UUID PRIMARY KEY,policy_code TEXT,source_module TEXT,source_event_id TEXT,idempotency_key TEXT UNIQUE,entity_type TEXT,entity_id UUID,project_id UUID,subject_user_id UUID NULL,occurred_at TIMESTAMPTZ,available_at TIMESTAMPTZ,payload JSONB,ingestion_source TEXT,event_status TEXT);
+    CREATE TABLE enterprise_notification_event_history(enterprise_notification_event_history_id UUID PRIMARY KEY,enterprise_notification_event_id UUID,history_code TEXT,event_status TEXT,diagnostic_code TEXT,history_metadata JSONB,correlation_id TEXT);
+    CREATE TABLE time_entries(time_entry_id UUID PRIMARY KEY,project_id UUID,task_id UUID NULL,hours NUMERIC,status TEXT,work_date DATE);
     """);
 await Sql(Block("database/migrations/086_module_066_flowhive_enterprise_pm.sql", "CREATE TABLE IF NOT EXISTS project_flowhive_working_copies (", "\n);"));
 await Sql(Block("database/migrations/086_module_066_flowhive_enterprise_pm.sql", "CREATE OR REPLACE FUNCTION projectpulse086_touch_working_copy()", "FOR EACH ROW EXECUTE FUNCTION projectpulse086_touch_working_copy();"));
+await Sql("""
+    CREATE TABLE IF NOT EXISTS project_flowhive_project_controls(
+        project_id UUID PRIMARY KEY,
+        currency_code TEXT NULL,
+        approved_budget NUMERIC NULL,
+        forecast_at_completion NUMERIC NULL,
+        updated_by_user_id UUID NULL
+    );
+    INSERT INTO schema_migrations(migration_id,description,applied_at)
+    VALUES('086_module_066_flowhive_enterprise_pm','Synthetic fixture readiness marker for the extracted 086 schema','2026-09-08T00:00:00Z')
+    ON CONFLICT (migration_id) DO NOTHING;
+    """);
 await Sql(Block("database/migrations/095_project_planning_collaboration_access.sql", "CREATE TABLE IF NOT EXISTS project_flowhive_ai_planner_runs (", "\n);"));
 await Sql("""
     CREATE UNIQUE INDEX ux_test_active_actor ON project_flowhive_ai_planner_runs(project_id,actual_actor_user_id) WHERE status IN ('queued','processing','generating');
@@ -52,7 +86,9 @@ var migration = File.ReadAllText(Path.Combine(root, "database/migrations/104_flo
 await Sql(migration); await Sql(migration);
 Check((long)(await Sql("SELECT count(*) FROM schema_migrations WHERE migration_id='104_flowhive_bounded_ai_execution';"))! == 1, "migration is idempotent");
 var project = Guid.NewGuid(); var actor = Guid.NewGuid();
-await Sql("INSERT INTO projects VALUES(@p); INSERT INTO app_users VALUES(@a);", ("p", project), ("a", actor));
+await Sql("INSERT INTO projects(project_id,project_code,project_name,status) VALUES(@p,'TEST-104','Synthetic execution project','active'); INSERT INTO app_users(user_id,display_name,email,is_active) VALUES(@a,'Synthetic Administrator','synthetic@example.invalid',TRUE);", ("p", project), ("a", actor));
+var administratorRole = Guid.NewGuid();
+await Sql("INSERT INTO app_roles(app_role_id,role_code,is_active) VALUES(@role,'ADMINISTRATOR',TRUE); INSERT INTO app_user_role_assignments(user_id,app_role_id,is_active) VALUES(@a,@role,TRUE); INSERT INTO enterprise_notification_policies(policy_code,enabled) VALUES('PROJECT_FORGE_PLAN_UPDATED',TRUE),('PROJECT_FORGE_TASK_ASSIGNED',TRUE);", ("role", administratorRole), ("a", actor));
 var seed = new ProjectFlowHivePlanRequest(project,"TEST-104","Synthetic execution test","Test customer","Test plan","draft",
     new DateOnly(2026,9,7),new DateOnly(2026,10,7),
     [new(Guid.NewGuid(),null,"1",null,"Plan","Phase summary.",0,false,"ASAP",null,0m,0m,"not_started",IsSummary:true,Phase:"Plan"),
@@ -229,4 +265,176 @@ Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies 
 Check((long)(await Sql("SELECT count(*) FROM project_flowhive_ai_plan_reviews WHERE run_id=@r",("r",interruptedReview)))! == 0,"failed review does not leave a false immutable success receipt");
 try{await Sql(File.ReadAllText(Path.Combine(root,"database/rollback/105_flowhive_reviewed_regeneration_rollback.sql")));throw new Exception("Destructive review rollback allowed");}
 catch(PostgresException){Check(true,"migration rollback cannot remove retained review evidence");}
+var readbackTaskOne = Guid.NewGuid();
+var readbackTaskTwo = Guid.NewGuid();
+ProjectFlowHiveRateSource InternalRate(decimal amount, string currency = "USD") =>
+    new(amount, "internal_labor_cost", currency, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), "synthetic_internal_cost_authority", true);
+var financialSources = new[]
+{
+    new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-001", 10m, 10m, 7m, true, InternalRate(100m)),
+    new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskTwo, "CAN-002", 8m, 8m, 6m, true, InternalRate(80m))
+};
+var approvedTimeSources = new[]
+{
+    new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "pm_approved", new DateOnly(2026, 9, 8)),
+    new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskTwo, 2m, "locked", new DateOnly(2026, 9, 8)),
+    new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 1m, "draft")
+};
+var financialReadback = ProjectFlowHiveFinancialReadback.Calculate(1000m, null, financialSources, approvedTimeSources);
+Check(financialReadback.LoggedHours == 6m && financialReadback.ApprovedHours == 5m, "readback separates logged and approved time");
+Check(financialReadback.OriginalEstimateHours == 18m && financialReadback.ApprovedEstimateHours == 18m, "readback preserves original and approved estimates");
+Check(financialReadback.BudgetHoursRemaining == 13m && financialReadback.CurrentEstimateToCompleteHours == 13m, "readback separates budget hours remaining and current estimate to complete");
+Check(financialReadback.ApprovedLaborCost == 460m && financialReadback.KnownApprovedLaborCost == 460m, "readback calculates verified internal labor cost from authoritative rate basis");
+Check(financialReadback.BudgetRemainingAfterActualCosts == 540m && financialReadback.BudgetRemainingAfterKnownActualCosts == 540m, "readback separates budget remaining after actual labor cost");
+Check(financialReadback.ForecastAtCompletion == 1640m && financialReadback.ForecastVariance == -640m && financialReadback.ForecastSource == "derived", "readback separates derived forecast variance from budget remaining");
+Check(financialReadback.DerivedAssumptions.Any(reason => reason.Contains("expenses and commitments", StringComparison.Ordinal)), "derived forecast identifies excluded expenses and commitments");
+var replayedReadback = ProjectFlowHiveFinancialReadback.Calculate(1000m, null, financialSources, approvedTimeSources);
+Check(JsonSerializer.Serialize(financialReadback) == JsonSerializer.Serialize(replayedReadback), "readback replay is deterministic and idempotent");
+var overrunEstimate = ProjectFlowHiveFinancialReadback.Calculate(1000m, null,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-OVERRUN", 10m, 10m, 4m, true, InternalRate(100m))],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 12m, "pm_approved")]);
+Check(overrunEstimate.BudgetHoursRemaining == -2m && overrunEstimate.CurrentEstimateToCompleteHours == 4m,
+    "explicit current estimate to complete is not clamped from original estimate minus approved hours");
+var unknownRate = ProjectFlowHiveFinancialReadback.Calculate(null, null,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-001", 10m, 10m, 4m, true, null)],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "pm_approved")]);
+Check(unknownRate.ApprovedLaborCost is null && unknownRate.BudgetRemainingAfterActualCosts is null && unknownRate.ForecastAtCompletion is null
+    && unknownRate.UnknownReasons.Contains("missing_rate:CAN-001") && unknownRate.KnownApprovedLaborCost == 0m, "missing production rate preserves known subtotals without a complete-looking total");
+var unmatchedTime = ProjectFlowHiveFinancialReadback.Calculate(1000m, null,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-001", 10m, 10m, 4m, true, InternalRate(100m))],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "pm_approved"), new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), null, 2m, "locked")]);
+Check(unmatchedTime.ApprovedHours == 5m && unmatchedTime.Completeness.KnownApprovedHours == 3m
+    && unmatchedTime.Completeness.UnmatchedApprovedHours == 2m && unmatchedTime.ApprovedLaborCost is null,
+    "unmatched approved time is visible and prevents a complete-looking cost total");
+var inactiveHistory = ProjectFlowHiveFinancialReadback.Calculate(1000m, null,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-INACTIVE", 10m, 10m, 4m, false, InternalRate(100m))],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "locked")]);
+Check(inactiveHistory.ApprovedLaborCost == 300m && inactiveHistory.Completeness.InactiveTaskCount == 1
+    && inactiveHistory.DerivedAssumptions.Any(reason => reason.Contains("Inactive canonical tasks", StringComparison.Ordinal)),
+    "inactive historical tasks retain approved time and cost attribution");
+var zeroCostRate = ProjectFlowHiveFinancialReadback.Calculate(1000m, null,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-ZERO", 10m, 10m, 4m, true, InternalRate(0m))],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "accounting_ready")]);
+Check(zeroCostRate.ApprovedLaborCost == 0m && zeroCostRate.Tasks.Single().RateVerified,
+    "legitimate zero-cost internal rate remains typed and verified");
+var missingCurrentEstimate = ProjectFlowHiveFinancialReadback.Calculate(1000m, null,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-NO-ETC", 10m, 10m, null, true, InternalRate(100m))],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "pm_approved")]);
+Check(missingCurrentEstimate.CurrentEstimateToCompleteHours is null && missingCurrentEstimate.ForecastAtCompletion is null
+    && missingCurrentEstimate.UnknownReasons.Contains("current_estimate_to_complete_hours_is_incomplete"),
+    "missing current estimates remain unknown");
+var billingRate = ProjectFlowHiveFinancialReadback.Calculate(1000m, null,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-BILLING", 10m, 10m, 4m, true,
+        new ProjectFlowHiveRateSource(100m, "billing_rate", "USD", new DateOnly(2026, 1, 1), "sell_billing_rate", false))],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "pm_approved")]);
+Check(billingRate.ApprovedLaborCost is null && billingRate.UnknownReasons.Contains("rate_purpose_not_internal_cost:CAN-BILLING"),
+    "billing rate is not treated as internal labor cost");
+var recordedForecast = ProjectFlowHiveFinancialReadback.Calculate(null, 900m,
+    [new ProjectFlowHiveCanonicalTaskFinancialSource(readbackTaskOne, "CAN-001", 10m, 10m, null, true, null)],
+    [new ProjectFlowHiveApprovedTimeSource(Guid.NewGuid(), readbackTaskOne, 3m, "pm_approved")]);
+Check(recordedForecast.ForecastAtCompletion == 900m
+    && recordedForecast.ForecastSource == "recorded"
+    && recordedForecast.ForecastProvenance == "project_flowhive_project_controls.forecast_at_completion",
+    "recorded project-control forecast remains authoritative with provenance when task rates are unavailable");
+
+// Exercise the real Project Forge application handlers against the same
+// disposable PostgreSQL database. This is intentionally separate from the
+// pure calculator assertions above.
+var integrationProject = Guid.NewGuid();
+var integrationPlan = Guid.NewGuid();
+var integrationPlanTask = Guid.NewGuid();
+await Sql("""
+    INSERT INTO projects(project_id,project_code,project_name,status,project_manager_user_id)
+    VALUES(@project,'INTEGRATION-033','Synthetic handler integration project','active',@actor);
+    INSERT INTO project_forge_plans(plan_id,project_id,plan_name,plan_status,source_kind,revision_number,updated_by_user_id)
+    VALUES(@plan,@project,'Reviewed synthetic plan','reviewed','manual',1,@actor);
+    INSERT INTO project_forge_plan_tasks(
+        plan_task_id,plan_id,project_id,wbs_code,parent_wbs_code,task_name,task_description,task_type,phase_name,
+        priority_code,task_status,kanban_category,decision_action,planned_start_date,planned_end_date,duration_working_days,
+        recurrence_rule,percent_complete,estimated_hours,hourly_rate,material_units,material_unit_cost,fixed_cost,
+        travel_cost,equipment_cost,miscellaneous_cost,is_important,is_urgent,source_kind,display_order,revision_number,updated_by_user_id)
+    VALUES(@plan_task,@plan,@project,'1.1','', 'Integration canonical task','Synthetic authorized task','variable','Plan',
+        'normal','not_started','backlog','none','2026-09-08','2026-09-09',2,'{}',0,10,100,0,0,0,0,0,0,FALSE,FALSE,'manual',1,1,@actor);
+    INSERT INTO project_flowhive_project_controls(project_id,currency_code,approved_budget,forecast_at_completion,updated_by_user_id)
+    VALUES(@project,'USD',1000,1640,@actor);
+    INSERT INTO enterprise_notification_policies(policy_code,enabled) VALUES('PROJECT_FORGE_PLAN_UPDATED',TRUE) ON CONFLICT DO NOTHING;
+    """, ("project", integrationProject), ("plan", integrationPlan), ("plan_task", integrationPlanTask), ("actor", actor));
+
+var projectForgeType = typeof(ProjectForgeModule);
+var adoptHandler = projectForgeType.GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+    .Single(method => method.Name == "AdoptPlanAsync" && method.GetParameters().Length == 4);
+var financialHandler = projectForgeType.GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+    .Single(method => method.Name == "GetFinancialReadbackAsync" && method.GetParameters().Length == 3);
+DefaultHttpContext AuthorizedContext(Guid userId)
+{
+    var context = new DefaultHttpContext();
+    context.Items["ProjectPulseSessionUserId"] = userId;
+    context.Items["ProjectPulseActualUserId"] = userId;
+    context.Items["ProjectPulseEffectiveUserId"] = userId;
+    return context;
+}
+async Task<IResult> InvokeResultAsync(MethodInfo method, params object?[] arguments)
+{
+    var task = (Task)method.Invoke(null, arguments)!;
+    await task;
+    return (IResult)task.GetType().GetProperty("Result")!.GetValue(task)!;
+}
+async Task<(int StatusCode, JsonElement Body)> ExecuteResultAsync(IResult result)
+{
+    var context = new DefaultHttpContext();
+    context.RequestServices = new ServiceCollection().AddLogging().AddOptions().BuildServiceProvider();
+    context.Response.Body = new MemoryStream();
+    await result.ExecuteAsync(context);
+    context.Response.Body.Position = 0;
+    using var document = await JsonDocument.ParseAsync(context.Response.Body);
+    return (context.Response.StatusCode, document.RootElement.Clone());
+}
+var adoptRequest = new ProjectForgeAdoptPlanRequest("ADOPT PROJECT FORGE PLAN", false, "Synthetic integration adoption", 1, "integration-adopt-033-0001");
+var adoptedResponse = await ExecuteResultAsync(await InvokeResultAsync(adoptHandler, integrationPlan, adoptRequest, AuthorizedContext(actor), CancellationToken.None));
+Check(adoptedResponse.StatusCode == 200 && adoptedResponse.Body.GetProperty("status").GetString() == "plan_adopted_to_canonical_project", "real adoption handler applies an authorized reviewed plan");
+var canonicalTaskId = (Guid)(await Sql("SELECT canonical_task_id FROM project_forge_plan_tasks WHERE plan_task_id=@task", ("task", integrationPlanTask)))!;
+Check(canonicalTaskId != Guid.Empty && (long)(await Sql("SELECT count(*) FROM project_tasks WHERE project_id=@project", ("project", integrationProject)))! == 1,
+    "adoption stores one stable canonical task identity");
+await Sql("INSERT INTO time_entries(time_entry_id,project_id,task_id,hours,status,work_date) VALUES(@approved,@project,@task,3,'pm_approved','2026-09-08'),(@draft,@project,@task,2,'draft','2026-09-09');", ("approved", Guid.NewGuid()), ("draft", Guid.NewGuid()), ("project", integrationProject), ("task", canonicalTaskId));
+var financialResponse = await ExecuteResultAsync(await InvokeResultAsync(financialHandler, integrationProject, AuthorizedContext(actor), CancellationToken.None));
+var integrationReadback = financialResponse.Body.GetProperty("readback");
+Check(financialResponse.StatusCode == 200 && integrationReadback.GetProperty("loggedHours").GetDecimal() == 5m
+    && integrationReadback.GetProperty("approvedHours").GetDecimal() == 3m,
+    "real financial handler reads logged and approved canonical time");
+Check(integrationReadback.GetProperty("approvedLaborCost").ValueKind == JsonValueKind.Null
+    && integrationReadback.GetProperty("completeness").GetProperty("status").GetString() == "incomplete"
+    && integrationReadback.GetProperty("unknownReasons").EnumerateArray().Any(reason => reason.GetString()!.Contains("internal_cost_rate_not_verified", StringComparison.Ordinal)),
+    "real financial handler exposes unclassified task rate instead of fabricating labor cost");
+var repeatedAdoption = await ExecuteResultAsync(await InvokeResultAsync(adoptHandler, integrationPlan, adoptRequest with { ClientMutationId = "integration-adopt-033-0002" }, AuthorizedContext(actor), CancellationToken.None));
+Check(repeatedAdoption.StatusCode == 409 && (long)(await Sql("SELECT count(*) FROM project_tasks WHERE project_id=@project", ("project", integrationProject)))! == 1,
+    "repeat adoption is rejected without duplicate canonical tasks");
+
+var concurrentPlan = Guid.NewGuid();
+var concurrentTask = Guid.NewGuid();
+await Sql("""
+    INSERT INTO project_forge_plans(plan_id,project_id,plan_name,plan_status,source_kind,revision_number,updated_by_user_id)
+    VALUES(@plan,@project,'Concurrent reviewed plan','reviewed','manual',1,@actor);
+    INSERT INTO project_forge_plan_tasks(
+        plan_task_id,plan_id,project_id,wbs_code,parent_wbs_code,task_name,task_description,task_type,phase_name,
+        priority_code,task_status,kanban_category,decision_action,planned_start_date,planned_end_date,duration_working_days,
+        recurrence_rule,percent_complete,estimated_hours,hourly_rate,material_units,material_unit_cost,fixed_cost,
+        travel_cost,equipment_cost,miscellaneous_cost,is_important,is_urgent,source_kind,display_order,revision_number,updated_by_user_id)
+    VALUES(@task,@plan,@project,'2.1','', 'Concurrent canonical task','Synthetic concurrent task','variable','Plan',
+        'normal','not_started','backlog','none','2026-09-10','2026-09-11',2,'{}',0,4,100,0,0,0,0,0,0,FALSE,FALSE,'manual',1,1,@actor);
+    """, ("plan", concurrentPlan), ("task", concurrentTask), ("project", integrationProject), ("actor", actor));
+var concurrentRequests = await Task.WhenAll(
+    InvokeResultAsync(adoptHandler, concurrentPlan, adoptRequest with { ClientMutationId = "integration-concurrent-0001" }, AuthorizedContext(actor), CancellationToken.None),
+    InvokeResultAsync(adoptHandler, concurrentPlan, adoptRequest with { ClientMutationId = "integration-concurrent-0002" }, AuthorizedContext(actor), CancellationToken.None));
+var concurrentStatuses = await Task.WhenAll(concurrentRequests.Select(ExecuteResultAsync));
+Check(concurrentStatuses.Count(result => result.StatusCode == 200) == 1 && concurrentStatuses.Count(result => result.StatusCode == 409) == 1
+    && (long)(await Sql("SELECT count(*) FROM project_tasks WHERE project_id=@project AND task_code LIKE 'PF-2-1%'", ("project", integrationProject)))! == 1,
+    "concurrent adoption requests serialize and create no duplicate canonical task");
+
+var unauthorizedUser = Guid.NewGuid();
+var projectManagerRole = Guid.NewGuid();
+await Sql("INSERT INTO app_users(user_id,display_name,email,is_active) VALUES(@user,'Unauthorized PM','unauthorized@example.invalid',TRUE); INSERT INTO app_roles(app_role_id,role_code,is_active) VALUES(@role,'PROJECT_MANAGER',TRUE); INSERT INTO app_user_role_assignments(user_id,app_role_id,is_active) VALUES(@user,@role,TRUE);", ("user", unauthorizedUser), ("role", projectManagerRole));
+var crossProjectResponse = await ExecuteResultAsync(await InvokeResultAsync(financialHandler, integrationProject, AuthorizedContext(unauthorizedUser), CancellationToken.None));
+Check(crossProjectResponse.StatusCode == 403, "cross-project financial readback is denied by the real handler");
+var unauthenticatedResponse = await ExecuteResultAsync(await InvokeResultAsync(financialHandler, integrationProject, new DefaultHttpContext(), CancellationToken.None));
+Check(unauthenticatedResponse.StatusCode == 401, "unauthenticated financial readback is denied by the real handler");
 Console.WriteLine($"FLOWHIVE_EXECUTION_ASSERTIONS_PASSED={count}");
