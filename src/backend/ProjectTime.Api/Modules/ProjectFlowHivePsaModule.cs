@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -436,6 +437,18 @@ internal static class ProjectFlowHivePsaModule
         ProjectFlowHiveScheduleResult schedule,
         IReadOnlyList<RaidRow> raid)
     {
+        static object DateCell(string? value) =>
+            DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+                ? date
+                : value ?? string.Empty;
+
+        static object NumberCell(string? value) =>
+            decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var number)
+                ? number
+                : value ?? string.Empty;
+
+        static object ScheduleDate(DateOnly? value) => value is { } date ? date : string.Empty;
+
         var scheduleByWbs = schedule.Tasks.ToDictionary(row => row.WbsNumber, StringComparer.OrdinalIgnoreCase);
         var assignmentByWbs = (plan.Assignments ?? []).GroupBy(row => row.TaskWbs ?? string.Empty).ToDictionary(group => group.Key, group => string.Join(", ", group.Select(row => row.ResourceDisplayName).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct()), StringComparer.OrdinalIgnoreCase);
         var notes = new[] { "Generated from the current authorized FlowHive working plan and project controls.", "Customer delivery still requires an exact reviewed baseline and governed share action." };
@@ -446,9 +459,9 @@ internal static class ProjectFlowHivePsaModule
                 kind == "raid"
                     ? new[] { "Type", "Title", "Status", "Priority", "Probability", "Impact", "Owner", "Due Date", "Mitigation" }
                     : new[] { "Decision", "Status", "Priority", "Owner", "Due Date", "Decision / Mitigation", "Source" },
-                source.Select(row => (IReadOnlyList<string>)(kind == "raid"
-                    ? new[] { row.ItemType, row.Title, row.Status, row.Priority, row.Probability, row.Impact, row.Owner, row.DueDate, row.Mitigation }
-                    : new[] { row.Title, row.Status, row.Priority, row.Owner, row.DueDate, row.Mitigation, row.SourceReference })).ToArray(), notes);
+                source.Select(row => (IReadOnlyList<object?>)(kind == "raid"
+                    ? new object?[] { row.ItemType, row.Title, row.Status, row.Priority, NumberCell(row.Probability), NumberCell(row.Impact), row.Owner, DateCell(row.DueDate), row.Mitigation }
+                    : new object?[] { row.Title, row.Status, row.Priority, row.Owner, DateCell(row.DueDate), row.Mitigation, row.SourceReference })).ToArray(), notes);
         }
 
         var tasks = (plan.Tasks ?? []).Where(task => !task.IsSummary).ToArray();
@@ -460,7 +473,7 @@ internal static class ProjectFlowHivePsaModule
                 {
                     scheduleByWbs.TryGetValue(task.WbsNumber ?? string.Empty, out var scheduled);
                     assignmentByWbs.TryGetValue(task.WbsNumber ?? string.Empty, out var assigned);
-                    return (IReadOnlyList<string>)new[] { task.WbsNumber ?? "", task.Phase ?? "", task.Name ?? "", scheduled?.StartDate.ToString("yyyy-MM-dd") ?? "", scheduled?.EndDate.ToString("yyyy-MM-dd") ?? "", (scheduled?.DurationWorkingDays ?? task.DurationWorkingDays).ToString(), task.RemainingEffortHours.ToString("0.##"), task.PercentComplete.ToString("0.##") + "%", task.Status ?? "", assigned ?? "" };
+                    return (IReadOnlyList<object?>)new object?[] { task.WbsNumber ?? "", task.Phase ?? "", task.Name ?? "", ScheduleDate(scheduled?.StartDate), ScheduleDate(scheduled?.EndDate), scheduled?.DurationWorkingDays ?? task.DurationWorkingDays, task.RemainingEffortHours, task.PercentComplete.ToString("0.##", CultureInfo.InvariantCulture) + "%", task.Status ?? "", assigned ?? "" };
                 }).ToArray(), notes);
         }
 
@@ -472,7 +485,7 @@ internal static class ProjectFlowHivePsaModule
                 {
                     scheduleByWbs.TryGetValue(task.WbsNumber ?? "", out var scheduled);
                     assignmentByWbs.TryGetValue(task.WbsNumber ?? "", out var assigned);
-                    return (IReadOnlyList<string>)new[] { scheduled?.StartDate.ToString("yyyy-MM-dd") ?? "", scheduled?.EndDate.ToString("yyyy-MM-dd") ?? "", task.WbsNumber ?? "", task.Phase ?? "", task.Name ?? "", assigned ?? "", task.Status ?? "" };
+                    return (IReadOnlyList<object?>)new object?[] { ScheduleDate(scheduled?.StartDate), ScheduleDate(scheduled?.EndDate), task.WbsNumber ?? "", task.Phase ?? "", task.Name ?? "", assigned ?? "", task.Status ?? "" };
                 }).ToArray(), notes);
         }
 
@@ -486,9 +499,9 @@ internal static class ProjectFlowHivePsaModule
                 scheduleByWbs.TryGetValue(task.WbsNumber ?? "", out var scheduled);
                 var predecessor = (plan.Dependencies ?? []).FirstOrDefault(dep => dep.SuccessorWbs == task.WbsNumber)?.PredecessorWbs ?? "";
                 var riskText = string.Join("; ", (task.Risks ?? []).Concat(task.OpenQuestions ?? []).Take(4));
-                return (IReadOnlyList<string>)(kind.Equals("gantt", StringComparison.OrdinalIgnoreCase)
-                    ? new[] { task.WbsNumber ?? "", task.Name ?? "", scheduled?.StartDate.ToString("yyyy-MM-dd") ?? "", scheduled?.EndDate.ToString("yyyy-MM-dd") ?? "", (scheduled?.DurationWorkingDays ?? task.DurationWorkingDays).ToString(), (scheduled?.EarliestStartIndex ?? 0).ToString(), scheduled?.IsCritical == true ? "Yes" : "No", (scheduled?.TotalFloatWorkingDays ?? 0).ToString(), predecessor }
-                    : new[] { task.WbsNumber ?? "", task.Phase ?? "", task.Name ?? "", scheduled?.StartDate.ToString("yyyy-MM-dd") ?? "", scheduled?.EndDate.ToString("yyyy-MM-dd") ?? "", (scheduled?.DurationWorkingDays ?? task.DurationWorkingDays).ToString(), scheduled?.IsCritical == true ? "Yes" : "No", (scheduled?.TotalFloatWorkingDays ?? 0).ToString(), riskText });
+                return (IReadOnlyList<object?>)(kind.Equals("gantt", StringComparison.OrdinalIgnoreCase)
+                    ? new object?[] { task.WbsNumber ?? "", task.Name ?? "", ScheduleDate(scheduled?.StartDate), ScheduleDate(scheduled?.EndDate), scheduled?.DurationWorkingDays ?? task.DurationWorkingDays, scheduled?.EarliestStartIndex ?? 0, scheduled?.IsCritical == true ? "Yes" : "No", scheduled?.TotalFloatWorkingDays ?? 0, predecessor }
+                    : new object?[] { task.WbsNumber ?? "", task.Phase ?? "", task.Name ?? "", ScheduleDate(scheduled?.StartDate), ScheduleDate(scheduled?.EndDate), scheduled?.DurationWorkingDays ?? task.DurationWorkingDays, scheduled?.IsCritical == true ? "Yes" : "No", scheduled?.TotalFloatWorkingDays ?? 0, riskText });
             }).ToArray(), notes);
     }
 

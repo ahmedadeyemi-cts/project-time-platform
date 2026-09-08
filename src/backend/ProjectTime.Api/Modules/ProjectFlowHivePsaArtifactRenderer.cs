@@ -11,7 +11,7 @@ internal sealed record ProjectFlowHivePsaArtifactTable(
     string ProjectName,
     string CustomerName,
     IReadOnlyList<string> Columns,
-    IReadOnlyList<IReadOnlyList<string>> Rows,
+    IReadOnlyList<IReadOnlyList<object?>> Rows,
     IReadOnlyList<string> Notes);
 
 internal static class ProjectFlowHivePsaArtifactRenderer
@@ -70,9 +70,9 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         {
             for (var column = 0; column < artifact.Columns.Count; column++)
             {
-                SetSpreadsheetText(sheet.Cell(row + 2, column + 1), column < artifact.Rows[row].Count
+                SetSpreadsheetValue(sheet.Cell(row + 2, column + 1), column < artifact.Rows[row].Count
                     ? artifact.Rows[row][column]
-                    : string.Empty);
+                    : null);
             }
         }
         if (artifact.Columns.Count > 0)
@@ -109,7 +109,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
 
     private static string BuildPdfPage(
         ProjectFlowHivePsaArtifactTable artifact,
-        IReadOnlyList<IReadOnlyList<string>> rows,
+        IReadOnlyList<IReadOnlyList<object?>> rows,
         int pageNumber,
         int pageCount)
     {
@@ -137,7 +137,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
             if (rowIndex % 2 == 0) content.Append($"0.95 0.98 1 rg 36 {y - 5:0} 936 19 re f\n");
             for (var column = 0; column < visibleColumns.Length; column++)
             {
-                var value = column < rows[rowIndex].Count ? rows[rowIndex][column] : string.Empty;
+                var value = column < rows[rowIndex].Count ? DisplayValue(rows[rowIndex][column]) : string.Empty;
                 PdfText(content, left + (width * column) + 4, y, 5.6, Truncate(value, 28), false, "0.06 0.16 0.27");
             }
             y -= 19;
@@ -206,14 +206,68 @@ internal static class ProjectFlowHivePsaArtifactRenderer
     private static byte[] Ascii(string value) => Encoding.ASCII.GetBytes(value);
     private static void WriteAscii(Stream stream, string value) => stream.Write(Ascii(value));
     private static string EscapePdf(string value) => (value ?? string.Empty).Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)").Replace("\r", " ").Replace("\n", " ");
-    private static void SetSpreadsheetText(IXLCell cell, string? value) => cell.Value = SpreadsheetText(value);
+    private static void SetSpreadsheetText(IXLCell cell, string? value) => SetSpreadsheetValue(cell, SpreadsheetText(value));
+
+    private static void SetSpreadsheetValue(IXLCell cell, object? value)
+    {
+        if (value is null)
+        {
+            cell.Clear(XLClearOptions.Contents);
+            return;
+        }
+
+        if (value is DateOnly date)
+        {
+            cell.Value = XLCellValue.FromObject(date.ToDateTime(TimeOnly.MinValue), CultureInfo.InvariantCulture);
+            cell.Style.DateFormat.Format = "yyyy-mm-dd";
+            return;
+        }
+
+        if (value is DateTimeOffset dateTimeOffset)
+        {
+            cell.Value = XLCellValue.FromObject(dateTimeOffset.UtcDateTime, CultureInfo.InvariantCulture);
+            cell.Style.DateFormat.Format = "yyyy-mm-dd";
+            return;
+        }
+
+        if (value is DateTime dateTime)
+        {
+            cell.Value = XLCellValue.FromObject(dateTime, CultureInfo.InvariantCulture);
+            cell.Style.DateFormat.Format = "yyyy-mm-dd";
+            return;
+        }
+
+        if (value is string text)
+        {
+            SetSpreadsheetTextCore(cell, text);
+            return;
+        }
+
+        cell.Value = XLCellValue.FromObject(value, CultureInfo.InvariantCulture);
+    }
+
+    private static void SetSpreadsheetTextCore(IXLCell cell, string? value) => cell.Value = SpreadsheetText(value);
+
     private static string SpreadsheetText(string? value)
     {
         var text = value ?? string.Empty;
-        return text.Length > 0 && text[0] is '=' or '+' or '-' or '@'
+        var trimmed = text.TrimStart();
+        var formulaLike = trimmed.Length > 0 && trimmed[0] is '=' or '+' or '-' or '@';
+        var preservesLiteralApostrophe = text.StartsWith("'", StringComparison.Ordinal);
+        return formulaLike || preservesLiteralApostrophe
             ? $"'{text}"
             : text;
     }
+
+    private static string DisplayValue(object? value) => value switch
+    {
+        null => string.Empty,
+        DateOnly date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        DateTimeOffset dateTimeOffset => dateTimeOffset.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        DateTime dateTime => dateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty,
+        _ => value.ToString() ?? string.Empty
+    };
     private static string Truncate(string? value, int length) => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim()[..Math.Min(value.Trim().Length, length)];
     private static string Join(string? left, string? right) => string.Join(" · ", new[] { left, right }.Where(value => !string.IsNullOrWhiteSpace(value)));
     private static string SafeSheetName(string value)

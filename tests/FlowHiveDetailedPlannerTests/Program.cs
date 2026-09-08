@@ -682,23 +682,81 @@ Assert(normalDurations.OrderBy(pair => pair.Key).SequenceEqual(shortDurations.Or
 Assert(shortGenerated.Tasks!.Where(task => !task.IsSummary).All(task => task.RequiredRoles?.Count > 0), "required_roles_are_structured");
 Assert(shortGenerated.Tasks!.Where(task => !task.IsSummary).All(task => task.OpenQuestions?.Count > 0), "missing_technical_information_becomes_open_questions");
 
-var exportArtifact = new ProjectFlowHivePsaArtifactTable(
-    "raid",
-    "=Injected title",
-    "=PROJECT",
-    "@Customer",
-    "-Customer",
-    ["=Column", "Safe column"],
-    [["=SUM(A1)", "+Injected value"], ["-Injected value", "@Injected value"]],
-    ["=Injected note"]);
-var exportBytes = ProjectFlowHivePsaArtifactRenderer.BuildExcel(exportArtifact);
-using var exportWorkbook = new XLWorkbook(new MemoryStream(exportBytes));
-var exportSheet = exportWorkbook.Worksheet("raid");
-Assert(!exportSheet.Cell(2, 1).HasFormula, "xlsx_export_formula_prefix_is_not_executable");
-Assert(exportSheet.Cell(2, 1).GetString() == "'=SUM(A1)", "xlsx_export_formula_text_is_retained");
-Assert(!exportSheet.Cell(2, 2).HasFormula && exportSheet.Cell(2, 2).GetString() == "'+Injected value", "xlsx_export_plus_prefix_is_not_executable");
-Assert(!exportSheet.Cell(3, 1).HasFormula && exportSheet.Cell(3, 1).GetString() == "'-Injected value", "xlsx_export_minus_prefix_is_not_executable");
-Assert(!exportSheet.Cell(3, 2).HasFormula && exportSheet.Cell(3, 2).GetString() == "'@Injected value", "xlsx_export_at_prefix_is_not_executable");
-Assert(exportWorkbook.Worksheets.SelectMany(sheet => sheet.CellsUsed()).All(cell => !cell.HasFormula), "xlsx_export_all_cells_remain_text_or_values");
+foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix", "gantt", "monthly-calendar", "work-breakdown" })
+{
+    var exportArtifact = new ProjectFlowHivePsaArtifactTable(
+        artifactKind,
+        "=Injected title",
+        "=PROJECT",
+        "@Customer",
+        "-Customer",
+        ["=Column", "Safe column", "Date", "Amount", "Notes", "Unicode", "Whitespace", "Apostrophe", "Ordinary"],
+        new IReadOnlyList<object?>[]
+        {
+            new object?[] { "=SUM(A1)", "+Injected value", new DateOnly(2026, 9, 8), -12.5m, "@Injected note", "é漢", " =SUM(B1)", "'literal", "ordinary" },
+            new object?[] { "-Injected value", "@Injected value", new DateOnly(2026, 10, 1), 42m, "safe", "東京", "  +Injected", "'=SUM(A1)", "123" }
+        },
+        ["=Injected note", "é漢 note"]);
+
+    var exportBytes = ProjectFlowHivePsaArtifactRenderer.BuildExcel(exportArtifact);
+    using var exportWorkbook = new XLWorkbook(new MemoryStream(exportBytes));
+    var exportSheet = exportWorkbook.Worksheet(artifactKind);
+    var summarySheet = exportWorkbook.Worksheet("Artifact Summary");
+
+    Assert(!exportSheet.Cell(2, 1).HasFormula
+        && exportSheet.Cell(2, 1).DataType == XLDataType.Text
+        && exportSheet.Cell(2, 1).GetString() == "=SUM(A1)"
+        && exportSheet.Cell(2, 1).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_formula_like_text_is_safe_and_lossless");
+    Assert(!exportSheet.Cell(2, 2).HasFormula
+        && exportSheet.Cell(2, 2).GetString() == "+Injected value"
+        && exportSheet.Cell(2, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_plus_text_is_safe_and_lossless");
+    Assert(!exportSheet.Cell(3, 1).HasFormula
+        && exportSheet.Cell(3, 1).GetString() == "-Injected value"
+        && exportSheet.Cell(3, 1).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_minus_text_is_safe_and_lossless");
+    Assert(!exportSheet.Cell(3, 2).HasFormula
+        && exportSheet.Cell(3, 2).GetString() == "@Injected value"
+        && exportSheet.Cell(3, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_at_text_is_safe_and_lossless");
+    Assert(!exportSheet.Cell(1, 1).HasFormula
+        && exportSheet.Cell(1, 1).GetString() == "=Column"
+        && exportSheet.Cell(1, 1).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_dynamic_header_is_safe");
+    Assert(exportSheet.Cell(2, 3).DataType == XLDataType.DateTime
+        && exportSheet.Cell(2, 3).GetDateTime().Date == new DateTime(2026, 9, 8),
+        $"xlsx_{artifactKind}_date_remains_typed");
+    Assert(exportSheet.Cell(2, 4).DataType == XLDataType.Number
+        && Math.Abs(exportSheet.Cell(2, 4).GetDouble() - (-12.5d)) < 0.000001d
+        && !exportSheet.Cell(2, 4).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_negative_amount_remains_numeric");
+    Assert(exportSheet.Cell(2, 6).GetString() == "é漢", $"xlsx_{artifactKind}_unicode_round_trip");
+    Assert(exportSheet.Cell(2, 7).GetString() == " =SUM(B1)"
+        && exportSheet.Cell(2, 7).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_leading_whitespace_formula_like_text_is_lossless");
+    Assert(exportSheet.Cell(2, 8).GetString() == "'literal"
+        && exportSheet.Cell(2, 8).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_leading_apostrophe_is_lossless");
+    Assert(summarySheet.Cell(5, 2).GetString() == "=Injected title"
+        && summarySheet.Cell(5, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_dynamic_title_is_safe");
+    Assert(summarySheet.Cell(7, 2).GetString() == "=PROJECT · @Customer"
+        && summarySheet.Cell(7, 2).Style.IncludeQuotePrefix
+        && summarySheet.Cell(8, 2).GetString() == "-Customer"
+        && summarySheet.Cell(8, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_dynamic_summary_fields_are_safe");
+    Assert(summarySheet.Cell(13, 2).GetString().Contains("=Injected note", StringComparison.Ordinal)
+        && summarySheet.Cell(13, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_dynamic_notes_are_safe");
+    Assert(exportWorkbook.Worksheets.SelectMany(sheet => sheet.CellsUsed()).All(cell => !cell.HasFormula),
+        $"xlsx_{artifactKind}_all_cells_remain_text_or_values");
+
+    var pdfBytes = ProjectFlowHivePsaArtifactRenderer.BuildPdf(exportArtifact);
+    var pdfText = Encoding.ASCII.GetString(pdfBytes);
+    Assert(pdfText.Contains("=SUM(A1)", StringComparison.Ordinal)
+        && !pdfText.Contains("'=SUM(A1)", StringComparison.Ordinal),
+        $"pdf_{artifactKind}_does_not_apply_spreadsheet_apostrophe_escaping");
+}
 
 Console.WriteLine("FLOWHIVE_DETAILED_PLANNER_TESTS=PASS");
