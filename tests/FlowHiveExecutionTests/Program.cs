@@ -32,7 +32,7 @@ string Block(string path, string start, string end)
 await Sql("""
     CREATE EXTENSION IF NOT EXISTS pgcrypto;
     CREATE TABLE schema_migrations(migration_id TEXT PRIMARY KEY,description TEXT,applied_at TIMESTAMPTZ);
-    CREATE TABLE projects(project_id UUID PRIMARY KEY,project_code TEXT NOT NULL DEFAULT 'TEST',project_name TEXT NOT NULL DEFAULT 'Synthetic test project',status TEXT NOT NULL DEFAULT 'active',project_manager_user_id UUID NULL);
+    CREATE TABLE projects(project_id UUID PRIMARY KEY,project_code TEXT NOT NULL DEFAULT 'TEST',project_name TEXT NOT NULL DEFAULT 'Synthetic test project',status TEXT NOT NULL DEFAULT 'active',project_manager_user_id UUID NULL,account_executive_user_id UUID NULL,solution_architect_user_id UUID NULL);
     CREATE TABLE app_users(user_id UUID PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',email TEXT NOT NULL DEFAULT '',is_active BOOLEAN NOT NULL DEFAULT TRUE,team_name TEXT NOT NULL DEFAULT '',department_name TEXT NOT NULL DEFAULT '',department TEXT NOT NULL DEFAULT '');
     CREATE TABLE app_roles(app_role_id UUID PRIMARY KEY,role_code TEXT NOT NULL,is_active BOOLEAN NOT NULL DEFAULT TRUE);
     CREATE TABLE app_permissions(app_permission_id UUID PRIMARY KEY,permission_code TEXT NOT NULL);
