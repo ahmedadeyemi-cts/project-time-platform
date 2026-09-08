@@ -27,7 +27,7 @@ def check(value, description):
 
 async def wait_for_disabled(page, label):
     await page.wait_for_function("""label => [...document.querySelectorAll('button')].some(button =>
-        button.textContent.includes(label) && button.disabled)""", label)
+        button.textContent.includes(label) && button.disabled)""", arg=label)
 
 def fixture(project=PROJECT):
     current={'projectId':project,'tasks':[{'wbsNumber':'1.1','phase':'Plan','isSummary':False,'name':'Existing scoped activity',
