@@ -70,7 +70,62 @@ jobs:
       - name: Execute native WBS behavior regressions against the real API
         run: dotnet run --project tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj --configuration Release
       - name: Preserve existing detailed-planner and Module 025 regressions
+        env:
+          FLOWHIVE_EXPORT_EVIDENCE_DIR: ${{ runner.temp }}/flowhive-export-evidence
         run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+      - name: Render and retain synthetic branded PDF evidence
+        shell: bash
+        env:
+          FLOWHIVE_EXPORT_EVIDENCE_DIR: ${{ runner.temp }}/flowhive-export-evidence
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends poppler-utils
+          shopt -s nullglob
+          pdfs=("$FLOWHIVE_EXPORT_EVIDENCE_DIR"/*.pdf)
+          [[ "${#pdfs[@]}" -eq 6 ]]
+          mkdir -p "$FLOWHIVE_EXPORT_EVIDENCE_DIR/rendered"
+          for pdf in "${pdfs[@]}"; do
+            pdfinfo "$pdf" >/dev/null
+            text_path="$FLOWHIVE_EXPORT_EVIDENCE_DIR/$(basename "$pdf" .pdf).txt"
+            pdftotext "$pdf" "$text_path"
+            python3 - "$text_path" <<'PY'
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              text = " ".join(stream.read().split())
+          assert "US Signal Project FlowHive" in text
+          assert "US SIGNAL PROJECT DELIVERY ARTIFACT" in text
+          assert "München - 東京 delivery plan" in text
+          assert "Café's quoted delivery description" in text
+          assert "final acceptance phrase." in text
+          PY
+            pdftoppm -png -r 144 "$pdf" "$FLOWHIVE_EXPORT_EVIDENCE_DIR/rendered/$(basename "$pdf" .pdf)"
+          done
+          rendered=("$FLOWHIVE_EXPORT_EVIDENCE_DIR/rendered"/*.png)
+          [[ "${#rendered[@]}" -ge 12 ]]
+          for page in "${rendered[@]}"; do
+            [[ -s "$page" ]]
+            python3 - "$page" <<'PY'
+          import struct
+          import sys
+
+          path = sys.argv[1]
+          with open(path, "rb") as stream:
+              signature = stream.read(8)
+              length = struct.unpack(">I", stream.read(4))[0]
+              chunk = stream.read(4)
+              width, height = struct.unpack(">II", stream.read(8))
+          assert signature == b"\x89PNG\r\n\x1a\n"
+          assert chunk == b"IHDR" and width >= 1000 and height >= 700
+          PY
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-export-pdf-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/flowhive-export-evidence/
+          retention-days: 7
+          if-no-files-found: error
   execution-database:
     runs-on: ubuntu-latest
     timeout-minutes: 30

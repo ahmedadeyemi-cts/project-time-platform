@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using ClosedXML.Excel;
+using SkiaSharp;
 
 namespace ProjectTime.Api.Modules;
 
@@ -11,12 +12,27 @@ internal sealed record ProjectFlowHivePsaArtifactTable(
     string ProjectName,
     string CustomerName,
     IReadOnlyList<string> Columns,
-    IReadOnlyList<IReadOnlyList<string>> Rows,
+    IReadOnlyList<IReadOnlyList<object?>> Rows,
     IReadOnlyList<string> Notes);
 
 internal static class ProjectFlowHivePsaArtifactRenderer
 {
     private const string ControlLabel = "US SIGNAL PROJECT DELIVERY ARTIFACT";
+    private const string PdfFontResourceName = "ProjectTime.Api.Assets.Fonts.NotoSansCJKsc-Regular.otf";
+    private const float PdfWidth = 1008f;
+    private const float PdfHeight = 612f;
+    private const float PdfLeft = 36f;
+    private const float PdfRight = 972f;
+    private const float PdfBodySize = 6.4f;
+    private static readonly Lazy<byte[]> PdfFontBytes = new(() =>
+    {
+        using var stream = typeof(ProjectFlowHivePsaArtifactRenderer).Assembly
+            .GetManifestResourceStream(PdfFontResourceName)
+            ?? throw new InvalidOperationException($"Missing embedded PDF font resource: {PdfFontResourceName}");
+        using var output = new MemoryStream();
+        stream.CopyTo(output);
+        return output.ToArray();
+    });
 
     internal static byte[] BuildExcel(ProjectFlowHivePsaArtifactTable artifact)
     {
@@ -48,14 +64,14 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         };
         for (var index = 0; index < summaryRows.Length; index++)
         {
-            summary.Cell(index + 5, 1).Value = summaryRows[index].Item1;
-            summary.Cell(index + 5, 2).Value = summaryRows[index].Item2;
+            SetSpreadsheetText(summary.Cell(index + 5, 1), summaryRows[index].Item1);
+            SetSpreadsheetText(summary.Cell(index + 5, 2), summaryRows[index].Item2);
             summary.Cell(index + 5, 1).Style.Font.Bold = true;
         }
         var noteRow = summaryRows.Length + 6;
-        summary.Cell(noteRow, 1).Value = "Notes";
+        SetSpreadsheetText(summary.Cell(noteRow, 1), "Notes");
         summary.Cell(noteRow, 1).Style.Font.Bold = true;
-        summary.Cell(noteRow, 2).Value = string.Join("\n", artifact.Notes);
+        SetSpreadsheetText(summary.Cell(noteRow, 2), string.Join("\n", artifact.Notes));
         summary.Cell(noteRow, 2).Style.Alignment.WrapText = true;
         summary.Column(1).Width = 22;
         summary.Column(2).Width = 85;
@@ -64,15 +80,15 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         var sheet = workbook.Worksheets.Add(SafeSheetName(artifact.ArtifactKind));
         for (var column = 0; column < artifact.Columns.Count; column++)
         {
-            sheet.Cell(1, column + 1).Value = artifact.Columns[column];
+            SetSpreadsheetText(sheet.Cell(1, column + 1), artifact.Columns[column]);
         }
         for (var row = 0; row < artifact.Rows.Count; row++)
         {
             for (var column = 0; column < artifact.Columns.Count; column++)
             {
-                sheet.Cell(row + 2, column + 1).Value = column < artifact.Rows[row].Count
+                SetSpreadsheetValue(sheet.Cell(row + 2, column + 1), column < artifact.Rows[row].Count
                     ? artifact.Rows[row][column]
-                    : string.Empty;
+                    : null);
             }
         }
         if (artifact.Columns.Count > 0)
@@ -100,112 +116,261 @@ internal static class ProjectFlowHivePsaArtifactRenderer
 
     internal static byte[] BuildPdf(ProjectFlowHivePsaArtifactTable artifact)
     {
-        const int rowsPerPage = 18;
-        var pages = artifact.Rows.Chunk(rowsPerPage).Select(rows => rows.ToArray()).ToList();
-        if (pages.Count == 0) pages.Add([]);
-        var contents = pages.Select((rows, index) => BuildPdfPage(artifact, rows, index + 1, pages.Count)).ToArray();
-        return BuildPdfDocument(contents, ProjectFlowHiveBrandAssets.LogoJpeg);
-    }
-
-    private static string BuildPdfPage(
-        ProjectFlowHivePsaArtifactTable artifact,
-        IReadOnlyList<IReadOnlyList<string>> rows,
-        int pageNumber,
-        int pageCount)
-    {
-        var content = new StringBuilder();
-        content.Append("q 86 0 0 57 36 520 cm /Im1 Do Q\n");
-        PdfText(content, 135, 568, 18, "US Signal Project FlowHive", true, "0.04 0.17 0.29");
-        PdfText(content, 135, 548, 9, ControlLabel, true, "0.04 0.43 0.60");
-        PdfText(content, 36, 512, 13, Truncate(artifact.Title, 110), true, "0.04 0.17 0.29");
-        PdfText(content, 36, 494, 8, $"Project: {Truncate(Join(artifact.ProjectCode, artifact.ProjectName), 90)}", false, "0.18 0.25 0.34");
-        PdfText(content, 520, 494, 8, $"Customer: {Truncate(artifact.CustomerName, 60)}", false, "0.18 0.25 0.34");
-        PdfText(content, 36, 478, 7, $"Generated UTC: {DateTimeOffset.UtcNow:O}", false, "0.34 0.42 0.50");
+        using var fontData = SKData.CreateCopy(PdfFontBytes.Value);
+        using var typeface = SKTypeface.FromData(fontData)
+            ?? throw new InvalidOperationException("The embedded PDF font could not be loaded.");
+        using var regularFont = new SKFont(typeface, PdfBodySize);
+        using var boldFont = new SKFont(typeface, 8.2f);
+        using var textPaint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
+        using var fillPaint = new SKPaint { Style = SKPaintStyle.Fill };
+        using var strokePaint = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = 0.7f, IsAntialias = true };
+        using var logo = SKBitmap.Decode(ProjectFlowHiveBrandAssets.LogoJpeg)
+            ?? throw new InvalidOperationException("The embedded US Signal logo could not be decoded.");
 
         var visibleColumns = artifact.Columns.Take(8).ToArray();
-        var left = 36d;
-        var width = 936d / Math.Max(1, visibleColumns.Length);
-        content.Append("0.04 0.17 0.29 rg 36 440 936 24 re f\n");
-        for (var index = 0; index < visibleColumns.Length; index++)
-        {
-            PdfText(content, left + (width * index) + 4, 449, 5.6, Truncate(visibleColumns[index].ToUpperInvariant(), 22), true, "1 1 1");
-        }
-
-        var y = 420d;
-        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
-        {
-            if (rowIndex % 2 == 0) content.Append($"0.95 0.98 1 rg 36 {y - 5:0} 936 19 re f\n");
-            for (var column = 0; column < visibleColumns.Length; column++)
-            {
-                var value = column < rows[rowIndex].Count ? rows[rowIndex][column] : string.Empty;
-                PdfText(content, left + (width * column) + 4, y, 5.6, Truncate(value, 28), false, "0.06 0.16 0.27");
-            }
-            y -= 19;
-        }
-
-        content.Append("0.68 0.77 0.84 RG 36 53 m 972 53 l S\n");
-        PdfText(content, 36, 35, 7, $"Artifact type: {artifact.ArtifactKind} · Logo SHA-256 {ProjectFlowHiveBrandAssets.LogoSha256}", false, "0.34 0.42 0.50");
-        PdfText(content, 915, 35, 7, $"Page {pageNumber} of {pageCount}", false, "0.34 0.42 0.50");
-        return content.ToString();
-    }
-
-    private static byte[] BuildPdfDocument(IReadOnlyList<string> pageContents, byte[] logo)
-    {
-        var pageIds = pageContents.Select((_, index) => 7 + index * 2).ToArray();
-        var contentIds = pageContents.Select((_, index) => 6 + index * 2).ToArray();
-        var objects = new SortedDictionary<int, byte[]>();
-        objects[1] = Ascii("<< /Type /Catalog /Pages 2 0 R >>");
-        objects[2] = Ascii($"<< /Type /Pages /Kids [{string.Join(' ', pageIds.Select(id => $"{id} 0 R"))}] /Count {pageIds.Length} >>");
-        objects[3] = Ascii("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-        objects[4] = Ascii("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
-        objects[5] = StreamObject($"/Type /XObject /Subtype /Image /Width 222 /Height 148 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {logo.Length}", logo);
-        for (var index = 0; index < pageContents.Count; index++)
-        {
-            var bytes = Ascii(pageContents[index]);
-            objects[contentIds[index]] = StreamObject($"/Length {bytes.Length}", bytes);
-            objects[pageIds[index]] = Ascii($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1008 612] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Im1 5 0 R >> >> /Contents {contentIds[index]} 0 R >>");
-        }
-
+        var pages = PaginateRows(artifact, visibleColumns, regularFont, textPaint);
         using var output = new MemoryStream();
-        WriteAscii(output, "%PDF-1.7\n%USSignal\n");
-        var offsets = new Dictionary<int, long>();
-        foreach (var pair in objects)
+        using var document = SKDocument.CreatePdf(output);
+        for (var index = 0; index < pages.Count; index++)
         {
-            offsets[pair.Key] = output.Position;
-            WriteAscii(output, $"{pair.Key} 0 obj\n");
-            output.Write(pair.Value);
-            WriteAscii(output, "\nendobj\n");
+            using var canvas = document.BeginPage(PdfWidth, PdfHeight);
+            DrawPdfPage(canvas, artifact, pages[index], visibleColumns, index + 1, pages.Count,
+                regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
+            document.EndPage();
         }
-        var xref = output.Position;
-        var maxId = objects.Keys.Max();
-        WriteAscii(output, $"xref\n0 {maxId + 1}\n0000000000 65535 f \n");
-        for (var id = 1; id <= maxId; id++)
-        {
-            WriteAscii(output, offsets.TryGetValue(id, out var offset)
-                ? $"{offset:0000000000} 00000 n \n"
-                : "0000000000 00000 f \n");
-        }
-        WriteAscii(output, $"trailer\n<< /Size {maxId + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF");
+        document.Close();
         return output.ToArray();
     }
 
-    private static void PdfText(StringBuilder target, double x, double y, double size, string text, bool bold, string rgb)
+    private static List<IReadOnlyList<IReadOnlyList<object?>>> PaginateRows(
+        ProjectFlowHivePsaArtifactTable artifact,
+        IReadOnlyList<string> visibleColumns,
+        SKFont font,
+        SKPaint paint)
     {
-        target.Append($"BT /{(bold ? "F2" : "F1")} {size.ToString("0.##", CultureInfo.InvariantCulture)} Tf {rgb} rg {x.ToString("0.##", CultureInfo.InvariantCulture)} {y.ToString("0.##", CultureInfo.InvariantCulture)} Td ({EscapePdf(text)}) Tj ET\n");
+        var pages = new List<IReadOnlyList<IReadOnlyList<object?>>>();
+        var current = new List<IReadOnlyList<object?>>();
+        var remaining = 350f;
+        foreach (var row in artifact.Rows)
+        {
+            var height = PdfRowHeight(row, visibleColumns, font, paint);
+            if (current.Count > 0 && height > remaining)
+            {
+                pages.Add(current.ToArray());
+                current = new List<IReadOnlyList<object?>>();
+                remaining = 350f;
+            }
+            current.Add(row);
+            remaining -= Math.Min(height, 350f);
+        }
+        if (current.Count > 0 || pages.Count == 0) pages.Add(current.ToArray());
+        return pages;
     }
 
-    private static byte[] StreamObject(string dictionary, byte[] data)
+    private static float PdfRowHeight(
+        IReadOnlyList<object?> row,
+        IReadOnlyList<string> visibleColumns,
+        SKFont font,
+        SKPaint paint)
     {
-        using var stream = new MemoryStream();
-        WriteAscii(stream, $"<< {dictionary} >>\nstream\n");
-        stream.Write(data);
-        WriteAscii(stream, "\nendstream");
-        return stream.ToArray();
+        var width = PdfWidth - (PdfLeft * 2);
+        var columnWidth = width / Math.Max(1, visibleColumns.Count);
+        var lines = 1;
+        for (var column = 0; column < visibleColumns.Count; column++)
+        {
+            var value = column < row.Count ? DisplayValue(row[column]) : string.Empty;
+            lines = Math.Max(lines, WrapText(value, font, paint, columnWidth - 8f).Count);
+        }
+        return 18f + ((lines - 1) * 7.2f);
     }
 
-    private static byte[] Ascii(string value) => Encoding.ASCII.GetBytes(value);
-    private static void WriteAscii(Stream stream, string value) => stream.Write(Ascii(value));
-    private static string EscapePdf(string value) => (value ?? string.Empty).Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)").Replace("\r", " ").Replace("\n", " ");
+    private static void DrawPdfPage(
+        SKCanvas canvas,
+        ProjectFlowHivePsaArtifactTable artifact,
+        IReadOnlyList<IReadOnlyList<object?>> rows,
+        IReadOnlyList<string> visibleColumns,
+        int pageNumber,
+        int pageCount,
+        SKFont regularFont,
+        SKFont boldFont,
+        SKPaint textPaint,
+        SKPaint fillPaint,
+        SKPaint strokePaint,
+        SKBitmap logo)
+    {
+        var navy = new SKColor(0x0B, 0x2B, 0x4B);
+        var cyan = new SKColor(0x0B, 0x6E, 0x99);
+        var body = new SKColor(0x0F, 0x29, 0x44);
+        var muted = new SKColor(0x57, 0x6A, 0x7B);
+        var pale = new SKColor(0xF2, 0xF8, 0xFC);
+
+        canvas.DrawBitmap(logo, PdfRect(36, 520, 122, 577), new SKSamplingOptions(SKFilterMode.Linear));
+        DrawText(canvas, boldFont, textPaint, "US Signal Project FlowHive", 135, 568, navy);
+        DrawText(canvas, boldFont, textPaint, ControlLabel, 135, 548, cyan);
+        DrawWrappedText(canvas, boldFont, textPaint, artifact.Title, 36, 516, 936, navy, 1);
+        DrawText(canvas, regularFont, textPaint, $"Project: {Join(artifact.ProjectCode, artifact.ProjectName)}", 36, 496, body);
+        DrawText(canvas, regularFont, textPaint, $"Customer: {artifact.CustomerName}", 520, 496, body);
+        DrawText(canvas, regularFont, textPaint, $"Generated UTC: {DateTimeOffset.UtcNow:O}", 36, 480, muted);
+        DrawWrappedText(canvas, regularFont, textPaint, $"Notes: {string.Join(" - ", artifact.Notes)}", 36, 464, 936, muted, 2);
+
+        var left = PdfLeft;
+        var tableWidth = PdfRight - PdfLeft;
+        var columnWidth = tableWidth / Math.Max(1, visibleColumns.Count);
+        const float headerBottom = 430f;
+        const float headerTop = 454f;
+        fillPaint.Color = navy;
+        canvas.DrawRect(PdfRect(left, headerBottom, PdfRight, headerTop), fillPaint);
+        for (var column = 0; column < visibleColumns.Count; column++)
+        {
+            DrawWrappedText(canvas, boldFont, textPaint, visibleColumns[column].ToUpperInvariant(), left + (column * columnWidth) + 4, 446, columnWidth - 8, SKColors.White, 2);
+        }
+
+        var top = 424f;
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        {
+            var rowHeight = PdfRowHeight(rows[rowIndex], visibleColumns, regularFont, textPaint);
+            fillPaint.Color = rowIndex % 2 == 0 ? pale : SKColors.White;
+            canvas.DrawRect(PdfRect(left, top - rowHeight, PdfRight, top), fillPaint);
+            strokePaint.Color = new SKColor(0xD0, 0xDD, 0xE6);
+            canvas.DrawRect(PdfRect(left, top - rowHeight, PdfRight, top), strokePaint);
+            for (var column = 0; column < visibleColumns.Count; column++)
+            {
+                var value = column < rows[rowIndex].Count ? DisplayValue(rows[rowIndex][column]) : string.Empty;
+                DrawWrappedText(canvas, regularFont, textPaint, value, left + (column * columnWidth) + 4, top - 11, columnWidth - 8, body, 20);
+            }
+            top -= rowHeight;
+        }
+
+        strokePaint.Color = new SKColor(0xAD, 0xC4, 0xD3);
+        canvas.DrawLine(36, PdfScreenY(53), 972, PdfScreenY(53), strokePaint);
+        DrawText(canvas, regularFont, textPaint, $"Artifact type: {artifact.ArtifactKind} · Logo SHA-256 {ProjectFlowHiveBrandAssets.LogoSha256}", 36, 35, muted);
+        DrawText(canvas, regularFont, textPaint, $"Page {pageNumber} of {pageCount}", 915, 35, muted);
+    }
+
+    private static void DrawText(SKCanvas canvas, SKFont font, SKPaint paint, string value, float x, float y, SKColor color)
+    {
+        paint.Color = color;
+        canvas.DrawText(value ?? string.Empty, x, PdfScreenY(y), SKTextAlign.Left, font, paint);
+    }
+
+    private static float PdfScreenY(float y) => PdfHeight - y;
+
+    private static SKRect PdfRect(float left, float bottom, float right, float top) =>
+        new(left, PdfScreenY(top), right, PdfScreenY(bottom));
+
+    private static void DrawWrappedText(
+        SKCanvas canvas,
+        SKFont font,
+        SKPaint paint,
+        string value,
+        float x,
+        float firstBaseline,
+        float width,
+        SKColor color,
+        int maximumLines)
+    {
+        var lines = WrapText(value, font, paint, width).Take(maximumLines).ToArray();
+        for (var index = 0; index < lines.Length; index++)
+            DrawText(canvas, font, paint, lines[index], x, firstBaseline - (index * 7.2f), color);
+    }
+
+    private static IReadOnlyList<string> WrapText(string? value, SKFont font, SKPaint paint, float width)
+    {
+        var text = (value ?? string.Empty).Replace("\r", string.Empty, StringComparison.Ordinal);
+        var lines = new List<string>();
+        foreach (var paragraph in text.Split('\n'))
+        {
+            var current = new StringBuilder();
+            foreach (var word in paragraph.Split(' ', StringSplitOptions.None))
+            {
+                var candidate = current.Length == 0 ? word : $"{current} {word}";
+                if (candidate.Length > 0 && font.MeasureText(candidate, paint) <= width)
+                {
+                    current.Clear().Append(candidate);
+                    continue;
+                }
+                if (current.Length > 0)
+                {
+                    lines.Add(current.ToString());
+                    current.Clear();
+                }
+                foreach (var rune in word.EnumerateRunes())
+                {
+                    var runeText = rune.ToString();
+                    if (current.Length > 0 && font.MeasureText(current.ToString() + runeText, paint) > width)
+                    {
+                        lines.Add(current.ToString());
+                        current.Clear();
+                    }
+                    current.Append(runeText);
+                }
+            }
+            if (current.Length > 0 || paragraph.Length == 0) lines.Add(current.ToString());
+        }
+        return lines.Count == 0 ? [string.Empty] : lines;
+    }
+    private static void SetSpreadsheetText(IXLCell cell, string? value) => SetSpreadsheetTextCore(cell, value);
+
+    private static void SetSpreadsheetValue(IXLCell cell, object? value)
+    {
+        if (value is null)
+        {
+            cell.Clear(XLClearOptions.Contents);
+            return;
+        }
+
+        if (value is DateOnly date)
+        {
+            cell.Value = XLCellValue.FromObject(date.ToDateTime(TimeOnly.MinValue), CultureInfo.InvariantCulture);
+            cell.Style.DateFormat.Format = "yyyy-mm-dd";
+            return;
+        }
+
+        if (value is DateTimeOffset dateTimeOffset)
+        {
+            cell.Value = XLCellValue.FromObject(dateTimeOffset.UtcDateTime, CultureInfo.InvariantCulture);
+            cell.Style.DateFormat.Format = "yyyy-mm-dd";
+            return;
+        }
+
+        if (value is DateTime dateTime)
+        {
+            cell.Value = XLCellValue.FromObject(dateTime, CultureInfo.InvariantCulture);
+            cell.Style.DateFormat.Format = "yyyy-mm-dd";
+            return;
+        }
+
+        if (value is string text)
+        {
+            SetSpreadsheetTextCore(cell, text);
+            return;
+        }
+
+        cell.Value = XLCellValue.FromObject(value, CultureInfo.InvariantCulture);
+    }
+
+    private static void SetSpreadsheetTextCore(IXLCell cell, string? value) => cell.Value = SpreadsheetText(value);
+
+    private static string SpreadsheetText(string? value)
+    {
+        var text = value ?? string.Empty;
+        var trimmed = text.TrimStart();
+        var formulaLike = trimmed.Length > 0 && trimmed[0] is '=' or '+' or '-' or '@';
+        var preservesLiteralApostrophe = text.StartsWith("'", StringComparison.Ordinal);
+        return formulaLike || preservesLiteralApostrophe
+            ? $"'{text}"
+            : text;
+    }
+
+    private static string DisplayValue(object? value) => value switch
+    {
+        null => string.Empty,
+        DateOnly date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        DateTimeOffset dateTimeOffset => dateTimeOffset.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        DateTime dateTime => dateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty,
+        _ => value.ToString() ?? string.Empty
+    };
     private static string Truncate(string? value, int length) => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim()[..Math.Min(value.Trim().Length, length)];
     private static string Join(string? left, string? right) => string.Join(" · ", new[] { left, right }.Where(value => !string.IsNullOrWhiteSpace(value)));
     private static string SafeSheetName(string value)
