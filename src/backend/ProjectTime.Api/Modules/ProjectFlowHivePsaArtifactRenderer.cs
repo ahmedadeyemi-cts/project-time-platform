@@ -48,14 +48,14 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         };
         for (var index = 0; index < summaryRows.Length; index++)
         {
-            summary.Cell(index + 5, 1).Value = summaryRows[index].Item1;
-            summary.Cell(index + 5, 2).Value = summaryRows[index].Item2;
+            SetSpreadsheetText(summary.Cell(index + 5, 1), summaryRows[index].Item1);
+            SetSpreadsheetText(summary.Cell(index + 5, 2), summaryRows[index].Item2);
             summary.Cell(index + 5, 1).Style.Font.Bold = true;
         }
         var noteRow = summaryRows.Length + 6;
-        summary.Cell(noteRow, 1).Value = "Notes";
+        SetSpreadsheetText(summary.Cell(noteRow, 1), "Notes");
         summary.Cell(noteRow, 1).Style.Font.Bold = true;
-        summary.Cell(noteRow, 2).Value = string.Join("\n", artifact.Notes);
+        SetSpreadsheetText(summary.Cell(noteRow, 2), string.Join("\n", artifact.Notes));
         summary.Cell(noteRow, 2).Style.Alignment.WrapText = true;
         summary.Column(1).Width = 22;
         summary.Column(2).Width = 85;
@@ -64,15 +64,15 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         var sheet = workbook.Worksheets.Add(SafeSheetName(artifact.ArtifactKind));
         for (var column = 0; column < artifact.Columns.Count; column++)
         {
-            sheet.Cell(1, column + 1).Value = artifact.Columns[column];
+            SetSpreadsheetText(sheet.Cell(1, column + 1), artifact.Columns[column]);
         }
         for (var row = 0; row < artifact.Rows.Count; row++)
         {
             for (var column = 0; column < artifact.Columns.Count; column++)
             {
-                sheet.Cell(row + 2, column + 1).Value = column < artifact.Rows[row].Count
+                SetSpreadsheetText(sheet.Cell(row + 2, column + 1), column < artifact.Rows[row].Count
                     ? artifact.Rows[row][column]
-                    : string.Empty;
+                    : string.Empty);
             }
         }
         if (artifact.Columns.Count > 0)
@@ -206,6 +206,14 @@ internal static class ProjectFlowHivePsaArtifactRenderer
     private static byte[] Ascii(string value) => Encoding.ASCII.GetBytes(value);
     private static void WriteAscii(Stream stream, string value) => stream.Write(Ascii(value));
     private static string EscapePdf(string value) => (value ?? string.Empty).Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)").Replace("\r", " ").Replace("\n", " ");
+    private static void SetSpreadsheetText(IXLCell cell, string? value) => cell.Value = SpreadsheetText(value);
+    private static string SpreadsheetText(string? value)
+    {
+        var text = value ?? string.Empty;
+        return text.Length > 0 && text[0] is '=' or '+' or '-' or '@'
+            ? $"'{text}"
+            : text;
+    }
     private static string Truncate(string? value, int length) => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim()[..Math.Min(value.Trim().Length, length)];
     private static string Join(string? left, string? right) => string.Join(" · ", new[] { left, right }.Where(value => !string.IsNullOrWhiteSpace(value)));
     private static string SafeSheetName(string value)

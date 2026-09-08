@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using ClosedXML.Excel;
 using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
 
@@ -680,5 +681,24 @@ var shortDurations = shortGenerated.Tasks!.Where(task => !task.IsSummary).ToDict
 Assert(normalDurations.OrderBy(pair => pair.Key).SequenceEqual(shortDurations.OrderBy(pair => pair.Key)), "selected_window_does_not_compress_estimates");
 Assert(shortGenerated.Tasks!.Where(task => !task.IsSummary).All(task => task.RequiredRoles?.Count > 0), "required_roles_are_structured");
 Assert(shortGenerated.Tasks!.Where(task => !task.IsSummary).All(task => task.OpenQuestions?.Count > 0), "missing_technical_information_becomes_open_questions");
+
+var exportArtifact = new ProjectFlowHivePsaArtifactTable(
+    "raid",
+    "=Injected title",
+    "=PROJECT",
+    "@Customer",
+    "-Customer",
+    ["=Column", "Safe column"],
+    [["=SUM(A1)", "+Injected value"], ["-Injected value", "@Injected value"]],
+    ["=Injected note"]);
+var exportBytes = ProjectFlowHivePsaArtifactRenderer.BuildExcel(exportArtifact);
+using var exportWorkbook = new XLWorkbook(new MemoryStream(exportBytes));
+var exportSheet = exportWorkbook.Worksheet("raid");
+Assert(!exportSheet.Cell(2, 1).HasFormula, "xlsx_export_formula_prefix_is_not_executable");
+Assert(exportSheet.Cell(2, 1).GetString() == "'=SUM(A1)", "xlsx_export_formula_text_is_retained");
+Assert(!exportSheet.Cell(2, 2).HasFormula && exportSheet.Cell(2, 2).GetString() == "'+Injected value", "xlsx_export_plus_prefix_is_not_executable");
+Assert(!exportSheet.Cell(3, 1).HasFormula && exportSheet.Cell(3, 1).GetString() == "'-Injected value", "xlsx_export_minus_prefix_is_not_executable");
+Assert(!exportSheet.Cell(3, 2).HasFormula && exportSheet.Cell(3, 2).GetString() == "'@Injected value", "xlsx_export_at_prefix_is_not_executable");
+Assert(exportWorkbook.Worksheets.SelectMany(sheet => sheet.CellsUsed()).All(cell => !cell.HasFormula), "xlsx_export_all_cells_remain_text_or_values");
 
 Console.WriteLine("FLOWHIVE_DETAILED_PLANNER_TESTS=PASS");
