@@ -54,6 +54,21 @@ export const sourceBaseCorrectionFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+export const successorApprovalBase = 'bf401fa1d017eae0ebf10c9ed79720829ce8de60';
+export const successorApprovalBranch = 'control/flowhive-sow-successor-approval-20260909';
+export const successorApprovalFiles = [
+  '.github/flowhive-psa-protected-test-candidate.json',
+  '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  '.github/workflows/projectpulse-deploy-test.yml',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'scripts/release-test/apply-flowhive-psa-migrations.sh',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'scripts/release-test/flowhive-psa-admission.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-migration-fixture.py',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
 export const reviewedRegenerationFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/workflows/projectpulse-deploy-test.yml',
@@ -91,7 +106,7 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','source-base-correction'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','source-base-correction','successor-approval'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
@@ -105,14 +120,18 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.base, sourceBaseCorrectionBase, 'Source-base correction must be based on the trusted candidate-refresh main.');
     assert.equal(context?.branch, sourceBaseCorrectionBranch, 'Wrong source-base correction control branch.');
   }
-  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : sourceBaseCorrectionFiles;
+  if (mode === 'successor-approval') {
+    assert.equal(context?.base, successorApprovalBase, 'Successor approval must be based on the current trusted main.');
+    assert.equal(context?.branch, successorApprovalBranch, 'Wrong successor approval branch.');
+  }
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : successorApprovalFiles;
   assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
   for (const token of [
     'group: projectpulse-deploy-test', 'queue: max', 'cancel-in-progress: false', 'environment: test',
     'node scripts/release-test/flowhive-psa-admission.mjs', 'PSA_RELEASE_AUTHORIZED',
-    'refs/heads/main', '105_flowhive_reviewed_regeneration.sql', 'build-and-run-flowhive-psa-migrations.sh',
+    'refs/heads/main', '105_flowhive_reviewed_regeneration.sql', '106_module025_sow_sell_register.sql', 'build-and-run-flowhive-psa-migrations.sh',
     'run-flowhive-psa-live-uat.py', 'RELIABILITY_RELEASE_COMMIT:',
     "steps.psa_live_uat.outputs.deployment_health_verified != 'true'",
   ]) {
@@ -136,8 +155,9 @@ export function validate() {
   const isReviewedRegeneration = process.env.GITHUB_HEAD_REF === reviewedRegenerationBranch;
   const isCandidateRefresh = process.env.GITHUB_HEAD_REF === candidateRefreshBranch;
   const isSourceBaseCorrection = process.env.GITHUB_HEAD_REF === sourceBaseCorrectionBranch;
+  const isSuccessorApproval = process.env.GITHUB_HEAD_REF === successorApprovalBranch;
   verifyFiles(changed, manifest,
-    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : 'initial', context);
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.
@@ -150,7 +170,7 @@ export function validate() {
   verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));
   const supervisor = fs.readFileSync('.github/workflows/flowhive-psa-protected-test-admission.yml', 'utf8');
   assert.ok(!/azure\/login|id-token:|environment:|contents:\s*write/.test(supervisor), 'Admission cannot mutate a cloud environment or source.');
-  assert.ok(supervisor.includes('github.event.issue.number == 872') && supervisor.includes("github.actor == 'ahmedadeyemi-cts'"));
+  assert.ok(supervisor.includes('github.event.issue.number == 887') && supervisor.includes("github.actor == 'ahmedadeyemi-cts'"));
   assert.ok(supervisor.includes('group: module025-protected-uat-control') && supervisor.includes('cancel-in-progress: false'));
   console.log('FLOWHIVE_PSA_RELEASE_CONTROL_SCOPE=PASS productionMutation=false featureMerge=false');
 }

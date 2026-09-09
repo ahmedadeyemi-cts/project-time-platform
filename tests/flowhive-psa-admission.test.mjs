@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch } from '../scripts/release-test/flowhive-psa-admission.mjs';
+import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, verifyDispatchedRun, inspectIdleController, sealIdleController } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, successorApprovalFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
-const pr = { number: 872, state: 'open', merged: false, draft: true,
+const pr = { number: candidatePullRequest, state: 'open', merged: false, draft: true,
   head: { ref: candidateBranch, sha: approval.sha, repo: { full_name: repository } },
   base: { ref: 'main', repo: { full_name: repository } } };
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
@@ -41,24 +41,17 @@ test('later failed rerun or unknown failed workflow cannot hide behind older gre
 test('source drift allows only reviewed control paths; application drift is rejected', () => {
   verifySourceDrift(files,files);assert.throws(()=>verifySourceDrift([...files,'src/backend/ProjectTime.Api/Program.cs'],files));
 });
-test('frozen candidate binds to integrated PR880 main and rejects unincorporated application drift', () => {
-  const reviewedMain = '4871d47fbeaad0fd5c08ddca27f193d682a0ea92';
-  const currentMain = '040709cdac0a940ad8feffbd730f1be35ce50280';
-  const candidate = 'b4a976751eb2cb5bc68c6a7057ca28148f1cf58a';
-  const actualCurrentMainControlDelta = [
-    '.github/flowhive-psa-protected-test-candidate.json',
-    'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
-    'tests/flowhive-psa-release-control.mjs'
-  ];
+test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  const reviewedMain = 'bf401fa1d017eae0ebf10c9ed79720829ce8de60';
+  const candidate = '8c0a75c5bc0525e5ea196f843b957d3504723db6';
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
-  assert.match(currentMain, /^[a-f0-9]{40}$/);
-  verifySourceDrift(actualCurrentMainControlDelta, files);
+  verifySourceDrift(successorApprovalFiles, files);
   for (const unrelated of [
     'src/backend/ProjectTime.Api/Program.cs',
     'src/frontend/project-time-web/src/App.jsx',
     'scripts/release-test/unincorporated-application-change.sh'
-  ]) assert.throws(() => verifySourceDrift([...actualCurrentMainControlDelta, unrelated], files));
+  ]) assert.throws(() => verifySourceDrift([...successorApprovalFiles, unrelated], files));
 });
 test('release scope cannot absorb application files, unknown workflows or production changes', () => {
   verifyFiles(files,files);

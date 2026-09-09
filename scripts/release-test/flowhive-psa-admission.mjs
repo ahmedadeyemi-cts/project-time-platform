@@ -5,7 +5,8 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
-export const candidateBranch = 'feature/flowhive-enterprise-psa-revamp-20260906';
+export const candidatePullRequest = 887;
+export const candidateBranch = 'release/flowhive-sow-successor-20260908';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -15,13 +16,14 @@ const hash = /^[a-f0-9]{64}$/;
 const migrations = [
   '103_module_066_flowhive_enterprise_psa_revamp.sql',
   '104_flowhive_bounded_ai_execution.sql',
-  '105_flowhive_reviewed_regeneration.sql'
+  '105_flowhive_reviewed_regeneration.sql',
+  '106_module025_sow_sell_register.sql'
 ];
 
 export function verifyApproval(approval, requestedSha) {
   assert.equal(approval.contract, 'flowhive-psa-protected-test-candidate-v1');
   assert.equal(approval.repository, repository);
-  assert.equal(approval.pullRequest, 872);
+  assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.environment, 'test');
   assert.equal(approval.publicOrigin, origin);
@@ -103,7 +105,7 @@ export async function authorize() {
   assert.notEqual(process.env.RECOVER_PRIVATE_RUNTIME, 'true', 'Private runtime recovery is not part of this candidate approval.');
   const main = await github(`/repos/${repository}/git/ref/heads/main`);
   assert.equal(main.object.sha, process.env.GITHUB_SHA, 'The trusted main controller is no longer current.');
-  const pr = await github(`/repos/${repository}/pulls/872`);
+  const pr = await github(`/repos/${repository}/pulls/${candidatePullRequest}`);
   verifyPullRequest(approval, pr);
   const branch = await github(`/repos/${repository}/git/ref/heads/${candidateBranch}`);
   assert.equal(branch.object.sha, approval.sha);
