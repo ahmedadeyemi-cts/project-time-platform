@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, verifyDispatchedRun, inspectIdleController, sealIdleController } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchReceipt, verifyDispatchedRun, dispatchOnce, inspectIdleController, sealIdleController } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, successorApprovalFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
@@ -63,12 +63,34 @@ test('comment cannot select an arbitrary workflow, ref, environment or shell com
   assert.equal(parseCommand('DEPLOY FLOWHIVE PSA PROTECTED TEST SHA '+approval.sha),approval.sha);
   for(const suffix of ['; echo stolen','\nOTHER',' prod',' ','\n']) assert.throws(()=>parseCommand('DEPLOY FLOWHIVE PSA PROTECTED TEST SHA '+approval.sha+suffix));
 });
-test('dispatched run identity is the main control revision plus the exact candidate title', () => {
+test('dispatch response binds submitted candidate and returned run identity', () => {
   const control='a'.repeat(40),created='2026-09-06T00:00:00Z';
-  const r={id:7,workflow_id:315562561,event:'workflow_dispatch',head_branch:'main',head_sha:control,created_at:created,display_title:'Protected Test '+approval.sha};
-  assert.equal(verifyDispatchedRun(r,control,approval.sha,created),7);
-  assert.throws(()=>verifyDispatchedRun({...r,head_sha:approval.sha},control,approval.sha,created));
-  assert.throws(()=>verifyDispatchedRun({...r,display_title:'Protected Test '+'0'.repeat(40)},control,approval.sha,created));
+  const request=buildDispatchRequest(approval.sha);
+  assert.equal(request.path,'actions/workflows/315562561/dispatches?return_run_details=true');
+  verifyDispatchInputs(request.body.inputs,approval.sha);
+  const receipt={workflow_run_id:7,run_url:'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/7',html_url:'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/7'};
+  assert.equal(verifyDispatchReceipt(receipt),7);
+  const r={id:7,workflow_id:315562561,event:'workflow_dispatch',head_branch:'main',head_sha:control,created_at:created,display_title:'Deploy System-wide Enterprise Reliability and Utilization to Protected Test'};
+  assert.equal(verifyDispatchedRun(r,control,approval.sha,created,7),7);
+  assert.throws(()=>verifyDispatchedRun({...r,head_sha:approval.sha},control,approval.sha,created,7));
+  assert.throws(()=>verifyDispatchedRun({...r,id:8},control,approval.sha,created,7));
+  assert.throws(()=>verifyDispatchReceipt({...receipt,workflow_run_id:8}));
+  assert.throws(()=>verifyDispatchReceipt({...receipt,run_url:receipt.run_url.replace('/7','/8')}));
+});
+test('returned run ID works with delayed or generic server titles',async()=>{
+  const control='b'.repeat(40),created='2026-09-06T00:00:00Z',calls=[];
+  const run={id:9,workflow_id:315562561,event:'workflow_dispatch',head_branch:'main',head_sha:control,created_at:created,display_title:'Deploy System-wide Enterprise Reliability and Utilization to Protected Test'};
+  const receipt={workflow_run_id:9,run_url:'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/9',html_url:'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/9'};
+  const result=await dispatchOnce(async(path,method,body)=>{calls.push({path,method,body});return path.includes('/dispatches')?receipt:run;},approval.sha,control,created);
+  assert.equal(result.runId,9);assert.equal(calls.filter(x=>x.method==='POST').length,1);
+  assert.equal(calls[0].body.inputs.release_sha,approval.sha);
+});
+test('malformed or uncertain dispatch responses fail without a duplicate POST',async()=>{
+  const control='c'.repeat(40),created='2026-09-06T00:00:00Z';
+  let postCount=0;
+  await assert.rejects(dispatchOnce(async()=>{postCount+=1;throw new Error('dispatch response timeout');},approval.sha,control,created),/timeout/);
+  assert.equal(postCount,1);
+  await assert.rejects(dispatchOnce(async(path)=>path.includes('/dispatches')?{}:null,approval.sha,control,created),/workflow run ID/);
 });
 test('environment job remains serialized and cannot publish source or target production', () => {
   const controller=fs.readFileSync(new URL('../.github/workflows/projectpulse-deploy-test.yml',import.meta.url),'utf8');
