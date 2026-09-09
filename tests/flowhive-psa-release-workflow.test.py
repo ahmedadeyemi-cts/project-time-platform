@@ -140,7 +140,16 @@ class WorkflowContract(unittest.TestCase):
         self.assertIn("engagement.status='confirmed'", worker)
         self.assertIn('@account_executive_roles', worker)
         self.assertIn('@inside_sales_roles', worker)
+        self.assertIn('@solution_architect_roles', worker)
+        self.assertIn('assignment.user_id=engagement.owner_user_id', worker)
         self.assertIn('RECIPIENT_ASSIGNMENT_REVIEW_REQUIRED', worker)
+
+    def test_psa_workspace_discards_stale_project_responses(self):
+        workspace=(ROOT/'src/frontend/project-time-web/src/ProjectFlowHivePsaWorkspace.jsx').read_text()
+        self.assertIn('AbortController', workspace)
+        self.assertIn('psaRequestRef', workspace)
+        self.assertIn('request.id !== psaRequestRef.current.id', workspace)
+        self.assertIn('requestedProjectId', workspace)
     def test_negative_production_concurrency_and_late_admission(self):
         for mutate in [lambda x:x['jobs']['deploy'].update(environment='production'),
           lambda x:x['concurrency'].update({'cancel-in-progress':'true'}),

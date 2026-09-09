@@ -766,7 +766,7 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
     }
     else
     {
-        pdfColumns = ["ID", "Description", "Due date", "Hours", "Notes", "Unicode", "Owner"];
+        pdfColumns = ["ID", "Description", "Due date", "Hours", "Notes", "Unicode", "Owner", "Status", "Evidence", "Risk / Decision"];
         pdfRows = Enumerable.Range(1, 26)
             .Select(index => (IReadOnlyList<object?>)new object?[]
             {
@@ -776,7 +776,10 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
                 index * 1.5m,
                 index == 1 ? "Names, punctuation (quoted), and wrapping" : "Review",
                 index == 1 ? "München 東京" : "é東京",
-                $"Owner {index:00}"
+                $"Owner {index:00}",
+                index == 1 ? "Ready" : "In review",
+                $"PDF-COLUMN-EVIDENCE-{index:00}",
+                $"PDF-COLUMN-RISK-{index:00}"
             })
             .ToArray();
     }
@@ -863,6 +866,12 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
         && pdfText.Contains("東京", StringComparison.Ordinal)
         && pdfText.Contains("株式会社", StringComparison.Ordinal),
         $"pdf_{artifactKind}_preserves_accented_and_non_latin_text");
+    if (!artifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase)
+        && !artifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase))
+    {
+        Assert(pdfColumns.All(column => pdfText.Contains(column.ToUpperInvariant(), StringComparison.Ordinal)),
+            $"pdf_{artifactKind}_renders_all_columns");
+    }
     var pdfDescriptionTokens = NormalizePdfText(pdfLongDescription)
         .Split(' ', StringSplitOptions.RemoveEmptyEntries);
     Assert(pdfDescriptionTokens.All(token => pdfText.Contains(token, StringComparison.Ordinal)),

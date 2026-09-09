@@ -201,9 +201,15 @@ public static partial class Module025SowGsdModule
             LEFT JOIN app_users inside_sales
                 ON inside_sales.user_id=engagement.resale_user_id
                AND inside_sales.is_active=TRUE
-            WHERE engagement.engagement_id=@engagement_id
+              WHERE engagement.engagement_id=@engagement_id
               AND engagement.is_active=TRUE
               AND engagement.status='confirmed'
+              AND EXISTS(
+                  SELECT 1 FROM app_user_role_assignments assignment
+                  JOIN app_roles role USING(app_role_id)
+                  WHERE assignment.user_id=engagement.owner_user_id
+                    AND assignment.is_active=TRUE AND role.is_active=TRUE
+                    AND upper(role.role_code)=ANY(@solution_architect_roles))
               AND EXISTS(
                   SELECT 1 FROM app_user_role_assignments assignment
                   JOIN app_roles role USING(app_role_id)
@@ -218,6 +224,7 @@ public static partial class Module025SowGsdModule
                     AND upper(role.role_code)=ANY(@inside_sales_roles));
             """, connection);
         command.Parameters.AddWithValue("engagement_id", engagementId);
+        command.Parameters.AddWithValue("solution_architect_roles", SolutionArchitectRoles.ToArray());
         command.Parameters.AddWithValue("account_executive_roles", AccountExecutiveRoles);
         command.Parameters.AddWithValue("inside_sales_roles", InsideSalesRepresentativeRoles);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);

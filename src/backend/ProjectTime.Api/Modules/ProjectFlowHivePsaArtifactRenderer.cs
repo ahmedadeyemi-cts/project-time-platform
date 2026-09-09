@@ -127,7 +127,6 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         using var logo = SKBitmap.Decode(ProjectFlowHiveBrandAssets.LogoJpeg)
             ?? throw new InvalidOperationException("The embedded US Signal logo could not be decoded.");
 
-        var visibleColumns = artifact.Columns.Take(8).ToArray();
         using var output = new MemoryStream();
         using var document = SKDocument.CreatePdf(output);
         if (artifact.ArtifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase)
@@ -187,11 +186,25 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         }
         else
         {
-            var pages = PaginateRows(artifact, visibleColumns, regularFont, textPaint);
+            var columnBands = artifact.Columns.Count == 0
+                ? new[] { Array.Empty<(string name, int index)>() }
+                : artifact.Columns.Select((name, index) => (name, index)).Chunk(8).ToArray();
+            var pages = new List<(IReadOnlyList<IReadOnlyList<object?>> Rows, IReadOnlyList<string> Columns)>();
+            foreach (var band in columnBands)
+            {
+                var columns = band.Select(item => item.name).ToArray();
+                var bandRows = artifact.Rows
+                    .Select(row => (IReadOnlyList<object?>)band
+                        .Select(item => item.index < row.Count ? row[item.index] : null)
+                        .ToArray())
+                    .ToArray();
+                pages.AddRange(PaginateRows(bandRows, columns, regularFont, textPaint)
+                    .Select(page => (page, (IReadOnlyList<string>)columns)));
+            }
             for (var index = 0; index < pages.Count; index++)
             {
                 using var canvas = document.BeginPage(PdfWidth, PdfHeight);
-                DrawPdfPage(canvas, artifact, pages[index], visibleColumns, index + 1, pages.Count,
+                DrawPdfPage(canvas, artifact, pages[index].Rows, pages[index].Columns, index + 1, pages.Count,
                     regularFont, boldFont, textPaint, fillPaint, strokePaint, logo);
                 document.EndPage();
             }
@@ -201,7 +214,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
     }
 
     private static List<IReadOnlyList<IReadOnlyList<object?>>> PaginateRows(
-        ProjectFlowHivePsaArtifactTable artifact,
+        IReadOnlyList<IReadOnlyList<object?>> sourceRows,
         IReadOnlyList<string> visibleColumns,
         SKFont font,
         SKPaint paint)
@@ -209,7 +222,7 @@ internal static class ProjectFlowHivePsaArtifactRenderer
         var pages = new List<IReadOnlyList<IReadOnlyList<object?>>>();
         var current = new List<IReadOnlyList<object?>>();
         var remaining = 350f;
-        foreach (var row in artifact.Rows)
+        foreach (var row in sourceRows)
         {
             var height = PdfRowHeight(row, visibleColumns, font, paint);
             if (current.Count > 0 && height > remaining)

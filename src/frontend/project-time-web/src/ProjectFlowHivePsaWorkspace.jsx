@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './project-flowhive-psa-workspace.css';
 
 const KANBAN_COLUMNS = [
@@ -139,25 +139,36 @@ export default function ProjectFlowHivePsaWorkspace({
   const [meetingForm, setMeetingForm] = useState({ title: '', meetingAt: '', customerVisible: false, file: null });
   const [reminders, setReminders] = useState({ enabled: false, dispatcherAvailable: false, leadDays: [2, 1], includeProjectManager: true, includeAssignedTeamMembers: true, includeOverdue: true, timezoneName: 'America/Chicago', deliveryBoundary: 'test_only' });
   const [calendarMonth, setCalendarMonth] = useState(() => monthKey(new Date()));
+  const psaRequestRef = useRef({ id: 0, controller: null });
 
-  async function loadPsa(silent = false) {
-    if (!projectId) return;
+  async function loadPsa(silent = false, requestedProjectId = projectId) {
+    if (!requestedProjectId) return;
+    psaRequestRef.current.controller?.abort();
+    const request = {
+      id: psaRequestRef.current.id + 1,
+      controller: new AbortController()
+    };
+    psaRequestRef.current = request;
     if (!silent) setLoading(true);
     try {
-      const result = await jsonRequest(`/api/project-flowhive/projects/${projectId}/psa`);
+      const result = await jsonRequest(`/api/project-flowhive/projects/${requestedProjectId}/psa`, { signal: request.controller.signal });
+      if (request.id !== psaRequestRef.current.id) return;
       setPsa(result);
       if (result?.reminderPreferences) setReminders((current) => ({ ...current, ...result.reminderPreferences }));
     } catch (error) {
+      if (request.controller.signal.aborted || request.id !== psaRequestRef.current.id) return;
       if (error.body?.status !== 'migration_103_required') setError?.(error.message);
       setPsa(error.body?.status === 'migration_103_required' ? { migrationRequired: true, ...error.body } : null);
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && request.id === psaRequestRef.current.id) setLoading(false);
     }
   }
 
   useEffect(() => {
+    psaRequestRef.current.controller?.abort();
     setPsa(null);
     if (projectId) loadPsa();
+    return () => psaRequestRef.current.controller?.abort();
   }, [projectId]);
 
   useEffect(() => {
