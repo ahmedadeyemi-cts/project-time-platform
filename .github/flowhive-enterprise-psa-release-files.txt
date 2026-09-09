@@ -76,6 +76,7 @@ src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx
 src/frontend/project-time-web/src/module025/SowRegister.jsx
 src/frontend/project-time-web/src/module025/sow-register.css
 src/frontend/project-time-web/src/project-flowhive-ai-confidence.css
+src/frontend/project-time-web/src/project-flowhive-center.css
 src/frontend/project-time-web/src/project-flowhive-planner-layout.css
 src/frontend/project-time-web/src/project-flowhive-planner-review.css
 src/frontend/project-time-web/src/project-flowhive-psa-workspace.css
