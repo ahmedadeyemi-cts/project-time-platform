@@ -273,6 +273,13 @@ internal static class ProjectFlowHivePsaModule
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
+        var title = Clean(request.Title, 240);
+        if (title.Length is > 0 and < 3)
+            return Results.BadRequest(new
+            {
+                status = "meeting_title_invalid",
+                message = "Meeting title must contain at least three characters when supplied."
+            });
         const string sql = """
             WITH prior AS (
                 SELECT customer_visible, transcript_status
@@ -305,7 +312,7 @@ internal static class ProjectFlowHivePsaModule
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("meeting_id", meetingId);
         command.Parameters.AddWithValue("project_id", projectId);
-        command.Parameters.AddWithValue("title", Clean(request.Title, 240));
+        command.Parameters.AddWithValue("title", title);
         command.Parameters.AddWithValue("meeting_at", NpgsqlDbType.TimestampTz, request.MeetingAt is null ? DBNull.Value : request.MeetingAt.Value.ToUniversalTime());
         command.Parameters.AddWithValue("customer_visible", NpgsqlDbType.Boolean, request.CustomerVisible is null ? DBNull.Value : request.CustomerVisible.Value);
         command.Parameters.AddWithValue("retry_transcription", request.RetryTranscription);
@@ -698,53 +705,41 @@ internal static class ProjectFlowHivePsaModule
 
     private static async Task<ProjectAccess> OpenProjectAsync(Guid projectId, HttpContext context, bool write, CancellationToken cancellationToken)
     {
-        var effective = EffectiveUserId(context);
-        if (effective is null) return new(null, Results.Json(new { status = "session_required" }, statusCode: 401), null, Guid.Empty, false, false, "none");
-        var actual = ActualUserId(context) ?? effective;
-        var isViewAs = actual != effective || (context.Items.TryGetValue("ProjectPulseIsViewAs", out var viewAsValue) && viewAsValue is bool active && active);
+        var actual = ProjectPulseActualSessionAuthority.ReadUserId(context, "ProjectPulseActualUserId", "ProjectPulseSessionUserId");
+        var effective = ProjectPulseActualSessionAuthority.ReadUserId(context, "ProjectPulseEffectiveUserId", "ProjectPulseSessionUserId") ?? actual;
+        if (!actual.HasValue || !effective.HasValue)
+            return new(null, Results.Json(new { status = "session_required" }, statusCode: 401), null, Guid.Empty, false, false, "none");
+        var isViewAs = ProjectPulseActualSessionAuthority.IsViewAs(context) || actual != effective;
         var config = ProjectFlowHiveDatabaseConfig.FromEnvironment();
         if (config.Missing.Count > 0) return new(null, Results.Json(new { status = "configuration_missing", missing = config.Missing }, statusCode: 503), actual, effective.Value, isViewAs, false, "none");
         var connection = new NpgsqlConnection(config.ConnectionString);
         await connection.OpenAsync(cancellationToken);
-        const string sql = """
-            SELECT
-                p.project_manager_user_id = @user_id AS is_owner,
-                p.account_executive_user_id = @user_id OR p.solution_architect_user_id = @user_id AS is_associated,
-                EXISTS(SELECT 1 FROM project_assignments a WHERE a.project_id = p.project_id AND a.user_id = @user_id) AS is_assigned,
-                EXISTS(SELECT 1 FROM project_planning_collaborators c WHERE c.project_id = p.project_id AND c.user_id = @user_id AND c.module_code = '066' AND c.is_active = TRUE) AS is_collaborator,
-                EXISTS(
-                    SELECT 1 FROM app_user_role_assignments ura
-                    JOIN app_roles r ON r.app_role_id = ura.app_role_id AND r.is_active = TRUE
-                    WHERE ura.user_id = @user_id AND ura.is_active = TRUE
-                      AND r.role_code IN ('SUPER_ADMINISTRATOR','SYSTEM_ADMINISTRATOR','ADMINISTRATOR','PROJECT_TEAM_COORDINATOR','EXECUTIVE','EXECUTIVE_LEADERSHIP')
-                ) AS broad_scope
-            FROM projects p
-            WHERE p.project_id = @project_id;
-            """;
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("project_id", projectId);
-        command.Parameters.AddWithValue("user_id", effective.Value);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
+        var planningAccess = await ProjectPlanningAccessResolver.ResolveAsync(
+            connection,
+            context,
+            projectId,
+            "066",
+            cancellationToken);
+        if (!planningAccess.IsActiveIdentity || !planningAccess.CanView)
         {
             await connection.DisposeAsync();
-            return new(null, Results.NotFound(new { status = "project_not_found" }), actual, effective.Value, isViewAs, false, "none");
+            var status = planningAccess.ScopeReason is "project_not_found" ? "project_not_found" : "forbidden";
+            return new(null, Results.Json(new { status, message = "The project is outside the effective user's FlowHive scope." }, statusCode: status == "project_not_found" ? 404 : 403), actual, effective.Value, planningAccess.IsViewAs, false, "none");
         }
-        var isOwner = reader.GetBoolean(0);
-        var canRead = isOwner || reader.GetBoolean(1) || reader.GetBoolean(2) || reader.GetBoolean(3) || reader.GetBoolean(4);
-        await reader.DisposeAsync();
-        if (!canRead)
-        {
-            await connection.DisposeAsync();
-            return new(null, Results.Json(new { status = "forbidden", message = "The project is outside the effective user's FlowHive scope." }, statusCode: 403), actual, effective.Value, isViewAs, false, "none");
-        }
-        var canManage = isOwner && !isViewAs && actual == effective;
+        isViewAs = planningAccess.IsViewAs;
+        var canManage = planningAccess.CanAdministerPlanner && !isViewAs && actual == effective;
         if (write && !canManage)
         {
             await connection.DisposeAsync();
-            return new(null, Results.Json(new { status = isViewAs ? "view_as_write_blocked" : "project_manager_ownership_required", message = "Only the assigned Project Manager can change the FlowHive PSA workspace. Exit View-As before writing." }, statusCode: 403), actual, effective.Value, isViewAs, false, "read_only");
+            return new(null, Results.Json(new
+            {
+                status = isViewAs ? "view_as_write_blocked" : "flowhive_planning_write_forbidden",
+                message = isViewAs
+                    ? "Exit View-As before writing to the FlowHive PSA workspace."
+                    : "The shared FlowHive planning resolver did not authorize this write for the project."
+            }, statusCode: 403), actual, effective.Value, isViewAs, false, planningAccess.ScopeReason);
         }
-        return new(connection, null, actual, effective.Value, isViewAs, canManage, canManage ? "project_manager_full_control" : "authorized_read");
+        return new(connection, null, actual, effective.Value, isViewAs, canManage, planningAccess.ScopeReason);
     }
 
     private static async Task<bool> MigrationReadyAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
@@ -755,8 +750,6 @@ internal static class ProjectFlowHivePsaModule
     }
 
     private static IResult MigrationRequired() => Results.Json(new { status = "migration_103_required", requiredMigration = MigrationId, message = "Apply the FlowHive enterprise PSA migration before using meetings, immutable RAID history, or task reminders." }, statusCode: 503);
-    private static Guid? EffectiveUserId(HttpContext context) => context.Items.TryGetValue("ProjectPulseEffectiveUserId", out var value) && value is Guid id ? id : context.Items.TryGetValue("ProjectPulseSessionUserId", out value) && value is Guid session ? session : null;
-    private static Guid? ActualUserId(HttpContext context) => context.Items.TryGetValue("ProjectPulseActualUserId", out var value) && value is Guid id ? id : context.Items.TryGetValue("ProjectPulseSessionUserId", out value) && value is Guid session ? session : null;
     private static string Clean(string? value, int max) => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim()[..Math.Min(value.Trim().Length, max)];
     private static string SafeFileName(string value)
     {
