@@ -286,7 +286,11 @@ jobs:
 
           grep -Fq 'name: Deploy System-wide Enterprise Reliability and Utilization to Protected Test' "$CTL"
           grep -Fq 'branches: [main]' "$CTL"
-          grep -Fq "if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'" "$CTL"
+          grep -Fq 'if: >-' "$CTL"
+          grep -Fq "github.ref == 'refs/heads/main'" "$CTL"
+          grep -Fq "github.event_name == 'workflow_dispatch'" "$CTL"
+          grep -Fq "inputs.release_branch == 'release/flowhive-sow-successor-20260908'" "$CTL"
+          ! grep -Fq "if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'" "$CTL"
           grep -Fq 'release_sha:' "$CTL"
           grep -Fq 'release_branch:' "$CTL"
           TARGET_BRANCH_MARKER='TARGET_RELEASE_BRANCH: $'
