@@ -111,6 +111,8 @@ class WorkflowContract(unittest.TestCase):
         self.assertIn('test -s .github/flowhive-psa-protected-test-candidate.json', candidate['run'])
         self.assertIn("release/flowhive-sow-successor-20260908", candidate['run'])
         self.assertIn("echo 'staging=successor'", candidate['run'])
+        control=next(s for s in workflow['jobs']['migrations']['steps'] if s.get('uses','').startswith('actions/checkout@') and s.get('with',{}).get('path')=='control')
+        self.assertEqual(control['with']['fetch-depth'], '0')
         exercise=next(s for s in workflow['jobs']['migrations']['steps'] if s.get('name','').startswith('Exercise selected release SQL'))
         self.assertEqual(exercise['env']['FLOWHIVE_MIGRATION_STAGING'], '${{ steps.candidate.outputs.staging }}')
         fixture=(ROOT/'tests/flowhive-psa-migration-fixture.py').read_text()
