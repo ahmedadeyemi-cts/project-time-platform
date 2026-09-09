@@ -176,7 +176,7 @@ jobs:
               [[ "$(git rev-parse HEAD)" == "$TARGET_RELEASE_COMMIT" ]] || fail 'PSA candidate identity changed.'
             else
               [[ "$TARGET_RELEASE_BRANCH" == 'fix/shared-project-document-planning-20260819' ]] \
-                || fail 'Only the approved successor FlowHive candidate branch, legacy V2 branch, or exact merged main may use manual Protected-Test deployment.'
+                || fail 'Only the authorized FlowHive V2 candidate branch or exact merged main may use manual Protected-Test deployment.'
               git fetch --no-tags origin "$TARGET_RELEASE_BRANCH"
               [[ "$(git rev-parse "origin/$TARGET_RELEASE_BRANCH")" == "$TARGET_RELEASE_COMMIT" ]] \
                 || fail 'The requested candidate SHA is not the current authorized branch head.'
