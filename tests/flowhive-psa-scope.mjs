@@ -5,8 +5,11 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const manifestPath = '.github/flowhive-enterprise-psa-release-files.txt';
+const module025ManifestPath = '.github/module025-sow-sell-governed-release-files.txt';
+const module025ReviewedPaths = new Set(fs.readFileSync(module025ManifestPath, 'utf8').trim().split(/\r?\n/));
 const validationFiles = new Set([
   manifestPath,
+  module025ManifestPath,
   '.github/workflows/flowhive-enterprise-psa-ci.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/celar-ai-production-platform-ci.yml',
@@ -44,7 +47,7 @@ export function verifyPaths(actual, reviewed) {
   for (const name of [...actual, ...reviewed]) {
     assert.ok(typeof name === 'string' && name.length > 0 && !name.includes('\\')
       && !name.split('/').includes('..') && !/[\s*?\[\]{}]/.test(name), `Invalid concrete scope path: ${name}`);
-    assert.ok(validationFiles.has(name) || componentPaths.some(pattern => pattern.test(name)),
+    assert.ok(validationFiles.has(name) || module025ReviewedPaths.has(name) || componentPaths.some(pattern => pattern.test(name)),
       `Outside the reviewed FlowHive source boundary: ${name}`);
   }
   assert.deepEqual(reviewed, [...new Set(reviewed)].sort(), 'The manifest must be sorted and unique');

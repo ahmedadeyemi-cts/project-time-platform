@@ -153,7 +153,9 @@ elif [[ "$HEAD_BRANCH" == feature/module-033-project-forge-* ]]; then
   done
   publish_mode MODULE_033_PROJECT_FORGE
   echo 'ANALYTICS_CENTER_PROJECT_FORGE_INTEGRATION=PASSED'
-elif changed_exact '.github/module025-sow-sell-governed-release-files.txt' \
+elif { changed_exact '.github/module025-sow-sell-governed-release-files.txt' \
+  || { changed_exact '.github/flowhive-enterprise-psa-release-files.txt' \
+    && changed_exact 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql'; }; } \
   && changed_exact 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs'; then
   for file in "${CHANGED_FILES[@]}"; do
     if is_direct_analytics_path "$file" \

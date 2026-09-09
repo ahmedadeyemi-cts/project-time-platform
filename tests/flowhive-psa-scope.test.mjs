@@ -26,6 +26,20 @@ test('only specified FlowHive migrations are accepted', () => {
   assert.throws(() => verifyPaths(['database/migrations/106_unreviewed.sql'], ['database/migrations/106_unreviewed.sql']));
   assert.throws(() => verifyPaths(['database/migrations/999_unreviewed.sql'], ['database/migrations/999_unreviewed.sql']));
 });
+test('the combined successor may use the separately reviewed Module 025 manifest only', () => {
+  verifyPaths([
+    '.github/module025-sow-sell-governed-release-files.txt',
+    'database/migrations/106_module025_sow_sell_register.sql',
+    'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs'
+  ], [
+    '.github/module025-sow-sell-governed-release-files.txt',
+    'database/migrations/106_module025_sow_sell_register.sql',
+    'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs'
+  ]);
+  assert.throws(() => verifyPaths(['src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs'], [
+    'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs'
+  ]));
+});
 test('read-only validation cannot acquire deployment privileges', () => {
   const good='permissions:\n  contents: read\njobs:\n  tests:\n    runs-on: ubuntu-latest\n';
   verifyReadOnlyWorkflow(good, 'fixture');

@@ -15,6 +15,13 @@ if grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGE
   && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
   MODULE025_SOW_SELL_SCOPE=true
 fi
+COMBINED_FLOWHIVE_SOW_SCOPE=false
+if grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
+  && grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+  && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED" \
+  && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
+  COMBINED_FLOWHIVE_SOW_SCOPE=true
+fi
 
 if [[ "$HEAD_BRANCH" == 'feature/celar-enterprise-retrieval-20260906' || "$HEAD_BRANCH" == 'fix/celar-enterprise-synthesis-20260906' ]]; then
   node tests/validate-celar-enterprise-retrieval-scope.mjs
@@ -110,6 +117,12 @@ elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
     grep -Fxq "$required" "$FLOWHIVE_RELEASE_MANIFEST"
   done
   publish_mode FLOWHIVE_V2_SHARED_PLANNING
+elif [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$COMBINED_FLOWHIVE_SOW_SCOPE" == true ]]; then
+  ALLOWED_DATABASE='^(database/(migrations/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution|105_flowhive_reviewed_regeneration|106_module025_sow_sell_register)\.sql|rollback/(103_module_066_flowhive_enterprise_psa_revamp_rollback|104_flowhive_bounded_ai_execution_rollback|105_flowhive_reviewed_regeneration_rollback)\.sql))$'
+  node tests/flowhive-psa-scope.mjs
+  node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+  bash tests/test-module025-sow-sell-register-migration-106.sh
+  publish_mode COMBINED_FLOWHIVE_SOW_SUCCESSOR
 elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' || "$MODULE025_SOW_SELL_SCOPE" == true ]]; then
   ALLOWED_DATABASE='^database/migrations/106_module025_sow_sell_register\.sql$'
   node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs

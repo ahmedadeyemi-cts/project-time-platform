@@ -89,13 +89,25 @@ const celarInternalTrustEvidenceCompatibilityMode =
 const deepSeekProviderMode = branchName === 'feature/deepseek-v4-dgx-primary-20260904';
 const customerPublicAnswerMode = branchName === 'fix/celar-public-answer-fallback-20260906';
 const enterpriseRetrievalMode = branchName === 'feature/celar-enterprise-retrieval-20260906' || branchName === 'fix/celar-enterprise-synthesis-20260906';
+const flowHiveSowSuccessorCompatibilityMode =
+  currentSourceDiffPaths.includes('.github/flowhive-enterprise-psa-release-files.txt')
+  && currentSourceDiffPaths.includes('.github/module025-sow-sell-governed-release-files.txt')
+  && currentSourceDiffPaths.includes('database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql')
+  && currentSourceDiffPaths.includes('database/migrations/106_module025_sow_sell_register.sql');
 const module025SowSellCompatibilityMode =
   branchName === 'feat/module025-sow-sell-versioned-register-20260908'
+  || flowHiveSowSuccessorCompatibilityMode
   || (currentSourceDiffPaths.includes('.github/module025-sow-sell-governed-release-files.txt')
     && currentSourceDiffPaths.includes('database/migrations/106_module025_sow_sell_register.sql'));
 const module025SowSellPaths = module025SowSellCompatibilityMode
   ? new Set(require('node:fs').readFileSync('.github/module025-sow-sell-governed-release-files.txt', 'utf8').split(/\r?\n/).filter(Boolean))
   : new Set();
+const governedSuccessorPaths = flowHiveSowSuccessorCompatibilityMode
+  ? new Set([
+    ...require('node:fs').readFileSync('.github/flowhive-enterprise-psa-release-files.txt', 'utf8').split(/\r?\n/).filter(Boolean),
+    ...module025SowSellPaths
+  ])
+  : module025SowSellPaths;
 if (enterpriseRetrievalMode) await import('./validate-celar-enterprise-retrieval-scope.mjs');
 if (customerPublicAnswerMode) await import('./validate-celar-customer-public-answer-scope.mjs');
 if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');
@@ -189,7 +201,8 @@ const scopedCompatibilityMode = flowHivePsaControlMode || flowHiveEnterprisePsaM
   || module025ProtectedUatCompatibilityMode
   || protectedUatValidationDefectsCompatibilityMode
   || celarInternalTrustEvidenceCompatibilityMode
-  || enterpriseRetrievalMode;
+  || enterpriseRetrievalMode
+  || flowHiveSowSuccessorCompatibilityMode;
 const pr630AllowedPrefixes = [
   '.github/workflows/celar-ai-',
   'database/migrations/084_module_076_',
@@ -223,7 +236,7 @@ const pr630AllowedExact = new Set([
 const isPr630ScopedPath = (line) =>
   pr630AllowedExact.has(line)
   || pr630AllowedPrefixes.some((prefix) => line.startsWith(prefix))
-  || (module025SowSellCompatibilityMode && module025SowSellPaths.has(line));
+  || (module025SowSellCompatibilityMode && governedSuccessorPaths.has(line));
 
 childProcess.execFileSync = function governedExecFileSync(file, args = [], options = {}) {
   const result = originalExecFileSync(file, args, options);

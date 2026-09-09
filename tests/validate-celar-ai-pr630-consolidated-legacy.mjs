@@ -140,13 +140,22 @@ const allowedExact = new Set([
 ]);
 const module025SowSellScope = changed.includes('.github/module025-sow-sell-governed-release-files.txt')
   && changed.includes('database/migrations/106_module025_sow_sell_register.sql');
+const flowHiveSowSuccessorScope = module025SowSellScope
+  && changed.includes('.github/flowhive-enterprise-psa-release-files.txt')
+  && changed.includes('database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql');
 const module025SowSellBaselinePaths = [requiredFiles[0], requiredFiles[1]];
 const module025SowSellPaths = module025SowSellScope
   ? new Set(read('.github/module025-sow-sell-governed-release-files.txt').split(/\r?\n/).filter(Boolean))
   : new Set();
+const governedSuccessorPaths = flowHiveSowSuccessorScope
+  ? new Set([
+    ...read('.github/flowhive-enterprise-psa-release-files.txt').split(/\r?\n/).filter(Boolean),
+    ...module025SowSellPaths
+  ])
+  : module025SowSellPaths;
 const unexpected = changed.filter((file) => {
   if (module025SowSellScope) {
-    return !module025SowSellPaths.has(file) && !module025SowSellBaselinePaths.includes(file);
+    return !governedSuccessorPaths.has(file) && !module025SowSellBaselinePaths.includes(file);
   }
   return !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix));
 });

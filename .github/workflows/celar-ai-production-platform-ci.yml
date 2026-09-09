@@ -129,6 +129,12 @@ jobs:
             test -f "$GENERATED_API_SOURCE"
             grep -Fxq "$GENERATED_API_SOURCE" <<<"$CHANGED"
             echo 'CELAR_AI_PRODUCTION_SYSTEMWIDE_GENERATED_SOURCE_BOUNDARY=PASSED'
+          elif grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
+            && grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+            && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED" \
+            && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
+            HEAD_BRANCH='release/flowhive-sow-successor-20260908'
+            echo 'CELAR_AI_PRODUCTION_COMBINED_FLOWHIVE_SOW_SCOPE=PASSED'
           elif grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
             && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
             HEAD_BRANCH='feat/module025-sow-sell-versioned-register-20260908'
@@ -145,6 +151,16 @@ jobs:
             feature/flowhive-enterprise-psa-revamp-20260906)
               node tests/flowhive-psa-scope.mjs
               echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=FLOWHIVE_ENTERPRISE_PSA'
+              ;;
+            release/flowhive-sow-successor-20260908)
+              UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/(migrations/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution|105_flowhive_reviewed_regeneration|106_module025_sow_sell_register)\.sql|rollback/(103_module_066_flowhive_enterprise_psa_revamp_rollback|104_flowhive_bounded_ai_execution_rollback|105_flowhive_reviewed_regeneration_rollback)\.sql)$' <<<"$CHANGED_MIGRATIONS" || true)"
+              if [[ -n "$UNEXPECTED_MIGRATIONS" ]]; then
+                echo 'Unexpected migration in the combined FlowHive/SOW successor package:' >&2
+                printf '%s\n' "$UNEXPECTED_MIGRATIONS" >&2
+                exit 1
+              fi
+              node tests/flowhive-psa-scope.mjs
+              echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=COMBINED_FLOWHIVE_SOW_SUCCESSOR'
               ;;
             feat/module025-sow-sell-versioned-register-20260908)
               UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/migrations/106_module025_sow_sell_register\.sql$' <<<"$CHANGED_MIGRATIONS" || true)"

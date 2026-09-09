@@ -62,7 +62,9 @@ elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
   done
   echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=FLOWHIVE_V2_SHARED_PLANNING' >> "$GITHUB_ENV"
   echo 'ANALYTICS_ENTERPRISE_FLOWHIVE_SOURCE_BOUNDARY=PASSED'
-elif grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+elif { grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+  || { grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
+    && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED"; }; } \
   && grep -Fxq 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs' <<<"$CHANGED"; then
   DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/060_analytics_center_enterprise_experience\.sql|rollback/060_analytics_center_enterprise_experience_rollback\.sql)|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css)|tests/test-analytics-center-enterprise-migration-060\.sh)$' <<<"$CHANGED" || true)"
   UNEXPECTED="$(grep -Fvx 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs' <<<"$DIRECT_ANALYTICS" || true)"
