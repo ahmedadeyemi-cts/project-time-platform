@@ -90,6 +90,8 @@ export const staleSupersessionFiles = [
   '.github/flowhive-psa-stale-run-supersession-authorization.json',
   '.github/workflows/flowhive-psa-protected-test-admission.yml',
   '.github/workflows/projectpulse-deploy-test.yml',
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',
