@@ -1,9 +1,11 @@
 .github/module025-sow-sell-governed-release-files.txt
+.github/workflows/celar-ai-production-platform-ci.yml
 .github/workflows/module025-governed-protected-test-release-ci.yml
 .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
 database/migrations/106_module025_sow_sell_register.sql
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
+scripts/ci/validate-module030-source-boundary.sh
 scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
 src/backend/ProjectTime.Api/Directory.Build.targets
 src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs

@@ -153,6 +153,17 @@ elif [[ "$HEAD_BRANCH" == feature/module-033-project-forge-* ]]; then
   done
   publish_mode MODULE_033_PROJECT_FORGE
   echo 'ANALYTICS_CENTER_PROJECT_FORGE_INTEGRATION=PASSED'
+elif changed_exact '.github/module025-sow-sell-governed-release-files.txt' \
+  && changed_exact 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs'; then
+  for file in "${CHANGED_FILES[@]}"; do
+    if is_direct_analytics_path "$file" \
+      && [[ "$file" != 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs' ]]; then
+      echo "Unexpected Module 030 source in the shared effective-target consumer repair: $file" >&2
+      exit 1
+    fi
+  done
+  publish_mode REGRESSION
+  echo 'ANALYTICS_CENTER_SHARED_EFFECTIVE_TARGET_CONSUMER=PASS'
 elif changed_exact 'tests/test-uat-functional-completion-contract.sh'; then
   for file in "${CHANGED_FILES[@]}"; do
     if is_direct_analytics_path "$file"; then
