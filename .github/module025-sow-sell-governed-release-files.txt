@@ -30,6 +30,8 @@ src/frontend/project-time-web/src/module025/SowRegister.jsx
 src/frontend/project-time-web/src/module025/sow-register.css
 tests/module025-sow-register-browser.py
 tests/test-module025-sow-sell-register-migration-106.sh
+tests/validate-celar-ai-pr630-consolidated-legacy.mjs
+tests/validate-celar-ai-pr630-consolidated.mjs
 tests/validate-celar-ai-universal-answer-reliability.mjs
 tests/validate-effective-build-targets.mjs
 tests/validate-systemwide-enterprise-reliability.mjs
