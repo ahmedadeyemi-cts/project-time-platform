@@ -57,7 +57,7 @@ SQL
 )"
 [[ "$verified" == true ]] || fail 'FlowHive PSA migrations are not fully applied and enforced.'
 if [[ -f database/migrations/106_module025_sow_sell_register.sql ]]; then
-  module025_verified="$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM schema_migrations WHERE migration_id='106_module025_sow_sell_register') = 1 AND to_regclass('public.module025_sow_gsd_versions') IS NOT NULL AND to_regclass('public.module025_sow_sell_receipts') IS NOT NULL;")"
+  module025_verified="$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT ((SELECT count(*) FROM schema_migrations WHERE migration_id='106_module025_sow_sell_register') = 1 AND to_regclass('public.module025_sow_gsd_versions') IS NOT NULL AND to_regclass('public.module025_sow_sell_receipts') IS NOT NULL)::text;")"
   [[ "$module025_verified" == true ]] || fail 'Module 025 migration 106 is not fully applied and enforced.'
   echo 'FLOWHIVE_PSA_MIGRATIONS_103_104_105_106=APPLIED_AND_VERIFIED'
 else
