@@ -1264,6 +1264,11 @@ export default function ProjectFlowHiveCenter() {
         </div>
       ) : null}
 
+      <div className="flowhive-scope-toolbar">
+        <label>Canonical project<select value={selectedProjectId} onChange={(event) => chooseProject(event.target.value)}><option value="">Select a project</option>{projects.map((project) => <option key={project.projectId} value={project.projectId}>{project.projectCode} — {project.projectName}</option>)}</select></label>
+        <span>Project changes clear the current view and reload only the newly selected authorized scope.</span>
+      </div>
+
       {activeView === 'kanban' ? <ProjectFlowHivePsaWorkspace
         mode="kanban" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
         schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
@@ -1324,7 +1329,6 @@ export default function ProjectFlowHiveCenter() {
       {activeView === 'planner' ? (
         <div className="flowhive-view-panel">
           <div className="flowhive-planner-toolbar">
-            <label>Canonical project<select value={selectedProjectId} onChange={(event) => chooseProject(event.target.value)}><option value="">Select a project</option>{projects.map((project) => <option key={project.projectId} value={project.projectId}>{project.projectCode} — {project.projectName}</option>)}</select></label>
             <button type="button" onClick={createLocalDraft} disabled={!selectedProject || !canEditPlanner}>Create/reset draft</button><button type="button" onClick={loadWorkingCopy} disabled={!selectedProjectId || busy}>Load working copy</button>
             <button type="button" className="primary flowhive-ai-planner-button" aria-label="AI Planner" onClick={previewAiRequest} disabled={!selectedProjectId || Boolean(busy) || plannerObserved || !canEditPlanner}>{busy === 'ai-planner' ? 'Building from SOW…' : 'AI Planner'}</button>
             <button type="button" onClick={validatePlan} disabled={!selectedProjectId || busy}>Validate</button>
@@ -1495,6 +1499,11 @@ export default function ProjectFlowHiveCenter() {
           <div className="flowhive-phase-grid">{(readiness?.phases || []).map((phase) => <article key={phase.phase}><span>{phase.phase}</span><h3>{phase.capability}</h3><p className={`flowhive-status ${statusTone(phase.status)}`}>{labelFrom(phase.status)}</p></article>)}</div>
           <div className="flowhive-capability-grid">{capabilities.map((capability) => <article key={capability.code}><div><span>{capability.priority}</span><span className={`flowhive-status ${statusTone(capability.status)}`}>{labelFrom(capability.status)}</span></div><h3>{labelFrom(capability.code)}</h3><p>{capability.evidence}</p></article>)}</div>
           <div className="flowhive-governance-checks"><h3>Protected boundaries</h3><ul><li>Canonical project, task, and assignment records remain read only from FlowHive.</li><li>Every saved draft is an immutable version with validation, schedule, actor, source, and Celar correlation evidence.</li><li>A baseline names an exact reviewed version and requires a reviewer decision note.</li><li>View-As cannot save or approve. External customer delivery remains a separate governed action.</li></ul></div>
+          <ProjectFlowHivePsaWorkspace
+            mode="governance" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
+            schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
+            canManage={Boolean(enterprise?.access?.canManage)} setDirty={setDirty} setNotice={setNotice} setError={setError}
+          />
         </div>
       ) : null}
     </section>

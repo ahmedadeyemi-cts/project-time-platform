@@ -150,6 +150,12 @@ class WorkflowContract(unittest.TestCase):
         self.assertIn('psaRequestRef', workspace)
         self.assertIn('request.id !== psaRequestRef.current.id', workspace)
         self.assertIn('requestedProjectId', workspace)
+        self.assertIn('selectedProjectRef', workspace)
+        self.assertIn('actionRef', workspace)
+        self.assertIn('actionIsCurrent(context)', workspace)
+        self.assertIn('loadPsa(true, context.projectId)', workspace)
+        for callback in ['uploadMeeting', 'updateMeeting', 'saveReminders', 'calculateSchedule']:
+            self.assertIn(callback, workspace)
     def test_negative_production_concurrency_and_late_admission(self):
         for mutate in [lambda x:x['jobs']['deploy'].update(environment='production'),
           lambda x:x['concurrency'].update({'cancel-in-progress':'true'}),

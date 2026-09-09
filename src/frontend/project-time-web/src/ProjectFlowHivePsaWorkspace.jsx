@@ -140,6 +140,24 @@ export default function ProjectFlowHivePsaWorkspace({
   const [reminders, setReminders] = useState({ enabled: false, dispatcherAvailable: false, leadDays: [2, 1], includeProjectManager: true, includeAssignedTeamMembers: true, includeOverdue: true, timezoneName: 'America/Chicago', deliveryBoundary: 'test_only' });
   const [calendarMonth, setCalendarMonth] = useState(() => monthKey(new Date()));
   const psaRequestRef = useRef({ id: 0, controller: null });
+  const selectedProjectRef = useRef(projectId);
+  const actionRef = useRef(0);
+  selectedProjectRef.current = projectId;
+
+  function beginAction(kind) {
+    const context = { projectId, id: actionRef.current + 1 };
+    actionRef.current = context.id;
+    setAction(kind);
+    return context;
+  }
+
+  function actionIsCurrent(context) {
+    return context.projectId === selectedProjectRef.current && context.id === actionRef.current;
+  }
+
+  function finishAction(context) {
+    if (context.id === actionRef.current) setAction('');
+  }
 
   async function loadPsa(silent = false, requestedProjectId = projectId) {
     if (!requestedProjectId) return;
@@ -165,6 +183,8 @@ export default function ProjectFlowHivePsaWorkspace({
   }
 
   useEffect(() => {
+    actionRef.current += 1;
+    setAction('');
     psaRequestRef.current.controller?.abort();
     setPsa(null);
     if (projectId) loadPsa();
@@ -198,57 +218,60 @@ export default function ProjectFlowHivePsaWorkspace({
 
   async function calculateSchedule() {
     if (!draftPlan) return;
-    setAction('schedule');
+    const context = beginAction('schedule');
     try {
       const result = await jsonRequest('/api/project-flowhive/schedule/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draftPlan)
       });
+      if (!actionIsCurrent(context)) return;
       setSchedule?.(result);
       setNotice?.('FlowHive recalculated the weekday schedule from the current start date, durations, dependencies, and constraints.');
     } catch (error) {
-      setError?.(error.message);
+      if (actionIsCurrent(context)) setError?.(error.message);
     } finally {
-      setAction('');
+      finishAction(context);
     }
   }
 
   async function uploadMeeting(event) {
     event.preventDefault();
     if (!projectId || !meetingForm.file) return;
-    setAction('meeting-upload');
+    const context = beginAction('meeting-upload');
     try {
       const data = new FormData();
       data.append('file', meetingForm.file);
       data.append('title', meetingForm.title || meetingForm.file.name.replace(/\.mp4$/i, ''));
       if (meetingForm.meetingAt) data.append('meetingAt', new Date(meetingForm.meetingAt).toISOString());
       data.append('customerVisible', String(Boolean(meetingForm.customerVisible)));
-      const result = await jsonRequest(`/api/project-flowhive/projects/${projectId}/meetings`, { method: 'POST', body: data });
+      const result = await jsonRequest(`/api/project-flowhive/projects/${context.projectId}/meetings`, { method: 'POST', body: data });
+      if (!actionIsCurrent(context)) return;
       setMeetingForm({ title: '', meetingAt: '', customerVisible: false, file: null });
       setNotice?.(result.message || 'Project meeting uploaded.');
-      await loadPsa(true);
+      await loadPsa(true, context.projectId);
     } catch (error) {
-      setError?.(error.message);
+      if (actionIsCurrent(context)) setError?.(error.message);
     } finally {
-      setAction('');
+      finishAction(context);
     }
   }
 
   async function updateMeeting(meeting, patch) {
-    setAction(`meeting-${meeting.meetingId}`);
+    const context = beginAction(`meeting-${meeting.meetingId}`);
     try {
-      await jsonRequest(`/api/project-flowhive/projects/${projectId}/meetings/${meeting.meetingId}`, {
+      await jsonRequest(`/api/project-flowhive/projects/${context.projectId}/meetings/${meeting.meetingId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch)
       });
-      await loadPsa(true);
+      if (!actionIsCurrent(context)) return;
+      await loadPsa(true, context.projectId);
       setNotice?.('Project meeting controls updated.');
     } catch (error) {
-      setError?.(error.message);
+      if (actionIsCurrent(context)) setError?.(error.message);
     } finally {
-      setAction('');
+      finishAction(context);
     }
   }
 
@@ -270,22 +293,23 @@ export default function ProjectFlowHivePsaWorkspace({
   }
 
   async function saveReminders() {
-    setAction('reminders');
+    const context = beginAction('reminders');
     try {
-      const result = await jsonRequest(`/api/project-flowhive/projects/${projectId}/task-reminders`, {
+      const result = await jsonRequest(`/api/project-flowhive/projects/${context.projectId}/task-reminders`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reminders)
       });
+      if (!actionIsCurrent(context)) return;
       setReminders((current) => ({ ...current, ...result }));
       setNotice?.(result.dispatcherAvailable === false
         ? 'Task reminder preferences were saved as disabled. No reminder dispatcher is registered, so no notification was queued or delivered.'
         : 'Task due-date reminder controls saved.');
-      await loadPsa(true);
+      await loadPsa(true, context.projectId);
     } catch (error) {
-      setError?.(error.message);
+      if (actionIsCurrent(context)) setError?.(error.message);
     } finally {
-      setAction('');
+      finishAction(context);
     }
   }
 

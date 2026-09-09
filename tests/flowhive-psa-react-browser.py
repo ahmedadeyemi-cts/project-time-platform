@@ -38,7 +38,7 @@ def plan(project, name='Stored project task'):
         'milestones':[],'gsdVersion':'fixture-gsd','sowVersion':'fixture-sow','notes':''}
 
 def schedule(seed):
-    return {'valid':True,'status':'calculated','projectStartDate':seed['projectStartDate'],'projectFinishDate':'2026-09-18',
+    return {'projectId':seed['projectId'],'valid':True,'status':'calculated','projectStartDate':seed['projectStartDate'],'projectFinishDate':'2026-09-18',
         'projectTargetEndDate':seed['projectEndDate'],'scheduledWorkingDays':9,'plannedHours':10,'issues':[],
         'tasks':[{**t,'startDate':seed['projectStartDate'],'endDate':'2026-09-18','earliestStartIndex':0,'totalFloatWorkingDays':0,'isCritical':True}
                  for t in seed['tasks']]}
@@ -50,12 +50,14 @@ async def main(readback_mode=None):
         browser=await p.chromium.launch(**launch)
         try:
             state={'plans':{A:plan(A),B:plan(B)},'versions':{A:V1,B:V1},'run':None,'posts':[],
-                   'readback_mode':readback_mode,'complete':False,'late_schedule':False,'delayed':None,'view_as':False,'errors':[],'polls':0}
+                   'readback_mode':readback_mode,'complete':False,'late_schedule':False,'delayed':None,
+                   'delayed_action':None,'psa_calls':[],'view_as':False,'errors':[],'polls':0}
             if readback_mode=='review_proposal':
                 state['plans'][A]['milestones']=[{'milestoneId':SAVED,'name':'Retained customer gate','description':'Synthetic prior commitment','predecessorWbs':'1.1','targetDate':'2026-10-30','requiredEvidence':['Existing approval']} ]
             page=await browser.new_page(viewport={'width':1440,'height':1000})
             page.set_default_timeout(5000)
             page.on('pageerror',lambda error:state['errors'].append(str(error)))
+            page.on('dialog',lambda dialog:dialog.accept())
             await page.add_init_script("try {localStorage.setItem('projectPulseAuthSession',JSON.stringify({sessionToken:'SYNTHETIC-TEST-ONLY'}));} catch {}")
             async def api(route):
                 request=route.request;path=urlparse(request.url).path
@@ -68,11 +70,16 @@ async def main(readback_mode=None):
                         'tasks':[],'assignments':[],'summary':{'projectCount':2,'taskCount':10},'access':{'displayName':'Synthetic PM'}}
                 elif path.endswith('/readiness'):body={'ready':True,'status':'ready'}
                 elif path.endswith('/psa'):
+                    pid=path.split('/')[4];state['psa_calls'].append(pid)
                     body={'meetings':[],'raidHistory':[],'decisions':[],
                           'reminderPreferences':{'enabled':False,'dispatcherAvailable':False,
                               'leadDays':[2,1],'includeProjectManager':True,
                               'includeAssignedTeamMembers':True,'includeOverdue':True,
                               'timezoneName':'America/Chicago','deliveryBoundary':'test_only'}}
+                    if pid == A:
+                        body['meetings']=[{'meetingId':'99999999-9999-4999-8999-999999999999','meetingAt':'2026-09-08T15:00:00Z',
+                            'title':'Project A status meeting','originalFileName':'project-a.mp4','sizeBytes':1024,
+                            'customerVisible':False,'sha256':'a'*64,'transcriptStatus':'unavailable','actionItems':[]}]
                 elif path=='/api/project-flowhive/plans':body={'plans':[{'planId':SAVED,'projectId':A,'planName':'Reviewed immutable fixture','currentVersion':3}]}
                 elif path==f'/api/project-flowhive/plans/{SAVED}':
                     frozen=plan(A,'Immutable reviewed task');frozen['planId']=SAVED
@@ -84,7 +91,7 @@ async def main(readback_mode=None):
                         seed=plan(A,'Newer remote task');seed['projectStartDate']='2026-09-10'
                         state['plans'][A]=seed;state['versions'][A]=V3
                     body={'project':{'projectId':pid,'customerName':'Synthetic customer'},
-                        'access':{'canEditPlanner':not state['view_as'],'canAdministerPlanner':not state['view_as'],'canAdoptBaseline':not state['view_as'],'isViewAs':state['view_as']},
+                        'access':{'canEditPlanner':not state['view_as'],'canAdministerPlanner':not state['view_as'],'canAdoptBaseline':not state['view_as'],'canManage':not state['view_as'],'isViewAs':state['view_as']},
                         'workingCopy':{'plan':seed,'schedule':schedule(seed),'validation':{'valid':True,'issues':[]},'workingRevision':1,'rowVersion':state['versions'][pid]},
                         'raidItems':[],'statusReports':[],'shares':[],'sowEvidence':{'items':[]},'controls':{}}
                     if completed and state['readback_mode']=='unavailable':
@@ -125,6 +132,26 @@ async def main(readback_mode=None):
                         if not offline:await state['delayed'].wait()
                     body=schedule(posted)
                     if state['late_schedule'] and offline:body={'__deferredSchedule':body}
+                elif path.endswith('/meetings') and request.method=='POST':
+                    pid=path.split('/')[4]
+                    state['delayed_action']={'kind':'upload','projectId':pid,'event':asyncio.Event()}
+                    await state['delayed_action']['event'].wait()
+                    state['delayed_action']=None
+                    body={'message':'Synthetic meeting upload completed.','meetingId':'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}
+                elif '/meetings/' in path and request.method=='PUT':
+                    pid=path.split('/')[4]
+                    state['delayed_action']={'kind':'edit','projectId':pid,'event':asyncio.Event()}
+                    await state['delayed_action']['event'].wait()
+                    state['delayed_action']=None
+                    body={'customerVisible':True,'transcriptStatus':'unavailable'}
+                elif path.endswith('/task-reminders') and request.method=='PUT':
+                    pid=path.split('/')[4]
+                    state['delayed_action']={'kind':'reminder','projectId':pid,'event':asyncio.Event()}
+                    await state['delayed_action']['event'].wait()
+                    state['delayed_action']=None
+                    body={'enabled':False,'dispatcherAvailable':False,'leadDays':[2,1],
+                        'includeProjectManager':True,'includeAssignedTeamMembers':True,
+                        'includeOverdue':True,'timezoneName':'America/Chicago','deliveryBoundary':'test_only'}
                 elif path.endswith('/working-copy') and request.method=='PUT':
                     posted=request.post_data_json;pid=path.split('/')[4]
                     assert posted['expectedRowVersion']==state['versions'][pid]
@@ -139,7 +166,8 @@ async def main(readback_mode=None):
                     class MemoryRoute:
                         def __init__(self):
                             self.request=SimpleNamespace(url=path,method=options.get('method','GET'),
-                                post_data_json=json.loads(options.get('body') or '{}'))
+                                post_data_json=(json.loads(options.get('body') or '{}')
+                                                if isinstance(options.get('body'), str) else {}))
                         async def fulfill(self,**response):self.response=response
                     route=MemoryRoute();await api(route);return route.response
                 await page.expose_binding('__flowhiveFixture',fixture)
@@ -219,7 +247,6 @@ async def main(readback_mode=None):
                 assert len(state['posts'])==1
                 print(f'PASSED: {readback_mode} does not replace the displayed WBS or claim verified readback',flush=True)
                 state['readback_mode']=None
-                page.once('dialog',lambda dialog:dialog.accept())
                 await page.get_by_role('button',name='Load working copy',exact=True).click()
                 task='Newer remote task Plan' if readback_mode=='newer_revision' else 'Generated unique task Plan'
                 await page.locator(f'input[value="{task}"]').wait_for()
@@ -237,6 +264,15 @@ async def main(readback_mode=None):
             assert len(state['posts'])==1
             assert await page.locator('.flowhive-work-row input[type=date]').first.input_value()=='2026-09-10'
             print('PASSED: completed WBS and dates survive reload without another inference request',flush=True)
+            async def select_project(target, wait_for_psa=True):
+                before=state['psa_calls'].count(target)
+                await page.get_by_role('combobox',name='Canonical project',exact=True).select_option(target)
+                if wait_for_psa:
+                    for _ in range(500):
+                        if state['psa_calls'].count(target)>before: break
+                        await asyncio.sleep(.01)
+                await page.wait_for_timeout(100)
+
             # An old schedule request must not replace a different project's view or leave it busy.
             state['late_schedule']=True
             await page.get_by_role('button',name='Calculate schedule',exact=True).click()
@@ -244,15 +280,57 @@ async def main(readback_mode=None):
                 if state['delayed'] is not None:break
                 await asyncio.sleep(.01)
             assert state['delayed'] is not None,(state['errors'],await page.locator('body').inner_text())
-            await page.get_by_role('combobox',name='Canonical project',exact=True).select_option(B)
+            await select_project(B, wait_for_psa=False)
             await page.get_by_label('Plan name',exact=True).fill('Unsaved B edit')
             if offline:await page.evaluate('window.__flowhiveDeferredSchedule()')
             else:state['delayed'].set()
             await page.wait_for_timeout(200)
             assert await page.get_by_label('Plan name',exact=True).input_value()=='Unsaved B edit'
+            assert not await page.locator('.flowhive-psa-calendar-grid').count(), 'stale Project A schedule was applied to Project B'
             assert not await page.get_by_role('button',name='Timeline & risk',exact=True).get_attribute('aria-pressed')=='true'
             print('PASSED: late schedule cannot overwrite a newly selected project',flush=True)
-            page.once('dialog',lambda dialog:dialog.accept())
+
+            async def release_stale_action(kind):
+                for _ in range(500):
+                    if state['delayed_action'] is not None: break
+                    await asyncio.sleep(.01)
+                delayed=state['delayed_action']
+                assert delayed is not None and delayed['kind']==kind,(state['errors'],kind,state['delayed_action'])
+                assert delayed['projectId']==A
+                before_switch=len(state['psa_calls'])
+                await select_project(B)
+                delayed['event'].set()
+                await page.wait_for_timeout(200)
+                assert A not in state['psa_calls'][before_switch:], f'stale {kind} completion reloaded Project A after switching to B'
+                await page.get_by_role('button',name='Planner',exact=True).click()
+                await page.get_by_label('Plan name',exact=True).wait_for()
+                assert await page.get_by_label('Plan name',exact=True).input_value()=='Stored plan B'
+                print(f'PASSED: stale Project A {kind} completion cannot overwrite Project B',flush=True)
+
+            await select_project(A, wait_for_psa=False)
+            await page.get_by_role('button',name='Meetings',exact=True).click()
+            await page.get_by_text('Project A status meeting',exact=True).wait_for()
+            await page.get_by_label('Meeting title',exact=True).fill('Delayed Project A upload')
+            await page.locator('input[type=file]').set_input_files({'name':'project-a.mp4','mimeType':'video/mp4','buffer':b'synthetic-test-only'})
+            await page.get_by_role('button',name='Upload meeting',exact=True).click()
+            await release_stale_action('upload')
+
+            await select_project(A, wait_for_psa=False)
+            await page.get_by_role('button',name='Meetings',exact=True).click()
+            await page.get_by_text('Project A status meeting',exact=True).wait_for()
+            await page.get_by_role('button',name='Allow customer download',exact=True).wait_for()
+            await page.get_by_role('button',name='Allow customer download',exact=True).click()
+            await release_stale_action('edit')
+
+            await select_project(A, wait_for_psa=False)
+            await page.get_by_role('button',name='Governance',exact=True).click()
+            await page.get_by_role('button',name='Save reminder policy',exact=True).wait_for()
+            await page.get_by_role('button',name='Save reminder policy',exact=True).click()
+            for _ in range(500):
+                if state['delayed_action'] is not None: break
+                await asyncio.sleep(.01)
+            assert state['delayed_action'] is not None,(state['errors'],await page.locator('body').inner_text())
+            await release_stale_action('reminder')
             await page.get_by_role('combobox',name='Canonical project',exact=True).select_option(A)
             await page.get_by_role('combobox',name='Saved FlowHive plan',exact=True).select_option(SAVED)
             await page.locator('input[value="Immutable reviewed task Plan"]').wait_for()
@@ -278,4 +356,9 @@ async def run_all():
     for mode in (None,'unavailable','newer_revision','wrong_project','review_proposal'):
         await main(mode)
 
-if __name__=='__main__':asyncio.run(run_all())
+if __name__=='__main__':
+    requested=os.getenv('FLOWHIVE_BROWSER_MODE')
+    if requested:
+        asyncio.run(main(None if requested=='normal' else requested))
+    else:
+        asyncio.run(run_all())
