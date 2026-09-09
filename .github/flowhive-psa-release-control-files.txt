@@ -1,5 +1,6 @@
 .github/flowhive-psa-protected-test-candidate.json
 .github/flowhive-psa-release-control-files.txt
+.github/flowhive-psa-stale-run-supersession-authorization.json
 .github/workflows/flowhive-psa-protected-test-admission.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
 .github/workflows/projectpulse-deploy-test.yml

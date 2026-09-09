@@ -7,6 +7,7 @@ const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 const knownNonexecutingRun = 33654881418;
 const dispatchSha = /^[a-f0-9]{40}$/;
+export const staleSupersessionAuthorizationPath = '.github/flowhive-psa-stale-run-supersession-authorization.json';
 export const staleRunSupersessionAttestation = Object.freeze({
   contract: 'flowhive-psa-stale-run-supersession-v1',
   approvalReference: 'FLOWHIVE-PSA-STALE-RUN-SUPERSESSION-20260909',
@@ -30,9 +31,51 @@ export const staleRunSupersessionAttestation = Object.freeze({
 });
 export const githubApiVersion = '2022-11-28';
 
-export function staleRunSupersessionApproved(env = process.env) {
-  return env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED === 'true' &&
-    env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE === staleRunSupersessionAttestation.approvalReference;
+export function readStaleSupersessionAuthorization(filePath = process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_AUTHORIZATION_FILE || staleSupersessionAuthorizationPath) {
+  assert.equal(filePath, staleSupersessionAuthorizationPath,
+    'Stale supersession authorization must come from the checked-in trusted-main manifest.');
+  let authorization;
+  try { authorization = JSON.parse(fs.readFileSync(filePath, 'utf8')); }
+  catch (error) { throw new Error(`STALE_SUPERSESSION_AUTHORIZATION_INVALID: ${error.message}`); }
+  return authorization;
+}
+
+export function verifyStaleSupersessionAuthorization(authorization, now = new Date()) {
+  const attestation = staleRunSupersessionAttestation;
+  assert.equal(authorization?.contract, attestation.contract, 'STALE_SUPERSESSION_AUTHORIZATION_CONTRACT');
+  assert.equal(authorization?.approvalReference, attestation.approvalReference, 'STALE_SUPERSESSION_AUTHORIZATION_REFERENCE');
+  assert.equal(authorization?.workflowId, attestation.workflowId, 'STALE_SUPERSESSION_AUTHORIZATION_WORKFLOW');
+  assert.equal(authorization?.workflowPath, attestation.workflowPath, 'STALE_SUPERSESSION_AUTHORIZATION_WORKFLOW_PATH');
+  assert.equal(authorization?.runId, attestation.runId, 'STALE_SUPERSESSION_AUTHORIZATION_RUN');
+  assert.equal(authorization?.controllerSha, attestation.controllerSha, 'STALE_SUPERSESSION_AUTHORIZATION_CONTROLLER');
+  assert.equal(authorization?.serverConfirmedDispatchInputs ?? authorization?.evidence?.serverConfirmedDispatchInputs, null,
+    'Original dispatch inputs are not server-confirmed and must remain unused.');
+  assert.equal(authorization?.historicalExecutionProtection?.admissionConditionalOnReleaseBranch, true,
+    'Historical conditional admission evidence is required.');
+  if (authorization.enabled !== true) {
+    assert.equal(authorization.enabled, false, 'STALE_SUPERSESSION_AUTHORIZATION_ENABLED');
+    assert.equal(authorization.approval?.status, 'not-approved', 'Inactive supersession must be explicitly unapproved.');
+    assert.equal(authorization.approval?.approvedBy, null);
+    assert.equal(authorization.approval?.approvedAt, null);
+    assert.equal(authorization.approval?.expiresAt, null);
+    return { approved: false, reason: 'not-approved' };
+  }
+  assert.equal(authorization.historicalExecutionProtection?.allDeploymentPathsProtected, true,
+    'Historical alternate deployment paths are not protected.');
+  assert.equal(authorization.approval?.status, 'approved', 'STALE_SUPERSESSION_APPROVAL_STATUS');
+  assert.match(authorization.approval?.approvedBy || '', /^[A-Za-z0-9._-]{1,100}$/, 'STALE_SUPERSESSION_APPROVER');
+  const approvedAt = Date.parse(authorization.approval?.approvedAt || '');
+  const expiresAt = Date.parse(authorization.approval?.expiresAt || '');
+  const nowMs = now instanceof Date ? now.getTime() : Date.parse(now);
+  assert.ok(Number.isFinite(approvedAt) && Number.isFinite(expiresAt) && Number.isFinite(nowMs), 'STALE_SUPERSESSION_APPROVAL_DATES');
+  assert.ok(approvedAt <= nowMs, 'STALE_SUPERSESSION_APPROVAL_NOT_YET_ACTIVE');
+  assert.ok(expiresAt > nowMs, 'STALE_SUPERSESSION_APPROVAL_EXPIRED');
+  assert.ok(expiresAt - approvedAt <= 15 * 60 * 1000, 'STALE_SUPERSESSION_APPROVAL_WINDOW');
+  return { approved: true, approvedAt: new Date(approvedAt).toISOString(), expiresAt: new Date(expiresAt).toISOString() };
+}
+
+export function staleRunSupersessionApproved(authorization = readStaleSupersessionAuthorization(), now = new Date()) {
+  return verifyStaleSupersessionAuthorization(authorization, now).approved;
 }
 
 export function verifyHistoricalFenceSources({ admissionBlob, dispatcherBlob, deploymentWorkflowBlob, admission, dispatcher, deploymentWorkflow }) {
@@ -57,6 +100,9 @@ export function verifyHistoricalFenceSources({ admissionBlob, dispatcherBlob, de
     'Historical dispatcher order must authorize before enable/dispatch and reseal in finally.');
 
   const admissionStep = deploymentWorkflow.indexOf('name: Admit the exact reviewed PSA candidate using trusted main controls');
+  const conditionalAdmission = deploymentWorkflow.indexOf("if: github.event_name == 'workflow_dispatch' && inputs.release_branch == 'release/flowhive-sow-successor-20260908'", admissionStep);
+  assert.ok(admissionStep >= 0 && conditionalAdmission > admissionStep,
+    'Historical PSA admission must be identified as conditional on release_branch.');
   const mutationSites = [
     deploymentWorkflow.indexOf('az containerapp secret set'),
     deploymentWorkflow.indexOf('az containerapp update'),
@@ -69,10 +115,15 @@ export function verifyHistoricalFenceSources({ admissionBlob, dispatcherBlob, de
     "failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true')",
     "failure() && steps.recovery_deploy_api.outputs.started == 'true'"
   ]) assert.ok(deploymentWorkflow.includes(marker), `Historical cleanup guard is missing: ${marker}`);
-  return { contract: attestation.contract, staleGuardBeforeMutation: true, cleanupRequiresStarted: true };
+  const deployJobIf = /jobs:\s*\n\s+deploy:\s*\n\s+if: >-\n([\s\S]*?)\n\s+environment:/.exec(deploymentWorkflow)?.[1] || '';
+  const allDeploymentPathsProtected = deployJobIf.includes("github.event_name == 'push'") &&
+    deployJobIf.includes("github.event_name == 'workflow_dispatch'") &&
+    deployJobIf.includes("inputs.release_branch == 'release/flowhive-sow-successor-20260908'");
+  return { contract: attestation.contract, staleGuardBeforeMutation: true, cleanupRequiresStarted: true,
+    admissionConditionalOnReleaseBranch: true, allDeploymentPathsProtected };
 }
 
-export function verifyFencedStaleRun({ workflow, run, attemptJobs, pendingDeployments, concurrencyGroups, artifacts, currentMainSha, historicalSources, serverDispatchInputs, requireSealed = true }) {
+export function verifyFencedStaleRun({ workflow, run, attemptJobs, pendingDeployments, concurrencyGroups, artifacts, currentMainSha, executingControllerSha, historicalSources, authorization, authorizationNow = new Date(), serverDispatchInputs, requireSealed = true }) {
   const attestation = staleRunSupersessionAttestation;
   assert.equal(serverDispatchInputs, undefined,
     'GitHub does not expose original dispatch inputs; supersession must not rely on reconstructed inputs.');
@@ -91,6 +142,9 @@ export function verifyFencedStaleRun({ workflow, run, attemptJobs, pendingDeploy
   assert.equal(run?.created_at, attestation.createdAt, 'PSA_STALE_SUPERSESSION_CREATED_AT');
   assert.equal(run?.updated_at, attestation.updatedAt, 'PSA_STALE_SUPERSESSION_UPDATED_AT');
   assert.ok(run.created_at < attestation.supersededBefore, 'PSA_STALE_SUPERSESSION_EXPIRY');
+  assert.match(currentMainSha || '', dispatchSha, 'PSA_STALE_SUPERSESSION_CURRENT_MAIN');
+  assert.match(executingControllerSha || '', dispatchSha, 'PSA_STALE_SUPERSESSION_EXECUTING_CONTROLLER');
+  assert.equal(currentMainSha, executingControllerSha, 'The current main ref must match the executing trusted controller.');
   assert.notEqual(currentMainSha, attestation.controllerSha, 'The stale controller must not become current again.');
   assert.equal(attemptJobs?.total_count, 0, 'PSA_STALE_SUPERSESSION_JOBS');
   assert.deepEqual(attemptJobs?.jobs, [], 'PSA_STALE_SUPERSESSION_JOBS');
@@ -98,10 +152,14 @@ export function verifyFencedStaleRun({ workflow, run, attemptJobs, pendingDeploy
   assert.equal(concurrencyGroups?.total_count, 0, 'PSA_STALE_SUPERSESSION_CONCURRENCY');
   assert.equal(artifacts?.total_count, 0, 'PSA_STALE_SUPERSESSION_ARTIFACTS');
   if (requireSealed) assert.equal(workflow.state, 'disabled_manually', 'The stale request must be sealed before supersession.');
+  assert.equal(verifyStaleSupersessionAuthorization(authorization, authorizationNow).approved, true, 'STALE_SUPERSESSION_NOT_APPROVED');
+  assert.equal(authorization?.historicalExecutionProtection?.allDeploymentPathsProtected, true,
+    'The historical controller has an unprotected alternate deployment path.');
   assert.equal(historicalSources?.admissionBlob, attestation.historicalBlobs.admission);
   assert.equal(historicalSources?.dispatcherBlob, attestation.historicalBlobs.dispatcher);
   assert.equal(historicalSources?.deploymentWorkflowBlob, attestation.historicalBlobs.deploymentWorkflow);
-  verifyHistoricalFenceSources(historicalSources);
+  assert.equal(verifyHistoricalFenceSources(historicalSources).allDeploymentPathsProtected, true,
+    'Historical deployment paths are not universally protected.');
   return { fenced: true, inputIdentity: 'not-server-confirmed-and-not-used', productionMutation: false };
 }
 
@@ -206,8 +264,11 @@ function verifyWorkflow(workflow) {
   assert.ok(['active', 'disabled_manually'].includes(workflow.state), 'PSA_WORKFLOW_IDENTITY_OR_STATE');
   return workflow;
 }
-export async function requireIdleRuns(api, workflow, requireSealed = false) {
-  const supersessionApproved = staleRunSupersessionApproved();
+export async function requireIdleRuns(api, workflow, requireSealed = false,
+  executingControllerSha = process.env.GITHUB_SHA,
+  authorization = readStaleSupersessionAuthorization(), authorizationNow = new Date(),
+  historicalSources = readHistoricalFenceSources()) {
+  const supersessionApproved = staleRunSupersessionApproved(authorization, authorizationNow);
   for (const status of ['queued', 'in_progress', 'waiting', 'pending', 'requested']) {
     for (let page = 1; page <= 10; page++) {
       const runs = await api(`actions/workflows/${workflowId}/runs?status=${status}&per_page=100&page=${page}`);
@@ -228,7 +289,8 @@ export async function requireIdleRuns(api, workflow, requireSealed = false) {
           const artifacts = await api(`actions/runs/${run.id}/artifacts?per_page=100`);
           const main = await api('git/ref/heads/main');
           verifyFencedStaleRun({ workflow, run: staleRun, attemptJobs, pendingDeployments, concurrencyGroups,
-            artifacts, currentMainSha: main.object?.sha, historicalSources: readHistoricalFenceSources(), requireSealed });
+            artifacts, currentMainSha: main.object?.sha, executingControllerSha,
+            historicalSources, authorization, authorizationNow, requireSealed });
           continue;
         }
         throw new Error('PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE');
@@ -238,21 +300,23 @@ export async function requireIdleRuns(api, workflow, requireSealed = false) {
     }
   }
 }
-export async function inspectIdleController(api = request) {
+export async function inspectIdleController(api = request, options = {}) {
   const workflow = verifyWorkflow(await api(`actions/workflows/${workflowId}`));
-  await requireIdleRuns(api, workflow, false);
+  await requireIdleRuns(api, workflow, false, options.executingControllerSha, options.authorization,
+    options.authorizationNow, options.historicalSources);
   return { id: workflow.id, path: workflow.path, state: workflow.state, executableActiveRuns: 0,
     requiresSealing: workflow.state === 'active' };
 }
 // The owner-authorized main supervisor holds the shared admission lock before
 // calling this. Only admissions are disabled; no run or cloud resource changes.
-export async function sealIdleController(api = request) {
-  const inspection = await inspectIdleController(api);
+export async function sealIdleController(api = request, options = {}) {
+  const inspection = await inspectIdleController(api, options);
   if (inspection.requiresSealing) await api(`actions/workflows/${workflowId}/disable`, 'PUT');
   const sealed = verifyWorkflow(await api(`actions/workflows/${workflowId}`));
   assert.equal(sealed.state, 'disabled_manually', 'PSA_ADMISSION_MUST_BEGIN_SEALED');
   // Fail closed if another source admitted a run between inventory and sealing.
-  await requireIdleRuns(api, sealed, true);
+  await requireIdleRuns(api, sealed, true, options.executingControllerSha, options.authorization,
+    options.authorizationNow, options.historicalSources);
   return { ...inspection, state: sealed.state, requiresSealing: false };
 }
 async function main() {

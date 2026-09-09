@@ -7,6 +7,7 @@ import { verifyApproval, controlManifest } from '../scripts/release-test/flowhiv
 
 export const files = [
   '.github/flowhive-psa-protected-test-candidate.json',
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
   '.github/flowhive-psa-release-control-files.txt',
   '.github/workflows/flowhive-psa-protected-test-admission.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
@@ -85,7 +86,12 @@ export const dispatchRecoveryFiles = [
 export const staleSupersessionBase = '785eb54a4f280c9ff0e59951c31a30cad4c1a0da';
 export const staleSupersessionBranch = 'fix/flowhive-stale-run-supersession-20260909';
 export const staleSupersessionFiles = [
+  '.github/flowhive-psa-release-control-files.txt',
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
+  '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  '.github/workflows/projectpulse-deploy-test.yml',
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
@@ -165,6 +171,10 @@ export function verifyController(text) {
   ]) {
     assert.ok(text.includes(token), `The Test controller is missing a required control: ${token}`);
   }
+  assert.match(text, /deploy:\s*\n[\s\S]*?if: >-\n[\s\S]*github\.event_name == 'push'[\s\S]*github\.event_name == 'workflow_dispatch'[\s\S]*inputs\.release_branch == 'release\/flowhive-sow-successor-20260908'/,
+    'Every current deployment path must be bounded by the approved push or PSA dispatch lane.');
+  assert.doesNotMatch(text, /github\.event_name == 'workflow_dispatch' \|\| github\.ref == 'refs\/heads\/main'/,
+    'The old unbounded workflow_dispatch job gate must not remain.');
   assert.ok(!/contents:\s*write/.test(text), 'The environment mutation job must not publish source.');
   assert.ok(!/environment:\s*(?:production|prod)\b/i.test(text), 'Production is not an approved target.');
 }

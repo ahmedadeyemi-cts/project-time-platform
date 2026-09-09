@@ -104,6 +104,8 @@ export async function authorize() {
   if (process.env.TARGET_RELEASE_BRANCH) assert.equal(process.env.TARGET_RELEASE_BRANCH, candidateBranch);
   assert.notEqual(process.env.RECOVER_PRIVATE_RUNTIME, 'true', 'Private runtime recovery is not part of this candidate approval.');
   const main = await github(`/repos/${repository}/git/ref/heads/main`);
+  assert.match(main.object?.sha || '', sha, 'The current main response is missing or malformed.');
+  assert.match(process.env.GITHUB_SHA || '', sha, 'The executing trusted controller SHA is missing or malformed.');
   assert.equal(main.object.sha, process.env.GITHUB_SHA, 'The trusted main controller is no longer current.');
   const pr = await github(`/repos/${repository}/pulls/${candidatePullRequest}`);
   verifyPullRequest(approval, pr);
