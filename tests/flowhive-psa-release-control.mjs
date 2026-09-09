@@ -19,6 +19,7 @@ export const files = [
   'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
+  'scripts/release-test/prepare-protected-test-scope-manifests.sh',
   'scripts/release-test/run-flowhive-psa-live-uat.py',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-live-uat.test.py',
@@ -58,12 +59,14 @@ export const successorApprovalBase = 'bf401fa1d017eae0ebf10c9ed79720829ce8de60';
 export const successorApprovalBranch = 'control/flowhive-sow-successor-approval-20260909';
 export const successorApprovalFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
+  '.github/flowhive-psa-release-control-files.txt',
   '.github/workflows/flowhive-psa-protected-test-admission.yml',
   '.github/workflows/projectpulse-deploy-test.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
   'scripts/release-test/apply-flowhive-psa-migrations.sh',
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
+  'scripts/release-test/prepare-protected-test-scope-manifests.sh',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-migration-fixture.py',
   'tests/flowhive-psa-release-control.mjs',
