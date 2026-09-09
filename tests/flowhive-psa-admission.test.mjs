@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, inspectIdleController, sealIdleController } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, successorApprovalFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyHistoricalFenceSources, verifyFencedStaleRun, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'open', merged: false, draft: true,
@@ -12,6 +12,19 @@ const pr = { number: candidatePullRequest, state: 'open', merged: false, draft: 
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));
+const historicalFence = readHistoricalFenceSources();
+const staleRun = () => ({
+  workflow: { id: staleRunSupersessionAttestation.workflowId, path: staleRunSupersessionAttestation.workflowPath, state: 'disabled_manually' },
+  run: { id: staleRunSupersessionAttestation.runId, workflow_id: staleRunSupersessionAttestation.workflowId,
+    path: staleRunSupersessionAttestation.workflowPath, head_sha: staleRunSupersessionAttestation.controllerSha,
+    head_branch: staleRunSupersessionAttestation.headBranch, event: staleRunSupersessionAttestation.event,
+    run_attempt: staleRunSupersessionAttestation.runAttempt, status: staleRunSupersessionAttestation.status,
+    conclusion: staleRunSupersessionAttestation.conclusion, created_at: staleRunSupersessionAttestation.createdAt,
+    updated_at: staleRunSupersessionAttestation.updatedAt },
+  attemptJobs: { total_count: 0, jobs: [] }, pendingDeployments: [],
+  concurrencyGroups: { total_count: 0, concurrency_groups: [] }, artifacts: { total_count: 0, artifacts: [] },
+  currentMainSha: '785eb54a4f280c9ff0e59951c31a30cad4c1a0da', historicalSources: historicalFence
+});
 test('approved current draft candidate is admissible without merging', () => {
   verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr); verifyRuns(approval, runs);
 });
@@ -105,6 +118,120 @@ test('environment job remains serialized and cannot publish source or target pro
   assert.throws(()=>verifyController(controller.replace('environment: test','environment: production')));
   assert.throws(()=>verifyController(controller.replace('cancel-in-progress: false','cancel-in-progress: true')));
   assert.throws(()=>verifyController(controller.replace('contents: read','contents: write')));
+});
+
+test('stale supersession is inactive without the separate owner approval gate', () => {
+  assert.equal(staleRunSupersessionApproved({}), false);
+  assert.equal(staleRunSupersessionApproved({ FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED: 'true' }), false);
+  assert.equal(staleRunSupersessionApproved({
+    FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED: 'true',
+    FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE: staleRunSupersessionAttestation.approvalReference
+  }), true);
+});
+
+test('stale request remains blocking when the owner approval gate is absent', async () => {
+  const evidence = staleRun();
+  const api = async url => {
+    if (url.includes('/runs?status=queued')) return { workflow_runs: [{ id: staleRunSupersessionAttestation.runId, status: 'queued' }] };
+    if (url.includes('/runs?')) return { workflow_runs: [] };
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  };
+  const previousApproved = process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED;
+  const previousReference = process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE;
+  delete process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED;
+  delete process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE;
+  try { await assert.rejects(requireIdleRuns(api, evidence.workflow), /PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/); }
+  finally {
+    if (previousApproved === undefined) delete process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED;
+    else process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED = previousApproved;
+    if (previousReference === undefined) delete process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE;
+    else process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE = previousReference;
+  }
+});
+
+test('historical stale request is fenced only by complete identity, zero execution evidence, and source proof', () => {
+  assert.deepEqual(verifyFencedStaleRun(staleRun()), {
+    fenced: true, inputIdentity: 'not-server-confirmed-and-not-used', productionMutation: false
+  });
+  const initiallyActive = staleRun(); initiallyActive.workflow.state = 'active';
+  assert.deepEqual(verifyFencedStaleRun({ ...initiallyActive, requireSealed: false }), {
+    fenced: true, inputIdentity: 'not-server-confirmed-and-not-used', productionMutation: false
+  });
+  assert.throws(() => verifyFencedStaleRun(initiallyActive), /sealed before supersession/);
+  const mutations = [
+    x => { x.workflow.state = 'active'; },
+    x => { x.run.status = 'in_progress'; },
+    x => { x.run.updated_at = '2026-09-09T16:31:00Z'; },
+    x => { x.run.head_sha = approval.sha; },
+    x => { x.run.run_attempt = 2; },
+    x => { x.attemptJobs = { total_count: 1, jobs: [{ id: 1 }] }; },
+    x => { x.pendingDeployments = [{ environment: { name: 'test' } }]; },
+    x => { x.concurrencyGroups = { total_count: 1, concurrency_groups: [{ id: 1 }] }; },
+    x => { x.artifacts = { total_count: 1, artifacts: [{ id: 1 }] }; },
+    x => { x.currentMainSha = staleRunSupersessionAttestation.controllerSha; },
+    x => { x.serverDispatchInputs = { release_sha: approval.sha }; }
+  ];
+  for (const mutate of mutations) {
+    const evidence = staleRun(); mutate(evidence);
+    assert.throws(() => verifyFencedStaleRun(evidence));
+  }
+});
+
+test('historical source and cleanup proof is fail-closed', () => {
+  for (const mutate of [
+    source => ({ ...source, admission: source.admission.replace('The trusted main controller is no longer current.', 'removed') }),
+    source => ({ ...source, dispatcher: source.dispatcher.replace('await authorize();', 'await sealIdleController();') }),
+    source => ({ ...source, deploymentWorkflow: source.deploymentWorkflow.replace("always() && steps.module025_fixture.outputs.started == 'true'", 'always()') }),
+    source => ({ ...source, admissionBlob: '0'.repeat(40) })
+  ]) {
+    assert.throws(() => verifyHistoricalFenceSources(mutate(historicalFence)));
+  }
+});
+
+test('approved inventory admits only the fenced stale request and still blocks resurrection or competition', async () => {
+  const previousApproved = process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED;
+  const previousReference = process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE;
+  process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED = 'true';
+  process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE = staleRunSupersessionAttestation.approvalReference;
+  try {
+    const evidence = staleRun();
+    const api = async url => {
+      if (url === 'actions/workflows/315562561') return evidence.workflow;
+      if (url.includes('/runs?status=queued')) return { workflow_runs: [{ id: staleRunSupersessionAttestation.runId, status: 'queued' }] };
+      if (url.includes('/runs?')) return { workflow_runs: [] };
+      if (url === `actions/runs/${staleRunSupersessionAttestation.runId}`) return evidence.run;
+      if (url.includes('/attempts/1/jobs')) return evidence.attemptJobs;
+      if (url.includes('/pending_deployments')) return evidence.pendingDeployments;
+      if (url.includes('/concurrency_groups')) return evidence.concurrencyGroups;
+      if (url.includes('/artifacts')) return evidence.artifacts;
+      if (url === 'git/ref/heads/main') return { object: { sha: evidence.currentMainSha } };
+      throw new Error(`UNEXPECTED_REQUEST ${url}`);
+    };
+    await requireIdleRuns(api, evidence.workflow);
+    await assert.rejects(requireIdleRuns(async url => {
+      if (url.includes('/runs?status=queued')) return { workflow_runs: [{ id: staleRunSupersessionAttestation.runId, status: 'queued' }, { id: 999 }] };
+      return api(url);
+    }, evidence.workflow), /PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
+    await assert.rejects(requireIdleRuns(async url => {
+      if (url.includes('/attempts/1/jobs')) return { total_count: 1, jobs: [{ id: 44 }] };
+      return api(url);
+    }, evidence.workflow), /PSA_STALE_SUPERSESSION_JOBS/);
+  } finally {
+    if (previousApproved === undefined) delete process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED;
+    else process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_APPROVED = previousApproved;
+    if (previousReference === undefined) delete process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE;
+    else process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_REFERENCE = previousReference;
+  }
+});
+test('stale supersession scope is bound to trusted main and its three control files', () => {
+  verifyFiles(staleSupersessionFiles, files, 'stale-run-supersession', {
+    base: '785eb54a4f280c9ff0e59951c31a30cad4c1a0da', branch: 'fix/flowhive-stale-run-supersession-20260909'
+  });
+  assert.throws(() => verifyFiles(staleSupersessionFiles, files, 'stale-run-supersession', {
+    base: 'c6efce9a4918ac6674fa292586348a5aa8be2b91', branch: 'fix/flowhive-stale-run-supersession-20260909'
+  }));
+  assert.throws(() => verifyFiles([...staleSupersessionFiles, 'scripts/release-test/flowhive-psa-admission.mjs'], files,
+    'stale-run-supersession', { base: '785eb54a4f280c9ff0e59951c31a30cad4c1a0da', branch: 'fix/flowhive-stale-run-supersession-20260909' }));
 });
 test('source-only control CI defers live readiness to the locked admission workflow', () => {
   const sourceCi=fs.readFileSync(new URL('../.github/workflows/flowhive-psa-release-control-ci.yml',import.meta.url),'utf8');
