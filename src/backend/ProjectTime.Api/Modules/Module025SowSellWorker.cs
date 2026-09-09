@@ -44,7 +44,7 @@ public static partial class Module025SowGsdModule
         var work = await ClaimSowSellAsync(connection, environment, cancellationToken);
         if (work is null) return false;
         if (!await SowSellAuthorityStillValidAsync(connection, work, cancellationToken)
-            || !await SowRecipientsStillValidAsync(connection, work.Package.Recipients, cancellationToken))
+            || !await SowRecipientsStillValidAsync(connection, work.Package.EngagementId, work.Package.Recipients, cancellationToken))
         {
             await FinishSowSellFailureAsync(connection, work, "failed", "SOURCE_OR_AUTHORITY_CHANGED_BEFORE_WRITE", cancellationToken);
             return true;
@@ -180,18 +180,63 @@ public static partial class Module025SowGsdModule
         return await command.ExecuteScalarAsync(cancellationToken) is true;
     }
 
-    private static async Task<bool> SowRecipientsStillValidAsync(NpgsqlConnection connection, IReadOnlyList<Module025SellRecipient> recipients, CancellationToken cancellationToken)
+    private static async Task<bool> SowRecipientsStillValidAsync(
+        NpgsqlConnection connection,
+        Guid engagementId,
+        IReadOnlyList<Module025SellRecipient> recipients,
+        CancellationToken cancellationToken)
     {
         if (recipients.Count != 3 || recipients.Select(r => r.Role).Distinct().Count() != 3
             || recipients.Any(r => r.Role is not ("solution_architect" or "account_executive" or "inside_sales") || !Module025SowSellPolicy.ValidEmail(r.Email))) return false;
-        foreach (var recipient in recipients)
+
+        await using var command = new NpgsqlCommand("""
+            SELECT owner.user_id, owner.email,
+                   account_executive.user_id, account_executive.email,
+                   inside_sales.user_id, inside_sales.email
+            FROM module025_sow_gsd_engagements engagement
+            JOIN app_users owner ON owner.user_id=engagement.owner_user_id AND owner.is_active=TRUE
+            LEFT JOIN app_users account_executive
+                ON account_executive.user_id=engagement.account_executive_user_id
+               AND account_executive.is_active=TRUE
+            LEFT JOIN app_users inside_sales
+                ON inside_sales.user_id=engagement.resale_user_id
+               AND inside_sales.is_active=TRUE
+            WHERE engagement.engagement_id=@engagement_id
+              AND engagement.is_active=TRUE
+              AND engagement.status='confirmed'
+              AND EXISTS(
+                  SELECT 1 FROM app_user_role_assignments assignment
+                  JOIN app_roles role USING(app_role_id)
+                  WHERE assignment.user_id=engagement.account_executive_user_id
+                    AND assignment.is_active=TRUE AND role.is_active=TRUE
+                    AND upper(role.role_code)=ANY(@account_executive_roles))
+              AND EXISTS(
+                  SELECT 1 FROM app_user_role_assignments assignment
+                  JOIN app_roles role USING(app_role_id)
+                  WHERE assignment.user_id=engagement.resale_user_id
+                    AND assignment.is_active=TRUE AND role.is_active=TRUE
+                    AND upper(role.role_code)=ANY(@inside_sales_roles));
+            """, connection);
+        command.Parameters.AddWithValue("engagement_id", engagementId);
+        command.Parameters.AddWithValue("account_executive_roles", AccountExecutiveRoles);
+        command.Parameters.AddWithValue("inside_sales_roles", InsideSalesRepresentativeRoles);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)
+            || reader.IsDBNull(2)
+            || reader.IsDBNull(4)
+            || reader.IsDBNull(3)
+            || reader.IsDBNull(5)) return false;
+
+        var expected = new[]
         {
-            await using var command = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM app_users WHERE user_id=@id AND is_active=TRUE AND lower(trim(email))=lower(@email));", connection);
-            command.Parameters.AddWithValue("id", recipient.UserId);
-            command.Parameters.AddWithValue("email", recipient.Email);
-            if (await command.ExecuteScalarAsync(cancellationToken) is not true) return false;
-        }
-        return true;
+            (Role: "solution_architect", UserId: reader.GetGuid(0), Email: reader.GetString(1)),
+            (Role: "account_executive", UserId: reader.GetGuid(2), Email: reader.GetString(3)),
+            (Role: "inside_sales", UserId: reader.GetGuid(4), Email: reader.GetString(5))
+        };
+        return expected.All(expectedRecipient => recipients.Any(actualRecipient =>
+            string.Equals(actualRecipient.Role, expectedRecipient.Role, StringComparison.Ordinal)
+            && actualRecipient.UserId == expectedRecipient.UserId
+            && string.Equals(actualRecipient.Email.Trim(), expectedRecipient.Email.Trim(), StringComparison.OrdinalIgnoreCase)));
     }
 
     private static async Task FinishSowSellFailureAsync(NpgsqlConnection connection, SowSellWork work, string status, string diagnostic, CancellationToken cancellationToken)
@@ -280,7 +325,7 @@ public static partial class Module025SowGsdModule
         Module065MailDeliveryResult? delivery = null;
         string mailStatus;
         string diagnostic;
-        if (!await SowRecipientsStillValidAsync(connection, work.Package.Recipients, cancellationToken))
+        if (!await SowRecipientsStillValidAsync(connection, work.Package.EngagementId, work.Package.Recipients, cancellationToken))
         {
             mailStatus = "failed";
             diagnostic = "RECIPIENT_ASSIGNMENT_REVIEW_REQUIRED";

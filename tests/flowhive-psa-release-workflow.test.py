@@ -131,6 +131,16 @@ class WorkflowContract(unittest.TestCase):
         project_forge_workflow=(ROOT/'.github/workflows/module033-project-forge-ci.yml').read_text()
         self.assertIn("FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'", project_forge_workflow)
         self.assertIn('grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt', project_forge_workflow)
+
+    def test_sell_notification_revalidates_current_engagement_assignments(self):
+        worker=(ROOT/'src/backend/ProjectTime.Api/Modules/Module025SowSellWorker.cs').read_text()
+        self.assertIn('SowRecipientsStillValidAsync(connection, work.Package.EngagementId', worker)
+        self.assertIn('engagement.account_executive_user_id', worker)
+        self.assertIn('engagement.resale_user_id', worker)
+        self.assertIn("engagement.status='confirmed'", worker)
+        self.assertIn('@account_executive_roles', worker)
+        self.assertIn('@inside_sales_roles', worker)
+        self.assertIn('RECIPIENT_ASSIGNMENT_REVIEW_REQUIRED', worker)
     def test_negative_production_concurrency_and_late_admission(self):
         for mutate in [lambda x:x['jobs']['deploy'].update(environment='production'),
           lambda x:x['concurrency'].update({'cancel-in-progress':'true'}),

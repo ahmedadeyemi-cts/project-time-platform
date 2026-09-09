@@ -144,6 +144,25 @@ internal static class ProjectFlowHivePsaModule
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
+        ProjectPulseUploadStorageReadiness storageReadiness;
+        try
+        {
+            storageReadiness = ProjectPulseUploadStorage.InspectProductionReadiness();
+        }
+        catch
+        {
+            return Results.Json(new
+            {
+                status = "meeting_storage_unavailable",
+                message = "Durable shared meeting storage is not verified. The recording was not accepted."
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        if (!storageReadiness.ProductionReady)
+            return Results.Json(new
+            {
+                status = "meeting_storage_unavailable",
+                message = "Durable shared meeting storage is not verified. The recording was not accepted."
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
         if (!context.Request.HasFormContentType)
             return Results.BadRequest(new { status = "meeting_file_required", message = "Upload an MP4 meeting recording using multipart/form-data." });
 
@@ -239,6 +258,18 @@ internal static class ProjectFlowHivePsaModule
             command.Parameters.AddWithValue("detail", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(new { fileName = Path.GetFileName(file.FileName), file.Length, sha256 = sha, customerVisible, transcriptStatus }, Json));
             await command.ExecuteNonQueryAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+        }
+        catch (PostgresException exception) when (
+            exception.SqlState == "23505"
+            && string.Equals(exception.ConstraintName, "project_flowhive_meetings_project_id_sha256_key", StringComparison.Ordinal))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            TryDelete(destination);
+            return Results.Conflict(new
+            {
+                status = "meeting_duplicate",
+                message = "A recording with the same project content already exists. No duplicate meeting was created."
+            });
         }
         catch
         {
