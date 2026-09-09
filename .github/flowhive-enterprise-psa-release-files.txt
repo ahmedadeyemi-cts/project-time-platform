@@ -40,6 +40,7 @@ src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHiveExecutablePlanBuilder.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHiveExecutionPolicy.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHiveFinancialReadback.cs
+src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHivePlannerReview.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaArtifactRenderer.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs
@@ -65,6 +66,7 @@ src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
 src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
 src/frontend/project-time-web/scripts/validate-production-consistency.mjs
 src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx
 src/frontend/project-time-web/src/ProjectFlowHivePlannerReview.jsx
 src/frontend/project-time-web/src/ProjectFlowHivePsaWorkspace.jsx
 src/frontend/project-time-web/src/ProjectForgeCenter.jsx
@@ -97,6 +99,7 @@ tests/flowhive-psa-review-browser.py
 tests/flowhive-psa-scope.mjs
 tests/flowhive-psa-scope.test.mjs
 tests/module025-sow-register-browser.py
+tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
 tests/test-module025-sow-sell-register-migration-106.sh
 tests/test-pulse-ai-runtime-job-query-shape.sh
 tests/validate-celar-ai-pr630-consolidated-legacy.mjs

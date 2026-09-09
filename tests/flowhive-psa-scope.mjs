@@ -27,6 +27,7 @@ const validationFiles = new Set([
   'src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs',
   'src/frontend/project-time-web/scripts/validate-production-consistency.mjs',
   'src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs',
+  'tests/test-module-066-flowhive-enterprise-pm-migration-086.sh',
   'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs',
   'src/backend/ProjectTime.Api/ProjectTime.Api.csproj',
   'src/backend/ProjectTime.Api/Properties/AssemblyInfo.cs',
