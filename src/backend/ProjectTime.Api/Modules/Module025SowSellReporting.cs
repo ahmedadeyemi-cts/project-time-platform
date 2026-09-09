@@ -113,7 +113,9 @@ public static partial class Module025SowGsdModule
                 csv.AppendLine(string.Join(',', values.Select(Module025SowSellPolicy.Csv)));
             }
             context.Response.Headers.CacheControl = "private, no-store";
-            return Results.File(Encoding.UTF8.GetBytes(csv.ToString()), "text/csv; charset=utf-8", "sow-sa-production-report.csv");
+            var csvBytes = Encoding.UTF8.GetBytes(csv.ToString());
+            context.Response.Headers["X-Content-SHA256"] = Module025SowSellPolicy.Hash(csvBytes);
+            return Results.File(csvBytes, "text/csv; charset=utf-8", "sow-sa-production-report.csv");
         }
         var records = new List<JsonElement>();
         await using (var rows = Query("""

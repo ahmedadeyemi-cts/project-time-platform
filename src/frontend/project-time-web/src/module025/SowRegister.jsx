@@ -272,7 +272,9 @@ export default function SowRegister() {
           const submissions = (version.submissions || []).filter((item) => item.environment === detail.runtimeEnvironment);
           const published = submissions.some((item) => item.sellStatus === 'published');
           const eligible = detail.canWrite && detail.status === 'confirmed' && detail.isActive && detail.currentContentReleased && version.versionId === detail.latestVersionId;
-          return <article key={version.versionId} className="m025-register-version" data-sow-download-path={`/api/module025/sow-gsd/${detail.engagementId}/versions/${version.versionId}/sow.docx`}>
+          return <article key={version.versionId} className="m025-register-version"
+            data-sow-download-path={`/api/module025/sow-gsd/${detail.engagementId}/versions/${version.versionId}/sow.docx`}
+            data-gsd-download-path={`/api/module025/sow-gsd/${detail.engagementId}/versions/${version.versionId}/gsd.xlsx`}>
             <header><h3>Version {version.versionNumber}</h3><span>Retained {when(version.createdAt)} · Source revision {version.sourceRevision}</span></header>
             <div className="m025-review-actions">
               <button type="button" className="m025-button m025-button--primary" disabled={Boolean(actionBusy)} onClick={() => downloadVersion(version, 'sow.docx')}>{actionBusy === `${version.versionId}-sow.docx` ? 'Downloading…' : `Download SOW v${version.versionNumber}`}</button>

@@ -77,12 +77,20 @@ async def run() -> None:
             register = page.locator('[data-module025-sow-register="true"]')
             await register.wait_for(state='visible')
             csv_path = await register.get_by_role('button', name='Export SA report (.csv)', exact=True).get_attribute('data-csv-download-path')
-            async with page.expect_download() as report_download_info:
-                await register.get_by_role('button', name='Export SA report (.csv)', exact=True).click()
+            async with page.expect_response(
+                lambda response: urlparse(response.url).path == urlparse(f'{base}{csv_path}').path
+                and response.status == 200
+            ) as report_response_info:
+                async with page.expect_download() as report_download_info:
+                    await register.get_by_role('button', name='Export SA report (.csv)', exact=True).click()
+            report_response = await report_response_info.value
             report_download = await report_download_info.value
             report_bytes = Path(await report_download.path()).read_bytes()
             if b'Engagement' not in report_bytes and b'SOW' not in report_bytes:
                 fail('browser_csv_download_content_missing')
+            report_hash = report_response.headers.get('x-content-sha256', '')
+            if len(report_hash) != 64 or hashlib.sha256(report_bytes).hexdigest() != report_hash:
+                fail('browser_csv_download_hash_mismatch')
             search = register.get_by_placeholder('Search retained records')
             await search.fill(engagement_number)
             row = register.locator('table').nth(1).get_by_role('button', name=engagement_number, exact=True)
@@ -120,7 +128,11 @@ async def run() -> None:
 
             unauthenticated = await playwright.request.new_context()
             try:
-                protected_paths = [csv_path, await versions.first.get_attribute('data-sow-download-path')]
+                protected_paths = [
+                    csv_path,
+                    await versions.first.get_attribute('data-sow-download-path'),
+                    await versions.first.get_attribute('data-gsd-download-path'),
+                ]
                 for protected_path in protected_paths:
                     if protected_path:
                         unauthorized = await unauthenticated.get(f'{base}{protected_path}')
