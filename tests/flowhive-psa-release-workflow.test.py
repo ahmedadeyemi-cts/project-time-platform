@@ -125,6 +125,9 @@ class WorkflowContract(unittest.TestCase):
         builder=(ROOT/'scripts/release-test/build-and-run-flowhive-psa-migrations.sh').read_text()
         self.assertIn('106_module025_sow_sell_register', builder)
         self.assertIn('--argjson migrations "$MIGRATIONS_JSON"', builder)
+        production_workflow=(ROOT/'.github/workflows/celar-ai-production-platform-ci.yml').read_text()
+        self.assertIn("FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'", production_workflow)
+        self.assertIn('grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt', production_workflow)
     def test_negative_production_concurrency_and_late_admission(self):
         for mutate in [lambda x:x['jobs']['deploy'].update(environment='production'),
           lambda x:x['concurrency'].update({'cancel-in-progress':'true'}),

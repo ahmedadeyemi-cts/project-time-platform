@@ -140,6 +140,12 @@ jobs:
             HEAD_BRANCH='feat/module025-sow-sell-versioned-register-20260908'
             echo 'CELAR_AI_PRODUCTION_MODULE025_MIGRATION_SCOPE=PASSED'
           fi
+          if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
+            FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'
+            grep -Fxq "$FLOWHIVE_PROXY_LIMIT" <<<"$CHANGED"
+            grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt
+            UNAUTHORIZED_CONTROL="$(grep -Fvx "$FLOWHIVE_PROXY_LIMIT" <<<"$UNAUTHORIZED_CONTROL" || true)"
+          fi
           if [[ -n "$UNAUTHORIZED_CONTROL" ]]; then
             echo 'Celar AI production source may not alter protected deployment controls.' >&2
             printf '%s\n' "$UNAUTHORIZED_CONTROL" >&2
