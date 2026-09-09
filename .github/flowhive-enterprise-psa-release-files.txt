@@ -4,6 +4,7 @@
 .github/workflows/flowhive-enterprise-psa-ci.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
 .github/workflows/module025-governed-protected-test-release-ci.yml
+.github/workflows/module033-project-forge-ci.yml
 .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
 database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql

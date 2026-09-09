@@ -1,6 +1,7 @@
 .github/module025-sow-sell-governed-release-files.txt
 .github/workflows/celar-ai-production-platform-ci.yml
 .github/workflows/module025-governed-protected-test-release-ci.yml
+.github/workflows/module033-project-forge-ci.yml
 .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
 database/migrations/106_module025_sow_sell_register.sql

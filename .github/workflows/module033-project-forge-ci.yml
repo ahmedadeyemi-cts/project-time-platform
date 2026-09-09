@@ -116,6 +116,16 @@ jobs:
             grep -Fq 'proxy_read_timeout 60s;' deployment/containers/web/default.conf.template
             echo 'MODULE_033_MODULE025_ASYNC_PROXY_REGRESSION_BOUNDARY=PASSED'
           fi
+          if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]] \
+            && grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
+            && grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+            && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED" \
+            && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
+            FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'
+            grep -Fxq "$FLOWHIVE_PROXY_LIMIT" <<<"$CHANGED"
+            grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt
+            PROTECTED_DEPLOYMENT="$(grep -Fvx "$FLOWHIVE_PROXY_LIMIT" <<<"$PROTECTED_DEPLOYMENT" || true)"
+          fi
           if [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
             node tests/validate-planner-fallback-build-release-scope.mjs
             PROTECTED_DEPLOYMENT="$(grep -Fvx 'deployment/containers/api/Dockerfile' <<<"$PROTECTED_DEPLOYMENT" || true)"
