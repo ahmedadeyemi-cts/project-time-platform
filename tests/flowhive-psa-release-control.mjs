@@ -77,6 +77,7 @@ export const successorApprovalFiles = [
 export const dispatchRecoveryBase = 'af5fcb463384096f668345ac7cc9bd00efef0a33';
 export const dispatchRecoveryBranch = 'fix/flowhive-dispatch-run-recovery-20260909';
 export const dispatchRecoveryFiles = [
+  '.github/workflows/flowhive-psa-release-control-ci.yml',
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'

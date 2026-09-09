@@ -106,6 +106,13 @@ test('environment job remains serialized and cannot publish source or target pro
   assert.throws(()=>verifyController(controller.replace('cancel-in-progress: false','cancel-in-progress: true')));
   assert.throws(()=>verifyController(controller.replace('contents: read','contents: write')));
 });
+test('source-only control CI defers live readiness to the locked admission workflow', () => {
+  const sourceCi=fs.readFileSync(new URL('../.github/workflows/flowhive-psa-release-control-ci.yml',import.meta.url),'utf8');
+  const admission=fs.readFileSync(new URL('../.github/workflows/flowhive-psa-protected-test-admission.yml',import.meta.url),'utf8');
+  assert.doesNotMatch(sourceCi,/dispatch-flowhive-psa-test\.mjs\s+--inspect-only/);
+  assert.match(admission,/node scripts\/release-test\/dispatch-flowhive-psa-test\.mjs/);
+  assert.match(admission,/group: module025-protected-uat-control/);
+});
 
 function controllerApi({state='active',runs=[],quarantinedJobs=0,metadata={},onDisable}={}) {
   const calls=[];
