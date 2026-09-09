@@ -10,6 +10,8 @@ on:
       - 'src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx'
       - 'src/frontend/project-time-web/src/module-availability-registry.js'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
+      - 'tests/validate-systemwide-image-build-controller.mjs'
+      - '.github/module025-sow-sell-governed-release-files.txt'
 
 permissions:
   contents: read
@@ -47,6 +49,26 @@ jobs:
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Pull-request base SHA is unavailable.'
           git cat-file -e "$BASE_SHA^{commit}" || fail 'Exact pull-request base commit is unavailable.'
+
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+          if [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' ]]; then
+            MANIFEST='.github/module025-sow-sell-governed-release-files.txt'
+            test -s "$MANIFEST" || fail 'Module 025 SOW governed release manifest is missing.'
+            grep -Ev '^[[:space:]]*(#|$)' "$MANIFEST" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-files"
+            cmp -s "$MANIFEST" "$RUNNER_TEMP/module025-sow-files" || fail 'Module 025 SOW manifest must be sorted, unique, and comment-free.'
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-module025-sow-files"
+            cmp -s "$MANIFEST" "$RUNNER_TEMP/actual-module025-sow-files" || {
+              echo 'PR differs from the exact governed Module 025 SOW release set.' >&2
+              diff -u "$MANIFEST" "$RUNNER_TEMP/actual-module025-sow-files" >&2 || true
+              exit 1
+            }
+            node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+            bash tests/test-module025-sow-sell-register-migration-106.sh
+            node tests/validate-systemwide-enterprise-reliability.mjs
+            node tests/validate-systemwide-image-build-controller.mjs
+            echo 'MODULE025_SOW_SELL_EXACT_GOVERNED_SCOPE=PASSED'
+            exit 0
+          fi
 
           cat > "$RUNNER_TEMP/expected-module025-files" <<'FILES'
           database/migrations/089_module_catalog_role_administration_reconciliation.sql

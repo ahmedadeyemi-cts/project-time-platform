@@ -129,6 +129,10 @@ jobs:
             test -f "$GENERATED_API_SOURCE"
             grep -Fxq "$GENERATED_API_SOURCE" <<<"$CHANGED"
             echo 'CELAR_AI_PRODUCTION_SYSTEMWIDE_GENERATED_SOURCE_BOUNDARY=PASSED'
+          elif grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+            && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
+            HEAD_BRANCH='feat/module025-sow-sell-versioned-register-20260908'
+            echo 'CELAR_AI_PRODUCTION_MODULE025_MIGRATION_SCOPE=PASSED'
           fi
           if [[ -n "$UNAUTHORIZED_CONTROL" ]]; then
             echo 'Celar AI production source may not alter protected deployment controls.' >&2
@@ -141,6 +145,15 @@ jobs:
             feature/flowhive-enterprise-psa-revamp-20260906)
               node tests/flowhive-psa-scope.mjs
               echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=FLOWHIVE_ENTERPRISE_PSA'
+              ;;
+            feat/module025-sow-sell-versioned-register-20260908)
+              UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/migrations/106_module025_sow_sell_register\.sql$' <<<"$CHANGED_MIGRATIONS" || true)"
+              if [[ -n "$UNEXPECTED_MIGRATIONS" ]]; then
+                echo 'Unexpected migration in the Module 025 SOW/Sell package:' >&2
+                printf '%s\n' "$UNEXPECTED_MIGRATIONS" >&2
+                exit 1
+              fi
+              echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=MODULE025_SOW_SELL_REGISTER'
               ;;
             security/celar-ai-production-readiness-*)
               UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/(migrations/071_ai_runtime_production_hardening\.sql|rollback/071_ai_runtime_production_hardening_rollback\.sql)$' <<<"$CHANGED_MIGRATIONS" || true)"

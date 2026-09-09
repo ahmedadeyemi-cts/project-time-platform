@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readEffectiveBuildTargets } from '../src/frontend/project-time-web/scripts/read-effective-build-targets.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const absolute = (value) => path.join(root, value);
@@ -62,7 +63,7 @@ if (process.exitCode) process.exit(process.exitCode);
 const catalog = read('src/backend/ProjectTime.Api/Ai/CelarAiUniversalToolCatalog.cs');
 const reliability = read('src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs');
 const moduleSource = read('src/backend/ProjectTime.Api/Modules/CelarAiUniversalAnswerReliabilityModule.cs');
-const directoryTargets = read('src/backend/ProjectTime.Api/Directory.Build.targets');
+const directoryTargets = readEffectiveBuildTargets(root).text;
 const generator = read('src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk');
 const workbench = read('src/frontend/project-time-web/src/CelarAiAnswerReliabilityWorkbench.jsx');
 const workbenchCss = read('src/frontend/project-time-web/src/celar-ai-answer-reliability-workbench.css');

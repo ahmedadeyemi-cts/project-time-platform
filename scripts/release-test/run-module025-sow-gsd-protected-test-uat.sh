@@ -26,6 +26,8 @@ chmod 0700 "$WORK_DIR"
 
 SA_EMAIL='demo.manager@ussignal.local'
 SA_USER_ID=''
+ACCOUNT_EXECUTIVE_USER_ID=''
+RESALE_USER_ID=''
 SA_SESSION=''
 ENGAGEMENT_ID=''
 ENGAGEMENT_NUMBER=''
@@ -307,11 +309,17 @@ jq -e '
 SA_USER_ID="$(jq -r '.currentUser.userId // empty' "$SA_BOOTSTRAP")"
 [[ "$SA_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
   || fail 'The selected Solution Architect bootstrap did not expose a valid user ID.'
+ACCOUNT_EXECUTIVE_USER_ID="$(jq -r 'first(.accountExecutives[] | select((.displayName // "" | ascii_downcase) == "mike beck") | .userId) // empty' "$SA_BOOTSTRAP")"
+RESALE_USER_ID="$(jq -r 'first(.insideSalesRepresentatives[] | select((.displayName // "" | ascii_downcase) == "jessica shaffer") | .userId) // empty' "$SA_BOOTSTRAP")"
+[[ "$ACCOUNT_EXECUTIVE_USER_ID" =~ ^[0-9a-fA-F-]{36}$ && "$RESALE_USER_ID" =~ ^[0-9a-fA-F-]{36}$ ]] \
+  || fail 'The exact-run Solution Architect bootstrap did not expose the assigned Account Executive and Inside Sales Representative IDs.'
 
 FIXTURE_SUFFIX="${GITHUB_RUN_ID:-manual}-${GITHUB_RUN_ATTEMPT:-1}-$(date -u +%Y%m%dT%H%M%SZ)"
 CREATE_PAYLOAD="$WORK_DIR/module025-create.json"
-jq -n \
+  jq -n \
   --arg customerName "Protected UAT Module 025 $FIXTURE_SUFFIX" \
+  --arg accountExecutiveUserId "$ACCOUNT_EXECUTIVE_USER_ID" \
+  --arg resaleUserId "$RESALE_USER_ID" \
   --arg serviceOverview 'Upgrade Cisco Unified Communications Manager (Cisco CallManager / CUCM) from version 14.0 to version 15.0. Determine and document the complete customer-facing Plan, Design, Implement, Validate, and Release work required for a safe production upgrade, including readiness, compatibility, licensing, backups, sequencing, rollback, testing, operational handoff, and any customer-specific facts that must be confirmed.' \
   '{
     customerId:null,
@@ -319,8 +327,8 @@ jq -n \
     customerEntryMode:"manual",
     commercialModel:"time_and_materials",
     customerProgram:"standard",
-    accountExecutiveUserId:null,
-    resaleUserId:null,
+    accountExecutiveUserId:$accountExecutiveUserId,
+    resaleUserId:$resaleUserId,
     serviceOverview:$serviceOverview
   }' > "$CREATE_PAYLOAD"
 
@@ -500,6 +508,113 @@ jq -e --arg id "$ENGAGEMENT_ID" --arg owner "$SA_USER_ID" --argjson revision "$G
 ' "$READBACK_RESPONSE" >/dev/null \
   || fail 'Module 025 persisted readback did not contain the exhaustive Cisco CallManager 14-to-15 P/D/I/V/R contract.'
 
+# Exercise the real saved-edit → confirmation → migration-106 retained-version
+# lifecycle against this same temporary authorized SOW. The edit changes only
+# reviewed phase effort, so it must not start a second AI generation request.
+SAVE_PAYLOAD="$WORK_DIR/module025-save-edited-phase.json"
+jq '{
+  expectedRevision: .engagement.revision,
+  customerId: .engagement.customerId,
+  customerName: .engagement.customerName,
+  customerEntryMode: .engagement.customerEntryMode,
+  commercialModel: .engagement.commercialModel,
+  customerProgram: .engagement.customerProgram,
+  accountExecutiveUserId: .engagement.accountExecutiveUserId,
+  resaleUserId: .engagement.resaleUserId,
+  serviceOverview: .engagement.serviceOverview,
+  phases: [.engagement.phases[] | {
+    phaseCode, finalHours: ((.finalHours // 0) + (if .phaseCode == "plan" then 1 else 0 end)),
+    objective, detailedActivities, technicalTasks, deliverables, customerResponsibilities,
+    usSignalResponsibilities, prerequisites, dependencies, assumptions, openQuestions,
+    acceptanceCriteria, validationSteps, risks, loeRationale
+  }]
+}' "$READBACK_RESPONSE" > "$SAVE_PAYLOAD"
+SAVE_RESPONSE="$EVIDENCE_DIR/module025-saved-edit-response.json"
+SAVE_RESULT="$(auth_request PUT "/api/module025/sow-gsd/$ENGAGEMENT_ID" "$SAVE_RESPONSE" "$SA_SESSION" 120 "$SAVE_PAYLOAD")"
+IFS='|' read -r SAVE_CURL_EXIT SAVE_STATUS <<<"$SAVE_RESULT"
+[[ "$SAVE_CURL_EXIT" == 0 && "$SAVE_STATUS" == 200 ]] \
+  || fail "Module 025 saved-edit API returned curl exit $SAVE_CURL_EXIT and HTTP $SAVE_STATUS."
+jq -e --argjson prior "$GENERATED_REVISION" '
+  .status == "module025_autosaved"
+  and .stateChanged == true
+  and (.revision | type == "number" and . > $prior)
+  and .requiresRegeneration == false
+' "$SAVE_RESPONSE" >/dev/null \
+  || fail 'Module 025 saved-edit receipt did not preserve the generated scope without requesting another generation.'
+SAVED_EDIT_REVISION="$(jq -r '.revision' "$SAVE_RESPONSE")"
+
+CONFIRM_RESPONSE="$EVIDENCE_DIR/module025-confirm-response.json"
+CONFIRM_RESULT="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/confirm" "$CONFIRM_RESPONSE" "$SA_SESSION" 120 '')"
+IFS='|' read -r CONFIRM_CURL_EXIT CONFIRM_STATUS <<<"$CONFIRM_RESULT"
+[[ "$CONFIRM_CURL_EXIT" == 0 && "$CONFIRM_STATUS" == 200 ]] \
+  || fail "Module 025 confirmation API returned curl exit $CONFIRM_CURL_EXIT and HTTP $CONFIRM_STATUS."
+jq -e --argjson prior "$SAVED_EDIT_REVISION" '
+  .status == "module025_confirmed" and .stateChanged == true and (.revision | type == "number" and . > $prior)
+' "$CONFIRM_RESPONSE" >/dev/null \
+  || fail 'Module 025 confirmation did not create an authorized reviewed state.'
+CONFIRMED_REVISION="$(jq -r '.revision' "$CONFIRM_RESPONSE")"
+
+RELEASE_PAYLOAD="$WORK_DIR/module025-release-version.json"
+jq -n --argjson expectedRevision "$CONFIRMED_REVISION" '{expectedRevision:$expectedRevision}' > "$RELEASE_PAYLOAD"
+VERSION_RESPONSE="$EVIDENCE_DIR/module025-retained-version-response.json"
+VERSION_RESULT="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/versions" "$VERSION_RESPONSE" "$SA_SESSION" 120 "$RELEASE_PAYLOAD")"
+IFS='|' read -r VERSION_CURL_EXIT VERSION_STATUS <<<"$VERSION_RESULT"
+[[ "$VERSION_CURL_EXIT" == 0 && "$VERSION_STATUS" == 200 ]] \
+  || fail "Module 025 retained-version API returned curl exit $VERSION_CURL_EXIT and HTTP $VERSION_STATUS."
+jq -e '.status == "module025_version_released" and .stateChanged == true and (.version.versionId | type == "string")' "$VERSION_RESPONSE" >/dev/null \
+  || fail 'Module 025 did not retain the reviewed SOW/GSD bytes.'
+VERSION_ID="$(jq -r '.version.versionId' "$VERSION_RESPONSE")"
+VERSION_SOW_SHA="$(jq -r '.version.sowSha256' "$VERSION_RESPONSE")"
+VERSION_GSD_SHA="$(jq -r '.version.gsdSha256' "$VERSION_RESPONSE")"
+
+VERSION_REPEAT_RESPONSE="$EVIDENCE_DIR/module025-retained-version-repeat-response.json"
+VERSION_REPEAT_RESULT="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/versions" "$VERSION_REPEAT_RESPONSE" "$SA_SESSION" 120 "$RELEASE_PAYLOAD")"
+IFS='|' read -r VERSION_REPEAT_CURL_EXIT VERSION_REPEAT_STATUS <<<"$VERSION_REPEAT_RESULT"
+[[ "$VERSION_REPEAT_CURL_EXIT" == 0 && "$VERSION_REPEAT_STATUS" == 200 ]] \
+  || fail "Module 025 repeated retain request returned curl exit $VERSION_REPEAT_CURL_EXIT and HTTP $VERSION_REPEAT_STATUS."
+jq -e --arg id "$VERSION_ID" '.stateChanged == false and .version.versionId == $id' "$VERSION_REPEAT_RESPONSE" >/dev/null \
+  || fail 'Repeated retention created a duplicate immutable version.'
+
+VERSIONS_RESPONSE="$EVIDENCE_DIR/module025-retained-versions-readback.json"
+VERSIONS_RESULT="$(auth_get_with_transient_retry "/api/module025/sow-gsd/$ENGAGEMENT_ID/versions?page=1" "$VERSIONS_RESPONSE" "$SA_SESSION" 'retained-versions-readback')"
+IFS='|' read -r VERSIONS_CURL_EXIT VERSIONS_STATUS <<<"$VERSIONS_RESULT"
+[[ "$VERSIONS_CURL_EXIT" == 0 && "$VERSIONS_STATUS" == 200 ]] \
+  || fail "Module 025 retained-version readback returned curl exit $VERSIONS_CURL_EXIT and HTTP $VERSIONS_STATUS."
+jq -e --arg id "$VERSION_ID" '
+  ([.versions[] | select(.versionId == $id)] | length) == 1
+  and ([.versions[] | select(.versionId == $id) | .firstSowServedAt] | all(. == null))
+' "$VERSIONS_RESPONSE" >/dev/null \
+  || fail 'Module 025 retained-version readback did not expose exactly one unissued version before download.'
+
+download_twice() {
+  local artifact="$1" expected="$2" first second headers first_result second_result first_curl_exit first_status second_curl_exit second_status
+  first="$EVIDENCE_DIR/module025-${artifact}-download-1.bin"
+  second="$EVIDENCE_DIR/module025-${artifact}-download-2.bin"
+  headers="$EVIDENCE_DIR/module025-${artifact}-download-headers.txt"
+  first_result="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID/versions/$VERSION_ID/$artifact" "$first" "$SA_SESSION" 120 '' "$headers")"
+  IFS='|' read -r first_curl_exit first_status <<<"$first_result"
+  [[ "$first_curl_exit" == 0 && "$first_status" == 200 ]] \
+    || fail "$artifact first download returned curl exit $first_curl_exit and HTTP $first_status."
+  second_result="$(auth_request GET "/api/module025/sow-gsd/$ENGAGEMENT_ID/versions/$VERSION_ID/$artifact" "$second" "$SA_SESSION" 120 '')"
+  IFS='|' read -r second_curl_exit second_status <<<"$second_result"
+  [[ "$second_curl_exit" == 0 && "$second_status" == 200 ]] \
+    || fail "$artifact repeated download returned curl exit $second_curl_exit and HTTP $second_status."
+  [[ "$(sha256sum "$first" | awk '{print $1}')" == "$expected" ]] || fail "$artifact first download failed retained hash verification."
+  [[ "$(sha256sum "$second" | awk '{print $1}')" == "$expected" ]] || fail "$artifact repeated download changed retained bytes."
+}
+download_twice sow.docx "$VERSION_SOW_SHA"
+download_twice gsd.xlsx "$VERSION_GSD_SHA"
+
+VERSIONS_AFTER_DOWNLOAD_RESPONSE="$EVIDENCE_DIR/module025-retained-versions-after-download-readback.json"
+auth_get_with_transient_retry "/api/module025/sow-gsd/$ENGAGEMENT_ID/versions?page=1" "$VERSIONS_AFTER_DOWNLOAD_RESPONSE" "$SA_SESSION" 'retained-versions-after-download-readback' >/dev/null
+jq -e --arg id "$VERSION_ID" '
+  ([.versions[] | select(.versionId == $id)] | length) == 1
+  and ([.versions[] | select(.versionId == $id) | .firstSowServedAt] | length) == 1
+  and ([.versions[] | select(.versionId == $id) | .firstGsdServedAt] | length) == 1
+' "$VERSIONS_AFTER_DOWNLOAD_RESPONSE" >/dev/null \
+  || fail 'Repeated retained downloads did not leave one first-issuance receipt for each artifact.'
+echo 'MODULE025_RETAINED_VERSION_API_LIFECYCLE=PASS'
+
 ACTIVE_LIST="$EVIDENCE_DIR/module025-active-list-readback.json"
 ACTIVE_LIST_RESULT="$(auth_get_with_transient_retry "/api/module025/sow-gsd?state=active&ownerUserId=$SA_USER_ID" "$ACTIVE_LIST" "$SA_SESSION" 'active-list-readback')"
 IFS='|' read -r ACTIVE_LIST_CURL_EXIT ACTIVE_LIST_STATUS <<<"$ACTIVE_LIST_RESULT"
@@ -508,9 +623,9 @@ IFS='|' read -r ACTIVE_LIST_CURL_EXIT ACTIVE_LIST_STATUS <<<"$ACTIVE_LIST_RESULT
 jq -e --arg id "$ENGAGEMENT_ID" '
   .status == "module025_engagements_loaded"
   and .state == "active"
-  and any(.engagements[]?; .engagementId == $id and .status == "review_ready" and .isActive == true)
+  and any(.engagements[]?; .engagementId == $id and .status == "confirmed" and .isActive == true)
 ' "$ACTIVE_LIST" >/dev/null \
-  || fail 'Module 025 active queue did not expose the persisted review-ready SOW/GSD.'
+  || fail 'Module 025 active queue did not expose the persisted confirmed SOW/GSD.'
 
 archive_fixture
 [[ "$ARCHIVED" == true ]] || fail 'Module 025 generated fixture was not archived.'
@@ -540,6 +655,11 @@ jq -n \
   --argjson generationPollAttempts "$GENERATION_POLL_ATTEMPTS" \
   --arg generationResponseServer "$GENERATE_RESPONSE_SERVER" \
   --arg correlationId "$(jq -r '.correlationId' "$GENERATION_RESPONSE")" \
+  --argjson savedEditRevision "$SAVED_EDIT_REVISION" \
+  --argjson confirmedRevision "$CONFIRMED_REVISION" \
+  --arg retainedVersionId "$VERSION_ID" \
+  --arg retainedSowSha256 "$VERSION_SOW_SHA" \
+  --arg retainedGsdSha256 "$VERSION_GSD_SHA" \
   --argjson suggestedHours "$(jq -r '[.engagement.phases[].suggestedHours] | add' "$READBACK_RESPONSE")" \
   '{
     status:"passed",
@@ -557,8 +677,17 @@ jq -n \
     generateStatus:"module025_detailed_scope_generated",
     targetDecisions:$targetDecisions,
     draftProvider:([$targetDecisions[] | select((.Target == "deepseek_v4" or .Target == "celar_ai") and .Outcome == "used") | .Target] | first),
-    readbackStatus:"review_ready",
+    readbackStatus:"confirmed",
     generatedRevision:$generatedRevision,
+    savedEditRevision:$savedEditRevision,
+    confirmedRevision:$confirmedRevision,
+    retainedVersionId:$retainedVersionId,
+    retainedVersionNumber:1,
+    retainedSowSha256:$retainedSowSha256,
+    retainedGsdSha256:$retainedGsdSha256,
+    repeatedRetentionStateChanged:false,
+    repeatedDownloadsPreservedBytes:true,
+    firstIssuanceRowsPerArtifact:1,
     generationQueueElapsedSeconds:$generationQueueElapsedSeconds,
     generationTotalElapsedSeconds:$generationTotalElapsedSeconds,
     generationPollAttempts:$generationPollAttempts,
@@ -577,4 +706,4 @@ jq -n \
     privateRuntimeConfigurationMutation:false
   }' > "$EVIDENCE_DIR/module025-sow-gsd-protected-test-uat.json"
 
-echo "MODULE025_SOW_GSD_PROTECTED_TEST_UAT=PASS identity=$SA_EMAIL authorization=exact-run-non-persistent-solution-architect-fixture engagement=$ENGAGEMENT_NUMBER example=cisco-callmanager-14-to-15 minimumWorkPackages=10 phases=plan,design,implement,validate,release state=review_ready cleanup=archived"
+echo "MODULE025_SOW_GSD_PROTECTED_TEST_UAT=PASS identity=$SA_EMAIL authorization=exact-run-non-persistent-solution-architect-fixture engagement=$ENGAGEMENT_NUMBER example=cisco-callmanager-14-to-15 minimumWorkPackages=10 phases=plan,design,implement,validate,release state=confirmed retainedVersion=1 repeatedDownloads=stable cleanup=archived"

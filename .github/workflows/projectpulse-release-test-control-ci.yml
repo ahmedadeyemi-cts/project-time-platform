@@ -192,6 +192,9 @@ jobs:
               fail 'Temporary recovery or publisher artifacts are forbidden from the clean release.'
             fi
             echo 'EXACT_SHARED_PROJECT_DOCUMENT_PLANNING_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' ]]; then
+            node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+            echo 'MODULE025_SOW_SELL_REGISTER_NONDEPLOYMENT_SCOPE=PASSED'
           elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
             grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-pr734-governed-release-files.txt | LC_ALL=C sort -u > "$CIT/flowhive-pr734-files"
             cmp -s "$CIT/diff" "$CIT/flowhive-pr734-files" || {

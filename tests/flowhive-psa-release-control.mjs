@@ -39,6 +39,21 @@ export const repairFiles = [
 export const repairBase = '55ebb51fda1917f202ce6561ed5f5e635468d01c';
 export const reviewedRegenerationBase = '7e5c378dcb15b2b2a00511fa69f90d2411eec336';
 export const reviewedRegenerationBranch = 'fix/flowhive-reviewed-regeneration-control-20260907';
+export const candidateRefreshBase = '4871d47fbeaad0fd5c08ddca27f193d682a0ea92';
+export const candidateRefreshBranch = 'fix/flowhive-protected-test-candidate-refresh-20260908';
+export const candidateRefreshFiles = [
+  '.github/flowhive-psa-protected-test-candidate.json',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const sourceBaseCorrectionBase = '040709cdac0a940ad8feffbd730f1be35ce50280';
+export const sourceBaseCorrectionBranch = 'fix/flowhive-admission-source-base-20260908';
+export const sourceBaseCorrectionFiles = [
+  '.github/flowhive-psa-protected-test-candidate.json',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
 export const reviewedRegenerationFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/workflows/projectpulse-deploy-test.yml',
@@ -76,13 +91,21 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','source-base-correction'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
     assert.equal(context?.branch, reviewedRegenerationBranch, 'Wrong reviewed regeneration control branch.');
   }
-  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : reviewedRegenerationFiles;
+  if (mode === 'candidate-refresh') {
+    assert.equal(context?.base, candidateRefreshBase, 'Candidate refresh must be based on the reviewed current main.');
+    assert.equal(context?.branch, candidateRefreshBranch, 'Wrong candidate refresh control branch.');
+  }
+  if (mode === 'source-base-correction') {
+    assert.equal(context?.base, sourceBaseCorrectionBase, 'Source-base correction must be based on the trusted candidate-refresh main.');
+    assert.equal(context?.branch, sourceBaseCorrectionBranch, 'Wrong source-base correction control branch.');
+  }
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : sourceBaseCorrectionFiles;
   assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
@@ -111,8 +134,10 @@ export function validate() {
     head: git('rev-parse', 'HEAD') };
   const isRepair = event?.number === 876;
   const isReviewedRegeneration = process.env.GITHUB_HEAD_REF === reviewedRegenerationBranch;
+  const isCandidateRefresh = process.env.GITHUB_HEAD_REF === candidateRefreshBranch;
+  const isSourceBaseCorrection = process.env.GITHUB_HEAD_REF === sourceBaseCorrectionBranch;
   verifyFiles(changed, manifest,
-    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : 'initial', context);
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.

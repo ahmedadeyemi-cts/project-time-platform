@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <Module025SowSellGeneratedDirectory>$(MSBuildProjectDirectory)/obj/module025-sow-sell</Module025SowSellGeneratedDirectory>
+    <Module025SowSellGenerated>$(Module025SowSellGeneratedDirectory)/Module025SowGsdModule.g.cs</Module025SowSellGenerated>
+  </PropertyGroup>
+  <Target Name="GenerateModule025SowSellSources"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="GenerateScopedRbacSources">
+    <MakeDir Directories="$(Module025SowSellGeneratedDirectory)" />
+    <Exec Command="python3 &quot;$(MSBuildProjectDirectory)/build/generate-module025-sow-sell.py&quot; --source &quot;$(MSBuildProjectDirectory)/Modules/Module025SowGsdModule.cs&quot; --output &quot;$(Module025SowSellGenerated)&quot; --program &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <ItemGroup>
+      <Compile Remove="Modules/Module025SowGsdModule.cs" />
+      <Compile Include="$(Module025SowSellGenerated)" />
+    </ItemGroup>
+  </Target>
+</Project>

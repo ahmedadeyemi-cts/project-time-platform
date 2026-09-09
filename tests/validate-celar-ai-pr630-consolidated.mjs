@@ -89,6 +89,13 @@ const celarInternalTrustEvidenceCompatibilityMode =
 const deepSeekProviderMode = branchName === 'feature/deepseek-v4-dgx-primary-20260904';
 const customerPublicAnswerMode = branchName === 'fix/celar-public-answer-fallback-20260906';
 const enterpriseRetrievalMode = branchName === 'feature/celar-enterprise-retrieval-20260906' || branchName === 'fix/celar-enterprise-synthesis-20260906';
+const module025SowSellCompatibilityMode =
+  branchName === 'feat/module025-sow-sell-versioned-register-20260908'
+  || (currentSourceDiffPaths.includes('.github/module025-sow-sell-governed-release-files.txt')
+    && currentSourceDiffPaths.includes('database/migrations/106_module025_sow_sell_register.sql'));
+const module025SowSellPaths = module025SowSellCompatibilityMode
+  ? new Set(require('node:fs').readFileSync('.github/module025-sow-sell-governed-release-files.txt', 'utf8').split(/\r?\n/).filter(Boolean))
+  : new Set();
 if (enterpriseRetrievalMode) await import('./validate-celar-enterprise-retrieval-scope.mjs');
 if (customerPublicAnswerMode) await import('./validate-celar-customer-public-answer-scope.mjs');
 if (deepSeekProviderMode) await import('./validate-deepseek-release-scope.mjs');
@@ -178,6 +185,7 @@ const scopedCompatibilityMode = flowHivePsaControlMode || flowHiveEnterprisePsaM
   || sharedProjectDocumentPlanningCompatibilityMode
   || flowHiveLivePlannerDocumentDeleteCompatibilityMode
   || internalEnterpriseFactsCompatibilityMode
+  || module025SowSellCompatibilityMode
   || module025ProtectedUatCompatibilityMode
   || protectedUatValidationDefectsCompatibilityMode
   || celarInternalTrustEvidenceCompatibilityMode
@@ -213,7 +221,9 @@ const pr630AllowedExact = new Set([
   'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
 ]);
 const isPr630ScopedPath = (line) =>
-  pr630AllowedExact.has(line) || pr630AllowedPrefixes.some((prefix) => line.startsWith(prefix));
+  pr630AllowedExact.has(line)
+  || pr630AllowedPrefixes.some((prefix) => line.startsWith(prefix))
+  || (module025SowSellCompatibilityMode && module025SowSellPaths.has(line));
 
 childProcess.execFileSync = function governedExecFileSync(file, args = [], options = {}) {
   const result = originalExecFileSync(file, args, options);
@@ -255,6 +265,8 @@ if (internalEnterpriseFactsCompatibilityMode)
   console.log('CELAR_PR630_INTERNAL_ENTERPRISE_FACTS_COMPATIBILITY=PASS');
 if (module025ProtectedUatCompatibilityMode)
   console.log('CELAR_PR630_MODULE025_PROTECTED_UAT_COMPATIBILITY=PASS');
+if (module025SowSellCompatibilityMode)
+  console.log('CELAR_PR630_MODULE025_SOW_SELL_COMPATIBILITY=PASS');
 if (protectedUatValidationDefectsCompatibilityMode)
   console.log('CELAR_PR630_PROTECTED_UAT_VALIDATION_DEFECTS_COMPATIBILITY=PASS');
 if (celarInternalTrustEvidenceCompatibilityMode)

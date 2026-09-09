@@ -138,7 +138,18 @@ const allowedExact = new Set([
   'src/backend/ProjectTime.Api/Directory.Build.targets',
   'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
 ]);
-const unexpected = changed.filter((file) => !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix)));
+const module025SowSellScope = changed.includes('.github/module025-sow-sell-governed-release-files.txt')
+  && changed.includes('database/migrations/106_module025_sow_sell_register.sql');
+const module025SowSellBaselinePaths = [requiredFiles[0], requiredFiles[1]];
+const module025SowSellPaths = module025SowSellScope
+  ? new Set(read('.github/module025-sow-sell-governed-release-files.txt').split(/\r?\n/).filter(Boolean))
+  : new Set();
+const unexpected = changed.filter((file) => {
+  if (module025SowSellScope) {
+    return !module025SowSellPaths.has(file) && !module025SowSellBaselinePaths.includes(file);
+  }
+  return !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix));
+});
 requireValue(unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
 requireValue(changed.includes(requiredFiles[0]) && changed.includes(requiredFiles[1]), 'CELAR_PR630_MIGRATION_SCOPE', 'Migration 084 and guarded rollback');
 requireValue(!changed.includes('.github/workflows/celar-ai-source-snapshot-temp.yml'), 'CELAR_PR630_TEMP_SNAPSHOT_REMOVED');
