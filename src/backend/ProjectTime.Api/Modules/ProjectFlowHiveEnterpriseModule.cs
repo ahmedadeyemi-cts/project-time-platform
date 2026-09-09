@@ -550,7 +550,8 @@ internal static class ProjectFlowHiveEnterpriseModule
         var expiresAt = DateTimeOffset.UtcNow.AddDays(expirationDays);
         var allowedArtifacts = (request.AllowedArtifacts ?? ["view", "pdf"])
             .Select(value => value?.Trim().ToLowerInvariant() ?? string.Empty)
-            .Where(value => value is "view" or "pdf")
+            .Select(value => value == "meeting_recordings" ? "meetings" : value)
+            .Where(value => value is "view" or "pdf" or "meetings")
             .Distinct()
             .DefaultIfEmpty("view")
             .ToArray();
