@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readEffectiveBuildTargets } from './read-effective-build-targets.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
@@ -23,7 +24,7 @@ const flowHiveFactory = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'Pr
 const projectForge = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'ProjectForgeModule.cs');
 const planningOrchestrator = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'ProjectPlanningAiOrchestrator.cs');
 const helpUi = read('src', 'frontend', 'project-time-web', 'src', 'HelpAssistant.jsx');
-const transforms = read('src', 'backend', 'ProjectTime.Api', 'Directory.Build.targets');
+const transforms = readEffectiveBuildTargets(repositoryRoot).text;
 const packageJson = fs.readFileSync(path.join(webRoot, 'package.json'), 'utf8');
 
 const checks = [];

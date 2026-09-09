@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readEffectiveBuildTargets } from './read-effective-build-targets.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
@@ -35,14 +36,10 @@ const projectIntake = readBackend('Modules', 'ProjectIntakeModule.cs');
 const brandModule = readBackend('Modules', 'CelarAiBrandModule.cs');
 const secretStore = readBackend('Ai', 'ProjectPulseAiSecretStore.cs');
 const aiDatabaseConnection = readBackend('Ai', 'ProjectPulseAiDatabaseConnection.cs');
-// Directory.Build.targets is an import boundary on Module 025 branches. Read
-// the effective imported targets as well; validating only the wrapper can
-// falsely report that reviewed generated-source safeguards are absent.
-const buildTransforms = [
-  readBackend('Directory.Build.targets'),
-  readBackend('build', 'PlatformRuntime.targets'),
-  readBackend('build', 'Module025SowSell.targets')
-].join('\n');
+// Directory.Build.targets is an import boundary on Module 025 branches. Resolve
+// only its exact direct imports so disconnected target snapshots cannot satisfy
+// compiler-safety assertions.
+const buildTransforms = readEffectiveBuildTargets(repositoryRoot).text;
 const releaseRuntimeVerifier = readRepository('scripts', 'release-test', 'verify-runtime.mjs');
 
 const checks = [];

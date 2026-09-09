@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertImportedTargetMarkers, readEffectiveBuildTargets } from './read-effective-build-targets.mjs';
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = path.resolve(webRoot, '..', '..', '..');
@@ -13,18 +14,33 @@ const requireText = (source, value, message) => assert.ok(source.includes(value)
 const directoryTargets = backend('Directory.Build.targets');
 const platformTargets = backend('build', 'PlatformRuntime.targets');
 const sowTargets = backend('build', 'Module025SowSell.targets');
-const effectiveTargets = [directoryTargets, platformTargets, sowTargets].join('\n');
+const effective = readEffectiveBuildTargets(repositoryRoot);
+const effectiveTargets = effective.text;
 const generator = backend('build', 'generate-module025-sow-sell.py');
 const migration = read('database', 'migrations', '106_module025_sow_sell_register.sql');
+const migrationTest = read('tests', 'test-module025-sow-sell-register-migration-106.sh');
 const module = backend('Modules', 'Module025SowSellModule.cs');
 const worker = backend('Modules', 'Module025SowSellWorker.cs');
 const policy = backend('Modules', 'Module025SowSellPolicy.cs');
+const protectedUat = read('scripts', 'release-test', 'run-module025-sow-gsd-protected-test-uat.sh');
+const browserLifecycle = read('tests', 'module025-sow-register-browser.py');
 const editor = frontend('src', 'module025', 'SowGsdAuthoringWorkspace.jsx');
 const shell = frontend('src', 'module025', 'SowGsdWorkspace.jsx');
 const register = frontend('src', 'module025', 'SowRegister.jsx');
 
 requireText(directoryTargets, '<Import Project="$(MSBuildProjectDirectory)/build/PlatformRuntime.targets" />', 'Directory.Build.targets must import the effective platform targets');
 requireText(directoryTargets, '<Import Project="$(MSBuildProjectDirectory)/build/Module025SowSell.targets" />', 'Directory.Build.targets must import the Module 025 generated-source bridge');
+assertImportedTargetMarkers(effective.sources, {
+  'src/backend/ProjectTime.Api/build/PlatformRuntime.targets': [
+    'GenerateWithPrivateTargetAsync',
+    'ExternalFactCodes: externalFactCodes',
+    'DestinationFiles="$(CelarAiTimesheetGenerated)"'
+  ],
+  'src/backend/ProjectTime.Api/build/Module025SowSell.targets': [
+    'GenerateModule025SowSellSources',
+    'Compile Include="$(Module025SowSellGenerated)"'
+  ]
+});
 requireText(effectiveTargets, 'GenerateWithPrivateTargetAsync', 'effective targets must preserve the reviewed private-target route');
 requireText(effectiveTargets, 'ExternalFactCodes: externalFactCodes', 'effective targets must preserve the closed external fact-code capsule');
 requireText(effectiveTargets, 'SourceFiles="$(MSBuildProjectDirectory)/ProjectPulseAiTimeEntrySuggestionService.cs"', 'effective targets must copy the canonical Timesheet source');
@@ -73,6 +89,16 @@ for (const marker of [
 ]) requireText(migration, marker, `migration 106 contract missing: ${marker}`);
 
 for (const marker of [
+  '001_initial_schema.sql',
+  '099_module025_sow_gsd_workspace.sql',
+  '106_module025_sow_sell_register.sql',
+  'ON CONFLICT (version_id,artifact_kind) DO NOTHING',
+  'repeated_downloads_one_first_issuance_each',
+  'mismatched receipt was not rejected',
+  'MODULE025_SOW_SELL_REGISTER_MIGRATION_106=PASS'
+]) requireText(migrationTest, marker, `migration 106 database test missing: ${marker}`);
+
+for (const marker of [
   'CaptureConfirmedSowVersionAsync',
   'ContentSha256 == fingerprint',
   'ON CONFLICT (version_id,artifact_kind) DO NOTHING',
@@ -88,6 +114,25 @@ for (const marker of [
   'module025_sow_sell_notification_outbox'
 ]) requireText(worker, marker, `SELL worker safety interaction missing: ${marker}`);
 requireText(policy, 'SELL_DOCUMENT_WRITE_ADAPTER_REQUIRED', 'SELL must remain explicitly adapter-gated');
+for (const marker of [
+  'auth_request PUT "/api/module025/sow-gsd/$ENGAGEMENT_ID"',
+  'auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/confirm"',
+  'auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/versions"',
+  'VERSION_REPEAT_RESPONSE',
+  'download_twice sow.docx',
+  'download_twice gsd.xlsx',
+  'sha256sum "$first"',
+  'MODULE025_RETAINED_VERSION_API_LIFECYCLE=PASS'
+]) requireText(protectedUat, marker, `Protected-Test retained-version lifecycle missing: ${marker}`);
+for (const marker of [
+  'SOW Register & SELL',
+  'Download SOW v1',
+  'Download GSD v1',
+  'File integrity',
+  'await page.reload',
+  'generation_posts',
+  'MODULE025_REGISTER_BROWSER_DISPLAY=PASS'
+]) requireText(browserLifecycle, marker, `Module 025 retained-version browser lifecycle missing: ${marker}`);
 
 console.log('MODULE025_EFFECTIVE_GENERATED_SOURCES=PASSED');
 console.log('MODULE025_ORIGINAL_EDITOR_AND_REGISTER=PASSED');

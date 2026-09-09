@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readEffectiveBuildTargets } from './read-effective-build-targets.mjs';
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const read = (relative) => fs.readFileSync(path.join(repository, relative), 'utf8');
@@ -30,7 +31,7 @@ const privateRagService = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRag
 const privateRetrievalAuthorization = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalAuthorizationService.cs');
 const knowledgeFabric = read('src/backend/ProjectTime.Api/Ai/CelarAiKnowledgeFabricService.cs');
 const externalReasoning = read('src/backend/ProjectTime.Api/Ai/CelarAiExternalReasoningService.cs');
-const compileTargets = read('src/backend/ProjectTime.Api/Directory.Build.targets');
+const compileTargets = readEffectiveBuildTargets(repository).text;
 const migration = read('database/migrations/070_module_033_project_forge.sql');
 
 const workbookTabs = [

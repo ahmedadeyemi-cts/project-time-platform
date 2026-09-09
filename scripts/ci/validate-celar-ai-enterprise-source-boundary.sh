@@ -104,6 +104,7 @@ elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
 elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' ]]; then
   ALLOWED_DATABASE='^database/migrations/106_module025_sow_sell_register\.sql$'
   node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+  bash tests/test-module025-sow-sell-register-migration-106.sh
   publish_mode MODULE025_SOW_SELL_REGISTER
 elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then
   ALLOWED_DATABASE='^(database/migrations/(070_module_033_project_forge|073_module_033_project_forge_interactive)\.sql|database/rollback/(070_module_033_project_forge_rollback|073_module_033_project_forge_interactive_rollback)\.sql)$'

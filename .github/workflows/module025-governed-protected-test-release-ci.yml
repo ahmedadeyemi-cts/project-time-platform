@@ -63,6 +63,7 @@ jobs:
               exit 1
             }
             node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+            bash tests/test-module025-sow-sell-register-migration-106.sh
             node tests/validate-systemwide-enterprise-reliability.mjs
             node tests/validate-systemwide-image-build-controller.mjs
             echo 'MODULE025_SOW_SELL_EXACT_GOVERNED_SCOPE=PASSED'
