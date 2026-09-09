@@ -43,7 +43,7 @@ test('source drift allows only reviewed control paths; application drift is reje
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
   const reviewedMain = 'bf401fa1d017eae0ebf10c9ed79720829ce8de60';
-  const candidate = '8c0a75c5bc0525e5ea196f843b957d3504723db6';
+  const candidate = '6ab691c3885ca9098561d5a9fd989bb947549e2c';
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   verifySourceDrift(successorApprovalFiles, files);

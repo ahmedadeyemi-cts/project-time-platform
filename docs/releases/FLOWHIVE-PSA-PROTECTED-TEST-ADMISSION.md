@@ -12,7 +12,7 @@ The repository owner may post this exact command on PR #887 after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 8c0a75c5bc0525e5ea196f843b957d3504723db6
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 6ab691c3885ca9098561d5a9fd989bb947549e2c
 ```
 
 The admission workflow executes main-owned code only. It checks the exact open PR #887,
