@@ -6,6 +6,7 @@ const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 const knownNonexecutingRun = 33654881418;
 const dispatchSha = /^[a-f0-9]{40}$/;
+export const githubApiVersion = '2022-11-28';
 export function parseCommand(text) {
   const match = /^DEPLOY FLOWHIVE PSA PROTECTED TEST SHA ([0-9a-f]{40})$/.exec(text);
   assert.ok(match && match[0] === text, 'The candidate command must be exact.');
@@ -14,10 +15,11 @@ export function parseCommand(text) {
 export function buildDispatchRequest(candidateSha) {
   assert.match(candidateSha, dispatchSha, 'The submitted candidate SHA must be complete.');
   return {
-    path: `actions/workflows/${workflowId}/dispatches?return_run_details=true`,
+    path: `actions/workflows/${workflowId}/dispatches`,
     method: 'POST',
     body: {
       ref: 'main',
+      return_run_details: true,
       inputs: { release_sha: candidateSha, release_branch: candidateBranch, recover_private_runtime: false }
     }
   };
@@ -29,6 +31,13 @@ export function verifyDispatchInputs(inputs, candidateSha) {
     release_branch: candidateBranch,
     recover_private_runtime: false
   }, 'The submitted dispatch inputs must remain bound to the admitted candidate.');
+}
+export function verifyDispatchRequest(dispatch, candidateSha) {
+  assert.equal(dispatch.path, `actions/workflows/${workflowId}/dispatches`);
+  assert.equal(dispatch.method, 'POST');
+  assert.equal(dispatch.body.return_run_details, true, 'The documented receipt option must be a JSON body parameter.');
+  verifyDispatchInputs(dispatch.body.inputs, candidateSha);
+  return dispatch;
 }
 export function verifyDispatchReceipt(receipt) {
   const runId = Number(receipt?.workflow_run_id);
@@ -51,9 +60,23 @@ export function verifyDispatchedRun(run, controlSha, candidateSha, createdAfter,
     'The workflow run must have a server-provided title; its value is not candidate identity.');
   return expectedRunId;
 }
+export function buildRequest(path, method = 'GET', body, token = process.env.GH_TOKEN) {
+  const init = {
+    method,
+    redirect: 'error',
+    signal: AbortSignal.timeout(30000),
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': githubApiVersion
+    }
+  };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  return { url: `https://api.github.com/repos/${repository}/${path}`, init };
+}
 export async function dispatchOnce(api, candidateSha, controlSha, createdAfter) {
-  const dispatch = buildDispatchRequest(candidateSha);
-  verifyDispatchInputs(dispatch.body.inputs, candidateSha);
+  const dispatch = verifyDispatchRequest(buildDispatchRequest(candidateSha), candidateSha);
   const receipt = await api(dispatch.path, dispatch.method, dispatch.body);
   const runId = verifyDispatchReceipt(receipt);
   const run = await api(`actions/runs/${runId}`);
@@ -61,12 +84,8 @@ export async function dispatchOnce(api, candidateSha, controlSha, createdAfter) 
   return { runId, run, candidateSha, controlSha };
 }
 async function request(path, method = 'GET', body) {
-  const response = await fetch(`https://api.github.com/repos/${repository}/${path}`, {
-    method, redirect: 'error', signal: AbortSignal.timeout(30000),
-    headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
-    ...(body ? { body: JSON.stringify(body) } : {})
-  });
+  const { url, init } = buildRequest(path, method, body);
+  const response = await fetch(url, init);
   assert.ok(response.ok, `GitHub dispatch operation failed: HTTP ${response.status}`);
   return response.status === 204 ? null : response.json();
 }
