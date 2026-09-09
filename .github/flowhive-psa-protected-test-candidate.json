@@ -1,10 +1,10 @@
 {
   "contract": "flowhive-psa-protected-test-candidate-v1",
   "repository": "ahmedadeyemi-cts/project-time-platform",
-  "pullRequest": 872,
-  "branch": "feature/flowhive-enterprise-psa-revamp-20260906",
-  "sha": "b4a976751eb2cb5bc68c6a7057ca28148f1cf58a",
-  "sourceBase": "4871d47fbeaad0fd5c08ddca27f193d682a0ea92",
+  "pullRequest": 887,
+  "branch": "release/flowhive-sow-successor-20260908",
+  "sha": "c6efce9a4918ac6674fa292586348a5aa8be2b91",
+  "sourceBase": "bf401fa1d017eae0ebf10c9ed79720829ce8de60",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -48,6 +48,10 @@
     {
       "file": "105_flowhive_reviewed_regeneration.sql",
       "sha256": "64c1a1c0ca77816207be2d0c873367c8e6d3a61a38cc41b1df88923774da688e"
+    },
+    {
+      "file": "106_module025_sow_sell_register.sql",
+      "sha256": "7b0db0d4b2851344edcc5cc2703f130c70d00460a5859065ca420ffdf14e1dd3"
     }
   ]
 }

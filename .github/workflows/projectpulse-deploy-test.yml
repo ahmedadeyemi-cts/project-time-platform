@@ -20,6 +20,7 @@ on:
       - 'database/migrations/096_project_planning_document_authority.sql'
       - 'database/migrations/097_project_planning_identity_safe_admission.sql'
       - 'database/migrations/105_flowhive_reviewed_regeneration.sql'
+      - 'database/migrations/106_module025_sow_sell_register.sql'
       - 'database/rollback/096_project_planning_document_authority_rollback.sql'
       - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
       - 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql'
@@ -54,7 +55,7 @@ on:
       release_branch:
         description: Exact authorized candidate branch
         required: true
-        default: fix/shared-project-document-planning-20260819
+        default: release/flowhive-sow-successor-20260908
         type: string
 
 permissions:
@@ -93,7 +94,7 @@ jobs:
 
     steps:
       - name: Check out trusted main control plane for the PSA candidate
-        if: github.event_name == 'workflow_dispatch' && inputs.release_branch == 'feature/flowhive-enterprise-psa-revamp-20260906'
+        if: github.event_name == 'workflow_dispatch' && inputs.release_branch == 'release/flowhive-sow-successor-20260908'
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.sha }}
@@ -136,7 +137,7 @@ jobs:
 
       - name: Admit the exact reviewed PSA candidate using trusted main controls
         id: psa_admission
-        if: github.event_name == 'workflow_dispatch' && inputs.release_branch == 'feature/flowhive-enterprise-psa-revamp-20260906'
+        if: github.event_name == 'workflow_dispatch' && inputs.release_branch == 'release/flowhive-sow-successor-20260908'
         working-directory: control
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -169,7 +170,7 @@ jobs:
               git fetch --no-tags origin main
               [[ "$(git rev-parse origin/main)" == "$TARGET_RELEASE_COMMIT" ]] \
                 || fail 'The requested merged-main SHA is not the current main branch head.'
-            elif [[ "$TARGET_RELEASE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+            elif [[ "$TARGET_RELEASE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
               [[ "$GITHUB_REF" == 'refs/heads/main' && "$PSA_RELEASE_AUTHORIZED" == 'true' ]] \
                 || fail 'The exact PSA candidate requires trusted main admission and passing exact-SHA CI.'
               [[ "$(git rev-parse HEAD)" == "$TARGET_RELEASE_COMMIT" ]] || fail 'PSA candidate identity changed.'
@@ -201,6 +202,7 @@ jobs:
             database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql \
             database/migrations/104_flowhive_bounded_ai_execution.sql \
             database/migrations/105_flowhive_reviewed_regeneration.sql \
+            database/migrations/106_module025_sow_sell_register.sql \
             database/rollback/096_project_planning_document_authority_rollback.sql \
             database/rollback/097_project_planning_identity_safe_admission_rollback.sql \
             database/rollback/103_module_066_flowhive_enterprise_psa_revamp_rollback.sql \
@@ -828,7 +830,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          if [[ "$TARGET_RELEASE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+          if [[ "$TARGET_RELEASE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
             [[ "$GITHUB_REF" == 'refs/heads/main' ]] || exit 1
             PROJECTPULSE_RELEASE_ROOT="$PWD" bash "$GITHUB_WORKSPACE/control/scripts/release-test/build-and-run-flowhive-psa-migrations.sh"
           fi
@@ -1812,9 +1814,9 @@ jobs:
             echo
             echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
             echo '- Environment: protected Test only'
-            if [[ "$TARGET_RELEASE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
-              echo '- Release lane: exact pre-merge PSA candidate; feature PR #872 remains unmerged'
-              [[ -f "$EVIDENCE_DIR/flowhive-psa-migrations.json" ]] && echo '- Migrations 103/104/105: applied and verified'
+            if [[ "$TARGET_RELEASE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
+              echo '- Release lane: exact pre-merge FlowHive/SOW successor candidate; PR #887 remains unmerged'
+              [[ -f "$EVIDENCE_DIR/flowhive-psa-migrations.json" ]] && echo '- Migrations 103/104/105/106: applied and verified'
               if jq -e '.status == "passed" and .functionalLifecycleVerified == true' "$EVIDENCE_DIR/flowhive-psa-live-uat.json" >/dev/null 2>&1; then
                 echo '- Live SOW-to-working-copy API and real browser reload: passed'
               else

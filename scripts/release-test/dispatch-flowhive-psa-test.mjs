@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { authorize, repository, candidateBranch } from './flowhive-psa-admission.mjs';
+import { authorize, repository, candidateBranch, candidatePullRequest } from './flowhive-psa-admission.mjs';
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
@@ -78,7 +78,7 @@ async function main() {
   assert.equal(process.env.GITHUB_EVENT_NAME, 'issue_comment');
   const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   assert.equal(event.action, 'created');
-  assert.equal(event.issue?.number, 872);
+  assert.equal(event.issue?.number, candidatePullRequest);
   assert.equal(event.comment?.user?.login, 'ahmedadeyemi-cts');
   assert.ok(event.issue.pull_request);
   const candidateSha = parseCommand(event.comment.body);
@@ -121,8 +121,8 @@ async function main() {
     assert.ok(resealed, 'Protected Test admissions did not reseal. Operator action is required.');
     console.log(`FLOWHIVE_PSA_DISPATCH_ATTEMPTED=${dispatchAttempted} RESEALED=${resealed}`);
   }
-  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nAdmissions resealed. Feature PR #872 remains unmerged. Live acceptance is not yet established.\n`);
-  await request('issues/872/comments', 'POST', {
+  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nAdmissions resealed. Feature PR #${candidatePullRequest} remains unmerged. Live acceptance is not yet established.\n`);
+  await request(`issues/${candidatePullRequest}/comments`, 'POST', {
     body: `Exact FlowHive candidate admission completed. Candidate \`${candidateSha}\`; trusted main controller \`${controlSha}\`. Protected Test deployment: https://github.com/${repository}/actions/runs/${dispatched.runId}. Admissions have been resealed; no Production/private-runtime recovery is requested. This is a deployment dispatch, not a live AI success or a completed enterprise PSA release.`
   });
   console.log(`FLOWHIVE_PSA_CANDIDATE_DISPATCHED=${dispatched.runId}`);

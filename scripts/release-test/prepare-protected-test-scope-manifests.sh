@@ -73,6 +73,20 @@ if [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
   node tests/validate-planner-fallback-build-release-scope.mjs
   echo 'deployment/containers/api/Dockerfile' >> "$CIT/allowed-release-files"
   echo 'tests/validate-planner-fallback-build-release-scope.mjs' >> "$CIT/allowed-release-files"
+elif [[ "$HEAD_BRANCH" == 'control/flowhive-sow-successor-approval-20260909' ]]; then
+  cat >> "$CIT/allowed-release-files" <<'FILES'
+.github/flowhive-psa-protected-test-candidate.json
+.github/flowhive-psa-release-control-files.txt
+.github/workflows/flowhive-psa-protected-test-admission.yml
+docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md
+scripts/release-test/apply-flowhive-psa-migrations.sh
+scripts/release-test/dispatch-flowhive-psa-test.mjs
+scripts/release-test/flowhive-psa-admission.mjs
+tests/flowhive-psa-admission.test.mjs
+tests/flowhive-psa-migration-fixture.py
+tests/flowhive-psa-release-control.mjs
+tests/flowhive-psa-release-workflow.test.py
+FILES
 fi
 LC_ALL=C sort -u "$CIT/allowed-release-files" -o "$CIT/allowed-release-files"
 

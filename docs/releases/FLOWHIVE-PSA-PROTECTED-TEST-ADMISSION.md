@@ -1,6 +1,6 @@
 # FlowHive PSA — exact pre-merge Protected Test admission
 
-This is a release-control change, not a merge or completion of feature PR #872.
+This is a release-control change, not a merge or completion of successor PR #887.
 It admits only the candidate pinned in `.github/flowhive-psa-protected-test-candidate.json`
 through the existing `.github/workflows/projectpulse-deploy-test.yml` controller.
 Production, private-runtime recovery, customer publication, baseline adoption and
@@ -8,15 +8,15 @@ canonical task mutations are not authorized by this approval.
 
 ## Admission
 
-The repository owner may post this exact command on PR #872 after these controls
+The repository owner may post this exact command on PR #887 after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA b4a976751eb2cb5bc68c6a7057ca28148f1cf58a
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA c6efce9a4918ac6674fa292586348a5aa8be2b91
 ```
 
-The admission workflow executes main-owned code only. It checks the exact open PR,
-repository, branch, candidate SHA, 22 required successful exact-SHA PR workflows,
+The admission workflow executes main-owned code only. It checks the exact open PR #887,
+repository, successor branch, candidate SHA, 22 required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
@@ -44,11 +44,13 @@ Candidate admission is independently repeated before its code is built. The
 trusted controller revision and candidate application revision are separate
 identities, both recorded in evidence.
 
-## Migrations 103/104/105
+## Migrations 103/104/105/106
 
 Approved migration bytes are selected from the exact candidate checkout and
 matched to the SHA-256 values in main approval. A separate migration image carries
 only those SQL files, checksums, exact release identity and the trusted entrypoint.
+For this successor approval, Module 025 migration 106 is included and verified
+against its recorded SHA-256 and dependency boundary before the migration job runs.
 The image is resolved to an immutable digest. The existing governed private-network
 migration runner supplies the approved Test UAMI, TLS database connection and
 Key Vault secret **references**, with exact job ownership and cleanup checks.
@@ -64,7 +66,7 @@ retained after a functional failure for diagnosis.
 
 ## Real functional acceptance
 
-The candidate lane replaces only the old long-running FlowHive/Forge acceptance
+The successor candidate lane replaces only the old long-running FlowHive/Forge acceptance
 step for this exact admission. Main and the older candidate retain their existing
 UAT behavior. The PSA lane does not enable or run the Module 025 authorization
 fixture; it reads the project's existing SOW instead. Existing assigned-work and
@@ -128,7 +130,8 @@ reviewed PR880 main merge already contained in the candidate. The PR874 merge
 remains an ancestor and is retained as historical repair evidence. Current main
 `040709cdac0a940ad8feffbd730f1be35ce50280` adds only the reviewed candidate-
 approval control delta; an application path is still rejected by source drift.
-PR872 remains draft and unmerged. Required exact-source CI now also includes
+PR872 and its frozen candidate remain historical reference material; PR887 remains
+draft and unmerged. Required exact-source CI now also includes
 the PSA admission/migration contract workflow (22 total).
 
 The failed previous candidate deployment `34068097426`, job `101580331315`,

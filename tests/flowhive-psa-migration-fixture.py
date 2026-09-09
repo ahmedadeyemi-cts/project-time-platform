@@ -68,7 +68,37 @@ assert os.environ.get('PGDATABASE')=='flowhive_migrations_test'
 assert os.environ.get('PGUSER')=='flowhive'
 assert os.environ.get('GITHUB_ACTIONS')=='true'
 approval=json.loads((root/'.github/flowhive-psa-protected-test-candidate.json').read_text())
-assert subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()==approval['sha']
+event=json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+pr=event.get('pull_request',{})
+successor_staging=os.environ.get('FLOWHIVE_MIGRATION_STAGING')=='successor'
+module025_staging=successor_staging or any(item['file']=='106_module025_sow_sell_register.sql' for item in approval['migrations'])
+selected_sha=approval['sha']
+migration_entries=approval['migrations']
+if successor_staging:
+    assert pr.get('head',{}).get('ref')=='release/flowhive-sow-successor-20260908'
+    assert os.environ.get('GITHUB_EVENT_NAME')=='pull_request'
+    assert pr['number']==887
+    assert pr['head']['repo']['full_name']=='ahmedadeyemi-cts/project-time-platform'
+    assert pr['head']['sha']==subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
+    assert approval['environment']=='test' and approval['sha'] != pr['head']['sha']
+    assert subprocess.run(['git','-C',str(root),'merge-base','--is-ancestor',approval['sourceBase'],pr['head']['sha']]).returncode==0
+    expected_files=[item['file'] for item in approval['migrations']]
+    assert expected_files==[
+        '103_module_066_flowhive_enterprise_psa_revamp.sql',
+        '104_flowhive_bounded_ai_execution.sql',
+        '105_flowhive_reviewed_regeneration.sql']
+    for item in approval['migrations']:
+        assert hashlib.sha256((source/'database/migrations'/item['file']).read_bytes()).hexdigest()==item['sha256']
+    successor_file='106_module025_sow_sell_register.sql'
+    successor_hash=hashlib.sha256((source/'database/migrations'/successor_file).read_bytes()).hexdigest()
+    migration_entries=[*approval['migrations'], {'file': successor_file, 'sha256': successor_hash}]
+    selected_sha=pr['head']['sha']
+elif pr.get('head',{}).get('ref')=='feature/flowhive-enterprise-psa-revamp-20260906':
+    assert os.environ.get('GITHUB_EVENT_NAME')=='pull_request'
+    assert pr['number']==872
+    assert pr['head']['repo']['full_name']=='ahmedadeyemi-cts/project-time-platform'
+    selected_sha=pr['head']['sha']
+assert subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()==selected_sha
 
 
 def sql(text,success=True):
@@ -94,6 +124,22 @@ CREATE TABLE project_flowhive_raid_items(raid_item_id UUID PRIMARY KEY,project_i
 INSERT INTO schema_migrations(migration_id) VALUES('086_module_066_flowhive_enterprise_pm');
 INSERT INTO projects VALUES('11111111-1111-4111-8111-111111111111');
 INSERT INTO app_users VALUES('22222222-2222-4222-8222-222222222222');''')
+if module025_staging:
+    # Model the already-reviewed Module 025 workspace migration so the exact
+    # 106 entrypoint is exercised against its real dependency boundary.
+    sql('''CREATE TABLE module025_sow_gsd_engagements(
+        engagement_id UUID PRIMARY KEY, owner_user_id UUID NOT NULL REFERENCES app_users(user_id),
+        engagement_number TEXT NOT NULL, customer_name TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'draft',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE, revision INTEGER NOT NULL DEFAULT 1,
+        sow_sections JSONB NOT NULL DEFAULT '{}', ai_metadata JSONB NOT NULL DEFAULT '{}');
+    CREATE TABLE module025_sow_gsd_phases(
+        engagement_id UUID NOT NULL REFERENCES module025_sow_gsd_engagements(engagement_id),
+        phase_code TEXT NOT NULL, sort_order SMALLINT NOT NULL, objective TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY(engagement_id, phase_code));
+    CREATE TABLE module025_sow_gsd_events(
+        event_id BIGSERIAL PRIMARY KEY, engagement_id UUID NOT NULL REFERENCES module025_sow_gsd_engagements(engagement_id),
+        event_type TEXT NOT NULL, actor_user_id UUID NOT NULL REFERENCES app_users(user_id),
+        engagement_revision INTEGER NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());''')
 sql(block('database/migrations/086_module_066_flowhive_enterprise_pm.sql','CREATE TABLE IF NOT EXISTS project_flowhive_working_copies ('))
 sql(block('database/migrations/095_project_planning_collaboration_access.sql','CREATE TABLE IF NOT EXISTS project_flowhive_ai_planner_runs ('))
 sql('''INSERT INTO project_flowhive_ai_planner_runs(run_id,project_id,status,phase,requested_plan,actual_actor_user_id,effective_actor_user_id)
@@ -104,7 +150,7 @@ payload=Path('/opt/projectpulse/release')
 assert payload.is_dir()
 (payload/'database/migrations').mkdir(parents=True,exist_ok=True)
 checks=[]
-for item in approval['migrations']:
+for item in migration_entries:
     rel='database/migrations/'+item['file']; data=(source/rel).read_bytes()
     assert hashlib.sha256(data).hexdigest()==item['sha256']
     (payload/rel).write_bytes(data);checks.append(item['sha256']+'  '+rel)
@@ -112,8 +158,8 @@ entry=(root/'scripts/release-test/apply-flowhive-psa-migrations.sh').read_bytes(
 (payload/'entrypoint.sh').write_bytes(entry)
 checks.append(hashlib.sha256(entry).hexdigest()+'  entrypoint.sh')
 (payload/'SHA256SUMS').write_text('\n'.join(checks)+'\n')
-(payload/'release-commit').write_text(approval['sha']+'\n')
-env={**os.environ,'MAIN_RELEASE_EXPECTED_RELEASE_COMMIT':approval['sha'],'MAIN_RELEASE_MIGRATION_MODE':'apply',
+(payload/'release-commit').write_text(selected_sha+'\n')
+env={**os.environ,'MAIN_RELEASE_EXPECTED_RELEASE_COMMIT':selected_sha,'MAIN_RELEASE_MIGRATION_MODE':'apply',
      'PROJECTPULSE_TEST_DATABASE_NAME':'flowhive_migrations_test'}
 for attempt in range(2):
     subprocess.run(['bash',str(payload/'entrypoint.sh')],env=env,check=True)
@@ -156,6 +202,6 @@ subprocess.run(['bash',str(payload/'entrypoint.sh')],env={**env,'MAIN_RELEASE_MI
 sql('ALTER TABLE project_flowhive_ai_planner_runs DISABLE TRIGGER trg_flowhive_104_execution_fence;')
 assert subprocess.run(['bash',str(payload/'entrypoint.sh')],env={**env,'MAIN_RELEASE_MIGRATION_MODE':'verify'},capture_output=True).returncode!=0
 sql('ALTER TABLE project_flowhive_ai_planner_runs ENABLE TRIGGER trg_flowhive_104_execution_fence;')
-(payload/'database/migrations'/approval['migrations'][0]['file']).write_text('-- corrupt payload\n')
+(payload/'database/migrations'/migration_entries[0]['file']).write_text('-- corrupt payload\n')
 assert subprocess.run(['bash',str(payload/'entrypoint.sh')],env=env,capture_output=True).returncode!=0
-print('FLOWHIVE_PSA_MIGRATION_ENTRYPOINT_BEHAVIOR=PASS isolatedPostgres=true liveDeployment=false')
+print('FLOWHIVE_PSA_MIGRATION_ENTRYPOINT_BEHAVIOR=PASS isolatedPostgres=true liveDeployment=false successorStaging='+str(successor_staging).lower()+' approvedCandidate='+str(not successor_staging).lower())
