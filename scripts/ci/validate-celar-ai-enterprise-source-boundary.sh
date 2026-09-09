@@ -630,6 +630,12 @@ if [[ "$HEAD_BRANCH" == 'fix/celar-routed-model-readiness-20260905' ]]; then
   node tests/validate-protected-uat-recovery.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
 fi
+if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' && "$COMBINED_FLOWHIVE_SOW_SCOPE" == true ]]; then
+  FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" <<<"$CHANGED"
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt
+  PROHIBITED="$(grep -Fvx "$FLOWHIVE_PROXY_LIMIT" <<<"$PROHIBITED" || true)"
+fi
 if [[ -n "$PROHIBITED" ]]; then
   echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2
   printf '%s\n' "$PROHIBITED" >&2

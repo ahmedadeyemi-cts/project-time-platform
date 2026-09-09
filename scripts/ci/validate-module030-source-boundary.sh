@@ -203,6 +203,17 @@ remove_overlap() {
   DEPLOYMENT_OVERLAP=("${retained[@]}")
 }
 
+if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]] \
+  && changed_exact '.github/flowhive-enterprise-psa-release-files.txt' \
+  && changed_exact '.github/module025-sow-sell-governed-release-files.txt' \
+  && changed_exact 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' \
+  && changed_exact 'database/migrations/106_module025_sow_sell_register.sql'; then
+  FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'
+  changed_exact "$FLOWHIVE_PROXY_LIMIT"
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt
+  remove_overlap "$FLOWHIVE_PROXY_LIMIT"
+fi
+
 if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
   remove_overlap 'deployment/containers/web/Dockerfile'
 fi

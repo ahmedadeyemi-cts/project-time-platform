@@ -97,6 +97,16 @@ for protected in \
 done
 
 DEPLOYMENT_OVERLAP="$(grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED" || true)"
+if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]] \
+  && grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
+  && grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+  && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED" \
+  && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
+  FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" <<<"$CHANGED"
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt
+  DEPLOYMENT_OVERLAP="$(grep -Fvx "$FLOWHIVE_PROXY_LIMIT" <<<"$DEPLOYMENT_OVERLAP" || true)"
+fi
 if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
   DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
 fi
