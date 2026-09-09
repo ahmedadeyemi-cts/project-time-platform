@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Reuses the governed private-network migration job, UAMI and cleanup protocol.
+# The exact migration set is read from the trusted candidate approval; migration
+# 106 is included only when that approval explicitly names and hashes it.
 set -Eeuo pipefail
 # Registry publication may briefly precede tag lookup visibility. Retry only
 # this read, never the build, job creation or migration write. A mutable tag is
@@ -59,7 +61,8 @@ control,source,out=map(pathlib.Path,sys.argv[1:4]); release=sys.argv[4]
 approval=json.loads((control/'.github/flowhive-psa-protected-test-candidate.json').read_text())
 if approval['sha']!=release or approval['environment']!='test': raise SystemExit('Unapproved migration candidate')
 expected=['103_module_066_flowhive_enterprise_psa_revamp.sql','104_flowhive_bounded_ai_execution.sql','105_flowhive_reviewed_regeneration.sql']
-if [x['file'] for x in approval['migrations']]!=expected: raise SystemExit('Unexpected migration set')
+files=[x['file'] for x in approval['migrations']]
+if files not in (expected, expected+['106_module025_sow_sell_register.sql']): raise SystemExit('Unexpected migration set')
 checks=[]
 for item in approval['migrations']:
     relative='database/migrations/'+item['file']; data=(source/relative).read_bytes()
@@ -84,7 +87,7 @@ DIGEST="$(resolve_migration_digest "$ACR" "$IMAGE")"
 [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'ERROR: Immutable migration digest unavailable.' >&2; exit 1; }
 export MAIN_RELEASE_EXPECTED_RELEASE_COMMIT="$RELEASE"
 export MAIN_RELEASE_CONTROL_SHA="${RELIABILITY_CONTROL_SHA:?Trusted controller revision is required.}"
-export MAIN_RELEASE_MIGRATION_SCOPE=flowhive-enterprise-psa-103-105-test
+export MAIN_RELEASE_MIGRATION_SCOPE=flowhive-enterprise-psa-approved-test
 export MAIN_RELEASE_MIGRATION_IMAGE="$ACR.azurecr.io/${IMAGE%%:*}@$DIGEST"
 export MAIN_RELEASE_MIGRATION_JOB_NAME="fhpsa-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 export MAIN_RELEASE_MIGRATION_MODE=apply
@@ -92,6 +95,11 @@ export MAIN_RELEASE_MIGRATION_MODE=apply
 # exact temporary-job ownership, no retries, TLS, and cleanup before returning.
 bash "$CONTROL_ROOT/scripts/release-test/run-migration-job.sh"
 mkdir -p "${EVIDENCE_DIR:?Evidence directory is required.}"
-jq -n --arg releaseCommit "$RELEASE" --arg controlCommit "$MAIN_RELEASE_CONTROL_SHA" --arg image "$MAIN_RELEASE_MIGRATION_IMAGE" \
-  '{status:"applied_and_verified",environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,image:$image,migrations:["103_module_066_flowhive_enterprise_psa_revamp","104_flowhive_bounded_ai_execution","105_flowhive_reviewed_regeneration"],productionMutation:false}' \
+if [[ -f "$CONTEXT/database/migrations/106_module025_sow_sell_register.sql" ]]; then
+  MIGRATIONS_JSON='["103_module_066_flowhive_enterprise_psa_revamp","104_flowhive_bounded_ai_execution","105_flowhive_reviewed_regeneration","106_module025_sow_sell_register"]'
+else
+  MIGRATIONS_JSON='["103_module_066_flowhive_enterprise_psa_revamp","104_flowhive_bounded_ai_execution","105_flowhive_reviewed_regeneration"]'
+fi
+jq -n --arg releaseCommit "$RELEASE" --arg controlCommit "$MAIN_RELEASE_CONTROL_SHA" --arg image "$MAIN_RELEASE_MIGRATION_IMAGE" --argjson migrations "$MIGRATIONS_JSON" \
+  '{status:"applied_and_verified",environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,image:$image,migrations:$migrations,productionMutation:false}' \
   > "$EVIDENCE_DIR/flowhive-psa-migrations.json"

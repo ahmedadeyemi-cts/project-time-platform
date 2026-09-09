@@ -75,11 +75,18 @@ jobs:
           FEATURE_BRANCH: ${{ github.head_ref }}
         run: |
           set -Eeuo pipefail
-          if [[ "$FEATURE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+          test -s .github/flowhive-psa-protected-test-candidate.json || { echo 'ERROR: trusted candidate approval file is missing.' >&2; exit 1; }
+          if [[ "$FEATURE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
             [[ "$FEATURE_HEAD" =~ ^[a-f0-9]{40}$ ]]
             echo "sha=$FEATURE_HEAD" >> "$GITHUB_OUTPUT"
+            if [[ "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
+              echo 'staging=successor' >> "$GITHUB_OUTPUT"
+            else
+              echo 'staging=approved' >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "sha=$(jq -er '.sha | select(test("^[a-f0-9]{40}$"))' .github/flowhive-psa-protected-test-candidate.json)" >> "$GITHUB_OUTPUT"
+            echo 'staging=approved' >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -123,8 +130,10 @@ jobs:
             printf 'FLOWHIVE_TEST_DB=Host=127.0.0.1;Port=%s;Database=%s;Username=flowhive;Password=%s\n' "$port" "$FIXTURE_DATABASE" "$password"
           } >> "$GITHUB_ENV"
           trap - ERR
-      - name: Exercise approved SQL and the real image entrypoint in disposable PostgreSQL
+      - name: Exercise selected release SQL and the real image entrypoint in disposable PostgreSQL
         working-directory: control
+        env:
+          FLOWHIVE_MIGRATION_STAGING: ${{ steps.candidate.outputs.staging }}
         run: |
           set -Eeuo pipefail
           sudo mkdir -p /opt/projectpulse/release

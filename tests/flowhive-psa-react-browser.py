@@ -67,6 +67,12 @@ async def main(readback_mode=None):
                         'projectManagerName':'Synthetic PM','startDate':'2026-09-08','endDate':'2026-10-30','taskCount':5,'assignmentCount':0,'status':'active'} for pid,label in [(A,'A'),(B,'B')]],
                         'tasks':[],'assignments':[],'summary':{'projectCount':2,'taskCount':10},'access':{'displayName':'Synthetic PM'}}
                 elif path.endswith('/readiness'):body={'ready':True,'status':'ready'}
+                elif path.endswith('/psa'):
+                    body={'meetings':[],'raidHistory':[],'decisions':[],
+                          'reminderPreferences':{'enabled':False,'dispatcherAvailable':False,
+                              'leadDays':[2,1],'includeProjectManager':True,
+                              'includeAssignedTeamMembers':True,'includeOverdue':True,
+                              'timezoneName':'America/Chicago','deliveryBoundary':'test_only'}}
                 elif path=='/api/project-flowhive/plans':body={'plans':[{'planId':SAVED,'projectId':A,'planName':'Reviewed immutable fixture','currentVersion':3}]}
                 elif path==f'/api/project-flowhive/plans/{SAVED}':
                     frozen=plan(A,'Immutable reviewed task');frozen['planId']=SAVED
@@ -162,6 +168,16 @@ async def main(readback_mode=None):
                 await page.add_style_tag(content=(Path(offline)/'app.css').read_text())
                 await page.add_script_tag(content=(Path(offline)/'app.js').read_text())
             await reload_page()
+            await page.get_by_role('button',name='Kanban',exact=True).click()
+            await page.get_by_role('heading',name='Kanban task board',exact=True).wait_for()
+            await page.get_by_role('button',name='Monthly calendar',exact=True).click()
+            await page.get_by_role('heading',name='Monthly project calendar',exact=True).wait_for()
+            await page.get_by_role('button',name='Meetings',exact=True).click()
+            await page.get_by_role('heading',name='Project meetings and recordings',exact=True).wait_for()
+            await page.get_by_role('button',name='Branded exports',exact=True).click()
+            await page.get_by_role('heading',name='US Signal branded project exports',exact=True).wait_for()
+            assert await page.locator('.flowhive-psa-export-matrix article').count()==6
+            print('PASSED: actual FlowHive entrypoint mounts Kanban, monthly calendar, meetings, and six branded export views',flush=True)
             await page.get_by_role('button',name='Planner',exact=True).click()
             await page.get_by_label('Plan name',exact=True).wait_for()
             await page.get_by_label('Start date',exact=True).fill('2026-09-10')

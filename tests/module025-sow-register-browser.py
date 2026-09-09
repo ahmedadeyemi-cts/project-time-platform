@@ -8,6 +8,7 @@ reloads without starting another generation or mutation.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -75,6 +76,13 @@ async def run() -> None:
             await page.get_by_role('button', name='SOW Register & SELL', exact=True).click()
             register = page.locator('[data-module025-sow-register="true"]')
             await register.wait_for(state='visible')
+            csv_path = await register.get_by_role('button', name='Export SA report (.csv)', exact=True).get_attribute('data-csv-download-path')
+            async with page.expect_download() as report_download_info:
+                await register.get_by_role('button', name='Export SA report (.csv)', exact=True).click()
+            report_download = await report_download_info.value
+            report_bytes = Path(await report_download.path()).read_bytes()
+            if b'Engagement' not in report_bytes and b'SOW' not in report_bytes:
+                fail('browser_csv_download_content_missing')
             search = register.get_by_placeholder('Search retained records')
             await search.fill(engagement_number)
             row = register.locator('table').nth(1).get_by_role('button', name=engagement_number, exact=True)
@@ -84,13 +92,42 @@ async def run() -> None:
             await versions.first.wait_for(state='visible')
             if await versions.count() != 1:
                 fail('browser_retained_version_count_mismatch')
-            if await versions.first.get_by_role('link', name='Download SOW v1', exact=True).count() != 1:
+            if await versions.first.get_by_role('button', name='Download SOW v1', exact=True).count() != 1:
                 fail('browser_sow_download_missing')
-            if await versions.first.get_by_role('link', name='Download GSD v1', exact=True).count() != 1:
+            if await versions.first.get_by_role('button', name='Download GSD v1', exact=True).count() != 1:
                 fail('browser_gsd_download_missing')
             await versions.first.get_by_text('File integrity', exact=True).click()
             if await versions.first.locator('.m025-register-hash').count() != 2:
                 fail('browser_retained_hash_display_missing')
+            hash_text = await versions.first.locator('.m025-register-hash').all_text_contents()
+            expected_hashes = {
+                'sow.docx': hash_text[0].split(':', 1)[-1].strip(),
+                'gsd.xlsx': hash_text[1].split(':', 1)[-1].strip(),
+            }
+            for artifact, button_name in (('sow.docx', 'Download SOW v1'), ('gsd.xlsx', 'Download GSD v1')):
+                with page.expect_download() as download_info:
+                    await versions.first.get_by_role('button', name=button_name, exact=True).click()
+                download = await download_info.value
+                data = Path(await download.path()).read_bytes()
+                if hashlib.sha256(data).hexdigest() != expected_hashes[artifact]:
+                    fail(f'browser_{artifact}_hash_mismatch')
+                with page.expect_download() as repeat_download_info:
+                    await versions.first.get_by_role('button', name=button_name, exact=True).click()
+                repeat = await repeat_download_info.value
+                repeat_data = Path(await repeat.path()).read_bytes()
+                if repeat_data != data:
+                    fail(f'browser_{artifact}_repeat_bytes_changed')
+
+            unauthenticated = await playwright.request.new_context()
+            try:
+                protected_paths = [csv_path, await versions.first.get_attribute('data-sow-download-path')]
+                for protected_path in protected_paths:
+                    if protected_path:
+                        unauthorized = await unauthenticated.get(f'{base}{protected_path}')
+                        if unauthorized.status not in (401, 403):
+                            fail('browser_unauthorized_protected_download_not_rejected')
+            finally:
+                await unauthenticated.dispose()
 
             await page.reload(wait_until='domcontentloaded', timeout=45_000)
             await page.get_by_role('button', name='SOW Register & SELL', exact=True).click()
@@ -105,7 +142,7 @@ async def run() -> None:
             await context.close()
             await browser.close()
 
-    print('MODULE025_REGISTER_BROWSER_DISPLAY=PASS versions=1 hashes=2 reload=verified generationPosts=0 writes=0')
+    print('MODULE025_REGISTER_BROWSER_DISPLAY=PASS csv=downloaded retainedBytes=sha256-verified repeatedBytes=stable unauthorized=checked versions=1 reload=verified generationPosts=0 writes=0')
 
 
 if __name__ == '__main__':

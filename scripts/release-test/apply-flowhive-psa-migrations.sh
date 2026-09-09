@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Image entrypoint. The immutable image contains only approved 103/104/105 SQL and checksums.
+# Image entrypoint. The immutable image contains only the approved 103/104/105
+# payload, plus 106 when the trusted candidate approval includes Module 025.
 set -Eeuo pipefail
 ROOT=/opt/projectpulse/release
 fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -18,6 +19,9 @@ SELECT pg_advisory_lock(660103104);
 \i database/migrations/105_flowhive_reviewed_regeneration.sql
 SELECT pg_advisory_unlock(660103104);
 SQL
+  if [[ -f database/migrations/106_module025_sow_sell_register.sql ]]; then
+    psql -X -v ON_ERROR_STOP=1 -f database/migrations/106_module025_sow_sell_register.sql
+  fi
 fi
 verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT (
@@ -52,5 +56,21 @@ SELECT (
 SQL
 )"
 [[ "$verified" == true ]] || fail 'FlowHive PSA migrations are not fully applied and enforced.'
-echo 'FLOWHIVE_PSA_MIGRATIONS_103_104_105=APPLIED_AND_VERIFIED'
+if [[ -f database/migrations/106_module025_sow_sell_register.sql ]]; then
+  module025_verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
+SELECT (
+  (SELECT count(*) FROM schema_migrations WHERE migration_id = '106_module025_sow_sell_register') = 1
+  AND to_regclass('public.module025_sow_gsd_versions') IS NOT NULL
+  AND to_regclass('public.module025_sow_gsd_artifact_issuance') IS NOT NULL
+  AND to_regclass('public.module025_sow_sell_submissions') IS NOT NULL
+  AND to_regclass('public.module025_sow_sell_receipts') IS NOT NULL
+  AND to_regclass('public.module025_sow_sell_notification_outbox') IS NOT NULL
+)::text;
+SQL
+  )"
+  [[ "$module025_verified" == true ]] || fail 'Module 025 migration 106 is not fully applied and enforced.'
+  echo 'FLOWHIVE_PSA_MIGRATIONS_103_104_105_106=APPLIED_AND_VERIFIED'
+else
+  echo 'FLOWHIVE_PSA_MIGRATIONS_103_104_105=APPLIED_AND_VERIFIED'
+fi
 echo 'PRODUCTION_MUTATION=NONE'

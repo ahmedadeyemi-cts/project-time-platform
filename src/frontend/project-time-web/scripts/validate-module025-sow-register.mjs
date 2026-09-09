@@ -71,8 +71,10 @@ for (const marker of [
   'm025-register-panel'
 ]) requireText(shell, marker, `Module 025 shell integration missing: ${marker}`);
 requireText(register, '/versions?page=', 'register must read retained versions');
-requireText(register, '/versions/${version.versionId}/sow.docx', 'register must download the retained SOW bytes');
-requireText(register, '/versions/${version.versionId}/gsd.xlsx', 'register must download the retained GSD bytes');
+requireText(register, 'downloadProtected', 'register must download retained artifacts through the authenticated session bridge');
+requireText(register, '/versions/${version.versionId}/', 'register must build retained artifact URLs from the selected version');
+requireText(register, "downloadVersion(version, 'sow.docx')", 'register must download the retained SOW bytes');
+requireText(register, "downloadVersion(version, 'gsd.xlsx')", 'register must download the retained GSD bytes');
 
 for (const marker of [
   'module025_sow_gsd_generation_snapshots',

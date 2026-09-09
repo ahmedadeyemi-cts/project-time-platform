@@ -9,6 +9,7 @@ scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh
 scripts/ci/validate-module030-source-boundary.sh
 scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
 src/backend/ProjectTime.Api/Directory.Build.targets
+src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
 src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs
 src/backend/ProjectTime.Api/Modules/Module025SowSellPolicy.cs
 src/backend/ProjectTime.Api/Modules/Module025SowSellReporting.cs

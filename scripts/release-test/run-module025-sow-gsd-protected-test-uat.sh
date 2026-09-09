@@ -550,9 +550,13 @@ IFS='|' read -r CONFIRM_CURL_EXIT CONFIRM_STATUS <<<"$CONFIRM_RESULT"
   || fail "Module 025 confirmation API returned curl exit $CONFIRM_CURL_EXIT and HTTP $CONFIRM_STATUS."
 jq -e --argjson prior "$SAVED_EDIT_REVISION" '
   .status == "module025_confirmed" and .stateChanged == true and (.revision | type == "number" and . > $prior)
+  and (.version.versionId | type == "string")
 ' "$CONFIRM_RESPONSE" >/dev/null \
   || fail 'Module 025 confirmation did not create an authorized reviewed state.'
 CONFIRMED_REVISION="$(jq -r '.revision' "$CONFIRM_RESPONSE")"
+CONFIRMED_VERSION_ID="$(jq -r '.version.versionId' "$CONFIRM_RESPONSE")"
+CONFIRMED_SOW_SHA="$(jq -r '.version.sowSha256' "$CONFIRM_RESPONSE")"
+CONFIRMED_GSD_SHA="$(jq -r '.version.gsdSha256' "$CONFIRM_RESPONSE")"
 
 RELEASE_PAYLOAD="$WORK_DIR/module025-release-version.json"
 jq -n --argjson expectedRevision "$CONFIRMED_REVISION" '{expectedRevision:$expectedRevision}' > "$RELEASE_PAYLOAD"
@@ -561,8 +565,11 @@ VERSION_RESULT="$(auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/versi
 IFS='|' read -r VERSION_CURL_EXIT VERSION_STATUS <<<"$VERSION_RESULT"
 [[ "$VERSION_CURL_EXIT" == 0 && "$VERSION_STATUS" == 200 ]] \
   || fail "Module 025 retained-version API returned curl exit $VERSION_CURL_EXIT and HTTP $VERSION_STATUS."
-jq -e '.status == "module025_version_released" and .stateChanged == true and (.version.versionId | type == "string")' "$VERSION_RESPONSE" >/dev/null \
-  || fail 'Module 025 did not retain the reviewed SOW/GSD bytes.'
+jq -e --arg id "$CONFIRMED_VERSION_ID" --arg sow "$CONFIRMED_SOW_SHA" --arg gsd "$CONFIRMED_GSD_SHA" '
+  .status == "module025_version_released" and .stateChanged == false
+  and .version.versionId == $id and .version.sowSha256 == $sow and .version.gsdSha256 == $gsd
+' "$VERSION_RESPONSE" >/dev/null \
+  || fail 'Repeated retention did not reuse the immutable version created by confirmation.'
 VERSION_ID="$(jq -r '.version.versionId' "$VERSION_RESPONSE")"
 VERSION_SOW_SHA="$(jq -r '.version.sowSha256' "$VERSION_RESPONSE")"
 VERSION_GSD_SHA="$(jq -r '.version.gsdSha256' "$VERSION_RESPONSE")"
@@ -614,6 +621,16 @@ jq -e --arg id "$VERSION_ID" '
 ' "$VERSIONS_AFTER_DOWNLOAD_RESPONSE" >/dev/null \
   || fail 'Repeated retained downloads did not leave one first-issuance receipt for each artifact.'
 echo 'MODULE025_RETAINED_VERSION_API_LIFECYCLE=PASS'
+
+[[ -x "${RUNNER_TEMP:-}/flowhive-psa-browser/bin/python" ]] \
+  || fail 'The authenticated Module 025 browser verifier is not installed.'
+BASE="$BASE" TEST_LOGIN_PASSWORD="$TEST_LOGIN_PASSWORD" \
+  MODULE025_ENGAGEMENT_NUMBER="$ENGAGEMENT_NUMBER" MODULE025_CREATE_RESPONSE="$CREATE_RESPONSE" \
+  "${RUNNER_TEMP}/flowhive-psa-browser/bin/python" tests/module025-sow-register-browser.py \
+  > "$EVIDENCE_DIR/module025-register-browser.log"
+grep -Fq 'MODULE025_REGISTER_BROWSER_DISPLAY=PASS' "$EVIDENCE_DIR/module025-register-browser.log" \
+  || fail 'Authenticated retained SOW/GSD and CSV browser downloads were not verified.'
+echo 'MODULE025_RETAINED_VERSION_BROWSER_LIFECYCLE=PASS authenticatedClicks=true hashes=verified unauthorized=checked reload=verified'
 
 ACTIVE_LIST="$EVIDENCE_DIR/module025-active-list-readback.json"
 ACTIVE_LIST_RESULT="$(auth_get_with_transient_retry "/api/module025/sow-gsd?state=active&ownerUserId=$SA_USER_ID" "$ACTIVE_LIST" "$SA_SESSION" 'active-list-readback')"

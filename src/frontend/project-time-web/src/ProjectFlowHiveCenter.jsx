@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import ProjectFlowHivePlannerReview from './ProjectFlowHivePlannerReview.jsx';
+import ProjectFlowHivePsaWorkspace from './ProjectFlowHivePsaWorkspace.jsx';
 import { boundedFetch, canApplyPlannerResult, observePlanner } from './flowhive-planner-operation.js';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import IdentityAvatar from './identity/IdentityAvatar.jsx';
@@ -13,6 +14,9 @@ import './projectpulse-module-standard.css';
 const views = [
   { id: 'portfolio', label: 'Portfolio' },
   { id: 'planner', label: 'Planner' },
+  { id: 'kanban', label: 'Kanban' },
+  { id: 'calendar', label: 'Monthly calendar' },
+  { id: 'meetings', label: 'Meetings' },
   { id: 'timeline', label: 'Timeline & risk' },
   { id: 'financials', label: 'Financials' },
   { id: 'status', label: 'Status & RAID' },
@@ -1260,6 +1264,24 @@ export default function ProjectFlowHiveCenter() {
         </div>
       ) : null}
 
+      {activeView === 'kanban' ? <ProjectFlowHivePsaWorkspace
+        mode="kanban" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
+        schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
+        canManage={Boolean(enterprise?.access?.canManage)} setDirty={setDirty} setNotice={setNotice} setError={setError}
+      /> : null}
+
+      {activeView === 'calendar' ? <ProjectFlowHivePsaWorkspace
+        mode="calendar" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
+        schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
+        canManage={Boolean(enterprise?.access?.canManage)} setDirty={setDirty} setNotice={setNotice} setError={setError}
+      /> : null}
+
+      {activeView === 'meetings' ? <ProjectFlowHivePsaWorkspace
+        mode="meetings" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
+        schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
+        canManage={Boolean(enterprise?.access?.canManage)} setDirty={setDirty} setNotice={setNotice} setError={setError}
+      /> : null}
+
       {enterpriseError ? <div className="flowhive-error flowhive-enterprise-readiness-error" role="alert"><div><strong>FlowHive enterprise controls are temporarily unavailable.</strong><span>{enterpriseError.message}</span>{enterpriseError.requiredMigration ? <small>Required database contract: {enterpriseError.requiredMigration}</small> : null}{enterpriseError.correlationId ? <small>Correlation ID: {enterpriseError.correlationId}</small> : null}</div><button type="button" onClick={() => loadEnterpriseWorkspace(selectedProjectId, false)} disabled={!selectedProjectId || busy}>Retry enterprise workspace</button></div> : null}
       {error ? <div className="flowhive-error" role="alert"><strong>Project FlowHive needs attention.</strong><span>{error}</span></div> : null}
       {notice ? <div className="flowhive-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice('')}>Dismiss</button></div> : null}
@@ -1459,12 +1481,14 @@ export default function ProjectFlowHiveCenter() {
         </div>
       ) : null}
 
-      {activeView === 'exports' ? (
-        <div className="flowhive-view-panel">
-          <div className="flowhive-export-hero"><img src={usSignalLogoUrl} alt="US Signal" /><div><h3>US Signal Project Management artifacts</h3><p>Professional PDF and Excel working plans include an executive summary, schedule, dependencies, assignments, comments, notes, and artifact control. Customer sharing remains a separate reviewed action.</p><code>Logo SHA-256: {artifactReadiness?.branding?.sha256 || 'Loading governed checksum…'}</code></div></div>
-          <div className="flowhive-export-grid"><article><h4>Project schedule PDF</h4><p>US Signal-branded landscape schedule with the Planner columns, comments, notes, assigned identity, date range, and artifact-control footer.</p><button type="button" onClick={() => downloadArtifact('pdf')} disabled={!draftPlan || busy}>{busy === 'pdf' ? 'Generating…' : 'Download PM working-plan PDF'}</button></article><article><h4>Planning workbook</h4><p>US Signal-branded workbook with the exact Planner column order plus summary, dependencies, and artifact-control sheets.</p><button type="button" onClick={() => downloadArtifact('excel')} disabled={!draftPlan || busy}>{busy === 'excel' ? 'Generating…' : 'Download PM planning workbook'}</button></article><FlowHiveCustomerSharingPanel enterprise={enterprise} controls={controls} savedPlans={savedPlans} draftPlan={draftPlan} latestShareUrl={latestShareUrl} setLatestShareUrl={setLatestShareUrl} shareDraft={shareDraft} setShareDraft={setShareDraft} canManage={Boolean(enterprise?.access?.canManage)} busy={busy} onEnableSharing={enableCustomerSharing} onCreateShare={createCustomerShare} onRevoke={revokeCustomerShare} /></div>
-        </div>
-      ) : null}
+      {activeView === 'exports' ? <div className="flowhive-view-panel">
+        <ProjectFlowHivePsaWorkspace
+          mode="exports" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
+          schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
+          canManage={Boolean(enterprise?.access?.canManage)} setDirty={setDirty} setNotice={setNotice} setError={setError}
+        />
+        <FlowHiveCustomerSharingPanel enterprise={enterprise} controls={controls} savedPlans={savedPlans} draftPlan={draftPlan} latestShareUrl={latestShareUrl} setLatestShareUrl={setLatestShareUrl} shareDraft={shareDraft} setShareDraft={setShareDraft} canManage={Boolean(enterprise?.access?.canManage)} busy={busy} onEnableSharing={enableCustomerSharing} onCreateShare={createCustomerShare} onRevoke={revokeCustomerShare} />
+      </div> : null}
 
       {activeView === 'governance' ? (
         <div className="flowhive-view-panel">

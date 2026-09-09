@@ -104,6 +104,25 @@ class WorkflowContract(unittest.TestCase):
             self.assertIn('docker rm -f "$name"',cleanup['run'])
             for step in [setup,cleanup]:
                 subprocess.run(['bash','-n'],input=step['run'],text=True,check=True,capture_output=True)
+
+    def test_successor_migration_fixture_uses_exact_head_as_explicit_staging(self):
+        workflow=load((ROOT/'.github/workflows/flowhive-psa-release-control-ci.yml').read_text())
+        candidate=next(s for s in workflow['jobs']['migrations']['steps'] if s.get('id')=='candidate')
+        self.assertIn('test -s .github/flowhive-psa-protected-test-candidate.json', candidate['run'])
+        self.assertIn("release/flowhive-sow-successor-20260908", candidate['run'])
+        self.assertIn("echo 'staging=successor'", candidate['run'])
+        exercise=next(s for s in workflow['jobs']['migrations']['steps'] if s.get('name','').startswith('Exercise selected release SQL'))
+        self.assertEqual(exercise['env']['FLOWHIVE_MIGRATION_STAGING'], '${{ steps.candidate.outputs.staging }}')
+        fixture=(ROOT/'tests/flowhive-psa-migration-fixture.py').read_text()
+        self.assertIn("FLOWHIVE_MIGRATION_STAGING", fixture)
+        self.assertIn("106_module025_sow_sell_register.sql", fixture)
+        self.assertIn("approval['sha'] != pr['head']['sha']", fixture)
+        entrypoint=(ROOT/'scripts/release-test/apply-flowhive-psa-migrations.sh').read_text()
+        self.assertIn('106_module025_sow_sell_register.sql', entrypoint)
+        self.assertIn('FLOWHIVE_PSA_MIGRATIONS_103_104_105_106=APPLIED_AND_VERIFIED', entrypoint)
+        builder=(ROOT/'scripts/release-test/build-and-run-flowhive-psa-migrations.sh').read_text()
+        self.assertIn('106_module025_sow_sell_register', builder)
+        self.assertIn('--argjson migrations "$MIGRATIONS_JSON"', builder)
     def test_negative_production_concurrency_and_late_admission(self):
         for mutate in [lambda x:x['jobs']['deploy'].update(environment='production'),
           lambda x:x['concurrency'].update({'cancel-in-progress':'true'}),

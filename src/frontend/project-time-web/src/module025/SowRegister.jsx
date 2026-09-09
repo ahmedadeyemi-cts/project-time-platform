@@ -3,10 +3,26 @@ import USSignalLogo from '../enterprise/USSignalLogo.jsx';
 import './sow-gsd-workspace.css';
 import './sow-register.css';
 
+function sessionHeaders(extra = {}) {
+  try {
+    const raw = window.localStorage.getItem('projectPulseAuthSession');
+    const session = raw ? JSON.parse(raw) : null;
+    return {
+      ...(session?.sessionToken ? {
+        Authorization: `Bearer ${session.sessionToken}`,
+        'X-ProjectPulse-Session': session.sessionToken
+      } : {}),
+      ...extra
+    };
+  } catch {
+    return extra;
+  }
+}
+
 async function request(url, options = {}) {
   const response = await fetch(url, {
     credentials: 'include', ...options,
-    headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) }
+    headers: sessionHeaders({ Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) })
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -15,6 +31,26 @@ async function request(url, options = {}) {
     throw error;
   }
   return payload;
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadProtected(url, fileName) {
+  const response = await fetch(url, { credentials: 'include', headers: sessionHeaders() });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message || `Download failed (${response.status}).`);
+  }
+  downloadBlob(await response.blob(), fileName);
 }
 
 function when(value) {
@@ -139,6 +175,30 @@ export default function SowRegister() {
     } finally { setActionBusy(''); setRefresh((value) => value + 1); }
   }
 
+  async function downloadReport() {
+    setActionBusy('report');
+    setNotice(null);
+    try {
+      await downloadProtected(`/api/module025/sow-register?${csvQuery}`, 'sow-register.csv');
+      setNotice({ tone: 'info', text: 'The authorized SOW register CSV was downloaded.' });
+    } catch (error) {
+      setNotice({ tone: 'warning', text: error.message });
+    } finally { setActionBusy(''); }
+  }
+
+  async function downloadVersion(version, artifact) {
+    const key = `${version.versionId}-${artifact}`;
+    setActionBusy(key);
+    setNotice(null);
+    try {
+      const extension = artifact === 'sow.docx' ? 'SOW.docx' : 'GSD.xlsx';
+      await downloadProtected(`/api/module025/sow-gsd/${detail.engagementId}/versions/${version.versionId}/${artifact}`, `${detail.engagementNumber}-v${version.versionNumber}-${extension}`);
+      setNotice({ tone: 'info', text: `Retained ${artifact === 'sow.docx' ? 'SOW' : 'GSD'} v${version.versionNumber} downloaded.` });
+    } catch (error) {
+      setNotice({ tone: 'warning', text: error.message });
+    } finally { setActionBusy(''); }
+  }
+
   async function olderHistory() {
     if (!selectedId || !history?.nextBeforeEventId || historyLoading) return;
     const id = selectedId;
@@ -165,7 +225,7 @@ export default function SowRegister() {
         </div></div>
         <div className="m025-header__actions">
           <button type="button" className="m025-button m025-button--secondary" onClick={() => setRefresh((value) => value + 1)} disabled={loading}>Refresh</button>
-          {report ? <a className="m025-button m025-button--primary" href={`/api/module025/sow-register?${csvQuery}`}>Export SA report (.csv)</a> : null}
+          {report ? <button type="button" className="m025-button m025-button--primary" data-csv-download-path={`/api/module025/sow-register?${csvQuery}`} disabled={Boolean(actionBusy)} onClick={downloadReport}>Export SA report (.csv)</button> : null}
         </div>
       </header>
 
@@ -212,11 +272,11 @@ export default function SowRegister() {
           const submissions = (version.submissions || []).filter((item) => item.environment === detail.runtimeEnvironment);
           const published = submissions.some((item) => item.sellStatus === 'published');
           const eligible = detail.canWrite && detail.status === 'confirmed' && detail.isActive && detail.currentContentReleased && version.versionId === detail.latestVersionId;
-          return <article key={version.versionId} className="m025-register-version">
+          return <article key={version.versionId} className="m025-register-version" data-sow-download-path={`/api/module025/sow-gsd/${detail.engagementId}/versions/${version.versionId}/sow.docx`}>
             <header><h3>Version {version.versionNumber}</h3><span>Retained {when(version.createdAt)} · Source revision {version.sourceRevision}</span></header>
             <div className="m025-review-actions">
-              <a className="m025-button m025-button--primary" href={`/api/module025/sow-gsd/${detail.engagementId}/versions/${version.versionId}/sow.docx`}>Download SOW v{version.versionNumber}</a>
-              <a className="m025-button m025-button--primary" href={`/api/module025/sow-gsd/${detail.engagementId}/versions/${version.versionId}/gsd.xlsx`}>Download GSD v{version.versionNumber}</a>
+              <button type="button" className="m025-button m025-button--primary" disabled={Boolean(actionBusy)} onClick={() => downloadVersion(version, 'sow.docx')}>{actionBusy === `${version.versionId}-sow.docx` ? 'Downloading…' : `Download SOW v${version.versionNumber}`}</button>
+              <button type="button" className="m025-button m025-button--primary" disabled={Boolean(actionBusy)} onClick={() => downloadVersion(version, 'gsd.xlsx')}>{actionBusy === `${version.versionId}-gsd.xlsx` ? 'Downloading…' : `Download GSD v${version.versionNumber}`}</button>
               <button type="button" className="m025-button m025-button--secondary" disabled={!eligible || !detail.sellReadiness?.ready || published || Boolean(actionBusy)} onClick={() => runAction('sell', version.versionId)}>{published ? 'Already verified in SELL' : actionBusy === 'sell' ? 'Registering submission…' : 'Push to SELL'}</button>
             </div>
             <p>First SOW issuance: {when(version.firstSowServedAt)} · First GSD issuance: {when(version.firstGsdServedAt)}</p>

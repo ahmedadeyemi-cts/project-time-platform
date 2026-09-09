@@ -15,6 +15,10 @@ const validationFiles = new Set([
   '.github/workflows/celar-ai-production-platform-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  'deployment/containers/web/default.conf.template',
+  'scripts/release-test/apply-flowhive-psa-migrations.sh',
+  'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
+  'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh',
   'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh',
   'tests/validate-celar-ai-pr630-consolidated.mjs',
   'tests/test-pulse-ai-runtime-job-query-shape.sh',
@@ -32,7 +36,7 @@ const validationFiles = new Set([
 ]);
 const componentPaths = [
   /^src\/backend\/ProjectTime\.Api\/Assets\/Fonts\/[A-Za-z0-9._-]+$/,
-  /^src\/backend\/ProjectTime\.Api\/Modules\/ProjectFlowHive[A-Za-z0-9]+\.cs$/,
+  /^src\/backend\/ProjectTime\.Api\/Modules\/(?:ProjectFlowHive[A-Za-z0-9]+|Module025SowGsdModule)\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/ProjectPlanning(AiOrchestrator|DocumentResolver)\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/CelarAiProductionPlatformModule\.cs$/,
   /^src\/frontend\/project-time-web\/src\/(ProjectFlowHive[A-Za-z0-9]+\.jsx|(?:flowhive-|project-flowhive-|use-flowhive-)[a-z0-9.-]+)$/,

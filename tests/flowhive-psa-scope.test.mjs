@@ -16,7 +16,7 @@ test('a manifest cannot authorize deployment, secrets, source transport or unrel
     'deployment/containers/api/Dockerfile', 'scripts/release-test/run-anything.sh',
     '.github/workflows/flowhive-reviewed-source-apply.yml', '.github/flowhive-reviewed-source.patch',
     'src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs',
-    'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs', '.env']) {
+    '.env']) {
     assert.throws(() => verifyPaths([name], [name]), name);
   }
 });
@@ -30,15 +30,14 @@ test('the combined successor may use the separately reviewed Module 025 manifest
   verifyPaths([
     '.github/module025-sow-sell-governed-release-files.txt',
     'database/migrations/106_module025_sow_sell_register.sql',
+    'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs',
     'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs'
   ], [
     '.github/module025-sow-sell-governed-release-files.txt',
     'database/migrations/106_module025_sow_sell_register.sql',
+    'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs',
     'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs'
   ]);
-  assert.throws(() => verifyPaths(['src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs'], [
-    'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs'
-  ]));
 });
 test('read-only validation cannot acquire deployment privileges', () => {
   const good='permissions:\n  contents: read\njobs:\n  tests:\n    runs-on: ubuntu-latest\n';

@@ -49,12 +49,12 @@ public static partial class Module025SowGsdModule
     private sealed record ReleasedSowVersion(Guid VersionId, int VersionNumber, int SourceRevision,
         string ContentSha256, string SowSha256, string GsdSha256);
 
-    private static async Task<ReleasedSowVersion?> LatestSowVersionAsync(NpgsqlConnection connection, Guid engagementId, CancellationToken cancellationToken)
+    private static async Task<ReleasedSowVersion?> LatestSowVersionAsync(NpgsqlConnection connection, Guid engagementId, CancellationToken cancellationToken, NpgsqlTransaction? transaction = null)
     {
         await using var command = new NpgsqlCommand("""
             SELECT version_id,version_number,source_revision,content_sha256,sow_sha256,gsd_sha256
             FROM module025_sow_gsd_versions WHERE engagement_id=@id ORDER BY version_number DESC LIMIT 1;
-            """, connection);
+            """, connection, transaction);
         command.Parameters.AddWithValue("id", engagementId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
@@ -68,12 +68,12 @@ public static partial class Module025SowGsdModule
     private static async Task<(ReleasedSowVersion Version, bool Created)> CaptureConfirmedSowVersionAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid engagementId, Guid actorUserId, CancellationToken cancellationToken)
     {
-        var engagement = await LoadEngagementAsync(connection, engagementId, cancellationToken)
+        var engagement = await LoadEngagementAsync(connection, engagementId, cancellationToken, transaction)
             ?? throw new InvalidOperationException("The confirmed SOW disappeared.");
         if (engagement.Status != "confirmed" || !engagement.IsActive)
             throw new InvalidOperationException("Only a confirmed, active SOW may be released.");
         var fingerprint = Module025SowSellPolicy.Fingerprint(engagement);
-        var latest = await LatestSowVersionAsync(connection, engagementId, cancellationToken);
+        var latest = await LatestSowVersionAsync(connection, engagementId, cancellationToken, transaction);
         if (latest is not null && latest.ContentSha256 == fingerprint) return (latest, false);
         var number = (latest?.VersionNumber ?? 0) + 1;
         var document = Module025SowSellPolicy.ReviewedContent(engagement) with { Revision = number };

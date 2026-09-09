@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using NpgsqlTypes;
 using ProjectTime.Api.Ai;
@@ -40,9 +41,16 @@ internal static class ProjectFlowHivePsaModule
         endpoints.MapGet(
             "/api/project-flowhive/projects/{projectId:guid}/psa",
             (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetWorkspaceAsync);
-        endpoints.MapPost(
+        var meetingUpload = endpoints.MapPost(
             "/api/project-flowhive/projects/{projectId:guid}/meetings",
             (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)UploadMeetingAsync);
+        meetingUpload.WithMetadata(new RequestSizeLimitAttribute(MaximumMeetingBytes));
+        meetingUpload.WithMetadata(new RequestFormLimitsAttribute
+        {
+            MultipartBodyLengthLimit = MaximumMeetingBytes,
+            ValueLengthLimit = 16 * 1024,
+            KeyLengthLimit = 256
+        });
         endpoints.MapPut(
             "/api/project-flowhive/projects/{projectId:guid}/meetings/{meetingId:guid}",
             (Func<Guid, Guid, ProjectFlowHiveMeetingUpdateRequest, HttpContext, CancellationToken, Task<IResult>>)UpdateMeetingAsync);
@@ -102,12 +110,20 @@ internal static class ProjectFlowHivePsaModule
                     immutableRaidHistory = true,
                     meetingRecordings = true,
                     customerMeetingDownloads = true,
-                    taskDueReminders = true,
+                    taskDueReminders = false,
+                    reminderDispatcher = new
+                    {
+                        registered = false,
+                        mode = "unavailable",
+                        message = "The reminder dispatcher is not registered; saved preferences do not deliver notifications."
+                    },
                     transcription = new
                     {
-                        configured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FLOWHIVE_TRANSCRIPTION_ENDPOINT")),
-                        mode = "governed_private_worker",
-                        actionItemExtraction = true
+                        configured = false,
+                        workerRegistered = false,
+                        mode = "unavailable",
+                        actionItemExtraction = false,
+                        message = "The private transcription worker is not registered; recordings remain available without a transcript."
                     },
                     brandedArtifacts = ArtifactKinds.OrderBy(value => value).ToArray()
                 }
@@ -141,7 +157,9 @@ internal static class ProjectFlowHivePsaModule
             return Results.BadRequest(new { status = "meeting_mp4_required", message = "Project FlowHive currently accepts MP4 meeting recordings only." });
 
         var title = Clean(form["title"].FirstOrDefault(), 240);
-        if (title.Length < 3) title = Path.GetFileNameWithoutExtension(file.FileName);
+        if (title.Length < 3) title = Clean(Path.GetFileNameWithoutExtension(file.FileName), 240);
+        if (title.Length < 3)
+            return Results.BadRequest(new { status = "meeting_title_invalid", message = "Meeting title must contain at least three characters after filename normalization." });
         var meetingAt = DateTimeOffset.TryParse(form["meetingAt"].FirstOrDefault(), out var parsedMeetingAt)
             ? parsedMeetingAt.ToUniversalTime()
             : DateTimeOffset.UtcNow;
@@ -188,8 +206,7 @@ internal static class ProjectFlowHivePsaModule
             throw;
         }
 
-        var transcriptionConfigured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FLOWHIVE_TRANSCRIPTION_ENDPOINT"));
-        var transcriptStatus = transcriptionConfigured ? "queued" : "unavailable";
+        const string transcriptStatus = "unavailable";
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -217,7 +234,7 @@ internal static class ProjectFlowHivePsaModule
             command.Parameters.AddWithValue("sha256", sha);
             command.Parameters.AddWithValue("customer_visible", customerVisible);
             command.Parameters.AddWithValue("transcript_status", transcriptStatus);
-            command.Parameters.AddWithValue("diagnostic", transcriptionConfigured ? "automatic_transcription_queued" : "governed_transcription_endpoint_not_configured");
+            command.Parameters.AddWithValue("diagnostic", "governed_transcription_worker_not_registered");
             command.Parameters.AddWithValue("actor", access.ActualUserId!.Value);
             command.Parameters.AddWithValue("detail", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(new { fileName = Path.GetFileName(file.FileName), file.Length, sha256 = sha, customerVisible, transcriptStatus }, Json));
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -241,9 +258,7 @@ internal static class ProjectFlowHivePsaModule
             sha256 = sha,
             customerVisible,
             transcriptStatus,
-            message = transcriptionConfigured
-                ? "Meeting recording saved. Governed automatic transcription and action-item extraction are queued."
-                : "Meeting recording saved. Automatic transcription is unavailable until the governed private transcription endpoint is configured."
+            message = "Meeting recording saved. Transcription and action-item extraction are unavailable until the governed private worker is registered."
         });
     }
 
@@ -258,7 +273,6 @@ internal static class ProjectFlowHivePsaModule
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
-        var configured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FLOWHIVE_TRANSCRIPTION_ENDPOINT"));
         const string sql = """
             WITH prior AS (
                 SELECT customer_visible, transcript_status
@@ -295,8 +309,8 @@ internal static class ProjectFlowHivePsaModule
         command.Parameters.AddWithValue("meeting_at", NpgsqlDbType.TimestampTz, request.MeetingAt is null ? DBNull.Value : request.MeetingAt.Value.ToUniversalTime());
         command.Parameters.AddWithValue("customer_visible", NpgsqlDbType.Boolean, request.CustomerVisible is null ? DBNull.Value : request.CustomerVisible.Value);
         command.Parameters.AddWithValue("retry_transcription", request.RetryTranscription);
-        command.Parameters.AddWithValue("retry_status", configured ? "queued" : "unavailable");
-        command.Parameters.AddWithValue("retry_diagnostic", configured ? "automatic_transcription_requeued" : "governed_transcription_endpoint_not_configured");
+        command.Parameters.AddWithValue("retry_status", "unavailable");
+        command.Parameters.AddWithValue("retry_diagnostic", "governed_transcription_worker_not_registered");
         command.Parameters.AddWithValue("actor", access.ActualUserId!.Value);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return Results.NotFound(new { status = "meeting_not_found" });
@@ -367,6 +381,13 @@ internal static class ProjectFlowHivePsaModule
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
+        if (request.Enabled)
+            return Results.Conflict(new
+            {
+                status = "task_reminder_dispatcher_unavailable",
+                stateChanged = false,
+                message = "Task reminder preferences are retained, but no dispatcher is registered. No notification was queued or delivered."
+            });
         var leadDays = (request.LeadDays ?? [2, 1]).Distinct().Where(value => value is >= 0 and <= 60).OrderByDescending(value => value).Take(8).ToArray();
         if (leadDays.Length == 0) leadDays = [1];
         var timezone = Clean(request.TimezoneName, 100);
@@ -621,7 +642,7 @@ internal static class ProjectFlowHivePsaModule
         await using var command = new NpgsqlCommand("SELECT enabled, lead_days, include_project_manager, include_assigned_team_members, include_overdue, timezone_name, quiet_hours_start, quiet_hours_end, delivery_boundary, updated_at FROM project_flowhive_task_reminder_preferences WHERE project_id = @project_id;", connection);
         command.Parameters.AddWithValue("project_id", projectId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) return new { enabled = true, leadDays = new[] { 2, 1 }, includeProjectManager = true, includeAssignedTeamMembers = true, includeOverdue = true, timezoneName = "America/Chicago", deliveryBoundary = "test_only", persisted = false };
+        if (!await reader.ReadAsync(cancellationToken)) return new { enabled = false, leadDays = new[] { 2, 1 }, includeProjectManager = true, includeAssignedTeamMembers = true, includeOverdue = true, timezoneName = "America/Chicago", deliveryBoundary = "test_only", persisted = false, dispatcherAvailable = false };
         return ReadReminderPreferences(reader);
     }
 
@@ -637,7 +658,8 @@ internal static class ProjectFlowHivePsaModule
         quietHoursEnd = reader.IsDBNull(7) ? null : reader.GetTimeSpan(7).ToString(),
         deliveryBoundary = reader.GetString(8),
         updatedAt = reader.GetFieldValue<DateTimeOffset>(9),
-        persisted = true
+        persisted = true,
+        dispatcherAvailable = false
     };
 
     private sealed record RaidRow(string ItemType, string Title, string Status, string Priority, string Probability, string Impact, string Owner, string DueDate, string Mitigation, string SourceReference);
