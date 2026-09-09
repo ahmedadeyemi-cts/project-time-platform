@@ -75,7 +75,7 @@ jobs:
           FEATURE_BRANCH: ${{ github.head_ref }}
         run: |
           set -Eeuo pipefail
-          if [[ "$FEATURE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
+          if [[ "$FEATURE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
             [[ "$FEATURE_HEAD" =~ ^[a-f0-9]{40}$ ]]
             echo "sha=$FEATURE_HEAD" >> "$GITHUB_OUTPUT"
           else
