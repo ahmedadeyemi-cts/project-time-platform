@@ -61,6 +61,8 @@ export const successorApprovalFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/flowhive-psa-release-control-files.txt',
   '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
   '.github/workflows/projectpulse-deploy-test.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
   'scripts/release-test/apply-flowhive-psa-migrations.sh',
