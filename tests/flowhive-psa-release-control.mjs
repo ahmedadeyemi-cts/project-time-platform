@@ -50,7 +50,10 @@ export const candidateRefreshFiles = [
 ].sort();
 export const successorCandidateRefreshBase = 'd2262ccbef31800883589197d03122bd51bb87cc';
 export const successorCandidateRefreshBranch = 'control/flowhive-sow-successor-candidate-refresh-20260910';
-export const successorCandidateRefreshFiles = candidateRefreshFiles;
+export const successorCandidateRefreshFiles = [
+  ...candidateRefreshFiles,
+  'tests/flowhive-psa-admission.test.mjs'
+].sort();
 export const sourceBaseCorrectionBase = '040709cdac0a940ad8feffbd730f1be35ce50280';
 export const sourceBaseCorrectionBranch = 'fix/flowhive-admission-source-base-20260908';
 export const sourceBaseCorrectionFiles = [
