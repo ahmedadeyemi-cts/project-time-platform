@@ -34,34 +34,30 @@ shares the existing admission lock, and refuses every unresolved workflow run
 before the single dispatch write. It never enables/disables the deploy workflow,
 never cancels a queued run, and never treats zero jobs as a disposition. This
 keeps the native Test environment gate and existing serialization as the release
-transaction boundary. The read-only cutover gate checks all three known requests
-(`34495606530`, `34377182662`, and `33654881418`) for server-confirmed terminal
-state, completed attempts, and no pending deployment, then verifies the exact
-workflow identity is active before admission. A lost dispatch response is an
-unknown outcome to inspect, never a reason to dispatch again automatically.
+transaction boundary. The normal read-only cutover gate still requires all three
+known requests (`34495606530`, `34377182662`, and `33654881418`) to be
+server-confirmed terminal with completed attempts and no pending deployment.
+The reviewed `.github/flowhive-psa-protected-cutover.json` provides a separate,
+initially inactive exception for this exact candidate: when separately approved
+and unexpired, one shared assessment verifies the exact three queued records,
+every observed attempt's zero jobs, empty Test approval history and pending
+deployments, empty concurrency/artifact inventories, exact historical workflow
+blobs and complete native Test protection. The same assessment is passed to the
+final nonterminal-run inventory, so an unknown fourth run, execution, approval,
+identity change or unreadable evidence blocks admission. Queued remains queued;
+the path never claims cancellation or completion and never reconstructs missing
+historical dispatch inputs. A lost dispatch response is an unknown outcome to
+inspect, never a reason to dispatch again automatically.
 
-The current unresolved requests are recorded in the trusted authorization manifest.
-Run `34495606530` uses controller `9f30078c2c407d4d3576ccefd663a145be50c6c4`;
-all three are queued with zero jobs, no pending deployment and no approval. Their
-disposition is `blocking-hold`: the release owner records the measured state, but
-does not claim that GitHub canceled or completed anything. The supported future
-cutover is one separately reviewed run-control operation per request, followed by
-server verification of terminal state and no execution, one native enable operation,
-and verification of active workflow identity. The current session has not performed
-those writes; no dispatch, rerun, cancel, delete, approval or workflow toggle is
-permitted from this admission path.
-
-The exact supported recovery operation is therefore: read and bind each of the
-three run IDs, issue one normal `POST /actions/runs/{id}/cancel` per request only
-after the identity/queued/zero-job precondition still holds, verify each run is
-server-confirmed `completed` with no executing jobs or pending deployment, then
-issue one native `PUT /actions/workflows/315562561/enable` and verify the returned
-workflow is active with the expected path and Test protection. The admission
-workflow then performs the read-only cutover gate and dispatches once. The current
-owner credential has repository admin and Actions write capability, but this is
-not authorization to perform those five state-changing requests; that exact
-bounded authorization is the remaining external decision. A 409/403, changed
-state, new job, or uncertain response stops the sequence and prevents dispatch.
+The current unresolved requests are recorded in both the trusted cutover manifest
+and the live assessment. Run `34495606530` uses controller
+`9f30078c2c407d4d3576ccefd663a145be50c6c4`; all three are required to remain
+queued with zero jobs, no pending deployment, no approval and no artifacts. Their
+raw GitHub status remains visible and distinct from the repository's protected
+nonterminal disposition. The manifest is inactive in this publication; activation
+requires a separately reviewed bounded approval for this candidate and current
+controller, followed by the existing native Test deployment approval. No
+workflow-state write is part of this control change.
 
 Before the dispatch write, the admission job persists a sanitized attempt record
 with the repository, candidate/controller identities, workflow, admission run ID,

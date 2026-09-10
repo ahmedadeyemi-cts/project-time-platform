@@ -1,0 +1,80 @@
+{
+  "contract": "flowhive-psa-protected-cutover-v1",
+  "enabled": false,
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260910",
+  "candidate": {
+    "pullRequest": 887,
+    "branch": "release/flowhive-sow-successor-20260908",
+    "sha": "95abbb0aa2445a33fda68e9de542f9446c3e2204"
+  },
+  "workflow": {
+    "id": 315562561,
+    "path": ".github/workflows/projectpulse-deploy-test.yml",
+    "controllerBranch": "main",
+    "event": "workflow_dispatch"
+  },
+  "environment": {
+    "environment": "test",
+    "protectionRuleId": 65110773,
+    "requiredReviewerLogin": "ahmedadeyemi-cts",
+    "requiredReviewerId": 244059331,
+    "preventSelfReview": false,
+    "canAdminsBypass": false
+  },
+  "requests": [
+    {
+      "runId": 34495606530,
+      "controllerSha": "9f30078c2c407d4d3576ccefd663a145be50c6c4",
+      "headBranch": "main",
+      "event": "workflow_dispatch",
+      "runAttempt": 1,
+      "status": "queued",
+      "conclusion": null,
+      "createdAt": "2026-09-10T15:26:05Z",
+      "updatedAt": "2026-09-10T15:26:05Z",
+      "historicalBlobs": {
+        "admission": "2236a05888afff28cd971c9c2cb13d27017acac3",
+        "dispatcher": "6f960293b8684f837a0f810a3773e95d53469f4e",
+        "deploymentWorkflow": "182da71f9919ac21d42e5c00425f9e881e927a1b"
+      }
+    },
+    {
+      "runId": 34377182662,
+      "controllerSha": "af5fcb463384096f668345ac7cc9bd00efef0a33",
+      "headBranch": "main",
+      "event": "workflow_dispatch",
+      "runAttempt": 1,
+      "status": "queued",
+      "conclusion": null,
+      "createdAt": "2026-09-09T16:30:42Z",
+      "updatedAt": "2026-09-09T16:30:42Z",
+      "historicalBlobs": {
+        "admission": "87681012e101a2403a0a90271a3c16286fbf6028",
+        "dispatcher": "32501e466c75c800d41451631f55ef6902d02d5d",
+        "deploymentWorkflow": "c372c4aa3a532f89fdcf72c62e17b9f3e84dd785"
+      }
+    },
+    {
+      "runId": 33654881418,
+      "controllerSha": "3d02b4cb62683b96554186f9d3a782fc1f21ca54",
+      "headBranch": "fix/shared-project-document-planning-20260819",
+      "event": "workflow_dispatch",
+      "runAttempt": 1,
+      "status": "queued",
+      "conclusion": null,
+      "createdAt": "2026-09-02T16:26:03Z",
+      "updatedAt": "2026-09-02T16:26:03Z",
+      "historicalBlobs": {
+        "deploymentWorkflow": "d22cd6bfed31a9eb1dbf2475ad50a0707029d800"
+      }
+    }
+  ],
+  "serverDispatchInputsConfirmed": false,
+  "approval": {
+    "status": "not-approved",
+    "approvedBy": null,
+    "approvedAt": null,
+    "expiresAt": null
+  },
+  "activationDecision": "hold"
+}

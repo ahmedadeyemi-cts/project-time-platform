@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
@@ -58,6 +59,57 @@ const staleRun = () => ({
   historicalSources: historicalFence, environmentProtection: nativeEnvironmentProtection,
   authorization: staleAuthorization(), authorizationNow: new Date('2026-09-09T22:05:00Z')
 });
+const protectedCutoverAuthorization = () => {
+  const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
+  authorization.enabled = true;
+  authorization.activationDecision = 'approved';
+  authorization.approval = {
+    status: 'approved', approvedBy: 'ahmedadeyemi-cts',
+    approvedAt: '2026-09-10T19:00:00Z', expiresAt: '2026-09-10T19:15:00Z'
+  };
+  return authorization;
+};
+function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount = 0,
+  protection = nativeEnvironmentProtection, state = 'active' } = {}) {
+  const control = 'e'.repeat(40);
+  const calls = [];
+  const runs = protectedCutoverRunAttestations.map(expected => ({
+    id: expected.runId, workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml',
+    event: expected.event, head_branch: expected.headBranch, head_sha: expected.controllerSha,
+    run_attempt: expected.runAttempt, status: expected.status, conclusion: expected.conclusion,
+    created_at: expected.createdAt, updated_at: expected.updatedAt
+  }));
+  if (fourthRun) runs.push({ id: 99999999999, status: 'queued' });
+  const request = async (url, method = 'GET') => {
+    calls.push({ url, method });
+    if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state };
+    if (url === 'git/ref/heads/main') return { object: { sha: control } };
+    if (url === 'environments/test') return protection;
+    if (url.includes('/dispatches')) return {
+      workflow_run_id: 9001,
+      run_url: 'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/9001',
+      html_url: 'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/9001'
+    };
+    if (url === 'actions/runs/9001') return {
+      id: 9001, workflow_id: 315562561, event: 'workflow_dispatch', head_branch: 'main', head_sha: control,
+      created_at: '2026-09-10T20:00:00Z', status: 'queued', conclusion: null,
+      display_title: 'Protected Test', run_attempt: 1
+    };
+    const runMatch = /^actions\/runs\/(\d+)$/.exec(url);
+    if (runMatch) {
+      const run = runs.find(item => item.id === Number(runMatch[1]));
+      if (run) return run;
+    }
+    if (url.includes('/runs?status=')) return { workflow_runs: runs };
+    if (url.includes('/attempts/') && url.includes('/jobs?')) return { total_count: jobCount, jobs: jobCount ? [{ id: 1 }] : [] };
+    if (url.includes('/pending_deployments')) return [];
+    if (url.includes('/approvals')) return approvalHistory;
+    if (url.includes('/concurrency_groups')) return { total_count: 0, concurrency_groups: [] };
+    if (url.includes('/artifacts?')) return { total_count: 0, artifacts: [] };
+    throw new Error(`UNEXPECTED_PROTECTED_CUTOVER_REQUEST ${method} ${url}`);
+  };
+  return { request, calls, control, runs };
+}
 test('approved current draft candidate is admissible without merging', () => {
   verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr); verifyRuns(approval, runs);
 });
@@ -240,6 +292,61 @@ test('maintained admission requires an active controller and no unresolved runs'
   };
   assert.deepEqual(await inspectActiveController(api),{id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active',executableActiveRuns:0});
   await assert.rejects(inspectActiveController(async url=>({id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'disabled_manually'})),/PSA_CONTROLLER_MUST_REMAIN_ACTIVE/);
+});
+test('protected cutover assesses all three queued requests and permits exactly one dispatch', async () => {
+  const fixture = protectedCutoverApi();
+  const authorization = protectedCutoverAuthorization();
+  assert.equal(verifyProtectedCutoverAuthorization(authorization, new Date('2026-09-10T19:05:00Z')).approved, true);
+  const cutover = await verifyReleaseCutover(fixture.request, {
+    candidateSha: approval.sha, executingControllerSha: fixture.control,
+    authorization, authorizationNow: new Date('2026-09-10T19:05:00Z')
+  });
+  assert.equal(cutover.protectedAssessment.kind, 'protected-nonterminal-cutover');
+  assert.deepEqual(cutover.protectedAssessment.runIds, protectedCutoverRunIds);
+  assert.deepEqual(cutover.requests.map(item => item.runId), protectedCutoverRunIds);
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-');
+  try {
+    const result = await dispatchWithEvidence({
+      api: fixture.request, candidateSha: approval.sha, controlSha: fixture.control,
+      createdAfter: '2026-09-10T20:00:00Z', admissionRunId: 9002, admissionRunAttempt: 1,
+      evidenceFile: `${directory}/attempt.json`, cutoverAssessment: {
+        kind: cutover.protectedAssessment.kind,
+        authorizationReference: cutover.protectedAssessment.authorizationReference,
+        runIds: cutover.protectedAssessment.runIds
+      }
+    });
+    assert.equal(result.dispatched.runId, 9001);
+    const saved = JSON.parse(fs.readFileSync(`${directory}/attempt.json`, 'utf8'));
+    assert.deepEqual(saved.cutoverAssessment.runIds, protectedCutoverRunIds);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  assert.equal(fixture.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 1);
+});
+test('protected cutover remains fail-closed for inactive authorization, fourth runs, execution, approval, or weakened Test protection', async () => {
+  const inactive = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
+  const inactiveFixture = protectedCutoverApi();
+  await assert.rejects(verifyReleaseCutover(inactiveFixture.request, {
+    candidateSha: approval.sha, executingControllerSha: inactiveFixture.control, authorization: inactive
+  }), /PSA_CUTOVER_RUN_NOT_TERMINAL/);
+  for (const options of [
+    { fourthRun: true },
+    { approvalHistory: [{ id: 1 }] },
+    { jobCount: 1 },
+    { protection: { ...nativeEnvironmentProtection, can_admins_bypass: true } }
+  ]) {
+    const fixture = protectedCutoverApi(options);
+    await assert.rejects(verifyReleaseCutover(fixture.request, {
+      candidateSha: approval.sha, executingControllerSha: fixture.control,
+      authorization: protectedCutoverAuthorization(), authorizationNow: new Date('2026-09-10T19:05:00Z')
+    }));
+    assert.equal(fixture.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 0);
+  }
+});
+test('protected source assessment binds actual blobs and rejects disconnected workflow content', () => {
+  const expected = protectedCutoverRunAttestations[0];
+  const source = execFileSync('git', ['show', `${expected.controllerSha}:.github/workflows/projectpulse-deploy-test.yml`], { encoding: 'utf8' });
+  assert.equal(verifyProtectedHistoricalWorkflowSource(source, expected.historicalBlobs.deploymentWorkflow, expected.runId).allMutationPathsBehindTest, true);
+  assert.throws(() => verifyProtectedHistoricalWorkflowSource(source.replace('environment: test', 'environment: production'), expected.historicalBlobs.deploymentWorkflow, expected.runId));
+  assert.throws(() => verifyProtectedHistoricalWorkflowSource(`${source}\njobs:\n  deploy:\n    environment: test`, expected.historicalBlobs.deploymentWorkflow, expected.runId));
 });
 test('release cutover requires terminal server state for all three requests and an active controller', async () => {
   const calls = [];

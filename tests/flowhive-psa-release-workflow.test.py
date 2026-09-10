@@ -16,7 +16,7 @@ NEW_NAMES={
  'Install isolated live-browser acceptance dependencies',
  'Verify PSA candidate health and the live SOW-to-WBS lifecycle'
 }
-STABILIZATION_BRANCH='fix/flowhive-release-stabilization-20260910'
+STABILIZATION_BRANCH='fix/flowhive-protected-cutover-20260910'
 
 class UniqueKeyLoader(yaml.BaseLoader):
     def construct_mapping(self,node,deep=False):
@@ -159,6 +159,7 @@ class WorkflowContract(unittest.TestCase):
         assert "github.actor == 'ahmedadeyemi-cts'" in job['if'] and 'github.event.issue.number == 887' in job['if']
         assert all('azure/login' not in s.get('uses','') for s in job['steps'])
         dispatch=next(s for s in job['steps'] if s.get('name','').startswith('Authorize and dispatch once'))
+        assert dispatch['env']['FLOWHIVE_PSA_PROTECTED_CUTOVER_FILE']=='.github/flowhive-psa-protected-cutover.json'
         assert dispatch['env']['FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE']=='${{ runner.temp }}/flowhive-psa-dispatch-attempt.json'
         assert 'enable' not in dispatch['name'].lower() and 'reseal' not in dispatch['name'].lower()
         artifact=next(s for s in job['steps'] if s.get('name')=='Upload sanitized FlowHive dispatch evidence')

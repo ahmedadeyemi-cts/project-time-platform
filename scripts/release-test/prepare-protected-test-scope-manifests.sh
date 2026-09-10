@@ -99,6 +99,20 @@ tests/flowhive-psa-admission.test.mjs
 tests/flowhive-psa-release-control.mjs
 tests/flowhive-psa-release-workflow.test.py
 FILES
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
+  cat >> "$CIT/allowed-release-files" <<'FILES'
+.github/flowhive-psa-protected-cutover.json
+.github/flowhive-psa-release-control-files.txt
+.github/workflows/flowhive-psa-protected-test-admission.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md
+scripts/release-test/dispatch-flowhive-psa-test.mjs
+scripts/release-test/prepare-protected-test-scope-manifests.sh
+tests/flowhive-psa-admission.test.mjs
+tests/flowhive-psa-release-control.mjs
+tests/flowhive-psa-release-workflow.test.py
+FILES
 fi
 LC_ALL=C sort -u "$CIT/allowed-release-files" -o "$CIT/allowed-release-files"
 
@@ -258,3 +272,19 @@ tests/flowhive-psa-release-workflow.test.py
 FILES
 sed -i 's/^[[:space:]]*//' "$CIT/e-flowhive-reviewed-regeneration-files"
 LC_ALL=C sort -u "$CIT/e-flowhive-reviewed-regeneration-files" -o "$CIT/e-flowhive-reviewed-regeneration-files"
+
+cat > "$CIT/e-flowhive-protected-cutover-files" <<'FILES'
+.github/flowhive-psa-protected-cutover.json
+.github/flowhive-psa-release-control-files.txt
+.github/workflows/flowhive-psa-protected-test-admission.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md
+scripts/release-test/dispatch-flowhive-psa-test.mjs
+scripts/release-test/prepare-protected-test-scope-manifests.sh
+tests/flowhive-psa-admission.test.mjs
+tests/flowhive-psa-release-control.mjs
+tests/flowhive-psa-release-workflow.test.py
+FILES
+sed -i 's/^[[:space:]]*//' "$CIT/e-flowhive-protected-cutover-files"
+LC_ALL=C sort -u "$CIT/e-flowhive-protected-cutover-files" -o "$CIT/e-flowhive-protected-cutover-files"
