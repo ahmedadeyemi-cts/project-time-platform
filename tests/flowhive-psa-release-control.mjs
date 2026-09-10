@@ -95,7 +95,8 @@ export const staleSupersessionFiles = [
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',
-  'tests/flowhive-psa-release-control.mjs'
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
 ].sort();
 export const reviewedRegenerationFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
