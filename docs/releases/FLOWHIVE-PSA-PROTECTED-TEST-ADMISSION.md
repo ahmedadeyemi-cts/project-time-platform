@@ -29,15 +29,49 @@ reconciliation `e0b8fa3f2b19009fb865eb5f50a07101461e39bf`, and the final CI/scop
 `d2262ccbef31800883589197d03122bd51bb87cc`; migrations 103/104/105/106 retain their
 reviewed SHA-256 values.
 
-The supervisor shares the existing admission lock, refuses any executable active
-Protected Test deployment, restores the admission fence if the canonical workflow
-is active but idle, verifies the sealed state and repeats the idle-run check,
-enables the canonical workflow for one dispatch only, and reseals it. Restoring
-this fence only disables workflow admissions; it never cancels or alters a run.
-The CI probe is strictly read-only and reports whether sealing is needed. The
-main-owned supervisor performs and verifies that sealing before any dispatch. The previously quarantined zero-job run can be disregarded only
-while it still has zero jobs. No run is cancelled. A lost dispatch response is an
+The supervisor requires the canonical deployment workflow to already be active,
+shares the existing admission lock, and refuses every unresolved workflow run
+before the single dispatch write. It never enables/disables the deploy workflow,
+never cancels a queued run, and never treats zero jobs as a disposition. This
+keeps the native Test environment gate and existing serialization as the release
+transaction boundary. The read-only cutover gate checks all three known requests
+(`34495606530`, `34377182662`, and `33654881418`) for server-confirmed terminal
+state, completed attempts, and no pending deployment, then verifies the exact
+workflow identity is active before admission. A lost dispatch response is an
 unknown outcome to inspect, never a reason to dispatch again automatically.
+
+The current unresolved requests are recorded in the trusted authorization manifest.
+Run `34495606530` uses controller `9f30078c2c407d4d3576ccefd663a145be50c6c4`;
+all three are queued with zero jobs, no pending deployment and no approval. Their
+disposition is `blocking-hold`: the release owner records the measured state, but
+does not claim that GitHub canceled or completed anything. The supported future
+cutover is one separately reviewed run-control operation per request, followed by
+server verification of terminal state and no execution, one native enable operation,
+and verification of active workflow identity. The current session has not performed
+those writes; no dispatch, rerun, cancel, delete, approval or workflow toggle is
+permitted from this admission path.
+
+The exact supported recovery operation is therefore: read and bind each of the
+three run IDs, issue one normal `POST /actions/runs/{id}/cancel` per request only
+after the identity/queued/zero-job precondition still holds, verify each run is
+server-confirmed `completed` with no executing jobs or pending deployment, then
+issue one native `PUT /actions/workflows/315562561/enable` and verify the returned
+workflow is active with the expected path and Test protection. The admission
+workflow then performs the read-only cutover gate and dispatches once. The current
+owner credential has repository admin and Actions write capability, but this is
+not authorization to perform those five state-changing requests; that exact
+bounded authorization is the remaining external decision. A 409/403, changed
+state, new job, or uncertain response stops the sequence and prevents dispatch.
+
+Before the dispatch write, the admission job persists a sanitized attempt record
+with the repository, candidate/controller identities, workflow, admission run ID,
+admission run attempt, request fingerprint and timestamps. It records the returned run ID immediately,
+then records server identity verification and the observed lifecycle phase. API
+failures include stage, method, path, status and GitHub request ID; no token,
+header, response body or customer content is stored. The record is uploaded as
+an Actions artifact even when the admission step fails. Optional summary/comment
+failures are recorded separately from the last verified deployment phase and cannot erase an accepted receipt; identity,
+authorization and active-controller failures remain blocking.
 
 Controller-only changes no longer trigger automatic main-push deployment. All
 existing application/migration source triggers remain unchanged, and the control
@@ -114,8 +148,9 @@ all twelve export artifacts remain the feature PR's separate completion gates.
 
 ## Verification in this control PR
 
-Node negative tests cover approval, forks, drift, stale/failed CI, dispatch identity
-and control scope. Python tests cover false-success rejection, saved receipts,
+Node negative tests cover approval, forks, drift, stale/failed CI, dispatch identity,
+receipt-before-follow-up failure, sanitized attempt evidence, unresolved-run blocking,
+active-controller policy and control scope. Python tests cover false-success rejection, saved receipts,
 parsed workflow safety, shell syntax, and unchanged unrelated controller steps.
 A disposable PostgreSQL job executes the approved migrations and actual migration
 entrypoint, reapplication, legacy-run retirement, immutable RAID evidence,

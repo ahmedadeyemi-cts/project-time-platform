@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { authorize, repository, candidateBranch, candidatePullRequest } from './flowhive-psa-admission.mjs';
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
-const knownNonexecutingRun = 33654881418;
+export const unresolvedRequestIds = Object.freeze([34495606530, 34377182662, 33654881418]);
+const knownNonexecutingRun = unresolvedRequestIds[2];
 const dispatchSha = /^[a-f0-9]{40}$/;
 const contentSha = /^[a-f0-9]{64}$/;
 export const staleSupersessionAuthorizationPath = '.github/flowhive-psa-stale-run-supersession-authorization.json';
@@ -31,6 +34,115 @@ export const staleRunSupersessionAttestation = Object.freeze({
   })
 });
 export const githubApiVersion = '2022-11-28';
+export const dispatchEvidenceSchema = 'flowhive-psa-dispatch-attempt-v1';
+export const dispatchEvidenceDefaultFile = 'flowhive-psa-dispatch-attempt.json';
+
+export class GithubApiError extends Error {
+  constructor({ stage, method, path: requestPath, status, requestId }) {
+    super(`GITHUB_API_REQUEST_FAILED stage=${stage} method=${method} path=${requestPath} status=${status} requestId=${requestId || 'unknown'}`);
+    this.name = 'GithubApiError';
+    this.stage = stage;
+    this.method = method;
+    this.path = requestPath;
+    this.status = status;
+    this.requestId = requestId || null;
+  }
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function fingerprint(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function evidencePath(filePath = process.env.FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE) {
+  assert.ok(filePath, 'FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE is required for a dispatch attempt.');
+  return filePath;
+}
+
+export function persistDispatchEvidence(record, filePath = evidencePath()) {
+  const destination = path.resolve(filePath);
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  const temporary = `${destination}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify({ ...record, updatedAt: nowIso() }, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(temporary, destination);
+  return destination;
+}
+
+export function readAdmissionExecutionContext(env = process.env) {
+  const admissionRunId = Number(env.GITHUB_RUN_ID);
+  const admissionRunAttempt = Number(env.GITHUB_RUN_ATTEMPT);
+  assert.ok(Number.isSafeInteger(admissionRunId) && admissionRunId > 0,
+    'FLOWHIVE_PSA_ADMISSION_RUN_ID_REQUIRED');
+  assert.ok(Number.isSafeInteger(admissionRunAttempt) && admissionRunAttempt > 0,
+    'FLOWHIVE_PSA_ADMISSION_RUN_ATTEMPT_REQUIRED');
+  return { admissionRunId, admissionRunAttempt };
+}
+
+export function createDispatchEvidence({ candidateSha, controlSha, dispatch, admissionRunId = null,
+  admissionRunAttempt = null, attempt = admissionRunAttempt ?? 1, startedAt = nowIso() }) {
+  return {
+    schema: dispatchEvidenceSchema,
+    repository,
+    candidatePullRequest,
+    candidateSha,
+    controllerSha: controlSha,
+    workflowId,
+    workflowPath,
+    admissionRunId,
+    admissionRunAttempt,
+    attempt,
+    startedAt,
+    updatedAt: startedAt,
+    stage: 'pre-dispatch',
+    phase: 'dispatch-pending',
+    dispatchAttempted: false,
+    dispatchWriteCount: 0,
+    dispatch: {
+      method: dispatch.method,
+      path: dispatch.path,
+      requestFingerprint: fingerprint(dispatch.body)
+    },
+    run: null,
+    errors: [],
+    reportingErrors: []
+  };
+}
+
+export function safeApiError(error, fallbackStage = 'unknown') {
+  return {
+    stage: error?.stage || fallbackStage,
+    method: error?.method || null,
+    path: error?.path || null,
+    status: error?.status ?? null,
+    requestId: error?.requestId || null,
+    type: error?.name || 'Error',
+    at: nowIso()
+  };
+}
+
+export function recordReportingFailure(evidence, error, stage) {
+  return {
+    ...evidence,
+    reporting: {
+      status: 'failed',
+      stage,
+      errors: [...(evidence.reporting?.errors || []), safeApiError(error, stage)]
+    },
+    reportingErrors: [...(evidence.reportingErrors || []), safeApiError(error, stage)]
+  };
+}
+
+function runPhase(run) {
+  if (run?.status === 'queued') return 'accepted-awaiting-scheduling';
+  if (run?.status === 'waiting' || run?.status === 'pending') return 'awaiting-environment-review';
+  if (run?.status === 'in_progress') return 'executing';
+  if (run?.status === 'completed' && run?.conclusion === 'success') return 'completed-unverified';
+  if (run?.status === 'completed') return 'failed-or-partial';
+  return 'accepted';
+}
 
 export function readStaleSupersessionAuthorization(filePath = process.env.FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_AUTHORIZATION_FILE || staleSupersessionAuthorizationPath) {
   assert.equal(filePath, staleSupersessionAuthorizationPath,
@@ -242,31 +354,39 @@ export function parseCommand(text) {
   assert.ok(match && match[0] === text, 'The candidate command must be exact.');
   return match[1];
 }
-export function buildDispatchRequest(candidateSha) {
+export function buildDispatchRequest(candidateSha, controllerSha) {
   assert.match(candidateSha, dispatchSha, 'The submitted candidate SHA must be complete.');
+  assert.match(controllerSha, dispatchSha, 'The submitted controller SHA must be complete.');
   return {
     path: `actions/workflows/${workflowId}/dispatches`,
     method: 'POST',
     body: {
       ref: 'main',
       return_run_details: true,
-      inputs: { release_sha: candidateSha, release_branch: candidateBranch, recover_private_runtime: false }
+      inputs: {
+        release_sha: candidateSha,
+        release_branch: candidateBranch,
+        recover_private_runtime: false,
+        admission_controller_sha: controllerSha
+      }
     }
   };
 }
-export function verifyDispatchInputs(inputs, candidateSha) {
+export function verifyDispatchInputs(inputs, candidateSha, controllerSha) {
   assert.match(candidateSha, dispatchSha);
+  assert.match(controllerSha, dispatchSha);
   assert.deepEqual(inputs, {
     release_sha: candidateSha,
     release_branch: candidateBranch,
-    recover_private_runtime: false
+    recover_private_runtime: false,
+    admission_controller_sha: controllerSha
   }, 'The submitted dispatch inputs must remain bound to the admitted candidate.');
 }
-export function verifyDispatchRequest(dispatch, candidateSha) {
+export function verifyDispatchRequest(dispatch, candidateSha, controllerSha) {
   assert.equal(dispatch.path, `actions/workflows/${workflowId}/dispatches`);
   assert.equal(dispatch.method, 'POST');
   assert.equal(dispatch.body.return_run_details, true, 'The documented receipt option must be a JSON body parameter.');
-  verifyDispatchInputs(dispatch.body.inputs, candidateSha);
+  verifyDispatchInputs(dispatch.body.inputs, candidateSha, controllerSha);
   return dispatch;
 }
 export function verifyDispatchReceipt(receipt) {
@@ -305,18 +425,52 @@ export function buildRequest(path, method = 'GET', body, token = process.env.GH_
   if (body !== undefined) init.body = JSON.stringify(body);
   return { url: `https://api.github.com/repos/${repository}/${path}`, init };
 }
-export async function dispatchOnce(api, candidateSha, controlSha, createdAfter) {
-  const dispatch = verifyDispatchRequest(buildDispatchRequest(candidateSha), candidateSha);
-  const receipt = await api(dispatch.path, dispatch.method, dispatch.body);
-  const runId = verifyDispatchReceipt(receipt);
-  const run = await api(`actions/runs/${runId}`);
-  verifyDispatchedRun(run, controlSha, candidateSha, createdAfter, runId);
+export async function dispatchOnce(api, candidateSha, controlSha, createdAfter, lifecycle = {}) {
+  const dispatch = verifyDispatchRequest(buildDispatchRequest(candidateSha, controlSha), candidateSha, controlSha);
+  lifecycle.beforeDispatch?.(dispatch);
+  let receipt;
+  try {
+    receipt = await api(dispatch.path, dispatch.method, dispatch.body, 'dispatch');
+  } catch (error) {
+    lifecycle.failure?.(error, 'dispatch');
+    throw error;
+  }
+  let runId;
+  try {
+    runId = verifyDispatchReceipt(receipt);
+  } catch (error) {
+    lifecycle.failure?.(error, 'receipt-validation');
+    throw error;
+  }
+  lifecycle.receipt?.({ receipt, runId });
+  let run;
+  try {
+    run = await api(`actions/runs/${runId}`, 'GET', undefined, 'dispatch-run-read');
+  } catch (error) {
+    lifecycle.failure?.(error, 'dispatch-run-read');
+    throw error;
+  }
+  try {
+    verifyDispatchedRun(run, controlSha, candidateSha, createdAfter, runId);
+  } catch (error) {
+    lifecycle.failure?.(error, 'dispatch-run-identity');
+    throw error;
+  }
+  lifecycle.verified?.(run);
   return { runId, run, candidateSha, controlSha };
 }
-async function request(path, method = 'GET', body) {
+export async function request(path, method = 'GET', body, stage = `${method} ${path}`) {
   const { url, init } = buildRequest(path, method, body);
-  const response = await fetch(url, init);
-  assert.ok(response.ok, `GitHub dispatch operation failed: HTTP ${response.status}`);
+  let response;
+  try {
+    response = await fetch(url, init);
+  } catch (error) {
+    throw new GithubApiError({ stage, method, path, status: 'network', requestId: null, cause: error });
+  }
+  if (!response.ok) {
+    throw new GithubApiError({ stage, method, path, status: response.status,
+      requestId: response.headers?.get('x-github-request-id') });
+  }
   return response.status === 204 ? null : response.json();
 }
 function verifyWorkflow(workflow) {
@@ -369,6 +523,96 @@ export async function inspectIdleController(api = request, options = {}) {
   return { id: workflow.id, path: workflow.path, state: workflow.state, executableActiveRuns: 0,
     requiresSealing: workflow.state === 'active' };
 }
+
+export async function requireNoUnresolvedRuns(api = request) {
+  for (const status of ['queued', 'in_progress', 'waiting', 'pending', 'requested']) {
+    for (let page = 1; page <= 10; page += 1) {
+      const runs = await api(`actions/workflows/${workflowId}/runs?status=${status}&per_page=100&page=${page}`);
+      assert.ok(Array.isArray(runs.workflow_runs), 'PSA_ACTIVE_RUN_INVENTORY_INVALID');
+      for (const run of runs.workflow_runs) {
+        if (run.status !== 'completed') {
+          const error = new Error(`PSA_UNRESOLVED_DEPLOYMENT_RUN id=${run.id} status=${run.status}`);
+          error.runId = run.id;
+          error.runStatus = run.status;
+          throw error;
+        }
+      }
+      if (runs.workflow_runs.length < 100) break;
+      assert.ok(page < 10, 'Active-run pagination exceeded the bounded admission limit.');
+    }
+  }
+}
+
+// Read-only cutover gate. The three historical requests must be server-confirmed
+// terminal before the canonical controller can be active for a new admission.
+// This function never cancels runs or changes workflow state.
+export async function verifyReleaseCutover(api = request) {
+  const workflow = verifyWorkflow(await api(`actions/workflows/${workflowId}`, 'GET', undefined, 'cutover-controller-read'));
+  const requests = [];
+  for (const runId of unresolvedRequestIds) {
+    const run = await api(`actions/runs/${runId}`, 'GET', undefined, 'cutover-run-read');
+    assert.equal(run.id, runId, 'PSA_CUTOVER_RUN_ID_MISMATCH');
+    assert.equal(run.workflow_id, workflowId, 'PSA_CUTOVER_RUN_WORKFLOW_MISMATCH');
+    assert.equal(run.path, workflowPath, 'PSA_CUTOVER_RUN_PATH_MISMATCH');
+    assert.equal(run.event, 'workflow_dispatch', 'PSA_CUTOVER_RUN_EVENT_MISMATCH');
+    assert.equal(run.status, 'completed', `PSA_CUTOVER_RUN_NOT_TERMINAL id=${runId} status=${run.status}`);
+    const jobs = await api(`actions/runs/${runId}/jobs?per_page=100`, 'GET', undefined, 'cutover-jobs-read');
+    assert.ok(Array.isArray(jobs.jobs), 'PSA_CUTOVER_JOBS_INVALID');
+    assert.ok(jobs.jobs.every(job => job.status === 'completed'), `PSA_CUTOVER_EXECUTING_JOB id=${runId}`);
+    const pending = await api(`actions/runs/${runId}/pending_deployments`, 'GET', undefined, 'cutover-pending-read');
+    assert.ok(Array.isArray(pending) && pending.length === 0, `PSA_CUTOVER_PENDING_DEPLOYMENT id=${runId}`);
+    requests.push({ id: run.id, status: run.status, conclusion: run.conclusion ?? null,
+      headSha: run.head_sha, runAttempt: run.run_attempt });
+  }
+  assert.equal(workflow.state, 'active', 'PSA_CUTOVER_CONTROLLER_NOT_ACTIVE');
+  await requireNoUnresolvedRuns(api);
+  return { workflow: { id: workflow.id, path: workflow.path, state: workflow.state }, requests };
+}
+
+export async function inspectActiveController(api = request) {
+  const workflow = verifyWorkflow(await api(`actions/workflows/${workflowId}`, 'GET', undefined, 'controller-read'));
+  assert.equal(workflow.state, 'active', 'PSA_CONTROLLER_MUST_REMAIN_ACTIVE');
+  await requireNoUnresolvedRuns(api);
+  return { id: workflow.id, path: workflow.path, state: workflow.state, executableActiveRuns: 0 };
+}
+
+export async function dispatchWithEvidence({ api = request, candidateSha, controlSha, createdAfter = nowIso(),
+  admissionRunId, admissionRunAttempt, evidenceFile }) {
+  const dispatch = verifyDispatchRequest(buildDispatchRequest(candidateSha, controlSha), candidateSha, controlSha);
+  let evidence = createDispatchEvidence({ candidateSha, controlSha, dispatch, admissionRunId,
+    admissionRunAttempt, startedAt: createdAfter });
+  const saveEvidence = patch => {
+    evidence = { ...evidence, ...patch };
+    persistDispatchEvidence(evidence, evidenceFile);
+  };
+  saveEvidence({ stage: 'pre-dispatch', phase: 'dispatch-pending' });
+  const lifecycle = {
+    beforeDispatch: () => saveEvidence({ stage: 'dispatching', phase: 'dispatching', dispatchAttempted: true, dispatchWriteCount: 1 }),
+    receipt: ({ receipt, runId }) => saveEvidence({
+      stage: 'receipt-accepted', phase: 'receipt-accepted',
+      run: { id: runId, apiUrl: receipt.run_url, webUrl: receipt.html_url, status: null, conclusion: null }
+    }),
+    verified: run => saveEvidence({
+      stage: 'identity-verified', phase: runPhase(run),
+      run: { ...evidence.run, status: run.status, conclusion: run.conclusion ?? null,
+        headSha: run.head_sha, headBranch: run.head_branch, event: run.event }
+    }),
+    failure: (error, stage) => saveEvidence({
+      stage,
+      phase: evidence.run?.id ? 'receipt-accepted-follow-up-failed' : 'dispatch-uncertain',
+      errors: [...evidence.errors, safeApiError(error, stage)]
+    })
+  };
+  try {
+    const dispatched = await dispatchOnce(api, candidateSha, controlSha, createdAfter, lifecycle);
+    return { dispatched, evidence };
+  } catch (error) {
+    if (evidence.errors.length === 0) {
+      saveEvidence({ stage: 'admission-failed', phase: 'blocked', errors: [safeApiError(error, 'admission')] });
+    }
+    throw error;
+  }
+}
 // The owner-authorized main supervisor holds the shared admission lock before
 // calling this. Only admissions are disabled; no run or cloud resource changes.
 export async function sealIdleController(api = request, options = {}) {
@@ -394,36 +638,36 @@ async function main() {
   process.env.TARGET_RELEASE_BRANCH = candidateBranch;
   await authorize();
   const controlSha = process.env.GITHUB_SHA;
-  await sealIdleController();
-  const controlCheck = await request('git/ref/heads/main');
+  const admission = readAdmissionExecutionContext();
+  await verifyReleaseCutover(request);
+  const controlCheck = await request('git/ref/heads/main', 'GET', undefined, 'main-readback');
   assert.equal(controlCheck.object.sha, controlSha, 'Main changed during admission; re-review is required.');
-  let resealed = false;
-  let dispatchAttempted = false;
-  let dispatched;
+  const createdAfter = nowIso();
+  let { dispatched, evidence } = await dispatchWithEvidence({ api: request, candidateSha, controlSha,
+    createdAfter, admissionRunId: admission.admissionRunId, admissionRunAttempt: admission.admissionRunAttempt,
+    evidenceFile: evidencePath() });
+  const summary = `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nRun identity came from the dispatch response. Feature PR #${candidatePullRequest} remains unmerged. Live acceptance is not yet established.\n`;
   try {
-    const createdAfter = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-    await request(`actions/workflows/${workflowId}/enable`, 'PUT');
-    assert.equal((await request(`actions/workflows/${workflowId}`)).state, 'active');
-    // Never retry this write. A lost response is an unknown outcome requiring inspection.
-    dispatchAttempted = true;
-    const receipt = await dispatchOnce(request, candidateSha, controlSha, createdAfter);
-    dispatched = { ...receipt, productionMutation: false };
-  } finally {
-    // Reseal even if enable/dispatch/observation timed out. Never cancel any deployment.
-    await request(`actions/workflows/${workflowId}/disable`, 'PUT');
-    resealed = (await request(`actions/workflows/${workflowId}`)).state === 'disabled_manually';
-    assert.ok(resealed, 'Protected Test admissions did not reseal. Operator action is required.');
-    console.log(`FLOWHIVE_PSA_DISPATCH_ATTEMPTED=${dispatchAttempted} RESEALED=${resealed}`);
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+  } catch (error) {
+    evidence = recordReportingFailure(evidence, error, 'reporting-summary');
+    persistDispatchEvidence(evidence, evidencePath());
+    console.warn(`FLOWHIVE_PSA_REPORTING_FAILURE stage=reporting-summary type=${error.name || 'Error'}`);
   }
-  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nRun identity came from the dispatch response. Feature PR #${candidatePullRequest} remains unmerged. Live acceptance is not yet established.\n`);
-  await request(`issues/${candidatePullRequest}/comments`, 'POST', {
-    body: `Exact FlowHive candidate admission completed. Candidate \`${candidateSha}\`; trusted main controller \`${controlSha}\`. Protected Test deployment: https://github.com/${repository}/actions/runs/${dispatched.runId}. Run identity came from the dispatch response; admissions have been resealed; no Production/private-runtime recovery is requested. This is a deployment dispatch, not a live AI success or a completed enterprise PSA release.`
-  });
+  try {
+    await request(`issues/${candidatePullRequest}/comments`, 'POST', {
+      body: `Exact FlowHive candidate admission completed. Candidate \`${candidateSha}\`; trusted main controller \`${controlSha}\`. Protected Test deployment: https://github.com/${repository}/actions/runs/${dispatched.runId}. Run identity came from the dispatch response; the canonical controller remains active; no Production/private-runtime recovery is requested. This is a deployment dispatch, not a live AI success or a completed enterprise PSA release.`
+    }, 'reporting-comment');
+  } catch (error) {
+    evidence = recordReportingFailure(evidence, error, 'reporting-comment');
+    persistDispatchEvidence(evidence, evidencePath());
+    console.warn(`FLOWHIVE_PSA_REPORTING_FAILURE stage=reporting-comment status=${error.status ?? 'unknown'} requestId=${error.requestId || 'unknown'}`);
+  }
   console.log(`FLOWHIVE_PSA_CANDIDATE_DISPATCHED=${dispatched.runId}`);
 }
 if (process.argv[1]?.endsWith('/dispatch-flowhive-psa-test.mjs')) {
   const operation = process.argv.length === 3 && process.argv[2] === '--inspect-only'
-    ? inspectIdleController().then(result => console.log(JSON.stringify(result)))
+    ? verifyReleaseCutover().then(result => console.log(JSON.stringify(result)))
     : main();
   operation.catch(error => { console.error(error.message); process.exitCode = 1; });
 }

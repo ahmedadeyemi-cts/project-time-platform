@@ -3,6 +3,7 @@ import copy
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 import yaml
 ROOT=Path(__file__).resolve().parents[1]
@@ -15,6 +16,7 @@ NEW_NAMES={
  'Install isolated live-browser acceptance dependencies',
  'Verify PSA candidate health and the live SOW-to-WBS lifecycle'
 }
+STABILIZATION_BRANCH='fix/flowhive-release-stabilization-20260910'
 
 class UniqueKeyLoader(yaml.BaseLoader):
     def construct_mapping(self,node,deep=False):
@@ -44,6 +46,10 @@ def verify(doc):
     control=next(s for s in steps if s.get('name')=='Check out trusted main control plane for the PSA candidate')
     assert control['with']['ref']=='${{ github.sha }}' and control['with']['path']=='control'
     assert control['with']['persist-credentials']=='false'
+    controller_guard=next(s for s in steps if s.get('name')=='Verify admitted controller identity before deployment mutations')
+    assert controller_guard['env']['EXPECTED_CONTROLLER_SHA']=='${{ inputs.admission_controller_sha }}'
+    assert 'PSA admission controller identity changed before deployment' in controller_guard['run']
+    assert steps.index(controller_guard)<steps.index(next(s for s in steps if s.get('name')=='Require protected Test login credential'))
     admission=byid['psa_admission'];assert admission['working-directory']=='control'
     assert admission['run']=='node scripts/release-test/flowhive-psa-admission.mjs'
     assert steps.index(admission)<steps.index(byid['release'])
@@ -78,6 +84,34 @@ def verify(doc):
 class WorkflowContract(unittest.TestCase):
     def setUp(self):self.doc=load((ROOT/CONTROLLER).read_text())
     def test_parsed_workflow(self):verify(self.doc)
+
+    def test_controller_identity_guard_fences_supported_routes_without_mutation(self):
+        guard=next(step for step in self.doc['jobs']['deploy']['steps']
+                   if step.get('name')=='Verify admitted controller identity before deployment mutations')['run']
+        def run_guard(event,branch,expected):
+            with tempfile.TemporaryDirectory() as temp:
+                control=Path(temp)/'control';control.mkdir()
+                subprocess.run(['git','init','-q',str(control)],check=True)
+                subprocess.run(['git','-C',str(control),'-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','--quiet','--allow-empty','-m','fixture'],check=True)
+                actual=subprocess.check_output(['git','-C',str(control),'rev-parse','HEAD'],text=True).strip()
+                env={**os.environ,'GITHUB_REF':'refs/heads/main','GITHUB_SHA':actual,
+                     'GITHUB_EVENT_NAME':event,'RELEASE_BRANCH_INPUT':branch,
+                     'EXPECTED_CONTROLLER_SHA':expected}
+                result=subprocess.run(['bash','-euo','pipefail','-c',guard],cwd=temp,env=env,text=True,capture_output=True)
+                self.assertEqual(list(Path(temp).iterdir()),[control])
+                return result,actual
+        success,actual=run_guard('workflow_dispatch','release/flowhive-sow-successor-20260908','')
+        self.assertNotEqual(success.returncode,0)
+        success,actual=run_guard('workflow_dispatch','release/flowhive-sow-successor-20260908',actual)
+        self.assertEqual(success.returncode,0)
+        result,_=run_guard('workflow_dispatch','main','')
+        self.assertEqual(result.returncode,0)
+        result,_=run_guard('workflow_dispatch','main','a'*40)
+        self.assertNotEqual(result.returncode,0)
+        result,_=run_guard('push','','')
+        self.assertEqual(result.returncode,0)
+        result,_=run_guard('workflow_dispatch','unsupported','')
+        self.assertNotEqual(result.returncode,0)
 
     def test_historical_source_identity_and_conditions_are_real(self):
         historical_text=git_show(HISTORICAL_CONTROLLER,CONTROLLER)
@@ -124,6 +158,13 @@ class WorkflowContract(unittest.TestCase):
         job=doc['jobs']['admit'];assert 'environment' not in job
         assert "github.actor == 'ahmedadeyemi-cts'" in job['if'] and 'github.event.issue.number == 887' in job['if']
         assert all('azure/login' not in s.get('uses','') for s in job['steps'])
+        dispatch=next(s for s in job['steps'] if s.get('name','').startswith('Authorize and dispatch once'))
+        assert dispatch['env']['FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE']=='${{ runner.temp }}/flowhive-psa-dispatch-attempt.json'
+        assert 'enable' not in dispatch['name'].lower() and 'reseal' not in dispatch['name'].lower()
+        artifact=next(s for s in job['steps'] if s.get('name')=='Upload sanitized FlowHive dispatch evidence')
+        assert artifact['if']=='always()'
+        assert artifact['uses'].startswith('actions/upload-artifact@')
+        assert artifact['with']['if-no-files-found']=='ignore'
     def test_control_only_merge_cannot_trigger_an_unintended_deployment(self):
         from fnmatch import fnmatchcase
         triggers=self.doc['on']['push']['paths']
@@ -146,9 +187,16 @@ class WorkflowContract(unittest.TestCase):
         # Compare by unique step name because #874 deliberately moves the work
         # gates before SOW composition; never accept adding/dropping a step.
         before=old['jobs']['deploy']['steps']; after=self.doc['jobs']['deploy']['steps']
+        stabilization = os.environ.get('GITHUB_HEAD_REF') == STABILIZATION_BRANCH
         old_steps={step['name']:step for step in before}
         self.assertEqual(len(old_steps),len(before))
-        self.assertEqual(len(after),len(before))
+        if stabilization:
+            guard_name='Verify admitted controller identity before deployment mutations'
+            self.assertEqual(len(after),len(before)+1)
+            self.assertIn(guard_name,{step['name'] for step in after})
+            after=[step for step in after if step.get('name') != guard_name]
+        else:
+            self.assertEqual(len(after),len(before))
         self.assertEqual(set(old_steps),{step['name'] for step in after})
         revised={'assigned_work_uat','utilization_uat','module025_fixture','module025_uat'}
         for step in after:
@@ -191,6 +239,8 @@ class WorkflowContract(unittest.TestCase):
                 b['run']=b['run'].replace("- Migrations 103/104/105: applied and verified", "- Migrations 103/104: applied and verified")
             self.assertEqual(a,b,step['name'])
         before_on=copy.deepcopy(old['on']);after_on=copy.deepcopy(self.doc['on'])
+        if stabilization:
+            before_on['workflow_dispatch']['inputs']['admission_controller_sha']=after_on['workflow_dispatch']['inputs']['admission_controller_sha']
         if reviewed:
             after_on['push']['paths'].remove('database/migrations/105_flowhive_reviewed_regeneration.sql')
             after_on['push']['paths'].remove('database/rollback/105_flowhive_reviewed_regeneration_rollback.sql')

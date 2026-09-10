@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
@@ -115,16 +115,16 @@ test('comment cannot select an arbitrary workflow, ref, environment or shell com
 });
 test('dispatch response binds submitted candidate and returned run identity', () => {
   const control='a'.repeat(40),created='2026-09-06T00:00:00Z';
-  const request=buildDispatchRequest(approval.sha);
+  const request=buildDispatchRequest(approval.sha,'a'.repeat(40));
   assert.equal(request.path,'actions/workflows/315562561/dispatches');
-  verifyDispatchRequest(request,approval.sha);
+  verifyDispatchRequest(request,approval.sha,'a'.repeat(40));
   const serialized=buildRequest(request.path,request.method,request.body,'test-token');
   assert.equal(serialized.url,'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/workflows/315562561/dispatches');
   assert.equal(serialized.init.headers['X-GitHub-Api-Version'],githubApiVersion);
   assert.equal(serialized.init.headers['X-GitHub-Api-Version'],'2022-11-28');
-  assert.deepEqual(JSON.parse(serialized.init.body),{ref:'main',return_run_details:true,inputs:{release_sha:approval.sha,release_branch:candidateBranch,recover_private_runtime:false}});
+  assert.deepEqual(JSON.parse(serialized.init.body),{ref:'main',return_run_details:true,inputs:{release_sha:approval.sha,release_branch:candidateBranch,recover_private_runtime:false,admission_controller_sha:'a'.repeat(40)}});
   assert.equal(new URL(serialized.url).search,'');
-  assert.throws(()=>verifyDispatchRequest({...request,body:{...request.body,return_run_details:false}},approval.sha));
+  assert.throws(()=>verifyDispatchRequest({...request,body:{...request.body,return_run_details:false}},approval.sha,'a'.repeat(40)));
   const receipt={workflow_run_id:7,run_url:'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/7',html_url:'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/7'};
   assert.equal(verifyDispatchReceipt(receipt),7);
   const r={id:7,workflow_id:315562561,event:'workflow_dispatch',head_branch:'main',head_sha:control,created_at:created,display_title:'Deploy System-wide Enterprise Reliability and Utilization to Protected Test'};
@@ -142,12 +142,126 @@ test('returned run ID works with delayed or generic server titles',async()=>{
   assert.equal(result.runId,9);assert.equal(calls.filter(x=>x.method==='POST').length,1);
   assert.equal(calls[0].body.inputs.release_sha,approval.sha);
 });
+test('receipt is persisted before a follow-up read and no second dispatch is possible', async () => {
+  const control='d'.repeat(40),created='2026-09-06T00:00:00Z',events=[];
+  const receipt={workflow_run_id:11,run_url:'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/11',html_url:'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/11'};
+  await assert.rejects(dispatchOnce(async(path,method,body,stage)=>{
+    events.push({path,method,stage});
+    if(path.includes('/dispatches')) return receipt;
+    throw new GithubApiError({stage:'dispatch-run-read',method:'GET',path:'actions/runs/11',status:403,requestId:'E-READ'});
+  },approval.sha,control,created,{
+    beforeDispatch:dispatch=>events.push({stage:'before-dispatch',fingerprint:dispatch.body.inputs.release_sha}),
+    receipt:({runId})=>events.push({stage:'receipt-accepted',runId}),
+    failure:(error,stage)=>events.push({stage,errorStage:error.stage,failureStage:stage})
+  }),/GITHUB_API_REQUEST_FAILED/);
+  assert.deepEqual(events.map(event=>event.stage),['before-dispatch','dispatch','receipt-accepted','dispatch-run-read','dispatch-run-read']);
+  assert.equal(events.filter(event=>event.method==='POST').length,1);
+});
+test('dispatch evidence is sanitized and binds the reviewed request fingerprint', () => {
+  const directory=fs.mkdtempSync('/tmp/flowhive-dispatch-evidence-');
+  try {
+    const dispatch=buildDispatchRequest(approval.sha,'e'.repeat(40));
+    const record=createDispatchEvidence({candidateSha:approval.sha,controlSha:'e'.repeat(40),dispatch,startedAt:'2026-09-10T00:00:00.000Z'});
+    const file=persistDispatchEvidence(record,`${directory}/attempt.json`);
+    const saved=JSON.parse(fs.readFileSync(file,'utf8'));
+    assert.equal(saved.dispatchWriteCount,0);
+    assert.match(saved.dispatch.requestFingerprint,/^[0-9a-f]{64}$/);
+    assert.equal(saved.dispatch.body,undefined);
+    assert.equal(JSON.stringify(saved).includes('test-token'),false);
+  } finally { fs.rmSync(directory,{recursive:true,force:true}); }
+});
+test('API failures retain stage, method, path, status and request ID without retrying', async () => {
+  const previousFetch=globalThis.fetch; let calls=0;
+  globalThis.fetch=async()=>{ calls+=1; return {ok:false,status:403,headers:new Headers({'x-github-request-id':'E-COMMENT'})}; };
+  try {
+    await assert.rejects(request('issues/887/comments','POST',{body:'sanitized'},'reporting-comment'),error=>
+      error instanceof GithubApiError && error.stage==='reporting-comment' && error.method==='POST' &&
+      error.path==='issues/887/comments' && error.status===403 && error.requestId==='E-COMMENT');
+  } finally { globalThis.fetch=previousFetch; }
+  assert.equal(calls,1);
+});
+test('reporting failure preserves the accepted dispatch receipt and is not a deployment failure', () => {
+  const receipt = { id: 34495606530, webUrl: 'https://github.com/example/actions/runs/34495606530' };
+  const evidence = { stage: 'identity-verified', phase: 'accepted-awaiting-scheduling', run: receipt, reportingErrors: [] };
+  const error = new GithubApiError({ stage: 'reporting-comment', method: 'POST', path: 'issues/887/comments', status: 403, requestId: 'E-COMMENT' });
+  const updated = recordReportingFailure(evidence, error, 'reporting-comment');
+  assert.deepEqual(updated.run, receipt);
+  assert.equal(updated.phase, 'accepted-awaiting-scheduling');
+  assert.equal(updated.stage, 'identity-verified');
+  assert.equal(updated.reporting.status, 'failed');
+  assert.equal(updated.reporting.stage, 'reporting-comment');
+  assert.deepEqual(updated.reportingErrors, [{ stage: 'reporting-comment', method: 'POST', path: 'issues/887/comments', status: 403, requestId: 'E-COMMENT', type: 'GithubApiError', at: updated.reportingErrors[0].at }]);
+});
+test('the admission caller records its actual run ID and rerun attempt in persisted evidence', async () => {
+  const directory = fs.mkdtempSync('/tmp/flowhive-admission-attempt-');
+  const control = 'f'.repeat(40), created = '2026-09-10T00:00:00Z';
+  const receipt = { workflow_run_id: 101, run_url: 'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/101', html_url: 'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/101' };
+  const run = { id: 101, workflow_id: 315562561, event: 'workflow_dispatch', head_branch: 'main', head_sha: control, created_at: created, status: 'queued', conclusion: null, display_title: 'Protected Test' };
+  try {
+    const result = await dispatchWithEvidence({
+      api: async path => path.endsWith('/dispatches') ? receipt : run,
+      candidateSha: approval.sha, controlSha: control, createdAfter: created,
+      admissionRunId: 9001, admissionRunAttempt: 2, evidenceFile: `${directory}/attempt.json`
+    });
+    const saved = JSON.parse(fs.readFileSync(`${directory}/attempt.json`, 'utf8'));
+    assert.equal(result.dispatched.runId, 101);
+    assert.equal(saved.admissionRunId, 9001);
+    assert.equal(saved.admissionRunAttempt, 2);
+    assert.equal(saved.attempt, 2);
+    assert.equal(saved.run.id, 101);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  assert.deepEqual(readAdmissionExecutionContext({ GITHUB_RUN_ID: '9001', GITHUB_RUN_ATTEMPT: '2' }), { admissionRunId: 9001, admissionRunAttempt: 2 });
+  assert.throws(() => readAdmissionExecutionContext({ GITHUB_RUN_ID: '9001', GITHUB_RUN_ATTEMPT: '0' }), /FLOWHIVE_PSA_ADMISSION_RUN_ATTEMPT_REQUIRED/);
+});
 test('malformed or uncertain dispatch responses fail without a duplicate POST',async()=>{
   const control='c'.repeat(40),created='2026-09-06T00:00:00Z';
   let postCount=0;
   await assert.rejects(dispatchOnce(async()=>{postCount+=1;throw new Error('dispatch response timeout');},approval.sha,control,created),/timeout/);
   assert.equal(postCount,1);
   await assert.rejects(dispatchOnce(async(path)=>path.includes('/dispatches')?{}:null,approval.sha,control,created),/workflow run ID/);
+});
+test('maintained admission rejects every unresolved request before dispatch', async () => {
+  const calls=[];
+  const api=async url=>{
+    calls.push(url);
+    if(url.includes('/runs?status=queued')) return {workflow_runs:[{id:34495606530,status:'queued'}]};
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  };
+  await assert.rejects(requireNoUnresolvedRuns(api),/PSA_UNRESOLVED_DEPLOYMENT_RUN id=34495606530 status=queued/);
+  assert.equal(calls.length,1);
+});
+test('maintained admission requires an active controller and no unresolved runs', async () => {
+  const active=[];
+  const api=async(url,method)=>{
+    active.push({url,method});
+    if(url==='actions/workflows/315562561') return {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active'};
+    if(url.includes('/runs?')) return {workflow_runs:[]};
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  };
+  assert.deepEqual(await inspectActiveController(api),{id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active',executableActiveRuns:0});
+  await assert.rejects(inspectActiveController(async url=>({id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'disabled_manually'})),/PSA_CONTROLLER_MUST_REMAIN_ACTIVE/);
+});
+test('release cutover requires terminal server state for all three requests and an active controller', async () => {
+  const calls = [];
+  const api = async (url) => {
+    calls.push(url);
+    if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state: 'active' };
+    const runMatch = /actions\/runs\/(\d+)$/.exec(url);
+    if (runMatch) return { id: Number(runMatch[1]), workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', event: 'workflow_dispatch', status: 'completed', conclusion: 'cancelled', head_sha: 'a'.repeat(40), run_attempt: 1 };
+    if (url.includes('/jobs?')) return { jobs: [] };
+    if (url.includes('/pending_deployments')) return [];
+    if (url.includes('/runs?')) return { workflow_runs: [] };
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  };
+  const result = await verifyReleaseCutover(api);
+  assert.equal(result.requests.length, 3);
+  assert.deepEqual(result.requests.map(item => item.id), [34495606530, 34377182662, 33654881418]);
+  assert.equal(calls.filter(url => /actions\/runs\/\d+$/.test(url)).length, 3);
+  await assert.rejects(verifyReleaseCutover(async url => {
+    if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state: 'active' };
+    if (url.endsWith('/34495606530')) return { id: 34495606530, workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', event: 'workflow_dispatch', status: 'queued' };
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  }), /PSA_CUTOVER_RUN_NOT_TERMINAL id=34495606530 status=queued/);
 });
 test('environment job remains serialized and cannot publish source or target production', () => {
   const controller=fs.readFileSync(new URL('../.github/workflows/projectpulse-deploy-test.yml',import.meta.url),'utf8');
@@ -172,6 +286,22 @@ test('temporary stale supersession activation is bounded and native-gated', () =
   assert.equal(staleRunSupersessionApproved(staleAuthorization(), new Date('2026-09-09T22:05:00Z')), true);
   assert.throws(() => verifyStaleSupersessionAuthorization({ ...staleAuthorization(), approval: { ...staleAuthorization().approval, expiresAt: '2026-09-09T22:04:59Z' } }, new Date('2026-09-09T22:05:00Z')), /EXPIRED/);
   assert.throws(() => verifyStaleSupersessionAuthorization({ ...staleAuthorization(), approval: { ...staleAuthorization().approval, approvedAt: null } }, new Date('2026-09-09T22:05:00Z')), /APPROVAL_DATES/);
+});
+test('the unresolved current request has an explicit blocking disposition', () => {
+  const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'));
+  assert.deepEqual(authorization.evidence.currentOutstandingRequest, {
+    runId: 34495606530,
+    workflowId: 315562561,
+    workflowPath: '.github/workflows/projectpulse-deploy-test.yml',
+    controllerSha: '9f30078c2c407d4d3576ccefd663a145be50c6c4',
+    status: 'queued',
+    jobs: 0,
+    pendingDeployments: 0,
+    approvalPerformed: false,
+    disposition: 'blocking-hold',
+    dispositionSource: 'release-owner-record',
+    nextAction: 'Use one separately reviewed run-control operation for each of the three queued requests, verify server-confirmed terminal state and no execution, then use the native workflow enable operation once and verify active identity before a new admission.'
+  });
 });
 
 test('request-to-run binding is exact and absent evidence cannot be promoted', () => {
@@ -323,7 +453,8 @@ test('source-only control CI defers live readiness to the locked admission workf
   assert.doesNotMatch(sourceCi,/dispatch-flowhive-psa-test\.mjs\s+--inspect-only/);
   assert.match(admission,/node scripts\/release-test\/dispatch-flowhive-psa-test\.mjs/);
   assert.match(admission,/group: module025-protected-uat-control/);
-  assert.match(admission,/FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_AUTHORIZATION_FILE: \.github\/flowhive-psa-stale-run-supersession-authorization\.json/);
+  assert.doesNotMatch(admission,/FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_AUTHORIZATION_FILE/);
+  assert.match(admission,/FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE: \$\{\{ runner\.temp \}\}\/flowhive-psa-dispatch-attempt\.json/);
 });
 
 function controllerApi({state='active',runs=[],quarantinedJobs=0,metadata={},onDisable}={}) {
