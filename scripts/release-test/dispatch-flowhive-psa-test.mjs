@@ -73,6 +73,7 @@ export const githubApiVersion = '2022-11-28';
 export const dispatchEvidenceSchema = 'flowhive-psa-dispatch-attempt-v1';
 export const dispatchEvidenceDefaultFile = 'flowhive-psa-dispatch-attempt.json';
 export const singleUseClaimPrefix = 'FLOWHIVE_PSA_ADMISSION_CLAIM_V1';
+const trustedClaimAuthor = Object.freeze({ login: 'ahmedadeyemi-cts', id: 244059331 });
 
 export class GithubApiError extends Error {
   constructor({ stage, method, path: requestPath, status, requestId }) {
@@ -967,7 +968,21 @@ function singleUseClaimMarker({ candidateSha, controlSha, approvalReference }) {
   assert.match(candidateSha || '', dispatchSha, 'PROTECTED_CUTOVER_CLAIM_CANDIDATE');
   assert.match(controlSha || '', dispatchSha, 'PROTECTED_CUTOVER_CLAIM_CONTROLLER');
   assert.match(approvalReference || '', /^[A-Z0-9._-]{8,100}$/, 'PROTECTED_CUTOVER_CLAIM_REFERENCE');
-  return `${singleUseClaimPrefix} candidate=${candidateSha} controller=${controlSha} approval=${approvalReference}`;
+  return `${singleUseClaimPrefix} candidate=${candidateSha} approval=${approvalReference} controller=${controlSha}`;
+}
+
+function parseSingleUseClaim(body) {
+  const match = new RegExp(`^${singleUseClaimPrefix} candidate=([a-f0-9]{40}) approval=([A-Z0-9._-]{8,100}) controller=([a-f0-9]{40}) status=reserved observedAt=([^\\s]+)$`).exec(body || '');
+  assert.ok(match, 'PROTECTED_CUTOVER_CLAIM_STRUCTURED_BINDING');
+  const observedAt = Date.parse(match[4]);
+  assert.ok(Number.isFinite(observedAt), 'PROTECTED_CUTOVER_CLAIM_TIMESTAMP');
+  return { candidateSha: match[1], approvalReference: match[2], controlSha: match[3], observedAt: new Date(observedAt).toISOString() };
+}
+
+function verifyTrustedClaimAuthor(comment) {
+  assert.equal(comment?.user?.login, trustedClaimAuthor.login, 'PROTECTED_CUTOVER_CLAIM_AUTHOR');
+  assert.equal(Number(comment?.user?.id), trustedClaimAuthor.id, 'PROTECTED_CUTOVER_CLAIM_AUTHOR_ID');
+  return { login: comment.user.login, id: Number(comment.user.id) };
 }
 
 export async function claimSingleUse(api = request, { candidateSha, controlSha, approvalReference }) {
@@ -976,7 +991,15 @@ export async function claimSingleUse(api = request, { candidateSha, controlSha, 
     const comments = await api(`issues/${candidatePullRequest}/comments?per_page=100&page=${page}`,
       'GET', undefined, 'single-use-claim-read');
     assert.ok(Array.isArray(comments), 'PROTECTED_CUTOVER_CLAIM_COMMENTS_INVALID');
-    if (comments.some(comment => typeof comment?.body === 'string' && comment.body.includes(marker))) {
+    for (const comment of comments) {
+      if (typeof comment?.body !== 'string' || !comment.body.startsWith(`${singleUseClaimPrefix} `)) continue;
+      let parsed;
+      try { parsed = parseSingleUseClaim(comment.body); }
+      catch (error) { throw new Error(`PROTECTED_CUTOVER_CLAIM_MALFORMED: ${error.message}`); }
+      try { verifyTrustedClaimAuthor(comment); }
+      catch (error) { throw new Error(`PROTECTED_CUTOVER_CLAIM_UNTRUSTED: ${error.message}`); }
+      if (parsed.candidateSha !== candidateSha || parsed.approvalReference !== approvalReference) continue;
+      if (parsed.controlSha !== controlSha) throw new Error('PROTECTED_CUTOVER_CLAIM_CONTROLLER_CHANGED');
       throw new Error('PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED');
     }
     if (comments.length < 100) break;
@@ -994,7 +1017,11 @@ export async function claimSingleUse(api = request, { candidateSha, controlSha, 
   const commentId = Number(response?.id);
   assert.ok(Number.isSafeInteger(commentId) && commentId > 0,
     'PROTECTED_CUTOVER_SINGLE_USE_CLAIM_RECEIPT');
-  return { marker, commentId, observedAt, candidateSha, controlSha, approvalReference };
+  verifyTrustedClaimAuthor(response);
+  const returned = parseSingleUseClaim(response.body);
+  assert.deepEqual(returned, { candidateSha, approvalReference, controlSha, observedAt });
+  return { marker, commentId, observedAt, candidateSha, controlSha, approvalReference,
+    author: { ...trustedClaimAuthor }, key: `${candidateSha}:${approvalReference}` };
 }
 
 export async function activateProtectedControllerOnce(api = request, options = {}) {
@@ -1018,12 +1045,10 @@ export async function activateProtectedControllerOnce(api = request, options = {
       ...options, authorization, allowDisabledWorkflow: false
     });
     await requireNoUnresolvedRuns(api, { protectedAssessment: activeAssessment });
-    return { preAssessment, active, activeAssessment, transitionedAt: nowIso() };
+    return { preAssessment, active, activeAssessment, transitionedAt: nowIso(),
+      operatingState: 'active-after-approved-bootstrap' };
   } catch (error) {
-    if (transitionAttempted) {
-      try { await closeProtectedControllerOnce(api); }
-      catch (closureError) { error.message += `; PROTECTED_CUTOVER_CLOSURE_FAILED ${closureError.message}`; }
-    }
+    error.controllerTransitionAttempted = transitionAttempted;
     throw error;
   }
 }
@@ -1045,18 +1070,20 @@ export async function closeProtectedControllerOnce(api = request) {
 export async function revalidateProtectedCutoverForSubmission(api = request, assessment, options = {}) {
   assert.equal(assessment?.kind, 'protected-nonterminal-cutover', 'PROTECTED_CUTOVER_SUBMISSION_ASSESSMENT');
   const authorization = assessment.authorization;
+  const executingControllerSha = assessment.executingControllerSha;
+  // Refresh the complete reviewed request set and every nonterminal workflow
+  // status after the reservation write. The final clock check occurs after
+  // these remote reads, so a slow observation cannot consume an expired gate.
+  const finalAssessment = await assessProtectedCutover(api, {
+    candidateSha: assessment.candidateSha, executingControllerSha, authorization,
+    authorizationNow: options.authorizationNow || new Date()
+  });
+  await requireNoUnresolvedRuns(api, { protectedAssessment: finalAssessment });
   const authorizationNow = options.authorizationNow || new Date();
   const authorizationState = verifyProtectedCutoverAuthorization(authorization, authorizationNow);
   assert.equal(authorizationState.approved, true, 'PROTECTED_CUTOVER_SUBMISSION_AUTHORIZATION');
-  const executingControllerSha = assessment.executingControllerSha;
-  const workflow = verifyWorkflow(await api(`actions/workflows/${workflowId}`, 'GET', undefined,
-    'protected-cutover-submission-controller-read'));
-  assert.equal(workflow.state, 'active', 'PROTECTED_CUTOVER_SUBMISSION_CONTROLLER');
-  const main = await api('git/ref/heads/main', 'GET', undefined, 'protected-cutover-submission-main-readback');
-  assert.equal(main?.object?.sha, executingControllerSha, 'PROTECTED_CUTOVER_SUBMISSION_MAIN_CHANGED');
-  const environmentProtection = await api('environments/test', 'GET', undefined,
-    'protected-cutover-submission-environment-read');
-  const protection = verifyNativeEnvironmentProtection(environmentProtection, authorization.environment);
+  const workflow = finalAssessment.workflow;
+  const protection = verifyNativeEnvironmentProtection(finalAssessment.environmentProtection, authorization.environment);
   return {
     observedAt: authorizationNow instanceof Date ? authorizationNow.toISOString() : new Date(authorizationNow).toISOString(),
     authorization: {
@@ -1068,7 +1095,9 @@ export async function revalidateProtectedCutoverForSubmission(api = request, ass
     },
     controllerSha: executingControllerSha,
     workflow: { id: workflow.id, path: workflow.path, state: workflow.state },
-    environment: protection
+    environment: protection,
+    assessment: finalAssessment,
+    nonterminalRunIds: finalAssessment.runIds
   };
 }
 
@@ -1090,17 +1119,20 @@ export async function runAdmission({ api = request, candidateSha, controlSha, ad
     ? await revalidateProtectedCutoverForSubmission(api, cutover.protectedAssessment, {
       authorizationNow: submissionAuthorizationNow || new Date()
     }) : null;
-  const cutoverEvidence = cutover.protectedAssessment ? {
-    kind: cutover.protectedAssessment.kind,
-    authorizationReference: cutover.protectedAssessment.authorizationReference,
-    runIds: cutover.protectedAssessment.runIds,
-    statuses: cutover.protectedAssessment.records.map(record => record.observation.status),
-    nativeEnvironmentProtected: cutover.protectedAssessment.records.every(record => record.observation.nativeEnvironmentProtected)
+  const finalAssessment = preSubmissionValidation?.assessment || cutover.protectedAssessment;
+  const cutoverEvidence = finalAssessment ? {
+    kind: finalAssessment.kind,
+    authorizationReference: finalAssessment.authorizationReference,
+    runIds: finalAssessment.runIds,
+    statuses: finalAssessment.records.map(record => record.observation.status),
+    nativeEnvironmentProtected: finalAssessment.records.every(record => record.observation.nativeEnvironmentProtected),
+    finalNonterminalInventory: preSubmissionValidation?.nonterminalRunIds || finalAssessment.runIds
   } : null;
   const dispatched = await dispatchWithEvidence({ api, candidateSha, controlSha, createdAfter,
     admissionRunId, admissionRunAttempt, evidenceFile, cutoverAssessment: cutoverEvidence,
     singleUseClaim: claim, preSubmissionValidation, controllerTransition });
-  return { ...dispatched, cutover, claim, preSubmissionValidation };
+  return { ...dispatched, cutover: finalAssessment ? { ...cutover, protectedAssessment: finalAssessment } : cutover,
+    claim, preSubmissionValidation };
 }
 
 export async function dispatchWithEvidence({ api = request, candidateSha, controlSha, createdAfter = nowIso(),
@@ -1139,8 +1171,105 @@ export async function dispatchWithEvidence({ api = request, candidateSha, contro
     if (evidence.errors.length === 0) {
       saveEvidence({ stage: 'admission-failed', phase: 'blocked', errors: [safeApiError(error, 'admission')] });
     }
+    // The outer lifecycle must distinguish a failure before the dispatch
+    // boundary from an uncertain/accepted external write. Disabling a GitHub
+    // workflow is not cancellation, so an uncertain write keeps the active
+    // operating state and is reported for manual reconciliation.
+    error.dispatchAttempted = evidence.dispatchAttempted === true;
+    error.dispatchReceiptAccepted = Boolean(evidence.run?.id);
+    error.admissionEvidence = evidence;
     throw error;
   }
+}
+
+async function readControllerState(api, stage) {
+  return verifyWorkflow(await api(`actions/workflows/${workflowId}`, 'GET', undefined, stage));
+}
+
+function lifecycleFailure(primaryError, cleanupError, finalState, policy) {
+  const message = [
+    'PROTECTED_CUTOVER_LIFECYCLE_FAILED',
+    `policy=${policy}`,
+    `finalState=${finalState?.state || 'unknown'}`,
+    `primary=${primaryError?.message || 'none'}`,
+    `cleanup=${cleanupError?.message || 'none'}`
+  ].join(' ');
+  const error = cleanupError
+    ? new AggregateError([primaryError, cleanupError], message)
+    : primaryError;
+  error.lifecycle = { policy, finalState: finalState ? { id: finalState.id, path: finalState.path, state: finalState.state } : null,
+    primaryError: primaryError ? safeApiError(primaryError, 'admission') : null,
+    cleanupError: cleanupError ? safeApiError(cleanupError, 'restoration') : null };
+  error.primaryError = primaryError;
+  error.cleanupError = cleanupError;
+  return error;
+}
+
+// The approved protected bootstrap has an explicit operating-state policy:
+// on a verified dispatch it remains active for the canonical Test controller.
+// Restoration is only for failures before an external dispatch write. An
+// uncertain write is never "cleaned up" by disabling the workflow because
+// that cannot stop a run that may already exist.
+export async function runProtectedAdmissionLifecycle({ api = request, admissionOptions,
+  activationOptions, activationRequired = true }) {
+  let transition = null;
+  let admissionResult = null;
+  let primaryError = null;
+  let cleanupError = null;
+  let finalState = null;
+  let policy = 'active-after-approved-bootstrap';
+  try {
+    if (activationRequired) transition = await activateProtectedControllerOnce(api, activationOptions);
+    admissionResult = await runAdmission({ ...admissionOptions, api,
+      controllerTransition: transition ? {
+        mode: 'disabled_manually-to-active-once',
+        operatingState: transition.operatingState,
+        preState: transition.preAssessment.workflow.state,
+        activeState: transition.active.state,
+        transitionedAt: transition.transitionedAt,
+        closure: 'not-performed-on-success'
+      } : admissionOptions.controllerTransition });
+  } catch (error) {
+    primaryError = error;
+    const dispatchedWrite = error.dispatchAttempted === true;
+    const transitionAttempted = Boolean(transition || error.controllerTransitionAttempted);
+    if (transitionAttempted && !dispatchedWrite) {
+      policy = 'restore-disabled-before-dispatch';
+      try { await closeProtectedControllerOnce(api); }
+      catch (cleanupFailure) { cleanupError = cleanupFailure; }
+    } else if (transitionAttempted) {
+      policy = 'retain-active-after-uncertain-dispatch';
+    }
+  }
+
+  try {
+    finalState = await readControllerState(api, 'protected-cutover-final-controller-read');
+  } catch (stateError) {
+    if (!cleanupError) cleanupError = stateError;
+    policy = `${policy}-state-unavailable`;
+  }
+
+  if (!primaryError && !cleanupError) {
+    assert.equal(finalState?.state, 'active', 'PROTECTED_CUTOVER_SUCCESS_CONTROLLER_NOT_ACTIVE');
+  }
+  const lifecycle = {
+    policy,
+    transition: transition ? { mode: 'disabled_manually-to-active-once', transitionedAt: transition.transitionedAt } : null,
+    finalState: finalState ? { id: finalState.id, path: finalState.path, state: finalState.state } : null,
+    restored: policy.startsWith('restore-disabled-before-dispatch') && finalState?.state === 'disabled_manually',
+    authorizationConsumed: Boolean(transition)
+  };
+  if (admissionResult) {
+    admissionResult.lifecycle = lifecycle;
+    if (admissionResult.evidence) {
+      admissionResult.evidence = { ...admissionResult.evidence, lifecycle };
+      persistDispatchEvidence(admissionResult.evidence, admissionOptions.evidenceFile);
+    }
+  }
+  if (primaryError || cleanupError) {
+    throw lifecycleFailure(primaryError, cleanupError, finalState, policy);
+  }
+  return admissionResult;
 }
 // The owner-authorized main supervisor holds the shared admission lock before
 // calling this. Only admissions are disabled; no run or cloud resource changes.
@@ -1169,29 +1298,19 @@ async function main() {
   const controlSha = process.env.GITHUB_SHA;
   const admission = readAdmissionExecutionContext();
   const cutoverAuthorization = readProtectedCutoverAuthorization();
-  let controllerActivation = null;
-  if (cutoverAuthorization.enabled === true && cutoverAuthorization.workflow.allowControllerActivation === true) {
-    controllerActivation = await activateProtectedControllerOnce(request, {
+  const admissionResult = await runProtectedAdmissionLifecycle({
+    api: request,
+    activationRequired: cutoverAuthorization.enabled === true && cutoverAuthorization.workflow.allowControllerActivation === true,
+    activationOptions: {
       candidateSha, executingControllerSha: controlSha, authorization: cutoverAuthorization
-    });
-  }
-  let admissionResult;
-  try {
-    admissionResult = await runAdmission({ api: request, candidateSha, controlSha,
+    },
+    admissionOptions: { candidateSha, controlSha,
       admissionRunId: admission.admissionRunId, admissionRunAttempt: admission.admissionRunAttempt,
       evidenceFile: evidencePath(), authorization: cutoverAuthorization,
-      controllerTransition: controllerActivation ? {
-        mode: 'disabled_manually-to-active-once',
-        preState: controllerActivation.preAssessment.workflow.state,
-        activeState: controllerActivation.active.state,
-        transitionedAt: controllerActivation.transitionedAt,
-        closure: 'disabled_manually-after-dispatch-attempt'
-      } : null });
-  } finally {
-    if (controllerActivation) await closeProtectedControllerOnce(request);
-  }
+      controllerTransition: null }
+  });
   let { dispatched, evidence } = admissionResult;
-  const summary = `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nRun identity came from the dispatch response. Feature PR #${candidatePullRequest} remains unmerged. Live acceptance is not yet established.\n`;
+  const summary = `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nController lifecycle: \`${admissionResult.lifecycle.policy}\`; final state: \`${admissionResult.lifecycle.finalState?.state || 'unknown'}\`. Run identity came from the dispatch response. Feature PR #${candidatePullRequest} remains unmerged. Live acceptance is not yet established.\n`;
   try {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   } catch (error) {
@@ -1201,7 +1320,7 @@ async function main() {
   }
   try {
     await request(`issues/${candidatePullRequest}/comments`, 'POST', {
-      body: `Exact FlowHive candidate admission completed. Candidate \`${candidateSha}\`; trusted main controller \`${controlSha}\`. Protected Test deployment: https://github.com/${repository}/actions/runs/${dispatched.runId}. Run identity came from the dispatch response; the canonical controller remains active; no Production/private-runtime recovery is requested. This is a deployment dispatch, not a live AI success or a completed enterprise PSA release.`
+      body: `Exact FlowHive candidate admission completed. Candidate \`${candidateSha}\`; trusted main controller \`${controlSha}\`. Protected Test deployment: https://github.com/${repository}/actions/runs/${dispatched.runId}. Final controller state: \`${admissionResult.lifecycle.finalState?.state || 'unknown'}\`; lifecycle policy: \`${admissionResult.lifecycle.policy}\`. Run identity came from the dispatch response; no Production/private-runtime recovery is requested. This is a deployment dispatch, not a live AI success or a completed enterprise PSA release.`
     }, 'reporting-comment');
   } catch (error) {
     evidence = recordReportingFailure(evidence, error, 'reporting-comment');

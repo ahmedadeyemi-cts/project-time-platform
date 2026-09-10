@@ -29,12 +29,10 @@ reconciliation `e0b8fa3f2b19009fb865eb5f50a07101461e39bf`, and the final CI/scop
 `d2262ccbef31800883589197d03122bd51bb87cc`; migrations 103/104/105/106 retain their
 reviewed SHA-256 values.
 
-The supervisor requires the canonical deployment workflow to already be active,
-shares the existing admission lock, and refuses every unresolved workflow run
-before the single dispatch write. It never enables/disables the deploy workflow,
-never cancels a queued run, and never treats zero jobs as a disposition. This
-keeps the native Test environment gate and existing serialization as the release
-transaction boundary. The normal read-only cutover gate still requires all three
+The supervisor shares the existing admission lock and refuses every unresolved
+workflow run before the single dispatch write. This keeps the native Test
+environment gate and existing serialization as the release transaction boundary.
+The normal read-only cutover gate still requires all three
 known requests (`34495606530`, `34377182662`, and `33654881418`) to be
 server-confirmed terminal with completed attempts and no pending deployment.
 The reviewed `.github/flowhive-psa-protected-cutover.json` provides a separate,
@@ -59,9 +57,15 @@ requires a separately reviewed bounded approval for this candidate and current
 controller, followed by the existing native Test deployment approval. When that
 activation is reviewed, the maintained entrypoint performs one guarded
 `disabled_manually` → `active` transition, re-reads the exact three-request
-assessment, admits at most one dispatch, and closes by restoring
-`disabled_manually`. An enable failure or uncertain transition is observed and
-closed fail-closed; it is never retried automatically.
+assessment, admits at most one dispatch, and reports the resulting controller
+state. A successful bootstrap deliberately leaves the canonical controller
+`active`; it does not silently recreate an enable → dispatch → disable cycle.
+If admission fails before an external dispatch write, the wrapper restores
+`disabled_manually`. If a dispatch write is uncertain, it does not disable the
+workflow as a false cancellation signal: it retains `active` and reports the
+uncertain outcome for inspection. Enable/restore failures preserve both the
+primary admission error and cleanup error, and the final state is read back
+explicitly. It is never retried automatically.
 
 The `--inspect-only` entrypoint requires the exact `workflow_dispatch`/main
 controller context, the approved candidate manifest, and a valid controller SHA;
@@ -81,9 +85,15 @@ authorization and active-controller failures remain blocking. A single-use
 reservation comment binds the candidate, controller and bounded approval
 reference before the POST. Repeated commands, restarted admissions, and
 uncertain dispatch responses find that reservation and stop without a second
-dispatch. Immediately before submission, authorization expiry, current
-main/controller identity and complete native Test protection are read again and
-recorded with observation timestamps.
+dispatch. Its one-use key is the candidate plus approval reference; the
+controller SHA is retained as execution evidence and cannot renew the same
+authorization after a controller update. Only the owner-authored structured
+reservation is accepted. Untrusted or malformed copies and uncertain
+reservation writes fail closed without another deployment POST. Immediately
+after the reservation write, the exact protected requests and complete
+nonterminal-run inventory are read again. The authorization clock is checked
+after those reads together with current main/controller identity and complete
+native Test protection, and all are recorded with observation timestamps.
 
 Controller-only changes no longer trigger automatic main-push deployment. All
 existing application/migration source triggers remain unchanged, and the control

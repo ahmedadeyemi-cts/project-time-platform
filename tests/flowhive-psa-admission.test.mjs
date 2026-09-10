@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
@@ -72,13 +72,15 @@ const protectedCutoverAuthorization = () => {
 };
 function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount = 0,
   protection = nativeEnvironmentProtection, protectionAfterFirstRead = null,
-  state = 'active', dispatchFailure = false } = {}) {
+  state = 'active', dispatchFailure = false, disableFailure = false, afterReservation = null } = {}) {
   const control = 'e'.repeat(40);
   const calls = [];
   const comments = [];
   let nextCommentId = 7000;
   let environmentReadCount = 0;
   let workflowState = state;
+  let currentJobCount = jobCount;
+  let currentApprovalHistory = approvalHistory;
   const runs = protectedCutoverRunAttestations.map(expected => ({
     id: expected.runId, workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml',
     event: expected.event, head_branch: expected.headBranch, head_sha: expected.controllerSha,
@@ -90,7 +92,10 @@ function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount
     calls.push({ url, method });
     if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state: workflowState };
     if (url === 'actions/workflows/315562561/enable' && method === 'PUT') { workflowState = 'active'; return null; }
-    if (url === 'actions/workflows/315562561/disable' && method === 'PUT') { workflowState = 'disabled_manually'; return null; }
+    if (url === 'actions/workflows/315562561/disable' && method === 'PUT') {
+      if (disableFailure) throw new Error('restoration failed');
+      workflowState = 'disabled_manually'; return null;
+    }
     if (url === 'git/ref/heads/main') return { object: { sha: control } };
     if (url === 'environments/test') {
       environmentReadCount += 1;
@@ -98,8 +103,10 @@ function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount
     }
     if (url.startsWith('issues/887/comments?')) return comments;
     if (url === 'issues/887/comments' && method === 'POST') {
-      const comment = { id: nextCommentId++, body: body?.body || '' };
+      const comment = { id: nextCommentId++, body: body?.body || '', user: { login: 'ahmedadeyemi-cts', id: 244059331 } };
       comments.push(comment);
+      afterReservation?.({ runs, setJobCount: value => { currentJobCount = value; },
+        setApprovalHistory: value => { currentApprovalHistory = value; }, addRun: run => runs.push(run) });
       return comment;
     }
     if (url.includes('/dispatches') && dispatchFailure) throw new Error('dispatch response timeout');
@@ -119,9 +126,9 @@ function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount
       if (run) return run;
     }
     if (url.includes('/runs?status=')) return { workflow_runs: runs };
-    if (url.includes('/attempts/') && url.includes('/jobs?')) return { total_count: jobCount, jobs: jobCount ? [{ id: 1 }] : [] };
+    if (url.includes('/attempts/') && url.includes('/jobs?')) return { total_count: currentJobCount, jobs: currentJobCount ? [{ id: 1 }] : [] };
     if (url.includes('/pending_deployments')) return [];
-    if (url.includes('/approvals')) return approvalHistory;
+    if (url.includes('/approvals')) return currentApprovalHistory;
     if (url.includes('/concurrency_groups')) return { total_count: 0, concurrency_groups: [] };
     if (url.includes('/artifacts?')) return { total_count: 0, artifacts: [] };
     throw new Error(`UNEXPECTED_PROTECTED_CUTOVER_REQUEST ${method} ${url}`);
@@ -396,6 +403,124 @@ test('submission revalidation rejects expiry and Test-protection drift after ini
       submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z'), createdAfter: '2026-09-10T19:05:00Z' }),
     /STALE_SUPERSESSION_NATIVE_READBACK_BYPASS/);
     assert.equal(drifted.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 0);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+test('submission revalidation refreshes jobs, approvals and the complete nonterminal inventory after reservation', async () => {
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-final-observation-');
+  const authorization = protectedCutoverAuthorization();
+  const cases = [
+    { name: 'jobs', mutate: ({ setJobCount }) => setJobCount(1), expected: /PROTECTED_CUTOVER_ATTEMPT_JOBS/ },
+    { name: 'approvals', mutate: ({ setApprovalHistory }) => setApprovalHistory([{ id: 44 }]), expected: /PROTECTED_CUTOVER_APPROVAL_HISTORY/ },
+    { name: 'fourth request', mutate: ({ addRun }) => addRun({ id: 99999999999, status: 'queued' }), expected: /PSA_UNRESOLVED_DEPLOYMENT_RUN/ }
+  ];
+  try {
+    for (const item of cases) {
+      const fixture = protectedCutoverApi({ afterReservation: item.mutate });
+      await assert.rejects(runAdmission({ api: fixture.request, candidateSha: approval.sha, controlSha: fixture.control,
+        admissionRunId: 9010, admissionRunAttempt: 1, evidenceFile: `${directory}/${item.name}.json`, authorization,
+        authorizationNow: new Date('2026-09-10T19:05:00Z'), submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z') }), item.expected);
+      assert.equal(fixture.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 0, item.name);
+    }
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+test('single-use authorization is stable across controller changes and trusts structured reservation authorship', async () => {
+  const fixture = protectedCutoverApi();
+  const reference = protectedCutoverAuthorization().approvalReference;
+  const claim = await claimSingleUse(fixture.request, { candidateSha: approval.sha, controlSha: fixture.control,
+    approvalReference: reference });
+  assert.deepEqual(claim.author, { login: 'ahmedadeyemi-cts', id: 244059331 });
+  await assert.rejects(claimSingleUse(fixture.request, { candidateSha: approval.sha, controlSha: '1'.repeat(40), approvalReference: reference }),
+    /PROTECTED_CUTOVER_CLAIM_CONTROLLER_CHANGED/);
+
+  const untrusted = protectedCutoverApi();
+  untrusted.comments.push({ id: 7001,
+    body: `FLOWHIVE_PSA_ADMISSION_CLAIM_V1 candidate=${approval.sha} approval=${reference} controller=${untrusted.control} status=reserved observedAt=2026-09-10T19:05:00Z`,
+    user: { login: 'untrusted-user', id: 123 } });
+  await assert.rejects(claimSingleUse(untrusted.request, { candidateSha: approval.sha, controlSha: untrusted.control, approvalReference: reference }),
+    /PROTECTED_CUTOVER_CLAIM_UNTRUSTED/);
+
+  const malformed = protectedCutoverApi();
+  malformed.comments.push({ id: 7002, body: 'FLOWHIVE_PSA_ADMISSION_CLAIM_V1 candidate=malformed', user: { login: 'ahmedadeyemi-cts', id: 244059331 } });
+  await assert.rejects(claimSingleUse(malformed.request, { candidateSha: approval.sha, controlSha: malformed.control, approvalReference: reference }),
+    /PROTECTED_CUTOVER_CLAIM_MALFORMED/);
+
+  const uncertainComments = [];
+  let reservationWrites = 0;
+  const uncertainReservationApi = async (url, method = 'GET', body) => {
+    if (url.startsWith('issues/887/comments?')) return uncertainComments;
+    if (url === 'issues/887/comments' && method === 'POST') {
+      reservationWrites += 1;
+      uncertainComments.push({ id: 7003, body: body.body, user: { login: 'ahmedadeyemi-cts', id: 244059331 } });
+      throw new Error('reservation response timeout');
+    }
+    throw new Error(`UNEXPECTED_RESERVATION_REQUEST ${method} ${url}`);
+  };
+  await assert.rejects(claimSingleUse(uncertainReservationApi, { candidateSha: approval.sha, controlSha: fixture.control, approvalReference: reference }),
+    /PROTECTED_CUTOVER_SINGLE_USE_CLAIM_UNCERTAIN/);
+  await assert.rejects(claimSingleUse(uncertainReservationApi, { candidateSha: approval.sha, controlSha: fixture.control, approvalReference: reference }),
+    /PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED/);
+  assert.equal(reservationWrites, 1);
+});
+test('protected lifecycle keeps the active operating state after one approved bootstrap', async () => {
+  const fixture = protectedCutoverApi({ state: 'disabled_manually' });
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-lifecycle-success-');
+  try {
+    const result = await runProtectedAdmissionLifecycle({
+      api: fixture.request, activationRequired: true,
+      activationOptions: { candidateSha: approval.sha, executingControllerSha: fixture.control,
+        authorization: protectedCutoverAuthorization(), authorizationNow: new Date('2026-09-10T19:05:00Z') },
+      admissionOptions: { candidateSha: approval.sha, controlSha: fixture.control, admissionRunId: 9011,
+        admissionRunAttempt: 1, evidenceFile: `${directory}/success.json`, authorization: protectedCutoverAuthorization(),
+        authorizationNow: new Date('2026-09-10T19:05:00Z'), submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z'),
+        createdAfter: '2026-09-10T19:05:00Z' }
+    });
+    assert.equal(result.lifecycle.policy, 'active-after-approved-bootstrap');
+    assert.equal(result.lifecycle.finalState.state, 'active');
+    assert.equal(result.lifecycle.restored, false);
+    assert.deepEqual(fixture.calls.filter(call => call.method === 'PUT').map(call => call.url), ['actions/workflows/315562561/enable']);
+    assert.equal(JSON.parse(fs.readFileSync(`${directory}/success.json`, 'utf8')).lifecycle.finalState.state, 'active');
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+test('protected lifecycle restores only pre-dispatch failures and preserves cleanup failures', async () => {
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-lifecycle-failure-');
+  const base = { candidateSha: approval.sha, controlSha: 'e'.repeat(40), admissionRunId: 9012,
+    admissionRunAttempt: 1, authorization: protectedCutoverAuthorization(), authorizationNow: new Date('2026-09-10T19:05:00Z'),
+    submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z') };
+  try {
+    const beforeWrite = protectedCutoverApi({ state: 'disabled_manually', afterReservation: ({ setJobCount }) => setJobCount(1) });
+    await assert.rejects(runProtectedAdmissionLifecycle({ api: beforeWrite.request, activationRequired: true,
+      activationOptions: { candidateSha: approval.sha, executingControllerSha: beforeWrite.control,
+        authorization: protectedCutoverAuthorization(), authorizationNow: base.authorizationNow },
+      admissionOptions: { ...base, controlSha: beforeWrite.control, evidenceFile: `${directory}/before-write.json` } }), error => {
+      assert.equal(error.lifecycle.policy, 'restore-disabled-before-dispatch');
+      assert.equal(error.lifecycle.finalState.state, 'disabled_manually');
+      return true;
+    });
+    assert.equal(beforeWrite.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 0);
+
+    const cleanupFailure = protectedCutoverApi({ state: 'disabled_manually', disableFailure: true,
+      afterReservation: ({ setJobCount }) => setJobCount(1) });
+    await assert.rejects(runProtectedAdmissionLifecycle({ api: cleanupFailure.request, activationRequired: true,
+      activationOptions: { candidateSha: approval.sha, executingControllerSha: cleanupFailure.control,
+        authorization: protectedCutoverAuthorization(), authorizationNow: base.authorizationNow },
+      admissionOptions: { ...base, controlSha: cleanupFailure.control, evidenceFile: `${directory}/cleanup-failure.json` } }), error => {
+      assert.ok(error instanceof AggregateError);
+      assert.match(error.primaryError.message, /PROTECTED_CUTOVER_ATTEMPT_JOBS/);
+      assert.match(error.cleanupError.message, /restoration failed/);
+      assert.equal(error.lifecycle.finalState.state, 'active');
+      return true;
+    });
+
+    const uncertain = protectedCutoverApi({ state: 'disabled_manually', dispatchFailure: true });
+    await assert.rejects(runProtectedAdmissionLifecycle({ api: uncertain.request, activationRequired: true,
+      activationOptions: { candidateSha: approval.sha, executingControllerSha: uncertain.control,
+        authorization: protectedCutoverAuthorization(), authorizationNow: base.authorizationNow },
+      admissionOptions: { ...base, controlSha: uncertain.control, evidenceFile: `${directory}/uncertain.json` } }), error => {
+      assert.equal(error.lifecycle.policy, 'retain-active-after-uncertain-dispatch');
+      assert.equal(error.lifecycle.finalState.state, 'active');
+      return true;
+    });
+    assert.deepEqual(uncertain.calls.filter(call => call.method === 'PUT').map(call => call.url), ['actions/workflows/315562561/enable']);
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 test('protected cutover remains fail-closed for inactive authorization, fourth runs, execution, approval, or weakened Test protection', async () => {
