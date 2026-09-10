@@ -52,9 +52,9 @@ and the live assessment. Run `34495606530` uses controller
 `9f30078c2c407d4d3576ccefd663a145be50c6c4`; all three are required to remain
 queued with zero jobs, no pending deployment, no approval and no artifacts. Their
 raw GitHub status remains visible and distinct from the repository's protected
-nonterminal disposition. The manifest is inactive in this publication; activation
-requires a separately reviewed bounded approval for this candidate and current
-controller, followed by the existing native Test deployment approval. When that
+nonterminal disposition. Activation is a separately reviewed, bounded approval
+for this candidate and current controller, followed by the existing native Test
+deployment approval. When that
 activation is reviewed, the maintained entrypoint performs one guarded
 `disabled_manually` → `active` transition, re-reads the exact three-request
 assessment, admits at most one dispatch, and reports the resulting controller

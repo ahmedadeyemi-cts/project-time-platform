@@ -524,7 +524,11 @@ test('protected lifecycle restores only pre-dispatch failures and preserves clea
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 test('protected cutover remains fail-closed for inactive authorization, fourth runs, execution, approval, or weakened Test protection', async () => {
-  const inactive = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.workflow.allowControllerActivation = false;
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
   const inactiveFixture = protectedCutoverApi();
   await assert.rejects(verifyReleaseCutover(inactiveFixture.request, {
     candidateSha: approval.sha, executingControllerSha: inactiveFixture.control, authorization: inactive
@@ -562,7 +566,11 @@ test('the maintained inspect-only entrypoint validates context and remains GET-o
   assert.equal(result.context.controllerSha, fixture.control);
   assert.ok(fixture.calls.every(call => call.method === 'GET'));
   assert.equal(fixture.calls.some(call => call.url.includes('/dispatches')), false);
-  const inactive = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.workflow.allowControllerActivation = false;
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
   await assert.rejects(inspectReleaseCutover(protectedCutoverApi().request, {
     env, authorization: inactive, authorizationNow: new Date('2026-09-10T19:05:00Z')
   }), /PSA_CUTOVER_RUN_NOT_TERMINAL/);
@@ -575,6 +583,11 @@ test('the maintained inspect-only entrypoint validates context and remains GET-o
   }), /PROTECTED_CUTOVER_INSPECT_CONTROLLER/);
 });
 test('release cutover requires terminal server state for all three requests and an active controller', async () => {
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.workflow.allowControllerActivation = false;
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
   const calls = [];
   const api = async (url) => {
     calls.push(url);
@@ -586,7 +599,7 @@ test('release cutover requires terminal server state for all three requests and 
     if (url.includes('/runs?')) return { workflow_runs: [] };
     throw new Error(`UNEXPECTED_REQUEST ${url}`);
   };
-  const result = await verifyReleaseCutover(api);
+  const result = await verifyReleaseCutover(api, { authorization: inactive, candidateSha: approval.sha });
   assert.equal(result.requests.length, 3);
   assert.deepEqual(result.requests.map(item => item.id), [34495606530, 34377182662, 33654881418]);
   assert.equal(calls.filter(url => /actions\/runs\/\d+$/.test(url)).length, 3);
@@ -594,7 +607,7 @@ test('release cutover requires terminal server state for all three requests and 
     if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state: 'active' };
     if (url.endsWith('/34495606530')) return { id: 34495606530, workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', event: 'workflow_dispatch', status: 'queued' };
     throw new Error(`UNEXPECTED_REQUEST ${url}`);
-  }), /PSA_CUTOVER_RUN_NOT_TERMINAL id=34495606530 status=queued/);
+  }, { authorization: inactive, candidateSha: approval.sha }), /PSA_CUTOVER_RUN_NOT_TERMINAL id=34495606530 status=queued/);
 });
 test('environment job remains serialized and cannot publish source or target production', () => {
   const controller=fs.readFileSync(new URL('../.github/workflows/projectpulse-deploy-test.yml',import.meta.url),'utf8');

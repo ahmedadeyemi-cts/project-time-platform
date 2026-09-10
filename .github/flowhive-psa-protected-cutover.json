@@ -1,6 +1,6 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
-  "enabled": false,
+  "enabled": true,
   "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260910",
   "candidate": {
     "pullRequest": 887,
@@ -13,7 +13,7 @@
     "controllerBranch": "main",
     "event": "workflow_dispatch",
     "transition": "disabled_manually-to-active-once",
-    "allowControllerActivation": false
+    "allowControllerActivation": true
   },
   "environment": {
     "environment": "test",
@@ -80,10 +80,10 @@
   ],
   "serverDispatchInputsConfirmed": false,
   "approval": {
-    "status": "not-approved",
-    "approvedBy": null,
-    "approvedAt": null,
-    "expiresAt": null
+    "status": "approved",
+    "approvedBy": "ahmedadeyemi-cts",
+    "approvedAt": "2026-09-10T20:35:00Z",
+    "expiresAt": "2026-09-10T20:50:00Z"
   },
-  "activationDecision": "hold"
+  "activationDecision": "approved"
 }
