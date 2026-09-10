@@ -23,6 +23,12 @@ def fixture():
     return plan,schedule
 
 class AcceptanceDecisions(unittest.TestCase):
+    def test_planner_status_accepts_documented_nonterminal_202(self):
+        self.assertTrue(live.planner_status_response_valid(200, {'terminal': True}))
+        self.assertTrue(live.planner_status_response_valid(202, {'terminal': False, 'phase': 'inference'}))
+        for code, value in [(201, {}), (204, {}), (202, None), (202, [])]:
+            self.assertFalse(live.planner_status_response_valid(code, value))
+
     def test_substantive_fixture(self):
         p,s=fixture(); self.assertEqual(live.plan_checks(p,s)['leafTasks'],5)
     def test_reject_incomplete_or_fabricated_success(self):

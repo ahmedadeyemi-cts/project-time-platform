@@ -33,6 +33,11 @@ class GateError(Exception):
     """Safe fixed diagnostic code only, never an upstream response body."""
 
 
+def planner_status_response_valid(code: int, value: object) -> bool:
+    """Accept the API's 200 terminal and 202 nonterminal status envelopes."""
+    return code in (200, 202) and isinstance(value, dict)
+
+
 def need(ok: bool, code: str) -> None:
     if not ok:
         raise GateError(code)
@@ -430,7 +435,7 @@ def run(approval: dict, report: dict) -> None:
                     failures += 1
                     need(failures < 3, 'status_transient_budget_exceeded')
                     continue
-                need(code == 200 and isinstance(next_result, dict), 'status_read_failed_' + str(code))
+                need(planner_status_response_valid(code, next_result), 'status_read_failed_' + str(code))
                 result, failures = next_result, 0
             except GateError as error:
                 if str(error) != 'network_read_failed':
