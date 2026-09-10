@@ -129,6 +129,7 @@ export const protectedCutoverActivationBranch = 'control/flowhive-protected-cuto
 export const protectedCutoverActivationFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const staleSupersessionFiles = [
