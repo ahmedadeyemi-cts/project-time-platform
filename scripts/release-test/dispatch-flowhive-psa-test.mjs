@@ -1009,9 +1009,42 @@ async function verifyClaimExecution(api, { runId, runAttempt, controlSha }) {
   return { id: runId, attempt: runAttempt, event: run.event, headSha: run.head_sha, actor: run.actor.login };
 }
 
+async function verifyStaleReservationRecovery(api, recovery, { candidateSha, approvalReference, controlSha }) {
+  assert.equal(recovery?.status, 'pre-dispatch-failed', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_STATUS');
+  assert.equal(recovery?.dispatchSubmitted, false, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DISPATCH');
+  assert.equal(recovery?.controllerMutation, false, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_CONTROLLER');
+  assert.equal(recovery?.candidateSha, candidateSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_CANDIDATE');
+  assert.equal(recovery?.approvalReference, approvalReference, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_REFERENCE');
+  assert.notEqual(recovery?.controllerSha, controlSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_CONTROLLER_CURRENT');
+  const comment = await api(`issues/${candidatePullRequest}/comments/${recovery.commentId}`, 'GET', undefined,
+    'single-use-claim-recovery-comment-read');
+  const parsed = parseSingleUseClaim(comment?.body);
+  assert.equal(Number(comment?.id), Number(recovery.commentId), 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_COMMENT');
+  assert.equal(comment?.user?.login, workflowClaimAuthor.login, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_AUTHOR');
+  assert.equal(Number(comment?.user?.id), workflowClaimAuthor.id, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_AUTHOR_ID');
+  assert.equal(parsed.candidateSha, candidateSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_CANDIDATE');
+  assert.equal(parsed.approvalReference, approvalReference, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_REFERENCE');
+  assert.equal(parsed.controlSha, recovery.controllerSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_CONTROLLER');
+  assert.equal(parsed.runId, null, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_RUN');
+  assert.equal(parsed.observedAt, recovery.observedAt, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_TIME');
+  const run = await api(`actions/runs/${recovery.admissionRunId}`, 'GET', undefined,
+    'single-use-claim-recovery-run-read');
+  assert.equal(Number(run?.id), Number(recovery.admissionRunId), 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN');
+  assert.equal(run?.event, 'issue_comment', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_EVENT');
+  assert.equal(run?.head_branch, 'main', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_BRANCH');
+  assert.equal(run?.head_sha, recovery.controllerSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_CONTROLLER');
+  assert.equal(Number(run?.run_attempt), Number(recovery.admissionRunAttempt), 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_ATTEMPT');
+  assert.equal(run?.actor?.login, trustedClaimAuthor.login, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_ACTOR');
+  assert.equal(run?.status, 'completed', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_STATUS');
+  assert.equal(run?.conclusion, 'failure', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_CONCLUSION');
+  return { commentId: Number(comment.id), admissionRunId: Number(run.id), controllerSha: parsed.controlSha,
+    observedAt: parsed.observedAt, disposition: recovery.status };
+}
+
 export async function claimSingleUse(api = request, { candidateSha, controlSha, approvalReference,
-  admissionRunId = null, admissionRunAttempt = null }) {
+  admissionRunId = null, admissionRunAttempt = null, reservationRecovery = null }) {
   const marker = singleUseClaimMarker({ candidateSha, controlSha, approvalReference, admissionRunId, admissionRunAttempt });
+  const supersededReservations = [];
   for (let page = 1; page <= 10; page += 1) {
     const comments = await api(`issues/${candidatePullRequest}/comments?per_page=100&page=${page}`,
       'GET', undefined, 'single-use-claim-read');
@@ -1022,11 +1055,20 @@ export async function claimSingleUse(api = request, { candidateSha, controlSha, 
       try { parsed = parseSingleUseClaim(comment.body); }
       catch (error) { throw new Error(`PROTECTED_CUTOVER_CLAIM_MALFORMED: ${error.message}`); }
       const hasRunContext = parsed.runId !== null;
+      const isReviewedRecovery = reservationRecovery && Number(comment.id) === Number(reservationRecovery.commentId);
       let author;
-      try { author = verifyTrustedClaimAuthor(comment, { allowWorkflowBot: hasRunContext }); }
+      try { author = verifyTrustedClaimAuthor(comment, { allowWorkflowBot: hasRunContext || isReviewedRecovery }); }
       catch (error) { throw new Error(`PROTECTED_CUTOVER_CLAIM_UNTRUSTED: ${error.message}`); }
       if (parsed.candidateSha !== candidateSha || parsed.approvalReference !== approvalReference) continue;
-      if (parsed.controlSha !== controlSha) throw new Error('PROTECTED_CUTOVER_CLAIM_CONTROLLER_CHANGED');
+      if (parsed.controlSha !== controlSha) {
+        if (reservationRecovery && Number(comment.id) === Number(reservationRecovery.commentId)) {
+          supersededReservations.push(await verifyStaleReservationRecovery(api, reservationRecovery, {
+            candidateSha, approvalReference, controlSha
+          }));
+          continue;
+        }
+        throw new Error('PROTECTED_CUTOVER_CLAIM_CONTROLLER_CHANGED');
+      }
       if (!hasRunContext) {
         if (author.login === workflowClaimAuthor.login) throw new Error('PROTECTED_CUTOVER_CLAIM_LEGACY_UNBOUND');
         throw new Error('PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED');
@@ -1059,7 +1101,7 @@ export async function claimSingleUse(api = request, { candidateSha, controlSha, 
   const execution = author.login === workflowClaimAuthor.login && admissionRunId !== null
     ? await verifyClaimExecution(api, { runId: admissionRunId, runAttempt: admissionRunAttempt, controlSha }) : null;
   return { marker, commentId, observedAt, candidateSha, controlSha, approvalReference,
-    author, execution, key: `${candidateSha}:${approvalReference}` };
+    author, execution, supersededReservations, key: `${candidateSha}:${approvalReference}` };
 }
 
 export async function activateProtectedControllerOnce(api = request, options = {}) {
@@ -1152,7 +1194,7 @@ export async function runAdmission({ api = request, candidateSha, controlSha, ad
   assert.equal(controlCheck.object.sha, controlSha, 'Main changed during admission; re-review is required.');
   const claim = await claimSingleUse(api, {
     candidateSha, controlSha, approvalReference: authorization.approvalReference,
-    admissionRunId, admissionRunAttempt
+    admissionRunId, admissionRunAttempt, reservationRecovery: authorization.reservationRecovery
   });
   const preSubmissionValidation = cutover.protectedAssessment
     ? await revalidateProtectedCutoverForSubmission(api, cutover.protectedAssessment, {
