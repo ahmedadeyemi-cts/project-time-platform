@@ -137,6 +137,7 @@ export const admissionPermissionFixBranch = 'fix/flowhive-psa-admission-comment-
 export const admissionPermissionFixFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  'tests/flowhive-psa-release-workflow.test.py',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const staleSupersessionFiles = [
