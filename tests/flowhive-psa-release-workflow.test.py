@@ -51,6 +51,7 @@ def verify(doc):
     assert 'build-and-run-flowhive-psa-migrations.sh' in byid['migration']['run']
     release_guard=next(s for s in steps if s.get('name')=='Guard exact source and validate release')
     assert 'database/migrations/105_flowhive_reviewed_regeneration.sql' in release_guard['run']
+    assert 'database/migrations/106_module025_sow_sell_register.sql' in release_guard['run']
     assert 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql' in release_guard['run']
     assert byid['psa_live_uat']['working-directory']=='control'
     assert byid['psa_live_uat']['timeout-minutes']=='20'
