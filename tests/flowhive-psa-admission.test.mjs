@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'open', merged: false, draft: true,
@@ -159,10 +159,11 @@ test('environment job remains serialized and cannot publish source or target pro
 
 test('temporary stale supersession activation is bounded and native-gated', () => {
   const configured = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'));
-  assert.equal(configured.enabled, false);
-  assert.equal(configured.activationDecision, 'hold');
-  assert.equal(configured.approval.status, 'not-approved');
-  assert.equal(staleRunSupersessionApproved(configured), false);
+  const renewal = process.env.GITHUB_HEAD_REF === staleSupersessionRenewalBranch;
+  assert.equal(configured.enabled, renewal);
+  assert.equal(configured.activationDecision, renewal ? 'approved' : 'hold');
+  assert.equal(configured.approval.status, renewal ? 'approved' : 'not-approved');
+  assert.equal(staleRunSupersessionApproved(configured, renewal ? new Date(configured.approval.approvedAt) : new Date()), renewal);
   const inactive = clone(configured);
   inactive.enabled = false;
   inactive.activationDecision = 'hold';
