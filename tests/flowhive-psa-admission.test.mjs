@@ -461,6 +461,34 @@ test('single-use authorization is stable across controller changes and trusts st
     /PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED/);
   assert.equal(reservationWrites, 1);
 });
+test('workflow-token reservations bind the bot comment to the owner-triggered admission run', async () => {
+  const comments = [];
+  const control = 'e'.repeat(40);
+  const api = async (url, method = 'GET', body) => {
+    if (url.startsWith('issues/887/comments?')) return comments;
+    if (url === 'issues/887/comments' && method === 'POST') {
+      const comment = { id: 7010, body: body.body,
+        user: { login: 'github-actions[bot]', id: 41898282 } };
+      comments.push(comment);
+      return comment;
+    }
+    if (url === 'actions/runs/9010') return {
+      id: 9010, event: 'issue_comment', head_branch: 'main', head_sha: control,
+      run_attempt: 1, actor: { login: 'ahmedadeyemi-cts', id: 244059331 }
+    };
+    throw new Error(`UNEXPECTED_WORKFLOW_CLAIM_REQUEST ${method} ${url}`);
+  };
+  const claim = await claimSingleUse(api, { candidateSha: approval.sha, controlSha: control,
+    approvalReference: protectedCutoverAuthorization().approvalReference,
+    admissionRunId: 9010, admissionRunAttempt: 1 });
+  assert.deepEqual(claim.author, { login: 'github-actions[bot]', id: 41898282 });
+  assert.deepEqual(claim.execution, { id: 9010, attempt: 1, event: 'issue_comment', headSha: control, actor: 'ahmedadeyemi-cts' });
+  const reused = await claimSingleUse(api, { candidateSha: approval.sha, controlSha: control,
+    approvalReference: protectedCutoverAuthorization().approvalReference,
+    admissionRunId: 9011, admissionRunAttempt: 1 });
+  assert.equal(reused.reused, true);
+  assert.equal(reused.commentId, 7010);
+});
 test('protected lifecycle keeps the active operating state after one approved bootstrap', async () => {
   const fixture = protectedCutoverApi({ state: 'disabled_manually' });
   const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-lifecycle-success-');
