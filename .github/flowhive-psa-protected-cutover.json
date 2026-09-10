@@ -11,13 +11,22 @@
     "id": 315562561,
     "path": ".github/workflows/projectpulse-deploy-test.yml",
     "controllerBranch": "main",
-    "event": "workflow_dispatch"
+    "event": "workflow_dispatch",
+    "transition": "disabled_manually-to-active-once",
+    "allowControllerActivation": false
   },
   "environment": {
     "environment": "test",
     "protectionRuleId": 65110773,
     "requiredReviewerLogin": "ahmedadeyemi-cts",
     "requiredReviewerId": 244059331,
+    "reviewers": [
+      {
+        "type": "User",
+        "login": "ahmedadeyemi-cts",
+        "id": 244059331
+      }
+    ],
     "preventSelfReview": false,
     "canAdminsBypass": false
   },

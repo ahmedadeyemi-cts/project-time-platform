@@ -56,8 +56,18 @@ queued with zero jobs, no pending deployment, no approval and no artifacts. Thei
 raw GitHub status remains visible and distinct from the repository's protected
 nonterminal disposition. The manifest is inactive in this publication; activation
 requires a separately reviewed bounded approval for this candidate and current
-controller, followed by the existing native Test deployment approval. No
-workflow-state write is part of this control change.
+controller, followed by the existing native Test deployment approval. When that
+activation is reviewed, the maintained entrypoint performs one guarded
+`disabled_manually` → `active` transition, re-reads the exact three-request
+assessment, admits at most one dispatch, and closes by restoring
+`disabled_manually`. An enable failure or uncertain transition is observed and
+closed fail-closed; it is never retried automatically.
+
+The `--inspect-only` entrypoint requires the exact `workflow_dispatch`/main
+controller context, the approved candidate manifest, and a valid controller SHA;
+it is GET-only and does not simulate an issue comment. The native Test rule is
+compared as a complete normalized reviewer set (type and stable identity), not
+just the first reviewer returned by the API.
 
 Before the dispatch write, the admission job persists a sanitized attempt record
 with the repository, candidate/controller identities, workflow, admission run ID,
@@ -67,7 +77,13 @@ failures include stage, method, path, status and GitHub request ID; no token,
 header, response body or customer content is stored. The record is uploaded as
 an Actions artifact even when the admission step fails. Optional summary/comment
 failures are recorded separately from the last verified deployment phase and cannot erase an accepted receipt; identity,
-authorization and active-controller failures remain blocking.
+authorization and active-controller failures remain blocking. A single-use
+reservation comment binds the candidate, controller and bounded approval
+reference before the POST. Repeated commands, restarted admissions, and
+uncertain dispatch responses find that reservation and stop without a second
+dispatch. Immediately before submission, authorization expiry, current
+main/controller identity and complete native Test protection are read again and
+recorded with observation timestamps.
 
 Controller-only changes no longer trigger automatic main-push deployment. All
 existing application/migration source triggers remain unchanged, and the control

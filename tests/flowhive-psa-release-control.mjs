@@ -327,6 +327,17 @@ export function validate() {
       pullRequest: 887, branch: 'release/flowhive-sow-successor-20260908',
       sha: '95abbb0aa2445a33fda68e9de542f9446c3e2204'
     });
+    assert.deepEqual(protectedCutover.workflow, {
+      id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml',
+      controllerBranch: 'main', event: 'workflow_dispatch',
+      transition: 'disabled_manually-to-active-once', allowControllerActivation: false
+    });
+    assert.deepEqual(protectedCutover.environment, {
+      environment: 'test', protectionRuleId: 65110773,
+      requiredReviewerLogin: 'ahmedadeyemi-cts', requiredReviewerId: 244059331,
+      reviewers: [{ type: 'User', login: 'ahmedadeyemi-cts', id: 244059331 }],
+      preventSelfReview: false, canAdminsBypass: false
+    });
     assert.deepEqual(protectedCutover.requests.map(request => request.runId), [34495606530, 34377182662, 33654881418]);
     assert.equal(protectedCutover.serverDispatchInputsConfirmed, false);
     assert.deepEqual(protectedCutover.approval, { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null });
