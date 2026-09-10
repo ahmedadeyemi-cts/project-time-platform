@@ -152,7 +152,7 @@ class WorkflowContract(unittest.TestCase):
     def test_admission_cannot_mutate_cloud_or_publish_code(self):
         doc=load((ROOT/'.github/workflows/flowhive-psa-protected-test-admission.yml').read_text())
         assert list(doc['on'])==['issue_comment']
-        assert doc['permissions']=={'actions':'write','contents':'read','issues':'write'}
+        assert doc['permissions']=={'actions':'write','contents':'read','issues':'write','pull-requests':'write'}
         assert doc['concurrency']['group']=='module025-protected-uat-control'
         assert doc['concurrency']['cancel-in-progress']=='false'
         job=doc['jobs']['admit'];assert 'environment' not in job
