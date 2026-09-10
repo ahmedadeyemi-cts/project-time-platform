@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { verifyApproval, controlManifest } from '../scripts/release-test/flowhive-psa-admission.mjs';
 
 export const files = [
+  '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/flowhive-psa-stale-run-supersession-authorization.json',
   '.github/flowhive-psa-release-control-files.txt',
@@ -108,6 +109,21 @@ export const releaseStabilizationFiles = [
   'tests/flowhive-psa-release-control.mjs',
   'tests/flowhive-psa-release-workflow.test.py'
 ].sort();
+export const protectedCutoverBase = '526cfc0d2eb993c35557db190eb5ae87d29bda65';
+export const protectedCutoverBranch = 'fix/flowhive-protected-cutover-20260910';
+export const protectedCutoverFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  '.github/flowhive-psa-release-control-files.txt',
+  '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'scripts/release-test/prepare-protected-test-scope-manifests.sh',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
 export const staleSupersessionFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   '.github/flowhive-psa-stale-run-supersession-authorization.json',
@@ -177,7 +193,7 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession','stale-run-activation','stale-run-renewal','migration106-wiring','release-stabilization'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession','stale-run-activation','stale-run-renewal','migration106-wiring','release-stabilization','protected-cutover'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
@@ -219,7 +235,11 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.base, releaseStabilizationBase, 'Release stabilization must be based on the current trusted main.');
     assert.equal(context?.branch, releaseStabilizationBranch, 'Wrong release stabilization branch.');
   }
-  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : mode === 'stale-run-renewal' ? staleSupersessionRenewalFiles : mode === 'migration106-wiring' ? migration106WiringFiles : mode === 'release-stabilization' ? releaseStabilizationFiles : staleSupersessionFiles;
+  if (mode === 'protected-cutover') {
+    assert.equal(context?.base, protectedCutoverBase, 'Protected cutover must be based on merged trusted main.');
+    assert.equal(context?.branch, protectedCutoverBranch, 'Wrong protected cutover control branch.');
+  }
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : mode === 'stale-run-renewal' ? staleSupersessionRenewalFiles : mode === 'migration106-wiring' ? migration106WiringFiles : mode === 'release-stabilization' ? releaseStabilizationFiles : mode === 'protected-cutover' ? protectedCutoverFiles : staleSupersessionFiles;
   assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
@@ -265,8 +285,9 @@ export function validate() {
   const isStaleSupersessionRenewal = process.env.GITHUB_HEAD_REF === staleSupersessionRenewalBranch;
   const isMigration106Wiring = process.env.GITHUB_HEAD_REF === migration106WiringBranch;
   const isReleaseStabilization = process.env.GITHUB_HEAD_REF === releaseStabilizationBranch;
+  const isProtectedCutover = process.env.GITHUB_HEAD_REF === protectedCutoverBranch;
   verifyFiles(changed, manifest,
-    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : isStaleSupersessionActivation ? 'stale-run-activation' : isStaleSupersessionRenewal ? 'stale-run-renewal' : isMigration106Wiring ? 'migration106-wiring' : isReleaseStabilization ? 'release-stabilization' : 'initial', context);
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : isStaleSupersessionActivation ? 'stale-run-activation' : isStaleSupersessionRenewal ? 'stale-run-renewal' : isMigration106Wiring ? 'migration106-wiring' : isProtectedCutover ? 'protected-cutover' : isReleaseStabilization ? 'release-stabilization' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.
@@ -277,6 +298,7 @@ export function validate() {
   const approval = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-test-candidate.json', 'utf8'));
   verifyApproval(approval, approval.sha);
   const staleAuthorization = JSON.parse(fs.readFileSync('.github/flowhive-psa-stale-run-supersession-authorization.json', 'utf8'));
+  const protectedCutover = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-cutover.json', 'utf8'));
   if (isStaleSupersessionActivation || isStaleSupersessionRenewal) {
     assert.equal(staleAuthorization.enabled, true, 'Activation must be explicit and limited to the reviewed activation branch.');
     assert.equal(staleAuthorization.activationDecision, 'approved');
@@ -296,6 +318,29 @@ export function validate() {
   } else {
     assert.equal(staleAuthorization.enabled, false, 'Stale supersession must remain inactive outside the reviewed activation branch.');
     assert.equal(staleAuthorization.activationDecision, 'hold');
+  }
+  if (isProtectedCutover) {
+    assert.equal(protectedCutover.contract, 'flowhive-psa-protected-cutover-v1');
+    assert.equal(protectedCutover.enabled, false, 'Protected cutover must remain inactive until separately approved.');
+    assert.equal(protectedCutover.activationDecision, 'hold');
+    assert.deepEqual(protectedCutover.candidate, {
+      pullRequest: 887, branch: 'release/flowhive-sow-successor-20260908',
+      sha: '95abbb0aa2445a33fda68e9de542f9446c3e2204'
+    });
+    assert.deepEqual(protectedCutover.workflow, {
+      id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml',
+      controllerBranch: 'main', event: 'workflow_dispatch',
+      transition: 'disabled_manually-to-active-once', allowControllerActivation: false
+    });
+    assert.deepEqual(protectedCutover.environment, {
+      environment: 'test', protectionRuleId: 65110773,
+      requiredReviewerLogin: 'ahmedadeyemi-cts', requiredReviewerId: 244059331,
+      reviewers: [{ type: 'User', login: 'ahmedadeyemi-cts', id: 244059331 }],
+      preventSelfReview: false, canAdminsBypass: false
+    });
+    assert.deepEqual(protectedCutover.requests.map(request => request.runId), [34495606530, 34377182662, 33654881418]);
+    assert.equal(protectedCutover.serverDispatchInputsConfirmed, false);
+    assert.deepEqual(protectedCutover.approval, { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null });
   }
   assert.equal(staleAuthorization.historicalExecutionProtection.allDeploymentPathsProtected, false);
   assert.equal(staleAuthorization.historicalExecutionProtection.jobUsesTestEnvironment, true);

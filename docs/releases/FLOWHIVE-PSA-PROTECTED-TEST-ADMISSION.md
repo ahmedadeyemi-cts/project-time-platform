@@ -29,39 +29,49 @@ reconciliation `e0b8fa3f2b19009fb865eb5f50a07101461e39bf`, and the final CI/scop
 `d2262ccbef31800883589197d03122bd51bb87cc`; migrations 103/104/105/106 retain their
 reviewed SHA-256 values.
 
-The supervisor requires the canonical deployment workflow to already be active,
-shares the existing admission lock, and refuses every unresolved workflow run
-before the single dispatch write. It never enables/disables the deploy workflow,
-never cancels a queued run, and never treats zero jobs as a disposition. This
-keeps the native Test environment gate and existing serialization as the release
-transaction boundary. The read-only cutover gate checks all three known requests
-(`34495606530`, `34377182662`, and `33654881418`) for server-confirmed terminal
-state, completed attempts, and no pending deployment, then verifies the exact
-workflow identity is active before admission. A lost dispatch response is an
-unknown outcome to inspect, never a reason to dispatch again automatically.
+The supervisor shares the existing admission lock and refuses every unresolved
+workflow run before the single dispatch write. This keeps the native Test
+environment gate and existing serialization as the release transaction boundary.
+The normal read-only cutover gate still requires all three
+known requests (`34495606530`, `34377182662`, and `33654881418`) to be
+server-confirmed terminal with completed attempts and no pending deployment.
+The reviewed `.github/flowhive-psa-protected-cutover.json` provides a separate,
+initially inactive exception for this exact candidate: when separately approved
+and unexpired, one shared assessment verifies the exact three queued records,
+every observed attempt's zero jobs, empty Test approval history and pending
+deployments, empty concurrency/artifact inventories, exact historical workflow
+blobs and complete native Test protection. The same assessment is passed to the
+final nonterminal-run inventory, so an unknown fourth run, execution, approval,
+identity change or unreadable evidence blocks admission. Queued remains queued;
+the path never claims cancellation or completion and never reconstructs missing
+historical dispatch inputs. A lost dispatch response is an unknown outcome to
+inspect, never a reason to dispatch again automatically.
 
-The current unresolved requests are recorded in the trusted authorization manifest.
-Run `34495606530` uses controller `9f30078c2c407d4d3576ccefd663a145be50c6c4`;
-all three are queued with zero jobs, no pending deployment and no approval. Their
-disposition is `blocking-hold`: the release owner records the measured state, but
-does not claim that GitHub canceled or completed anything. The supported future
-cutover is one separately reviewed run-control operation per request, followed by
-server verification of terminal state and no execution, one native enable operation,
-and verification of active workflow identity. The current session has not performed
-those writes; no dispatch, rerun, cancel, delete, approval or workflow toggle is
-permitted from this admission path.
+The current unresolved requests are recorded in both the trusted cutover manifest
+and the live assessment. Run `34495606530` uses controller
+`9f30078c2c407d4d3576ccefd663a145be50c6c4`; all three are required to remain
+queued with zero jobs, no pending deployment, no approval and no artifacts. Their
+raw GitHub status remains visible and distinct from the repository's protected
+nonterminal disposition. The manifest is inactive in this publication; activation
+requires a separately reviewed bounded approval for this candidate and current
+controller, followed by the existing native Test deployment approval. When that
+activation is reviewed, the maintained entrypoint performs one guarded
+`disabled_manually` → `active` transition, re-reads the exact three-request
+assessment, admits at most one dispatch, and reports the resulting controller
+state. A successful bootstrap deliberately leaves the canonical controller
+`active`; it does not silently recreate an enable → dispatch → disable cycle.
+If admission fails before an external dispatch write, the wrapper restores
+`disabled_manually`. If a dispatch write is uncertain, it does not disable the
+workflow as a false cancellation signal: it retains `active` and reports the
+uncertain outcome for inspection. Enable/restore failures preserve both the
+primary admission error and cleanup error, and the final state is read back
+explicitly. It is never retried automatically.
 
-The exact supported recovery operation is therefore: read and bind each of the
-three run IDs, issue one normal `POST /actions/runs/{id}/cancel` per request only
-after the identity/queued/zero-job precondition still holds, verify each run is
-server-confirmed `completed` with no executing jobs or pending deployment, then
-issue one native `PUT /actions/workflows/315562561/enable` and verify the returned
-workflow is active with the expected path and Test protection. The admission
-workflow then performs the read-only cutover gate and dispatches once. The current
-owner credential has repository admin and Actions write capability, but this is
-not authorization to perform those five state-changing requests; that exact
-bounded authorization is the remaining external decision. A 409/403, changed
-state, new job, or uncertain response stops the sequence and prevents dispatch.
+The `--inspect-only` entrypoint requires the exact `workflow_dispatch`/main
+controller context, the approved candidate manifest, and a valid controller SHA;
+it is GET-only and does not simulate an issue comment. The native Test rule is
+compared as a complete normalized reviewer set (type and stable identity), not
+just the first reviewer returned by the API.
 
 Before the dispatch write, the admission job persists a sanitized attempt record
 with the repository, candidate/controller identities, workflow, admission run ID,
@@ -71,7 +81,19 @@ failures include stage, method, path, status and GitHub request ID; no token,
 header, response body or customer content is stored. The record is uploaded as
 an Actions artifact even when the admission step fails. Optional summary/comment
 failures are recorded separately from the last verified deployment phase and cannot erase an accepted receipt; identity,
-authorization and active-controller failures remain blocking.
+authorization and active-controller failures remain blocking. A single-use
+reservation comment binds the candidate, controller and bounded approval
+reference before the POST. Repeated commands, restarted admissions, and
+uncertain dispatch responses find that reservation and stop without a second
+dispatch. Its one-use key is the candidate plus approval reference; the
+controller SHA is retained as execution evidence and cannot renew the same
+authorization after a controller update. Only the owner-authored structured
+reservation is accepted. Untrusted or malformed copies and uncertain
+reservation writes fail closed without another deployment POST. Immediately
+after the reservation write, the exact protected requests and complete
+nonterminal-run inventory are read again. The authorization clock is checked
+after those reads together with current main/controller identity and complete
+native Test protection, and all are recorded with observation timestamps.
 
 Controller-only changes no longer trigger automatic main-push deployment. All
 existing application/migration source triggers remain unchanged, and the control

@@ -32,6 +32,7 @@ jobs:
       - name: Authorize and dispatch once through the active canonical Test controller
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FLOWHIVE_PSA_PROTECTED_CUTOVER_FILE: .github/flowhive-psa-protected-cutover.json
           FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE: ${{ runner.temp }}/flowhive-psa-dispatch-attempt.json
         run: node scripts/release-test/dispatch-flowhive-psa-test.mjs
       - name: Upload sanitized FlowHive dispatch evidence
