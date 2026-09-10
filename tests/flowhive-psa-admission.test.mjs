@@ -501,7 +501,7 @@ test('reviewed recovery consumes the stale bot reservation before creating one c
     dispatchSubmitted: false, controllerMutation: false };
   const api = async (url, method = 'GET', body) => {
     if (url.startsWith('issues/887/comments?')) return comments;
-    if (url === 'issues/887/comments/7020') return comments[0];
+    if (url === 'issues/comments/7020') return comments[0];
     if (url === 'issues/887/comments' && method === 'POST') {
       const comment = { id: 7021, body: body.body, user: { login: 'github-actions[bot]', id: 41898282 } };
       comments.push(comment); return comment;
