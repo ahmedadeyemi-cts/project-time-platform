@@ -214,6 +214,18 @@ export function validate() {
   assert.equal(staleAuthorization.enabled, false, 'Stale supersession must remain inactive.');
   assert.equal(staleAuthorization.activationDecision, 'hold');
   assert.equal(staleAuthorization.historicalExecutionProtection.allDeploymentPathsProtected, false);
+  assert.equal(staleAuthorization.historicalExecutionProtection.jobUsesTestEnvironment, true);
+  assert.deepEqual(staleAuthorization.historicalExecutionProtection.nativeEnvironmentBarrier, {
+    environment: 'test', protectionRuleId: 65110773, requiredReviewerLogin: 'ahmedadeyemi-cts',
+    requiredReviewerId: 244059331, preventSelfReview: false, canAdminsBypass: false
+  });
+  assert.deepEqual(staleAuthorization.evidence.nativeEnvironmentCoverage.map(run => ({
+    runId: run.runId, status: run.status, jobs: run.jobs, pendingDeployments: run.pendingDeployments,
+    approvalPerformed: run.approvalPerformed
+  })), [
+    { runId: 34377182662, status: 'queued', jobs: 0, pendingDeployments: 0, approvalPerformed: false },
+    { runId: 33654881418, status: 'queued', jobs: 0, pendingDeployments: 0, approvalPerformed: false }
+  ]);
   assert.equal(staleAuthorization.evidence.requestToRunBinding.status, 'not-established');
   assert.equal(staleAuthorization.evidence.requestToRunBinding.serverConfirmed, false);
   assert.equal(staleAuthorization.evidence.requestToRunBinding.requestId, null);

@@ -61,9 +61,9 @@ export function verifyStaleSupersessionAuthorization(authorization, now = new Da
     assert.equal(authorization.approval?.expiresAt, null);
     return { approved: false, reason: 'not-approved' };
   }
-  assert.equal(authorization.historicalExecutionProtection?.allDeploymentPathsProtected, true,
-    'Historical alternate deployment paths are not protected.');
-  verifyRequestRunBinding(authorization.evidence?.requestToRunBinding);
+  assert.equal(authorization.historicalExecutionProtection?.allDeploymentPathsProtected, false,
+    'Historical source-path protection must remain an honest negative result.');
+  verifyNativeEnvironmentProtectionContract(authorization.historicalExecutionProtection?.nativeEnvironmentBarrier);
   assert.equal(authorization.approval?.status, 'approved', 'STALE_SUPERSESSION_APPROVAL_STATUS');
   assert.match(authorization.approval?.approvedBy || '', /^[A-Za-z0-9._-]{1,100}$/, 'STALE_SUPERSESSION_APPROVER');
   const approvedAt = Date.parse(authorization.approval?.approvedAt || '');
@@ -102,6 +102,32 @@ export function verifyRequestRunBinding(binding, run = staleRunSupersessionAttes
   assert.equal(binding?.response?.workflowRunId, binding.runId,
     'STALE_SUPERSESSION_REQUEST_RUN_BINDING_RESPONSE');
   return { bound: true, runId: binding.runId, controllerSha: binding.controllerSha };
+}
+
+function verifyNativeEnvironmentProtectionContract(expected) {
+  assert.equal(expected?.environment, 'test', 'STALE_SUPERSESSION_NATIVE_ENVIRONMENT');
+  assert.equal(expected?.canAdminsBypass, false, 'STALE_SUPERSESSION_NATIVE_BYPASS');
+  assert.equal(expected?.preventSelfReview, false, 'STALE_SUPERSESSION_NATIVE_SELF_REVIEW');
+  assert.equal(expected?.requiredReviewerLogin, 'ahmedadeyemi-cts', 'STALE_SUPERSESSION_NATIVE_REVIEWER');
+  assert.equal(expected?.requiredReviewerId, 244059331, 'STALE_SUPERSESSION_NATIVE_REVIEWER_ID');
+  assert.ok(Number.isSafeInteger(expected?.protectionRuleId) && expected.protectionRuleId > 0,
+    'STALE_SUPERSESSION_NATIVE_RULE_ID');
+  return expected;
+}
+
+export function verifyNativeEnvironmentProtection(actual, expected) {
+  verifyNativeEnvironmentProtectionContract(expected);
+  assert.equal(actual?.name, expected.environment, 'STALE_SUPERSESSION_NATIVE_READBACK_ENVIRONMENT');
+  assert.equal(actual?.can_admins_bypass, expected.canAdminsBypass, 'STALE_SUPERSESSION_NATIVE_READBACK_BYPASS');
+  const rule = (actual?.protection_rules || []).find(item => item?.type === 'required_reviewers');
+  assert.ok(rule, 'STALE_SUPERSESSION_NATIVE_READBACK_RULE');
+  assert.equal(rule.id, expected.protectionRuleId, 'STALE_SUPERSESSION_NATIVE_READBACK_RULE_ID');
+  assert.equal(rule.prevent_self_review, expected.preventSelfReview, 'STALE_SUPERSESSION_NATIVE_READBACK_SELF_REVIEW');
+  const reviewer = (rule.reviewers || []).find(item => item?.type === 'User')?.reviewer;
+  assert.equal(reviewer?.login, expected.requiredReviewerLogin, 'STALE_SUPERSESSION_NATIVE_READBACK_REVIEWER');
+  assert.equal(reviewer?.id, expected.requiredReviewerId, 'STALE_SUPERSESSION_NATIVE_READBACK_REVIEWER_ID');
+  return { environment: actual.name, protectionRuleId: rule.id, reviewer: reviewer.login,
+    preventSelfReview: rule.prevent_self_review, canAdminsBypass: actual.can_admins_bypass };
 }
 
 export function verifyHistoricalFenceSources({ admissionBlob, dispatcherBlob, deploymentWorkflowBlob, admission, dispatcher, deploymentWorkflow }) {
@@ -149,11 +175,12 @@ export function verifyHistoricalFenceSources({ admissionBlob, dispatcherBlob, de
   const allDeploymentPathsProtected = deployJobIf.includes("github.event_name == 'push'") &&
     deployJobIf.includes("github.event_name == 'workflow_dispatch'") &&
     deployJobIf.includes("inputs.release_branch == 'release/flowhive-sow-successor-20260908'");
+  const jobUsesTestEnvironment = /jobs:\s*\n\s+deploy:\s*\n[\s\S]*?\n\s+environment:\s+test\b/.test(deploymentWorkflow);
   return { contract: attestation.contract, staleGuardBeforeMutation: true, cleanupRequiresStarted: true,
-    admissionConditionalOnReleaseBranch: true, allDeploymentPathsProtected };
+    admissionConditionalOnReleaseBranch: true, allDeploymentPathsProtected, jobUsesTestEnvironment };
 }
 
-export function verifyFencedStaleRun({ workflow, run, attemptJobs, pendingDeployments, concurrencyGroups, artifacts, currentMainSha, executingControllerSha, historicalSources, authorization, authorizationNow = new Date(), serverDispatchInputs, requireSealed = true }) {
+export function verifyFencedStaleRun({ workflow, run, attemptJobs, pendingDeployments, concurrencyGroups, artifacts, currentMainSha, executingControllerSha, historicalSources, authorization, authorizationNow = new Date(), serverDispatchInputs, environmentProtection, requireSealed = true }) {
   const attestation = staleRunSupersessionAttestation;
   assert.equal(serverDispatchInputs, undefined,
     'GitHub does not expose original dispatch inputs; supersession must not rely on reconstructed inputs.');
@@ -183,15 +210,18 @@ export function verifyFencedStaleRun({ workflow, run, attemptJobs, pendingDeploy
   assert.equal(artifacts?.total_count, 0, 'PSA_STALE_SUPERSESSION_ARTIFACTS');
   if (requireSealed) assert.equal(workflow.state, 'disabled_manually', 'The stale request must be sealed before supersession.');
   assert.equal(verifyStaleSupersessionAuthorization(authorization, authorizationNow).approved, true, 'STALE_SUPERSESSION_NOT_APPROVED');
-  assert.equal(authorization?.historicalExecutionProtection?.allDeploymentPathsProtected, true,
-    'The historical controller has an unprotected alternate deployment path.');
-  verifyRequestRunBinding(authorization?.evidence?.requestToRunBinding, run);
+  assert.equal(authorization?.historicalExecutionProtection?.allDeploymentPathsProtected, false,
+    'Historical source-path protection must remain an honest negative result.');
+  verifyNativeEnvironmentProtection(environmentProtection, authorization?.historicalExecutionProtection?.nativeEnvironmentBarrier);
   assert.equal(historicalSources?.admissionBlob, attestation.historicalBlobs.admission);
   assert.equal(historicalSources?.dispatcherBlob, attestation.historicalBlobs.dispatcher);
   assert.equal(historicalSources?.deploymentWorkflowBlob, attestation.historicalBlobs.deploymentWorkflow);
-  assert.equal(verifyHistoricalFenceSources(historicalSources).allDeploymentPathsProtected, true,
-    'Historical deployment paths are not universally protected.');
-  return { fenced: true, inputIdentity: 'not-server-confirmed-and-not-used', productionMutation: false };
+  const sourceProof = verifyHistoricalFenceSources(historicalSources);
+  assert.equal(sourceProof.allDeploymentPathsProtected, false,
+    'Historical source-path protection must remain an honest negative result.');
+  assert.equal(sourceProof.jobUsesTestEnvironment, true,
+    'The historical deployment job is not covered by the saved Test environment gate.');
+  return { fenced: true, inputIdentity: 'not-server-confirmed-and-not-used', nativeEnvironmentBarrier: true, productionMutation: false };
 }
 
 export function readHistoricalFenceSources() {
@@ -298,7 +328,7 @@ function verifyWorkflow(workflow) {
 export async function requireIdleRuns(api, workflow, requireSealed = false,
   executingControllerSha = process.env.GITHUB_SHA,
   authorization = readStaleSupersessionAuthorization(), authorizationNow = new Date(),
-  historicalSources = readHistoricalFenceSources()) {
+  historicalSources = readHistoricalFenceSources(), environmentProtectionSnapshot) {
   const supersessionApproved = staleRunSupersessionApproved(authorization, authorizationNow);
   for (const status of ['queued', 'in_progress', 'waiting', 'pending', 'requested']) {
     for (let page = 1; page <= 10; page++) {
@@ -319,9 +349,10 @@ export async function requireIdleRuns(api, workflow, requireSealed = false,
           const concurrencyGroups = await api(`actions/runs/${run.id}/concurrency_groups`);
           const artifacts = await api(`actions/runs/${run.id}/artifacts?per_page=100`);
           const main = await api('git/ref/heads/main');
+          const environmentProtection = environmentProtectionSnapshot || await api('environments/test');
           verifyFencedStaleRun({ workflow, run: staleRun, attemptJobs, pendingDeployments, concurrencyGroups,
             artifacts, currentMainSha: main.object?.sha, executingControllerSha,
-            historicalSources, authorization, authorizationNow, requireSealed });
+            historicalSources, authorization, authorizationNow, environmentProtection, requireSealed });
           continue;
         }
         throw new Error('PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE');
@@ -334,7 +365,7 @@ export async function requireIdleRuns(api, workflow, requireSealed = false,
 export async function inspectIdleController(api = request, options = {}) {
   const workflow = verifyWorkflow(await api(`actions/workflows/${workflowId}`));
   await requireIdleRuns(api, workflow, false, options.executingControllerSha, options.authorization,
-    options.authorizationNow, options.historicalSources);
+    options.authorizationNow, options.historicalSources, options.environmentProtection);
   return { id: workflow.id, path: workflow.path, state: workflow.state, executableActiveRuns: 0,
     requiresSealing: workflow.state === 'active' };
 }
@@ -347,7 +378,7 @@ export async function sealIdleController(api = request, options = {}) {
   assert.equal(sealed.state, 'disabled_manually', 'PSA_ADMISSION_MUST_BEGIN_SEALED');
   // Fail closed if another source admitted a run between inventory and sealing.
   await requireIdleRuns(api, sealed, true, options.executingControllerSha, options.authorization,
-    options.authorizationNow, options.historicalSources);
+    options.authorizationNow, options.historicalSources, options.environmentProtection);
   return { ...inspection, state: sealed.state, requiresSealing: false };
 }
 async function main() {

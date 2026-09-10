@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
@@ -13,6 +13,11 @@ const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, eve
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));
 const historicalFence = readHistoricalFenceSources();
+const nativeEnvironmentProtection = {
+  name: 'test', can_admins_bypass: false,
+  protection_rules: [{ id: 65110773, type: 'required_reviewers', prevent_self_review: false,
+    reviewers: [{ type: 'User', reviewer: { login: 'ahmedadeyemi-cts', id: 244059331 } }] }]
+};
 // Schema-only binding fixture. It is never used as historical execution evidence;
 // the real stale run remains blocked because its server audit binding is absent.
 const staleAuthorization = () => ({
@@ -31,7 +36,12 @@ const staleAuthorization = () => ({
     requestBodySha256: '0'.repeat(64), submittedAt: '2026-09-09T16:30:41Z',
     response: { workflowRunId: staleRunSupersessionAttestation.runId }
   } },
-  historicalExecutionProtection: { admissionConditionalOnReleaseBranch: true, allDeploymentPathsProtected: true },
+  historicalExecutionProtection: {
+    admissionConditionalOnReleaseBranch: true, allDeploymentPathsProtected: false, jobUsesTestEnvironment: true,
+    nativeEnvironmentBarrier: { environment: 'test', protectionRuleId: 65110773,
+      requiredReviewerLogin: 'ahmedadeyemi-cts', requiredReviewerId: 244059331,
+      preventSelfReview: false, canAdminsBypass: false }
+  },
   approval: { status: 'approved', approvedBy: 'ahmedadeyemi-cts', approvedAt: '2026-09-09T22:00:00Z', expiresAt: '2026-09-09T22:15:00Z' }
 });
 const staleRun = () => ({
@@ -45,7 +55,8 @@ const staleRun = () => ({
   attemptJobs: { total_count: 0, jobs: [] }, pendingDeployments: [],
   concurrencyGroups: { total_count: 0, concurrency_groups: [] }, artifacts: { total_count: 0, artifacts: [] },
   currentMainSha: '785eb54a4f280c9ff0e59951c31a30cad4c1a0da', executingControllerSha: '785eb54a4f280c9ff0e59951c31a30cad4c1a0da',
-  historicalSources: historicalFence, authorization: staleAuthorization(), authorizationNow: new Date('2026-09-09T22:05:00Z')
+  historicalSources: historicalFence, environmentProtection: nativeEnvironmentProtection,
+  authorization: staleAuthorization(), authorizationNow: new Date('2026-09-09T22:05:00Z')
 });
 test('approved current draft candidate is admissible without merging', () => {
   verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr); verifyRuns(approval, runs);
@@ -171,6 +182,25 @@ test('request-to-run binding is exact and absent evidence cannot be promoted', (
   assert.throws(() => verifyRequestRunBinding(inactive.evidence.requestToRunBinding));
 });
 
+test('native Test protection is an exact saved barrier and rejects weakened readback', () => {
+  assert.deepEqual(verifyNativeEnvironmentProtection(nativeEnvironmentProtection,
+    staleAuthorization().historicalExecutionProtection.nativeEnvironmentBarrier), {
+    environment: 'test', protectionRuleId: 65110773, reviewer: 'ahmedadeyemi-cts',
+    preventSelfReview: false, canAdminsBypass: false
+  });
+  for (const mutate of [
+    value => { value.can_admins_bypass = true; },
+    value => { value.protection_rules[0].id = 0; },
+    value => { value.protection_rules[0].prevent_self_review = true; },
+    value => { value.protection_rules[0].reviewers[0].reviewer.login = 'other-user'; },
+    value => { value.protection_rules = []; }
+  ]) {
+    const candidate = clone(nativeEnvironmentProtection); mutate(candidate);
+    assert.throws(() => verifyNativeEnvironmentProtection(candidate,
+      staleAuthorization().historicalExecutionProtection.nativeEnvironmentBarrier));
+  }
+});
+
 test('stale request remains blocking when the owner approval gate is absent', async () => {
   const evidence = staleRun();
   const api = async url => {
@@ -188,10 +218,16 @@ test('stale request remains blocking when the owner approval gate is absent', as
     JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'))), /PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
 });
 
-test('historical stale request remains blocked because real source paths and binding are not proven', () => {
-  assert.throws(() => verifyFencedStaleRun(staleRun()), /alternate deployment path|Historical deployment paths/);
+test('historical stale request is fenced by native Test protection without fabricated request evidence', () => {
+  assert.deepEqual(verifyFencedStaleRun(staleRun()), {
+    fenced: true, inputIdentity: 'not-server-confirmed-and-not-used',
+    nativeEnvironmentBarrier: true, productionMutation: false
+  });
   const initiallyActive = staleRun(); initiallyActive.workflow.state = 'active';
-  assert.throws(() => verifyFencedStaleRun({ ...initiallyActive, requireSealed: false }), /alternate deployment path|Historical deployment paths/);
+  assert.deepEqual(verifyFencedStaleRun({ ...initiallyActive, requireSealed: false }), {
+    fenced: true, inputIdentity: 'not-server-confirmed-and-not-used',
+    nativeEnvironmentBarrier: true, productionMutation: false
+  });
   assert.throws(() => verifyFencedStaleRun(initiallyActive), /sealed before supersession/);
   const mutations = [
     x => { x.workflow.state = 'active'; },
@@ -227,7 +263,7 @@ test('historical source content identity and cleanup proof are fail-closed', () 
   }
 });
 
-test('real stale inventory cannot be admitted by a synthetic second jobs block', async () => {
+test('real stale inventory uses the native barrier and rejects a competing request', async () => {
   const evidence = staleRun();
   const authorization = staleAuthorization();
   const authorizationNow = new Date('2026-09-09T22:05:00Z');
@@ -240,10 +276,10 @@ test('real stale inventory cannot be admitted by a synthetic second jobs block',
     if (url.includes('/concurrency_groups')) return evidence.concurrencyGroups;
     if (url.includes('/artifacts')) return evidence.artifacts;
     if (url === 'git/ref/heads/main') return { object: { sha: evidence.currentMainSha } };
+    if (url === 'environments/test') return nativeEnvironmentProtection;
     throw new Error(`UNEXPECTED_REQUEST ${url}`);
   };
-  await assert.rejects(requireIdleRuns(api, evidence.workflow, false, evidence.currentMainSha, authorization, authorizationNow, historicalFence),
-    /Historical deployment paths|alternate deployment path/);
+  await requireIdleRuns(api, evidence.workflow, false, evidence.currentMainSha, authorization, authorizationNow, historicalFence);
   await assert.rejects(requireIdleRuns(async url => {
     if (url.includes('/runs?status=queued')) return { workflow_runs: [{ id: 999 }, { id: staleRunSupersessionAttestation.runId, status: 'queued' }] };
     return api(url);
@@ -285,7 +321,7 @@ test('the locked admission path blocks the stale request while authorization is 
   await assert.rejects(sealIdleController(a.request),/PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
   assert.ok(a.calls.every(c=>c.method==='GET'));
 });
-test('sealed admission still rejects the real stale run when source protection is false', async()=>{
+test('sealed admission accepts the real stale run only behind the native barrier', async()=>{
   const evidence=staleRun(); const calls=[]; let state='active';
   const api=async(url,method='GET')=>{
     calls.push({url,method});
@@ -298,12 +334,15 @@ test('sealed admission still rejects the real stale run when source protection i
     if(url.includes('/concurrency_groups'))return evidence.concurrencyGroups;
     if(url.includes('/artifacts'))return evidence.artifacts;
     if(url==='git/ref/heads/main')return {object:{sha:evidence.currentMainSha}};
+    if(url==='environments/test')return nativeEnvironmentProtection;
     throw new Error(`UNEXPECTED_TEST_REQUEST ${url}`);
   };
-  await assert.rejects(sealIdleController(api,{executingControllerSha:evidence.executingControllerSha,
-    authorization:evidence.authorization,authorizationNow:evidence.authorizationNow,historicalSources:historicalFence}),
-    /alternate deployment path|Historical deployment paths/);
-  assert.deepEqual(calls.filter(x=>x.method!=='GET'),[]);
+  const result = await sealIdleController(api,{executingControllerSha:evidence.executingControllerSha,
+    authorization:evidence.authorization,authorizationNow:evidence.authorizationNow,historicalSources:historicalFence});
+  assert.equal(result.state, 'disabled_manually');
+  assert.deepEqual(calls.filter(x=>x.method!=='GET'),[
+    {url:'actions/workflows/315562561/disable',method:'PUT'}
+  ]);
 });
 test('read-only probe reports active idle admissions without changing workflow state',async()=>{
   const a=controllerApi();const result=await inspectIdleController(a.request);
