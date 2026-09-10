@@ -1,32 +1,91 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { authorize, repository, candidateBranch } from './flowhive-psa-admission.mjs';
+import { authorize, repository, candidateBranch, candidatePullRequest } from './flowhive-psa-admission.mjs';
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 const knownNonexecutingRun = 33654881418;
+const dispatchSha = /^[a-f0-9]{40}$/;
+export const githubApiVersion = '2022-11-28';
 export function parseCommand(text) {
   const match = /^DEPLOY FLOWHIVE PSA PROTECTED TEST SHA ([0-9a-f]{40})$/.exec(text);
   assert.ok(match && match[0] === text, 'The candidate command must be exact.');
   return match[1];
 }
-export function verifyDispatchedRun(run, controlSha, candidateSha, createdAfter) {
+export function buildDispatchRequest(candidateSha) {
+  assert.match(candidateSha, dispatchSha, 'The submitted candidate SHA must be complete.');
+  return {
+    path: `actions/workflows/${workflowId}/dispatches`,
+    method: 'POST',
+    body: {
+      ref: 'main',
+      return_run_details: true,
+      inputs: { release_sha: candidateSha, release_branch: candidateBranch, recover_private_runtime: false }
+    }
+  };
+}
+export function verifyDispatchInputs(inputs, candidateSha) {
+  assert.match(candidateSha, dispatchSha);
+  assert.deepEqual(inputs, {
+    release_sha: candidateSha,
+    release_branch: candidateBranch,
+    recover_private_runtime: false
+  }, 'The submitted dispatch inputs must remain bound to the admitted candidate.');
+}
+export function verifyDispatchRequest(dispatch, candidateSha) {
+  assert.equal(dispatch.path, `actions/workflows/${workflowId}/dispatches`);
+  assert.equal(dispatch.method, 'POST');
+  assert.equal(dispatch.body.return_run_details, true, 'The documented receipt option must be a JSON body parameter.');
+  verifyDispatchInputs(dispatch.body.inputs, candidateSha);
+  return dispatch;
+}
+export function verifyDispatchReceipt(receipt) {
+  const runId = Number(receipt?.workflow_run_id);
+  assert.ok(Number.isSafeInteger(runId) && runId > 0, 'The dispatch response must return one workflow run ID.');
+  assert.equal(new URL(receipt.run_url).pathname,
+    `/repos/${repository}/actions/runs/${runId}`, 'The returned API run URL is not bound to the returned run.');
+  assert.equal(new URL(receipt.html_url).pathname,
+    `/ahmedadeyemi-cts/project-time-platform/actions/runs/${runId}`, 'The returned web run URL is not bound to the returned run.');
+  return runId;
+}
+export function verifyDispatchedRun(run, controlSha, candidateSha, createdAfter, expectedRunId) {
+  assert.match(candidateSha, dispatchSha);
+  assert.equal(run.id, expectedRunId, 'The observed run must be the ID returned by dispatch.');
   assert.equal(run.workflow_id, workflowId);
   assert.equal(run.event, 'workflow_dispatch');
   assert.equal(run.head_branch, 'main');
   assert.equal(run.head_sha, controlSha, 'Workflow identity must be the trusted control revision, not the candidate.');
-  assert.equal(run.display_title, `Protected Test ${candidateSha}`);
   assert.ok(run.created_at >= createdAfter);
-  assert.ok(Number.isSafeInteger(run.id) && run.id > 0);
-  return run.id;
+  assert.ok(typeof run.display_title === 'string' && run.display_title.length > 0,
+    'The workflow run must have a server-provided title; its value is not candidate identity.');
+  return expectedRunId;
+}
+export function buildRequest(path, method = 'GET', body, token = process.env.GH_TOKEN) {
+  const init = {
+    method,
+    redirect: 'error',
+    signal: AbortSignal.timeout(30000),
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': githubApiVersion
+    }
+  };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  return { url: `https://api.github.com/repos/${repository}/${path}`, init };
+}
+export async function dispatchOnce(api, candidateSha, controlSha, createdAfter) {
+  const dispatch = verifyDispatchRequest(buildDispatchRequest(candidateSha), candidateSha);
+  const receipt = await api(dispatch.path, dispatch.method, dispatch.body);
+  const runId = verifyDispatchReceipt(receipt);
+  const run = await api(`actions/runs/${runId}`);
+  verifyDispatchedRun(run, controlSha, candidateSha, createdAfter, runId);
+  return { runId, run, candidateSha, controlSha };
 }
 async function request(path, method = 'GET', body) {
-  const response = await fetch(`https://api.github.com/repos/${repository}/${path}`, {
-    method, redirect: 'error', signal: AbortSignal.timeout(30000),
-    headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
-    ...(body ? { body: JSON.stringify(body) } : {})
-  });
+  const { url, init } = buildRequest(path, method, body);
+  const response = await fetch(url, init);
   assert.ok(response.ok, `GitHub dispatch operation failed: HTTP ${response.status}`);
   return response.status === 204 ? null : response.json();
 }
@@ -78,7 +137,7 @@ async function main() {
   assert.equal(process.env.GITHUB_EVENT_NAME, 'issue_comment');
   const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   assert.equal(event.action, 'created');
-  assert.equal(event.issue?.number, 872);
+  assert.equal(event.issue?.number, candidatePullRequest);
   assert.equal(event.comment?.user?.login, 'ahmedadeyemi-cts');
   assert.ok(event.issue.pull_request);
   const candidateSha = parseCommand(event.comment.body);
@@ -98,22 +157,8 @@ async function main() {
     assert.equal((await request(`actions/workflows/${workflowId}`)).state, 'active');
     // Never retry this write. A lost response is an unknown outcome requiring inspection.
     dispatchAttempted = true;
-    await request(`actions/workflows/${workflowId}/dispatches`, 'POST', {
-      ref: 'main', inputs: { release_sha: candidateSha, release_branch: candidateBranch, recover_private_runtime: false }
-    });
-    for (let attempt = 0; attempt < 60; attempt++) {
-      const runs = await request(`actions/workflows/${workflowId}/runs?event=workflow_dispatch&per_page=100`);
-      const matches = runs.workflow_runs.filter(run => run.head_sha === controlSha && run.head_branch === 'main'
-        && run.created_at >= createdAfter && run.display_title === `Protected Test ${candidateSha}`);
-      assert.ok(matches.length <= 1, 'Multiple matching dispatches require manual investigation.');
-      if (matches.length === 1) {
-        const runId = verifyDispatchedRun(matches[0], controlSha, candidateSha, createdAfter);
-        dispatched = { runId, controlSha, candidateSha, productionMutation: false };
-        break;
-      }
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-    assert.ok(dispatched, 'Dispatch outcome is not confirmed. Do not repost the command; inspect workflow runs.');
+    const receipt = await dispatchOnce(request, candidateSha, controlSha, createdAfter);
+    dispatched = { ...receipt, productionMutation: false };
   } finally {
     // Reseal even if enable/dispatch/observation timed out. Never cancel any deployment.
     await request(`actions/workflows/${workflowId}/disable`, 'PUT');
@@ -121,9 +166,9 @@ async function main() {
     assert.ok(resealed, 'Protected Test admissions did not reseal. Operator action is required.');
     console.log(`FLOWHIVE_PSA_DISPATCH_ATTEMPTED=${dispatchAttempted} RESEALED=${resealed}`);
   }
-  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nAdmissions resealed. Feature PR #872 remains unmerged. Live acceptance is not yet established.\n`);
-  await request('issues/872/comments', 'POST', {
-    body: `Exact FlowHive candidate admission completed. Candidate \`${candidateSha}\`; trusted main controller \`${controlSha}\`. Protected Test deployment: https://github.com/${repository}/actions/runs/${dispatched.runId}. Admissions have been resealed; no Production/private-runtime recovery is requested. This is a deployment dispatch, not a live AI success or a completed enterprise PSA release.`
+  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nRun identity came from the dispatch response. Feature PR #${candidatePullRequest} remains unmerged. Live acceptance is not yet established.\n`);
+  await request(`issues/${candidatePullRequest}/comments`, 'POST', {
+    body: `Exact FlowHive candidate admission completed. Candidate \`${candidateSha}\`; trusted main controller \`${controlSha}\`. Protected Test deployment: https://github.com/${repository}/actions/runs/${dispatched.runId}. Run identity came from the dispatch response; admissions have been resealed; no Production/private-runtime recovery is requested. This is a deployment dispatch, not a live AI success or a completed enterprise PSA release.`
   });
   console.log(`FLOWHIVE_PSA_CANDIDATE_DISPATCHED=${dispatched.runId}`);
 }

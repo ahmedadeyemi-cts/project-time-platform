@@ -170,7 +170,7 @@ class WorkflowContract(unittest.TestCase):
         assert doc['concurrency']['group']=='module025-protected-uat-control'
         assert doc['concurrency']['cancel-in-progress']=='false'
         job=doc['jobs']['admit'];assert 'environment' not in job
-        assert "github.actor == 'ahmedadeyemi-cts'" in job['if'] and 'github.event.issue.number == 872' in job['if']
+        assert "github.actor == 'ahmedadeyemi-cts'" in job['if'] and 'github.event.issue.number == 887' in job['if']
         assert all('azure/login' not in s.get('uses','') for s in job['steps'])
     def test_control_only_merge_cannot_trigger_an_unintended_deployment(self):
         from fnmatch import fnmatchcase
@@ -186,6 +186,7 @@ class WorkflowContract(unittest.TestCase):
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
         reviewed = os.environ.get('GITHUB_HEAD_REF') == 'fix/flowhive-reviewed-regeneration-control-20260907'
+        successor = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-sow-successor-approval-20260909'
         # No controller changes are permitted in the exact seven-file digest repair.
         if old==self.doc:
             return
@@ -210,6 +211,21 @@ class WorkflowContract(unittest.TestCase):
                     b['env'].pop('MODULE025_UAT_EXPIRES_AT',None)
             if reviewed and b.get('id') == 'assigned_work_uat':
                 b['env'].pop('RELIABILITY_RELEASE_COMMIT',None)
+            if successor:
+                for key in ['if','run']:
+                    if key in b:
+                        b[key]=b[key].replace('release/flowhive-sow-successor-20260908','feature/flowhive-enterprise-psa-revamp-20260906')
+                if b.get('run'):
+                    b['run']=b['run'].replace(
+                        'Only the approved successor FlowHive candidate branch, legacy V2 branch, or exact merged main may use manual Protected-Test deployment.',
+                        'Only the authorized FlowHive V2 candidate branch or exact merged main may use manual Protected-Test deployment.')
+                if b.get('id') == 'migration' or b.get('name') == 'Guard exact source and validate release':
+                    ending='\n' if b['run'].endswith('\n') else ''
+                    b['run']='\n'.join(line for line in b['run'].splitlines()
+                                        if 'database/migrations/106_' not in line) + ending
+                if step['name'] == 'Publish protected-Test release summary':
+                    b['run']=b['run'].replace('Release lane: exact pre-merge FlowHive/SOW successor candidate; PR #887 remains unmerged', 'Release lane: exact pre-merge PSA candidate; feature PR #872 remains unmerged')
+                    b['run']=b['run'].replace('Migrations 103/104/105/106: applied and verified', 'Migrations 103/104/105: applied and verified')
             if reviewed and (b.get('id') == 'migration' or b.get('name') == 'Guard exact source and validate release'):
                 ending='\n' if b['run'].endswith('\n') else ''
                 b['run']='\n'.join(line for line in b['run'].splitlines()
@@ -226,6 +242,9 @@ class WorkflowContract(unittest.TestCase):
         if reviewed:
             after_on['push']['paths'].remove('database/migrations/105_flowhive_reviewed_regeneration.sql')
             after_on['push']['paths'].remove('database/rollback/105_flowhive_reviewed_regeneration_rollback.sql')
+        if successor:
+            after_on['push']['paths'].remove('database/migrations/106_module025_sow_sell_register.sql')
+            after_on['workflow_dispatch']['inputs']['release_branch']['default']='fix/shared-project-document-planning-20260819'
         self.assertEqual(before_on,after_on)
         self.assertEqual(old['jobs']['deploy']['env'],self.doc['jobs']['deploy']['env'])
 

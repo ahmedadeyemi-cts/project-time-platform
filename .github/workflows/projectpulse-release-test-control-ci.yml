@@ -141,6 +141,9 @@ jobs:
             echo 'EXACT_FLOWHIVE_REVIEWED_REGENERATION_CONTROL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-sow-successor-approval-20260909' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_SOW_SUCCESSOR_APPROVAL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs

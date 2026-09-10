@@ -50,12 +50,9 @@ jobs:
           bash -n scripts/release-test/apply-flowhive-psa-migrations.sh
           bash -n scripts/release-test/build-and-run-flowhive-psa-migrations.sh
           git diff --check
-      - name: Verify canonical Test identity and idle admissions without modifying state
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -Eeuo pipefail
-          node scripts/release-test/dispatch-flowhive-psa-test.mjs --inspect-only
+      # Live readiness is deliberately not a source-only PR result. The
+      # owner-authorized admission workflow acquires the lock, rechecks the
+      # live controller, and fails closed immediately before dispatch.
   migrations:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

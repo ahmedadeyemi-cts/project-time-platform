@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Image entrypoint. The immutable image contains only the approved 103/104/105
-# payload, plus 106 when the trusted candidate approval includes Module 025.
+# Image entrypoint. The immutable image contains only approved 103/104/105 SQL,
+# plus Module 025 migration 106 when the trusted successor approval includes it.
 set -Eeuo pipefail
 ROOT=/opt/projectpulse/release
 fail() { echo "ERROR: $*" >&2; exit 1; }

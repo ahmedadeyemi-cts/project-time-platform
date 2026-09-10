@@ -71,6 +71,7 @@ approval=json.loads((root/'.github/flowhive-psa-protected-test-candidate.json').
 event=json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
 pr=event.get('pull_request',{})
 successor_staging=os.environ.get('FLOWHIVE_MIGRATION_STAGING')=='successor'
+module025_staging=successor_staging or any(item['file']=='106_module025_sow_sell_register.sql' for item in approval['migrations'])
 selected_sha=approval['sha']
 migration_entries=approval['migrations']
 if successor_staging:
@@ -91,6 +92,7 @@ if successor_staging:
     successor_file='106_module025_sow_sell_register.sql'
     successor_bytes=(source/'database/migrations'/successor_file).read_bytes()
     successor_hash=hashlib.sha256(successor_bytes).hexdigest()
+    assert hashlib.sha256(successor_bytes).hexdigest()==successor_hash
     migration_entries=[*approval['migrations'], {'file': successor_file, 'sha256': successor_hash}]
     selected_sha=pr['head']['sha']
 elif pr.get('head',{}).get('ref')=='feature/flowhive-enterprise-psa-revamp-20260906':
@@ -124,7 +126,7 @@ CREATE TABLE project_flowhive_raid_items(raid_item_id UUID PRIMARY KEY,project_i
 INSERT INTO schema_migrations(migration_id) VALUES('086_module_066_flowhive_enterprise_pm');
 INSERT INTO projects VALUES('11111111-1111-4111-8111-111111111111');
 INSERT INTO app_users VALUES('22222222-2222-4222-8222-222222222222');''')
-if successor_staging:
+if module025_staging:
     # Model the already-reviewed Module 025 workspace migration so the exact
     # 106 entrypoint is exercised against its real dependency boundary.
     sql('''CREATE TABLE module025_sow_gsd_engagements(

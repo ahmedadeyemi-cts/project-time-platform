@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, verifyDispatchedRun, inspectIdleController, sealIdleController } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, inspectIdleController, sealIdleController } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { files, repairFiles, repairBase, successorApprovalFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
-const pr = { number: 872, state: 'open', merged: false, draft: true,
+const pr = { number: candidatePullRequest, state: 'open', merged: false, draft: true,
   head: { ref: candidateBranch, sha: approval.sha, repo: { full_name: repository } },
   base: { ref: 'main', repo: { full_name: repository } } };
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
@@ -41,24 +41,17 @@ test('later failed rerun or unknown failed workflow cannot hide behind older gre
 test('source drift allows only reviewed control paths; application drift is rejected', () => {
   verifySourceDrift(files,files);assert.throws(()=>verifySourceDrift([...files,'src/backend/ProjectTime.Api/Program.cs'],files));
 });
-test('frozen candidate binds to integrated PR880 main and rejects unincorporated application drift', () => {
-  const reviewedMain = '4871d47fbeaad0fd5c08ddca27f193d682a0ea92';
-  const currentMain = '040709cdac0a940ad8feffbd730f1be35ce50280';
-  const candidate = 'b4a976751eb2cb5bc68c6a7057ca28148f1cf58a';
-  const actualCurrentMainControlDelta = [
-    '.github/flowhive-psa-protected-test-candidate.json',
-    'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
-    'tests/flowhive-psa-release-control.mjs'
-  ];
+test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  const reviewedMain = 'bf401fa1d017eae0ebf10c9ed79720829ce8de60';
+  const candidate = 'c6efce9a4918ac6674fa292586348a5aa8be2b91';
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
-  assert.match(currentMain, /^[a-f0-9]{40}$/);
-  verifySourceDrift(actualCurrentMainControlDelta, files);
+  verifySourceDrift(successorApprovalFiles, files);
   for (const unrelated of [
     'src/backend/ProjectTime.Api/Program.cs',
     'src/frontend/project-time-web/src/App.jsx',
     'scripts/release-test/unincorporated-application-change.sh'
-  ]) assert.throws(() => verifySourceDrift([...actualCurrentMainControlDelta, unrelated], files));
+  ]) assert.throws(() => verifySourceDrift([...successorApprovalFiles, unrelated], files));
 });
 test('release scope cannot absorb application files, unknown workflows or production changes', () => {
   verifyFiles(files,files);
@@ -70,12 +63,41 @@ test('comment cannot select an arbitrary workflow, ref, environment or shell com
   assert.equal(parseCommand('DEPLOY FLOWHIVE PSA PROTECTED TEST SHA '+approval.sha),approval.sha);
   for(const suffix of ['; echo stolen','\nOTHER',' prod',' ','\n']) assert.throws(()=>parseCommand('DEPLOY FLOWHIVE PSA PROTECTED TEST SHA '+approval.sha+suffix));
 });
-test('dispatched run identity is the main control revision plus the exact candidate title', () => {
+test('dispatch response binds submitted candidate and returned run identity', () => {
   const control='a'.repeat(40),created='2026-09-06T00:00:00Z';
-  const r={id:7,workflow_id:315562561,event:'workflow_dispatch',head_branch:'main',head_sha:control,created_at:created,display_title:'Protected Test '+approval.sha};
-  assert.equal(verifyDispatchedRun(r,control,approval.sha,created),7);
-  assert.throws(()=>verifyDispatchedRun({...r,head_sha:approval.sha},control,approval.sha,created));
-  assert.throws(()=>verifyDispatchedRun({...r,display_title:'Protected Test '+'0'.repeat(40)},control,approval.sha,created));
+  const request=buildDispatchRequest(approval.sha);
+  assert.equal(request.path,'actions/workflows/315562561/dispatches');
+  verifyDispatchRequest(request,approval.sha);
+  const serialized=buildRequest(request.path,request.method,request.body,'test-token');
+  assert.equal(serialized.url,'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/workflows/315562561/dispatches');
+  assert.equal(serialized.init.headers['X-GitHub-Api-Version'],githubApiVersion);
+  assert.equal(serialized.init.headers['X-GitHub-Api-Version'],'2022-11-28');
+  assert.deepEqual(JSON.parse(serialized.init.body),{ref:'main',return_run_details:true,inputs:{release_sha:approval.sha,release_branch:candidateBranch,recover_private_runtime:false}});
+  assert.equal(new URL(serialized.url).search,'');
+  assert.throws(()=>verifyDispatchRequest({...request,body:{...request.body,return_run_details:false}},approval.sha));
+  const receipt={workflow_run_id:7,run_url:'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/7',html_url:'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/7'};
+  assert.equal(verifyDispatchReceipt(receipt),7);
+  const r={id:7,workflow_id:315562561,event:'workflow_dispatch',head_branch:'main',head_sha:control,created_at:created,display_title:'Deploy System-wide Enterprise Reliability and Utilization to Protected Test'};
+  assert.equal(verifyDispatchedRun(r,control,approval.sha,created,7),7);
+  assert.throws(()=>verifyDispatchedRun({...r,head_sha:approval.sha},control,approval.sha,created,7));
+  assert.throws(()=>verifyDispatchedRun({...r,id:8},control,approval.sha,created,7));
+  assert.throws(()=>verifyDispatchReceipt({...receipt,workflow_run_id:8}));
+  assert.throws(()=>verifyDispatchReceipt({...receipt,run_url:receipt.run_url.replace('/7','/8')}));
+});
+test('returned run ID works with delayed or generic server titles',async()=>{
+  const control='b'.repeat(40),created='2026-09-06T00:00:00Z',calls=[];
+  const run={id:9,workflow_id:315562561,event:'workflow_dispatch',head_branch:'main',head_sha:control,created_at:created,display_title:'Deploy System-wide Enterprise Reliability and Utilization to Protected Test'};
+  const receipt={workflow_run_id:9,run_url:'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/9',html_url:'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/9'};
+  const result=await dispatchOnce(async(path,method,body)=>{calls.push({path,method,body});return path.includes('/dispatches')?receipt:run;},approval.sha,control,created);
+  assert.equal(result.runId,9);assert.equal(calls.filter(x=>x.method==='POST').length,1);
+  assert.equal(calls[0].body.inputs.release_sha,approval.sha);
+});
+test('malformed or uncertain dispatch responses fail without a duplicate POST',async()=>{
+  const control='c'.repeat(40),created='2026-09-06T00:00:00Z';
+  let postCount=0;
+  await assert.rejects(dispatchOnce(async()=>{postCount+=1;throw new Error('dispatch response timeout');},approval.sha,control,created),/timeout/);
+  assert.equal(postCount,1);
+  await assert.rejects(dispatchOnce(async(path)=>path.includes('/dispatches')?{}:null,approval.sha,control,created),/workflow run ID/);
 });
 test('environment job remains serialized and cannot publish source or target production', () => {
   const controller=fs.readFileSync(new URL('../.github/workflows/projectpulse-deploy-test.yml',import.meta.url),'utf8');
@@ -83,6 +105,13 @@ test('environment job remains serialized and cannot publish source or target pro
   assert.throws(()=>verifyController(controller.replace('environment: test','environment: production')));
   assert.throws(()=>verifyController(controller.replace('cancel-in-progress: false','cancel-in-progress: true')));
   assert.throws(()=>verifyController(controller.replace('contents: read','contents: write')));
+});
+test('source-only control CI defers live readiness to the locked admission workflow', () => {
+  const sourceCi=fs.readFileSync(new URL('../.github/workflows/flowhive-psa-release-control-ci.yml',import.meta.url),'utf8');
+  const admission=fs.readFileSync(new URL('../.github/workflows/flowhive-psa-protected-test-admission.yml',import.meta.url),'utf8');
+  assert.doesNotMatch(sourceCi,/dispatch-flowhive-psa-test\.mjs\s+--inspect-only/);
+  assert.match(admission,/node scripts\/release-test\/dispatch-flowhive-psa-test\.mjs/);
+  assert.match(admission,/group: module025-protected-uat-control/);
 });
 
 function controllerApi({state='active',runs=[],quarantinedJobs=0,metadata={},onDisable}={}) {

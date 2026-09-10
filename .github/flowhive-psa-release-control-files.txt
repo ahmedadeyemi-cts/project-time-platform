@@ -11,6 +11,7 @@ scripts/release-test/apply-flowhive-psa-migrations.sh
 scripts/release-test/build-and-run-flowhive-psa-migrations.sh
 scripts/release-test/dispatch-flowhive-psa-test.mjs
 scripts/release-test/flowhive-psa-admission.mjs
+scripts/release-test/prepare-protected-test-scope-manifests.sh
 scripts/release-test/run-flowhive-psa-live-uat.py
 tests/flowhive-psa-admission.test.mjs
 tests/flowhive-psa-live-uat.test.py
