@@ -74,6 +74,7 @@ export const dispatchEvidenceSchema = 'flowhive-psa-dispatch-attempt-v1';
 export const dispatchEvidenceDefaultFile = 'flowhive-psa-dispatch-attempt.json';
 export const singleUseClaimPrefix = 'FLOWHIVE_PSA_ADMISSION_CLAIM_V1';
 const trustedClaimAuthor = Object.freeze({ login: 'ahmedadeyemi-cts', id: 244059331 });
+const workflowClaimAuthor = Object.freeze({ login: 'github-actions[bot]', id: 41898282 });
 
 export class GithubApiError extends Error {
   constructor({ stage, method, path: requestPath, status, requestId }) {
@@ -964,29 +965,53 @@ export async function inspectActiveController(api = request) {
   return { id: workflow.id, path: workflow.path, state: workflow.state, executableActiveRuns: 0 };
 }
 
-function singleUseClaimMarker({ candidateSha, controlSha, approvalReference }) {
+function singleUseClaimMarker({ candidateSha, controlSha, approvalReference, admissionRunId = null, admissionRunAttempt = null }) {
   assert.match(candidateSha || '', dispatchSha, 'PROTECTED_CUTOVER_CLAIM_CANDIDATE');
   assert.match(controlSha || '', dispatchSha, 'PROTECTED_CUTOVER_CLAIM_CONTROLLER');
   assert.match(approvalReference || '', /^[A-Z0-9._-]{8,100}$/, 'PROTECTED_CUTOVER_CLAIM_REFERENCE');
-  return `${singleUseClaimPrefix} candidate=${candidateSha} approval=${approvalReference} controller=${controlSha}`;
+  if (admissionRunId === null && admissionRunAttempt === null) return `${singleUseClaimPrefix} candidate=${candidateSha} approval=${approvalReference} controller=${controlSha}`;
+  assert.ok(Number.isSafeInteger(admissionRunId) && admissionRunId > 0, 'PROTECTED_CUTOVER_CLAIM_RUN_ID');
+  assert.ok(Number.isSafeInteger(admissionRunAttempt) && admissionRunAttempt > 0, 'PROTECTED_CUTOVER_CLAIM_RUN_ATTEMPT');
+  return `${singleUseClaimPrefix} candidate=${candidateSha} approval=${approvalReference} controller=${controlSha} run=${admissionRunId} attempt=${admissionRunAttempt}`;
 }
 
 function parseSingleUseClaim(body) {
-  const match = new RegExp(`^${singleUseClaimPrefix} candidate=([a-f0-9]{40}) approval=([A-Z0-9._-]{8,100}) controller=([a-f0-9]{40}) status=reserved observedAt=([^\\s]+)$`).exec(body || '');
+  const match = new RegExp(`^${singleUseClaimPrefix} candidate=([a-f0-9]{40}) approval=([A-Z0-9._-]{8,100}) controller=([a-f0-9]{40})(?: run=([0-9]+) attempt=([0-9]+))? status=reserved observedAt=([^\\s]+)$`).exec(body || '');
   assert.ok(match, 'PROTECTED_CUTOVER_CLAIM_STRUCTURED_BINDING');
-  const observedAt = Date.parse(match[4]);
+  const observedAt = Date.parse(match[6] || match[4]);
   assert.ok(Number.isFinite(observedAt), 'PROTECTED_CUTOVER_CLAIM_TIMESTAMP');
-  return { candidateSha: match[1], approvalReference: match[2], controlSha: match[3], observedAt: new Date(observedAt).toISOString() };
+  const runId = match[4] ? Number(match[4]) : null;
+  const runAttempt = match[5] ? Number(match[5]) : null;
+  if (runId !== null) assert.ok(Number.isSafeInteger(runId) && runId > 0 && Number.isSafeInteger(runAttempt) && runAttempt > 0,
+    'PROTECTED_CUTOVER_CLAIM_RUN_CONTEXT');
+  return { candidateSha: match[1], approvalReference: match[2], controlSha: match[3], runId, runAttempt,
+    observedAt: new Date(observedAt).toISOString() };
 }
 
-function verifyTrustedClaimAuthor(comment) {
-  assert.equal(comment?.user?.login, trustedClaimAuthor.login, 'PROTECTED_CUTOVER_CLAIM_AUTHOR');
-  assert.equal(Number(comment?.user?.id), trustedClaimAuthor.id, 'PROTECTED_CUTOVER_CLAIM_AUTHOR_ID');
-  return { login: comment.user.login, id: Number(comment.user.id) };
+function verifyTrustedClaimAuthor(comment, { allowWorkflowBot = false } = {}) {
+  const login = comment?.user?.login;
+  const id = Number(comment?.user?.id);
+  if (login === trustedClaimAuthor.login && id === trustedClaimAuthor.id) return { login, id };
+  if (allowWorkflowBot && login === workflowClaimAuthor.login && id === workflowClaimAuthor.id) return { login, id };
+  assert.equal(login, trustedClaimAuthor.login, 'PROTECTED_CUTOVER_CLAIM_AUTHOR');
+  assert.equal(id, trustedClaimAuthor.id, 'PROTECTED_CUTOVER_CLAIM_AUTHOR_ID');
+  return { login, id };
 }
 
-export async function claimSingleUse(api = request, { candidateSha, controlSha, approvalReference }) {
-  const marker = singleUseClaimMarker({ candidateSha, controlSha, approvalReference });
+async function verifyClaimExecution(api, { runId, runAttempt, controlSha }) {
+  const run = await api(`actions/runs/${runId}`, 'GET', undefined, 'single-use-claim-run-read');
+  assert.equal(Number(run?.id), runId, 'PROTECTED_CUTOVER_CLAIM_RUN_ID');
+  assert.equal(run?.event, 'issue_comment', 'PROTECTED_CUTOVER_CLAIM_RUN_EVENT');
+  assert.equal(run?.head_branch, 'main', 'PROTECTED_CUTOVER_CLAIM_RUN_BRANCH');
+  assert.equal(run?.head_sha, controlSha, 'PROTECTED_CUTOVER_CLAIM_RUN_CONTROLLER');
+  assert.equal(Number(run?.run_attempt), runAttempt, 'PROTECTED_CUTOVER_CLAIM_RUN_ATTEMPT');
+  assert.equal(run?.actor?.login, trustedClaimAuthor.login, 'PROTECTED_CUTOVER_CLAIM_RUN_ACTOR');
+  return { id: runId, attempt: runAttempt, event: run.event, headSha: run.head_sha, actor: run.actor.login };
+}
+
+export async function claimSingleUse(api = request, { candidateSha, controlSha, approvalReference,
+  admissionRunId = null, admissionRunAttempt = null }) {
+  const marker = singleUseClaimMarker({ candidateSha, controlSha, approvalReference, admissionRunId, admissionRunAttempt });
   for (let page = 1; page <= 10; page += 1) {
     const comments = await api(`issues/${candidatePullRequest}/comments?per_page=100&page=${page}`,
       'GET', undefined, 'single-use-claim-read');
@@ -996,11 +1021,21 @@ export async function claimSingleUse(api = request, { candidateSha, controlSha, 
       let parsed;
       try { parsed = parseSingleUseClaim(comment.body); }
       catch (error) { throw new Error(`PROTECTED_CUTOVER_CLAIM_MALFORMED: ${error.message}`); }
-      try { verifyTrustedClaimAuthor(comment); }
+      const hasRunContext = parsed.runId !== null;
+      let author;
+      try { author = verifyTrustedClaimAuthor(comment, { allowWorkflowBot: hasRunContext }); }
       catch (error) { throw new Error(`PROTECTED_CUTOVER_CLAIM_UNTRUSTED: ${error.message}`); }
       if (parsed.candidateSha !== candidateSha || parsed.approvalReference !== approvalReference) continue;
       if (parsed.controlSha !== controlSha) throw new Error('PROTECTED_CUTOVER_CLAIM_CONTROLLER_CHANGED');
-      throw new Error('PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED');
+      if (!hasRunContext) {
+        if (author.login === workflowClaimAuthor.login) throw new Error('PROTECTED_CUTOVER_CLAIM_LEGACY_UNBOUND');
+        throw new Error('PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED');
+      }
+      if (author.login !== workflowClaimAuthor.login) throw new Error('PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED');
+      const run = await verifyClaimExecution(api, { runId: parsed.runId, runAttempt: parsed.runAttempt, controlSha });
+      return { marker, commentId: Number(comment.id), observedAt: parsed.observedAt, candidateSha,
+        controlSha, approvalReference, author,
+        execution: run, key: `${candidateSha}:${approvalReference}`, reused: true };
     }
     if (comments.length < 100) break;
     assert.ok(page < 10, 'Protected cutover claim pagination exceeded the bounded limit.');
@@ -1017,11 +1052,14 @@ export async function claimSingleUse(api = request, { candidateSha, controlSha, 
   const commentId = Number(response?.id);
   assert.ok(Number.isSafeInteger(commentId) && commentId > 0,
     'PROTECTED_CUTOVER_SINGLE_USE_CLAIM_RECEIPT');
-  verifyTrustedClaimAuthor(response);
+  const author = verifyTrustedClaimAuthor(response, { allowWorkflowBot: admissionRunId !== null });
   const returned = parseSingleUseClaim(response.body);
-  assert.deepEqual(returned, { candidateSha, approvalReference, controlSha, observedAt });
+  assert.deepEqual(returned, { candidateSha, approvalReference, controlSha,
+    runId: admissionRunId, runAttempt: admissionRunAttempt, observedAt });
+  const execution = author.login === workflowClaimAuthor.login && admissionRunId !== null
+    ? await verifyClaimExecution(api, { runId: admissionRunId, runAttempt: admissionRunAttempt, controlSha }) : null;
   return { marker, commentId, observedAt, candidateSha, controlSha, approvalReference,
-    author: { ...trustedClaimAuthor }, key: `${candidateSha}:${approvalReference}` };
+    author, execution, key: `${candidateSha}:${approvalReference}` };
 }
 
 export async function activateProtectedControllerOnce(api = request, options = {}) {
@@ -1113,7 +1151,8 @@ export async function runAdmission({ api = request, candidateSha, controlSha, ad
   const controlCheck = await api('git/ref/heads/main', 'GET', undefined, 'main-readback');
   assert.equal(controlCheck.object.sha, controlSha, 'Main changed during admission; re-review is required.');
   const claim = await claimSingleUse(api, {
-    candidateSha, controlSha, approvalReference: authorization.approvalReference
+    candidateSha, controlSha, approvalReference: authorization.approvalReference,
+    admissionRunId, admissionRunAttempt
   });
   const preSubmissionValidation = cutover.protectedAssessment
     ? await revalidateProtectedCutoverForSubmission(api, cutover.protectedAssessment, {
