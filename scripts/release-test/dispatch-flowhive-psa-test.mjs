@@ -1016,7 +1016,7 @@ async function verifyStaleReservationRecovery(api, recovery, { candidateSha, app
   assert.equal(recovery?.candidateSha, candidateSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_CANDIDATE');
   assert.equal(recovery?.approvalReference, approvalReference, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_REFERENCE');
   assert.notEqual(recovery?.controllerSha, controlSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_CONTROLLER_CURRENT');
-  const comment = await api(`issues/${candidatePullRequest}/comments/${recovery.commentId}`, 'GET', undefined,
+  const comment = await api(`issues/comments/${recovery.commentId}`, 'GET', undefined,
     'single-use-claim-recovery-comment-read');
   const parsed = parseSingleUseClaim(comment?.body);
   assert.equal(Number(comment?.id), Number(recovery.commentId), 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_COMMENT');
