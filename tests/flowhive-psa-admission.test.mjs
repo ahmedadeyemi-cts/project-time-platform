@@ -159,9 +159,10 @@ test('environment job remains serialized and cannot publish source or target pro
 
 test('temporary stale supersession activation is bounded and native-gated', () => {
   const configured = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'));
-  assert.equal(configured.enabled, true);
-  assert.equal(configured.activationDecision, 'approved');
-  assert.equal(staleRunSupersessionApproved(configured, new Date(configured.approval.approvedAt)), true);
+  assert.equal(configured.enabled, false);
+  assert.equal(configured.activationDecision, 'hold');
+  assert.equal(configured.approval.status, 'not-approved');
+  assert.equal(staleRunSupersessionApproved(configured), false);
   const inactive = clone(configured);
   inactive.enabled = false;
   inactive.activationDecision = 'hold';
