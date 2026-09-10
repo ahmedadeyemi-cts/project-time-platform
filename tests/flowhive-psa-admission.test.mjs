@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
@@ -115,16 +115,16 @@ test('comment cannot select an arbitrary workflow, ref, environment or shell com
 });
 test('dispatch response binds submitted candidate and returned run identity', () => {
   const control='a'.repeat(40),created='2026-09-06T00:00:00Z';
-  const request=buildDispatchRequest(approval.sha);
+  const request=buildDispatchRequest(approval.sha,'a'.repeat(40));
   assert.equal(request.path,'actions/workflows/315562561/dispatches');
-  verifyDispatchRequest(request,approval.sha);
+  verifyDispatchRequest(request,approval.sha,'a'.repeat(40));
   const serialized=buildRequest(request.path,request.method,request.body,'test-token');
   assert.equal(serialized.url,'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/workflows/315562561/dispatches');
   assert.equal(serialized.init.headers['X-GitHub-Api-Version'],githubApiVersion);
   assert.equal(serialized.init.headers['X-GitHub-Api-Version'],'2022-11-28');
-  assert.deepEqual(JSON.parse(serialized.init.body),{ref:'main',return_run_details:true,inputs:{release_sha:approval.sha,release_branch:candidateBranch,recover_private_runtime:false}});
+  assert.deepEqual(JSON.parse(serialized.init.body),{ref:'main',return_run_details:true,inputs:{release_sha:approval.sha,release_branch:candidateBranch,recover_private_runtime:false,admission_controller_sha:'a'.repeat(40)}});
   assert.equal(new URL(serialized.url).search,'');
-  assert.throws(()=>verifyDispatchRequest({...request,body:{...request.body,return_run_details:false}},approval.sha));
+  assert.throws(()=>verifyDispatchRequest({...request,body:{...request.body,return_run_details:false}},approval.sha,'a'.repeat(40)));
   const receipt={workflow_run_id:7,run_url:'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/7',html_url:'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/7'};
   assert.equal(verifyDispatchReceipt(receipt),7);
   const r={id:7,workflow_id:315562561,event:'workflow_dispatch',head_branch:'main',head_sha:control,created_at:created,display_title:'Deploy System-wide Enterprise Reliability and Utilization to Protected Test'};
@@ -160,7 +160,7 @@ test('receipt is persisted before a follow-up read and no second dispatch is pos
 test('dispatch evidence is sanitized and binds the reviewed request fingerprint', () => {
   const directory=fs.mkdtempSync('/tmp/flowhive-dispatch-evidence-');
   try {
-    const dispatch=buildDispatchRequest(approval.sha);
+    const dispatch=buildDispatchRequest(approval.sha,'e'.repeat(40));
     const record=createDispatchEvidence({candidateSha:approval.sha,controlSha:'e'.repeat(40),dispatch,startedAt:'2026-09-10T00:00:00.000Z'});
     const file=persistDispatchEvidence(record,`${directory}/attempt.json`);
     const saved=JSON.parse(fs.readFileSync(file,'utf8'));
@@ -186,8 +186,32 @@ test('reporting failure preserves the accepted dispatch receipt and is not a dep
   const error = new GithubApiError({ stage: 'reporting-comment', method: 'POST', path: 'issues/887/comments', status: 403, requestId: 'E-COMMENT' });
   const updated = recordReportingFailure(evidence, error, 'reporting-comment');
   assert.deepEqual(updated.run, receipt);
-  assert.equal(updated.phase, 'reporting-failed');
+  assert.equal(updated.phase, 'accepted-awaiting-scheduling');
+  assert.equal(updated.stage, 'identity-verified');
+  assert.equal(updated.reporting.status, 'failed');
+  assert.equal(updated.reporting.stage, 'reporting-comment');
   assert.deepEqual(updated.reportingErrors, [{ stage: 'reporting-comment', method: 'POST', path: 'issues/887/comments', status: 403, requestId: 'E-COMMENT', type: 'GithubApiError', at: updated.reportingErrors[0].at }]);
+});
+test('the admission caller records its actual run ID and rerun attempt in persisted evidence', async () => {
+  const directory = fs.mkdtempSync('/tmp/flowhive-admission-attempt-');
+  const control = 'f'.repeat(40), created = '2026-09-10T00:00:00Z';
+  const receipt = { workflow_run_id: 101, run_url: 'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/101', html_url: 'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/101' };
+  const run = { id: 101, workflow_id: 315562561, event: 'workflow_dispatch', head_branch: 'main', head_sha: control, created_at: created, status: 'queued', conclusion: null, display_title: 'Protected Test' };
+  try {
+    const result = await dispatchWithEvidence({
+      api: async path => path.endsWith('/dispatches') ? receipt : run,
+      candidateSha: approval.sha, controlSha: control, createdAfter: created,
+      admissionRunId: 9001, admissionRunAttempt: 2, evidenceFile: `${directory}/attempt.json`
+    });
+    const saved = JSON.parse(fs.readFileSync(`${directory}/attempt.json`, 'utf8'));
+    assert.equal(result.dispatched.runId, 101);
+    assert.equal(saved.admissionRunId, 9001);
+    assert.equal(saved.admissionRunAttempt, 2);
+    assert.equal(saved.attempt, 2);
+    assert.equal(saved.run.id, 101);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  assert.deepEqual(readAdmissionExecutionContext({ GITHUB_RUN_ID: '9001', GITHUB_RUN_ATTEMPT: '2' }), { admissionRunId: 9001, admissionRunAttempt: 2 });
+  assert.throws(() => readAdmissionExecutionContext({ GITHUB_RUN_ID: '9001', GITHUB_RUN_ATTEMPT: '0' }), /FLOWHIVE_PSA_ADMISSION_RUN_ATTEMPT_REQUIRED/);
 });
 test('malformed or uncertain dispatch responses fail without a duplicate POST',async()=>{
   const control='c'.repeat(40),created='2026-09-06T00:00:00Z';
@@ -216,6 +240,28 @@ test('maintained admission requires an active controller and no unresolved runs'
   };
   assert.deepEqual(await inspectActiveController(api),{id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active',executableActiveRuns:0});
   await assert.rejects(inspectActiveController(async url=>({id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'disabled_manually'})),/PSA_CONTROLLER_MUST_REMAIN_ACTIVE/);
+});
+test('release cutover requires terminal server state for all three requests and an active controller', async () => {
+  const calls = [];
+  const api = async (url) => {
+    calls.push(url);
+    if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state: 'active' };
+    const runMatch = /actions\/runs\/(\d+)$/.exec(url);
+    if (runMatch) return { id: Number(runMatch[1]), workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', event: 'workflow_dispatch', status: 'completed', conclusion: 'cancelled', head_sha: 'a'.repeat(40), run_attempt: 1 };
+    if (url.includes('/jobs?')) return { jobs: [] };
+    if (url.includes('/pending_deployments')) return [];
+    if (url.includes('/runs?')) return { workflow_runs: [] };
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  };
+  const result = await verifyReleaseCutover(api);
+  assert.equal(result.requests.length, 3);
+  assert.deepEqual(result.requests.map(item => item.id), [34495606530, 34377182662, 33654881418]);
+  assert.equal(calls.filter(url => /actions\/runs\/\d+$/.test(url)).length, 3);
+  await assert.rejects(verifyReleaseCutover(async url => {
+    if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state: 'active' };
+    if (url.endsWith('/34495606530')) return { id: 34495606530, workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', event: 'workflow_dispatch', status: 'queued' };
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  }), /PSA_CUTOVER_RUN_NOT_TERMINAL id=34495606530 status=queued/);
 });
 test('environment job remains serialized and cannot publish source or target production', () => {
   const controller=fs.readFileSync(new URL('../.github/workflows/projectpulse-deploy-test.yml',import.meta.url),'utf8');
@@ -254,7 +300,7 @@ test('the unresolved current request has an explicit blocking disposition', () =
     approvalPerformed: false,
     disposition: 'blocking-hold',
     dispositionSource: 'release-owner-record',
-    nextAction: 'Do not dispatch, rerun, cancel, delete or approve this request; obtain a separately reviewed terminal disposition before any new admission.'
+    nextAction: 'Use one separately reviewed run-control operation for each of the three queued requests, verify server-confirmed terminal state and no execution, then use the native workflow enable operation once and verify active identity before a new admission.'
   });
 });
 

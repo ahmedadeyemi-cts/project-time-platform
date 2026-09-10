@@ -57,6 +57,11 @@ on:
         required: true
         default: release/flowhive-sow-successor-20260908
         type: string
+      admission_controller_sha:
+        description: Controller SHA read by the trusted PSA admission workflow
+        required: false
+        default: ''
+        type: string
 
 permissions:
   id-token: write
@@ -114,6 +119,32 @@ jobs:
           path: release
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify admitted controller identity before deployment mutations
+        shell: bash
+        env:
+          EXPECTED_CONTROLLER_SHA: ${{ inputs.admission_controller_sha }}
+          RELEASE_BRANCH_INPUT: ${{ inputs.release_branch }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$GITHUB_REF" == 'refs/heads/main' ]] || fail 'Protected Test controller must execute from main.'
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The executing controller SHA is not complete.'
+          if [[ -d control/.git ]]; then
+            [[ "$(git -C control rev-parse HEAD)" == "$GITHUB_SHA" ]] || fail 'Trusted control checkout does not match the executing controller.'
+          fi
+          case "$GITHUB_EVENT_NAME:$RELEASE_BRANCH_INPUT" in
+            workflow_dispatch:release/flowhive-sow-successor-20260908)
+              [[ "$EXPECTED_CONTROLLER_SHA" == "$GITHUB_SHA" ]] || fail 'PSA admission controller identity changed before deployment.'
+              ;;
+            workflow_dispatch:main|workflow_dispatch:fix/shared-project-document-planning-20260819|push:)
+              [[ -z "$EXPECTED_CONTROLLER_SHA" ]] || fail 'Admission controller input is only valid for the PSA candidate lane.'
+              ;;
+            *)
+              fail 'Unsupported Protected Test trigger/branch combination.'
+              ;;
+          esac
+          echo "PROTECTED_TEST_CONTROLLER_IDENTITY=$GITHUB_SHA"
 
       - name: Require protected Test login credential
         shell: bash

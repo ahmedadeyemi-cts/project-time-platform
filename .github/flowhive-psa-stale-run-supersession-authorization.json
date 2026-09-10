@@ -59,7 +59,7 @@
       "approvalPerformed": false,
       "disposition": "blocking-hold",
       "dispositionSource": "release-owner-record",
-      "nextAction": "Do not dispatch, rerun, cancel, delete or approve this request; obtain a separately reviewed terminal disposition before any new admission."
+      "nextAction": "Use one separately reviewed run-control operation for each of the three queued requests, verify server-confirmed terminal state and no execution, then use the native workflow enable operation once and verify active identity before a new admission."
     },
     "requestToRunBinding": {
       "status": "not-established",
@@ -90,7 +90,7 @@
       "canAdminsBypass": false
     },
     "jobUsesTestEnvironment": true,
-    "activationBlocker": "Native Test environment protection is verified for the historical job; the bounded supersession authorization is inactive and neither queued request is approved."
+    "activationBlocker": "The three known requests are not server-confirmed terminal, the canonical workflow is disabled_manually, and the bounded supersession authorization is inactive; no new admission may proceed until all three terminal states and one verified active-controller transition exist."
   },
   "approval": {
     "status": "not-approved",

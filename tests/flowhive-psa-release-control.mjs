@@ -100,6 +100,7 @@ export const releaseStabilizationBranch = 'fix/flowhive-release-stabilization-20
 export const releaseStabilizationFiles = [
   '.github/flowhive-psa-stale-run-supersession-authorization.json',
   '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  '.github/workflows/projectpulse-deploy-test.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'tests/flowhive-psa-admission.test.mjs',
@@ -236,6 +237,9 @@ export function verifyController(text) {
     'The old unbounded workflow_dispatch job gate must not remain.');
   assert.ok(!/contents:\s*write/.test(text), 'The environment mutation job must not publish source.');
   assert.ok(!/environment:\s*(?:production|prod)\b/i.test(text), 'Production is not an approved target.');
+  assert.match(text, /Verify admitted controller identity before deployment mutations/);
+  assert.match(text, /admission_controller_sha/);
+  assert.match(text, /PSA admission controller identity changed before deployment/);
 }
 export function validate() {
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
@@ -312,7 +316,7 @@ export function validate() {
     controllerSha: '9f30078c2c407d4d3576ccefd663a145be50c6c4',
     status: 'queued', jobs: 0, pendingDeployments: 0, approvalPerformed: false,
     disposition: 'blocking-hold', dispositionSource: 'release-owner-record',
-    nextAction: 'Do not dispatch, rerun, cancel, delete or approve this request; obtain a separately reviewed terminal disposition before any new admission.'
+    nextAction: 'Use one separately reviewed run-control operation for each of the three queued requests, verify server-confirmed terminal state and no execution, then use the native workflow enable operation once and verify active identity before a new admission.'
   });
   assert.equal(staleAuthorization.evidence.requestToRunBinding.status, 'not-established');
   assert.equal(staleAuthorization.evidence.requestToRunBinding.serverConfirmed, false);
