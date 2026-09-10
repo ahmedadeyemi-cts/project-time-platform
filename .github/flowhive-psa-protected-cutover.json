@@ -79,11 +79,23 @@
     }
   ],
   "serverDispatchInputsConfirmed": false,
+  "reservationRecovery": {
+    "commentId": 5626123050,
+    "admissionRunId": 34536122774,
+    "admissionRunAttempt": 1,
+    "candidateSha": "95abbb0aa2445a33fda68e9de542f9446c3e2204",
+    "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260910",
+    "controllerSha": "c78d346042314a7395a2ceeaa46f2737e6c0b076",
+    "observedAt": "2026-09-10T22:11:16.764Z",
+    "status": "pre-dispatch-failed",
+    "dispatchSubmitted": false,
+    "controllerMutation": false
+  },
   "approval": {
     "status": "approved",
     "approvedBy": "ahmedadeyemi-cts",
-    "approvedAt": "2026-09-10T22:01:46Z",
-    "expiresAt": "2026-09-10T22:16:46Z"
+    "approvedAt": "2026-09-10T22:25:50Z",
+    "expiresAt": "2026-09-10T22:40:50Z"
   },
   "activationDecision": "approved"
 }

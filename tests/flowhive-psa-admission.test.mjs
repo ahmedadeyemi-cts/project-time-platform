@@ -489,6 +489,36 @@ test('workflow-token reservations bind the bot comment to the owner-triggered ad
   assert.equal(reused.reused, true);
   assert.equal(reused.commentId, 7010);
 });
+test('reviewed recovery consumes the stale bot reservation before creating one current-controller claim', async () => {
+  const control = 'e'.repeat(40);
+  const oldControl = 'c'.repeat(40);
+  const reference = protectedCutoverAuthorization().approvalReference;
+  const oldBody = `FLOWHIVE_PSA_ADMISSION_CLAIM_V1 candidate=${approval.sha} approval=${reference} controller=${oldControl} status=reserved observedAt=2026-09-10T22:11:16.764Z`;
+  const comments = [{ id: 7020, body: oldBody, user: { login: 'github-actions[bot]', id: 41898282 } }];
+  const recovery = { commentId: 7020, admissionRunId: 9020, admissionRunAttempt: 1,
+    candidateSha: approval.sha, approvalReference: reference, controllerSha: oldControl,
+    observedAt: '2026-09-10T22:11:16.764Z', status: 'pre-dispatch-failed',
+    dispatchSubmitted: false, controllerMutation: false };
+  const api = async (url, method = 'GET', body) => {
+    if (url.startsWith('issues/887/comments?')) return comments;
+    if (url === 'issues/887/comments/7020') return comments[0];
+    if (url === 'issues/887/comments' && method === 'POST') {
+      const comment = { id: 7021, body: body.body, user: { login: 'github-actions[bot]', id: 41898282 } };
+      comments.push(comment); return comment;
+    }
+    if (url === 'actions/runs/9020') return { id: 9020, event: 'issue_comment', head_branch: 'main', head_sha: oldControl,
+      run_attempt: 1, actor: { login: 'ahmedadeyemi-cts' }, status: 'completed', conclusion: 'failure' };
+    if (url === 'actions/runs/9021') return { id: 9021, event: 'issue_comment', head_branch: 'main', head_sha: control,
+      run_attempt: 1, actor: { login: 'ahmedadeyemi-cts' } };
+    throw new Error(`UNEXPECTED_RECOVERY_REQUEST ${method} ${url}`);
+  };
+  const claim = await claimSingleUse(api, { candidateSha: approval.sha, controlSha: control,
+    approvalReference: reference, admissionRunId: 9021, admissionRunAttempt: 1, reservationRecovery: recovery });
+  assert.deepEqual(claim.supersededReservations, [{ commentId: 7020, admissionRunId: 9020,
+    controllerSha: oldControl, observedAt: recovery.observedAt, disposition: 'pre-dispatch-failed' }]);
+  assert.equal(claim.commentId, 7021);
+  assert.equal(comments.length, 2);
+});
 test('protected lifecycle keeps the active operating state after one approved bootstrap', async () => {
   const fixture = protectedCutoverApi({ state: 'disabled_manually' });
   const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-lifecycle-success-');
