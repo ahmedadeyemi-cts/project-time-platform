@@ -111,6 +111,15 @@ export const staleSupersessionActivationFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+export const migration106WiringBranch = 'fix/flowhive-migration106-release-wiring-20260910';
+export const migration106WiringFiles = [
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
+  'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-migration-fixture.py',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
 export const reviewedRegenerationFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/workflows/projectpulse-deploy-test.yml',
@@ -148,7 +157,7 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession','stale-run-activation'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession','stale-run-activation','migration106-wiring'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
@@ -182,7 +191,7 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.base, staleSupersessionActivationBase, 'Stale activation must be based on current trusted main.');
     assert.equal(context?.branch, staleSupersessionActivationBranch, 'Wrong stale activation control branch.');
   }
-  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : staleSupersessionFiles;
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : mode === 'migration106-wiring' ? migration106WiringFiles : staleSupersessionFiles;
   assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
@@ -222,8 +231,9 @@ export function validate() {
   const isDispatchRunRecovery = process.env.GITHUB_HEAD_REF === dispatchRecoveryBranch;
   const isStaleSupersession = process.env.GITHUB_HEAD_REF === staleSupersessionBranch;
   const isStaleSupersessionActivation = process.env.GITHUB_HEAD_REF === staleSupersessionActivationBranch;
+  const isMigration106Wiring = process.env.GITHUB_HEAD_REF === migration106WiringBranch;
   verifyFiles(changed, manifest,
-    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : isStaleSupersessionActivation ? 'stale-run-activation' : 'initial', context);
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : isStaleSupersessionActivation ? 'stale-run-activation' : isMigration106Wiring ? 'migration106-wiring' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.

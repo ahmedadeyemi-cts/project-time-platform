@@ -159,9 +159,10 @@ test('environment job remains serialized and cannot publish source or target pro
 
 test('temporary stale supersession activation is bounded and native-gated', () => {
   const configured = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'));
-  assert.equal(configured.enabled, true);
-  assert.equal(configured.activationDecision, 'approved');
-  assert.equal(staleRunSupersessionApproved(configured, new Date(configured.approval.approvedAt)), true);
+  assert.equal(configured.enabled, false);
+  assert.equal(configured.activationDecision, 'hold');
+  assert.equal(configured.approval.status, 'not-approved');
+  assert.equal(staleRunSupersessionApproved(configured), false);
   const inactive = clone(configured);
   inactive.enabled = false;
   inactive.activationDecision = 'hold';
@@ -336,6 +337,10 @@ function controllerApi({state='active',runs=[],quarantinedJobs=0,metadata={},onD
   };
   return {request,calls,runs};
 }
+const activeAdmissionOptions = () => ({
+  authorization: staleAuthorization(),
+  authorizationNow: new Date('2026-09-09T22:05:00Z')
+});
 test('the locked admission path blocks the stale request while authorization is inactive', async()=>{
   const a=controllerApi({runs:[{id:staleRunSupersessionAttestation.runId}]});
   const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8')));
@@ -369,25 +374,25 @@ test('sealed admission accepts the real stale run only behind the native barrier
   ]);
 });
 test('read-only probe reports active idle admissions without changing workflow state',async()=>{
-  const a=controllerApi();const result=await inspectIdleController(a.request);
+  const a=controllerApi();const result=await inspectIdleController(a.request,activeAdmissionOptions());
   assert.equal(result.requiresSealing,true);assert.equal(result.executableActiveRuns,0);
   assert.ok(a.calls.every(c=>c.method==='GET'));
 });
 test('idle active controller is sealed and verified with one disable and no dispatch',async()=>{
-  const a=controllerApi();const result=await sealIdleController(a.request);
+  const a=controllerApi();const result=await sealIdleController(a.request,activeAdmissionOptions());
   assert.equal(result.state,'disabled_manually');assert.equal(result.requiresSealing,false);
   assert.deepEqual(a.calls.filter(c=>c.method!=='GET'),[{url:'actions/workflows/315562561/disable',method:'PUT'}]);
 });
 test('already sealed admissions remain read-only',async()=>{
-  const a=controllerApi({state:'disabled_manually'});await sealIdleController(a.request);
+  const a=controllerApi({state:'disabled_manually'});await sealIdleController(a.request,activeAdmissionOptions());
   assert.ok(a.calls.every(c=>c.method==='GET'));
 });
 test('any executable active run blocks sealing; the quarantined id must still have zero jobs',async()=>{
   for(const options of [{runs:[{id:123}]},{runs:[{id:33654881418}],quarantinedJobs:1}]) {
-    const a=controllerApi(options);await assert.rejects(sealIdleController(a.request),/ANOTHER_DEPLOYMENT/);
+    const a=controllerApi(options);await assert.rejects(sealIdleController(a.request,activeAdmissionOptions()),/ANOTHER_DEPLOYMENT/);
     assert.ok(a.calls.every(c=>c.method==='GET'));
   }
-  const a=controllerApi({runs:[{id:33654881418}]});await sealIdleController(a.request);
+  const a=controllerApi({runs:[{id:33654881418}]});await sealIdleController(a.request,activeAdmissionOptions());
   assert.equal(a.calls.filter(c=>c.method==='PUT').length,1);
 });
 test('wrong workflow identity or unknown state cannot be sealed',async()=>{
@@ -398,12 +403,12 @@ test('wrong workflow identity or unknown state cannot be sealed',async()=>{
 });
 test('a deployment that arrives while sealing blocks subsequent admission',async()=>{
   const runs=[];const a=controllerApi({runs,onDisable:()=>runs.push({id:456})});
-  await assert.rejects(sealIdleController(a.request),/ANOTHER_DEPLOYMENT/);
+  await assert.rejects(sealIdleController(a.request,activeAdmissionOptions()),/ANOTHER_DEPLOYMENT/);
   assert.deepEqual(a.calls.filter(c=>c.method!=='GET').map(c=>c.url),['actions/workflows/315562561/disable']);
 });
 test('unverifiable active-run inventory cannot pass as idle',async()=>{
   await assert.rejects(inspectIdleController(async url=> url.includes('/runs?')?{}:
-    {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active'}),/INVENTORY_INVALID/);
+    {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active'},activeAdmissionOptions()),/INVENTORY_INVALID/);
 });
 
 function repairContext() {
