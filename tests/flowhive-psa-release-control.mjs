@@ -48,6 +48,9 @@ export const candidateRefreshFiles = [
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+export const successorCandidateRefreshBase = 'd2262ccbef31800883589197d03122bd51bb87cc';
+export const successorCandidateRefreshBranch = 'control/flowhive-sow-successor-candidate-refresh-20260910';
+export const successorCandidateRefreshFiles = candidateRefreshFiles;
 export const sourceBaseCorrectionBase = '040709cdac0a940ad8feffbd730f1be35ce50280';
 export const sourceBaseCorrectionBranch = 'fix/flowhive-admission-source-base-20260908';
 export const sourceBaseCorrectionFiles = [
@@ -135,7 +138,7 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
@@ -144,6 +147,10 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
   if (mode === 'candidate-refresh') {
     assert.equal(context?.base, candidateRefreshBase, 'Candidate refresh must be based on the reviewed current main.');
     assert.equal(context?.branch, candidateRefreshBranch, 'Wrong candidate refresh control branch.');
+  }
+  if (mode === 'successor-candidate-refresh') {
+    assert.equal(context?.base, successorCandidateRefreshBase, 'Successor candidate refresh must be based on current trusted main.');
+    assert.equal(context?.branch, successorCandidateRefreshBranch, 'Wrong successor candidate refresh control branch.');
   }
   if (mode === 'source-base-correction') {
     assert.equal(context?.base, sourceBaseCorrectionBase, 'Source-base correction must be based on the trusted candidate-refresh main.');
@@ -161,7 +168,7 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.base, staleSupersessionBase, 'Stale supersession must be based on merged trusted main.');
     assert.equal(context?.branch, staleSupersessionBranch, 'Wrong stale supersession control branch.');
   }
-  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : staleSupersessionFiles;
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : staleSupersessionFiles;
   assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
@@ -195,12 +202,13 @@ export function validate() {
   const isRepair = event?.number === 876;
   const isReviewedRegeneration = process.env.GITHUB_HEAD_REF === reviewedRegenerationBranch;
   const isCandidateRefresh = process.env.GITHUB_HEAD_REF === candidateRefreshBranch;
+  const isSuccessorCandidateRefresh = process.env.GITHUB_HEAD_REF === successorCandidateRefreshBranch;
   const isSourceBaseCorrection = process.env.GITHUB_HEAD_REF === sourceBaseCorrectionBranch;
   const isSuccessorApproval = process.env.GITHUB_HEAD_REF === successorApprovalBranch;
   const isDispatchRunRecovery = process.env.GITHUB_HEAD_REF === dispatchRecoveryBranch;
   const isStaleSupersession = process.env.GITHUB_HEAD_REF === staleSupersessionBranch;
   verifyFiles(changed, manifest,
-    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : 'initial', context);
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.

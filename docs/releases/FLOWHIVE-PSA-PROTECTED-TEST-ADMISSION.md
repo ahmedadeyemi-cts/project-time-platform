@@ -12,7 +12,7 @@ The repository owner may post this exact command on PR #887 after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA c6efce9a4918ac6674fa292586348a5aa8be2b91
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 95abbb0aa2445a33fda68e9de542f9446c3e2204
 ```
 
 The admission workflow executes main-owned code only. It checks the exact open PR #887,
@@ -21,6 +21,13 @@ current main control SHA and application-source freshness. Main changes after th
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
 feature branch is not renamed or implicitly approved by a prefix match.
+
+This combined candidate includes PR891 at `2ebae9f12660a3def85ba39d43fde528275cc0eb`
+through integration commit `21075bc35bc1f7071d6c598f46666c7f18649449`, current-main
+reconciliation `e0b8fa3f2b19009fb865eb5f50a07101461e39bf`, and the final CI/scope repair
+`95abbb0aa2445a33fda68e9de542f9446c3e2204`. Its trusted source base is current main
+`d2262ccbef31800883589197d03122bd51bb87cc`; migrations 103/104/105/106 retain their
+reviewed SHA-256 values.
 
 The supervisor shares the existing admission lock, refuses any executable active
 Protected Test deployment, restores the admission fence if the canonical workflow
