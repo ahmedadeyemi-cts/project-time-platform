@@ -32,4 +32,5 @@ jobs:
       - name: Authorize, dispatch once and reseal the canonical Test controller
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_AUTHORIZATION_FILE: .github/flowhive-psa-stale-run-supersession-authorization.json
         run: node scripts/release-test/dispatch-flowhive-psa-test.mjs

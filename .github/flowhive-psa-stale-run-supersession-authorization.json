@@ -1,0 +1,89 @@
+{
+  "contract": "flowhive-psa-stale-run-supersession-v1",
+  "enabled": false,
+  "approvalReference": "FLOWHIVE-PSA-STALE-RUN-SUPERSESSION-20260909",
+  "workflowId": 315562561,
+  "workflowPath": ".github/workflows/projectpulse-deploy-test.yml",
+  "runId": 34377182662,
+  "controllerSha": "af5fcb463384096f668345ac7cc9bd00efef0a33",
+  "headBranch": "main",
+  "event": "workflow_dispatch",
+  "runAttempt": 1,
+  "status": "queued",
+  "conclusion": null,
+  "createdAt": "2026-09-09T16:30:42Z",
+  "updatedAt": "2026-09-09T16:30:42Z",
+  "supersededBefore": "2026-09-09T21:40:27Z",
+  "historicalBlobs": {
+    "admission": "87681012e101a2403a0a90271a3c16286fbf6028",
+    "dispatcher": "32501e466c75c800d41451631f55ef6902d02d5d",
+    "deploymentWorkflow": "c372c4aa3a532f89fdcf72c62e17b9f3e84dd785"
+  },
+  "evidence": {
+    "attemptJobs": 0,
+    "pendingDeployments": 0,
+    "concurrencyGroups": 0,
+    "artifacts": 0,
+    "forceCancel": {
+      "attempted": true,
+      "httpStatus": 409,
+      "result": "rejected-before-queue",
+      "observedAt": "2026-09-09T21:33:41Z"
+    },
+    "serverConfirmedDispatchInputs": null,
+    "nativeEnvironmentCoverageObservedAt": "2026-09-10T02:00:44Z",
+    "nativeEnvironmentCoverage": [
+      {
+        "runId": 34377182662,
+        "status": "queued",
+        "jobs": 0,
+        "pendingDeployments": 0,
+        "approvalPerformed": false
+      },
+      {
+        "runId": 33654881418,
+        "status": "queued",
+        "jobs": 0,
+        "pendingDeployments": 0,
+        "approvalPerformed": false
+      }
+    ],
+    "requestToRunBinding": {
+      "status": "not-established",
+      "source": "unavailable",
+      "repository": "ahmedadeyemi-cts/project-time-platform",
+      "workflowId": 315562561,
+      "workflowPath": ".github/workflows/projectpulse-deploy-test.yml",
+      "runId": 34377182662,
+      "controllerSha": "af5fcb463384096f668345ac7cc9bd00efef0a33",
+      "event": "workflow_dispatch",
+      "ref": "main",
+      "requestId": null,
+      "requestBodySha256": null,
+      "submittedAt": null,
+      "response": null,
+      "serverConfirmed": false
+    }
+  },
+  "historicalExecutionProtection": {
+    "admissionConditionalOnReleaseBranch": true,
+    "allDeploymentPathsProtected": false,
+    "nativeEnvironmentBarrier": {
+      "environment": "test",
+      "protectionRuleId": 65110773,
+      "requiredReviewerLogin": "ahmedadeyemi-cts",
+      "requiredReviewerId": 244059331,
+      "preventSelfReview": false,
+      "canAdminsBypass": false
+    },
+    "jobUsesTestEnvironment": true,
+    "activationBlocker": "Native Test environment protection is verified for the historical job; supersession remains inactive and neither queued request has been approved."
+  },
+  "approval": {
+    "status": "not-approved",
+    "approvedBy": null,
+    "approvedAt": null,
+    "expiresAt": null
+  },
+  "activationDecision": "hold"
+}

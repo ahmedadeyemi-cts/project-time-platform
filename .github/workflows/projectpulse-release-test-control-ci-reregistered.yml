@@ -143,6 +143,11 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-sow-successor-approval-20260909' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_SOW_SUCCESSOR_APPROVAL_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'fix/flowhive-stale-run-supersession-20260909' ]]; then
+            [[ "$CURRENT_BASE_SHA" == '785eb54a4f280c9ff0e59951c31a30cad4c1a0da' ]] \
+              || fail 'Stale-run supersession control is not based on trusted merged main.'
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_STALE_RUN_SUPERSESSION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
@@ -281,7 +286,11 @@ jobs:
 
           grep -Fq 'name: Deploy System-wide Enterprise Reliability and Utilization to Protected Test' "$CTL"
           grep -Fq 'branches: [main]' "$CTL"
-          grep -Fq "if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'" "$CTL"
+          grep -Fq 'if: >-' "$CTL"
+          grep -Fq "github.ref == 'refs/heads/main'" "$CTL"
+          grep -Fq "github.event_name == 'workflow_dispatch'" "$CTL"
+          grep -Fq "inputs.release_branch == 'release/flowhive-sow-successor-20260908'" "$CTL"
+          ! grep -Fq "if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'" "$CTL"
           grep -Fq 'release_sha:' "$CTL"
           grep -Fq 'release_branch:' "$CTL"
           TARGET_BRANCH_MARKER='TARGET_RELEASE_BRANCH: $'
