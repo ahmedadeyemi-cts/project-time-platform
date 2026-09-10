@@ -86,14 +86,19 @@ if successor_staging:
     assert expected_files==[
         '103_module_066_flowhive_enterprise_psa_revamp.sql',
         '104_flowhive_bounded_ai_execution.sql',
-        '105_flowhive_reviewed_regeneration.sql']
+        '105_flowhive_reviewed_regeneration.sql',
+        '106_module025_sow_sell_register.sql']
     for item in approval['migrations']:
         assert hashlib.sha256((source/'database/migrations'/item['file']).read_bytes()).hexdigest()==item['sha256']
     successor_file='106_module025_sow_sell_register.sql'
     successor_bytes=(source/'database/migrations'/successor_file).read_bytes()
     successor_hash=hashlib.sha256(successor_bytes).hexdigest()
-    assert hashlib.sha256(successor_bytes).hexdigest()==successor_hash
-    migration_entries=[*approval['migrations'], {'file': successor_file, 'sha256': successor_hash}]
+    approved_successor=next((item for item in approval['migrations'] if item['file']==successor_file),None)
+    if approved_successor is None:
+        migration_entries=[*approval['migrations'], {'file': successor_file, 'sha256': successor_hash}]
+    else:
+        assert approved_successor['sha256']==successor_hash
+        migration_entries=approval['migrations']
     selected_sha=pr['head']['sha']
 elif pr.get('head',{}).get('ref')=='feature/flowhive-enterprise-psa-revamp-20260906':
     assert os.environ.get('GITHUB_EVENT_NAME')=='pull_request'
