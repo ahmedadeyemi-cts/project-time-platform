@@ -7,6 +7,8 @@ import unittest
 import yaml
 ROOT=Path(__file__).resolve().parents[1]
 CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+HISTORICAL_CONTROLLER='af5fcb463384096f668345ac7cc9bd00efef0a33'
+HISTORICAL_WORKFLOW_BLOB='c372c4aa3a532f89fdcf72c62e17b9f3e84dd785'
 NEW_NAMES={
  'Check out trusted main control plane for the PSA candidate',
  'Admit the exact reviewed PSA candidate using trusted main controls',
@@ -14,7 +16,23 @@ NEW_NAMES={
  'Verify PSA candidate health and the live SOW-to-WBS lifecycle'
 }
 
-def load(text):return yaml.load(text,Loader=yaml.BaseLoader)
+class UniqueKeyLoader(yaml.BaseLoader):
+    def construct_mapping(self,node,deep=False):
+        mapping={}
+        for key_node,value_node in node.value:
+            key=self.construct_object(key_node,deep=deep)
+            if key in mapping:
+                raise AssertionError(f'duplicate YAML key: {key}')
+            mapping[key]=self.construct_object(value_node,deep=deep)
+        return mapping
+
+def load(text):return yaml.load(text,Loader=UniqueKeyLoader)
+
+def git_show(revision,path):
+    return subprocess.check_output(['git','show',f'{revision}:{path}'],cwd=ROOT,text=True)
+
+def git_blob(text):
+    return subprocess.check_output(['git','hash-object','--stdin'],cwd=ROOT,input=text,text=True).strip()
 
 def verify(doc):
     assert doc['permissions']=={'id-token':'write','contents':'read','actions':'read'}
@@ -156,6 +174,35 @@ class WorkflowContract(unittest.TestCase):
         self.assertIn('loadPsa(true, context.projectId)', workspace)
         for callback in ['uploadMeeting', 'updateMeeting', 'saveReminders', 'calculateSchedule']:
             self.assertIn(callback, workspace)
+    def test_historical_source_identity_and_conditions_are_real(self):
+        historical_text=git_show(HISTORICAL_CONTROLLER,CONTROLLER)
+        historical_blob=subprocess.check_output(['git','rev-parse',f'{HISTORICAL_CONTROLLER}:{CONTROLLER}'],cwd=ROOT,text=True).strip()
+        self.assertEqual(historical_blob,HISTORICAL_WORKFLOW_BLOB)
+        self.assertEqual(git_blob(historical_text),historical_blob)
+        historical=load(historical_text)
+        historical_job=historical['jobs']['deploy']
+        self.assertEqual(' '.join(str(historical_job['if']).split()),
+            "github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'")
+        historical_steps=historical_job['steps']
+        admission=next(step for step in historical_steps if step.get('name')=='Admit the exact reviewed PSA candidate using trusted main controls')
+        self.assertEqual(admission['if'],"github.event_name == 'workflow_dispatch' && inputs.release_branch == 'release/flowhive-sow-successor-20260908'")
+        mutation_steps=[step for step in historical_steps if 'az containerapp update' in step.get('run','') or 'az containerapp secret set' in step.get('run','')]
+        self.assertTrue(mutation_steps)
+        self.assertTrue(any('release_branch' not in str(step.get('if','')) for step in mutation_steps),
+            'The pinned historical workflow has an alternate manual-dispatch mutation path.')
+
+        current_text=(ROOT/CONTROLLER).read_text()
+        current_blob=subprocess.check_output(['git','hash-object',CONTROLLER],cwd=ROOT,text=True).strip()
+        self.assertEqual(git_blob(current_text),current_blob)
+        current=load(current_text)
+        current_if=' '.join(str(current['jobs']['deploy']['if']).split())
+        self.assertEqual(current_if,
+            "github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.release_branch == 'main' || inputs.release_branch == 'release/flowhive-sow-successor-20260908')))")
+
+    def test_duplicate_jobs_fixture_is_rejected(self):
+        historical_text=git_show(HISTORICAL_CONTROLLER,CONTROLLER)
+        with self.assertRaises(AssertionError):
+            load(historical_text+'\njobs:\n  deploy:\n    if: github.event_name == \'push\'\n')
     def test_negative_production_concurrency_and_late_admission(self):
         for mutate in [lambda x:x['jobs']['deploy'].update(environment='production'),
           lambda x:x['concurrency'].update({'cancel-in-progress':'true'}),

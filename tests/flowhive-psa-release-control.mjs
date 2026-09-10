@@ -7,6 +7,7 @@ import { verifyApproval, controlManifest } from '../scripts/release-test/flowhiv
 
 export const files = [
   '.github/flowhive-psa-protected-test-candidate.json',
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
   '.github/flowhive-psa-release-control-files.txt',
   '.github/workflows/flowhive-psa-protected-test-admission.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
@@ -82,6 +83,21 @@ export const dispatchRecoveryFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+export const staleSupersessionBase = '785eb54a4f280c9ff0e59951c31a30cad4c1a0da';
+export const staleSupersessionBranch = 'fix/flowhive-stale-run-supersession-20260909';
+export const staleSupersessionFiles = [
+  '.github/flowhive-psa-release-control-files.txt',
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
+  '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  '.github/workflows/projectpulse-deploy-test.yml',
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'scripts/release-test/flowhive-psa-admission.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
 export const reviewedRegenerationFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/workflows/projectpulse-deploy-test.yml',
@@ -119,7 +135,7 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
@@ -141,7 +157,11 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.base, dispatchRecoveryBase, 'Dispatch recovery must be based on merged trusted control main.');
     assert.equal(context?.branch, dispatchRecoveryBranch, 'Wrong dispatch recovery branch.');
   }
-  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : dispatchRecoveryFiles;
+  if (mode === 'stale-run-supersession') {
+    assert.equal(context?.base, staleSupersessionBase, 'Stale supersession must be based on merged trusted main.');
+    assert.equal(context?.branch, staleSupersessionBranch, 'Wrong stale supersession control branch.');
+  }
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : staleSupersessionFiles;
   assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
@@ -154,6 +174,10 @@ export function verifyController(text) {
   ]) {
     assert.ok(text.includes(token), `The Test controller is missing a required control: ${token}`);
   }
+  assert.match(text, /deploy:\s*\n[\s\S]*?if: >-\n[\s\S]*github\.event_name == 'push'[\s\S]*github\.event_name == 'workflow_dispatch'[\s\S]*inputs\.release_branch == 'main'[\s\S]*inputs\.release_branch == 'release\/flowhive-sow-successor-20260908'/,
+    'Every current deployment path must be bounded by the approved push or explicitly guarded manual-main/PSA dispatch lane.');
+  assert.doesNotMatch(text, /github\.event_name == 'workflow_dispatch' \|\| github\.ref == 'refs\/heads\/main'/,
+    'The old unbounded workflow_dispatch job gate must not remain.');
   assert.ok(!/contents:\s*write/.test(text), 'The environment mutation job must not publish source.');
   assert.ok(!/environment:\s*(?:production|prod)\b/i.test(text), 'Production is not an approved target.');
 }
@@ -174,8 +198,9 @@ export function validate() {
   const isSourceBaseCorrection = process.env.GITHUB_HEAD_REF === sourceBaseCorrectionBranch;
   const isSuccessorApproval = process.env.GITHUB_HEAD_REF === successorApprovalBranch;
   const isDispatchRunRecovery = process.env.GITHUB_HEAD_REF === dispatchRecoveryBranch;
+  const isStaleSupersession = process.env.GITHUB_HEAD_REF === staleSupersessionBranch;
   verifyFiles(changed, manifest,
-    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : 'initial', context);
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.
@@ -185,6 +210,26 @@ export function validate() {
   for (const file of files) assert.ok(fs.statSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink());
   const approval = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-test-candidate.json', 'utf8'));
   verifyApproval(approval, approval.sha);
+  const staleAuthorization = JSON.parse(fs.readFileSync('.github/flowhive-psa-stale-run-supersession-authorization.json', 'utf8'));
+  assert.equal(staleAuthorization.enabled, false, 'Stale supersession must remain inactive.');
+  assert.equal(staleAuthorization.activationDecision, 'hold');
+  assert.equal(staleAuthorization.historicalExecutionProtection.allDeploymentPathsProtected, false);
+  assert.equal(staleAuthorization.historicalExecutionProtection.jobUsesTestEnvironment, true);
+  assert.deepEqual(staleAuthorization.historicalExecutionProtection.nativeEnvironmentBarrier, {
+    environment: 'test', protectionRuleId: 65110773, requiredReviewerLogin: 'ahmedadeyemi-cts',
+    requiredReviewerId: 244059331, preventSelfReview: false, canAdminsBypass: false
+  });
+  assert.deepEqual(staleAuthorization.evidence.nativeEnvironmentCoverage.map(run => ({
+    runId: run.runId, status: run.status, jobs: run.jobs, pendingDeployments: run.pendingDeployments,
+    approvalPerformed: run.approvalPerformed
+  })), [
+    { runId: 34377182662, status: 'queued', jobs: 0, pendingDeployments: 0, approvalPerformed: false },
+    { runId: 33654881418, status: 'queued', jobs: 0, pendingDeployments: 0, approvalPerformed: false }
+  ]);
+  assert.equal(staleAuthorization.evidence.requestToRunBinding.status, 'not-established');
+  assert.equal(staleAuthorization.evidence.requestToRunBinding.serverConfirmed, false);
+  assert.equal(staleAuthorization.evidence.requestToRunBinding.requestId, null);
+  assert.equal(staleAuthorization.evidence.requestToRunBinding.response, null);
   verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));
   const supervisor = fs.readFileSync('.github/workflows/flowhive-psa-protected-test-admission.yml', 'utf8');
   assert.ok(!/azure\/login|id-token:|environment:|contents:\s*write/.test(supervisor), 'Admission cannot mutate a cloud environment or source.');
