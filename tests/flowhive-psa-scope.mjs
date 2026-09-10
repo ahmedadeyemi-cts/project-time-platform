@@ -35,6 +35,17 @@ const validationFiles = new Set([
   'src/frontend/project-time-web/src/project-forge-center.css',
   'src/frontend/project-time-web/src/project-forge/projectForgeApi.js'
 ]);
+const roleJourneyPaths = new Set([
+  'docs/modules/module-999-role-journeys/README.md',
+  'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs',
+  'src/frontend/project-time-web/src/role-journeys/MyRoleInPulse.jsx',
+  'src/frontend/project-time-web/src/role-journeys/RoleJourneyGuideRouter.jsx',
+  'src/frontend/project-time-web/src/role-journeys/role-journeys.css',
+  'src/frontend/project-time-web/src/role-journeys/role-journeys.js',
+  'src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js',
+  'src/frontend/project-time-web/tests/role-journeys.test.mjs',
+  'src/frontend/project-time-web/vite.config.js'
+]);
 const componentPaths = [
   /^src\/backend\/ProjectTime\.Api\/Assets\/Fonts\/[A-Za-z0-9._-]+$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/(?:ProjectFlowHive[A-Za-z0-9]+|Module025SowGsdModule)\.cs$/,
@@ -52,7 +63,7 @@ export function verifyPaths(actual, reviewed) {
   for (const name of [...actual, ...reviewed]) {
     assert.ok(typeof name === 'string' && name.length > 0 && !name.includes('\\')
       && !name.split('/').includes('..') && !/[\s*?\[\]{}]/.test(name), `Invalid concrete scope path: ${name}`);
-    assert.ok(validationFiles.has(name) || module025ReviewedPaths.has(name) || componentPaths.some(pattern => pattern.test(name)),
+    assert.ok(validationFiles.has(name) || roleJourneyPaths.has(name) || module025ReviewedPaths.has(name) || componentPaths.some(pattern => pattern.test(name)),
       `Outside the reviewed FlowHive source boundary: ${name}`);
   }
   assert.deepEqual(reviewed, [...new Set(reviewed)].sort(), 'The manifest must be sorted and unique');

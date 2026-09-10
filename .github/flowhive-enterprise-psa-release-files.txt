@@ -18,6 +18,7 @@ deployment/containers/web/default.conf.template
 docs/modules/module-066-project-flowhive/BOUNDED-PLANNER-VALIDATION.md
 docs/modules/module-066-project-flowhive/ENTERPRISE-PSA-ACCEPTANCE.md
 docs/modules/module-066-project-flowhive/REVIEWED-REGENERATION-REPAIR.md
+docs/modules/module-999-role-journeys/README.md
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
 scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh
 scripts/ci/validate-module030-source-boundary.sh
@@ -55,6 +56,7 @@ src/backend/ProjectTime.Api/build/generate-module025-sow-sell.py
 src/frontend/project-time-web/package.json
 src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs
 src/frontend/project-time-web/scripts/read-effective-build-targets.mjs
+src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs
 src/frontend/project-time-web/scripts/validate-analytics-center.mjs
 src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-platform.mjs
 src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
@@ -82,6 +84,13 @@ src/frontend/project-time-web/src/project-flowhive-planner-review.css
 src/frontend/project-time-web/src/project-flowhive-psa-workspace.css
 src/frontend/project-time-web/src/project-forge-center.css
 src/frontend/project-time-web/src/project-forge/projectForgeApi.js
+src/frontend/project-time-web/src/role-journeys/MyRoleInPulse.jsx
+src/frontend/project-time-web/src/role-journeys/RoleJourneyGuideRouter.jsx
+src/frontend/project-time-web/src/role-journeys/role-journeys.css
+src/frontend/project-time-web/src/role-journeys/role-journeys.js
+src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js
+src/frontend/project-time-web/tests/role-journeys.test.mjs
+src/frontend/project-time-web/vite.config.js
 tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj
 tests/FlowHiveDetailedPlannerTests/Program.cs
 tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj
