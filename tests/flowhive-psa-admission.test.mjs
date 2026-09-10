@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'open', merged: false, draft: true,
@@ -157,8 +157,15 @@ test('environment job remains serialized and cannot publish source or target pro
   assert.throws(()=>verifyController(controller.replace('contents: read','contents: write')));
 });
 
-test('stale supersession is inactive without the separate owner approval gate', () => {
-  const inactive = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'));
+test('temporary stale supersession activation is bounded and native-gated', () => {
+  const configured = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'));
+  assert.equal(configured.enabled, true);
+  assert.equal(configured.activationDecision, 'approved');
+  assert.equal(staleRunSupersessionApproved(configured, new Date(configured.approval.approvedAt)), true);
+  const inactive = clone(configured);
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
   assert.equal(staleRunSupersessionApproved(inactive), false);
   assert.equal(staleRunSupersessionApproved(staleAuthorization(), new Date('2026-09-09T22:05:00Z')), true);
   assert.throws(() => verifyStaleSupersessionAuthorization({ ...staleAuthorization(), approval: { ...staleAuthorization().approval, expiresAt: '2026-09-09T22:04:59Z' } }, new Date('2026-09-09T22:05:00Z')), /EXPIRED/);
@@ -207,6 +214,10 @@ test('native Test protection is an exact saved barrier and rejects weakened read
 
 test('stale request remains blocking when the owner approval gate is absent', async () => {
   const evidence = staleRun();
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
   const api = async url => {
     if (url.includes('/runs?status=queued')) return { workflow_runs: [{ id: staleRunSupersessionAttestation.runId, status: 'queued' }] };
     if (url.includes('/runs?')) return { workflow_runs: [] };
@@ -218,8 +229,7 @@ test('stale request remains blocking when the owner approval gate is absent', as
     if (url === 'git/ref/heads/main') return { object: { sha: evidence.currentMainSha } };
     throw new Error(`UNEXPECTED_REQUEST ${url}`);
   };
-  await assert.rejects(requireIdleRuns(api, evidence.workflow, false, evidence.currentMainSha,
-    JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'))), /PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
+  await assert.rejects(requireIdleRuns(api, evidence.workflow, false, evidence.currentMainSha, inactive), /PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
 });
 
 test('historical stale request is fenced by native Test protection without fabricated request evidence', () => {
@@ -298,6 +308,12 @@ test('stale supersession scope is bound to trusted main and its reviewed control
   }));
   assert.throws(() => verifyFiles([...staleSupersessionFiles, 'scripts/release-test/flowhive-psa-admission.mjs'], files,
     'stale-run-supersession', { base: '785eb54a4f280c9ff0e59951c31a30cad4c1a0da', branch: 'fix/flowhive-stale-run-supersession-20260909' }));
+  verifyFiles(staleSupersessionActivationFiles, files, 'stale-run-activation', {
+    base: staleSupersessionActivationBase, branch: staleSupersessionActivationBranch
+  });
+  assert.throws(() => verifyFiles(staleSupersessionActivationFiles, files, 'stale-run-activation', {
+    base: '785eb54a4f280c9ff0e59951c31a30cad4c1a0da', branch: staleSupersessionActivationBranch
+  }));
 });
 test('source-only control CI defers live readiness to the locked admission workflow', () => {
   const sourceCi=fs.readFileSync(new URL('../.github/workflows/flowhive-psa-release-control-ci.yml',import.meta.url),'utf8');
@@ -322,7 +338,11 @@ function controllerApi({state='active',runs=[],quarantinedJobs=0,metadata={},onD
 }
 test('the locked admission path blocks the stale request while authorization is inactive', async()=>{
   const a=controllerApi({runs:[{id:staleRunSupersessionAttestation.runId}]});
-  await assert.rejects(sealIdleController(a.request),/PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
+  await assert.rejects(sealIdleController(a.request, { authorization: inactive }),/PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
   assert.ok(a.calls.every(c=>c.method==='GET'));
 });
 test('sealed admission accepts the real stale run only behind the native barrier', async()=>{
