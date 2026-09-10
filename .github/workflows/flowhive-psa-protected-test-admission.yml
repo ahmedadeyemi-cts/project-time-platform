@@ -29,8 +29,16 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - name: Authorize, dispatch once and reseal the canonical Test controller
+      - name: Authorize and dispatch once through the active canonical Test controller
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_AUTHORIZATION_FILE: .github/flowhive-psa-stale-run-supersession-authorization.json
+          FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE: ${{ runner.temp }}/flowhive-psa-dispatch-attempt.json
         run: node scripts/release-test/dispatch-flowhive-psa-test.mjs
+      - name: Upload sanitized FlowHive dispatch evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: flowhive-psa-dispatch-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/flowhive-psa-dispatch-attempt.json
+          if-no-files-found: ignore
+          retention-days: 30

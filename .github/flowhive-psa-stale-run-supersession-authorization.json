@@ -1,6 +1,6 @@
 {
   "contract": "flowhive-psa-stale-run-supersession-v1",
-  "enabled": true,
+  "enabled": false,
   "approvalReference": "FLOWHIVE-PSA-STALE-RUN-SUPERSESSION-20260909",
   "workflowId": 315562561,
   "workflowPath": ".github/workflows/projectpulse-deploy-test.yml",
@@ -48,6 +48,19 @@
         "approvalPerformed": false
       }
     ],
+    "currentOutstandingRequest": {
+      "runId": 34495606530,
+      "workflowId": 315562561,
+      "workflowPath": ".github/workflows/projectpulse-deploy-test.yml",
+      "controllerSha": "9f30078c2c407d4d3576ccefd663a145be50c6c4",
+      "status": "queued",
+      "jobs": 0,
+      "pendingDeployments": 0,
+      "approvalPerformed": false,
+      "disposition": "blocking-hold",
+      "dispositionSource": "release-owner-record",
+      "nextAction": "Do not dispatch, rerun, cancel, delete or approve this request; obtain a separately reviewed terminal disposition before any new admission."
+    },
     "requestToRunBinding": {
       "status": "not-established",
       "source": "unavailable",
@@ -77,13 +90,13 @@
       "canAdminsBypass": false
     },
     "jobUsesTestEnvironment": true,
-    "activationBlocker": "Native Test environment protection is verified for the historical job; this owner-authorized supersession expires after one bounded admission window and neither queued request is approved."
+    "activationBlocker": "Native Test environment protection is verified for the historical job; the bounded supersession authorization is inactive and neither queued request is approved."
   },
   "approval": {
-    "status": "approved",
-    "approvedBy": "ahmedadeyemi-cts",
-    "approvedAt": "2026-09-10T15:15:07Z",
-    "expiresAt": "2026-09-10T15:30:07Z"
+    "status": "not-approved",
+    "approvedBy": null,
+    "approvedAt": null,
+    "expiresAt": null
   },
-  "activationDecision": "approved"
+  "activationDecision": "hold"
 }

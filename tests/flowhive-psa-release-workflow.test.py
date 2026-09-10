@@ -124,6 +124,13 @@ class WorkflowContract(unittest.TestCase):
         job=doc['jobs']['admit'];assert 'environment' not in job
         assert "github.actor == 'ahmedadeyemi-cts'" in job['if'] and 'github.event.issue.number == 887' in job['if']
         assert all('azure/login' not in s.get('uses','') for s in job['steps'])
+        dispatch=next(s for s in job['steps'] if s.get('name','').startswith('Authorize and dispatch once'))
+        assert dispatch['env']['FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE']=='${{ runner.temp }}/flowhive-psa-dispatch-attempt.json'
+        assert 'enable' not in dispatch['name'].lower() and 'reseal' not in dispatch['name'].lower()
+        artifact=next(s for s in job['steps'] if s.get('name')=='Upload sanitized FlowHive dispatch evidence')
+        assert artifact['if']=='always()'
+        assert artifact['uses'].startswith('actions/upload-artifact@')
+        assert artifact['with']['if-no-files-found']=='ignore'
     def test_control_only_merge_cannot_trigger_an_unintended_deployment(self):
         from fnmatch import fnmatchcase
         triggers=self.doc['on']['push']['paths']
