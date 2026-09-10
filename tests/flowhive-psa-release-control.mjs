@@ -113,6 +113,7 @@ export const staleSupersessionActivationFiles = [
 ].sort();
 export const migration106WiringBranch = 'fix/flowhive-migration106-release-wiring-20260910';
 export const migration106WiringFiles = [
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
   'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-migration-fixture.py',

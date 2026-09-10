@@ -1,6 +1,6 @@
 {
   "contract": "flowhive-psa-stale-run-supersession-v1",
-  "enabled": true,
+  "enabled": false,
   "approvalReference": "FLOWHIVE-PSA-STALE-RUN-SUPERSESSION-20260909",
   "workflowId": 315562561,
   "workflowPath": ".github/workflows/projectpulse-deploy-test.yml",
@@ -80,10 +80,10 @@
     "activationBlocker": "Native Test environment protection is verified for the historical job; this owner-authorized supersession expires after one bounded admission window and neither queued request is approved."
   },
   "approval": {
-    "status": "approved",
-    "approvedBy": "ahmedadeyemi-cts",
-    "approvedAt": "2026-09-10T03:45:33Z",
-    "expiresAt": "2026-09-10T03:57:33Z"
+    "status": "not-approved",
+    "approvedBy": null,
+    "approvedAt": null,
+    "expiresAt": null
   },
-  "activationDecision": "approved"
+  "activationDecision": "hold"
 }
