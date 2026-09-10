@@ -103,6 +103,7 @@ export const releaseStabilizationFiles = [
   '.github/workflows/projectpulse-deploy-test.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'scripts/release-test/prepare-protected-test-scope-manifests.sh',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs',
   'tests/flowhive-psa-release-workflow.test.py'

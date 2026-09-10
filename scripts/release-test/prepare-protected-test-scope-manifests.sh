@@ -87,6 +87,18 @@ tests/flowhive-psa-migration-fixture.py
 tests/flowhive-psa-release-control.mjs
 tests/flowhive-psa-release-workflow.test.py
 FILES
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-release-stabilization-20260910' ]]; then
+  cat >> "$CIT/allowed-release-files" <<'FILES'
+.github/flowhive-psa-stale-run-supersession-authorization.json
+.github/workflows/flowhive-psa-protected-test-admission.yml
+.github/workflows/projectpulse-deploy-test.yml
+docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md
+scripts/release-test/dispatch-flowhive-psa-test.mjs
+scripts/release-test/prepare-protected-test-scope-manifests.sh
+tests/flowhive-psa-admission.test.mjs
+tests/flowhive-psa-release-control.mjs
+tests/flowhive-psa-release-workflow.test.py
+FILES
 fi
 LC_ALL=C sort -u "$CIT/allowed-release-files" -o "$CIT/allowed-release-files"
 
