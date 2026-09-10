@@ -7,6 +7,7 @@ const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 const knownNonexecutingRun = 33654881418;
 const dispatchSha = /^[a-f0-9]{40}$/;
+const contentSha = /^[a-f0-9]{64}$/;
 export const staleSupersessionAuthorizationPath = '.github/flowhive-psa-stale-run-supersession-authorization.json';
 export const staleRunSupersessionAttestation = Object.freeze({
   contract: 'flowhive-psa-stale-run-supersession-v1',
@@ -62,6 +63,7 @@ export function verifyStaleSupersessionAuthorization(authorization, now = new Da
   }
   assert.equal(authorization.historicalExecutionProtection?.allDeploymentPathsProtected, true,
     'Historical alternate deployment paths are not protected.');
+  verifyRequestRunBinding(authorization.evidence?.requestToRunBinding);
   assert.equal(authorization.approval?.status, 'approved', 'STALE_SUPERSESSION_APPROVAL_STATUS');
   assert.match(authorization.approval?.approvedBy || '', /^[A-Za-z0-9._-]{1,100}$/, 'STALE_SUPERSESSION_APPROVER');
   const approvedAt = Date.parse(authorization.approval?.approvedAt || '');
@@ -78,11 +80,39 @@ export function staleRunSupersessionApproved(authorization = readStaleSupersessi
   return verifyStaleSupersessionAuthorization(authorization, now).approved;
 }
 
+function gitBlobSha(content) {
+  return execFileSync('git', ['hash-object', '--stdin'], { input: content, encoding: 'utf8', timeout: 30000 }).trim();
+}
+
+export function verifyRequestRunBinding(binding, run = staleRunSupersessionAttestation) {
+  assert.equal(binding?.status, 'server-confirmed', 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_STATUS');
+  assert.equal(binding?.source, 'github-audit-log', 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_SOURCE');
+  assert.equal(binding?.repository, repository, 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_REPOSITORY');
+  assert.equal(binding?.workflowId, workflowId, 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_WORKFLOW');
+  assert.equal(binding?.workflowPath, workflowPath, 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_WORKFLOW_PATH');
+  assert.equal(binding?.runId, run?.id ?? run?.runId, 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_RUN');
+  assert.equal(binding?.controllerSha, run?.head_sha ?? run?.controllerSha,
+    'STALE_SUPERSESSION_REQUEST_RUN_BINDING_CONTROLLER');
+  assert.equal(binding?.event, 'workflow_dispatch', 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_EVENT');
+  assert.equal(binding?.ref, 'main', 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_REF');
+  assert.match(binding?.requestId || '', /^[A-Za-z0-9._-]{8,200}$/, 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_REQUEST_ID');
+  assert.match(binding?.requestBodySha256 || '', contentSha, 'STALE_SUPERSESSION_REQUEST_RUN_BINDING_BODY_HASH');
+  assert.match(binding?.submittedAt || '', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/,
+    'STALE_SUPERSESSION_REQUEST_RUN_BINDING_SUBMITTED_AT');
+  assert.equal(binding?.response?.workflowRunId, binding.runId,
+    'STALE_SUPERSESSION_REQUEST_RUN_BINDING_RESPONSE');
+  return { bound: true, runId: binding.runId, controllerSha: binding.controllerSha };
+}
+
 export function verifyHistoricalFenceSources({ admissionBlob, dispatcherBlob, deploymentWorkflowBlob, admission, dispatcher, deploymentWorkflow }) {
   const attestation = staleRunSupersessionAttestation;
   assert.equal(admissionBlob, attestation.historicalBlobs.admission, 'Historical admission blob changed.');
   assert.equal(dispatcherBlob, attestation.historicalBlobs.dispatcher, 'Historical dispatcher blob changed.');
   assert.equal(deploymentWorkflowBlob, attestation.historicalBlobs.deploymentWorkflow, 'Historical workflow blob changed.');
+  assert.equal(gitBlobSha(admission), admissionBlob, 'Historical admission content does not match its Git blob.');
+  assert.equal(gitBlobSha(dispatcher), dispatcherBlob, 'Historical dispatcher content does not match its Git blob.');
+  assert.equal(gitBlobSha(deploymentWorkflow), deploymentWorkflowBlob,
+    'Historical workflow content does not match its Git blob.');
   assert.match(admission, /assert\.equal\(main\.object\.sha, process\.env\.GITHUB_SHA, 'The trusted main controller is no longer current\.'\);/,
     'The historical admission guard is missing.');
   const staleGuard = admission.indexOf('The trusted main controller is no longer current.');
@@ -155,6 +185,7 @@ export function verifyFencedStaleRun({ workflow, run, attemptJobs, pendingDeploy
   assert.equal(verifyStaleSupersessionAuthorization(authorization, authorizationNow).approved, true, 'STALE_SUPERSESSION_NOT_APPROVED');
   assert.equal(authorization?.historicalExecutionProtection?.allDeploymentPathsProtected, true,
     'The historical controller has an unprotected alternate deployment path.');
+  verifyRequestRunBinding(authorization?.evidence?.requestToRunBinding, run);
   assert.equal(historicalSources?.admissionBlob, attestation.historicalBlobs.admission);
   assert.equal(historicalSources?.dispatcherBlob, attestation.historicalBlobs.dispatcher);
   assert.equal(historicalSources?.deploymentWorkflowBlob, attestation.historicalBlobs.deploymentWorkflow);
@@ -166,7 +197,7 @@ export function verifyFencedStaleRun({ workflow, run, attemptJobs, pendingDeploy
 export function readHistoricalFenceSources() {
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8', timeout: 30000 }).trim();
   const controller = staleRunSupersessionAttestation.controllerSha;
-  const show = file => git('show', `${controller}:${file}`);
+  const show = file => execFileSync('git', ['show', `${controller}:${file}`], { encoding: 'utf8', timeout: 30000 });
   return {
     admissionBlob: git('rev-parse', `${controller}:scripts/release-test/flowhive-psa-admission.mjs`),
     dispatcherBlob: git('rev-parse', `${controller}:scripts/release-test/dispatch-flowhive-psa-test.mjs`),

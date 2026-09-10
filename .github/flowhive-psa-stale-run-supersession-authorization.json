@@ -30,12 +30,28 @@
       "result": "rejected-before-queue",
       "observedAt": "2026-09-09T21:33:41Z"
     },
-    "serverConfirmedDispatchInputs": null
+    "serverConfirmedDispatchInputs": null,
+    "requestToRunBinding": {
+      "status": "not-established",
+      "source": "unavailable",
+      "repository": "ahmedadeyemi-cts/project-time-platform",
+      "workflowId": 315562561,
+      "workflowPath": ".github/workflows/projectpulse-deploy-test.yml",
+      "runId": 34377182662,
+      "controllerSha": "af5fcb463384096f668345ac7cc9bd00efef0a33",
+      "event": "workflow_dispatch",
+      "ref": "main",
+      "requestId": null,
+      "requestBodySha256": null,
+      "submittedAt": null,
+      "response": null,
+      "serverConfirmed": false
+    }
   },
   "historicalExecutionProtection": {
     "admissionConditionalOnReleaseBranch": true,
     "allDeploymentPathsProtected": false,
-    "activationBlocker": "Historical controller has unguarded alternate workflow_dispatch mutation paths."
+    "activationBlocker": "Historical controller has unguarded alternate workflow_dispatch mutation paths; the original request-to-run binding is not server-confirmed."
   },
   "approval": {
     "status": "not-approved",

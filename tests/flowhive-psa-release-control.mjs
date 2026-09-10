@@ -173,8 +173,8 @@ export function verifyController(text) {
   ]) {
     assert.ok(text.includes(token), `The Test controller is missing a required control: ${token}`);
   }
-  assert.match(text, /deploy:\s*\n[\s\S]*?if: >-\n[\s\S]*github\.event_name == 'push'[\s\S]*github\.event_name == 'workflow_dispatch'[\s\S]*inputs\.release_branch == 'release\/flowhive-sow-successor-20260908'/,
-    'Every current deployment path must be bounded by the approved push or PSA dispatch lane.');
+  assert.match(text, /deploy:\s*\n[\s\S]*?if: >-\n[\s\S]*github\.event_name == 'push'[\s\S]*github\.event_name == 'workflow_dispatch'[\s\S]*inputs\.release_branch == 'main'[\s\S]*inputs\.release_branch == 'release\/flowhive-sow-successor-20260908'/,
+    'Every current deployment path must be bounded by the approved push or explicitly guarded manual-main/PSA dispatch lane.');
   assert.doesNotMatch(text, /github\.event_name == 'workflow_dispatch' \|\| github\.ref == 'refs\/heads\/main'/,
     'The old unbounded workflow_dispatch job gate must not remain.');
   assert.ok(!/contents:\s*write/.test(text), 'The environment mutation job must not publish source.');
@@ -209,6 +209,14 @@ export function validate() {
   for (const file of files) assert.ok(fs.statSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink());
   const approval = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-test-candidate.json', 'utf8'));
   verifyApproval(approval, approval.sha);
+  const staleAuthorization = JSON.parse(fs.readFileSync('.github/flowhive-psa-stale-run-supersession-authorization.json', 'utf8'));
+  assert.equal(staleAuthorization.enabled, false, 'Stale supersession must remain inactive.');
+  assert.equal(staleAuthorization.activationDecision, 'hold');
+  assert.equal(staleAuthorization.historicalExecutionProtection.allDeploymentPathsProtected, false);
+  assert.equal(staleAuthorization.evidence.requestToRunBinding.status, 'not-established');
+  assert.equal(staleAuthorization.evidence.requestToRunBinding.serverConfirmed, false);
+  assert.equal(staleAuthorization.evidence.requestToRunBinding.requestId, null);
+  assert.equal(staleAuthorization.evidence.requestToRunBinding.response, null);
   verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));
   const supervisor = fs.readFileSync('.github/workflows/flowhive-psa-protected-test-admission.yml', 'utf8');
   assert.ok(!/azure\/login|id-token:|environment:|contents:\s*write/.test(supervisor), 'Admission cannot mutate a cloud environment or source.');
