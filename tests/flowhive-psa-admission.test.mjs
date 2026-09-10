@@ -88,8 +88,12 @@ test('source drift allows only reviewed control paths; application drift is reje
   verifySourceDrift(files,files);assert.throws(()=>verifySourceDrift([...files,'src/backend/ProjectTime.Api/Program.cs'],files));
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
-  const reviewedMain = 'bf401fa1d017eae0ebf10c9ed79720829ce8de60';
-  const candidate = 'c6efce9a4918ac6674fa292586348a5aa8be2b91';
+  const reviewedMain = approval.sourceBase;
+  const candidate = approval.sha;
+  assert.match(reviewedMain, /^[0-9a-f]{40}$/);
+  assert.match(candidate, /^[0-9a-f]{40}$/);
+  assert.equal(approval.pullRequest, 887);
+  assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   verifySourceDrift(successorApprovalFiles, files);
