@@ -3,44 +3,6 @@ name: Deploy System-wide Enterprise Reliability and Utilization to Protected Tes
 run-name: Protected Test ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}
 
 on:
-  push:
-    branches: [main]
-    paths:
-      # Controller-only changes are reviewed separately; deploy applications
-      # through the exact owner-authorized workflow_dispatch path.
-      - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
-      - 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
-      - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
-      - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
-      - 'database/migrations/086_module_066_flowhive_enterprise_pm.sql'
-      - 'database/migrations/088_systemwide_enterprise_reliability.sql'
-      - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'
-      - 'database/migrations/094_flowhive_canonical_sow_authority.sql'
-      - 'database/migrations/095_project_planning_collaboration_access.sql'
-      - 'database/migrations/096_project_planning_document_authority.sql'
-      - 'database/migrations/097_project_planning_identity_safe_admission.sql'
-      - 'database/migrations/105_flowhive_reviewed_regeneration.sql'
-      - 'database/migrations/106_module025_sow_sell_register.sql'
-      - 'database/rollback/096_project_planning_document_authority_rollback.sql'
-      - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
-      - 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql'
-      - 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'
-      - 'scripts/release-test/run-flowhive-authority-migration-094-job.sh'
-      - 'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'
-      - 'scripts/release-test/run-project-planning-collaboration-migration-job.sh'
-      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
-      - 'scripts/release-test/run-project-planning-document-authority-migration-job.sh'
-      - 'tests/test-project-planning-document-authority-migration-096.sh'
-      - 'tests/test-project-planning-identity-safe-admission-migration-097.sh'
-      - 'tests/test-pulse-ai-runtime-job-query-shape.sh'
-      - 'src/backend/ProjectTime.Api/**'
-      - 'src/frontend/project-time-web/**'
-      - 'tests/CelarAiAuthoritativePublicFactTests/**'
-      - 'tests/test-module-066-flowhive-enterprise-pm-migration-086.sh'
-      - 'tests/test-systemwide-enterprise-reliability-migration-088.sh'
-      - 'tests/validate-utilization-role-scoping.mjs'
-      - 'tests/validate-systemwide-image-build-controller.mjs'
-      - 'tests/validate-systemwide-enterprise-reliability.mjs'
   workflow_dispatch:
     inputs:
       recover_private_runtime:
@@ -78,16 +40,15 @@ jobs:
     name: Validate, migrate, deploy, and verify protected Test
     if: >-
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' &&
+      github.event_name == 'workflow_dispatch' &&
       (inputs.release_branch == 'main' ||
-      inputs.release_branch == 'release/flowhive-sow-successor-20260908')))
+      inputs.release_branch == 'release/flowhive-sow-successor-20260908')
     environment: test
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
-      TARGET_RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}
-      TARGET_RELEASE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.release_branch || 'main' }}
+      TARGET_RELEASE_COMMIT: ${{ inputs.release_sha }}
+      TARGET_RELEASE_BRANCH: ${{ inputs.release_branch }}
       EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
       MIGRATION_SCOPE: systemwide-enterprise-reliability-test
       APPROVAL_REFERENCE: ORACLE-TEST-USER-AUTHORIZED-RECOVERY-20260905
@@ -137,7 +98,7 @@ jobs:
             workflow_dispatch:release/flowhive-sow-successor-20260908)
               [[ "$EXPECTED_CONTROLLER_SHA" == "$GITHUB_SHA" ]] || fail 'PSA admission controller identity changed before deployment.'
               ;;
-            workflow_dispatch:main|workflow_dispatch:fix/shared-project-document-planning-20260819|push:)
+            workflow_dispatch:main|workflow_dispatch:fix/shared-project-document-planning-20260819)
               [[ -z "$EXPECTED_CONTROLLER_SHA" ]] || fail 'Admission controller input is only valid for the PSA candidate lane.'
               ;;
             *)
@@ -217,11 +178,7 @@ jobs:
               [[ "$(git rev-parse "origin/$TARGET_RELEASE_BRANCH")" == "$TARGET_RELEASE_COMMIT" ]] \
                 || fail 'The requested candidate SHA is not the current authorized branch head.'
             fi
-          else
-            [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Push deployment is restricted to main.'
-            [[ "$TARGET_RELEASE_BRANCH" == 'main' ]] || fail 'Push deployment must target main.'
           fi
-
           for required in \
             .github/workflows/projectpulse-deploy-test.yml \
             scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh \
@@ -343,7 +300,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Guard exact source, manual Test scope, and no-migration boundary
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
+        if: github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true
         shell: bash
         env:
           DISPATCH_CONFIRMATION: ${{ inputs.recover_private_runtime }}
@@ -351,9 +308,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
-          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch || "$GITHUB_EVENT_NAME" == push ]] || fail 'Only protected main activation is allowed.'
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || fail 'Only protected main activation is allowed.'
           [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Only main may be deployed.'
-          [[ "$GITHUB_EVENT_NAME" == push || "$DISPATCH_CONFIRMATION" == true ]] || fail 'The exact confirmation phrase is required.'
+          [[ "$DISPATCH_CONFIRMATION" == true ]] || fail 'The exact confirmation phrase is required.'
           [[ "$TARGET_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'release_commit must be one exact 40-character commit.'
           [[ "$TARGET_RELEASE_COMMIT" == "$GITHUB_SHA" ]] || fail 'release_commit must equal the selected main workflow commit.'
           [[ "$APPROVAL_REFERENCE" =~ ^ORACLE-TEST-[A-Za-z0-9][A-Za-z0-9._-]{7,119}$ ]] || fail 'approval_reference must match ORACLE-TEST-<approved-reference>.'
@@ -369,7 +326,7 @@ jobs:
           echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
 
       - name: Prove authenticated Oracle HTTPS services before Azure mutation
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
+        if: github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true
         shell: bash
         env:
           RUNTIME_TOKEN: ${{ secrets.PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN }}
@@ -465,7 +422,7 @@ jobs:
           unset RUNTIME_TOKEN
 
       - name: Snapshot the protected Test API
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
+        if: github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true
         id: recovery_snapshot
         shell: bash
         env:
@@ -500,7 +457,7 @@ jobs:
           echo "api_app=$API_APP" >> "$GITHUB_OUTPUT"
 
       - name: Preserve the currently deployed immutable API image
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
+        if: github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true
         id: recovery_build
         shell: bash
         working-directory: release
@@ -511,7 +468,7 @@ jobs:
           echo "api_image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Configure the protected token and deploy the Test API revision
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
+        if: github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true
         id: recovery_deploy_api
         shell: bash
         env:
@@ -911,7 +868,7 @@ jobs:
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
       - name: Prove Pulse-to-Oracle inference and runtime readiness
-        if: github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905')))))
+        if: github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true
         id: recovery_verify
         shell: bash
         env:
@@ -942,7 +899,7 @@ jobs:
           jq -e '.readiness.clamAvConfigured == true and .readiness.malwareScannerEndpointPrivate == true and .readiness.ocrConfigured == true and .readiness.ocrEndpointPrivate == true and .readiness.embeddingConfigured == true and .readiness.embeddingEndpointPrivate == true' <<<"$RUNTIME" >/dev/null
 
       - name: Publish sanitized deployment evidence
-        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905'))))))
+        if: success() && github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true
         shell: bash
         working-directory: release
         run: |
@@ -953,7 +910,7 @@ jobs:
             > evidence/celar-ai-oracle-test-runtime.json
 
       - name: Upload sanitized deployment evidence
-        if: success() && (github.ref == 'refs/heads/main' && (inputs.recover_private_runtime == true || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'celar-hostname-runtime-20260905') || (contains(github.event.head_commit.message, 'celar-admin-probe-headers-20260905') || contains(github.event.head_commit.message, 'celar-routed-model-readiness-20260905'))))))
+        if: success() && github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: celar-ai-oracle-test-runtime-${{ github.run_id }}-${{ github.run_attempt }}
@@ -974,6 +931,30 @@ jobs:
           REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
           bash scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$REVISION" '${{ steps.build.outputs.web_image }}' 60 10
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Seal server-confirmed deployment identity
+        id: deployment_identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0700 "$EVIDENCE_DIR"
+          jq -n \
+            --arg environment test \
+            --arg applicationSha "$TARGET_RELEASE_COMMIT" \
+            --arg applicationBranch "$TARGET_RELEASE_BRANCH" \
+            --arg deploymentRunId "$GITHUB_RUN_ID" \
+            --arg deploymentAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg controllerSha "$GITHUB_SHA" \
+            --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
+            --arg webRevision '${{ steps.deploy_web.outputs.revision }}' \
+            --arg apiImage '${{ steps.build.outputs.api_image }}' \
+            --arg webImage '${{ steps.build.outputs.web_image }}' \
+            '{status:"identity_inputs_sealed",environment:$environment,applicationSha:$applicationSha,applicationBranch:$applicationBranch,deploymentRunId:$deploymentRunId,deploymentAttempt:$deploymentAttempt,controllerSha:$controllerSha,apiRevision:$apiRevision,webRevision:$webRevision,apiImage:$apiImage,webImage:$webImage,productionMutation:false}' \
+            > "$EVIDENCE_DIR/deployment-identity.json"
+          test "$(jq -r '.applicationSha' "$EVIDENCE_DIR/deployment-identity.json")" = "$TARGET_RELEASE_COMMIT"
+          test "$(jq -r '.controllerSha' "$EVIDENCE_DIR/deployment-identity.json")" = "$GITHUB_SHA"
+          jq -e '.apiImage | test("@sha256:[0-9a-f]{64}$")' "$EVIDENCE_DIR/deployment-identity.json" >/dev/null
+          jq -e '.webImage | test("@sha256:[0-9a-f]{64}$")' "$EVIDENCE_DIR/deployment-identity.json" >/dev/null
 
       - name: Verify PSA candidate health and the live SOW-to-WBS lifecycle
         id: psa_live_uat
