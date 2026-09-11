@@ -79,7 +79,6 @@ jobs:
         shell: bash
         env:
           PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
-          PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
         run: |
           set -Eeuo pipefail
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/verify-flowhive-installed-identity.py

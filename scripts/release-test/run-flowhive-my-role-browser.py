@@ -99,9 +99,9 @@ async def browser_check(session: dict, report: dict) -> None:
 
         try:
             await page.goto(ORIGIN + "/#dashboard", wait_until="domcontentloaded")
-            workspace = page.locator('section[aria-label="Role-based workspace"]')
-            await wait_visible(workspace, "browser_timeout_role_workspace")
-            cards = workspace.locator(".role-feature-card")
+            workspace = page.locator("#role-welcome-dashboard")
+            await wait_visible(workspace, "browser_timeout_role_welcome_dashboard")
+            cards = workspace.locator('nav[aria-label="Recommended actions"] a')
             card_count = await cards.count()
             require(card_count > 0, "role_workspace_has_no_authorized_steps")
             hrefs = await cards.evaluate_all("nodes => nodes.map(node => node.getAttribute('href') || '')")
@@ -132,7 +132,7 @@ async def browser_check(session: dict, report: dict) -> None:
             require(not page_errors, "browser_runtime_error")
             report.update({
                 "status": "passed",
-                "roleWorkspace": {"authorizedStepCount": card_count, "reloadVerified": True},
+                "roleWorkspace": {"authorizedStepCount": card_count, "surface": "role-welcome-dashboard", "reloadVerified": True},
                 "handoffs": {"workTask": True, "resource": True, "signedPackage": signed_navigation_visible},
                 "accessBoundaries": {"signedHandoffNavigationVisible": signed_navigation_visible},
                 "writesBlocked": len(writes),
