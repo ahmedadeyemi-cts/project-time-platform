@@ -37,6 +37,7 @@ def git_blob(text):
     return subprocess.check_output(['git','hash-object','--stdin'],cwd=ROOT,input=text,text=True).strip()
 
 def verify(doc):
+    assert list(doc['on']) == ['workflow_dispatch']
     assert doc['permissions']=={'id-token':'write','contents':'read','actions':'read'}
     assert doc['concurrency']=={'group':'projectpulse-deploy-test','queue':'max','cancel-in-progress':'false'}
     assert list(doc['jobs'])==['deploy']
@@ -53,7 +54,7 @@ def verify(doc):
     admission=byid['psa_admission'];assert admission['working-directory']=='control'
     assert admission['run']=='node scripts/release-test/flowhive-psa-admission.mjs'
     assert steps.index(admission)<steps.index(byid['release'])
-    assert steps.index(byid['migration'])<steps.index(byid['deploy_api'])<steps.index(byid['deploy_web'])<steps.index(byid['psa_live_uat'])
+    assert steps.index(byid['migration'])<steps.index(byid['deploy_api'])<steps.index(byid['deploy_web'])<steps.index(byid['deployment_identity'])<steps.index(byid['psa_live_uat'])
     assert 'build-and-run-flowhive-psa-migrations.sh' in byid['migration']['run']
     release_guard=next(s for s in steps if s.get('name')=='Guard exact source and validate release')
     assert 'database/migrations/105_flowhive_reviewed_regeneration.sql' in release_guard['run']
@@ -206,7 +207,7 @@ class WorkflowContract(unittest.TestCase):
         result,_=run_guard('workflow_dispatch','main','a'*40)
         self.assertNotEqual(result.returncode,0)
         result,_=run_guard('push','','')
-        self.assertEqual(result.returncode,0)
+        self.assertNotEqual(result.returncode,0)
         result,_=run_guard('workflow_dispatch','unsupported','')
         self.assertNotEqual(result.returncode,0)
     def test_historical_source_identity_and_conditions_are_real(self):
@@ -232,7 +233,7 @@ class WorkflowContract(unittest.TestCase):
         current=load(current_text)
         current_if=' '.join(str(current['jobs']['deploy']['if']).split())
         self.assertEqual(current_if,
-            "github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.release_branch == 'main' || inputs.release_branch == 'release/flowhive-sow-successor-20260908')))")
+            "github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && (inputs.release_branch == 'main' || inputs.release_branch == 'release/flowhive-sow-successor-20260908')")
 
     def test_duplicate_jobs_fixture_is_rejected(self):
         historical_text=git_show(HISTORICAL_CONTROLLER,CONTROLLER)
@@ -263,14 +264,8 @@ class WorkflowContract(unittest.TestCase):
         assert artifact['uses'].startswith('actions/upload-artifact@')
         assert artifact['with']['if-no-files-found']=='ignore'
     def test_control_only_merge_cannot_trigger_an_unintended_deployment(self):
-        from fnmatch import fnmatchcase
-        triggers=self.doc['on']['push']['paths']
-        controls=(ROOT/'.github/flowhive-psa-release-control-files.txt').read_text().splitlines()
-        self.assertFalse(any(fnmatchcase(name,pattern) for name in controls for pattern in triggers))
-        self.assertEqual(self.doc['on']['push']['branches'],['main'])
-        for name in ['src/backend/ProjectTime.Api/Modules/Example.cs','src/frontend/project-time-web/src/Example.jsx']:
-            self.assertTrue(any(fnmatchcase(name,pattern) for pattern in triggers))
-        self.assertIn('workflow_dispatch',self.doc['on'])
+        self.assertNotIn('push', self.doc['on'])
+        self.assertEqual(list(self.doc['on']), ['workflow_dispatch'])
     def test_all_unrelated_original_steps_remain_unchanged(self):
         base=os.environ.get('CONTROL_BASE')
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
