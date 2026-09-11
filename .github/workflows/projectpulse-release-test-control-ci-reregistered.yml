@@ -327,7 +327,7 @@ jobs:
           grep -Fq 'release_sha:' "$CTL"
           grep -Fq 'release_branch:' "$CTL"
           TARGET_BRANCH_MARKER='TARGET_RELEASE_BRANCH: $'
-          TARGET_BRANCH_MARKER+="{{ github.event_name == 'workflow_dispatch' && inputs.release_branch || 'main' }}"
+          TARGET_BRANCH_MARKER+="{{ inputs.release_branch }}"
           grep -Fq "$TARGET_BRANCH_MARKER" "$CTL"
           grep -Fq 'Only the authorized FlowHive V2 candidate branch or exact merged main may use manual Protected-Test deployment.' "$CTL"
           grep -Fq 'environment: test' "$CTL"
@@ -335,7 +335,7 @@ jobs:
           grep -Fq 'queue: max' "$CTL"
           grep -Fq 'cancel-in-progress: false' "$CTL"
           TARGET_MARKER='TARGET_RELEASE_COMMIT: $'
-          TARGET_MARKER+="{{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}"
+          TARGET_MARKER+="{{ inputs.release_sha }}"
           CHECKOUT_MARKER='ref: $'
           CHECKOUT_MARKER+="{{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}"
           grep -Fq "$TARGET_MARKER" "$CTL"
