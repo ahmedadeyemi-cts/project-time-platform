@@ -16,9 +16,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 
 ORIGIN = "https://phd-west-test.onenecklab.com"
-PROJECT = "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49"
-LOGIN = "heather.schrock@ussignal.local"
-PREVIOUS_RUN = "171e4430-95e4-4f80-be14-454dcc319ef2"
+PROJECT = os.environ.get("FLOWHIVE_APPROVED_PROJECT_ID", "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49")
+PREVIOUS_RUN = os.environ.get("PREVIOUS_PLANNER_RUN_ID", "171e4430-95e4-4f80-be14-454dcc319ef2")
 
 
 class ReconciliationError(Exception):
@@ -86,12 +85,14 @@ def main() -> int:
     }
     token = ""
     try:
-        password = os.environ.get("TEST_LOGIN_PASSWORD", "")
+        login = os.environ.get("PROJECTPULSE_M025_PM_EMAIL", "").strip()
+        password = os.environ.pop("PROJECTPULSE_M025_PM_PASSWORD", "")
+        require(login and "@" in login, "pm_login_email_missing")
         require(len(password) >= 12, "pm_login_secret_missing")
         status, session = request(
             "/api/auth/local/login",
             "POST",
-            {"username": LOGIN, "password": password},
+            {"username": login, "password": password},
         )
         password = ""
         require(status == 200 and isinstance(session, dict), "pm_login_failed")
@@ -100,6 +101,16 @@ def main() -> int:
         require(isinstance(token, str) and len(token) >= 20, "pm_session_missing")
 
         base = f"/api/project-flowhive/projects/{PROJECT}"
+        status, portfolio = request("/api/project-flowhive/portfolio", token=token)
+        require(status == 200 and isinstance(portfolio, dict), "flowhive_portfolio_read_failed")
+        portfolio_access = portfolio.get("access") or {}
+        require(portfolio_access.get("serverAuthorized") is True and portfolio_access.get("isViewAs") is False,
+                "pm_portfolio_scope_invalid")
+        require(portfolio_access.get("actualUserId") == portfolio_access.get("effectiveUserId"),
+                "pm_portfolio_actor_mismatch")
+        require(any(str(item.get("projectId") or "").lower() == PROJECT.lower()
+                    for item in portfolio.get("projects") or []),
+                "pm_project_not_in_authorized_portfolio")
         status, workspace = request(base + "/enterprise", token=token)
         require(status == 200 and isinstance(workspace, dict), "flowhive_workspace_read_failed")
         project = workspace.get("project") or {}
@@ -117,6 +128,8 @@ def main() -> int:
             "taskCount": len(plan.get("tasks") or []),
             "milestoneCount": len(plan.get("milestones") or []),
             "sowEvidencePresent": bool(workspace.get("sowEvidence")),
+            "approvedSowScopeReady": (workspace.get("sowEvidenceSummary") or {}).get("approvedSowScopeReady") is True,
+            "readySowCount": sum(1 for item in workspace.get("sowEvidence") or [] if item.get("readyForAiPlanner") is True),
         }
 
         status, prior = request(base + f"/ai-planner/runs/{PREVIOUS_RUN}", token=token)

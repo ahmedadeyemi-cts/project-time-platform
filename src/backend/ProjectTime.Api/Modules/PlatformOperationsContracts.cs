@@ -578,6 +578,7 @@ public static partial class PlatformOperationsModule
     {
         var value = FirstEnvironment(
             "PROJECTPULSE_RELEASE_SHA",
+            "PROJECTPULSE_SOURCE_COMMIT",
             "SOURCE_COMMIT",
             "SOURCE_VERSION",
             "GITHUB_SHA").Trim();

@@ -79,7 +79,9 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
+          PROJECTPULSE_M025_PM_PASSWORD: ${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}
+          FLOWHIVE_APPROVED_PROJECT_ID: 0ea25cb8-1a7f-4baf-ba7b-2dd76215be49
         run: |
           set -Eeuo pipefail
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/reconcile-flowhive-planner.py
@@ -101,14 +103,16 @@ jobs:
         shell: bash
         env:
           FLOWHIVE_INSTALLED_VERIFICATION_AUTHORIZED: 'true'
-          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
+          PROJECTPULSE_M025_PM_PASSWORD: ${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}
+          FLOWHIVE_APPROVED_PROJECT_ID: 0ea25cb8-1a7f-4baf-ba7b-2dd76215be49
           PSA_VERIFICATION_APPROVAL_FILE: ${{ github.workspace }}/flowhive-installed-acceptance/installed-approval.json
         run: |
           set -Eeuo pipefail
           jq -n \
             --arg sha "$TARGET_RELEASE_COMMIT" \
             --arg projectId '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49' \
-            --arg pm 'heather.schrock@ussignal.local' \
+            --arg pm "$PROJECTPULSE_M025_PM_EMAIL" \
             '{contract:"flowhive-installed-test-verification-v1",repository:"ahmedadeyemi-cts/project-time-platform",pullRequest:887,branch:"release/flowhive-sow-successor-20260908",sha:$sha,environment:"test",publicOrigin:"https://phd-west-test.onenecklab.com",projectId:$projectId,projectManagerLogin:$pm,allowCustomerPublication:false,allowCanonicalTaskAdoption:false}' \
             > "$PSA_VERIFICATION_APPROVAL_FILE"
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-psa-live-uat.py
@@ -131,7 +135,8 @@ jobs:
         if: always() && steps.identity.outcome != 'cancelled'
         shell: bash
         env:
-          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
+          PROJECTPULSE_M025_PM_PASSWORD: ${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}
         run: |
           set -Eeuo pipefail
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-my-role-browser.py

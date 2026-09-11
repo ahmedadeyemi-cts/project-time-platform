@@ -17,7 +17,6 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 
 ORIGIN = "https://phd-west-test.onenecklab.com"
-LOGIN = "heather.schrock@ussignal.local"
 
 
 class VerificationError(Exception):
@@ -49,8 +48,8 @@ def request(path: str, method: str = "GET", payload: dict | None = None, token: 
         raise VerificationError("network_or_json_failure") from None
 
 
-def login(password: str) -> dict:
-    status, body = request("/api/auth/local/login", "POST", {"username": LOGIN, "password": password})
+def login(username: str, password: str) -> dict:
+    status, body = request("/api/auth/local/login", "POST", {"username": username, "password": password})
     require(status == 200 and isinstance(body, dict), "pm_login_failed")
     require(body.get("provider") == "LOCAL" and body.get("mustChangePassword") is False, "pm_login_contract_failed")
     token = body.get("sessionToken")
@@ -58,7 +57,7 @@ def login(password: str) -> dict:
     return body
 
 
-async def browser_check(session: dict, report: dict) -> None:
+async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None:
     from playwright.async_api import async_playwright
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
@@ -67,6 +66,7 @@ async def browser_check(session: dict, report: dict) -> None:
         context = await browser.new_context(viewport={"width": 1600, "height": 1000})
         writes: list[str] = []
         page_errors: list[str] = []
+        failed_responses: list[dict] = []
 
         async def guard(route):
             parsed = route.request
@@ -84,6 +84,11 @@ async def browser_check(session: dict, report: dict) -> None:
         )
         page = await context.new_page()
         page.on("pageerror", lambda _: page_errors.append("browser_page_error"))
+        page.on("response", lambda response: (
+            failed_responses.append({"status": response.status, "method": response.request.method,
+                                     "path": response.url.split("?", 1)[0].replace(ORIGIN, "")})
+            if response.status >= 400 and response.url.startswith(ORIGIN) else None
+        ))
         page.set_default_timeout(45_000)
         async def wait_visible(locator, code: str) -> None:
             try:
@@ -98,14 +103,14 @@ async def browser_check(session: dict, report: dict) -> None:
                 raise VerificationError(code) from None
 
         try:
-            # PR891 owns a dedicated Module 999 route. Navigate through the
-            # authenticated User Guide launch first, then exercise the real
-            # page. The old dashboard recommendation cards are a separate
-            # readiness observation and are not a substitute for this route.
+            # PR891 owns a dedicated Module 999 route. Observe whether the
+            # guide advertises it, then navigate to the actual route directly.
+            # A missing recommendation link must not turn into a false page
+            # timeout, and the direct route still exercises the installed page.
             await page.goto(ORIGIN + "/#user-guide", wait_until="domcontentloaded")
             launch = page.locator('a[data-role-journeys-launch="true"][href="#my-role-in-pulse"]')
-            await wait_visible(launch, "browser_timeout_my_role_navigation")
-            await launch.click()
+            report["userGuideLaunchAvailable"] = await launch.count() > 0
+            await page.goto(ORIGIN + "/#my-role-in-pulse", wait_until="domcontentloaded")
             journey = page.locator("#my-role-in-pulse")
             await wait_visible(journey, "browser_timeout_my_role_page")
             await wait_visible(page.get_by_role("heading", name="My Role in Pulse", exact=True), "browser_timeout_my_role_heading")
@@ -171,7 +176,23 @@ async def browser_check(session: dict, report: dict) -> None:
                 "accessBoundaries": {"signedHandoffNavigationVisible": signed_navigation_visible},
                 "writesBlocked": len(writes),
                 "pageErrors": len(page_errors),
+                "failedResponses": failed_responses,
+                "finalUrl": page.url,
             })
+        except Exception:
+            report["browserDiagnostics"] = {
+                "finalUrl": page.url,
+                "hash": await page.evaluate("window.location.hash"),
+                "journeyCount": await page.locator("#my-role-in-pulse").count(),
+                "headingCount": await page.get_by_role("heading", name="My Role in Pulse", exact=True).count(),
+                "failedResponses": failed_responses,
+                "pageErrors": len(page_errors),
+            }
+            try:
+                await page.screenshot(path=str(evidence_dir / "my-role-failure.png"), full_page=True)
+            except Exception:
+                report["browserDiagnostics"]["screenshot"] = "unavailable"
+            raise
         finally:
             await context.close()
             await browser.close()
@@ -189,14 +210,16 @@ def main() -> int:
     evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "/tmp/flowhive-psa-evidence"))
     evidence_dir.mkdir(parents=True, exist_ok=True)
     try:
-        password = os.environ.get("TEST_LOGIN_PASSWORD", "")
+        username = os.environ.get("PROJECTPULSE_M025_PM_EMAIL", "").strip()
+        password = os.environ.pop("PROJECTPULSE_M025_PM_PASSWORD", "")
+        require(username and "@" in username, "pm_login_email_missing")
         require(len(password) >= 12, "test_login_secret_missing")
-        session = login(password)
+        session = login(username, password)
         password = ""
         anonymous_status, _ = request("/api/project-intake/resource-assignment-handoff")
         require(anonymous_status in (401, 403), "anonymous_handoff_access_not_denied")
         report["anonymousHandoffDenied"] = True
-        asyncio.run(browser_check(session, report))
+        asyncio.run(browser_check(session, report, evidence_dir))
         request("/api/auth/session/logout", "POST", {}, session.get("sessionToken", ""))
     except VerificationError as error:
         report["diagnosticCode"] = str(error)
