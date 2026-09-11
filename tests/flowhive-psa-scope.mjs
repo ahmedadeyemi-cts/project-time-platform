@@ -79,11 +79,21 @@ export function verifyPaths(actual, reviewed) {
 export function verifyReadOnlyWorkflow(text, name) {
   assert.match(text, /^permissions:\s*\n\s+contents:\s*read\s*$/m, `Read-only CI permissions required: ${name}`);
   assert.ok(!/^\s*(?:contents|id-token|actions|pull-requests|packages):\s*write\s*$/m.test(text), `Privileged CI is outside this release: ${name}`);
-  assert.ok(!/^\s*(?:environment:|uses:\s*azure\/login@)/m.test(text), `No deployment environment or Azure login: ${name}`);
+  const installedAcceptance = name === '.github/workflows/flowhive-psa-installed-acceptance.yml';
+  if (installedAcceptance) {
+    assert.match(text, /environment:\s*\n\s+name:\s*test\b/, 'Installed acceptance may use only the protected Test environment.');
+    assert.ok(!/\baz(?:\s|\.)|containerapp|docker\s+(?:build|run)|workflow\s+(?:dispatch|enable|disable)/i.test(text),
+      'Installed acceptance cannot mutate deployment infrastructure.');
+  } else {
+    assert.ok(!/^\s*(?:environment:|uses:\s*azure\/login@)/m.test(text), `No deployment environment or Azure login: ${name}`);
+  }
   // This exact inherited admission CI uses only the read-only repository token
   // to inspect deployment state. No application credential or write scope is allowed.
   const sanitized = name === '.github/workflows/flowhive-psa-release-control-ci.yml'
-    ? text.replace(/\$\{\{ secrets\.GITHUB_TOKEN \}\}/g, '') : text;
+    ? text.replace(/\$\{\{ secrets\.GITHUB_TOKEN \}\}/g, '')
+    : installedAcceptance
+      ? text.replace(/\$\{\{ secrets\.(?:PROJECTPULSE_TEST_UAT_SESSION|PROJECTPULSE_TEST_UAT_ADMIN_EMAIL|PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD|PROJECTPULSE_M025_PM_EMAIL|PROJECTPULSE_M025_PM_PASSWORD|PROJECTPULSE_M025_SA_EMAIL|PROJECTPULSE_M025_SA_PASSWORD|PROJECTPULSE_M087_PASSWORD) \}\}/g, '')
+      : text;
   assert.ok(!/\$\{\{\s*secrets\./.test(sanitized), `No application or deployment secrets in validation: ${name}`);
 }
 
