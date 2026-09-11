@@ -67,7 +67,7 @@ const componentPaths = [
   /^docs\/modules\/module-066-project-flowhive\/[A-Za-z0-9._-]+$/
 ];
 
-export function verifyPaths(actual, reviewed) {
+export function verifyPaths(actual, reviewed, { allowReviewedSuperset = false } = {}) {
   assert.ok(Array.isArray(actual) && Array.isArray(reviewed) && reviewed.length > 0, 'A reviewed manifest is required');
   for (const name of [...actual, ...reviewed]) {
     assert.ok(typeof name === 'string' && name.length > 0 && !name.includes('\\')
@@ -77,7 +77,12 @@ export function verifyPaths(actual, reviewed) {
   }
   assert.deepEqual(reviewed, [...new Set(reviewed)].sort(), 'The manifest must be sorted and unique');
   assert.equal(actual.length, new Set(actual).size, 'Duplicate changed path');
-  assert.deepEqual([...actual].sort(), reviewed, 'Changed files must exactly match the reviewed manifest');
+  if (allowReviewedSuperset) {
+    const reviewedSet = new Set(reviewed);
+    assert.ok(actual.every((name) => reviewedSet.has(name)), 'Changed files must remain inside the reviewed manifest');
+  } else {
+    assert.deepEqual([...actual].sort(), reviewed, 'Changed files must exactly match the reviewed manifest');
+  }
 }
 
 export function verifyReadOnlyWorkflow(text, name) {
@@ -107,7 +112,7 @@ export function verifyRepositoryScope() {
   assert.match(base, /^[a-f0-9]{40}$/, 'The current main merge base must be available');
   const actual = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], { encoding: 'utf8' })
     .trim().split(/\r?\n/).filter(Boolean);
-  verifyPaths(actual, reviewed);
+  verifyPaths(actual, reviewed, { allowReviewedSuperset: process.argv.includes('--allow-reviewed-superset') });
   for (const name of reviewed) {
     assert.ok(fs.existsSync(name) && fs.lstatSync(name).isFile(), `Missing reviewed source file: ${name}`);
     if (name.startsWith('.github/workflows/')) verifyReadOnlyWorkflow(fs.readFileSync(name, 'utf8'), name);

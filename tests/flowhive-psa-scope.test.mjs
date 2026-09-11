@@ -7,6 +7,10 @@ test('extra and missing changes are both rejected', () => {
   assert.throws(() => verifyPaths(scope.slice(1), scope));
   assert.throws(() => verifyPaths([...scope, 'tests/flowhive-psa-extra.mjs'], scope));
 });
+test('a follow-up diff may use the existing reviewed release manifest, but cannot add an unreviewed path', () => {
+  verifyPaths([scope[0]], scope, { allowReviewedSuperset: true });
+  assert.throws(() => verifyPaths(['tests/flowhive-psa-unreviewed.mjs'], scope, { allowReviewedSuperset: true }));
+});
 test('duplicates, wildcards and traversal are not valid manifests', () => {
   for (const value of [[...scope, scope[0]], ['tests/flowhive-psa-*.mjs'], ['tests/../flowhive-psa-scope.mjs']])
     assert.throws(() => verifyPaths(value, value));
