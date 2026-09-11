@@ -103,7 +103,7 @@ jobs:
 
       - name: Verify My Role in Pulse, handoffs, reload, and access boundaries
         id: my_role
-        if: steps.identity.outcome == 'success'
+        if: always() && steps.identity.outcome != 'cancelled'
         shell: bash
         env:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
@@ -113,7 +113,7 @@ jobs:
 
       - name: Report Module 025 SOW/GSD authorization prerequisite without enabling it
         id: module025
-        if: steps.identity.outcome == 'success'
+        if: always() && steps.identity.outcome != 'cancelled'
         continue-on-error: true
         shell: bash
         env:
@@ -127,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: flowhive-installed-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/flowhive-installed-acceptance
+          path: ${{ github.workspace }}/.flowhive-installed-acceptance
           if-no-files-found: warn
           retention-days: 14
 
