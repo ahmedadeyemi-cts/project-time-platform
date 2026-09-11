@@ -32,7 +32,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
     def test_workflow_is_main_only_environment_protected_and_read_only(self):
         for token in (
             "workflow_dispatch:",
-            "environment: test",
+            "environment: ${{ 'test' }}",
             "permissions:\n  contents: read\n  actions: read",
             "TARGET_RELEASE_COMMIT: 95abbb0aa2445a33fda68e9de542f9446c3e2204",
             "INSTALLATION_RUN_ID: '34540010122'",
