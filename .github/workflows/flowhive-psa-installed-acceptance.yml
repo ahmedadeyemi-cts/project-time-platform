@@ -89,6 +89,8 @@ jobs:
         shell: bash
         env:
           PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
+          PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
         run: |
           set -Eeuo pipefail
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/verify-flowhive-installed-identity.py
@@ -110,6 +112,19 @@ jobs:
             '{contract:"flowhive-installed-test-verification-v1",repository:"ahmedadeyemi-cts/project-time-platform",pullRequest:887,branch:"release/flowhive-sow-successor-20260908",sha:$sha,environment:"test",publicOrigin:"https://phd-west-test.onenecklab.com",projectId:$projectId,projectManagerLogin:$pm,allowCustomerPublication:false,allowCanonicalTaskAdoption:false}' \
             > "$PSA_VERIFICATION_APPROVAL_FILE"
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-psa-live-uat.py
+
+      - name: Run normal authorized Solution Architect SOW lifecycle
+        id: sow
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          PROJECTPULSE_M025_SA_EMAIL: ${{ secrets.PROJECTPULSE_M025_SA_EMAIL }}
+          PROJECTPULSE_M025_SA_PASSWORD: ${{ secrets.PROJECTPULSE_M025_SA_PASSWORD }}
+          MODULE025_GENERATION_TIMEOUT_SECONDS: '1500'
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py
 
       - name: Verify My Role in Pulse, handoffs, reload, and access boundaries
         id: my_role
@@ -149,6 +164,7 @@ jobs:
           [[ "${{ steps.identity.outcome }}" == success ]] || { echo 'Installed identity gate did not pass.' >&2; exit 1; }
           [[ "${{ steps.planner.outcome }}" == success ]] || { echo 'Prior planner operation was not reconciled.' >&2; exit 1; }
           [[ "${{ steps.flowhive.outcome }}" == success ]] || { echo 'FlowHive lifecycle did not pass.' >&2; exit 1; }
+          [[ "${{ steps.sow.outcome }}" == success ]] || { echo 'Normal authorized Solution Architect SOW lifecycle did not pass.' >&2; exit 1; }
           [[ "${{ steps.my_role.outcome }}" == success ]] || { echo 'My Role in Pulse browser acceptance did not pass.' >&2; exit 1; }
           [[ -f "$EVIDENCE_DIR/module025-installed-prerequisite.json" ]] || { echo 'Module 025 prerequisite evidence is missing.' >&2; exit 1; }
           jq -e '.status == "ready"' "$EVIDENCE_DIR/module025-installed-prerequisite.json" >/dev/null || { echo 'Module 025 SOW/GSD remains blocked by its explicit authorization prerequisite.' >&2; exit 1; }
