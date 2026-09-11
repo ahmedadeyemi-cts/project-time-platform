@@ -56,6 +56,8 @@ class InstalledAcceptanceContract(unittest.TestCase):
             "build-and-run-flowhive-psa-migrations.sh",
         ):
             self.assertNotIn(forbidden, self.workflow)
+        self.assertNotIn("EVIDENCE_DIR: ${{ runner.temp }}", self.workflow)
+        self.assertIn("EVIDENCE_DIR: ${{ github.workspace }}/.flowhive-installed-acceptance", self.workflow)
 
     def test_installed_identity_is_immutable_and_server_checked(self):
         expected = {
