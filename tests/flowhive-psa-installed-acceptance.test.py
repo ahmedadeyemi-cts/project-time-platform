@@ -58,6 +58,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
             self.assertNotIn(forbidden, self.workflow)
         self.assertNotIn("EVIDENCE_DIR: ${{ runner.temp }}", self.workflow)
         self.assertIn("EVIDENCE_DIR: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
+        self.assertIn("PSA_VERIFICATION_APPROVAL_FILE: ${{ github.workspace }}/flowhive-installed-acceptance/installed-approval.json", self.workflow)
         self.assertIn("if: always() && steps.identity.outcome != 'cancelled'", self.workflow)
         self.assertIn("path: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
 
@@ -74,6 +75,8 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn("/api/platform-operations/overview", self.identity)
         self.assertIn('observed == EXPECTED["applicationSha"]', self.identity)
         self.assertIn('"recorded_from_installation_evidence"', self.identity)
+        self.assertIn('pm_local_login_fallback', self.identity)
+        self.assertIn('PROJECTPULSE_M087_PASSWORD', self.workflow)
         self.assertIn('"productionMutation": False', self.identity)
 
     def test_flowhive_entrypoint_reconciles_before_one_generation_and_never_mocks(self):
@@ -98,6 +101,8 @@ class InstalledAcceptanceContract(unittest.TestCase):
             "await page.reload",
             "anonymous_handoff_access_not_denied",
             "browser_attempted_mutation",
+            "browser_timeout_project_intake",
+            "signed_handoff_navigation_leaked",
         ):
             self.assertIn(token, self.role)
         self.assertNotIn("route.fulfill(", self.role)

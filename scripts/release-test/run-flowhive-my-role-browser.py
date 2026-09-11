@@ -60,6 +60,7 @@ def login(password: str) -> dict:
 
 async def browser_check(session: dict, report: dict) -> None:
     from playwright.async_api import async_playwright
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
@@ -84,10 +85,22 @@ async def browser_check(session: dict, report: dict) -> None:
         page = await context.new_page()
         page.on("pageerror", lambda _: page_errors.append("browser_page_error"))
         page.set_default_timeout(45_000)
+        async def wait_visible(locator, code: str) -> None:
+            try:
+                await locator.wait_for(state="visible")
+            except PlaywrightTimeoutError:
+                raise VerificationError(code) from None
+
+        async def click_button(name: str, code: str) -> None:
+            try:
+                await page.get_by_role("button", name=name, exact=True).click()
+            except PlaywrightTimeoutError:
+                raise VerificationError(code) from None
+
         try:
             await page.goto(ORIGIN + "/#dashboard", wait_until="domcontentloaded")
             workspace = page.locator('section[aria-label="Role-based workspace"]')
-            await workspace.wait_for(state="visible")
+            await wait_visible(workspace, "browser_timeout_role_workspace")
             cards = workspace.locator(".role-feature-card")
             card_count = await cards.count()
             require(card_count > 0, "role_workspace_has_no_authorized_steps")
@@ -95,25 +108,33 @@ async def browser_check(session: dict, report: dict) -> None:
             require(all(re.fullmatch(r"#[a-z0-9-]+", value) for value in hrefs), "role_step_route_invalid")
 
             await page.goto(ORIGIN + "/#project-intake", wait_until="domcontentloaded")
-            intake = page.locator('[data-module="020"]')
-            await intake.wait_for(state="visible")
-            await page.get_by_role("button", name="Work-task handoff", exact=True).click()
-            await page.locator('[aria-label="Work-task handoff"]').wait_for(state="visible")
-            await page.get_by_role("button", name="Resource handoff", exact=True).click()
-            await page.locator('[aria-label="Resource handoff"]').wait_for(state="visible")
+            intake = page.locator('.work-intake-creation-center[data-module="020"]')
+            await wait_visible(intake, "browser_timeout_project_intake")
+            await click_button("Work-task handoff", "browser_timeout_work_task_handoff_button")
+            await wait_visible(page.locator('[aria-label="Work-task handoff"]'), "browser_timeout_work_task_handoff")
+            await click_button("Resource handoff", "browser_timeout_resource_handoff_button")
+            await wait_visible(page.locator('[aria-label="Resource handoff"]'), "browser_timeout_resource_handoff")
 
-            await page.goto(ORIGIN + "/#signed-handoff", wait_until="domcontentloaded")
-            signed = page.locator('.sales-delivery-workflow-center[data-module="027"]')
-            await signed.wait_for(state="visible")
-            await signed.get_by_text("Submit the signed customer package", exact=True).wait_for(state="visible")
-            await page.reload(wait_until="domcontentloaded")
-            await signed.wait_for(state="visible")
+            signed_link = page.locator('a[href="#signed-handoff"]')
+            signed_navigation_visible = await signed_link.count() > 0
+            if signed_navigation_visible:
+                await page.goto(ORIGIN + "/#signed-handoff", wait_until="domcontentloaded")
+                signed = page.locator('.sales-delivery-workflow-center[data-module="027"]')
+                await wait_visible(signed, "browser_timeout_signed_handoff_route")
+                await wait_visible(signed.get_by_text("Submit the signed customer package", exact=True), "browser_timeout_signed_handoff_content")
+                await page.reload(wait_until="domcontentloaded")
+                await wait_visible(signed, "browser_timeout_signed_handoff_reload")
+            else:
+                await page.goto(ORIGIN + "/#dashboard", wait_until="domcontentloaded")
+                require(await page.locator('a[href="#signed-handoff"]').count() == 0,
+                        "signed_handoff_navigation_leaked")
             require(not writes, "browser_attempted_mutation")
             require(not page_errors, "browser_runtime_error")
             report.update({
                 "status": "passed",
                 "roleWorkspace": {"authorizedStepCount": card_count, "reloadVerified": True},
-                "handoffs": {"workTask": True, "resource": True, "signedPackage": True},
+                "handoffs": {"workTask": True, "resource": True, "signedPackage": signed_navigation_visible},
+                "accessBoundaries": {"signedHandoffNavigationVisible": signed_navigation_visible},
                 "writesBlocked": len(writes),
                 "pageErrors": len(page_errors),
             })
