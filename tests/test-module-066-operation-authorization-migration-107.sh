@@ -46,9 +46,9 @@ INSERT INTO app_users(user_id,email,display_name) VALUES
  ('10700000-0000-4000-8000-000000000003','deleter-107@example.invalid','Deleter 107');
 INSERT INTO app_roles(role_code) VALUES('PROJECT_MANAGER');
 SQL
-psql_exec -f "$ROOT/database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql" >/dev/null
-psql_exec -f "$ROOT/database/migrations/107_module_066_operation_authorization_and_raid_actor.sql" >/dev/null
-psql_exec -f "$ROOT/database/migrations/107_module_066_operation_authorization_and_raid_actor.sql" >/dev/null
+psql_exec < "$ROOT/database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql" >/dev/null
+psql_exec < "$ROOT/database/migrations/107_module_066_operation_authorization_and_raid_actor.sql" >/dev/null
+psql_exec < "$ROOT/database/migrations/107_module_066_operation_authorization_and_raid_actor.sql" >/dev/null
 
 assert_eq 1 "$(value "SELECT count(*) FROM schema_migrations WHERE migration_id='107_module_066_operation_authorization_and_raid_actor';")" migration_registered_once
 assert_eq 1 "$(value "SELECT count(*) FROM app_role_permissions rp JOIN app_roles r USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='PROJECT_MANAGER' AND p.permission_code='MANAGE_FLOWHIVE_MEETINGS_066';")" meeting_permission_granted

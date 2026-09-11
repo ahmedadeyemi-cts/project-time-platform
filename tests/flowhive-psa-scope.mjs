@@ -21,6 +21,7 @@ const validationFiles = new Set([
   'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
   'scripts/release-test/prepare-protected-test-scope-manifests.sh',
   'scripts/release-test/resolve-flowhive-installed-deployment.py',
+  'scripts/release-test/verify-flowhive-installed-identity.py',
   'scripts/release-test/reconcile-flowhive-planner.py',
   'scripts/release-test/run-flowhive-my-role-browser.py',
   'scripts/release-test/run-flowhive-psa-live-uat.py',
