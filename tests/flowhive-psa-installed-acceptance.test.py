@@ -40,11 +40,12 @@ class InstalledAcceptanceContract(unittest.TestCase):
     def test_workflow_is_main_only_environment_protected_and_read_only(self):
         for token in (
             "workflow_dispatch:",
+            "deployment_run_id:",
             "environment:\n      name: test",
             "permissions:\n  contents: read\n  actions: read",
-            "TARGET_RELEASE_COMMIT: 95abbb0aa2445a33fda68e9de542f9446c3e2204",
-            "INSTALLATION_RUN_ID: '34540010122'",
-            "INSTALLATION_CONTROLLER_SHA: df6f7fc6d52495f83b0fd169047f5a249493db7e",
+            "DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}",
+            "INSTALLED_RELEASE_CONTEXT: ${{ github.workspace }}/flowhive-installed-acceptance/installed-release-context.json",
+            "resolve-flowhive-installed-deployment.py",
             "PREVIOUS_PLANNER_RUN_ID: 171e4430-95e4-4f80-be14-454dcc319ef2",
             "PROJECTPULSE_TEST_UAT_ADMIN_EMAIL",
             "PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD",
@@ -77,17 +78,22 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn("path: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
 
     def test_installed_identity_is_immutable_and_server_checked(self):
-        expected = {
-            "applicationSha": "95abbb0aa2445a33fda68e9de542f9446c3e2204",
-            "installationRunId": "34540010122",
-            "controllerSha": "df6f7fc6d52495f83b0fd169047f5a249493db7e",
-            "apiRevision": "ca-phd-test-api-westus3--m1bd-34540010122-1",
-            "webRevision": "ca-phd-test-web-westus3--relw-34540010122-1",
-        }
-        for key, value in expected.items():
-            self.assertIn(f'"{key}": "{value}"', self.identity)
+        for token in (
+            "INSTALLED_RELEASE_CONTEXT",
+            "installed_release_context_missing",
+            "installed_api_source_mismatch",
+            "installed_api_image_not_immutable",
+            "installed_web_image_not_immutable",
+        ):
+            self.assertIn(token, self.identity)
+        for historical in (
+            "95abbb0aa2445a33fda68e9de542f9446c3e2204",
+            "34540010122",
+            "df6f7fc6d52495f83b0fd169047f5a249493db7e",
+        ):
+            self.assertNotIn(historical, self.identity)
         self.assertIn("/api/platform-operations/overview", self.identity)
-        self.assertIn('observed == EXPECTED["applicationSha"]', self.identity)
+        self.assertIn('observed == installed["applicationSha"]', self.identity)
         self.assertIn('"recorded_from_installation_evidence"', self.identity)
         self.assertIn('test_uat_session_missing', self.identity)
         self.assertIn('PROJECTPULSE_TEST_UAT_ADMIN_EMAIL', self.identity)

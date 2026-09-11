@@ -36,6 +36,12 @@ internal static class ProjectFlowHivePsaModule
         "timeline-risk", "raid", "decision-matrix", "gantt", "monthly-calendar", "work-breakdown"
     };
 
+    private enum FlowHiveWriteOperation
+    {
+        Meetings,
+        TaskReminders
+    }
+
     internal static IEndpointRouteBuilder MapProjectFlowHivePsaEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
@@ -75,7 +81,7 @@ internal static class ProjectFlowHivePsaModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var access = await OpenProjectAsync(projectId, context, write: false, cancellationToken);
+        var access = await OpenProjectAsync(projectId, context, null, cancellationToken);
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         try
@@ -140,7 +146,7 @@ internal static class ProjectFlowHivePsaModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var access = await OpenProjectAsync(projectId, context, write: true, cancellationToken);
+        var access = await OpenProjectAsync(projectId, context, FlowHiveWriteOperation.Meetings, cancellationToken);
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
@@ -300,7 +306,7 @@ internal static class ProjectFlowHivePsaModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var access = await OpenProjectAsync(projectId, context, write: true, cancellationToken);
+        var access = await OpenProjectAsync(projectId, context, FlowHiveWriteOperation.Meetings, cancellationToken);
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
@@ -361,7 +367,7 @@ internal static class ProjectFlowHivePsaModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var access = await OpenProjectAsync(projectId, context, write: false, cancellationToken);
+        var access = await OpenProjectAsync(projectId, context, null, cancellationToken);
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
@@ -415,7 +421,7 @@ internal static class ProjectFlowHivePsaModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var access = await OpenProjectAsync(projectId, context, write: true, cancellationToken);
+        var access = await OpenProjectAsync(projectId, context, FlowHiveWriteOperation.TaskReminders, cancellationToken);
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
@@ -471,7 +477,7 @@ internal static class ProjectFlowHivePsaModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var access = await OpenProjectAsync(projectId, context, write: false, cancellationToken);
+        var access = await OpenProjectAsync(projectId, context, null, cancellationToken);
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!ArtifactKinds.Contains(kind)) return Results.BadRequest(new { status = "unsupported_flowhive_artifact", supported = ArtifactKinds.OrderBy(value => value) });
@@ -734,7 +740,11 @@ internal static class ProjectFlowHivePsaModule
         bool CanManage,
         string Scope);
 
-    private static async Task<ProjectAccess> OpenProjectAsync(Guid projectId, HttpContext context, bool write, CancellationToken cancellationToken)
+    private static async Task<ProjectAccess> OpenProjectAsync(
+        Guid projectId,
+        HttpContext context,
+        FlowHiveWriteOperation? writeOperation,
+        CancellationToken cancellationToken)
     {
         var actual = ProjectPulseActualSessionAuthority.ReadUserId(context, "ProjectPulseActualUserId", "ProjectPulseSessionUserId");
         var effective = ProjectPulseActualSessionAuthority.ReadUserId(context, "ProjectPulseEffectiveUserId", "ProjectPulseSessionUserId") ?? actual;
@@ -759,18 +769,53 @@ internal static class ProjectFlowHivePsaModule
         }
         isViewAs = planningAccess.IsViewAs;
         var canManage = planningAccess.CanAdministerPlanner && !isViewAs && actual == effective;
-        if (write && !canManage)
+        if (writeOperation.HasValue)
         {
+            var requiredPermission = writeOperation.Value switch
+            {
+                FlowHiveWriteOperation.Meetings => "MANAGE_FLOWHIVE_MEETINGS_066",
+                FlowHiveWriteOperation.TaskReminders => "MANAGE_FLOWHIVE_TASK_REMINDERS_066",
+                _ => throw new ArgumentOutOfRangeException()
+            };
+            var hasOperationPermission = !isViewAs
+                && actual == effective
+                && await HasFlowHivePermissionAsync(connection, effective.Value, requiredPermission, cancellationToken);
+            if (hasOperationPermission)
+                return new(connection, null, actual, effective.Value, isViewAs, canManage, planningAccess.ScopeReason);
+
             await connection.DisposeAsync();
             return new(null, Results.Json(new
             {
-                status = isViewAs ? "view_as_write_blocked" : "flowhive_planning_write_forbidden",
+                status = isViewAs ? "view_as_write_blocked" : "flowhive_operation_permission_forbidden",
                 message = isViewAs
                     ? "Exit View-As before writing to the FlowHive PSA workspace."
-                    : "The shared FlowHive planning resolver did not authorize this write for the project."
+                    : $"The current session lacks {requiredPermission} for this project."
             }, statusCode: 403), actual, effective.Value, isViewAs, false, planningAccess.ScopeReason);
         }
         return new(connection, null, actual, effective.Value, isViewAs, canManage, planningAccess.ScopeReason);
+    }
+
+    private static async Task<bool> HasFlowHivePermissionAsync(
+        NpgsqlConnection connection,
+        Guid userId,
+        string permissionCode,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT EXISTS(
+                SELECT 1
+                FROM app_user_role_assignments assignment
+                JOIN app_roles role ON role.app_role_id=assignment.app_role_id AND role.is_active=TRUE
+                JOIN app_role_permissions role_permission ON role_permission.app_role_id=role.app_role_id
+                JOIN app_permissions permission ON permission.app_permission_id=role_permission.app_permission_id
+                WHERE assignment.user_id=@user_id
+                  AND assignment.is_active=TRUE
+                  AND permission.permission_code=@permission_code);
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("user_id", userId);
+        command.Parameters.AddWithValue("permission_code", permissionCode);
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
     }
 
     private static async Task<bool> MigrationReadyAsync(NpgsqlConnection connection, CancellationToken cancellationToken)

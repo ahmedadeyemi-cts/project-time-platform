@@ -18,7 +18,9 @@ on:
       - 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql'
       - 'database/migrations/104_flowhive_bounded_ai_execution.sql'
       - 'database/migrations/105_flowhive_reviewed_regeneration.sql'
+      - 'database/migrations/107_module_066_operation_authorization_and_raid_actor.sql'
       - 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql'
+      - 'database/rollback/107_module_066_operation_authorization_and_raid_actor_rollback.sql'
       - 'database/rollback/104_flowhive_bounded_ai_execution_rollback.sql'
       - '.github/workflows/flowhive-enterprise-psa-ci.yml'
   workflow_dispatch:
@@ -183,6 +185,8 @@ jobs:
           trap - ERR
       - name: Execute real database deadline, cancellation and concurrent-save regressions
         run: dotnet run --project tests/FlowHiveExecutionTests/FlowHiveExecutionTests.csproj --configuration Release
+      - name: Execute Module 066 operation authorization and RAID actor regression
+        run: bash tests/test-module-066-operation-authorization-migration-107.sh
       - name: Remove isolated PostgreSQL fixture
         if: always()
         shell: bash

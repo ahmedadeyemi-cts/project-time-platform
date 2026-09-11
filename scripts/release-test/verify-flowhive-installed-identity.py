@@ -3,8 +3,8 @@
 
 The verifier has no Azure credentials and cannot mutate infrastructure. The
 API release marker is read from the live authenticated diagnostics surface;
-the web/API image and revision values are immutable evidence from installation
-run 34540010122 and are recorded here for correlation, never accepted from
+the web/API image and revision values are server-confirmed evidence from the
+selected successful deployment artifact, never hard-coded or accepted from
 workflow inputs.
 """
 from __future__ import annotations
@@ -18,17 +18,6 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 
 ORIGIN = "https://phd-west-test.onenecklab.com"
-EXPECTED = {
-    "applicationSha": "95abbb0aa2445a33fda68e9de542f9446c3e2204",
-    "installationRunId": "34540010122",
-    "controllerSha": "df6f7fc6d52495f83b0fd169047f5a249493db7e",
-    "apiRevision": "ca-phd-test-api-westus3--m1bd-34540010122-1",
-    "webRevision": "ca-phd-test-web-westus3--relw-34540010122-1",
-    "apiImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:e5f95466a01be8e9f38e36f6a2474391372b1a63f41115f1b7f63810e6017afc",
-    "webImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:7b1dbab4a0a57c7993d3ec8d7c3cd51613bcb463f7971a1268db5afb935d6964",
-}
-
-
 class IdentityError(Exception):
     pass
 
@@ -93,17 +82,31 @@ def logout(token: str) -> None:
 def main() -> int:
     evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "/tmp/flowhive-psa-evidence"))
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    context_path = Path(os.environ.get("INSTALLED_RELEASE_CONTEXT", ""))
     report = {
         "status": "failed",
         "environment": "test",
         "productionMutation": False,
         "businessWritesPermitted": False,
         "verificationCodeSha": os.environ.get("GITHUB_SHA", ""),
-        "installed": EXPECTED,
+        "installed": {},
     }
     token = ""
     cleanup = False
     try:
+        require(context_path.is_file(), "installed_release_context_missing")
+        installed = json.loads(context_path.read_text())
+        require(isinstance(installed, dict) and installed.get("status") == "identity_inputs_sealed",
+                "installed_release_context_invalid")
+        require(re.fullmatch(r"[0-9a-f]{40}", str(installed.get("applicationSha") or "")) is not None,
+                "installed_application_identity_missing")
+        require(re.fullmatch(r"[0-9]+", str(installed.get("deploymentRunId") or "")) is not None,
+                "installed_deployment_run_missing")
+        require(re.fullmatch(r".+@sha256:[0-9a-f]{64}", str(installed.get("apiImage") or "")) is not None,
+                "installed_api_image_not_immutable")
+        require(re.fullmatch(r".+@sha256:[0-9a-f]{64}", str(installed.get("webImage") or "")) is not None,
+                "installed_web_image_not_immutable")
+        report["installed"] = installed
         token, credential_source, cleanup = open_supported_identity_session()
         context_status, context = request_json("/api/security/context", token=token)
         require(context_status == 200 and isinstance(context, dict), "identity_security_context_http_" + str(context_status))
@@ -113,14 +116,14 @@ def main() -> int:
         require(status == 200 and isinstance(body, dict), "platform_identity_http_" + str(status))
         observed = str(((body.get("runtime") or {}).get("releaseSha")) or "")
         require(re.fullmatch(r"[0-9a-f]{40}", observed) is not None, "platform_release_marker_missing")
-        require(observed == EXPECTED["applicationSha"], "installed_api_source_mismatch")
+        require(observed == installed["applicationSha"], "installed_api_source_mismatch")
         report["serverConfirmed"] = {"apiReleaseSha": observed, "observedAtUtc": body.get("generatedAt")}
         report["identityCredentialSource"] = credential_source
         report["identityPermissions"] = sorted(permissions & {"SYSTEM_ADMINISTRATION", "MANAGE_ALL"})
         report["webIdentity"] = {
             "status": "recorded_from_installation_evidence",
-            "revision": EXPECTED["webRevision"],
-            "image": EXPECTED["webImage"],
+            "revision": installed["webRevision"],
+            "image": installed["webImage"],
         }
         report["status"] = "passed"
         report["identityGate"] = "api_source_match_before_business_writes"

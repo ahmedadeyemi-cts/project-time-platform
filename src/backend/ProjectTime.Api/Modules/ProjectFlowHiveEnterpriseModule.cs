@@ -409,15 +409,32 @@ internal static class ProjectFlowHiveEnterpriseModule
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
 
-        await using var command = new NpgsqlCommand(
-            "DELETE FROM project_flowhive_raid_items WHERE raid_item_id=@id AND project_id=@project_id;",
-            connection);
-        command.Parameters.AddWithValue("id", raidItemId);
-        command.Parameters.AddWithValue("project_id", projectId);
-        var count = await command.ExecuteNonQueryAsync(cancellationToken);
-        return count == 0
-            ? Results.NotFound(new { status = "raid_item_not_found", message = "The RAID item was not found in the selected project." })
-            : Results.Ok(new { status = "flowhive_raid_item_deleted", raidItemId, stateChanged = true });
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using (var actorCommand = new NpgsqlCommand(
+                "SELECT set_config('projectpulse.current_actor', @actor, true);", connection, transaction))
+            {
+                actorCommand.Parameters.AddWithValue("actor", opened.Access!.ActualUserId.ToString("D"));
+                await actorCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using var command = new NpgsqlCommand(
+                "DELETE FROM project_flowhive_raid_items WHERE raid_item_id=@id AND project_id=@project_id;",
+                connection, transaction);
+            command.Parameters.AddWithValue("id", raidItemId);
+            command.Parameters.AddWithValue("project_id", projectId);
+            var count = await command.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return count == 0
+                ? Results.NotFound(new { status = "raid_item_not_found", message = "The RAID item was not found in the selected project." })
+                : Results.Ok(new { status = "flowhive_raid_item_deleted", raidItemId, stateChanged = true });
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     private static async Task<IResult> CreateStatusReportAsync(
@@ -1361,7 +1378,8 @@ internal static class ProjectFlowHiveEnterpriseModule
         try
         {
             await using var command = new NpgsqlCommand("""
-                SELECT document.project_intake_document_id,COALESCE(document.original_file_name,''),
+                SELECT document.project_intake_document_id,work_register.work_register_document_id,
+                       COALESCE(document.original_file_name,''),
                        CASE
                            WHEN LOWER(COALESCE(work_register.document_type,'')) IN ('sow','statement of work','statement_of_work') THEN 'sow'
                            WHEN LOWER(COALESCE(work_register.document_type,'')) IN ('gsd','general solution design','general_solution_design','global solution design','global_solution_design') THEN 'gsd'
@@ -1399,7 +1417,7 @@ internal static class ProjectFlowHiveEnterpriseModule
                           AND COALESCE(work_register.stored_file_path,'')<>''
                       )
                   )
-                GROUP BY document.project_intake_document_id,document.original_file_name,document.document_category,
+                GROUP BY document.project_intake_document_id,work_register.work_register_document_id,document.original_file_name,document.document_category,
                          document.pulse_ai_processing_status,document.engineering_visible,
                          document.pulse_ai_active_version_id,version.authority_status,version.index_status,version.document_version,
                          work_register.document_type,work_register.work_register_document_id,work_register.status,
@@ -1415,19 +1433,21 @@ internal static class ProjectFlowHiveEnterpriseModule
             while (await reader.ReadAsync(cancellationToken))
             {
                 var documentId = reader.GetGuid(0);
-                var file = reader.GetString(1);
-                var category = reader.GetString(2);
-                var processing = reader.GetString(3);
-                var visible = reader.GetBoolean(4);
-                Guid? activeVersion = reader.IsDBNull(5) ? null : reader.GetGuid(5);
-                var authority = reader.GetString(6);
-                var index = reader.GetString(7);
-                var citations = reader.GetInt32(8);
-                var scopeCitations = reader.GetInt32(9);
-                var version = reader.GetString(10);
+                Guid? workRegisterDocumentId = reader.IsDBNull(1) ? null : reader.GetGuid(1);
+                var file = reader.GetString(2);
+                var category = reader.GetString(3);
+                var processing = reader.GetString(4);
+                var visible = reader.GetBoolean(5);
+                Guid? activeVersion = reader.IsDBNull(6) ? null : reader.GetGuid(6);
+                var authority = reader.GetString(7);
+                var index = reader.GetString(8);
+                var citations = reader.GetInt32(9);
+                var scopeCitations = reader.GetInt32(10);
+                var version = reader.GetString(11);
                 var isSow = category.Equals("sow", StringComparison.OrdinalIgnoreCase)
                     || category.Equals("statement_of_work", StringComparison.OrdinalIgnoreCase);
                 var blockers = new List<string>();
+                if (!workRegisterDocumentId.HasValue) blockers.Add("No linked Work Register document exists.");
                 if (!isSow) blockers.Add("Document category must be SOW or Statement of Work.");
                 if (!visible) blockers.Add("Engineering visibility is disabled.");
                 if (!processing.Equals("ready", StringComparison.OrdinalIgnoreCase)) blockers.Add($"Private processing is {processing}.");
@@ -1436,7 +1456,7 @@ internal static class ProjectFlowHiveEnterpriseModule
                 if (index is not ("lexical_ready" or "embedding_ready" or "ready")) blockers.Add("The active version is not citation indexed.");
                 if (citations == 0) blockers.Add("No citation-ready chunks are available.");
                 rows.Add(new ProjectFlowHiveSowEvidenceState(
-                    documentId,file,category,processing,visible,activeVersion,authority,index,version,
+                    documentId,workRegisterDocumentId,file,category,processing,visible,activeVersion,authority,index,version,
                     citations,scopeCitations,blockers.Count == 0,blockers));
             }
         }
@@ -1762,6 +1782,7 @@ internal sealed record ProjectFlowHiveEnterpriseAccess(
 
 internal sealed record ProjectFlowHiveSowEvidenceState(
     Guid DocumentId,
+    Guid? WorkRegisterDocumentId,
     string OriginalFileName,
     string DocumentCategory,
     string ProcessingStatus,

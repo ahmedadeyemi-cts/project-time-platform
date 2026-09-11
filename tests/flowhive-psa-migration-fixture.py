@@ -19,10 +19,10 @@ def digest_read_tests():
         '104_flowhive_bounded_ai_execution.sql',
         '105_flowhive_reviewed_regeneration.sql',
         '106_module025_sow_sell_register.sql']
-    expected_literal = "expected=[" + ",".join(repr(item) for item in expected_files) + "]"
+    expected_literal = "legacy=[" + ",".join(repr(item) for item in expected_files) + "]"
     assert expected_literal in text, 'Migration builder must bind the reviewed 103-106 approval set.'
-    assert 'MAIN_RELEASE_MIGRATION_SCOPE=flowhive-enterprise-psa-103-106-test' in text
-    assert '"106_module025_sow_sell_register"' in text
+    assert 'MIGRATION_SCOPE="flowhive-enterprise-psa-103-${MIGRATION_SUFFIX}-test"' in text
+    assert '106_module025_sow_sell_register.sql' in text
     function=text[text.index('resolve_migration_digest() ('):text.index('\nCONTROL_ROOT=')]
     assert text.count('az acr build ')==1
     assert 'DIGEST="$(resolve_migration_digest "$ACR" "$IMAGE")"' in text

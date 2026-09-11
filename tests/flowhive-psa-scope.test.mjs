@@ -24,6 +24,7 @@ test('only specified FlowHive migrations are accepted', () => {
   const name='database/migrations/104_flowhive_bounded_ai_execution.sql';verifyPaths([name], [name]);
   for (const name of ['database/migrations/105_flowhive_reviewed_regeneration.sql', 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql']) verifyPaths([name], [name]);
   assert.throws(() => verifyPaths(['database/migrations/106_unreviewed.sql'], ['database/migrations/106_unreviewed.sql']));
+  verifyPaths(['database/migrations/107_module_066_operation_authorization_and_raid_actor.sql'], ['database/migrations/107_module_066_operation_authorization_and_raid_actor.sql']);
   assert.throws(() => verifyPaths(['database/migrations/999_unreviewed.sql'], ['database/migrations/999_unreviewed.sql']));
 });
 test('the combined successor may use the separately reviewed Module 025 manifest only', () => {
