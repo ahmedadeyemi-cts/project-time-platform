@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'open', merged: false, draft: true,
@@ -58,6 +59,82 @@ const staleRun = () => ({
   historicalSources: historicalFence, environmentProtection: nativeEnvironmentProtection,
   authorization: staleAuthorization(), authorizationNow: new Date('2026-09-09T22:05:00Z')
 });
+const protectedCutoverAuthorization = () => {
+  const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
+  authorization.enabled = true;
+  authorization.activationDecision = 'approved';
+  authorization.workflow.allowControllerActivation = true;
+  authorization.approval = {
+    status: 'approved', approvedBy: 'ahmedadeyemi-cts',
+    approvedAt: '2026-09-10T19:00:00Z', expiresAt: '2026-09-10T19:15:00Z'
+  };
+  return authorization;
+};
+function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount = 0,
+  protection = nativeEnvironmentProtection, protectionAfterFirstRead = null,
+  state = 'active', dispatchFailure = false, disableFailure = false, afterReservation = null } = {}) {
+  const control = 'e'.repeat(40);
+  const calls = [];
+  const comments = [];
+  let nextCommentId = 7000;
+  let environmentReadCount = 0;
+  let workflowState = state;
+  let currentJobCount = jobCount;
+  let currentApprovalHistory = approvalHistory;
+  const runs = protectedCutoverRunAttestations.map(expected => ({
+    id: expected.runId, workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml',
+    event: expected.event, head_branch: expected.headBranch, head_sha: expected.controllerSha,
+    run_attempt: expected.runAttempt, status: expected.status, conclusion: expected.conclusion,
+    created_at: expected.createdAt, updated_at: expected.updatedAt
+  }));
+  if (fourthRun) runs.push({ id: 99999999999, status: 'queued' });
+  const request = async (url, method = 'GET', body) => {
+    calls.push({ url, method });
+    if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state: workflowState };
+    if (url === 'actions/workflows/315562561/enable' && method === 'PUT') { workflowState = 'active'; return null; }
+    if (url === 'actions/workflows/315562561/disable' && method === 'PUT') {
+      if (disableFailure) throw new Error('restoration failed');
+      workflowState = 'disabled_manually'; return null;
+    }
+    if (url === 'git/ref/heads/main') return { object: { sha: control } };
+    if (url === 'environments/test') {
+      environmentReadCount += 1;
+      return environmentReadCount === 1 || !protectionAfterFirstRead ? protection : protectionAfterFirstRead;
+    }
+    if (url.startsWith('issues/887/comments?')) return comments;
+    if (url === 'issues/887/comments' && method === 'POST') {
+      const comment = { id: nextCommentId++, body: body?.body || '', user: { login: 'ahmedadeyemi-cts', id: 244059331 } };
+      comments.push(comment);
+      afterReservation?.({ runs, setJobCount: value => { currentJobCount = value; },
+        setApprovalHistory: value => { currentApprovalHistory = value; }, addRun: run => runs.push(run) });
+      return comment;
+    }
+    if (url.includes('/dispatches') && dispatchFailure) throw new Error('dispatch response timeout');
+    if (url.includes('/dispatches')) return {
+      workflow_run_id: 9001,
+      run_url: 'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/9001',
+      html_url: 'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/9001'
+    };
+    if (url === 'actions/runs/9001') return {
+      id: 9001, workflow_id: 315562561, event: 'workflow_dispatch', head_branch: 'main', head_sha: control,
+      created_at: '2026-09-10T20:00:00Z', status: 'queued', conclusion: null,
+      display_title: 'Protected Test', run_attempt: 1
+    };
+    const runMatch = /^actions\/runs\/(\d+)$/.exec(url);
+    if (runMatch) {
+      const run = runs.find(item => item.id === Number(runMatch[1]));
+      if (run) return run;
+    }
+    if (url.includes('/runs?status=')) return { workflow_runs: runs };
+    if (url.includes('/attempts/') && url.includes('/jobs?')) return { total_count: currentJobCount, jobs: currentJobCount ? [{ id: 1 }] : [] };
+    if (url.includes('/pending_deployments')) return [];
+    if (url.includes('/approvals')) return currentApprovalHistory;
+    if (url.includes('/concurrency_groups')) return { total_count: 0, concurrency_groups: [] };
+    if (url.includes('/artifacts?')) return { total_count: 0, artifacts: [] };
+    throw new Error(`UNEXPECTED_PROTECTED_CUTOVER_REQUEST ${method} ${url}`);
+  };
+  return { request, calls, control, runs, comments };
+}
 test('approved current draft candidate is admissible without merging', () => {
   verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr); verifyRuns(approval, runs);
 });
@@ -88,8 +165,12 @@ test('source drift allows only reviewed control paths; application drift is reje
   verifySourceDrift(files,files);assert.throws(()=>verifySourceDrift([...files,'src/backend/ProjectTime.Api/Program.cs'],files));
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
-  const reviewedMain = 'bf401fa1d017eae0ebf10c9ed79720829ce8de60';
-  const candidate = 'c6efce9a4918ac6674fa292586348a5aa8be2b91';
+  const reviewedMain = approval.sourceBase;
+  const candidate = approval.sha;
+  assert.match(reviewedMain, /^[0-9a-f]{40}$/);
+  assert.match(candidate, /^[0-9a-f]{40}$/);
+  assert.equal(approval.pullRequest, 887);
+  assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   verifySourceDrift(successorApprovalFiles, files);
@@ -111,16 +192,16 @@ test('comment cannot select an arbitrary workflow, ref, environment or shell com
 });
 test('dispatch response binds submitted candidate and returned run identity', () => {
   const control='a'.repeat(40),created='2026-09-06T00:00:00Z';
-  const request=buildDispatchRequest(approval.sha);
+  const request=buildDispatchRequest(approval.sha,'a'.repeat(40));
   assert.equal(request.path,'actions/workflows/315562561/dispatches');
-  verifyDispatchRequest(request,approval.sha);
+  verifyDispatchRequest(request,approval.sha,'a'.repeat(40));
   const serialized=buildRequest(request.path,request.method,request.body,'test-token');
   assert.equal(serialized.url,'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/workflows/315562561/dispatches');
   assert.equal(serialized.init.headers['X-GitHub-Api-Version'],githubApiVersion);
   assert.equal(serialized.init.headers['X-GitHub-Api-Version'],'2022-11-28');
-  assert.deepEqual(JSON.parse(serialized.init.body),{ref:'main',return_run_details:true,inputs:{release_sha:approval.sha,release_branch:candidateBranch,recover_private_runtime:false}});
+  assert.deepEqual(JSON.parse(serialized.init.body),{ref:'main',return_run_details:true,inputs:{release_sha:approval.sha,release_branch:candidateBranch,recover_private_runtime:false,admission_controller_sha:'a'.repeat(40)}});
   assert.equal(new URL(serialized.url).search,'');
-  assert.throws(()=>verifyDispatchRequest({...request,body:{...request.body,return_run_details:false}},approval.sha));
+  assert.throws(()=>verifyDispatchRequest({...request,body:{...request.body,return_run_details:false}},approval.sha,'a'.repeat(40)));
   const receipt={workflow_run_id:7,run_url:'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/7',html_url:'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/7'};
   assert.equal(verifyDispatchReceipt(receipt),7);
   const r={id:7,workflow_id:315562561,event:'workflow_dispatch',head_branch:'main',head_sha:control,created_at:created,display_title:'Deploy System-wide Enterprise Reliability and Utilization to Protected Test'};
@@ -138,12 +219,453 @@ test('returned run ID works with delayed or generic server titles',async()=>{
   assert.equal(result.runId,9);assert.equal(calls.filter(x=>x.method==='POST').length,1);
   assert.equal(calls[0].body.inputs.release_sha,approval.sha);
 });
+test('receipt is persisted before a follow-up read and no second dispatch is possible', async () => {
+  const control='d'.repeat(40),created='2026-09-06T00:00:00Z',events=[];
+  const receipt={workflow_run_id:11,run_url:'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/11',html_url:'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/11'};
+  await assert.rejects(dispatchOnce(async(path,method,body,stage)=>{
+    events.push({path,method,stage});
+    if(path.includes('/dispatches')) return receipt;
+    throw new GithubApiError({stage:'dispatch-run-read',method:'GET',path:'actions/runs/11',status:403,requestId:'E-READ'});
+  },approval.sha,control,created,{
+    beforeDispatch:dispatch=>events.push({stage:'before-dispatch',fingerprint:dispatch.body.inputs.release_sha}),
+    receipt:({runId})=>events.push({stage:'receipt-accepted',runId}),
+    failure:(error,stage)=>events.push({stage,errorStage:error.stage,failureStage:stage})
+  }),/GITHUB_API_REQUEST_FAILED/);
+  assert.deepEqual(events.map(event=>event.stage),['before-dispatch','dispatch','receipt-accepted','dispatch-run-read','dispatch-run-read']);
+  assert.equal(events.filter(event=>event.method==='POST').length,1);
+});
+test('dispatch evidence is sanitized and binds the reviewed request fingerprint', () => {
+  const directory=fs.mkdtempSync('/tmp/flowhive-dispatch-evidence-');
+  try {
+    const dispatch=buildDispatchRequest(approval.sha,'e'.repeat(40));
+    const record=createDispatchEvidence({candidateSha:approval.sha,controlSha:'e'.repeat(40),dispatch,startedAt:'2026-09-10T00:00:00.000Z'});
+    const file=persistDispatchEvidence(record,`${directory}/attempt.json`);
+    const saved=JSON.parse(fs.readFileSync(file,'utf8'));
+    assert.equal(saved.dispatchWriteCount,0);
+    assert.match(saved.dispatch.requestFingerprint,/^[0-9a-f]{64}$/);
+    assert.equal(saved.dispatch.body,undefined);
+    assert.equal(JSON.stringify(saved).includes('test-token'),false);
+  } finally { fs.rmSync(directory,{recursive:true,force:true}); }
+});
+test('API failures retain stage, method, path, status and request ID without retrying', async () => {
+  const previousFetch=globalThis.fetch; let calls=0;
+  globalThis.fetch=async()=>{ calls+=1; return {ok:false,status:403,headers:new Headers({'x-github-request-id':'E-COMMENT'})}; };
+  try {
+    await assert.rejects(request('issues/887/comments','POST',{body:'sanitized'},'reporting-comment'),error=>
+      error instanceof GithubApiError && error.stage==='reporting-comment' && error.method==='POST' &&
+      error.path==='issues/887/comments' && error.status===403 && error.requestId==='E-COMMENT');
+  } finally { globalThis.fetch=previousFetch; }
+  assert.equal(calls,1);
+});
+test('reporting failure preserves the accepted dispatch receipt and is not a deployment failure', () => {
+  const receipt = { id: 34495606530, webUrl: 'https://github.com/example/actions/runs/34495606530' };
+  const evidence = { stage: 'identity-verified', phase: 'accepted-awaiting-scheduling', run: receipt, reportingErrors: [] };
+  const error = new GithubApiError({ stage: 'reporting-comment', method: 'POST', path: 'issues/887/comments', status: 403, requestId: 'E-COMMENT' });
+  const updated = recordReportingFailure(evidence, error, 'reporting-comment');
+  assert.deepEqual(updated.run, receipt);
+  assert.equal(updated.phase, 'accepted-awaiting-scheduling');
+  assert.equal(updated.stage, 'identity-verified');
+  assert.equal(updated.reporting.status, 'failed');
+  assert.equal(updated.reporting.stage, 'reporting-comment');
+  assert.deepEqual(updated.reportingErrors, [{ stage: 'reporting-comment', method: 'POST', path: 'issues/887/comments', status: 403, requestId: 'E-COMMENT', type: 'GithubApiError', at: updated.reportingErrors[0].at }]);
+});
+test('the admission caller records its actual run ID and rerun attempt in persisted evidence', async () => {
+  const directory = fs.mkdtempSync('/tmp/flowhive-admission-attempt-');
+  const control = 'f'.repeat(40), created = '2026-09-10T00:00:00Z';
+  const receipt = { workflow_run_id: 101, run_url: 'https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/actions/runs/101', html_url: 'https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/101' };
+  const run = { id: 101, workflow_id: 315562561, event: 'workflow_dispatch', head_branch: 'main', head_sha: control, created_at: created, status: 'queued', conclusion: null, display_title: 'Protected Test' };
+  try {
+    const result = await dispatchWithEvidence({
+      api: async path => path.endsWith('/dispatches') ? receipt : run,
+      candidateSha: approval.sha, controlSha: control, createdAfter: created,
+      admissionRunId: 9001, admissionRunAttempt: 2, evidenceFile: `${directory}/attempt.json`
+    });
+    const saved = JSON.parse(fs.readFileSync(`${directory}/attempt.json`, 'utf8'));
+    assert.equal(result.dispatched.runId, 101);
+    assert.equal(saved.admissionRunId, 9001);
+    assert.equal(saved.admissionRunAttempt, 2);
+    assert.equal(saved.attempt, 2);
+    assert.equal(saved.run.id, 101);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  assert.deepEqual(readAdmissionExecutionContext({ GITHUB_RUN_ID: '9001', GITHUB_RUN_ATTEMPT: '2' }), { admissionRunId: 9001, admissionRunAttempt: 2 });
+  assert.throws(() => readAdmissionExecutionContext({ GITHUB_RUN_ID: '9001', GITHUB_RUN_ATTEMPT: '0' }), /FLOWHIVE_PSA_ADMISSION_RUN_ATTEMPT_REQUIRED/);
+});
 test('malformed or uncertain dispatch responses fail without a duplicate POST',async()=>{
   const control='c'.repeat(40),created='2026-09-06T00:00:00Z';
   let postCount=0;
   await assert.rejects(dispatchOnce(async()=>{postCount+=1;throw new Error('dispatch response timeout');},approval.sha,control,created),/timeout/);
   assert.equal(postCount,1);
   await assert.rejects(dispatchOnce(async(path)=>path.includes('/dispatches')?{}:null,approval.sha,control,created),/workflow run ID/);
+});
+test('maintained admission rejects every unresolved request before dispatch', async () => {
+  const calls=[];
+  const api=async url=>{
+    calls.push(url);
+    if(url.includes('/runs?status=queued')) return {workflow_runs:[{id:34495606530,status:'queued'}]};
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  };
+  await assert.rejects(requireNoUnresolvedRuns(api),/PSA_UNRESOLVED_DEPLOYMENT_RUN id=34495606530 status=queued/);
+  assert.equal(calls.length,1);
+});
+test('maintained admission requires an active controller and no unresolved runs', async () => {
+  const active=[];
+  const api=async(url,method)=>{
+    active.push({url,method});
+    if(url==='actions/workflows/315562561') return {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active'};
+    if(url.includes('/runs?')) return {workflow_runs:[]};
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  };
+  assert.deepEqual(await inspectActiveController(api),{id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active',executableActiveRuns:0});
+  await assert.rejects(inspectActiveController(async url=>({id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'disabled_manually'})),/PSA_CONTROLLER_MUST_REMAIN_ACTIVE/);
+});
+test('protected cutover assesses all three queued requests and permits exactly one dispatch', async () => {
+  const fixture = protectedCutoverApi();
+  const authorization = protectedCutoverAuthorization();
+  assert.equal(verifyProtectedCutoverAuthorization(authorization, new Date('2026-09-10T19:05:00Z')).approved, true);
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-');
+  try {
+    const result = await runAdmission({
+      api: fixture.request, candidateSha: approval.sha, controlSha: fixture.control,
+      createdAfter: '2026-09-10T19:05:00Z', admissionRunId: 9002, admissionRunAttempt: 1,
+      evidenceFile: `${directory}/attempt.json`, authorization,
+      authorizationNow: new Date('2026-09-10T19:05:00Z'),
+      submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z')
+    });
+    assert.equal(result.dispatched.runId, 9001);
+    assert.deepEqual(result.cutover.protectedAssessment.runIds, protectedCutoverRunIds);
+    assert.equal(result.preSubmissionValidation.authorization.expiresAt, '2026-09-10T19:15:00.000Z');
+    const saved = JSON.parse(fs.readFileSync(`${directory}/attempt.json`, 'utf8'));
+    assert.deepEqual(saved.cutoverAssessment.runIds, protectedCutoverRunIds);
+    assert.equal(saved.singleUseClaim.commentId, 7000);
+    assert.equal(saved.preSubmissionValidation.controllerSha, fixture.control);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  assert.equal(fixture.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 1);
+});
+test('reviewed activation transitions disabled to active once and closes without retrying', async () => {
+  const fixture = protectedCutoverApi({ state: 'disabled_manually' });
+  const authorization = protectedCutoverAuthorization();
+  const transition = await activateProtectedControllerOnce(fixture.request, {
+    candidateSha: approval.sha, executingControllerSha: fixture.control, authorization,
+    authorizationNow: new Date('2026-09-10T19:05:00Z')
+  });
+  assert.equal(transition.preAssessment.workflow.state, 'disabled_manually');
+  assert.equal(transition.active.state, 'active');
+  const closure = await closeProtectedControllerOnce(fixture.request);
+  assert.equal(closure.state, 'disabled_manually');
+  assert.deepEqual(fixture.calls.filter(call => call.method === 'PUT').map(call => call.url), [
+    'actions/workflows/315562561/enable', 'actions/workflows/315562561/disable'
+  ]);
+});
+test('single-use claim blocks repeated and uncertain/restarted admissions without a second dispatch', async () => {
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-single-use-');
+  try {
+    const fixture = protectedCutoverApi();
+    const authorization = protectedCutoverAuthorization();
+    const first = await runAdmission({ api: fixture.request, candidateSha: approval.sha, controlSha: fixture.control,
+      admissionRunId: 9003, admissionRunAttempt: 1, evidenceFile: `${directory}/first.json`, authorization,
+      authorizationNow: new Date('2026-09-10T19:05:00Z'), submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z'),
+      createdAfter: '2026-09-10T19:05:00Z' });
+    assert.equal(first.dispatched.runId, 9001);
+    await assert.rejects(runAdmission({ api: fixture.request, candidateSha: approval.sha, controlSha: fixture.control,
+      admissionRunId: 9004, admissionRunAttempt: 1, evidenceFile: `${directory}/repeat.json`, authorization,
+      authorizationNow: new Date('2026-09-10T19:07:00Z'), createdAfter: '2026-09-10T19:07:00Z' }),
+    /PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED/);
+    assert.equal(fixture.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 1);
+
+    const uncertain = protectedCutoverApi({ dispatchFailure: true });
+    await assert.rejects(runAdmission({ api: uncertain.request, candidateSha: approval.sha, controlSha: uncertain.control,
+      admissionRunId: 9005, admissionRunAttempt: 1, evidenceFile: `${directory}/uncertain.json`, authorization,
+      authorizationNow: new Date('2026-09-10T19:05:00Z'), submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z'),
+      createdAfter: '2026-09-10T19:05:00Z' }), /dispatch response timeout/);
+    await assert.rejects(runAdmission({ api: uncertain.request, candidateSha: approval.sha, controlSha: uncertain.control,
+      admissionRunId: 9006, admissionRunAttempt: 2, evidenceFile: `${directory}/uncertain-restart.json`, authorization,
+      authorizationNow: new Date('2026-09-10T19:07:00Z'), createdAfter: '2026-09-10T19:07:00Z' }),
+    /PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED/);
+    assert.equal(uncertain.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 1);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+test('submission revalidation rejects expiry and Test-protection drift after initial assessment', async () => {
+  const expired = protectedCutoverApi();
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-revalidation-');
+  try {
+    await assert.rejects(runAdmission({ api: expired.request, candidateSha: approval.sha, controlSha: expired.control,
+      admissionRunId: 9007, admissionRunAttempt: 1, evidenceFile: `${directory}/expired.json`,
+      authorization: protectedCutoverAuthorization(), authorizationNow: new Date('2026-09-10T19:05:00Z'),
+      submissionAuthorizationNow: new Date('2026-09-10T19:16:00Z'), createdAfter: '2026-09-10T19:05:00Z' }),
+    /PROTECTED_CUTOVER_APPROVAL_EXPIRED/);
+    assert.equal(expired.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 0);
+    const driftedProtection = clone(nativeEnvironmentProtection);
+    driftedProtection.can_admins_bypass = true;
+    const drifted = protectedCutoverApi({ protectionAfterFirstRead: driftedProtection });
+    await assert.rejects(runAdmission({ api: drifted.request, candidateSha: approval.sha, controlSha: drifted.control,
+      admissionRunId: 9008, admissionRunAttempt: 1, evidenceFile: `${directory}/drifted.json`,
+      authorization: protectedCutoverAuthorization(), authorizationNow: new Date('2026-09-10T19:05:00Z'),
+      submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z'), createdAfter: '2026-09-10T19:05:00Z' }),
+    /STALE_SUPERSESSION_NATIVE_READBACK_BYPASS/);
+    assert.equal(drifted.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 0);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+test('submission revalidation refreshes jobs, approvals and the complete nonterminal inventory after reservation', async () => {
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-final-observation-');
+  const authorization = protectedCutoverAuthorization();
+  const cases = [
+    { name: 'jobs', mutate: ({ setJobCount }) => setJobCount(1), expected: /PROTECTED_CUTOVER_ATTEMPT_JOBS/ },
+    { name: 'approvals', mutate: ({ setApprovalHistory }) => setApprovalHistory([{ id: 44 }]), expected: /PROTECTED_CUTOVER_APPROVAL_HISTORY/ },
+    { name: 'fourth request', mutate: ({ addRun }) => addRun({ id: 99999999999, status: 'queued' }), expected: /PSA_UNRESOLVED_DEPLOYMENT_RUN/ }
+  ];
+  try {
+    for (const item of cases) {
+      const fixture = protectedCutoverApi({ afterReservation: item.mutate });
+      await assert.rejects(runAdmission({ api: fixture.request, candidateSha: approval.sha, controlSha: fixture.control,
+        admissionRunId: 9010, admissionRunAttempt: 1, evidenceFile: `${directory}/${item.name}.json`, authorization,
+        authorizationNow: new Date('2026-09-10T19:05:00Z'), submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z') }), item.expected);
+      assert.equal(fixture.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 0, item.name);
+    }
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+test('single-use authorization is stable across controller changes and trusts structured reservation authorship', async () => {
+  const fixture = protectedCutoverApi();
+  const reference = protectedCutoverAuthorization().approvalReference;
+  const claim = await claimSingleUse(fixture.request, { candidateSha: approval.sha, controlSha: fixture.control,
+    approvalReference: reference });
+  assert.deepEqual(claim.author, { login: 'ahmedadeyemi-cts', id: 244059331 });
+  await assert.rejects(claimSingleUse(fixture.request, { candidateSha: approval.sha, controlSha: '1'.repeat(40), approvalReference: reference }),
+    /PROTECTED_CUTOVER_CLAIM_CONTROLLER_CHANGED/);
+
+  const untrusted = protectedCutoverApi();
+  untrusted.comments.push({ id: 7001,
+    body: `FLOWHIVE_PSA_ADMISSION_CLAIM_V1 candidate=${approval.sha} approval=${reference} controller=${untrusted.control} status=reserved observedAt=2026-09-10T19:05:00Z`,
+    user: { login: 'untrusted-user', id: 123 } });
+  await assert.rejects(claimSingleUse(untrusted.request, { candidateSha: approval.sha, controlSha: untrusted.control, approvalReference: reference }),
+    /PROTECTED_CUTOVER_CLAIM_UNTRUSTED/);
+
+  const malformed = protectedCutoverApi();
+  malformed.comments.push({ id: 7002, body: 'FLOWHIVE_PSA_ADMISSION_CLAIM_V1 candidate=malformed', user: { login: 'ahmedadeyemi-cts', id: 244059331 } });
+  await assert.rejects(claimSingleUse(malformed.request, { candidateSha: approval.sha, controlSha: malformed.control, approvalReference: reference }),
+    /PROTECTED_CUTOVER_CLAIM_MALFORMED/);
+
+  const uncertainComments = [];
+  let reservationWrites = 0;
+  const uncertainReservationApi = async (url, method = 'GET', body) => {
+    if (url.startsWith('issues/887/comments?')) return uncertainComments;
+    if (url === 'issues/887/comments' && method === 'POST') {
+      reservationWrites += 1;
+      uncertainComments.push({ id: 7003, body: body.body, user: { login: 'ahmedadeyemi-cts', id: 244059331 } });
+      throw new Error('reservation response timeout');
+    }
+    throw new Error(`UNEXPECTED_RESERVATION_REQUEST ${method} ${url}`);
+  };
+  await assert.rejects(claimSingleUse(uncertainReservationApi, { candidateSha: approval.sha, controlSha: fixture.control, approvalReference: reference }),
+    /PROTECTED_CUTOVER_SINGLE_USE_CLAIM_UNCERTAIN/);
+  await assert.rejects(claimSingleUse(uncertainReservationApi, { candidateSha: approval.sha, controlSha: fixture.control, approvalReference: reference }),
+    /PROTECTED_CUTOVER_SINGLE_USE_ALREADY_CLAIMED/);
+  assert.equal(reservationWrites, 1);
+});
+test('workflow-token reservations bind the bot comment to the owner-triggered admission run', async () => {
+  const comments = [];
+  const control = 'e'.repeat(40);
+  const api = async (url, method = 'GET', body) => {
+    if (url.startsWith('issues/887/comments?')) return comments;
+    if (url === 'issues/887/comments' && method === 'POST') {
+      const comment = { id: 7010, body: body.body,
+        user: { login: 'github-actions[bot]', id: 41898282 } };
+      comments.push(comment);
+      return comment;
+    }
+    if (url === 'actions/runs/9010') return {
+      id: 9010, event: 'issue_comment', head_branch: 'main', head_sha: control,
+      run_attempt: 1, actor: { login: 'ahmedadeyemi-cts', id: 244059331 }
+    };
+    throw new Error(`UNEXPECTED_WORKFLOW_CLAIM_REQUEST ${method} ${url}`);
+  };
+  const claim = await claimSingleUse(api, { candidateSha: approval.sha, controlSha: control,
+    approvalReference: protectedCutoverAuthorization().approvalReference,
+    admissionRunId: 9010, admissionRunAttempt: 1 });
+  assert.deepEqual(claim.author, { login: 'github-actions[bot]', id: 41898282 });
+  assert.deepEqual(claim.execution, { id: 9010, attempt: 1, event: 'issue_comment', headSha: control, actor: 'ahmedadeyemi-cts' });
+  const reused = await claimSingleUse(api, { candidateSha: approval.sha, controlSha: control,
+    approvalReference: protectedCutoverAuthorization().approvalReference,
+    admissionRunId: 9011, admissionRunAttempt: 1 });
+  assert.equal(reused.reused, true);
+  assert.equal(reused.commentId, 7010);
+});
+test('reviewed recovery consumes the stale bot reservation before creating one current-controller claim', async () => {
+  const control = 'e'.repeat(40);
+  const oldControl = 'c'.repeat(40);
+  const reference = protectedCutoverAuthorization().approvalReference;
+  const oldBody = `FLOWHIVE_PSA_ADMISSION_CLAIM_V1 candidate=${approval.sha} approval=${reference} controller=${oldControl} status=reserved observedAt=2026-09-10T22:11:16.764Z`;
+  const comments = [{ id: 7020, body: oldBody, user: { login: 'github-actions[bot]', id: 41898282 } }];
+  const recovery = { commentId: 7020, admissionRunId: 9020, admissionRunAttempt: 1,
+    candidateSha: approval.sha, approvalReference: reference, controllerSha: oldControl,
+    observedAt: '2026-09-10T22:11:16.764Z', status: 'pre-dispatch-failed',
+    dispatchSubmitted: false, controllerMutation: false };
+  const api = async (url, method = 'GET', body) => {
+    if (url.startsWith('issues/887/comments?')) return comments;
+    if (url === 'issues/comments/7020') return comments[0];
+    if (url === 'issues/887/comments' && method === 'POST') {
+      const comment = { id: 7021, body: body.body, user: { login: 'github-actions[bot]', id: 41898282 } };
+      comments.push(comment); return comment;
+    }
+    if (url === 'actions/runs/9020') return { id: 9020, event: 'issue_comment', head_branch: 'main', head_sha: oldControl,
+      run_attempt: 1, actor: { login: 'ahmedadeyemi-cts' }, status: 'completed', conclusion: 'failure' };
+    if (url === 'actions/runs/9021') return { id: 9021, event: 'issue_comment', head_branch: 'main', head_sha: control,
+      run_attempt: 1, actor: { login: 'ahmedadeyemi-cts' } };
+    throw new Error(`UNEXPECTED_RECOVERY_REQUEST ${method} ${url}`);
+  };
+  const claim = await claimSingleUse(api, { candidateSha: approval.sha, controlSha: control,
+    approvalReference: reference, admissionRunId: 9021, admissionRunAttempt: 1, reservationRecovery: recovery });
+  assert.deepEqual(claim.supersededReservations, [{ commentId: 7020, admissionRunId: 9020,
+    controllerSha: oldControl, observedAt: recovery.observedAt, disposition: 'pre-dispatch-failed' }]);
+  assert.equal(claim.commentId, 7021);
+  assert.equal(comments.length, 2);
+});
+test('protected lifecycle keeps the active operating state after one approved bootstrap', async () => {
+  const fixture = protectedCutoverApi({ state: 'disabled_manually' });
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-lifecycle-success-');
+  try {
+    const result = await runProtectedAdmissionLifecycle({
+      api: fixture.request, activationRequired: true,
+      activationOptions: { candidateSha: approval.sha, executingControllerSha: fixture.control,
+        authorization: protectedCutoverAuthorization(), authorizationNow: new Date('2026-09-10T19:05:00Z') },
+      admissionOptions: { candidateSha: approval.sha, controlSha: fixture.control, admissionRunId: 9011,
+        admissionRunAttempt: 1, evidenceFile: `${directory}/success.json`, authorization: protectedCutoverAuthorization(),
+        authorizationNow: new Date('2026-09-10T19:05:00Z'), submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z'),
+        createdAfter: '2026-09-10T19:05:00Z' }
+    });
+    assert.equal(result.lifecycle.policy, 'active-after-approved-bootstrap');
+    assert.equal(result.lifecycle.finalState.state, 'active');
+    assert.equal(result.lifecycle.restored, false);
+    assert.deepEqual(fixture.calls.filter(call => call.method === 'PUT').map(call => call.url), ['actions/workflows/315562561/enable']);
+    assert.equal(JSON.parse(fs.readFileSync(`${directory}/success.json`, 'utf8')).lifecycle.finalState.state, 'active');
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+test('protected lifecycle restores only pre-dispatch failures and preserves cleanup failures', async () => {
+  const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-lifecycle-failure-');
+  const base = { candidateSha: approval.sha, controlSha: 'e'.repeat(40), admissionRunId: 9012,
+    admissionRunAttempt: 1, authorization: protectedCutoverAuthorization(), authorizationNow: new Date('2026-09-10T19:05:00Z'),
+    submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z') };
+  try {
+    const beforeWrite = protectedCutoverApi({ state: 'disabled_manually', afterReservation: ({ setJobCount }) => setJobCount(1) });
+    await assert.rejects(runProtectedAdmissionLifecycle({ api: beforeWrite.request, activationRequired: true,
+      activationOptions: { candidateSha: approval.sha, executingControllerSha: beforeWrite.control,
+        authorization: protectedCutoverAuthorization(), authorizationNow: base.authorizationNow },
+      admissionOptions: { ...base, controlSha: beforeWrite.control, evidenceFile: `${directory}/before-write.json` } }), error => {
+      assert.equal(error.lifecycle.policy, 'restore-disabled-before-dispatch');
+      assert.equal(error.lifecycle.finalState.state, 'disabled_manually');
+      return true;
+    });
+    assert.equal(beforeWrite.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 0);
+
+    const cleanupFailure = protectedCutoverApi({ state: 'disabled_manually', disableFailure: true,
+      afterReservation: ({ setJobCount }) => setJobCount(1) });
+    await assert.rejects(runProtectedAdmissionLifecycle({ api: cleanupFailure.request, activationRequired: true,
+      activationOptions: { candidateSha: approval.sha, executingControllerSha: cleanupFailure.control,
+        authorization: protectedCutoverAuthorization(), authorizationNow: base.authorizationNow },
+      admissionOptions: { ...base, controlSha: cleanupFailure.control, evidenceFile: `${directory}/cleanup-failure.json` } }), error => {
+      assert.ok(error instanceof AggregateError);
+      assert.match(error.primaryError.message, /PROTECTED_CUTOVER_ATTEMPT_JOBS/);
+      assert.match(error.cleanupError.message, /restoration failed/);
+      assert.equal(error.lifecycle.finalState.state, 'active');
+      return true;
+    });
+
+    const uncertain = protectedCutoverApi({ state: 'disabled_manually', dispatchFailure: true });
+    await assert.rejects(runProtectedAdmissionLifecycle({ api: uncertain.request, activationRequired: true,
+      activationOptions: { candidateSha: approval.sha, executingControllerSha: uncertain.control,
+        authorization: protectedCutoverAuthorization(), authorizationNow: base.authorizationNow },
+      admissionOptions: { ...base, controlSha: uncertain.control, evidenceFile: `${directory}/uncertain.json` } }), error => {
+      assert.equal(error.lifecycle.policy, 'retain-active-after-uncertain-dispatch');
+      assert.equal(error.lifecycle.finalState.state, 'active');
+      return true;
+    });
+    assert.deepEqual(uncertain.calls.filter(call => call.method === 'PUT').map(call => call.url), ['actions/workflows/315562561/enable']);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+test('protected cutover remains fail-closed for inactive authorization, fourth runs, execution, approval, or weakened Test protection', async () => {
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.workflow.allowControllerActivation = false;
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
+  const inactiveFixture = protectedCutoverApi();
+  await assert.rejects(verifyReleaseCutover(inactiveFixture.request, {
+    candidateSha: approval.sha, executingControllerSha: inactiveFixture.control, authorization: inactive
+  }), /PSA_CUTOVER_RUN_NOT_TERMINAL/);
+  for (const options of [
+    { fourthRun: true },
+    { approvalHistory: [{ id: 1 }] },
+    { jobCount: 1 },
+    { protection: { ...nativeEnvironmentProtection, can_admins_bypass: true } }
+  ]) {
+    const fixture = protectedCutoverApi(options);
+    await assert.rejects(verifyReleaseCutover(fixture.request, {
+      candidateSha: approval.sha, executingControllerSha: fixture.control,
+      authorization: protectedCutoverAuthorization(), authorizationNow: new Date('2026-09-10T19:05:00Z')
+    }));
+    assert.equal(fixture.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 0);
+  }
+});
+test('protected source assessment binds actual blobs and rejects disconnected workflow content', () => {
+  const expected = protectedCutoverRunAttestations[0];
+  const source = execFileSync('git', ['show', `${expected.controllerSha}:.github/workflows/projectpulse-deploy-test.yml`], { encoding: 'utf8' });
+  assert.equal(verifyProtectedHistoricalWorkflowSource(source, expected.historicalBlobs.deploymentWorkflow, expected.runId).allMutationPathsBehindTest, true);
+  assert.throws(() => verifyProtectedHistoricalWorkflowSource(source.replace('environment: test', 'environment: production'), expected.historicalBlobs.deploymentWorkflow, expected.runId));
+  assert.throws(() => verifyProtectedHistoricalWorkflowSource(`${source}\njobs:\n  deploy:\n    environment: test`, expected.historicalBlobs.deploymentWorkflow, expected.runId));
+});
+test('the maintained inspect-only entrypoint validates context and remains GET-only', async () => {
+  const env = { GITHUB_REPOSITORY: repository, GITHUB_REF: 'refs/heads/main',
+    GITHUB_EVENT_NAME: 'workflow_dispatch', GH_TOKEN: 'offline-fixture', GITHUB_SHA: 'e'.repeat(40) };
+  const fixture = protectedCutoverApi();
+  const result = await inspectReleaseCutover(fixture.request, {
+    env, authorization: protectedCutoverAuthorization(), authorizationNow: new Date('2026-09-10T19:05:00Z')
+  });
+  assert.equal(result.operation, 'inspect-only');
+  assert.equal(result.context.candidateSha, approval.sha);
+  assert.equal(result.context.controllerSha, fixture.control);
+  assert.ok(fixture.calls.every(call => call.method === 'GET'));
+  assert.equal(fixture.calls.some(call => call.url.includes('/dispatches')), false);
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.workflow.allowControllerActivation = false;
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
+  await assert.rejects(inspectReleaseCutover(protectedCutoverApi().request, {
+    env, authorization: inactive, authorizationNow: new Date('2026-09-10T19:05:00Z')
+  }), /PSA_CUTOVER_RUN_NOT_TERMINAL/);
+  const expired = protectedCutoverAuthorization();
+  await assert.rejects(inspectReleaseCutover(protectedCutoverApi().request, {
+    env, authorization: expired, authorizationNow: new Date('2026-09-10T19:16:00Z')
+  }), /PROTECTED_CUTOVER_APPROVAL_EXPIRED/);
+  await assert.rejects(inspectReleaseCutover(protectedCutoverApi().request, {
+    env: { ...env, GITHUB_SHA: '' }, authorization: protectedCutoverAuthorization()
+  }), /PROTECTED_CUTOVER_INSPECT_CONTROLLER/);
+});
+test('release cutover requires terminal server state for all three requests and an active controller', async () => {
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.workflow.allowControllerActivation = false;
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
+  const calls = [];
+  const api = async (url) => {
+    calls.push(url);
+    if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state: 'active' };
+    const runMatch = /actions\/runs\/(\d+)$/.exec(url);
+    if (runMatch) return { id: Number(runMatch[1]), workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', event: 'workflow_dispatch', status: 'completed', conclusion: 'cancelled', head_sha: 'a'.repeat(40), run_attempt: 1 };
+    if (url.includes('/jobs?')) return { jobs: [] };
+    if (url.includes('/pending_deployments')) return [];
+    if (url.includes('/runs?')) return { workflow_runs: [] };
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  };
+  const result = await verifyReleaseCutover(api, { authorization: inactive, candidateSha: approval.sha });
+  assert.equal(result.requests.length, 3);
+  assert.deepEqual(result.requests.map(item => item.id), [34495606530, 34377182662, 33654881418]);
+  assert.equal(calls.filter(url => /actions\/runs\/\d+$/.test(url)).length, 3);
+  await assert.rejects(verifyReleaseCutover(async url => {
+    if (url === 'actions/workflows/315562561') return { id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', state: 'active' };
+    if (url.endsWith('/34495606530')) return { id: 34495606530, workflow_id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml', event: 'workflow_dispatch', status: 'queued' };
+    throw new Error(`UNEXPECTED_REQUEST ${url}`);
+  }, { authorization: inactive, candidateSha: approval.sha }), /PSA_CUTOVER_RUN_NOT_TERMINAL id=34495606530 status=queued/);
 });
 test('environment job remains serialized and cannot publish source or target production', () => {
   const controller=fs.readFileSync(new URL('../.github/workflows/projectpulse-deploy-test.yml',import.meta.url),'utf8');
@@ -153,12 +675,37 @@ test('environment job remains serialized and cannot publish source or target pro
   assert.throws(()=>verifyController(controller.replace('contents: read','contents: write')));
 });
 
-test('stale supersession is inactive without the separate owner approval gate', () => {
-  const inactive = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'));
+test('temporary stale supersession activation is bounded and native-gated', () => {
+  const configured = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'));
+  const renewal = process.env.GITHUB_HEAD_REF === staleSupersessionRenewalBranch;
+  assert.equal(configured.enabled, renewal);
+  assert.equal(configured.activationDecision, renewal ? 'approved' : 'hold');
+  assert.equal(configured.approval.status, renewal ? 'approved' : 'not-approved');
+  assert.equal(staleRunSupersessionApproved(configured, renewal ? new Date(configured.approval.approvedAt) : new Date()), renewal);
+  const inactive = clone(configured);
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
   assert.equal(staleRunSupersessionApproved(inactive), false);
   assert.equal(staleRunSupersessionApproved(staleAuthorization(), new Date('2026-09-09T22:05:00Z')), true);
   assert.throws(() => verifyStaleSupersessionAuthorization({ ...staleAuthorization(), approval: { ...staleAuthorization().approval, expiresAt: '2026-09-09T22:04:59Z' } }, new Date('2026-09-09T22:05:00Z')), /EXPIRED/);
   assert.throws(() => verifyStaleSupersessionAuthorization({ ...staleAuthorization(), approval: { ...staleAuthorization().approval, approvedAt: null } }, new Date('2026-09-09T22:05:00Z')), /APPROVAL_DATES/);
+});
+test('the unresolved current request has an explicit blocking disposition', () => {
+  const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'));
+  assert.deepEqual(authorization.evidence.currentOutstandingRequest, {
+    runId: 34495606530,
+    workflowId: 315562561,
+    workflowPath: '.github/workflows/projectpulse-deploy-test.yml',
+    controllerSha: '9f30078c2c407d4d3576ccefd663a145be50c6c4',
+    status: 'queued',
+    jobs: 0,
+    pendingDeployments: 0,
+    approvalPerformed: false,
+    disposition: 'blocking-hold',
+    dispositionSource: 'release-owner-record',
+    nextAction: 'Use one separately reviewed run-control operation for each of the three queued requests, verify server-confirmed terminal state and no execution, then use the native workflow enable operation once and verify active identity before a new admission.'
+  });
 });
 
 test('request-to-run binding is exact and absent evidence cannot be promoted', () => {
@@ -186,6 +733,7 @@ test('native Test protection is an exact saved barrier and rejects weakened read
   assert.deepEqual(verifyNativeEnvironmentProtection(nativeEnvironmentProtection,
     staleAuthorization().historicalExecutionProtection.nativeEnvironmentBarrier), {
     environment: 'test', protectionRuleId: 65110773, reviewer: 'ahmedadeyemi-cts',
+    reviewers: [{ type: 'User', id: 244059331, login: 'ahmedadeyemi-cts', slug: null }],
     preventSelfReview: false, canAdminsBypass: false
   });
   for (const mutate of [
@@ -200,9 +748,25 @@ test('native Test protection is an exact saved barrier and rejects weakened read
       staleAuthorization().historicalExecutionProtection.nativeEnvironmentBarrier));
   }
 });
+test('protected Test protection rejects an extra or duplicate required reviewer', () => {
+  const expected = protectedCutoverAuthorization().environment;
+  for (const mutate of [
+    value => value.protection_rules[0].reviewers.push({ type: 'User', reviewer: { login: 'other-user', id: 987654321 } }),
+    value => value.protection_rules[0].reviewers.push({ type: 'Team', reviewer: { slug: 'release-team', id: 987654322 } }),
+    value => value.protection_rules[0].reviewers.push(value.protection_rules[0].reviewers[0])
+  ]) {
+    const candidate = clone(nativeEnvironmentProtection); mutate(candidate);
+    assert.throws(() => verifyNativeEnvironmentProtection(candidate, expected));
+  }
+  assert.doesNotThrow(() => verifyNativeEnvironmentProtection(nativeEnvironmentProtection, expected));
+});
 
 test('stale request remains blocking when the owner approval gate is absent', async () => {
   const evidence = staleRun();
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
   const api = async url => {
     if (url.includes('/runs?status=queued')) return { workflow_runs: [{ id: staleRunSupersessionAttestation.runId, status: 'queued' }] };
     if (url.includes('/runs?')) return { workflow_runs: [] };
@@ -214,8 +778,7 @@ test('stale request remains blocking when the owner approval gate is absent', as
     if (url === 'git/ref/heads/main') return { object: { sha: evidence.currentMainSha } };
     throw new Error(`UNEXPECTED_REQUEST ${url}`);
   };
-  await assert.rejects(requireIdleRuns(api, evidence.workflow, false, evidence.currentMainSha,
-    JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8'))), /PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
+  await assert.rejects(requireIdleRuns(api, evidence.workflow, false, evidence.currentMainSha, inactive), /PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
 });
 
 test('historical stale request is fenced by native Test protection without fabricated request evidence', () => {
@@ -294,6 +857,12 @@ test('stale supersession scope is bound to trusted main and its reviewed control
   }));
   assert.throws(() => verifyFiles([...staleSupersessionFiles, 'scripts/release-test/flowhive-psa-admission.mjs'], files,
     'stale-run-supersession', { base: '785eb54a4f280c9ff0e59951c31a30cad4c1a0da', branch: 'fix/flowhive-stale-run-supersession-20260909' }));
+  verifyFiles(staleSupersessionActivationFiles, files, 'stale-run-activation', {
+    base: staleSupersessionActivationBase, branch: staleSupersessionActivationBranch
+  });
+  assert.throws(() => verifyFiles(staleSupersessionActivationFiles, files, 'stale-run-activation', {
+    base: '785eb54a4f280c9ff0e59951c31a30cad4c1a0da', branch: staleSupersessionActivationBranch
+  }));
 });
 test('source-only control CI defers live readiness to the locked admission workflow', () => {
   const sourceCi=fs.readFileSync(new URL('../.github/workflows/flowhive-psa-release-control-ci.yml',import.meta.url),'utf8');
@@ -301,7 +870,8 @@ test('source-only control CI defers live readiness to the locked admission workf
   assert.doesNotMatch(sourceCi,/dispatch-flowhive-psa-test\.mjs\s+--inspect-only/);
   assert.match(admission,/node scripts\/release-test\/dispatch-flowhive-psa-test\.mjs/);
   assert.match(admission,/group: module025-protected-uat-control/);
-  assert.match(admission,/FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_AUTHORIZATION_FILE: \.github\/flowhive-psa-stale-run-supersession-authorization\.json/);
+  assert.doesNotMatch(admission,/FLOWHIVE_PSA_STALE_RUN_SUPERSESSION_AUTHORIZATION_FILE/);
+  assert.match(admission,/FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE: \$\{\{ runner\.temp \}\}\/flowhive-psa-dispatch-attempt\.json/);
 });
 
 function controllerApi({state='active',runs=[],quarantinedJobs=0,metadata={},onDisable}={}) {
@@ -316,9 +886,17 @@ function controllerApi({state='active',runs=[],quarantinedJobs=0,metadata={},onD
   };
   return {request,calls,runs};
 }
+const activeAdmissionOptions = () => ({
+  authorization: staleAuthorization(),
+  authorizationNow: new Date('2026-09-09T22:05:00Z')
+});
 test('the locked admission path blocks the stale request while authorization is inactive', async()=>{
   const a=controllerApi({runs:[{id:staleRunSupersessionAttestation.runId}]});
-  await assert.rejects(sealIdleController(a.request),/PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
+  const inactive = clone(JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-stale-run-supersession-authorization.json', import.meta.url), 'utf8')));
+  inactive.enabled = false;
+  inactive.activationDecision = 'hold';
+  inactive.approval = { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null };
+  await assert.rejects(sealIdleController(a.request, { authorization: inactive }),/PSA_ANOTHER_DEPLOYMENT_IS_ACTIVE/);
   assert.ok(a.calls.every(c=>c.method==='GET'));
 });
 test('sealed admission accepts the real stale run only behind the native barrier', async()=>{
@@ -345,25 +923,25 @@ test('sealed admission accepts the real stale run only behind the native barrier
   ]);
 });
 test('read-only probe reports active idle admissions without changing workflow state',async()=>{
-  const a=controllerApi();const result=await inspectIdleController(a.request);
+  const a=controllerApi();const result=await inspectIdleController(a.request,activeAdmissionOptions());
   assert.equal(result.requiresSealing,true);assert.equal(result.executableActiveRuns,0);
   assert.ok(a.calls.every(c=>c.method==='GET'));
 });
 test('idle active controller is sealed and verified with one disable and no dispatch',async()=>{
-  const a=controllerApi();const result=await sealIdleController(a.request);
+  const a=controllerApi();const result=await sealIdleController(a.request,activeAdmissionOptions());
   assert.equal(result.state,'disabled_manually');assert.equal(result.requiresSealing,false);
   assert.deepEqual(a.calls.filter(c=>c.method!=='GET'),[{url:'actions/workflows/315562561/disable',method:'PUT'}]);
 });
 test('already sealed admissions remain read-only',async()=>{
-  const a=controllerApi({state:'disabled_manually'});await sealIdleController(a.request);
+  const a=controllerApi({state:'disabled_manually'});await sealIdleController(a.request,activeAdmissionOptions());
   assert.ok(a.calls.every(c=>c.method==='GET'));
 });
 test('any executable active run blocks sealing; the quarantined id must still have zero jobs',async()=>{
   for(const options of [{runs:[{id:123}]},{runs:[{id:33654881418}],quarantinedJobs:1}]) {
-    const a=controllerApi(options);await assert.rejects(sealIdleController(a.request),/ANOTHER_DEPLOYMENT/);
+    const a=controllerApi(options);await assert.rejects(sealIdleController(a.request,activeAdmissionOptions()),/ANOTHER_DEPLOYMENT/);
     assert.ok(a.calls.every(c=>c.method==='GET'));
   }
-  const a=controllerApi({runs:[{id:33654881418}]});await sealIdleController(a.request);
+  const a=controllerApi({runs:[{id:33654881418}]});await sealIdleController(a.request,activeAdmissionOptions());
   assert.equal(a.calls.filter(c=>c.method==='PUT').length,1);
 });
 test('wrong workflow identity or unknown state cannot be sealed',async()=>{
@@ -374,12 +952,12 @@ test('wrong workflow identity or unknown state cannot be sealed',async()=>{
 });
 test('a deployment that arrives while sealing blocks subsequent admission',async()=>{
   const runs=[];const a=controllerApi({runs,onDisable:()=>runs.push({id:456})});
-  await assert.rejects(sealIdleController(a.request),/ANOTHER_DEPLOYMENT/);
+  await assert.rejects(sealIdleController(a.request,activeAdmissionOptions()),/ANOTHER_DEPLOYMENT/);
   assert.deepEqual(a.calls.filter(c=>c.method!=='GET').map(c=>c.url),['actions/workflows/315562561/disable']);
 });
 test('unverifiable active-run inventory cannot pass as idle',async()=>{
   await assert.rejects(inspectIdleController(async url=> url.includes('/runs?')?{}:
-    {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active'}),/INVENTORY_INVALID/);
+    {id:315562561,path:'.github/workflows/projectpulse-deploy-test.yml',state:'active'},activeAdmissionOptions()),/INVENTORY_INVALID/);
 });
 
 function repairContext() {

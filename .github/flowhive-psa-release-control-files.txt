@@ -1,6 +1,8 @@
+.github/flowhive-psa-protected-cutover.json
 .github/flowhive-psa-protected-test-candidate.json
 .github/flowhive-psa-release-control-files.txt
 .github/flowhive-psa-stale-run-supersession-authorization.json
+.github/workflows/flowhive-psa-installed-acceptance.yml
 .github/workflows/flowhive-psa-protected-test-admission.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
 .github/workflows/projectpulse-deploy-test.yml
@@ -10,11 +12,15 @@ docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
 scripts/release-test/apply-flowhive-psa-migrations.sh
 scripts/release-test/build-and-run-flowhive-psa-migrations.sh
+scripts/release-test/check-module025-installed-prerequisite.py
 scripts/release-test/dispatch-flowhive-psa-test.mjs
 scripts/release-test/flowhive-psa-admission.mjs
 scripts/release-test/prepare-protected-test-scope-manifests.sh
+scripts/release-test/run-flowhive-my-role-browser.py
 scripts/release-test/run-flowhive-psa-live-uat.py
+scripts/release-test/verify-flowhive-installed-identity.py
 tests/flowhive-psa-admission.test.mjs
+tests/flowhive-psa-installed-acceptance.test.py
 tests/flowhive-psa-live-uat.test.py
 tests/flowhive-psa-migration-fixture.py
 tests/flowhive-psa-release-control.mjs

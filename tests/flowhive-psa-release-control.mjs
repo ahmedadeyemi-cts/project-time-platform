@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { verifyApproval, controlManifest } from '../scripts/release-test/flowhive-psa-admission.mjs';
 
 export const files = [
+  '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/flowhive-psa-stale-run-supersession-authorization.json',
   '.github/flowhive-psa-release-control-files.txt',
@@ -21,8 +22,13 @@ export const files = [
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'scripts/release-test/prepare-protected-test-scope-manifests.sh',
+  'scripts/release-test/check-module025-installed-prerequisite.py',
+  'scripts/release-test/run-flowhive-my-role-browser.py',
   'scripts/release-test/run-flowhive-psa-live-uat.py',
+  'scripts/release-test/verify-flowhive-installed-identity.py',
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
   'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-installed-acceptance.test.py',
   'tests/flowhive-psa-live-uat.test.py',
   'tests/flowhive-psa-migration-fixture.py',
   'tests/flowhive-psa-release-control.mjs',
@@ -47,6 +53,12 @@ export const candidateRefreshFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
   'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const successorCandidateRefreshBase = 'd2262ccbef31800883589197d03122bd51bb87cc';
+export const successorCandidateRefreshBranch = 'control/flowhive-sow-successor-candidate-refresh-20260910';
+export const successorCandidateRefreshFiles = [
+  ...candidateRefreshFiles,
+  'tests/flowhive-psa-admission.test.mjs'
 ].sort();
 export const sourceBaseCorrectionBase = '040709cdac0a940ad8feffbd730f1be35ce50280';
 export const sourceBaseCorrectionBranch = 'fix/flowhive-admission-source-base-20260908';
@@ -85,6 +97,166 @@ export const dispatchRecoveryFiles = [
 ].sort();
 export const staleSupersessionBase = '785eb54a4f280c9ff0e59951c31a30cad4c1a0da';
 export const staleSupersessionBranch = 'fix/flowhive-stale-run-supersession-20260909';
+export const staleSupersessionActivationBase = '2d31f842599927f0a62e692d2669f643dc9e287b';
+export const staleSupersessionActivationBranch = 'control/flowhive-stale-run-activation-20260910';
+export const staleSupersessionRenewalBase = 'cb15168c791bdd70744aae9549d71475b9a25eb4';
+export const staleSupersessionRenewalBranch = 'control/flowhive-stale-run-renewal-20260910';
+export const releaseStabilizationBase = '9f30078c2c407d4d3576ccefd663a145be50c6c4';
+export const releaseStabilizationBranch = 'fix/flowhive-release-stabilization-20260910';
+export const releaseStabilizationFiles = [
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
+  '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  '.github/workflows/projectpulse-deploy-test.yml',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'scripts/release-test/prepare-protected-test-scope-manifests.sh',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
+export const protectedCutoverBase = '526cfc0d2eb993c35557db190eb5ae87d29bda65';
+export const protectedCutoverBranch = 'fix/flowhive-protected-cutover-20260910';
+export const protectedCutoverFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  '.github/flowhive-psa-release-control-files.txt',
+  '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'scripts/release-test/prepare-protected-test-scope-manifests.sh',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
+export const protectedCutoverActivationBase = '1a2119f76e6f0f09634b5f1586f5a524ab1b0d1e';
+export const protectedCutoverActivationBranch = 'control/flowhive-protected-cutover-activation-20260910';
+export const protectedCutoverActivationFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const protectedCutoverRefreshBase = '5ebd3b6bfd34339efc1f74688aea01d58f647dd2';
+export const protectedCutoverRefreshBranch = 'control/flowhive-protected-cutover-refresh-20260910';
+export const protectedCutoverRefreshFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const admissionPermissionFixBase = '09d95657c71e872703809f5f0e3473e038cfdad2';
+export const admissionPermissionFixBranch = 'fix/flowhive-psa-admission-comment-permission-20260910';
+export const admissionPermissionFixFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  '.github/workflows/flowhive-psa-protected-test-admission.yml',
+  'tests/flowhive-psa-release-workflow.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const admissionBotClaimFixBase = 'c78d346042314a7395a2ceeaa46f2737e6c0b076';
+export const admissionBotClaimFixBranch = 'fix/flowhive-psa-admission-bot-claim-20260910';
+export const admissionBotClaimFixFiles = [
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const protectedCutoverRecoveryBase = '6a806ca888fe8adbbe5cfcbf1139868fc6a4c5f0';
+export const protectedCutoverRecoveryBranch = 'control/flowhive-protected-cutover-recovery-20260910';
+export const protectedCutoverRecoveryFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const reservationRecoveryEndpointFixBase = '559087e3c9ba69df07be62aecd6379f9aaf33c8e';
+export const reservationRecoveryEndpointFixBranch = 'fix/flowhive-psa-reservation-recovery-endpoint-20260910';
+export const reservationRecoveryEndpointFixFiles = [
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const protectedCutoverFinalBase = '73e4d887179961ade9b726af5163f8d61bea9682';
+export const protectedCutoverFinalBranch = 'control/flowhive-protected-cutover-final-20260910';
+export const protectedCutoverFinalFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const liveUatStatusFixBase = 'df6f7fc6d52495f83b0fd169047f5a249493db7e';
+export const liveUatStatusFixBranch = 'fix/flowhive-live-uat-status-20260910';
+export const liveUatStatusFixFiles = [
+  '.github/flowhive-psa-release-control-files.txt',
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  '.github/workflows/flowhive-psa-release-control-ci.yml',
+  'scripts/release-test/check-module025-installed-prerequisite.py',
+  'scripts/release-test/run-flowhive-my-role-browser.py',
+  'scripts/release-test/run-flowhive-psa-live-uat.py',
+  'scripts/release-test/verify-flowhive-installed-identity.py',
+  'tests/flowhive-psa-live-uat.test.py',
+  'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const installedVerificationEnvironmentBase = '25868daaca1115dca4440f7acb3927ebdd6da3ae';
+export const installedVerificationEnvironmentBranch = 'fix/flowhive-installed-verification-environment-20260910';
+export const installedVerificationEnvironmentFiles = [
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const installedVerificationEvidenceBase = 'ff93beae7494265e03bcf1f4f80c6424f75b3eab';
+export const installedVerificationEvidenceBranch = 'fix/flowhive-installed-verification-evidence-20260910';
+export const installedVerificationEvidenceFiles = [
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const installedAcceptanceEvidenceBase = '0cc12647b8453803fd8b230786c1e18494634aae';
+export const installedAcceptanceEvidenceBranch = 'fix/flowhive-installed-acceptance-evidence-20260910';
+export const installedAcceptanceEvidenceFiles = [
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const installedAcceptanceArtifactsBase = 'db8054942f12d649e5503166c0f39a6ad7eb18c2';
+export const installedAcceptanceArtifactsBranch = 'fix/flowhive-installed-acceptance-artifacts-20260910';
+export const installedAcceptanceArtifactsFiles = [
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const installedAcceptanceReadinessBase = '9c2ef1869ddee31bd175cba0cc50dc8ed82eb117';
+export const installedAcceptanceReadinessBranch = 'fix/flowhive-installed-acceptance-readiness-20260910';
+export const installedAcceptanceReadinessFiles = [
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  'scripts/release-test/run-flowhive-my-role-browser.py',
+  'scripts/release-test/verify-flowhive-installed-identity.py',
+  'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const installedAcceptanceVisibilityBase = '42aa8534c10be3c99ccf7020919e96d3ffeddf4d';
+export const installedAcceptanceVisibilityBranch = 'fix/flowhive-installed-acceptance-visibility-20260910';
+export const installedAcceptanceVisibilityFiles = [
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  'scripts/release-test/run-flowhive-my-role-browser.py',
+  'scripts/release-test/verify-flowhive-installed-identity.py',
+  'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const installedAcceptancePlannerBase = '7e705d38607dabe39e1a88fc6fc8e13c47c0f9c3';
+export const installedAcceptancePlannerBranch = 'fix/flowhive-installed-acceptance-planner-20260910';
+export const installedAcceptancePlannerFiles = [
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  'scripts/release-test/reconcile-flowhive-planner.py',
+  'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const installedAcceptanceFinalBase = 'c7448a069920a6e359ec6be21b6e68a4801a767b';
+export const installedAcceptanceFinalBranch = 'fix/flowhive-installed-acceptance-final-20260911';
+export const installedAcceptanceFinalFiles = [
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  'scripts/release-test/run-flowhive-my-role-browser.py',
+  'scripts/release-test/run-module025-installed-sa-uat.py',
+  'scripts/release-test/verify-flowhive-installed-identity.py',
+  'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
 export const staleSupersessionFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   '.github/flowhive-psa-stale-run-supersession-authorization.json',
@@ -95,6 +267,25 @@ export const staleSupersessionFiles = [
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
+export const staleSupersessionActivationFiles = [
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const staleSupersessionRenewalFiles = [
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
+export const migration106WiringBranch = 'fix/flowhive-migration106-release-wiring-20260910';
+export const migration106WiringFiles = [
+  '.github/flowhive-psa-stale-run-supersession-authorization.json',
+  'scripts/release-test/build-and-run-flowhive-psa-migrations.sh',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-migration-fixture.py',
   'tests/flowhive-psa-release-control.mjs',
   'tests/flowhive-psa-release-workflow.test.py'
 ].sort();
@@ -135,7 +326,7 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession','stale-run-activation','stale-run-renewal','migration106-wiring','release-stabilization','protected-cutover','protected-cutover-activation','protected-cutover-refresh','admission-permission-fix','admission-bot-claim-fix','protected-cutover-recovery','reservation-recovery-endpoint-fix','protected-cutover-final','live-uat-status-fix','installed-verification-environment','installed-verification-evidence','installed-acceptance-evidence','installed-acceptance-artifacts','installed-acceptance-readiness','installed-acceptance-visibility','installed-acceptance-planner','installed-acceptance-final'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
@@ -144,6 +335,10 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
   if (mode === 'candidate-refresh') {
     assert.equal(context?.base, candidateRefreshBase, 'Candidate refresh must be based on the reviewed current main.');
     assert.equal(context?.branch, candidateRefreshBranch, 'Wrong candidate refresh control branch.');
+  }
+  if (mode === 'successor-candidate-refresh') {
+    assert.equal(context?.base, successorCandidateRefreshBase, 'Successor candidate refresh must be based on current trusted main.');
+    assert.equal(context?.branch, successorCandidateRefreshBranch, 'Wrong successor candidate refresh control branch.');
   }
   if (mode === 'source-base-correction') {
     assert.equal(context?.base, sourceBaseCorrectionBase, 'Source-base correction must be based on the trusted candidate-refresh main.');
@@ -161,7 +356,83 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.base, staleSupersessionBase, 'Stale supersession must be based on merged trusted main.');
     assert.equal(context?.branch, staleSupersessionBranch, 'Wrong stale supersession control branch.');
   }
-  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : staleSupersessionFiles;
+  if (mode === 'stale-run-activation') {
+    assert.equal(context?.base, staleSupersessionActivationBase, 'Stale activation must be based on current trusted main.');
+    assert.equal(context?.branch, staleSupersessionActivationBranch, 'Wrong stale activation control branch.');
+  }
+  if (mode === 'stale-run-renewal') {
+    assert.equal(context?.base, staleSupersessionRenewalBase, 'Stale renewal must be based on the current trusted main.');
+    assert.equal(context?.branch, staleSupersessionRenewalBranch, 'Wrong stale renewal control branch.');
+  }
+  if (mode === 'release-stabilization') {
+    assert.equal(context?.base, releaseStabilizationBase, 'Release stabilization must be based on the current trusted main.');
+    assert.equal(context?.branch, releaseStabilizationBranch, 'Wrong release stabilization branch.');
+  }
+  if (mode === 'protected-cutover') {
+    assert.equal(context?.base, protectedCutoverBase, 'Protected cutover must be based on merged trusted main.');
+    assert.equal(context?.branch, protectedCutoverBranch, 'Wrong protected cutover control branch.');
+  }
+  if (mode === 'protected-cutover-refresh') {
+    assert.equal(context?.base, protectedCutoverRefreshBase, 'Protected cutover refresh must be based on PR899 trusted main.');
+    assert.equal(context?.branch, protectedCutoverRefreshBranch, 'Wrong protected cutover refresh control branch.');
+  }
+  if (mode === 'admission-permission-fix') {
+    assert.equal(context?.base, admissionPermissionFixBase, 'Permission fix must be based on the merged activation controls.');
+    assert.equal(context?.branch, admissionPermissionFixBranch, 'Wrong admission permission-fix branch.');
+  }
+  if (mode === 'admission-bot-claim-fix') {
+    assert.equal(context?.base, admissionBotClaimFixBase, 'Bot-claim fix must be based on current trusted main.');
+    assert.equal(context?.branch, admissionBotClaimFixBranch, 'Wrong bot-claim fix branch.');
+  }
+  if (mode === 'protected-cutover-recovery') {
+    assert.equal(context?.base, protectedCutoverRecoveryBase, 'Protected cutover recovery must be based on PR901 trusted main.');
+    assert.equal(context?.branch, protectedCutoverRecoveryBranch, 'Wrong protected cutover recovery branch.');
+  }
+  if (mode === 'reservation-recovery-endpoint-fix') {
+    assert.equal(context?.base, reservationRecoveryEndpointFixBase, 'Reservation recovery endpoint fix must be based on current trusted main.');
+    assert.equal(context?.branch, reservationRecoveryEndpointFixBranch, 'Wrong reservation recovery endpoint branch.');
+  }
+  if (mode === 'protected-cutover-final') {
+    assert.equal(context?.base, protectedCutoverFinalBase, 'Final protected cutover must be based on PR903 trusted main.');
+    assert.equal(context?.branch, protectedCutoverFinalBranch, 'Wrong final protected cutover branch.');
+  }
+  if (mode === 'live-uat-status-fix') {
+    assert.equal(context?.base, liveUatStatusFixBase, 'Live UAT verifier fix must be based on current trusted main.');
+    assert.equal(context?.branch, liveUatStatusFixBranch, 'Wrong live UAT verifier fix branch.');
+  }
+  if (mode === 'installed-verification-environment') {
+    assert.equal(context?.base, installedVerificationEnvironmentBase, 'Installed verification environment fix must be based on current trusted main.');
+    assert.equal(context?.branch, installedVerificationEnvironmentBranch, 'Wrong installed verification environment branch.');
+  }
+  if (mode === 'installed-verification-evidence') {
+    assert.equal(context?.base, installedVerificationEvidenceBase, 'Installed verification evidence fix must be based on current trusted main.');
+    assert.equal(context?.branch, installedVerificationEvidenceBranch, 'Wrong installed verification evidence branch.');
+  }
+  if (mode === 'installed-acceptance-evidence') {
+    assert.equal(context?.base, installedAcceptanceEvidenceBase, 'Installed acceptance evidence fix must be based on current trusted main.');
+    assert.equal(context?.branch, installedAcceptanceEvidenceBranch, 'Wrong installed acceptance evidence branch.');
+  }
+  if (mode === 'installed-acceptance-artifacts') {
+    assert.equal(context?.base, installedAcceptanceArtifactsBase, 'Installed acceptance artifact fix must be based on current trusted main.');
+    assert.equal(context?.branch, installedAcceptanceArtifactsBranch, 'Wrong installed acceptance artifact branch.');
+  }
+  if (mode === 'installed-acceptance-readiness') {
+    assert.equal(context?.base, installedAcceptanceReadinessBase, 'Installed acceptance readiness must be based on current trusted main.');
+    assert.equal(context?.branch, installedAcceptanceReadinessBranch, 'Wrong installed acceptance readiness branch.');
+  }
+  if (mode === 'installed-acceptance-visibility') {
+    assert.equal(context?.base, installedAcceptanceVisibilityBase, 'Installed acceptance visibility must be based on current trusted main.');
+    assert.equal(context?.branch, installedAcceptanceVisibilityBranch, 'Wrong installed acceptance visibility branch.');
+  }
+  if (mode === 'installed-acceptance-planner') {
+    assert.equal(context?.base, installedAcceptancePlannerBase, 'Installed acceptance planner reconciliation must be based on current trusted main.');
+    assert.equal(context?.branch, installedAcceptancePlannerBranch, 'Wrong installed acceptance planner branch.');
+  }
+  if (mode === 'installed-acceptance-final') {
+    assert.equal(context?.base, installedAcceptanceFinalBase, 'Installed acceptance final verifier must be based on current trusted main.');
+    assert.equal(context?.branch, installedAcceptanceFinalBranch, 'Wrong installed acceptance final verifier branch.');
+  }
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : mode === 'stale-run-renewal' ? staleSupersessionRenewalFiles : mode === 'migration106-wiring' ? migration106WiringFiles : mode === 'release-stabilization' ? releaseStabilizationFiles : mode === 'protected-cutover' ? protectedCutoverFiles : mode === 'protected-cutover-activation' ? protectedCutoverActivationFiles : mode === 'protected-cutover-refresh' ? protectedCutoverRefreshFiles : mode === 'admission-permission-fix' ? admissionPermissionFixFiles : mode === 'admission-bot-claim-fix' ? admissionBotClaimFixFiles : mode === 'protected-cutover-recovery' ? protectedCutoverRecoveryFiles : mode === 'reservation-recovery-endpoint-fix' ? reservationRecoveryEndpointFixFiles : mode === 'protected-cutover-final' ? protectedCutoverFinalFiles : mode === 'live-uat-status-fix' ? liveUatStatusFixFiles : mode === 'installed-verification-environment' ? installedVerificationEnvironmentFiles : mode === 'installed-verification-evidence' ? installedVerificationEvidenceFiles : mode === 'installed-acceptance-evidence' ? installedAcceptanceEvidenceFiles : mode === 'installed-acceptance-artifacts' ? installedAcceptanceArtifactsFiles : mode === 'installed-acceptance-readiness' ? installedAcceptanceReadinessFiles : mode === 'installed-acceptance-visibility' ? installedAcceptanceVisibilityFiles : mode === 'installed-acceptance-planner' ? installedAcceptancePlannerFiles : mode === 'installed-acceptance-final' ? installedAcceptanceFinalFiles : staleSupersessionFiles;
   assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
@@ -180,6 +451,9 @@ export function verifyController(text) {
     'The old unbounded workflow_dispatch job gate must not remain.');
   assert.ok(!/contents:\s*write/.test(text), 'The environment mutation job must not publish source.');
   assert.ok(!/environment:\s*(?:production|prod)\b/i.test(text), 'Production is not an approved target.');
+  assert.match(text, /Verify admitted controller identity before deployment mutations/);
+  assert.match(text, /admission_controller_sha/);
+  assert.match(text, /PSA admission controller identity changed before deployment/);
 }
 export function validate() {
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
@@ -195,12 +469,34 @@ export function validate() {
   const isRepair = event?.number === 876;
   const isReviewedRegeneration = process.env.GITHUB_HEAD_REF === reviewedRegenerationBranch;
   const isCandidateRefresh = process.env.GITHUB_HEAD_REF === candidateRefreshBranch;
+  const isSuccessorCandidateRefresh = process.env.GITHUB_HEAD_REF === successorCandidateRefreshBranch;
   const isSourceBaseCorrection = process.env.GITHUB_HEAD_REF === sourceBaseCorrectionBranch;
   const isSuccessorApproval = process.env.GITHUB_HEAD_REF === successorApprovalBranch;
   const isDispatchRunRecovery = process.env.GITHUB_HEAD_REF === dispatchRecoveryBranch;
   const isStaleSupersession = process.env.GITHUB_HEAD_REF === staleSupersessionBranch;
+  const isStaleSupersessionActivation = process.env.GITHUB_HEAD_REF === staleSupersessionActivationBranch;
+  const isStaleSupersessionRenewal = process.env.GITHUB_HEAD_REF === staleSupersessionRenewalBranch;
+  const isMigration106Wiring = process.env.GITHUB_HEAD_REF === migration106WiringBranch;
+  const isReleaseStabilization = process.env.GITHUB_HEAD_REF === releaseStabilizationBranch;
+  const isProtectedCutover = process.env.GITHUB_HEAD_REF === protectedCutoverBranch;
+  const isProtectedCutoverActivation = process.env.GITHUB_HEAD_REF === protectedCutoverActivationBranch;
+  const isProtectedCutoverRefresh = process.env.GITHUB_HEAD_REF === protectedCutoverRefreshBranch;
+  const isAdmissionPermissionFix = process.env.GITHUB_HEAD_REF === admissionPermissionFixBranch;
+  const isAdmissionBotClaimFix = process.env.GITHUB_HEAD_REF === admissionBotClaimFixBranch;
+  const isProtectedCutoverRecovery = process.env.GITHUB_HEAD_REF === protectedCutoverRecoveryBranch;
+  const isReservationRecoveryEndpointFix = process.env.GITHUB_HEAD_REF === reservationRecoveryEndpointFixBranch;
+  const isProtectedCutoverFinal = process.env.GITHUB_HEAD_REF === protectedCutoverFinalBranch;
+  const isLiveUatStatusFix = process.env.GITHUB_HEAD_REF === liveUatStatusFixBranch;
+  const isInstalledVerificationEnvironment = process.env.GITHUB_HEAD_REF === installedVerificationEnvironmentBranch;
+  const isInstalledVerificationEvidence = process.env.GITHUB_HEAD_REF === installedVerificationEvidenceBranch;
+  const isInstalledAcceptanceEvidence = process.env.GITHUB_HEAD_REF === installedAcceptanceEvidenceBranch;
+  const isInstalledAcceptanceArtifacts = process.env.GITHUB_HEAD_REF === installedAcceptanceArtifactsBranch;
+  const isInstalledAcceptanceReadiness = process.env.GITHUB_HEAD_REF === installedAcceptanceReadinessBranch;
+  const isInstalledAcceptanceVisibility = process.env.GITHUB_HEAD_REF === installedAcceptanceVisibilityBranch;
+  const isInstalledAcceptancePlanner = process.env.GITHUB_HEAD_REF === installedAcceptancePlannerBranch;
+  const isInstalledAcceptanceFinal = process.env.GITHUB_HEAD_REF === installedAcceptanceFinalBranch;
   verifyFiles(changed, manifest,
-    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : 'initial', context);
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : isStaleSupersessionActivation ? 'stale-run-activation' : isStaleSupersessionRenewal ? 'stale-run-renewal' : isMigration106Wiring ? 'migration106-wiring' : isProtectedCutover ? 'protected-cutover' : isProtectedCutoverActivation ? 'protected-cutover-activation' : isProtectedCutoverRefresh ? 'protected-cutover-refresh' : isAdmissionPermissionFix ? 'admission-permission-fix' : isAdmissionBotClaimFix ? 'admission-bot-claim-fix' : isProtectedCutoverRecovery ? 'protected-cutover-recovery' : isReservationRecoveryEndpointFix ? 'reservation-recovery-endpoint-fix' : isProtectedCutoverFinal ? 'protected-cutover-final' : isInstalledAcceptanceFinal ? 'installed-acceptance-final' : isInstalledAcceptancePlanner ? 'installed-acceptance-planner' : isInstalledAcceptanceVisibility ? 'installed-acceptance-visibility' : isInstalledAcceptanceReadiness ? 'installed-acceptance-readiness' : isInstalledAcceptanceArtifacts ? 'installed-acceptance-artifacts' : isInstalledAcceptanceEvidence ? 'installed-acceptance-evidence' : isInstalledVerificationEvidence ? 'installed-verification-evidence' : isInstalledVerificationEnvironment ? 'installed-verification-environment' : isLiveUatStatusFix ? 'live-uat-status-fix' : isReleaseStabilization ? 'release-stabilization' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.
@@ -211,8 +507,79 @@ export function validate() {
   const approval = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-test-candidate.json', 'utf8'));
   verifyApproval(approval, approval.sha);
   const staleAuthorization = JSON.parse(fs.readFileSync('.github/flowhive-psa-stale-run-supersession-authorization.json', 'utf8'));
-  assert.equal(staleAuthorization.enabled, false, 'Stale supersession must remain inactive.');
-  assert.equal(staleAuthorization.activationDecision, 'hold');
+  const protectedCutover = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-cutover.json', 'utf8'));
+  if (isStaleSupersessionActivation || isStaleSupersessionRenewal) {
+    assert.equal(staleAuthorization.enabled, true, 'Activation must be explicit and limited to the reviewed activation branch.');
+    assert.equal(staleAuthorization.activationDecision, 'approved');
+    assert.equal(staleAuthorization.approval.status, 'approved');
+    assert.equal(staleAuthorization.approval.approvedBy, 'ahmedadeyemi-cts');
+    const approvedAt = Date.parse(staleAuthorization.approval.approvedAt);
+    const expiresAt = Date.parse(staleAuthorization.approval.expiresAt);
+    assert.ok(Number.isFinite(approvedAt) && Number.isFinite(expiresAt));
+    assert.ok(expiresAt > approvedAt && expiresAt - approvedAt <= 15 * 60 * 1000);
+  } else if (isReleaseStabilization) {
+    assert.equal(staleAuthorization.enabled, false, 'Expired recovery authorization must be inactive in stabilization.');
+    assert.equal(staleAuthorization.activationDecision, 'hold');
+    assert.equal(staleAuthorization.approval.status, 'not-approved');
+    assert.equal(staleAuthorization.approval.approvedBy, null);
+    assert.equal(staleAuthorization.approval.approvedAt, null);
+    assert.equal(staleAuthorization.approval.expiresAt, null);
+  } else {
+    assert.equal(staleAuthorization.enabled, false, 'Stale supersession must remain inactive outside the reviewed activation branch.');
+    assert.equal(staleAuthorization.activationDecision, 'hold');
+  }
+  if (isProtectedCutover || isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal) {
+    if (isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal) {
+      assert.equal(base, isProtectedCutoverFinal ? protectedCutoverFinalBase : isProtectedCutoverRecovery ? protectedCutoverRecoveryBase : isProtectedCutoverRefresh ? protectedCutoverRefreshBase : protectedCutoverActivationBase, 'Activation must be based on the latest reviewed trusted controls.');
+      assert.equal(protectedCutover.enabled, true, 'Activation must be explicitly enabled only in its reviewed branch.');
+      assert.equal(protectedCutover.activationDecision, 'approved');
+      assert.equal(protectedCutover.workflow.allowControllerActivation, true);
+      const approvedAt = Date.parse(protectedCutover.approval.approvedAt);
+      const expiresAt = Date.parse(protectedCutover.approval.expiresAt);
+      assert.ok(Number.isFinite(approvedAt) && Number.isFinite(expiresAt) && expiresAt > approvedAt);
+      assert.ok(expiresAt - approvedAt <= 15 * 60 * 1000, 'Activation approval must remain bounded.');
+    }
+    assert.equal(protectedCutover.contract, 'flowhive-psa-protected-cutover-v1');
+    if (isProtectedCutover) {
+      assert.equal(protectedCutover.enabled, false, 'Protected cutover must remain inactive until separately approved.');
+      assert.equal(protectedCutover.activationDecision, 'hold');
+    }
+    assert.deepEqual(protectedCutover.candidate, {
+      pullRequest: 887, branch: 'release/flowhive-sow-successor-20260908',
+      sha: '95abbb0aa2445a33fda68e9de542f9446c3e2204'
+    });
+    if (isProtectedCutoverRecovery) {
+      assert.deepEqual(protectedCutover.reservationRecovery, {
+        commentId: 5626123050,
+        admissionRunId: 34536122774,
+        admissionRunAttempt: 1,
+        candidateSha: '95abbb0aa2445a33fda68e9de542f9446c3e2204',
+        approvalReference: 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260910',
+        controllerSha: 'c78d346042314a7395a2ceeaa46f2737e6c0b076',
+        observedAt: '2026-09-10T22:11:16.764Z',
+        status: 'pre-dispatch-failed', dispatchSubmitted: false, controllerMutation: false
+      });
+    }
+    assert.deepEqual(protectedCutover.workflow, {
+      id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml',
+      controllerBranch: 'main', event: 'workflow_dispatch',
+      transition: 'disabled_manually-to-active-once', allowControllerActivation: isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal
+    });
+    assert.deepEqual(protectedCutover.environment, {
+      environment: 'test', protectionRuleId: 65110773,
+      requiredReviewerLogin: 'ahmedadeyemi-cts', requiredReviewerId: 244059331,
+      reviewers: [{ type: 'User', login: 'ahmedadeyemi-cts', id: 244059331 }],
+      preventSelfReview: false, canAdminsBypass: false
+    });
+    assert.deepEqual(protectedCutover.requests.map(request => request.runId), [34495606530, 34377182662, 33654881418]);
+    assert.equal(protectedCutover.serverDispatchInputsConfirmed, false);
+    if (isProtectedCutover) {
+      assert.deepEqual(protectedCutover.approval, { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null });
+    } else {
+      assert.equal(protectedCutover.approval.status, 'approved');
+      assert.equal(protectedCutover.approval.approvedBy, 'ahmedadeyemi-cts');
+    }
+  }
   assert.equal(staleAuthorization.historicalExecutionProtection.allDeploymentPathsProtected, false);
   assert.equal(staleAuthorization.historicalExecutionProtection.jobUsesTestEnvironment, true);
   assert.deepEqual(staleAuthorization.historicalExecutionProtection.nativeEnvironmentBarrier, {
@@ -226,6 +593,15 @@ export function validate() {
     { runId: 34377182662, status: 'queued', jobs: 0, pendingDeployments: 0, approvalPerformed: false },
     { runId: 33654881418, status: 'queued', jobs: 0, pendingDeployments: 0, approvalPerformed: false }
   ]);
+  assert.deepEqual(staleAuthorization.evidence.currentOutstandingRequest, {
+    runId: 34495606530,
+    workflowId: 315562561,
+    workflowPath: '.github/workflows/projectpulse-deploy-test.yml',
+    controllerSha: '9f30078c2c407d4d3576ccefd663a145be50c6c4',
+    status: 'queued', jobs: 0, pendingDeployments: 0, approvalPerformed: false,
+    disposition: 'blocking-hold', dispositionSource: 'release-owner-record',
+    nextAction: 'Use one separately reviewed run-control operation for each of the three queued requests, verify server-confirmed terminal state and no execution, then use the native workflow enable operation once and verify active identity before a new admission.'
+  });
   assert.equal(staleAuthorization.evidence.requestToRunBinding.status, 'not-established');
   assert.equal(staleAuthorization.evidence.requestToRunBinding.serverConfirmed, false);
   assert.equal(staleAuthorization.evidence.requestToRunBinding.requestId, null);
@@ -235,6 +611,10 @@ export function validate() {
   assert.ok(!/azure\/login|id-token:|environment:|contents:\s*write/.test(supervisor), 'Admission cannot mutate a cloud environment or source.');
   assert.ok(supervisor.includes('github.event.issue.number == 887') && supervisor.includes("github.actor == 'ahmedadeyemi-cts'"));
   assert.ok(supervisor.includes('group: module025-protected-uat-control') && supervisor.includes('cancel-in-progress: false'));
+  assert.ok(supervisor.includes('FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE'));
+  assert.ok(supervisor.includes('issues: write') && supervisor.includes('pull-requests: write'),
+    'The admission token must be able to create the reservation on a pull request issue.');
+  assert.doesNotMatch(supervisor, /enable|reseal/i, 'Routine admission must not toggle the canonical deployment workflow.');
   console.log('FLOWHIVE_PSA_RELEASE_CONTROL_SCOPE=PASS productionMutation=false featureMerge=false');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) validate();

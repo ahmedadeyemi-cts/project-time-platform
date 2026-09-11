@@ -12,7 +12,7 @@ The repository owner may post this exact command on PR #887 after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA c6efce9a4918ac6674fa292586348a5aa8be2b91
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 95abbb0aa2445a33fda68e9de542f9446c3e2204
 ```
 
 The admission workflow executes main-owned code only. It checks the exact open PR #887,
@@ -22,15 +22,78 @@ candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
 feature branch is not renamed or implicitly approved by a prefix match.
 
-The supervisor shares the existing admission lock, refuses any executable active
-Protected Test deployment, restores the admission fence if the canonical workflow
-is active but idle, verifies the sealed state and repeats the idle-run check,
-enables the canonical workflow for one dispatch only, and reseals it. Restoring
-this fence only disables workflow admissions; it never cancels or alters a run.
-The CI probe is strictly read-only and reports whether sealing is needed. The
-main-owned supervisor performs and verifies that sealing before any dispatch. The previously quarantined zero-job run can be disregarded only
-while it still has zero jobs. No run is cancelled. A lost dispatch response is an
-unknown outcome to inspect, never a reason to dispatch again automatically.
+This combined candidate includes PR891 at `2ebae9f12660a3def85ba39d43fde528275cc0eb`
+through integration commit `21075bc35bc1f7071d6c598f46666c7f18649449`, current-main
+reconciliation `e0b8fa3f2b19009fb865eb5f50a07101461e39bf`, and the final CI/scope repair
+`95abbb0aa2445a33fda68e9de542f9446c3e2204`. Its trusted source base is current main
+`d2262ccbef31800883589197d03122bd51bb87cc`; migrations 103/104/105/106 retain their
+reviewed SHA-256 values.
+
+The supervisor shares the existing admission lock and refuses every unresolved
+workflow run before the single dispatch write. This keeps the native Test
+environment gate and existing serialization as the release transaction boundary.
+The normal read-only cutover gate still requires all three
+known requests (`34495606530`, `34377182662`, and `33654881418`) to be
+server-confirmed terminal with completed attempts and no pending deployment.
+The reviewed `.github/flowhive-psa-protected-cutover.json` provides a separate,
+initially inactive exception for this exact candidate: when separately approved
+and unexpired, one shared assessment verifies the exact three queued records,
+every observed attempt's zero jobs, empty Test approval history and pending
+deployments, empty concurrency/artifact inventories, exact historical workflow
+blobs and complete native Test protection. The same assessment is passed to the
+final nonterminal-run inventory, so an unknown fourth run, execution, approval,
+identity change or unreadable evidence blocks admission. Queued remains queued;
+the path never claims cancellation or completion and never reconstructs missing
+historical dispatch inputs. A lost dispatch response is an unknown outcome to
+inspect, never a reason to dispatch again automatically.
+
+The current unresolved requests are recorded in both the trusted cutover manifest
+and the live assessment. Run `34495606530` uses controller
+`9f30078c2c407d4d3576ccefd663a145be50c6c4`; all three are required to remain
+queued with zero jobs, no pending deployment, no approval and no artifacts. Their
+raw GitHub status remains visible and distinct from the repository's protected
+nonterminal disposition. Activation is a separately reviewed, bounded approval
+for this candidate and current controller, followed by the existing native Test
+deployment approval. When that
+activation is reviewed, the maintained entrypoint performs one guarded
+`disabled_manually` → `active` transition, re-reads the exact three-request
+assessment, admits at most one dispatch, and reports the resulting controller
+state. A successful bootstrap deliberately leaves the canonical controller
+`active`; it does not silently recreate an enable → dispatch → disable cycle.
+If admission fails before an external dispatch write, the wrapper restores
+`disabled_manually`. If a dispatch write is uncertain, it does not disable the
+workflow as a false cancellation signal: it retains `active` and reports the
+uncertain outcome for inspection. Enable/restore failures preserve both the
+primary admission error and cleanup error, and the final state is read back
+explicitly. It is never retried automatically.
+
+The `--inspect-only` entrypoint requires the exact `workflow_dispatch`/main
+controller context, the approved candidate manifest, and a valid controller SHA;
+it is GET-only and does not simulate an issue comment. The native Test rule is
+compared as a complete normalized reviewer set (type and stable identity), not
+just the first reviewer returned by the API.
+
+Before the dispatch write, the admission job persists a sanitized attempt record
+with the repository, candidate/controller identities, workflow, admission run ID,
+admission run attempt, request fingerprint and timestamps. It records the returned run ID immediately,
+then records server identity verification and the observed lifecycle phase. API
+failures include stage, method, path, status and GitHub request ID; no token,
+header, response body or customer content is stored. The record is uploaded as
+an Actions artifact even when the admission step fails. Optional summary/comment
+failures are recorded separately from the last verified deployment phase and cannot erase an accepted receipt; identity,
+authorization and active-controller failures remain blocking. A single-use
+reservation comment binds the candidate, controller and bounded approval
+reference before the POST. Repeated commands, restarted admissions, and
+uncertain dispatch responses find that reservation and stop without a second
+dispatch. Its one-use key is the candidate plus approval reference; the
+controller SHA is retained as execution evidence and cannot renew the same
+authorization after a controller update. Only the owner-authored structured
+reservation is accepted. Untrusted or malformed copies and uncertain
+reservation writes fail closed without another deployment POST. Immediately
+after the reservation write, the exact protected requests and complete
+nonterminal-run inventory are read again. The authorization clock is checked
+after those reads together with current main/controller identity and complete
+native Test protection, and all are recorded with observation timestamps.
 
 Controller-only changes no longer trigger automatic main-push deployment. All
 existing application/migration source triggers remain unchanged, and the control
@@ -107,8 +170,9 @@ all twelve export artifacts remain the feature PR's separate completion gates.
 
 ## Verification in this control PR
 
-Node negative tests cover approval, forks, drift, stale/failed CI, dispatch identity
-and control scope. Python tests cover false-success rejection, saved receipts,
+Node negative tests cover approval, forks, drift, stale/failed CI, dispatch identity,
+receipt-before-follow-up failure, sanitized attempt evidence, unresolved-run blocking,
+active-controller policy and control scope. Python tests cover false-success rejection, saved receipts,
 parsed workflow safety, shell syntax, and unchanged unrelated controller steps.
 A disposable PostgreSQL job executes the approved migrations and actual migration
 entrypoint, reapplication, legacy-run retirement, immutable RAID evidence,

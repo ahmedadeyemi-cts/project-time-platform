@@ -48,6 +48,19 @@
         "approvalPerformed": false
       }
     ],
+    "currentOutstandingRequest": {
+      "runId": 34495606530,
+      "workflowId": 315562561,
+      "workflowPath": ".github/workflows/projectpulse-deploy-test.yml",
+      "controllerSha": "9f30078c2c407d4d3576ccefd663a145be50c6c4",
+      "status": "queued",
+      "jobs": 0,
+      "pendingDeployments": 0,
+      "approvalPerformed": false,
+      "disposition": "blocking-hold",
+      "dispositionSource": "release-owner-record",
+      "nextAction": "Use one separately reviewed run-control operation for each of the three queued requests, verify server-confirmed terminal state and no execution, then use the native workflow enable operation once and verify active identity before a new admission."
+    },
     "requestToRunBinding": {
       "status": "not-established",
       "source": "unavailable",
@@ -77,7 +90,7 @@
       "canAdminsBypass": false
     },
     "jobUsesTestEnvironment": true,
-    "activationBlocker": "Native Test environment protection is verified for the historical job; supersession remains inactive and neither queued request has been approved."
+    "activationBlocker": "The three known requests are not server-confirmed terminal, the canonical workflow is disabled_manually, and the bounded supersession authorization is inactive; no new admission may proceed until all three terminal states and one verified active-controller transition exist."
   },
   "approval": {
     "status": "not-approved",

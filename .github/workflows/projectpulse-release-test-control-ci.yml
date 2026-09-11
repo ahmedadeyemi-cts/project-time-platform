@@ -149,6 +149,16 @@ jobs:
               || fail 'Stale-run supersession control is not based on trusted merged main.'
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_STALE_RUN_SUPERSESSION_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
+            [[ "$CURRENT_BASE_SHA" == '526cfc0d2eb993c35557db190eb5ae87d29bda65' ]] \
+              || fail 'Protected cutover control is not based on merged PR896 main.'
+            cmp -s "$CIT/diff" "$CIT/e-flowhive-protected-cutover-files" || {
+              echo 'Protected cutover control differs from its exact governed file set.' >&2
+              diff -u "$CIT/e-flowhive-protected-cutover-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_PROTECTED_CUTOVER_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
