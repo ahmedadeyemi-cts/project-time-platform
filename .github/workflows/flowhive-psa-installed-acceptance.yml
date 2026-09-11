@@ -32,7 +32,7 @@ jobs:
       EXPECTED_API_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:e5f95466a01be8e9f38e36f6a2474391372b1a63f41115f1b7f63810e6017afc
       EXPECTED_WEB_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:7b1dbab4a0a57c7993d3ec8d7c3cd51613bcb463f7971a1268db5afb935d6964
       PREVIOUS_PLANNER_RUN_ID: 171e4430-95e4-4f80-be14-454dcc319ef2
-      EVIDENCE_DIR: ${{ github.workspace }}/.flowhive-installed-acceptance
+      EVIDENCE_DIR: ${{ github.workspace }}/flowhive-installed-acceptance
 
     steps:
       - name: Check out the exact trusted main controller
@@ -127,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: flowhive-installed-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/.flowhive-installed-acceptance
+          path: ${{ github.workspace }}/flowhive-installed-acceptance
           if-no-files-found: warn
           retention-days: 14
 
