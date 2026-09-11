@@ -58,64 +58,6 @@ def get_json(path: str, token: str) -> tuple[int, object]:
         raise IdentityError("identity_read_failed") from None
 
 
-def login_with_password(password: str) -> str:
-    require(len(password) >= 12, "pm_fallback_password_missing")
-    payload = json.dumps({
-        "username": "heather.schrock@ussignal.local",
-        "password": password,
-    }).encode()
-    request = Request(
-        ORIGIN + "/api/auth/local/login",
-        data=payload,
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Origin": ORIGIN,
-            "Sec-Fetch-Site": "same-origin",
-        },
-        method="POST",
-    )
-    try:
-        with build_opener().open(request, timeout=45) as response:
-            raw = response.read(2_000_001)
-            require(len(raw) <= 2_000_000, "pm_fallback_response_too_large")
-            body = json.loads(raw)
-    except HTTPError as error:
-        raise IdentityError("pm_fallback_login_http_" + str(error.code)) from None
-    except (URLError, TimeoutError, OSError, ValueError):
-        raise IdentityError("pm_fallback_login_failed") from None
-    require(response.status == 200 and isinstance(body, dict), "pm_fallback_login_contract_failed")
-    require(body.get("provider") == "LOCAL" and body.get("mustChangePassword") is False,
-            "pm_fallback_login_contract_failed")
-    token = body.get("sessionToken")
-    require(isinstance(token, str) and len(token) >= 20, "pm_fallback_session_missing")
-    return token
-
-
-def logout(token: str) -> None:
-    if not token:
-        return
-    request = Request(
-        ORIGIN + "/api/auth/session/logout",
-        data=b"{}",
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-            "X-ProjectPulse-Session": token,
-            "Origin": ORIGIN,
-            "Sec-Fetch-Site": "same-origin",
-        },
-        method="POST",
-    )
-    try:
-        with build_opener().open(request, timeout=30) as response:
-            response.read(100_001)
-    except (HTTPError, URLError, TimeoutError, OSError):
-        # A verifier cleanup failure must not hide the identity result.
-        return
-
-
 def main() -> int:
     evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "/tmp/flowhive-psa-evidence"))
     evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -127,26 +69,16 @@ def main() -> int:
         "verificationCodeSha": os.environ.get("GITHUB_SHA", ""),
         "installed": EXPECTED,
     }
-    session_token = ""
     try:
         token = os.environ.get("PROJECTPULSE_TEST_UAT_SESSION", "")
-        credential_source = "test_uat_session"
-        if len(token) < 20:
-            token = login_with_password(os.environ.get("PROJECTPULSE_M087_PASSWORD", ""))
-            credential_source = "pm_local_login_fallback"
-        session_token = token
+        require(len(token) >= 20, "test_uat_session_missing")
         status, body = get_json("/api/platform-operations/overview", token)
-        if status in (401, 403) and credential_source == "test_uat_session":
-            token = login_with_password(os.environ.get("PROJECTPULSE_M087_PASSWORD", ""))
-            credential_source = "pm_local_login_fallback"
-            session_token = token
-            status, body = get_json("/api/platform-operations/overview", token)
         require(status == 200 and isinstance(body, dict), "platform_identity_http_" + str(status))
         observed = str(((body.get("runtime") or {}).get("releaseSha")) or "")
         require(re.fullmatch(r"[0-9a-f]{40}", observed) is not None, "platform_release_marker_missing")
         require(observed == EXPECTED["applicationSha"], "installed_api_source_mismatch")
         report["serverConfirmed"] = {"apiReleaseSha": observed, "observedAtUtc": body.get("generatedAt")}
-        report["identityCredentialSource"] = credential_source
+        report["identityCredentialSource"] = "PROJECTPULSE_TEST_UAT_SESSION"
         report["webIdentity"] = {
             "status": "recorded_from_installation_evidence",
             "revision": EXPECTED["webRevision"],
@@ -158,8 +90,6 @@ def main() -> int:
         report["diagnosticCode"] = str(error)
     except Exception as error:  # pragma: no cover - safe type-only diagnostic
         report["diagnosticCode"] = "unexpected_" + type(error).__name__
-    finally:
-        logout(session_token)
     (evidence_dir / "flowhive-installed-identity.json").write_text(json.dumps(report, indent=2) + "\n")
     print("FLOWHIVE_INSTALLED_IDENTITY=" + ("PASS" if report["status"] == "passed" else "FAIL"))
     return 0 if report["status"] == "passed" else 1
