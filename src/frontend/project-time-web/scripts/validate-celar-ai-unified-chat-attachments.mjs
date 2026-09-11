@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readEffectiveBuildTargets } from './read-effective-build-targets.mjs';
 
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -27,7 +28,7 @@ const platform = read('src/frontend/project-time-web/src/CelarAiProductionPlatfo
 const module011Mount = read('src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx');
 const brandModule = read('src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs');
 const productionModule = read('src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs');
-const backendBuild = read('src/backend/ProjectTime.Api/Directory.Build.targets');
+const backendBuild = readEffectiveBuildTargets(root).text;
 const attachmentModule = read('src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs');
 const attachmentContracts = read('src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentContracts.cs');
 const attachmentRepository = read('src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentRepository.cs');

@@ -946,6 +946,7 @@ public static class Module025SowGsdModule
         await using var connection = writable.Connection!;
         var engagement = writable.Engagement!;
         var access = writable.Access!;
+        if (!await SowSellSchemaReadyAsync(connection, cancellationToken)) return SowSellMigrationRequired();
         if (engagement.Status == "confirmed") return Results.Ok(new { status = "module025_already_confirmed", engagementId, engagement.Revision, stateChanged = false });
         if (!engagement.LastGeneratedAt.HasValue) return StateConflict("generation_required", "Generate and review the detailed P/D/I/V/R scope before confirmation.");
         if (engagement.CustomerName.Length == 0) return StateConflict("customer_required", "Select or manually enter the customer before confirmation.");
@@ -957,9 +958,10 @@ public static class Module025SowGsdModule
         const string sql = "UPDATE module025_sow_gsd_engagements SET status='confirmed', confirmed_at=NOW(), revision=revision+1 WHERE engagement_id=@engagement_id AND revision=@revision AND is_active=TRUE RETURNING revision;";
         var revision = await ExecuteRevisionUpdateAsync(connection, transaction, sql, engagementId, engagement.Revision, cancellationToken);
         if (!revision.HasValue) { await transaction.RollbackAsync(cancellationToken); return RevisionConflict(engagement.Revision); }
-        await InsertEventAsync(connection, transaction, engagementId, access.ActualUserId, revision.Value, "confirmed", "Solution Architect confirmed the SOW/GSD package for document export.", new { }, cancellationToken);
+        var released = await CaptureConfirmedSowVersionAsync(connection, transaction, engagementId, access.ActualUserId, cancellationToken);
+        await InsertEventAsync(connection, transaction, engagementId, access.ActualUserId, revision.Value, "confirmed", "Solution Architect confirmed the SOW/GSD package and retained its immutable SOW/GSD version.", new { versionId = released.Version.VersionId, versionNumber = released.Version.VersionNumber, sowSha256 = released.Version.SowSha256, gsdSha256 = released.Version.GsdSha256 }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return Results.Ok(new { status = "module025_confirmed", engagementId, revision, canDownload = true, stateChanged = true });
+        return Results.Ok(new { status = "module025_confirmed", engagementId, revision, canDownload = true, version = released.Version, stateChanged = true });
     }
 
     private static async Task<IResult> ReopenAsync(Guid engagementId, HttpContext context, CancellationToken cancellationToken)
@@ -1119,7 +1121,7 @@ public static class Module025SowGsdModule
         }
     }
 
-    private static async Task<Module025EngagementRow?> LoadEngagementAsync(NpgsqlConnection connection, Guid engagementId, CancellationToken cancellationToken)
+    private static async Task<Module025EngagementRow?> LoadEngagementAsync(NpgsqlConnection connection, Guid engagementId, CancellationToken cancellationToken, NpgsqlTransaction? transaction = null)
     {
         const string sql = """
             SELECT engagement_id, engagement_number, owner_user_id, owner_display_name, owner_department_name, owner_team_name,
@@ -1129,7 +1131,7 @@ public static class Module025SowGsdModule
             FROM module025_sow_gsd_engagements WHERE engagement_id=@engagement_id;
             """;
         Module025EngagementRow? shell;
-        await using (var command = new NpgsqlCommand(sql, connection))
+        await using (var command = new NpgsqlCommand(sql, connection, transaction))
         {
             command.Parameters.AddWithValue("engagement_id", engagementId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1141,11 +1143,11 @@ public static class Module025SowGsdModule
                 ParseJson(reader.GetString(17), JsonValueKind.Object), ParseJson(reader.GetString(18), JsonValueKind.Object), reader.GetString(19), reader.GetBoolean(20), reader.GetInt32(21),
                 NullableTimestamp(reader, 22), NullableTimestamp(reader, 23), NullableTimestamp(reader, 24), reader.GetFieldValue<DateTimeOffset>(25), reader.GetFieldValue<DateTimeOffset>(26), Array.Empty<Module025PhaseRow>());
         }
-        var phases = await LoadPhasesAsync(connection, engagementId, cancellationToken);
+        var phases = await LoadPhasesAsync(connection, engagementId, cancellationToken, transaction);
         return shell with { Phases = phases };
     }
 
-    private static async Task<IReadOnlyList<Module025PhaseRow>> LoadPhasesAsync(NpgsqlConnection connection, Guid engagementId, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<Module025PhaseRow>> LoadPhasesAsync(NpgsqlConnection connection, Guid engagementId, CancellationToken cancellationToken, NpgsqlTransaction? transaction = null)
     {
         const string sql = """
             SELECT phase_code, sort_order, suggested_hours, final_hours, objective, detailed_activities::text, technical_tasks::text,
@@ -1155,7 +1157,7 @@ public static class Module025SowGsdModule
             FROM module025_sow_gsd_phases WHERE engagement_id=@engagement_id ORDER BY sort_order;
             """;
         var rows = new List<Module025PhaseRow>();
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("engagement_id", engagementId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

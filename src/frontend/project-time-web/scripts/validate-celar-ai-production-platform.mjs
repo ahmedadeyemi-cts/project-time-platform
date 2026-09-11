@@ -58,10 +58,11 @@ assert('CHAT_V2', help.includes("'/api/celar-ai/v2/chat'") && help.includes('cli
 const legacyFlowHiveBrowserCall = /(?:postJson|fetch)\(\s*['"`]\/api\/project-flowhive\/ai\/production-generate/.test(flowHive);
 const durableFlowHivePlanner = flowHive.includes('AI Planning Workspace')
   && flowHive.includes('runAiPlannerOperation')
-  && flowHive.includes('/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs')
-  && flowHive.includes('/ai-planner/runs/${result.runId}')
+  && flowHive.includes('/api/project-flowhive/projects/${projectId}/ai-planner/runs')
+  && flowHive.includes('observePlanner(')
+  && read('src/frontend/project-time-web/src/flowhive-planner-operation.js').includes('/ai-planner/runs/${initial.runId}')
   && flowHive.includes('FlowHiveEvidenceReadiness')
-  && flowHive.includes('resolving the project SOW and GSD')
+  && flowHive.includes('hasWorkingCopyExpectation: true')
   && flowHive.includes('scopeOfServicesLocated')
   && flowHive.includes('approvedSowCitationCount');
 assert('FLOWHIVE_UI', durableFlowHivePlanner && !legacyFlowHiveBrowserCall, 'FlowHive V2 creates and polls durable project-scoped AI planner runs, surfaces SOW evidence readiness/citations, and has no executable legacy production-generate browser call');

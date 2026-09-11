@@ -138,11 +138,53 @@ const allowedExact = new Set([
   'src/backend/ProjectTime.Api/Directory.Build.targets',
   'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
 ]);
-const unexpected = changed.filter((file) => !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix)));
+const module025SowSellScope = changed.includes('.github/module025-sow-sell-governed-release-files.txt')
+  && changed.includes('database/migrations/106_module025_sow_sell_register.sql');
+const flowHiveSowSuccessorScope = module025SowSellScope
+  && changed.includes('.github/flowhive-enterprise-psa-release-files.txt')
+  && changed.includes('database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql');
+const module025SowSellBaselinePaths = [requiredFiles[0], requiredFiles[1]];
+const module025SowSellPaths = module025SowSellScope
+  ? new Set(read('.github/module025-sow-sell-governed-release-files.txt').split(/\r?\n/).filter(Boolean))
+  : new Set();
+const governedSuccessorPaths = flowHiveSowSuccessorScope
+  ? new Set([
+    ...read('.github/flowhive-enterprise-psa-release-files.txt').split(/\r?\n/).filter(Boolean),
+    ...module025SowSellPaths
+  ])
+  : module025SowSellPaths;
+const branchName = process.env.GITHUB_HEAD_REF || (() => {
+  try {
+    return String(execFileSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8' })).trim();
+  } catch {
+    return '';
+  }
+})();
+const unexpected = changed.filter((file) => {
+  if (module025SowSellScope) {
+    return !governedSuccessorPaths.has(file) && !module025SowSellBaselinePaths.includes(file);
+  }
+  return !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix));
+});
 requireValue(unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
-requireValue(changed.includes(requiredFiles[0]) && changed.includes(requiredFiles[1]), 'CELAR_PR630_MIGRATION_SCOPE', 'Migration 084 and guarded rollback');
+const migrationScope = flowHiveSowSuccessorScope
+  ? changed.includes('database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql')
+    && changed.includes('database/migrations/104_flowhive_bounded_ai_execution.sql')
+    && changed.includes('database/migrations/105_flowhive_reviewed_regeneration.sql')
+    && changed.includes('database/migrations/106_module025_sow_sell_register.sql')
+  : changed.includes(requiredFiles[0]) && changed.includes(requiredFiles[1]);
+requireValue(migrationScope, 'CELAR_PR630_MIGRATION_SCOPE', flowHiveSowSuccessorScope ? 'combined FlowHive/SOW migrations 103-106' : 'Migration 084 and guarded rollback');
 requireValue(!changed.includes('.github/workflows/celar-ai-source-snapshot-temp.yml'), 'CELAR_PR630_TEMP_SNAPSHOT_REMOVED');
-requireValue(changed.every((file) => !file.startsWith('deployment/') && !file.includes('projectpulse-deploy-') && !file.includes('oracle-test-runtime-deploy')), 'CELAR_PR630_NO_DEPLOYMENT_CONTROLLER');
+const flowHiveProxyLimit = 'deployment/containers/web/default.conf.template';
+const flowHiveProxyLimitReviewed = flowHiveSowSuccessorScope
+  && (branchName === 'release/flowhive-sow-successor-20260908' || branchName === 'fix/flowhive-installed-pm-readiness-candidate-20260911')
+  && changed.includes(flowHiveProxyLimit)
+  && governedSuccessorPaths.has(flowHiveProxyLimit);
+requireValue(
+  changed.every((file) => (!file.startsWith('deployment/') || (flowHiveProxyLimitReviewed && file === flowHiveProxyLimit)) && !file.includes('projectpulse-deploy-') && !file.includes('oracle-test-runtime-deploy')),
+  'CELAR_PR630_NO_DEPLOYMENT_CONTROLLER',
+  flowHiveProxyLimitReviewed ? 'only the reviewed FlowHive proxy limit' : ''
+);
 requireValue(changed.every((file) => !file.endsWith('.env') && !file.includes('/secrets/') && !file.toLowerCase().includes('runtime-token')), 'CELAR_PR630_NO_SECRET_FILE');
 
 if (failures) {

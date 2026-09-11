@@ -24,10 +24,10 @@ internal static class ProjectFlowHiveEnterpriseModule
     }
 
     private const string MigrationId = "086_module_066_flowhive_enterprise_pm";
-    // PM governance compatibility contract: Only the assigned Project Manager can manage
-    // financial controls, formal status publication, baseline approval, and customer sharing.
-    // ProjectPulseActualSessionAuthority.IsViewAs remains enforced by ProjectPlanningAccessResolver;
-    // Engineering planner collaboration never transfers IsProjectManagerOwner authority.
+    // PM governance compatibility contract: financial controls, formal status publication,
+    // baseline approval, and customer sharing use the shared planning resolver. Its
+    // administrator, assigned-PM-lead, and assigned-PM scope remains project-bound and
+    // ProjectPulseActualSessionAuthority.IsViewAs stays read-only.
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -180,13 +180,14 @@ internal static class ProjectFlowHiveEnterpriseModule
         const string sql = """
             INSERT INTO project_flowhive_working_copies(
                 project_id,plan_id,working_payload,updated_by_user_id)
-            VALUES(@project_id,@plan_id,@payload::jsonb,@actor)
+            SELECT @project_id,@plan_id,@payload::jsonb,@actor
+            WHERE @expected_row_version::uuid IS NULL OR EXISTS(
+                SELECT 1 FROM project_flowhive_working_copies WHERE project_id=@project_id AND row_version=@expected_row_version)
             ON CONFLICT(project_id) DO UPDATE
             SET plan_id=EXCLUDED.plan_id,
                 working_payload=EXCLUDED.working_payload,
                 updated_by_user_id=EXCLUDED.updated_by_user_id
-            WHERE @expected_row_version::uuid IS NULL
-               OR project_flowhive_working_copies.row_version=@expected_row_version
+            WHERE project_flowhive_working_copies.row_version=@expected_row_version
             RETURNING working_revision,row_version,updated_at;
             """;
         await using var command = new NpgsqlCommand(sql, connection, transaction);
@@ -549,7 +550,8 @@ internal static class ProjectFlowHiveEnterpriseModule
         var expiresAt = DateTimeOffset.UtcNow.AddDays(expirationDays);
         var allowedArtifacts = (request.AllowedArtifacts ?? ["view", "pdf"])
             .Select(value => value?.Trim().ToLowerInvariant() ?? string.Empty)
-            .Where(value => value is "view" or "pdf")
+            .Select(value => value == "meeting_recordings" ? "meetings" : value)
+            .Where(value => value is "view" or "pdf" or "meetings")
             .Distinct()
             .DefaultIfEmpty("view")
             .ToArray();
@@ -813,6 +815,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         string projectCode;
         string projectName;
         string customerName;
+        string[] allowedArtifacts;
         string planJson;
         string scheduleJson;
         string executiveSummary;
@@ -829,6 +832,7 @@ internal static class ProjectFlowHiveEnterpriseModule
             revokedAt = reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTimeOffset>(5);
             customerLabel = reader.GetString(6);
             note = reader.GetString(7);
+            allowedArtifacts = reader.GetFieldValue<string[]>(8);
             projectCode = reader.GetString(9);
             projectName = reader.GetString(10);
             customerName = reader.GetString(11);
@@ -847,6 +851,11 @@ internal static class ProjectFlowHiveEnterpriseModule
         }
         catch { return CustomerShareUnavailable(); }
         if (plan is null || schedule is null) return CustomerShareUnavailable();
+        var meetingDownloads = allowedArtifacts.Any(value =>
+                value.Equals("meetings", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("meeting_recordings", StringComparison.OrdinalIgnoreCase))
+            ? await LoadCustomerMeetingDownloadsAsync(connection, projectId, token, cancellationToken)
+            : [];
 
         await using (var transaction = await connection.BeginTransactionAsync(cancellationToken))
         {
@@ -874,7 +883,8 @@ internal static class ProjectFlowHiveEnterpriseModule
             executiveSummary,
             expiresAt,
             plan,
-            schedule);
+            schedule,
+            meetingDownloads);
         return Results.Content(html, "text/html; charset=utf-8", Encoding.UTF8, StatusCodes.Status200OK);
     }
 
@@ -886,7 +896,8 @@ internal static class ProjectFlowHiveEnterpriseModule
         string executiveSummary,
         DateTimeOffset expiresAt,
         ProjectFlowHivePlanRequest plan,
-        ProjectFlowHiveScheduleResult schedule)
+        ProjectFlowHiveScheduleResult schedule,
+        IReadOnlyList<CustomerMeetingDownload> meetingDownloads)
     {
         static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
         var scheduled = schedule.Tasks.ToDictionary(task => task.WbsNumber, StringComparer.OrdinalIgnoreCase);
@@ -912,6 +923,24 @@ internal static class ProjectFlowHiveEnterpriseModule
         var customerNote = string.IsNullOrWhiteSpace(note)
             ? string.Empty
             : $"<p><strong>Project Manager note:</strong> {H(note)}</p>";
+        var recordings = new StringBuilder();
+        foreach (var meeting in meetingDownloads)
+        {
+            recordings.Append("<li><strong>")
+                .Append(H(meeting.Title))
+                .Append("</strong><span> ")
+                .Append(H(meeting.MeetingAt.ToString("MMM d, yyyy h:mm tt", CultureInfo.InvariantCulture)))
+                .Append(" · ")
+                .Append(H(meeting.FileName))
+                .Append(" · ")
+                .Append(meeting.SizeBytes.ToString("N0", CultureInfo.InvariantCulture))
+                .Append(" bytes</span> <a href=\"")
+                .Append(H(meeting.DownloadUrl))
+                .Append("\" download>Download MP4</a></li>");
+        }
+        var recordingSection = meetingDownloads.Count == 0
+            ? string.Empty
+            : $"<section><h2>Meeting recordings</h2><p>Customer-visible recordings from this reviewed share.</p><ul>{recordings}</ul></section>";
         return """
             <!doctype html>
             <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -922,12 +951,13 @@ internal static class ProjectFlowHiveEnterpriseModule
             main{max-width:1180px;margin:32px auto;padding:0 20px}header{padding:28px;border-radius:18px;color:#fff;background:linear-gradient(135deg,#061d35,#0b5276)}
             .brand{font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#82ddf6}h1{margin:.35rem 0 .25rem}.meta{display:flex;gap:18px;flex-wrap:wrap;color:#d9edf7}
             section{margin-top:18px;padding:22px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(7,35,59,.07)}
-            h2{margin-top:0;color:var(--navy)}p{line-height:1.55}table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;background:var(--navy);color:#fff;padding:11px}td{padding:11px;border-bottom:1px solid var(--line);vertical-align:top}td small{display:block;margin-top:4px;color:var(--muted);line-height:1.4}footer{padding:20px 0;color:var(--muted);font-size:12px}@media(max-width:760px){table{display:block;overflow:auto}}
+            h2{margin-top:0;color:var(--navy)}p{line-height:1.55}table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;background:var(--navy);color:#fff;padding:11px}td{padding:11px;border-bottom:1px solid var(--line);vertical-align:top}td small{display:block;margin-top:4px;color:var(--muted);line-height:1.4}ul{padding-left:22px;line-height:1.8}li span{color:var(--muted);font-size:13px}li a{margin-left:8px;color:var(--blue);font-weight:700}footer{padding:20px 0;color:var(--muted);font-size:12px}@media(max-width:760px){table{display:block;overflow:auto}}
             </style></head><body><main>
             <header><div class="brand">US Signal Project FlowHive</div><h1>__PROJECT_CODE__ · __PROJECT_NAME__</h1><div class="meta"><span>Customer: __CUSTOMER__</span><span>Reviewed project baseline</span><span>Link expires __EXPIRES__</span></div></header>
             <section><h2>Executive summary</h2><p>__SUMMARY__</p>__CUSTOMER_NOTE__</section>
             <section><h2>Reviewed schedule</h2><p>__PROJECT_START__ through __PROJECT_FINISH__ · __CRITICAL_COUNT__ critical task(s)</p>
             <table><thead><tr><th>WBS</th><th>Task</th><th>Start</th><th>Finish</th><th>Progress</th><th>Status</th></tr></thead><tbody>__ROWS__</tbody></table></section>
+            __RECORDINGS__
             <footer>Customer-safe, read-only Project FlowHive view. Internal notes, private citations, assignments, financial details, and provider data are not included.</footer>
             </main></body></html>
             """
@@ -940,7 +970,38 @@ internal static class ProjectFlowHiveEnterpriseModule
             .Replace("__PROJECT_START__", projectStart, StringComparison.Ordinal)
             .Replace("__PROJECT_FINISH__", projectFinish, StringComparison.Ordinal)
             .Replace("__CRITICAL_COUNT__", schedule.CriticalTaskCount.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
-            .Replace("__ROWS__", rows.ToString(), StringComparison.Ordinal);
+            .Replace("__ROWS__", rows.ToString(), StringComparison.Ordinal)
+            .Replace("__RECORDINGS__", recordingSection, StringComparison.Ordinal);
+    }
+
+    private static async Task<IReadOnlyList<CustomerMeetingDownload>> LoadCustomerMeetingDownloadsAsync(
+        NpgsqlConnection connection,
+        Guid projectId,
+        string token,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT meeting_id,title,meeting_at,original_file_name,size_bytes,sha256
+            FROM project_flowhive_meetings
+            WHERE project_id=@project_id AND customer_visible=TRUE
+            ORDER BY meeting_at DESC,created_at DESC;
+            """;
+        var rows = new List<CustomerMeetingDownload>();
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("project_id", projectId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var meetingId = reader.GetGuid(0);
+            rows.Add(new CustomerMeetingDownload(
+                reader.GetString(1),
+                reader.GetFieldValue<DateTimeOffset>(2),
+                reader.GetString(3),
+                reader.GetInt64(4),
+                reader.GetString(5),
+                $"/api/project-flowhive/share/{Uri.EscapeDataString(token)}/meetings/{meetingId:D}/download"));
+        }
+        return rows;
     }
 
     private static async Task<OpenOutcome> OpenAuthorizedAsync(
@@ -1097,6 +1158,8 @@ internal static class ProjectFlowHiveEnterpriseModule
         {
             planId = reader.IsDBNull(0) ? (Guid?)null : reader.GetGuid(0),
             plan = ParseJson(reader.GetString(1)),
+            schedule = ProjectFlowHiveScheduleEngine.Calculate(JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(1), Json)),
+            validation = ProjectFlowHiveScheduleEngine.Validate(JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(1), Json)),
             workingRevision = reader.GetInt32(2),
             rowVersion = reader.GetGuid(3),
             updatedByUserId = reader.GetGuid(4),
@@ -1662,6 +1725,14 @@ public sealed record ProjectFlowHiveSowEvidencePrepareRequest(
     bool ApproveCurrentVersion,
     string? ApprovalNote,
     string? CorrelationId);
+
+internal sealed record CustomerMeetingDownload(
+    string Title,
+    DateTimeOffset MeetingAt,
+    string FileName,
+    long SizeBytes,
+    string Sha256,
+    string DownloadUrl);
 
 internal sealed record ProjectFlowHiveEnterpriseAccess(
     Guid ActualUserId,

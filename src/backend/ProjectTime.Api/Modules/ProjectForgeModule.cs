@@ -20,6 +20,7 @@ public static partial class ProjectForgeModule
     public static WebApplication MapProjectForgeEndpoints(this WebApplication app)
     {
         app.MapGet("/api/project-forge/bootstrap", (Func<Guid?, Guid?, string?, Guid?, HttpContext, CelarAiKnowledgeFabricService, PulseAiPrivateRetrievalAuthorizationService, ILoggerFactory, CancellationToken, Task<IResult>>)GetBootstrapAsync);
+        app.MapGet("/api/project-forge/projects/{projectId:guid}/financial-readback", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetFinancialReadbackAsync);
         app.MapPost("/api/project-forge/plans", (Func<ProjectForgePlanSaveRequest, HttpContext, CancellationToken, Task<IResult>>)CreatePlanAsync);
         app.MapPut("/api/project-forge/plans/{planId:guid}", (Func<Guid, ProjectForgePlanSaveRequest, HttpContext, CancellationToken, Task<IResult>>)UpdatePlanAsync);
         app.MapPost("/api/project-forge/projects/{projectId:guid}/ai-drafts", (Func<Guid, ProjectForgeAiDraftRequest, HttpContext, CelarAiEnterprisePlatformService, PulseAiPrivateRetrievalAuthorizationService, CancellationToken, Task<IResult>>)GenerateAiDraftAsync);
@@ -39,6 +40,123 @@ public static partial class ProjectForgeModule
         app.MapDelete("/api/project-forge/task-dependencies/{dependencyId:guid}", (Func<Guid, ProjectForgeTaskDependencySaveRequest, HttpContext, CancellationToken, Task<IResult>>)DeleteTaskDependencyAsync);
         app.MapPost("/api/project-forge/plans/{planId:guid}/tasks/{planTaskId:guid}/review-completion", (Func<Guid, Guid, ProjectForgeReviewCompletionRequest, HttpContext, CancellationToken, Task<IResult>>)CompleteTaskReviewAsync);
         return app;
+    }
+
+    private static async Task<IResult> GetFinancialReadbackAsync(
+        Guid projectId,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        var identity = Identities(context);
+        if (identity is null) return SessionRequired();
+        var configured = OpenConfiguration();
+        if (configured.Error is not null) return configured.Error;
+        await using var connection = new NpgsqlConnection(configured.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
+        if (!access.CanView) return Forbidden("VIEW_PROJECT_FORGE_033");
+        if (!access.CanViewFinancials || access.IsViewAs) return WriteForbidden(access);
+        if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken))
+            return Forbidden("project_forge_project_scope");
+
+        await using (var readiness = new NpgsqlCommand("""
+            SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='086_module_066_flowhive_enterprise_pm')
+                   AND to_regclass('public.project_flowhive_project_controls') IS NOT NULL
+            """, connection))
+        {
+            if ((bool?)await readiness.ExecuteScalarAsync(cancellationToken) != true)
+                return MigrationRequired();
+        }
+
+        decimal? approvedBudget = null;
+        decimal? recordedForecast = null;
+        string? projectCurrency = null;
+        await using (var control = new NpgsqlCommand("""
+            SELECT currency_code, approved_budget, forecast_at_completion
+            FROM project_flowhive_project_controls
+            WHERE project_id=@project_id
+            """, connection))
+        {
+            control.Parameters.AddWithValue("project_id", projectId);
+            await using var reader = await control.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                projectCurrency = reader.IsDBNull(0) ? null : reader.GetString(0);
+                approvedBudget = reader.IsDBNull(1) ? null : reader.GetDecimal(1);
+                recordedForecast = reader.IsDBNull(2) ? null : reader.GetDecimal(2);
+            }
+        }
+
+        var taskSources = new List<ProjectFlowHiveCanonicalTaskFinancialSource>();
+        await using (var tasks = new NpgsqlCommand("""
+            SELECT task.task_id, task.task_code, task.is_active,
+                   detail.estimated_hours, detail.hourly_rate
+            FROM project_tasks task
+            LEFT JOIN project_forge_task_details detail ON detail.task_id=task.task_id
+            WHERE task.project_id=@project_id
+            ORDER BY task.task_code, task.task_id
+            """, connection))
+        {
+            tasks.Parameters.AddWithValue("project_id", projectId);
+            await using var reader = await tasks.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                taskSources.Add(new ProjectFlowHiveCanonicalTaskFinancialSource(
+                    reader.GetGuid(0),
+                    reader.GetString(1),
+                    null,
+                    reader.IsDBNull(3) ? null : reader.GetDecimal(3),
+                    null,
+                    reader.GetBoolean(2),
+                    new ProjectFlowHiveRateSource(
+                        reader.IsDBNull(4) ? null : reader.GetDecimal(4),
+                        "task_hourly_rate_unclassified",
+                        projectCurrency,
+                        null,
+                        "project_forge_task_details",
+                        false)));
+        }
+
+        var approvedTime = new List<ProjectFlowHiveApprovedTimeSource>();
+        await using (var time = new NpgsqlCommand("""
+            SELECT time_entry_id, task_id, hours, status, work_date
+            FROM time_entries
+            WHERE project_id=@project_id
+            ORDER BY work_date, time_entry_id
+            """, connection))
+        {
+            time.Parameters.AddWithValue("project_id", projectId);
+            await using var reader = await time.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                approvedTime.Add(new ProjectFlowHiveApprovedTimeSource(
+                    reader.GetGuid(0),
+                    reader.IsDBNull(1) ? null : reader.GetGuid(1),
+                    reader.GetDecimal(2),
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetFieldValue<DateOnly>(4)));
+        }
+
+        var readback = ProjectFlowHiveFinancialReadback.Calculate(
+            approvedBudget,
+            recordedForecast,
+            taskSources,
+            approvedTime,
+            projectCurrency,
+            "project_flowhive_project_controls.forecast_at_completion");
+        return Results.Ok(new
+        {
+            module = "033",
+            status = "financial_readback_ready",
+            projectId,
+            source = new
+            {
+                canonicalTasks = "project_tasks + project_forge_task_details",
+                approvedTime = "time_entries; approved totals use pm_approved/accounting_ready/reconciled/locked status",
+                projectControls = "project_flowhive_project_controls",
+                authorization = "server_scoped_project_manager_financial_access",
+                rateBasis = "project_forge_task_details.hourly_rate is unclassified and is not treated as internal labor cost without rate authority metadata"
+            },
+            readback
+        });
     }
 
     private static async Task<IResult> GetBootstrapAsync(

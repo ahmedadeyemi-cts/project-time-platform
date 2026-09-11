@@ -62,6 +62,19 @@ elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
   done
   echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=FLOWHIVE_V2_SHARED_PLANNING' >> "$GITHUB_ENV"
   echo 'ANALYTICS_ENTERPRISE_FLOWHIVE_SOURCE_BOUNDARY=PASSED'
+elif { grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+  || { grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
+    && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED"; }; } \
+  && grep -Fxq 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs' <<<"$CHANGED"; then
+  DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/060_analytics_center_enterprise_experience\.sql|rollback/060_analytics_center_enterprise_experience_rollback\.sql)|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css)|tests/test-analytics-center-enterprise-migration-060\.sh)$' <<<"$CHANGED" || true)"
+  UNEXPECTED="$(grep -Fvx 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs' <<<"$DIRECT_ANALYTICS" || true)"
+  if [[ -n "$UNEXPECTED" ]]; then
+    echo 'Unexpected Analytics enterprise source in the shared effective-target consumer repair:' >&2
+    printf '%s\n' "$UNEXPECTED" >&2
+    exit 1
+  fi
+  echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
+  echo 'ANALYTICS_ENTERPRISE_SHARED_EFFECTIVE_TARGET_CONSUMER=PASS'
 else
   DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/060_analytics_center_enterprise_experience\.sql|rollback/060_analytics_center_enterprise_experience_rollback\.sql)|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css)|tests/test-analytics-center-enterprise-migration-060\.sh)$' <<<"$CHANGED" || true)"
   if [[ -n "$DIRECT_ANALYTICS" ]]; then
@@ -84,6 +97,16 @@ for protected in \
 done
 
 DEPLOYMENT_OVERLAP="$(grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED" || true)"
+if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]] \
+  && grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
+  && grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+  && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED" \
+  && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
+  FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" <<<"$CHANGED"
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt
+  DEPLOYMENT_OVERLAP="$(grep -Fvx "$FLOWHIVE_PROXY_LIMIT" <<<"$DEPLOYMENT_OVERLAP" || true)"
+fi
 if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
   DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
 fi

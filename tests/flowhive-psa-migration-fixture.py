@@ -100,6 +100,12 @@ if successor_staging:
     for item in approval['migrations']:
         assert hashlib.sha256((source/'database/migrations'/item['file']).read_bytes()).hexdigest()==item['sha256']
     assert any(item['file']=='106_module025_sow_sell_register.sql' for item in approval['migrations'])
+    successor_file='106_module025_sow_sell_register.sql'
+    successor_bytes=(source/'database/migrations'/successor_file).read_bytes()
+    successor_hash=hashlib.sha256(successor_bytes).hexdigest()
+    approved_successor=next((item for item in approval['migrations'] if item['file']==successor_file),None)
+    assert approved_successor is not None and approved_successor['sha256']==successor_hash
+    migration_entries=approval['migrations']
     selected_sha=pr['head']['sha']
 elif pr.get('head',{}).get('ref')=='feature/flowhive-enterprise-psa-revamp-20260906':
     assert os.environ.get('GITHUB_EVENT_NAME')=='pull_request'

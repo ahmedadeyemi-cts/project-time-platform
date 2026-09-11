@@ -11,6 +11,7 @@ const backendDirectory = path.join(repositoryRoot, 'src/backend/ProjectTime.Api/
 
 const paths = {
   backend: path.join(backendDirectory, 'ProjectFlowHiveModule.cs'),
+  psaBackend: path.join(backendDirectory, 'ProjectFlowHivePsaModule.cs'),
   contracts: path.join(backendDirectory, 'ProjectFlowHivePlanningContracts.cs'),
   repository: path.join(backendDirectory, 'PostgresProjectFlowHivePlanRepository.cs'),
   schedule: path.join(backendDirectory, 'ProjectFlowHiveScheduleEngine.cs'),
@@ -67,6 +68,7 @@ function readRequired(name, filePath) {
 }
 
 const backend = readRequired('BACKEND', paths.backend);
+const psaBackend = readRequired('PSA_BACKEND', paths.psaBackend);
 const contracts = readRequired('CONTRACTS', paths.contracts);
 const repository = readRequired('PRODUCTION_REPOSITORY', paths.repository);
 const schedule = readRequired('SCHEDULE_ENGINE', paths.schedule);
@@ -408,7 +410,9 @@ assertInvariant(
   'MODULE_066_FRONTEND_COMPUTE_AND_ARTIFACT_ROUTES',
   frontend.includes("postJson('/api/project-flowhive/planning/validate'") &&
     frontend.includes("postJson('/api/project-flowhive/schedule/calculate'") &&
-    frontend.includes('postJson(`/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs`') &&
+    frontend.includes('postJson(`/api/project-flowhive/projects/${projectId}/ai-planner/runs`')
+    && frontend.includes('hasWorkingCopyExpectation: true')
+    && frontend.includes('canApplyPlannerResult(') &&
     frontend.includes('/api/project-flowhive/artifacts/${format}-preview'),
   'validation, deterministic schedule, governed Celar generation, and reviewed artifact actions'
 );
@@ -678,11 +682,15 @@ assertInvariant(
 
 assertInvariant(
   'MODULE_066_ENTERPRISE_PM_SCOPE',
-  enterpriseBackend.includes('Only the assigned Project Manager can manage') &&
+  enterpriseBackend.includes('ProjectPlanningAccessResolver.ResolveAsync') &&
+    enterpriseBackend.includes('CanAdministerPlanner') &&
     enterpriseBackend.includes('IsProjectManagerOwner') &&
     enterpriseBackend.includes('ProjectPulseActualSessionAuthority.IsViewAs') &&
+    psaBackend.includes('ProjectPlanningAccessResolver.ResolveAsync') &&
+    psaBackend.includes('CanAdministerPlanner') &&
+    psaBackend.includes('view_as_write_blocked') &&
     enterpriseBackend.includes('working_copy_version_conflict'),
-  'PM ownership, non-transferable administrator support, View-As write blocking, and optimistic concurrency'
+  'shared project-scoped administrator/PM-lead authority, View-As write blocking, and optimistic concurrency'
 );
 
 assertInvariant(

@@ -21,7 +21,10 @@ const enterpriseCss = read('src/frontend/project-time-web/src/enterprise-systemw
 const flowhive = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
 const costAlerts = read('src/frontend/project-time-web/src/CostOverrunAlertCenter.jsx');
 const sow = read('src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx');
-const sowWorkspace = read('src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx');
+const sowWorkspace = [
+  read('src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx'),
+  read('src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx')
+].join('\n');
 const billing = read('src/frontend/project-time-web/src/BillingReadinessCenter.jsx');
 const help = read('src/frontend/project-time-web/src/HelpAssistant.jsx');
 const auditUi = read('src/frontend/project-time-web/src/AuditHistoryPanel.jsx');

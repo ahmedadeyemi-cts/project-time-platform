@@ -170,8 +170,12 @@ save('WorkTaskBuilderPanel.jsx', workTaskBuilder);
   // validation and previously rewrote the correct checked-in implementation.
   const durableContracts = [
     'async function runAiPlannerOperation()',
-    'postJson(`/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs`',
-    'const result = await runAiPlannerOperation();',
+    'postJson(`/api/project-flowhive/projects/${projectId}/ai-planner/runs`',
+    'await runAiPlannerOperation();',
+    'plan: seed, requestedOutcome',
+    'expectedWorkingRowVersion: loadedWorkingVersion.current',
+    'hasWorkingCopyExpectation: true',
+    'await followPlanner(result, projectId, startedEdit, controller)',
     'AI Planning Workspace',
     'an uncited generic template is never substituted'
   ];

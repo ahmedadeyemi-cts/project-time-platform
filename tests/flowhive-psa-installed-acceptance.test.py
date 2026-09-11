@@ -14,9 +14,11 @@ import unittest
 
 ROOT = Path(__file__).parents[1]
 WORKFLOW = ROOT / ".github/workflows/flowhive-psa-installed-acceptance.yml"
+DEPLOY = ROOT / ".github/workflows/projectpulse-deploy-test.yml"
 IDENTITY = ROOT / "scripts/release-test/verify-flowhive-installed-identity.py"
 FLOWHIVE = ROOT / "scripts/release-test/run-flowhive-psa-live-uat.py"
 ROLE = ROOT / "scripts/release-test/run-flowhive-my-role-browser.py"
+PLATFORM = ROOT / "src/backend/ProjectTime.Api/Modules/PlatformOperationsContracts.cs"
 MODULE025 = ROOT / "scripts/release-test/check-module025-installed-prerequisite.py"
 MODULE025_SA = ROOT / "scripts/release-test/run-module025-installed-sa-uat.py"
 PLANNER = ROOT / "scripts/release-test/reconcile-flowhive-planner.py"
@@ -26,9 +28,11 @@ class InstalledAcceptanceContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.workflow = WORKFLOW.read_text()
+        cls.deploy = DEPLOY.read_text()
         cls.identity = IDENTITY.read_text()
         cls.flowhive = FLOWHIVE.read_text()
         cls.role = ROLE.read_text()
+        cls.platform = PLATFORM.read_text()
         cls.module025 = MODULE025.read_text()
         cls.module025_sa = MODULE025_SA.read_text()
         cls.planner = PLANNER.read_text()
@@ -46,6 +50,8 @@ class InstalledAcceptanceContract(unittest.TestCase):
             "PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD",
             "PROJECTPULSE_M025_SA_EMAIL",
             "PROJECTPULSE_M025_SA_PASSWORD",
+            "PROJECTPULSE_M025_PM_EMAIL",
+            "PROJECTPULSE_M025_PM_PASSWORD",
             'GITHUB_REF" == refs/heads/main',
             "git rev-parse origin/main",
         ):
@@ -92,6 +98,11 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn('pm_local_login_fallback', self.identity)
         self.assertIn('"productionMutation": False', self.identity)
 
+    def test_release_marker_consumes_the_controller_written_source_variable(self):
+        self.assertIn('"PROJECTPULSE_SOURCE_COMMIT"', self.platform)
+        self.assertIn('"PROJECTPULSE_RELEASE_SHA",\n            "PROJECTPULSE_SOURCE_COMMIT"', self.platform)
+        self.assertIn('PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT"', self.deploy)
+
     def test_planner_reconciliation_is_read_only_and_precedes_identity(self):
         for token in (
             "171e4430-95e4-4f80-be14-454dcc319ef2",
@@ -120,6 +131,12 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn("window.fetch =", self.flowhive)
         self.assertIn("/review-preview", self.flowhive)
         self.assertIn("/apply-reviewed", self.flowhive)
+        self.assertIn("approvedSowScopeReady", self.flowhive)
+        self.assertIn("readyForAiPlanner", self.flowhive)
+        self.assertIn("approved_sow_changed_before_generation", self.flowhive)
+        self.assertIn("/api/project-flowhive/portfolio", self.flowhive)
+        self.assertNotIn("heather.schrock@ussignal.local", self.flowhive)
+        self.assertNotIn("TEST_LOGIN_PASSWORD", self.flowhive)
 
     def test_role_runner_is_real_browser_read_only_and_checks_reload_boundaries(self):
         for token in (
@@ -143,6 +160,23 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn("route.fulfill(", self.role)
         self.assertNotIn("page.route", self.role)
         self.assertIn('parsed.method not in ("GET", "HEAD", "OPTIONS")', self.role)
+        self.assertIn('await page.goto(ORIGIN + "/#my-role-in-pulse"', self.role)
+        self.assertIn('browserDiagnostics', self.role)
+        self.assertIn('my-role-failure.png', self.role)
+        self.assertNotIn("heather.schrock@ussignal.local", self.role)
+        self.assertNotIn("TEST_LOGIN_PASSWORD", self.role)
+
+    def test_planner_uses_pm_scope_without_generation_or_old_identity(self):
+        for token in (
+            "PROJECTPULSE_M025_PM_EMAIL",
+            "PROJECTPULSE_M025_PM_PASSWORD",
+            "/api/project-flowhive/portfolio",
+            "pm_project_not_in_authorized_portfolio",
+            '"generationPosts": 0',
+        ):
+            self.assertIn(token, self.planner)
+        self.assertNotIn("heather.schrock@ussignal.local", self.planner)
+        self.assertNotIn("TEST_LOGIN_PASSWORD", self.planner)
 
     def test_normal_solution_architect_sow_lifecycle_is_separate_from_fixture(self):
         for token in (

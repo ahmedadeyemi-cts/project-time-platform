@@ -87,7 +87,9 @@ required_orchestration_markers = [
     'ProcessNextQueuedRunAsync(',
     'pg_try_advisory_lock(hashtextextended(@run_id::text,735))',
     '"persist_working_draft"',
-    'working_payload IS DISTINCT FROM EXCLUDED.working_payload',
+    'project_flowhive_working_copies.row_version=@expected',
+    '"working_copy_changed"',
+    "deadline_at>clock_timestamp()",
     'requestPollingReadOnly = true',
     'backgroundGeneration = true',
 ]

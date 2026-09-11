@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readEffectiveBuildTargets } from './read-effective-build-targets.mjs';
 
 const repo = fileURLToPath(new URL('../../../../', import.meta.url));
 const read = (relative) => fs.readFileSync(path.join(repo, relative), 'utf8');
@@ -58,7 +59,7 @@ const sanitizer = read(files.sanitizer);
 const people = read(files.people);
 const moduleSource = read(files.module);
 const services = read(files.services);
-const targets = read(files.targets);
+const targets = readEffectiveBuildTargets(repo).text;
 const enterprise = read(files.enterprise);
 const help = read(files.help);
 const architecture = read(files.architecture);

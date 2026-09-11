@@ -10,6 +10,18 @@ test -n "$BASE"
 CHANGED="$(git diff --name-only "$BASE"...HEAD)"
 printf '%s\n' "$CHANGED"
 test -n "$CHANGED"
+MODULE025_SOW_SELL_SCOPE=false
+if grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+  && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
+  MODULE025_SOW_SELL_SCOPE=true
+fi
+COMBINED_FLOWHIVE_SOW_SCOPE=false
+if grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
+  && grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
+  && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED" \
+  && grep -Fxq 'database/migrations/106_module025_sow_sell_register.sql' <<<"$CHANGED"; then
+  COMBINED_FLOWHIVE_SOW_SCOPE=true
+fi
 
 if [[ "$HEAD_BRANCH" == 'feature/celar-enterprise-retrieval-20260906' || "$HEAD_BRANCH" == 'fix/celar-enterprise-synthesis-20260906' ]]; then
   node tests/validate-celar-enterprise-retrieval-scope.mjs
@@ -39,7 +51,11 @@ if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
   exit 0
 fi
 
-if [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
+if [[ "$HEAD_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' ]]; then
+  node tests/flowhive-psa-scope.mjs
+  ALLOWED_DATABASE='^(database/(migrations/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution|105_flowhive_reviewed_regeneration)\.sql|rollback/(103_module_066_flowhive_enterprise_psa_revamp_rollback|104_flowhive_bounded_ai_execution_rollback|105_flowhive_reviewed_regeneration_rollback)\.sql))$'
+  publish_mode FLOWHIVE_ENTERPRISE_PSA
+elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
   ALLOWED_DATABASE='a^'
   publish_mode CELAR_RUNTIME_VERSION_CENTER
 elif [[ "$HEAD_BRANCH" == 'fix/module025-protected-uat-generation-verification-detailed-plan-parser-20260903' ]]; then
@@ -101,6 +117,17 @@ elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
     grep -Fxq "$required" "$FLOWHIVE_RELEASE_MANIFEST"
   done
   publish_mode FLOWHIVE_V2_SHARED_PLANNING
+elif [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$COMBINED_FLOWHIVE_SOW_SCOPE" == true ]]; then
+  ALLOWED_DATABASE='^(database/(migrations/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution|105_flowhive_reviewed_regeneration|106_module025_sow_sell_register)\.sql|rollback/(103_module_066_flowhive_enterprise_psa_revamp_rollback|104_flowhive_bounded_ai_execution_rollback|105_flowhive_reviewed_regeneration_rollback)\.sql))$'
+  node tests/flowhive-psa-scope.mjs
+  node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+  bash tests/test-module025-sow-sell-register-migration-106.sh
+  publish_mode COMBINED_FLOWHIVE_SOW_SUCCESSOR
+elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' || "$MODULE025_SOW_SELL_SCOPE" == true ]]; then
+  ALLOWED_DATABASE='^database/migrations/106_module025_sow_sell_register\.sql$'
+  node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+  bash tests/test-module025-sow-sell-register-migration-106.sh
+  publish_mode MODULE025_SOW_SELL_REGISTER
 elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then
   ALLOWED_DATABASE='^(database/migrations/(070_module_033_project_forge|073_module_033_project_forge_interactive)\.sql|database/rollback/(070_module_033_project_forge_rollback|073_module_033_project_forge_interactive_rollback)\.sql)$'
   publish_mode MODULE_033_PROJECT_FORGE
@@ -602,6 +629,12 @@ if [[ "$HEAD_BRANCH" == 'fix/celar-routed-model-readiness-20260905' ]]; then
   node tests/validate-celar-routed-model-readiness-scope.mjs
   node tests/validate-protected-uat-recovery.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
+fi
+if [[ ( "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ) && "$COMBINED_FLOWHIVE_SOW_SCOPE" == true ]]; then
+  FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" <<<"$CHANGED"
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt
+  PROHIBITED="$(grep -Fvx "$FLOWHIVE_PROXY_LIMIT" <<<"$PROHIBITED" || true)"
 fi
 if [[ -n "$PROHIBITED" ]]; then
   echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2

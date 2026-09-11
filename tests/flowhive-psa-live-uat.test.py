@@ -23,6 +23,40 @@ def fixture():
     return plan,schedule
 
 class AcceptanceDecisions(unittest.TestCase):
+    def ready_workspace(self):
+        return {
+            'sowEvidenceSummary': {'approvedSowScopeReady': True},
+            'sowEvidence': [{
+                'documentId': '11111111-1111-4111-8111-111111111111',
+                'activeVersionId': '22222222-2222-4222-8222-222222222222',
+                'documentVersion': 'v3',
+                'documentCategory': 'sow',
+                'citationCount': 4,
+                'readyForAiPlanner': True,
+            }],
+        }
+
+    def test_sow_readiness_requires_server_summary_and_document_gate(self):
+        item = live.ready_sow(self.ready_workspace())
+        self.assertEqual(item['documentVersion'], 'v3')
+        for mutation in (
+            lambda value: value.update(sowEvidenceSummary={'approvedSowScopeReady': False}),
+            lambda value: value['sowEvidence'][0].update(readyForAiPlanner=False),
+            lambda value: value['sowEvidence'][0].update(activeVersionId=None),
+            lambda value: value['sowEvidence'][0].update(citationCount=0),
+            lambda value: value['sowEvidence'][0].update(documentCategory='gsd'),
+        ):
+            value = copy.deepcopy(self.ready_workspace())
+            mutation(value)
+            with self.assertRaises(live.GateError):
+                live.ready_sow(value)
+
+    def test_sow_receipt_binds_identity_and_source_bytes(self):
+        item = live.ready_sow(self.ready_workspace())
+        receipt = live.sow_receipt(item, 'a' * 64)
+        self.assertEqual(receipt['documentId'], item['documentId'])
+        self.assertEqual(receipt['sourceFingerprint'], 'a' * 64)
+
     def test_planner_status_accepts_documented_nonterminal_202(self):
         self.assertTrue(live.planner_status_response_valid(200, {'terminal': True}))
         self.assertTrue(live.planner_status_response_valid(202, {'terminal': False, 'phase': 'inference'}))

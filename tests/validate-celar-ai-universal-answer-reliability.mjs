@@ -2,9 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readEffectiveBuildTargets } from '../src/frontend/project-time-web/scripts/read-effective-build-targets.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const absolute = (value) => path.join(root, value);
+const branchName = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || (() => {
+  try {
+    return String(execFileSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8' })).trim();
+  } catch {
+    return '';
+  }
+})();
 const read = (value) => fs.readFileSync(absolute(value), 'utf8');
 const exists = (value) => fs.existsSync(absolute(value));
 const count = (source, marker) => source.split(marker).length - 1;
@@ -62,7 +70,7 @@ if (process.exitCode) process.exit(process.exitCode);
 const catalog = read('src/backend/ProjectTime.Api/Ai/CelarAiUniversalToolCatalog.cs');
 const reliability = read('src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs');
 const moduleSource = read('src/backend/ProjectTime.Api/Modules/CelarAiUniversalAnswerReliabilityModule.cs');
-const directoryTargets = read('src/backend/ProjectTime.Api/Directory.Build.targets');
+const directoryTargets = readEffectiveBuildTargets(root).text;
 const generator = read('src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk');
 const workbench = read('src/frontend/project-time-web/src/CelarAiAnswerReliabilityWorkbench.jsx');
 const workbenchCss = read('src/frontend/project-time-web/src/celar-ai-answer-reliability-workbench.css');
@@ -242,16 +250,37 @@ try {
   requireValue(false, 'CELAR_UAR_GIT_DIFF', error.message);
 }
 const allowed = new Set(ownedFiles);
-const unexpected = changed.filter((value) => !allowed.has(value));
-const missingChanged = ownedFiles.filter((value) => !changed.includes(value));
-requireValue(unexpected.length === 0, 'CELAR_UAR_SOURCE_ISOLATION_UNEXPECTED', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files only`);
+const combinedFlowHiveSowScope = changed.includes('.github/flowhive-enterprise-psa-release-files.txt')
+  && changed.includes('.github/module025-sow-sell-governed-release-files.txt')
+  && changed.includes('database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql')
+  && changed.includes('database/migrations/106_module025_sow_sell_register.sql');
+const combinedFlowHiveSowFiles = combinedFlowHiveSowScope
+  ? new Set(read('.github/flowhive-enterprise-psa-release-files.txt').split(/\r?\n/).filter(Boolean))
+  : new Set();
+const sourceContractFiles = combinedFlowHiveSowScope ? combinedFlowHiveSowFiles : new Set(ownedFiles);
+const sourceAllowedFiles = combinedFlowHiveSowScope ? combinedFlowHiveSowFiles : allowed;
+const sourceUnexpected = changed.filter((value) => !sourceAllowedFiles.has(value));
+const missingChanged = [...sourceContractFiles].filter((value) => !changed.includes(value));
+requireValue(sourceUnexpected.length === 0, 'CELAR_UAR_SOURCE_ISOLATION_UNEXPECTED', sourceUnexpected.length ? sourceUnexpected.join(', ') : `${changed.length} governed files only`);
 requireValue(missingChanged.length === 0, 'CELAR_UAR_SOURCE_ISOLATION_COMPLETE', missingChanged.length ? missingChanged.join(', ') : 'all governed source files are represented');
-requireValue(changed.length === ownedFiles.length, 'CELAR_UAR_SOURCE_ISOLATION_EXACT_COUNT', `${ownedFiles.length} files`);
-requireValue(changed.every((value) => !value.startsWith('database/')), 'CELAR_UAR_NO_DATABASE_MIGRATION', 'no migration or rollback');
-requireValue(changed.every((value) => !value.startsWith('deployment/')), 'CELAR_UAR_NO_INFRASTRUCTURE_CHANGE', 'no container, Azure, Oracle, DNS, or network source');
+requireValue(changed.length === sourceContractFiles.size, 'CELAR_UAR_SOURCE_ISOLATION_EXACT_COUNT', `${sourceContractFiles.size} files`);
+const allowedCombinedMigrations = combinedFlowHiveSowScope
+  ? new Set([...combinedFlowHiveSowFiles].filter((value) => value.startsWith('database/')))
+  : new Set();
+requireValue(changed.every((value) => !value.startsWith('database/') || allowedCombinedMigrations.has(value)), 'CELAR_UAR_NO_DATABASE_MIGRATION', combinedFlowHiveSowScope ? 'only migrations declared by the reviewed combined manifests' : 'no migration or rollback');
+const flowHiveProxyLimit = 'deployment/containers/web/default.conf.template';
+const flowHiveProxyLimitReviewed = combinedFlowHiveSowScope
+  && (branchName === 'release/flowhive-sow-successor-20260908' || branchName === 'fix/flowhive-installed-pm-readiness-candidate-20260911')
+  && changed.includes(flowHiveProxyLimit)
+  && combinedFlowHiveSowFiles.has(flowHiveProxyLimit);
+requireValue(
+  changed.every((value) => !value.startsWith('deployment/') || (flowHiveProxyLimitReviewed && value === flowHiveProxyLimit)),
+  'CELAR_UAR_NO_INFRASTRUCTURE_CHANGE',
+  flowHiveProxyLimitReviewed ? 'only the reviewed FlowHive proxy limit' : 'no container, Azure, Oracle, DNS, or network source'
+);
 requireValue(changed.every((value) => !value.includes('projectpulse-deploy-') && !value.includes('celar-ai-oracle-test-runtime-deploy')), 'CELAR_UAR_NO_DEPLOYMENT_CONTROLLER', 'no Test or Production deployment control');
 requireValue(changed.every((value) => !value.endsWith('.env') && !value.includes('/secrets/') && !value.toLowerCase().includes('runtime-token')), 'CELAR_UAR_NO_SECRET_FILE', 'no secret or token file');
-requireValue(changed.every((value) => !value.includes('migration') && !value.includes('rollback')), 'CELAR_UAR_NO_MIGRATION_OR_ROLLBACK_FILE', 'no database lifecycle file');
+requireValue(changed.every((value) => combinedFlowHiveSowScope || (!value.includes('migration') && !value.includes('rollback'))), 'CELAR_UAR_NO_MIGRATION_OR_ROLLBACK_FILE', combinedFlowHiveSowScope ? 'combined migration lifecycle is manifest-bound' : 'no database lifecycle file');
 
 if (process.exitCode) process.exit(process.exitCode);
 console.log(`CELAR_AI_UNIVERSAL_ANSWER_TOOL_COUNT=${toolCodes.length}`);

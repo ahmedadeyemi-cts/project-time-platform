@@ -1,14 +1,21 @@
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using ClosedXML.Excel;
 using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
+using UglyToad.PdfPig;
 
 static void Assert(bool condition, string label)
 {
     if (!condition) throw new InvalidOperationException($"ASSERTION_FAILED {label}");
     Console.WriteLine($"ASSERTION_PASSED {label}");
 }
+
+static string NormalizePdfText(string value) => string.Join(
+    ' ',
+    value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
 var module025Parser = typeof(PulseAiPrivateRagService).GetMethod(
     "ParseModule025DetailedPlan",
@@ -680,5 +687,237 @@ var shortDurations = shortGenerated.Tasks!.Where(task => !task.IsSummary).ToDict
 Assert(normalDurations.OrderBy(pair => pair.Key).SequenceEqual(shortDurations.OrderBy(pair => pair.Key)), "selected_window_does_not_compress_estimates");
 Assert(shortGenerated.Tasks!.Where(task => !task.IsSummary).All(task => task.RequiredRoles?.Count > 0), "required_roles_are_structured");
 Assert(shortGenerated.Tasks!.Where(task => !task.IsSummary).All(task => task.OpenQuestions?.Count > 0), "missing_technical_information_becomes_open_questions");
+
+foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix", "gantt", "monthly-calendar", "work-breakdown" })
+{
+    var exportArtifact = new ProjectFlowHivePsaArtifactTable(
+        artifactKind,
+        "=Injected title",
+        "=PROJECT",
+        "@Customer",
+        "-Customer",
+        ["=Column", "Safe column", "Date", "Amount", "Notes", "Unicode", "Whitespace", "Apostrophe", "Ordinary"],
+        new IReadOnlyList<object?>[]
+        {
+            new object?[] { "=SUM(A1)", "+Injected value", new DateOnly(2026, 9, 8), -12.5m, "@Injected note", "é漢", " =SUM(B1)", "'literal", "ordinary" },
+            new object?[] { "-Injected value", "@Injected value", new DateOnly(2026, 10, 1), 42m, "safe", "東京", "  +Injected", "'=SUM(A1)", "123" }
+        },
+        ["=Injected note", "é漢 note"]);
+
+    var pdfLongDescription =
+        $"Detailed scope for {artifactKind}: Café's quoted delivery description / formula-like text =SUM(A1) " +
+        "must wrap across lines without losing punctuation or the final acceptance phrase.";
+    IReadOnlyList<string> pdfColumns;
+    IReadOnlyList<IReadOnlyList<object?>> pdfRows;
+    var expectedScheduleIds = new HashSet<string>(StringComparer.Ordinal);
+    if (artifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase))
+    {
+        pdfColumns = ["WBS", "Task", "Start", "End", "Duration", "Start Offset", "Critical", "Float", "Predecessor"];
+        var ganttRows = Enumerable.Range(1, 12)
+            .Select(index => (IReadOnlyList<object?>)new object?[]
+            {
+                $"GANTT-{index:00}",
+                index == 1
+                    ? $"GANTT-LONG-TASK-DETAIL-MARKER-ALPHA — {pdfLongDescription} with a distinct appendix-only ending."
+                    : $"GANTT-TASK-{index:00}-DISTINCT-NAME — Résumé 東京 review",
+                index <= 8
+                    ? new DateOnly(2026, 9, 15)
+                    : index == 9 ? new DateOnly(2026, 9, 29)
+                    : index == 10 ? new DateOnly(2026, 10, 1)
+                    : new DateOnly(2026, 10, 15),
+                index <= 8
+                    ? new DateOnly(2026, 9, 17)
+                    : index == 9 ? new DateOnly(2026, 10, 2)
+                    : index == 10 ? new DateOnly(2026, 10, 5)
+                    : new DateOnly(2026, 10, 20),
+                index + 2, index, index is 1 or 9 ? "Yes" : "No", 0, ""
+            })
+            .ToList();
+        ganttRows.AddRange([
+            (IReadOnlyList<object?>)["GANTT-MISSING-START", "GANTT-MISSING-START unique unscheduled marker", null, new DateOnly(2026, 10, 7), 1, 0, "No", 0, ""],
+            (IReadOnlyList<object?>)["GANTT-REVERSED", "GANTT-REVERSED unique invalid marker", new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 1), 1, 0, "No", 0, ""],
+            (IReadOnlyList<object?>)["GANTT-INVALID-DATE", "GANTT-INVALID-DATE unique invalid marker", "not-a-date", new DateOnly(2026, 10, 8), 1, 0, "No", 0, ""]
+        ]);
+        pdfRows = ganttRows;
+        expectedScheduleIds = ganttRows.Select(row => row[0]!.ToString()!).ToHashSet(StringComparer.Ordinal);
+    }
+    else if (artifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase))
+    {
+        pdfColumns = ["Start Date", "End Date", "WBS", "Phase", "Task", "Assigned Identity", "Status"];
+        var calendarRows = Enumerable.Range(1, 12)
+            .Select(index => (IReadOnlyList<object?>)new object?[]
+            {
+                index <= 8 ? new DateOnly(2026, 9, 15) : index == 9 ? new DateOnly(2026, 9, 29) : new DateOnly(2026, 10, 1),
+                index <= 8 ? new DateOnly(2026, 9, 17) : index == 9 ? new DateOnly(2026, 10, 2) : new DateOnly(2026, 10, 5),
+                $"CAL-{index:00}", $"Phase {index:00}",
+                index == 1
+                    ? $"CAL-LONG-TASK-DETAIL-MARKER-ALPHA — {pdfLongDescription} with a distinct appendix-only ending."
+                    : $"CAL-TASK-{index:00}-DISTINCT-NAME — Résumé 東京 review",
+                $"Owner {index:00}", index == 1 ? "At risk" : "Ready"
+            })
+            .ToList();
+        calendarRows.AddRange([
+            (IReadOnlyList<object?>)[null, new DateOnly(2026, 10, 7), "CAL-MISSING-START", "Phase missing", "CAL-MISSING-START unique unscheduled marker", "Owner missing", "Blocked"],
+            (IReadOnlyList<object?>)[new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 1), "CAL-REVERSED", "Phase reversed", "CAL-REVERSED unique invalid marker", "Owner reversed", "Blocked"],
+            (IReadOnlyList<object?>)["not-a-date", new DateOnly(2026, 10, 8), "CAL-INVALID-DATE", "Phase invalid", "CAL-INVALID-DATE unique invalid marker", "Owner invalid", "Blocked"]
+        ]);
+        pdfRows = calendarRows;
+        expectedScheduleIds = calendarRows.Select(row => row[2]!.ToString()!).ToHashSet(StringComparer.Ordinal);
+    }
+    else
+    {
+        pdfColumns = ["ID", "Description", "Due date", "Hours", "Notes", "Unicode", "Owner", "Status", "Evidence", "Risk / Decision"];
+        pdfRows = Enumerable.Range(1, 26)
+            .Select(index => (IReadOnlyList<object?>)new object?[]
+            {
+                $"T-{index:00}",
+                index == 1 ? pdfLongDescription : $"Résumé task {index:00} - 東京 review",
+                new DateOnly(2026, 9, Math.Min(index, 30)),
+                index * 1.5m,
+                index == 1 ? "Names, punctuation (quoted), and wrapping" : "Review",
+                index == 1 ? "München 東京" : "é東京",
+                $"Owner {index:00}",
+                index == 1 ? "Ready" : "In review",
+                $"PDF-COLUMN-EVIDENCE-{index:00}",
+                $"PDF-COLUMN-RISK-{index:00}"
+            })
+            .ToArray();
+    }
+    var pdfArtifact = exportArtifact with
+    {
+        Title = "München - 東京 delivery plan",
+        ProjectName = "Résumé program - 東京",
+        CustomerName = "株式会社 東京",
+        Columns = pdfColumns,
+        Rows = pdfRows,
+        Notes = ["Synthetic export validation only; task markers appear only in task rows.", "Résumé note - 東京"]
+    };
+
+    var exportBytes = ProjectFlowHivePsaArtifactRenderer.BuildExcel(exportArtifact);
+    using var exportWorkbook = new XLWorkbook(new MemoryStream(exportBytes));
+    var exportSheet = exportWorkbook.Worksheet(artifactKind);
+    var summarySheet = exportWorkbook.Worksheet("Artifact Summary");
+
+    Assert(!exportSheet.Cell(2, 1).HasFormula
+        && exportSheet.Cell(2, 1).DataType == XLDataType.Text
+        && exportSheet.Cell(2, 1).GetString() == "=SUM(A1)"
+        && exportSheet.Cell(2, 1).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_formula_like_text_is_safe_and_lossless");
+    Assert(!exportSheet.Cell(2, 2).HasFormula
+        && exportSheet.Cell(2, 2).GetString() == "+Injected value"
+        && exportSheet.Cell(2, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_plus_text_is_safe_and_lossless");
+    Assert(!exportSheet.Cell(3, 1).HasFormula
+        && exportSheet.Cell(3, 1).GetString() == "-Injected value"
+        && exportSheet.Cell(3, 1).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_minus_text_is_safe_and_lossless");
+    Assert(!exportSheet.Cell(3, 2).HasFormula
+        && exportSheet.Cell(3, 2).GetString() == "@Injected value"
+        && exportSheet.Cell(3, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_at_text_is_safe_and_lossless");
+    Assert(!exportSheet.Cell(1, 1).HasFormula
+        && exportSheet.Cell(1, 1).GetString() == "=Column"
+        && exportSheet.Cell(1, 1).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_dynamic_header_is_safe");
+    Assert(exportSheet.Cell(2, 3).DataType == XLDataType.DateTime
+        && exportSheet.Cell(2, 3).GetDateTime().Date == new DateTime(2026, 9, 8),
+        $"xlsx_{artifactKind}_date_remains_typed");
+    Assert(exportSheet.Cell(2, 4).DataType == XLDataType.Number
+        && Math.Abs(exportSheet.Cell(2, 4).GetDouble() - (-12.5d)) < 0.000001d
+        && !exportSheet.Cell(2, 4).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_negative_amount_remains_numeric");
+    Assert(exportSheet.Cell(2, 6).GetString() == "é漢", $"xlsx_{artifactKind}_unicode_round_trip");
+    Assert(exportSheet.Cell(2, 7).GetString() == " =SUM(B1)"
+        && exportSheet.Cell(2, 7).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_leading_whitespace_formula_like_text_is_lossless");
+    Assert(exportSheet.Cell(2, 8).GetString() == "'literal"
+        && exportSheet.Cell(2, 8).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_leading_apostrophe_is_lossless");
+    Assert(summarySheet.Cell(5, 2).GetString() == "=Injected title"
+        && summarySheet.Cell(5, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_dynamic_title_is_safe");
+    Assert(summarySheet.Cell(7, 2).GetString() == "=PROJECT · @Customer"
+        && summarySheet.Cell(7, 2).Style.IncludeQuotePrefix
+        && summarySheet.Cell(8, 2).GetString() == "-Customer"
+        && summarySheet.Cell(8, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_dynamic_summary_fields_are_safe");
+    Assert(summarySheet.Cell(13, 2).GetString().Contains("=Injected note", StringComparison.Ordinal)
+        && summarySheet.Cell(13, 2).Style.IncludeQuotePrefix,
+        $"xlsx_{artifactKind}_dynamic_notes_are_safe");
+    Assert(exportWorkbook.Worksheets.SelectMany(sheet => sheet.CellsUsed()).All(cell => !cell.HasFormula),
+        $"xlsx_{artifactKind}_all_cells_remain_text_or_values");
+
+    var pdfBytes = ProjectFlowHivePsaArtifactRenderer.BuildPdf(pdfArtifact);
+    var evidenceDirectory = Environment.GetEnvironmentVariable("FLOWHIVE_EXPORT_EVIDENCE_DIR");
+    if (!string.IsNullOrWhiteSpace(evidenceDirectory))
+    {
+        Directory.CreateDirectory(evidenceDirectory);
+        File.WriteAllBytes(Path.Combine(evidenceDirectory, $"{artifactKind}.xlsx"), exportBytes);
+        File.WriteAllBytes(Path.Combine(evidenceDirectory, $"{artifactKind}.pdf"), pdfBytes);
+    }
+
+    using var pdfDocument = PdfDocument.Open(new MemoryStream(pdfBytes));
+    var pdfText = string.Join("\n", pdfDocument.GetPages().Select(page => page.Text));
+    Assert(pdfDocument.NumberOfPages >= 2, $"pdf_{artifactKind}_paginates_long_report");
+    Assert(pdfText.Contains("US Signal Project FlowHive", StringComparison.Ordinal)
+        && pdfText.Contains("US SIGNAL PROJECT DELIVERY ARTIFACT", StringComparison.Ordinal),
+        $"pdf_{artifactKind}_contains_us_signal_branding");
+    Assert(pdfText.Contains("München", StringComparison.Ordinal)
+        && pdfText.Contains("東京", StringComparison.Ordinal)
+        && pdfText.Contains("株式会社", StringComparison.Ordinal),
+        $"pdf_{artifactKind}_preserves_accented_and_non_latin_text");
+    if (!artifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase)
+        && !artifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase))
+    {
+        Assert(pdfColumns.All(column => pdfText.Contains(column.ToUpperInvariant(), StringComparison.Ordinal)),
+            $"pdf_{artifactKind}_renders_all_columns");
+    }
+    var pdfDescriptionTokens = NormalizePdfText(pdfLongDescription)
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    Assert(pdfDescriptionTokens.All(token => pdfText.Contains(token, StringComparison.Ordinal)),
+        $"pdf_{artifactKind}_preserves_wrapped_long_description_tokens");
+    Assert(pdfText.Contains("=SUM(A1)", StringComparison.Ordinal)
+        && !pdfText.Contains("'=SUM(A1)", StringComparison.Ordinal),
+        $"pdf_{artifactKind}_does_not_apply_spreadsheet_apostrophe_escaping");
+    if (artifactKind.Equals("gantt", StringComparison.OrdinalIgnoreCase))
+    {
+        Assert(pdfText.Contains("Graphical Gantt schedule", StringComparison.Ordinal)
+            && pdfText.Contains("SCHEDULE / DATES", StringComparison.Ordinal)
+            && pdfText.Contains("critical", StringComparison.Ordinal)
+            && pdfText.Contains("Task details appendix", StringComparison.Ordinal)
+            && pdfText.Contains("GANTT-MISSING-START", StringComparison.Ordinal)
+            && pdfText.Contains("GANTT-REVERSED", StringComparison.Ordinal)
+            && pdfText.Contains("dates were not swapped", StringComparison.Ordinal),
+            "pdf_gantt_uses_graphical_schedule_layout");
+        var exportedIds = Regex.Matches(pdfText, @"ID:\s*(GANTT-[A-Z0-9-]+)\s*\|")
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+        var presentIds = expectedScheduleIds.Where(pdfText.Contains).ToHashSet(StringComparer.Ordinal);
+        Assert(presentIds.SetEquals(expectedScheduleIds) && exportedIds.SetEquals(expectedScheduleIds),
+            "pdf_gantt_reconciles_all_expected_task_ids");
+        Assert(pdfDocument.NumberOfPages >= 4, "pdf_gantt_has_graph_and_detail_continuation_pages");
+    }
+    if (artifactKind.Equals("monthly-calendar", StringComparison.OrdinalIgnoreCase))
+    {
+        Assert(pdfText.Contains("Graphical monthly calendar", StringComparison.Ordinal)
+            && pdfText.Contains("SUN", StringComparison.Ordinal)
+            && pdfText.Contains("SAT", StringComparison.Ordinal)
+            && pdfText.Contains("Task details appendix", StringComparison.Ordinal)
+            && pdfText.Contains("CAL-MISSING-START", StringComparison.Ordinal)
+            && pdfText.Contains("CAL-REVERSED", StringComparison.Ordinal)
+            && pdfText.Contains("OVERFLOW-5-MORE-SEE-APPENDIX", StringComparison.Ordinal)
+            && pdfText.Contains("dates were not swapped", StringComparison.Ordinal),
+            "pdf_monthly_calendar_uses_graphical_month_grid");
+        var exportedIds = Regex.Matches(pdfText, @"ID:\s*(CAL-[A-Z0-9-]+)\s*\|")
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+        var presentIds = expectedScheduleIds.Where(pdfText.Contains).ToHashSet(StringComparer.Ordinal);
+        Assert(presentIds.SetEquals(expectedScheduleIds) && exportedIds.SetEquals(expectedScheduleIds),
+            "pdf_monthly_calendar_reconciles_all_expected_task_ids");
+        Assert(pdfDocument.NumberOfPages >= 4, "pdf_monthly_calendar_has_month_and_detail_continuation_pages");
+    }
+    if (!string.IsNullOrWhiteSpace(evidenceDirectory))
+        Console.WriteLine($"PDF_EVIDENCE_{artifactKind}={Path.Combine(evidenceDirectory, $"{artifactKind}.pdf")}");
+}
 
 Console.WriteLine("FLOWHIVE_DETAILED_PLANNER_TESTS=PASS");

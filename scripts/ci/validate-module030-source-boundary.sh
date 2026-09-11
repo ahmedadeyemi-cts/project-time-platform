@@ -153,6 +153,19 @@ elif [[ "$HEAD_BRANCH" == feature/module-033-project-forge-* ]]; then
   done
   publish_mode MODULE_033_PROJECT_FORGE
   echo 'ANALYTICS_CENTER_PROJECT_FORGE_INTEGRATION=PASSED'
+elif { changed_exact '.github/module025-sow-sell-governed-release-files.txt' \
+  || { changed_exact '.github/flowhive-enterprise-psa-release-files.txt' \
+    && changed_exact 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql'; }; } \
+  && changed_exact 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs'; then
+  for file in "${CHANGED_FILES[@]}"; do
+    if is_direct_analytics_path "$file" \
+      && [[ "$file" != 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs' ]]; then
+      echo "Unexpected Module 030 source in the shared effective-target consumer repair: $file" >&2
+      exit 1
+    fi
+  done
+  publish_mode REGRESSION
+  echo 'ANALYTICS_CENTER_SHARED_EFFECTIVE_TARGET_CONSUMER=PASS'
 elif changed_exact 'tests/test-uat-functional-completion-contract.sh'; then
   for file in "${CHANGED_FILES[@]}"; do
     if is_direct_analytics_path "$file"; then
@@ -189,6 +202,17 @@ remove_overlap() {
   done
   DEPLOYMENT_OVERLAP=("${retained[@]}")
 }
+
+if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]] \
+  && changed_exact '.github/flowhive-enterprise-psa-release-files.txt' \
+  && changed_exact '.github/module025-sow-sell-governed-release-files.txt' \
+  && changed_exact 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' \
+  && changed_exact 'database/migrations/106_module025_sow_sell_register.sql'; then
+  FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'
+  changed_exact "$FLOWHIVE_PROXY_LIMIT"
+  grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt
+  remove_overlap "$FLOWHIVE_PROXY_LIMIT"
+fi
 
 if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
   remove_overlap 'deployment/containers/web/Dockerfile'

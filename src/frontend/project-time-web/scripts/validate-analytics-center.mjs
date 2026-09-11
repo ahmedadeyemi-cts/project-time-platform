@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readEffectiveBuildTargets } from './read-effective-build-targets.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, '..');
@@ -87,7 +88,7 @@ if (fullRepositoryContext) {
   const scheduleRepository = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleRepository.cs'));
   const exportBuilder = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsBrandedExportBuilder.cs'));
   const module065Delivery = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/Module065AnalyticsAttachmentDelivery.cs'));
-  const targets = read(file(repoRoot, 'src/backend/ProjectTime.Api/Directory.Build.targets'));
+  const targets = readEffectiveBuildTargets(repoRoot).text;
   const migration = read(file(repoRoot, 'database/migrations/060_analytics_center_enterprise_experience.sql'));
   const rollback = read(file(repoRoot, 'database/rollback/060_analytics_center_enterprise_experience_rollback.sql'));
   const migrationTest = read(file(repoRoot, 'tests/test-analytics-center-enterprise-migration-060.sh'));

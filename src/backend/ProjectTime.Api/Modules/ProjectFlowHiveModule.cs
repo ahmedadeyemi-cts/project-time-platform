@@ -53,6 +53,11 @@ public static class ProjectFlowHiveModule
             (Func<ProjectFlowHiveArtifactRequest, HttpContext, IResult>)BuildExcelPreview);
 
         app.MapProjectFlowHiveEnterpriseEndpoints();
+        // The PSA workspace owns meetings, customer recording downloads,
+        // reminder capability state, and the six branded artifact routes.
+        // Register it beside the enterprise FlowHive routes so the mounted
+        // views never depend on implicit endpoint discovery.
+        app.MapProjectFlowHivePsaEndpoints();
 
         return app;
     }

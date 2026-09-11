@@ -151,7 +151,7 @@ public static partial class CelarAiProductionPlatformModule
             (Func<CelarAiProductionChatRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiInternalDataService, CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)ChatAsync);
         endpoints.MapCelarAiConversationAttachmentEndpoints();
         endpoints.MapPost(FlowHiveRoute,
-            (Func<CelarAiFlowHiveProductionRequest, HttpContext, PulseAiSystemIntelligenceService, CelarAiEnterprisePlatformService, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)GenerateFlowHiveAsync);
+            (Func<CelarAiFlowHiveProductionRequest, HttpContext, PulseAiSystemIntelligenceService, CelarAiEnterprisePlatformService, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)ProjectFlowHiveAiPlannerOrchestrationModule.QueueLegacyAsync);
         return endpoints;
     }
 

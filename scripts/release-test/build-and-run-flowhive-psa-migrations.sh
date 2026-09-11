@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Reuses the governed private-network migration job, UAMI and cleanup protocol.
+# The exact migration set is read from the trusted candidate approval; migration
+# 106 is included only when that approval explicitly names and hashes it.
 set -Eeuo pipefail
 # Registry publication may briefly precede tag lookup visibility. Retry only
 # this read, never the build, job creation or migration write. A mutable tag is
@@ -92,6 +94,7 @@ export MAIN_RELEASE_MIGRATION_MODE=apply
 # exact temporary-job ownership, no retries, TLS, and cleanup before returning.
 bash "$CONTROL_ROOT/scripts/release-test/run-migration-job.sh"
 mkdir -p "${EVIDENCE_DIR:?Evidence directory is required.}"
-jq -n --arg releaseCommit "$RELEASE" --arg controlCommit "$MAIN_RELEASE_CONTROL_SHA" --arg image "$MAIN_RELEASE_MIGRATION_IMAGE" \
-  '{status:"applied_and_verified",environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,image:$image,migrations:["103_module_066_flowhive_enterprise_psa_revamp","104_flowhive_bounded_ai_execution","105_flowhive_reviewed_regeneration","106_module025_sow_sell_register"],productionMutation:false}' \
+MIGRATIONS_JSON='["103_module_066_flowhive_enterprise_psa_revamp","104_flowhive_bounded_ai_execution","105_flowhive_reviewed_regeneration","106_module025_sow_sell_register"]'
+jq -n --arg releaseCommit "$RELEASE" --arg controlCommit "$MAIN_RELEASE_CONTROL_SHA" --arg image "$MAIN_RELEASE_MIGRATION_IMAGE" --argjson migrations "$MIGRATIONS_JSON" \
+  '{status:"applied_and_verified",environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,image:$image,migrations:$migrations,productionMutation:false}' \
   > "$EVIDENCE_DIR/flowhive-psa-migrations.json"

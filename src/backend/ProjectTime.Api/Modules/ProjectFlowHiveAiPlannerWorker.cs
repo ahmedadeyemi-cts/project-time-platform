@@ -19,7 +19,21 @@ internal sealed class ProjectFlowHiveAiPlannerWorker : BackgroundService
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        Task.WhenAll(ProcessAsync(stoppingToken), WatchdogAsync(stoppingToken));
+
+    private async Task WatchdogAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try { await ProjectFlowHiveAiPlannerOrchestrationModule.ExpireRunsAsync(stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception exception) { _logger.LogWarning(exception, "FlowHive planner deadline sweep failed; save fences remain active."); }
+            await DelayAsync(TimeSpan.FromSeconds(5), stoppingToken);
+        }
+    }
+
+    private async Task ProcessAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {

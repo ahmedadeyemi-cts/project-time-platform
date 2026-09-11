@@ -39,6 +39,8 @@ jobs:
           python -m pip install PyYAML==6.0.3
           if [[ "$GITHUB_HEAD_REF" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
             node tests/validate-sow-generation-uat-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$GITHUB_HEAD_REF" == 'feature/flowhive-psa-graphical-exports-20260908' || "$GITHUB_HEAD_REF" == 'release/flowhive-sow-successor-20260908' || "$GITHUB_HEAD_REF" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
+            node tests/flowhive-psa-scope.mjs
           else
             node tests/flowhive-psa-release-control.mjs
           fi
@@ -59,44 +61,93 @@ jobs:
   migrations:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: flowhive
-          POSTGRES_PASSWORD: flowhive-ci-only
-          POSTGRES_DB: flowhive_migrations_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U flowhive -d flowhive_migrations_test"
-          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      PGHOST: 127.0.0.1
-      PGPORT: '5432'
-      PGDATABASE: flowhive_migrations_test
-      PGUSER: flowhive
-      PGPASSWORD: flowhive-ci-only
       FLOWHIVE_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           path: control
+          fetch-depth: 0
           persist-credentials: false
       - name: Read the pinned candidate SHA
         id: candidate
         working-directory: control
-        run: echo "sha=$(jq -er '.sha | select(test("^[a-f0-9]{40}$"))' .github/flowhive-psa-protected-test-candidate.json)" >> "$GITHUB_OUTPUT"
+        env:
+          FEATURE_HEAD: ${{ github.event.pull_request.head.sha }}
+          FEATURE_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -Eeuo pipefail
+          test -s .github/flowhive-psa-protected-test-candidate.json || { echo 'ERROR: trusted candidate approval file is missing.' >&2; exit 1; }
+          if [[ "$FEATURE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
+            [[ "$FEATURE_HEAD" =~ ^[a-f0-9]{40}$ ]]
+            echo "sha=$FEATURE_HEAD" >> "$GITHUB_OUTPUT"
+            if [[ "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
+              echo 'staging=successor' >> "$GITHUB_OUTPUT"
+            else
+              echo 'staging=approved' >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "sha=$(jq -er '.sha | select(test("^[a-f0-9]{40}$"))' .github/flowhive-psa-protected-test-candidate.json)" >> "$GITHUB_OUTPUT"
+            echo 'staging=approved' >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ steps.candidate.outputs.sha }}
           path: candidate
           persist-credentials: false
-      - name: Exercise approved SQL and the real image entrypoint in disposable PostgreSQL
+      - name: Start isolated PostgreSQL fixture
+        id: fixture_database
+        shell: bash
+        env:
+          FIXTURE_DATABASE: flowhive_migrations_test
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          [[ "$FIXTURE_DATABASE" == flowhive_execution_test || "$FIXTURE_DATABASE" == flowhive_migrations_test ]]
+          name="flowhive-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ "$name" =~ ^flowhive-ci-[0-9]+-[0-9]+$ ]]
+          echo "CI_POSTGRES_CONTAINER=$name" >> "$GITHUB_ENV"
+          env_file="$(mktemp "$RUNNER_TEMP/flowhive-postgres-XXXXXX")"
+          trap 'rm -f -- "$env_file"' EXIT
+          trap 'docker rm -f "$name" >/dev/null 2>&1 || true' ERR
+          password="$(openssl rand -hex 32)"
+          echo "::add-mask::$password"
+          printf 'POSTGRES_USER=flowhive\nPOSTGRES_DB=%s\nPOSTGRES_PASSWORD=%s\n' "$FIXTURE_DATABASE" "$password" > "$env_file"
+          docker run --detach --rm --name "$name" --publish 127.0.0.1::5432 \
+            --env-file "$env_file" --health-cmd "pg_isready -U flowhive -d $FIXTURE_DATABASE" \
+            --health-interval 2s --health-timeout 2s --health-retries 30 postgres:16 >/dev/null
+          health='starting'
+          for attempt in {1..30}; do
+            health="$(timeout 5s docker inspect --format '{{.State.Health.Status}}' "$name")"
+            [[ "$health" != healthy ]] || break
+            [[ "$health" != unhealthy ]] || exit 1
+            sleep 2
+          done
+          [[ "$health" == healthy ]] || { echo 'CI PostgreSQL readiness expired.' >&2; exit 1; }
+          address="$(timeout 5s docker port "$name" 5432/tcp)"
+          [[ "$address" =~ ^127\.0\.0\.1:([0-9]{1,5})$ ]]
+          port="${BASH_REMATCH[1]}"
+          {
+            printf 'PGHOST=127.0.0.1\nPGPORT=%s\nPGDATABASE=%s\nPGUSER=flowhive\nPGPASSWORD=%s\n' "$port" "$FIXTURE_DATABASE" "$password"
+            printf 'FLOWHIVE_TEST_DB=Host=127.0.0.1;Port=%s;Database=%s;Username=flowhive;Password=%s\n' "$port" "$FIXTURE_DATABASE" "$password"
+          } >> "$GITHUB_ENV"
+          trap - ERR
+      - name: Exercise selected release SQL and the real image entrypoint in disposable PostgreSQL
         working-directory: control
+        env:
+          FLOWHIVE_MIGRATION_STAGING: ${{ steps.candidate.outputs.staging }}
         run: |
           set -Eeuo pipefail
           sudo mkdir -p /opt/projectpulse/release
           sudo chown "$(id -u):$(id -g)" /opt/projectpulse/release
           python3 tests/flowhive-psa-migration-fixture.py
+      - name: Remove isolated PostgreSQL fixture
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          name="${CI_POSTGRES_CONTAINER:-}"
+          [[ -n "$name" ]] || exit 0
+          [[ "$name" == "flowhive-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]
+          docker rm -f "$name" >/dev/null

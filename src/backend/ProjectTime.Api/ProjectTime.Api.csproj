@@ -35,11 +35,16 @@
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="PdfPig" Version="0.1.10" />
+    <PackageReference Include="SkiaSharp" Version="4.151.2" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.151.2" />
+    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="4.151.2" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Assets/Branding/USSNavyStacked.png" LogicalName="ProjectTime.Api.Assets.Branding.USSNavyStacked.png" />
     <EmbeddedResource Include="Assets/Branding/USSNavyStacked.jpg" LogicalName="ProjectTime.Api.Assets.Branding.USSNavyStacked.jpg" />
+    <EmbeddedResource Include="Assets/Fonts/NotoSansCJKsc-Regular.otf" LogicalName="ProjectTime.Api.Assets.Fonts.NotoSansCJKsc-Regular.otf" />
+    <None Include="Assets/Fonts/NotoSansCJK-LICENSE.txt" />
   </ItemGroup>
 
   <!-- Canonical oversized sources remain reviewable. Generated compile copies

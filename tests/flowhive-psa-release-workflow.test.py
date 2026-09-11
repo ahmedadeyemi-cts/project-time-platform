@@ -81,9 +81,106 @@ def verify(doc):
             body=re.sub(r'\$\{\{.*?\}\}', 'fixture_value',step['run'])
             subprocess.run(['bash','-n'],input=body,text=True,check=True,capture_output=True)
 
+def verify_ci_script_limits(doc):
+    for job in doc['jobs'].values():
+        for step in job.get('steps', []):
+            body = step.get('run', '')
+            assert len(body) <= 21000, 'GitHub run script limit exceeded'
+            # Embedded expressions cause GitHub to construct a format() expression
+            # with escaped shell quotes/braces. Keep long scripts literal instead.
+            assert len(body) < 19000 or '${{' not in body, 'Long CI script must use step environment inputs'
+
 class WorkflowContract(unittest.TestCase):
     def setUp(self):self.doc=load((ROOT/CONTROLLER).read_text())
     def test_parsed_workflow(self):verify(self.doc)
+    def test_controller_ci_script_limits_and_safe_pr_input(self):
+        for name in ['projectpulse-release-test-control-ci.yml', 'projectpulse-release-test-control-ci-reregistered.yml']:
+            doc=load((ROOT/'.github/workflows'/name).read_text())
+            verify_ci_script_limits(doc)
+            step=next(s for s in doc['jobs']['validate']['steps'] if s.get('name')=='Validate governed protected-Test controller')
+            self.assertEqual(step['env']['PR_NUMBER'], '${{ github.event.pull_request.number }}')
+            self.assertEqual(step['run'].count('"$PR_NUMBER"'), 2)
+            self.assertNotIn('${{', step['run'])
+            subprocess.run(['bash','-n'], input=step['run'], text=True, check=True, capture_output=True)
+        for body in ['x'*21001, 'x'*19000+'${{ github.event.pull_request.number }}']:
+            with self.assertRaises(AssertionError):
+                verify_ci_script_limits({'jobs':{'fixture':{'steps':[{'run':body}]}}})
+
+    def test_ci_databases_use_masked_ephemeral_credentials_and_loopback_only(self):
+        # The control-only branch intentionally has no FlowHive feature CI.
+        # Both changed fixture jobs are exercised on the feature candidate itself.
+        feature=ROOT/'.github/workflows/flowhive-enterprise-psa-ci.yml'
+        if not feature.exists():self.skipTest('Feature database fixtures are validated on the exact candidate.')
+        for name,job_name in [('flowhive-enterprise-psa-ci.yml','execution-database'),('flowhive-psa-release-control-ci.yml','migrations')]:
+            doc=load((ROOT/'.github/workflows'/name).read_text())
+            job=doc['jobs'][job_name]
+            self.assertNotIn('services', job)
+            self.assertNotIn('PGPASSWORD', job.get('env',{}))
+            self.assertNotIn('FLOWHIVE_TEST_DB', job.get('env',{}))
+            steps=job['steps']
+            setup=next(s for s in steps if s.get('id')=='fixture_database')
+            body=setup['run']
+            for required in ['openssl rand -hex 32','::add-mask::$password','--publish 127.0.0.1::5432','--env-file "$env_file"','trap - ERR','CI_POSTGRES_CONTAINER=$name','timeout 5s docker inspect']:
+                self.assertIn(required,body)
+            self.assertNotIn('${{', body)
+            cleanup=steps[-1]
+            self.assertEqual(cleanup['name'],'Remove isolated PostgreSQL fixture')
+            self.assertEqual(cleanup['if'],'always()')
+            self.assertIn('docker rm -f "$name"',cleanup['run'])
+            for step in [setup,cleanup]:
+                subprocess.run(['bash','-n'],input=step['run'],text=True,check=True,capture_output=True)
+
+    def test_successor_migration_fixture_uses_exact_head_as_explicit_staging(self):
+        workflow=load((ROOT/'.github/workflows/flowhive-psa-release-control-ci.yml').read_text())
+        candidate=next(s for s in workflow['jobs']['migrations']['steps'] if s.get('id')=='candidate')
+        self.assertIn('test -s .github/flowhive-psa-protected-test-candidate.json', candidate['run'])
+        self.assertIn("release/flowhive-sow-successor-20260908", candidate['run'])
+        self.assertIn("echo 'staging=successor'", candidate['run'])
+        control=next(s for s in workflow['jobs']['migrations']['steps'] if s.get('uses','').startswith('actions/checkout@') and s.get('with',{}).get('path')=='control')
+        self.assertEqual(control['with']['fetch-depth'], '0')
+        exercise=next(s for s in workflow['jobs']['migrations']['steps'] if s.get('name','').startswith('Exercise selected release SQL'))
+        self.assertEqual(exercise['env']['FLOWHIVE_MIGRATION_STAGING'], '${{ steps.candidate.outputs.staging }}')
+        fixture=(ROOT/'tests/flowhive-psa-migration-fixture.py').read_text()
+        self.assertIn("FLOWHIVE_MIGRATION_STAGING", fixture)
+        self.assertIn("106_module025_sow_sell_register.sql", fixture)
+        self.assertIn("approval['sha'] != pr['head']['sha']", fixture)
+        entrypoint=(ROOT/'scripts/release-test/apply-flowhive-psa-migrations.sh').read_text()
+        self.assertIn('106_module025_sow_sell_register.sql', entrypoint)
+        self.assertIn('FLOWHIVE_PSA_MIGRATIONS_103_104_105_106=APPLIED_AND_VERIFIED', entrypoint)
+        builder=(ROOT/'scripts/release-test/build-and-run-flowhive-psa-migrations.sh').read_text()
+        self.assertIn('106_module025_sow_sell_register', builder)
+        self.assertIn('--argjson migrations "$MIGRATIONS_JSON"', builder)
+        production_workflow=(ROOT/'.github/workflows/celar-ai-production-platform-ci.yml').read_text()
+        self.assertIn("FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'", production_workflow)
+        self.assertIn('grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt', production_workflow)
+        project_forge_workflow=(ROOT/'.github/workflows/module033-project-forge-ci.yml').read_text()
+        self.assertIn("FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'", project_forge_workflow)
+        self.assertIn('grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt', project_forge_workflow)
+
+    def test_sell_notification_revalidates_current_engagement_assignments(self):
+        worker=(ROOT/'src/backend/ProjectTime.Api/Modules/Module025SowSellWorker.cs').read_text()
+        self.assertIn('SowRecipientsStillValidAsync(connection, work.Package.EngagementId', worker)
+        self.assertIn('engagement.account_executive_user_id', worker)
+        self.assertIn('engagement.resale_user_id', worker)
+        self.assertIn("engagement.status='confirmed'", worker)
+        self.assertIn('@account_executive_roles', worker)
+        self.assertIn('@inside_sales_roles', worker)
+        self.assertIn('@solution_architect_roles', worker)
+        self.assertIn('assignment.user_id=engagement.owner_user_id', worker)
+        self.assertIn('RECIPIENT_ASSIGNMENT_REVIEW_REQUIRED', worker)
+
+    def test_psa_workspace_discards_stale_project_responses(self):
+        workspace=(ROOT/'src/frontend/project-time-web/src/ProjectFlowHivePsaWorkspace.jsx').read_text()
+        self.assertIn('AbortController', workspace)
+        self.assertIn('psaRequestRef', workspace)
+        self.assertIn('request.id !== psaRequestRef.current.id', workspace)
+        self.assertIn('requestedProjectId', workspace)
+        self.assertIn('selectedProjectRef', workspace)
+        self.assertIn('actionRef', workspace)
+        self.assertIn('actionIsCurrent(context)', workspace)
+        self.assertIn('loadPsa(true, context.projectId)', workspace)
+        for callback in ['uploadMeeting', 'updateMeeting', 'saveReminders', 'calculateSchedule']:
+            self.assertIn(callback, workspace)
 
     def test_controller_identity_guard_fences_supported_routes_without_mutation(self):
         guard=next(step for step in self.doc['jobs']['deploy']['steps']
@@ -112,7 +209,6 @@ class WorkflowContract(unittest.TestCase):
         self.assertEqual(result.returncode,0)
         result,_=run_guard('workflow_dispatch','unsupported','')
         self.assertNotEqual(result.returncode,0)
-
     def test_historical_source_identity_and_conditions_are_real(self):
         historical_text=git_show(HISTORICAL_CONTROLLER,CONTROLLER)
         historical_blob=subprocess.check_output(['git','rev-parse',f'{HISTORICAL_CONTROLLER}:{CONTROLLER}'],cwd=ROOT,text=True).strip()

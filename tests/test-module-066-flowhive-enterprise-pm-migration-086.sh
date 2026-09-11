@@ -5,10 +5,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MIGRATION="$ROOT/database/migrations/086_module_066_flowhive_enterprise_pm.sql"
 ROLLBACK="$ROOT/database/rollback/086_module_066_flowhive_enterprise_pm_rollback.sql"
 BACKEND="$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs"
+ROUTES="$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs"
 FRONTEND="$ROOT/src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx"
 HELPERS="$ROOT/src/frontend/project-time-web/src/flowhive-enterprise-helpers.js"
 
-for file in "$MIGRATION" "$ROLLBACK" "$BACKEND" "$FRONTEND" "$HELPERS"; do
+for file in "$MIGRATION" "$ROLLBACK" "$BACKEND" "$ROUTES" "$FRONTEND" "$HELPERS"; do
   test -f "$file" || { echo "Missing required FlowHive enterprise file: $file" >&2; exit 1; }
 done
 
@@ -31,7 +32,19 @@ grep -Fq "/api/project-flowhive/projects/{projectId:guid}/status-reports" "$BACK
 grep -Fq "/api/project-flowhive/projects/{projectId:guid}/customer-shares" "$BACKEND"
 grep -Fq "/api/project-flowhive/projects/{projectId:guid}/sow-evidence/{documentId:guid}/prepare" "$BACKEND"
 grep -Fq "/api/project-flowhive/share/{token}" "$BACKEND"
-grep -Fq "Only the assigned Project Manager can manage" "$BACKEND"
+grep -Fq "ProjectPlanningAccessResolver.ResolveAsync" "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs"
+grep -Fq "CanAdministerPlanner" "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs"
+grep -Fq "view_as_write_blocked" "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs"
+grep -Fq "meeting_title_invalid" "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs"
+grep -Fq "InspectProductionReadiness" "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs"
+grep -Fq "meeting_storage_unavailable" "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs"
+grep -Fq 'exception.SqlState == "23505"' "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs"
+grep -Fq 'project_flowhive_meetings_project_id_sha256_key' "$ROOT/src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs"
+grep -Fq "app.MapProjectFlowHivePsaEndpoints();" "$ROUTES"
+grep -Fq 'value is "view" or "pdf" or "meetings"' "$BACKEND"
+grep -Fq "LoadCustomerMeetingDownloadsAsync" "$BACKEND"
+grep -Fq 'download>Download MP4</a>' "$BACKEND"
+grep -Fq 'Allow customer meeting-recording downloads' "$ROOT/src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx"
 grep -Fq "deleteFlowHiveTask" "$HELPERS"
 grep -Fq "moveFlowHiveTask" "$HELPERS"
 grep -Fq "dependencyTypeHelp" "$HELPERS"

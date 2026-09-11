@@ -1,0 +1,17 @@
+.flowhive-planner-review { border: 1px solid var(--border-color, #b8c6d3); border-radius: 12px; padding: 20px; margin: 16px 0; min-width: 0; }
+.flowhive-planner-review > header { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; }
+.flowhive-planner-review h3, .flowhive-planner-review h4 { margin: 0 0 10px; }
+.flowhive-planner-review p { line-height: 1.5; max-width: 100%; overflow-wrap: anywhere; }
+.flowhive-review-grid { overflow-x: auto; max-width: 100%; margin: 14px 0; }
+.flowhive-review-grid table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 640px; }
+.flowhive-review-grid th, .flowhive-review-grid td { border-bottom: 1px solid var(--border-color, #b8c6d3); padding: 12px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.flowhive-review-grid table th:nth-child(2) { width: 42%; }
+.flowhive-review-grid select { width: 100%; min-width: 0; }
+.flowhive-review-grid small { display: block; margin-top: 6px; }
+.flowhive-review-note { display: grid; gap: 8px; margin: 16px 0; }
+.flowhive-review-note textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.flowhive-review-confirm { display: grid; gap: 12px; margin-top: 16px; }
+.flowhive-review-confirm label { display: flex; align-items: flex-start; gap: 10px; }
+.flowhive-review-confirm input { width: auto; }
+.flowhive-review-error { font-weight: 600; }
+@media (max-width: 720px) { .flowhive-planner-review { padding: 12px; } .flowhive-planner-review > header { flex-direction: column; } }

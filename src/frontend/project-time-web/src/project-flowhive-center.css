@@ -592,6 +592,42 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.flowhive-scope-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 0.8rem;
+  background: var(--flowhive-soft);
+}
+
+.flowhive-scope-toolbar label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: min(22rem, 100%);
+  color: var(--flowhive-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.flowhive-scope-toolbar select {
+  width: 100%;
+  padding: 0.55rem 0.62rem;
+  border: 1px solid #b6c7d2;
+  border-radius: 0.5rem;
+  color: var(--flowhive-ink);
+  background: #ffffff;
+  font: inherit;
+}
+
+.flowhive-scope-toolbar span {
+  color: var(--flowhive-muted);
+  font-size: 0.78rem;
+}
+
 .flowhive-notice {
   display: flex;
   align-items: center;
@@ -1396,7 +1432,8 @@
 
 @media (max-width: 800px) {
   .flowhive-brand-lockup,
-  .flowhive-export-hero {
+  .flowhive-export-hero,
+  .flowhive-scope-toolbar {
     align-items: flex-start;
     flex-direction: column;
   }

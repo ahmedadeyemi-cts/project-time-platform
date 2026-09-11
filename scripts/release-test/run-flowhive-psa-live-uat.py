@@ -23,7 +23,6 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 ORIGIN = 'https://phd-west-test.onenecklab.com'
 PROJECT = '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49'
-LOGIN = 'heather.schrock@ussignal.local'
 PHASES = ['Plan', 'Design', 'Implement', 'Validate', 'Release']
 CONTRACT = 'flowhive-bounded-execution-v1-20260906'
 MAX_BODY = 12 * 1024 * 1024
@@ -51,6 +50,45 @@ def need(ok: bool, code: str) -> None:
 
 def uid(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r'[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}', value) is not None
+
+
+def ready_sow(workspace: dict) -> dict:
+    """Select the server-approved, project-scoped SOW used for generation.
+
+    A non-empty evidence list is deliberately insufficient. The enterprise
+    endpoint computes approvedSowScopeReady from the same per-document gate
+    that the AI Planner uses: active version, authority, processing, indexed
+    citations, and engineering visibility.
+    """
+    summary = workspace.get('sowEvidenceSummary') or {}
+    need(summary.get('approvedSowScopeReady') is True, 'approved_sow_scope_not_ready')
+    candidates = []
+    for item in workspace.get('sowEvidence') or []:
+        category = str(item.get('documentCategory') or '').strip().lower()
+        if category not in {'sow', 'statement_of_work'}:
+            continue
+        if item.get('readyForAiPlanner') is not True:
+            continue
+        if not uid(item.get('documentId')) or not uid(item.get('activeVersionId')):
+            continue
+        if not str(item.get('documentVersion') or '').strip():
+            continue
+        if type(item.get('citationCount')) is not int or item['citationCount'] <= 0:
+            continue
+        candidates.append(item)
+    need(candidates, 'approved_sow_document_missing')
+    candidates.sort(key=lambda item: (str(item.get('documentId')).lower(), str(item.get('activeVersionId')).lower()))
+    return candidates[0]
+
+
+def sow_receipt(item: dict, fingerprint: str) -> dict:
+    return {
+        'documentId': item['documentId'],
+        'activeVersionId': item['activeVersionId'],
+        'documentVersion': str(item['documentVersion']),
+        'citationCount': item['citationCount'],
+        'sourceFingerprint': fingerprint,
+    }
 
 
 def iso(value: object) -> datetime:
@@ -271,6 +309,58 @@ class Client:
         need(code == 200 and isinstance(value, dict), 'authorized_get_failed_' + str(code))
         return value
 
+    def download(self, path: str) -> tuple[int, bytes, str]:
+        need(path.startswith('/') and not path.startswith('//') and '#' not in path, 'request_path_invalid')
+        headers = {'Accept': '*/*', 'Cache-Control': 'no-cache'}
+        if self.token:
+            headers['X-ProjectPulse-Session'] = self.token
+        try:
+            with self.opener.open(Request(ORIGIN + path, headers=headers, method='GET'), timeout=30) as response:
+                raw = response.read(MAX_BODY + 1)
+                need(len(raw) <= MAX_BODY, 'source_document_too_large')
+                return response.status, raw, str(response.headers.get('Content-Type') or '')
+        except HTTPError as error:
+            return error.code, b'', str(error.headers.get('Content-Type') or '')
+        except (URLError, TimeoutError, OSError):
+            raise GateError('source_document_download_failed') from None
+
+
+def authorized_project_and_sow(client: Client, project: str, report: dict) -> tuple[dict, dict, str]:
+    """Re-read PM scope, authority, readiness, and immutable source bytes."""
+    portfolio = client.get('/api/project-flowhive/portfolio')
+    portfolio_access = portfolio.get('access') or {}
+    need(portfolio_access.get('serverAuthorized') is True and portfolio_access.get('isViewAs') is False,
+         'pm_portfolio_scope_invalid')
+    need(portfolio_access.get('actualUserId') == portfolio_access.get('effectiveUserId'), 'pm_portfolio_actor_mismatch')
+    portfolio_project = next((item for item in portfolio.get('projects') or []
+                              if str(item.get('projectId') or '').lower() == project.lower()), None)
+    need(portfolio_project is not None, 'pm_project_not_in_authorized_portfolio')
+
+    base = '/api/project-flowhive/projects/' + project
+    workspace = client.get(base + '/enterprise')
+    need(workspace.get('project', {}).get('projectId') == project, 'project_identity_mismatch')
+    access = workspace.get('access') or {}
+    need(access.get('isViewAs') is False and access.get('actualUserId') == access.get('effectiveUserId'),
+         'view_as_or_actor_mismatch')
+    need(access.get('isProjectManagerOwner') is True and access.get('canEditPlanner') is True,
+         'assigned_pm_authority_missing')
+    need(access.get('actualUserId') == workspace['project'].get('projectManagerUserId'),
+         'pm_project_ownership_mismatch')
+    item = ready_sow(workspace)
+    status, raw, content_type = client.download('/api/work-register/projects/documents/' + item['documentId'] + '/download')
+    need(status == 200 and raw and 'json' not in content_type.lower(), 'approved_sow_download_failed')
+    fingerprint = hashlib.sha256(raw).hexdigest()
+    report['pmProjectScope'] = {
+        'projectId': project,
+        'actualUserId': access.get('actualUserId'),
+        'effectiveUserId': access.get('effectiveUserId'),
+        'isProjectManagerOwner': True,
+        'canEditPlanner': True,
+        'serverAuthorized': True,
+    }
+    report['approvedSow'] = sow_receipt(item, fingerprint)
+    return workspace, item, fingerprint
+
 
 def planner_run_snapshot(code: int, value: object, run_id: str, report: dict) -> dict:
     """Reconcile an earlier run without issuing a second write or cancellation."""
@@ -379,13 +469,16 @@ async def browser_readback(session: dict, expected: dict, report: dict, *, propo
 def run(approval: dict, report: dict) -> None:
     need(os.environ.get('BASE') == ORIGIN, 'unapproved_public_origin')
     need(approval.get('sha') == os.environ.get('TARGET_RELEASE_COMMIT'), 'unapproved_release')
-    need(approval.get('projectId') == PROJECT and approval.get('projectManagerLogin') == LOGIN, 'unapproved_project_or_pm')
+    pm_login = os.environ.get('PROJECTPULSE_M025_PM_EMAIL', '').strip()
+    need(pm_login and approval.get('projectId') == PROJECT and approval.get('projectManagerLogin') == pm_login,
+         'unapproved_project_or_pm')
     verification_authorized = os.environ.get('FLOWHIVE_INSTALLED_VERIFICATION_AUTHORIZED') == 'true'
     need(os.environ.get('PSA_RELEASE_AUTHORIZED') == 'true' or verification_authorized, 'verification_admission_missing')
     report['authorizationMode'] = 'installed_verification' if verification_authorized else 'canonical_admission'
-    password = os.environ.pop('TEST_LOGIN_PASSWORD', '')
-    need(len(password) >= 12, 'test_login_secret_missing')
+    password = os.environ.pop('PROJECTPULSE_M025_PM_PASSWORD', '')
+    need(len(password) >= 12, 'pm_login_secret_missing')
     client = Client()
+    report['generationPosts'] = 0
     started = time.monotonic()
     base = '/api/project-flowhive/projects/' + PROJECT
     run_id = None
@@ -397,20 +490,14 @@ def run(approval: dict, report: dict) -> None:
         code, _ = client.request(base + '/enterprise', authenticated=False)
         need(code in (401, 403), 'anonymous_project_access_not_denied')
         report['anonymousAccessDenied'] = True
-        code, session = client.request('/api/auth/local/login', 'POST', {'username': LOGIN, 'password': password}, authenticated=False)
+        code, session = client.request('/api/auth/local/login', 'POST', {'username': pm_login, 'password': password}, authenticated=False)
         password = ''
         need(code == 200 and isinstance(session, dict) and session.get('provider') == 'LOCAL' and session.get('mustChangePassword') is False,
              'pm_login_failed')
         client.token = session.get('sessionToken') or ''
         need(bool(client.token), 'pm_session_missing')
-        workspace = client.get(base + '/enterprise')
-        need(workspace.get('project', {}).get('projectId') == PROJECT, 'project_identity_mismatch')
-        access = workspace.get('access') or {}
-        need(access.get('isViewAs') is False and access.get('actualUserId') == access.get('effectiveUserId'), 'view_as_or_actor_mismatch')
-        need(access.get('isProjectManagerOwner') is True and access.get('canEditPlanner') is True, 'assigned_pm_authority_missing')
-        need(access.get('actualUserId') == workspace['project'].get('projectManagerUserId'), 'pm_project_ownership_mismatch')
+        workspace, sow_item, sow_fingerprint = authorized_project_and_sow(client, PROJECT, report)
         report['assignedPmVerified'] = True
-        need(bool(workspace.get('sowEvidence')), 'existing_sow_missing')
         previous_run_id = os.environ.get('PREVIOUS_PLANNER_RUN_ID', '').strip()
         need(uid(previous_run_id), 'prior_planner_run_id_missing')
         prior_code, prior_value = client.request(base + '/ai-planner/runs/' + previous_run_id, timeout=25)
@@ -434,8 +521,20 @@ def run(approval: dict, report: dict) -> None:
                 'detailLevel': 'comprehensive', 'retryTerminalDocumentProcessing': False,
                 'expectedWorkingRowVersion': working.get('rowVersion'), 'hasWorkingCopyExpectation': True}
         # Exactly one generation POST: unknown transport outcome is investigated, never reposted.
+        # Recheck the authorization and exact source at the generation boundary.
+        # A stale, wrong-project, unapproved, or changed document must fail here
+        # without issuing any generation POST.
+        boundary_workspace, boundary_sow, boundary_fingerprint = authorized_project_and_sow(client, PROJECT, report)
+        need(boundary_sow.get('documentId') == sow_item.get('documentId')
+             and boundary_sow.get('activeVersionId') == sow_item.get('activeVersionId')
+             and boundary_sow.get('documentVersion') == sow_item.get('documentVersion')
+             and boundary_fingerprint == sow_fingerprint,
+             'approved_sow_changed_before_generation')
+        need((boundary_workspace.get('workingCopy') or {}).get('rowVersion') == working.get('rowVersion'),
+             'working_copy_changed_before_generation')
         generation_start = time.monotonic()
         client.start_posts += 1
+        report['generationPosts'] = client.start_posts
         code, result = client.request(base + '/ai-planner/runs', 'POST', body, timeout=30)
         need(code in (200, 202) and isinstance(result, dict), 'generation_start_failed_' + str(code))
         run_id = result.get('runId')

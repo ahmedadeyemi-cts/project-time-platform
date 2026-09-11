@@ -1,0 +1,121 @@
+/* Keep the work breakdown inside its own scroll surface. Text in one task
+   must never expand the Task Name column beyond the date/effort controls. */
+.project-flowhive-center.projectpulse-module-standard,
+.project-flowhive-center .flowhive-view-panel,
+.project-flowhive-center .flowhive-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.project-flowhive-center .flowhive-table-wrap {
+  overflow: auto;
+  overscroll-behavior-inline: contain;
+  isolation: isolate;
+}
+
+.project-flowhive-center table.flowhive-smartsheet-table {
+  width: 120rem;
+  min-width: 120rem;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.project-flowhive-center .flowhive-smartsheet-table :is(th, td) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(1) { width: 5rem; }
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(2) { width: 24rem; }
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(3),
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(4) { width: 10rem; }
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(5) { width: 8rem; }
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(6),
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(7) { width: 7rem; }
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(8) { width: 6rem; }
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(9),
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(10) { width: 14rem; }
+.project-flowhive-center .flowhive-smartsheet-table th:nth-child(11) { width: 15rem; }
+
+.project-flowhive-center .flowhive-smartsheet-table :is(th, td):nth-child(2) {
+  min-width: 0;
+  left: 5rem;
+}
+
+.project-flowhive-center .flowhive-task-name-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  gap: .4rem;
+}
+
+.project-flowhive-center .flowhive-task-name-control input {
+  grid-column: 1 / -1;
+}
+
+.project-flowhive-center .flowhive-task-name-control button {
+  width: auto;
+  min-width: 0;
+  min-height: 2.375rem;
+  justify-self: start;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.project-flowhive-center .flowhive-smartsheet-table :is(input, select, textarea) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: .85rem;
+}
+
+.project-flowhive-center .flowhive-smartsheet-table .flowhive-duration-cell input {
+  width: 4.25rem;
+  flex: 0 1 4.25rem;
+}
+
+.project-flowhive-center .flowhive-smartsheet-table .flowhive-sheet-textarea {
+  min-height: 4.5rem;
+}
+
+.project-flowhive-center .flowhive-work-row td:nth-child(2) > small {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.45;
+  margin-top: .5rem;
+  opacity: 1;
+  color: var(--flowhive-muted);
+}
+
+/* A details cell spans the whole table; it is not the frozen WBS column. */
+.project-flowhive-center .flowhive-smartsheet-table .flowhive-task-detail-row > td {
+  position: static;
+  width: auto;
+  min-width: 0;
+  left: auto;
+  box-shadow: none;
+}
+
+.project-flowhive-center .flowhive-task-detail-panel {
+  padding: 1rem;
+}
+
+.project-flowhive-center .flowhive-smartsheet-table .flowhive-wbs-child {
+  padding-left: .25rem;
+}
+
+/* On small screens frozen columns would cover every editable date cell. */
+@media (max-width: 700px) {
+  .project-flowhive-center .flowhive-smartsheet-table :is(th, td):nth-child(-n+2) {
+    position: static;
+    left: auto;
+    box-shadow: none;
+  }
+}
