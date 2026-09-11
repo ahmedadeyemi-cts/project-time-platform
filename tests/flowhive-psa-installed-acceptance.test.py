@@ -18,6 +18,7 @@ IDENTITY = ROOT / "scripts/release-test/verify-flowhive-installed-identity.py"
 FLOWHIVE = ROOT / "scripts/release-test/run-flowhive-psa-live-uat.py"
 ROLE = ROOT / "scripts/release-test/run-flowhive-my-role-browser.py"
 MODULE025 = ROOT / "scripts/release-test/check-module025-installed-prerequisite.py"
+MODULE025_SA = ROOT / "scripts/release-test/run-module025-installed-sa-uat.py"
 PLANNER = ROOT / "scripts/release-test/reconcile-flowhive-planner.py"
 
 
@@ -29,6 +30,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         cls.flowhive = FLOWHIVE.read_text()
         cls.role = ROLE.read_text()
         cls.module025 = MODULE025.read_text()
+        cls.module025_sa = MODULE025_SA.read_text()
         cls.planner = PLANNER.read_text()
 
     def test_workflow_is_main_only_environment_protected_and_read_only(self):
@@ -40,6 +42,10 @@ class InstalledAcceptanceContract(unittest.TestCase):
             "INSTALLATION_RUN_ID: '34540010122'",
             "INSTALLATION_CONTROLLER_SHA: df6f7fc6d52495f83b0fd169047f5a249493db7e",
             "PREVIOUS_PLANNER_RUN_ID: 171e4430-95e4-4f80-be14-454dcc319ef2",
+            "PROJECTPULSE_TEST_UAT_ADMIN_EMAIL",
+            "PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD",
+            "PROJECTPULSE_M025_SA_EMAIL",
+            "PROJECTPULSE_M025_SA_PASSWORD",
             'GITHUB_REF" == refs/heads/main',
             "git rev-parse origin/main",
         ):
@@ -78,6 +84,11 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn('observed == EXPECTED["applicationSha"]', self.identity)
         self.assertIn('"recorded_from_installation_evidence"', self.identity)
         self.assertIn('test_uat_session_missing', self.identity)
+        self.assertIn('PROJECTPULSE_TEST_UAT_ADMIN_EMAIL', self.identity)
+        self.assertIn('PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD', self.identity)
+        self.assertIn('/api/security/context', self.identity)
+        self.assertIn('SYSTEM_ADMINISTRATION', self.identity)
+        self.assertIn('MANAGE_ALL', self.identity)
         self.assertNotIn('pm_local_login_fallback', self.identity)
         self.assertIn('"productionMutation": False', self.identity)
 
@@ -95,6 +106,8 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn("Reconcile prior planner operation before any generation", self.workflow)
         self.assertIn("id: planner", self.workflow)
         self.assertIn("steps.planner.outcome", self.workflow)
+        self.assertIn("id: sow", self.workflow)
+        self.assertIn("steps.sow.outcome", self.workflow)
         self.assertNotIn('"/ai-planner/runs", "POST"', self.planner)
 
     def test_flowhive_entrypoint_reconciles_before_one_generation_and_never_mocks(self):
@@ -111,7 +124,11 @@ class InstalledAcceptanceContract(unittest.TestCase):
     def test_role_runner_is_real_browser_read_only_and_checks_reload_boundaries(self):
         for token in (
             "async_playwright",
-            "#dashboard",
+            "#user-guide",
+            "#my-role-in-pulse",
+            "My Role in Pulse",
+            "data-role-journeys-launch",
+            "rj-step-details",
             "#project-intake",
             "#signed-handoff",
             "Work-task handoff",
@@ -127,6 +144,24 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn("page.route", self.role)
         self.assertIn('parsed.method not in ("GET", "HEAD", "OPTIONS")', self.role)
 
+    def test_normal_solution_architect_sow_lifecycle_is_separate_from_fixture(self):
+        for token in (
+            'PROJECTPULSE_M025_SA_EMAIL',
+            'PROJECTPULSE_M025_SA_PASSWORD',
+            'protectedTestUatRoleFixture',
+            'normal_solution_architect_role_missing',
+            'report["generationPosts"] = 1',
+            'module025_detailed_scope_generated',
+            'sow.docx',
+            'gsd.xlsx',
+            'reopen',
+            'browser_saved_edit_missing_after_reload',
+            'fixtureMutation": False',
+        ):
+            self.assertIn(token, self.module025_sa)
+        self.assertNotIn('PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED', self.module025_sa)
+        self.assertNotIn('route.fulfill(', self.module025_sa)
+
     def test_module025_is_explicitly_blocking_without_fixture_mutation(self):
         self.assertIn("protectedTestUatRoleFixture", self.module025)
         self.assertIn("protected_module025_fixture_disabled_or_not_authorized", self.module025)
@@ -141,8 +176,17 @@ class InstalledAcceptanceContract(unittest.TestCase):
         ):
             self.assertNotIn(forbidden_path, self.module025)
 
+    def test_workflow_gates_normal_sa_evidence_not_exceptional_fixture(self):
+        self.assertIn('module025-installed-sa-uat.json', self.workflow)
+        self.assertIn('.normalAuthorizedSolutionArchitect == true', self.workflow)
+        self.assertIn('.fixtureMutation == false', self.workflow)
+        self.assertIn('.generationPosts == 1', self.workflow)
+        self.assertIn('.retainedVersions.sowAndGsdDownloaded == true', self.workflow)
+        self.assertIn('exceptional Module 025 fixture prerequisite remains informational', self.workflow)
+        self.assertNotIn(".status == \"ready\"' \"$EVIDENCE_DIR/module025-installed-prerequisite.json\"", self.workflow)
+
     def test_scripts_parse_as_python(self):
-        for source in (IDENTITY, FLOWHIVE, ROLE, MODULE025, PLANNER):
+        for source in (IDENTITY, FLOWHIVE, ROLE, MODULE025, MODULE025_SA, PLANNER):
             ast.parse(source.read_text(), filename=str(source))
 
 

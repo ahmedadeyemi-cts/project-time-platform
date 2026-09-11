@@ -98,14 +98,47 @@ async def browser_check(session: dict, report: dict) -> None:
                 raise VerificationError(code) from None
 
         try:
+            # PR891 owns a dedicated Module 999 route. Navigate through the
+            # authenticated User Guide launch first, then exercise the real
+            # page. The old dashboard recommendation cards are a separate
+            # readiness observation and are not a substitute for this route.
+            await page.goto(ORIGIN + "/#user-guide", wait_until="domcontentloaded")
+            launch = page.locator('a[data-role-journeys-launch="true"][href="#my-role-in-pulse"]')
+            await wait_visible(launch, "browser_timeout_my_role_navigation")
+            await launch.click()
+            journey = page.locator("#my-role-in-pulse")
+            await wait_visible(journey, "browser_timeout_my_role_page")
+            await wait_visible(page.get_by_role("heading", name="My Role in Pulse", exact=True), "browser_timeout_my_role_heading")
+
+            role_buttons = journey.locator('aside[aria-label="Choose a role"] button[aria-pressed]')
+            role_count = await role_buttons.count()
+            require(role_count > 0, "my_role_has_no_playbooks")
+            role_texts = await role_buttons.all_text_contents()
+            assigned_index = next((index for index, value in enumerate(role_texts) if "Your role" in value), None)
+            require(assigned_index is not None, "my_role_has_no_assigned_playbook")
+            await role_buttons.nth(assigned_index).click()
+            await wait_visible(journey.locator("#rj-role-title"), "browser_timeout_my_role_selected_role")
+            await wait_visible(journey.locator("#rj-lifecycle-title"), "browser_timeout_my_role_lifecycle")
+            step_buttons = journey.locator('button[aria-controls="rj-step-details"]')
+            step_count = await step_buttons.count()
+            require(step_count >= 3, "my_role_has_incomplete_steps")
+            first_step = await journey.locator("#rj-step-title").inner_text()
+            if step_count > 1:
+                await step_buttons.nth(1).click()
+                await wait_visible(journey.get_by_text(re.compile(r"Viewing step 2 of"), exact=False), "browser_timeout_my_role_step_two")
+                require((await journey.locator("#rj-step-title").inner_text()) != first_step, "my_role_step_navigation_stuck")
+            await journey.get_by_role("button", name="Show a simple example", exact=True).click()
+            await wait_visible(journey.locator("#rj-example"), "browser_timeout_my_role_example")
+            await journey.get_by_role("button", name="Hide example", exact=True).click()
+
+            # Preserve the older dashboard signal as diagnostic evidence only.
             await page.goto(ORIGIN + "/#dashboard", wait_until="domcontentloaded")
-            workspace = page.locator("#role-welcome-dashboard")
-            await wait_visible(workspace, "browser_timeout_role_welcome_dashboard")
-            cards = workspace.locator('nav[aria-label="Recommended actions"] a')
-            card_count = await cards.count()
-            require(card_count > 0, "role_workspace_has_no_authorized_steps")
-            hrefs = await cards.evaluate_all("nodes => nodes.map(node => node.getAttribute('href') || '')")
-            require(all(re.fullmatch(r"#[a-z0-9-]+", value) for value in hrefs), "role_step_route_invalid")
+            dashboard = page.locator("#role-welcome-dashboard")
+            await wait_visible(dashboard, "browser_timeout_role_welcome_dashboard")
+            dashboard_cards = dashboard.locator('nav[aria-label="Recommended actions"] a')
+            dashboard_card_count = await dashboard_cards.count()
+            dashboard_hrefs = await dashboard_cards.evaluate_all("nodes => nodes.map(node => node.getAttribute('href') || '')")
+            require(all(re.fullmatch(r"#[a-z0-9-]+", value) for value in dashboard_hrefs), "role_step_route_invalid")
 
             await page.goto(ORIGIN + "/#project-intake", wait_until="domcontentloaded")
             intake = page.locator('.work-intake-creation-center[data-module="020"]')
@@ -132,7 +165,8 @@ async def browser_check(session: dict, report: dict) -> None:
             require(not page_errors, "browser_runtime_error")
             report.update({
                 "status": "passed",
-                "roleWorkspace": {"authorizedStepCount": card_count, "surface": "role-welcome-dashboard", "reloadVerified": True},
+                "roleWorkspace": {"authorizedStepCount": role_count, "assignedPlaybook": role_texts[assigned_index].strip(), "surface": "#my-role-in-pulse", "reloadVerified": True},
+                "dashboardObservation": {"recommendedActionCount": dashboard_card_count, "surface": "#dashboard"},
                 "handoffs": {"workTask": True, "resource": True, "signedPackage": signed_navigation_visible},
                 "accessBoundaries": {"signedHandoffNavigationVisible": signed_navigation_visible},
                 "writesBlocked": len(writes),
