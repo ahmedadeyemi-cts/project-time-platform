@@ -74,6 +74,16 @@ jobs:
           "$RUNNER_TEMP/flowhive-psa-browser/bin/pip" install --disable-pip-version-check playwright==1.57.0
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" -m playwright install --with-deps chromium
 
+      - name: Reconcile prior planner operation before any generation
+        id: planner
+        continue-on-error: true
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/reconcile-flowhive-planner.py
+
       - name: Verify installed API identity before business writes
         id: identity
         shell: bash
@@ -137,6 +147,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "${{ steps.identity.outcome }}" == success ]] || { echo 'Installed identity gate did not pass.' >&2; exit 1; }
+          [[ "${{ steps.planner.outcome }}" == success ]] || { echo 'Prior planner operation was not reconciled.' >&2; exit 1; }
           [[ "${{ steps.flowhive.outcome }}" == success ]] || { echo 'FlowHive lifecycle did not pass.' >&2; exit 1; }
           [[ "${{ steps.my_role.outcome }}" == success ]] || { echo 'My Role in Pulse browser acceptance did not pass.' >&2; exit 1; }
           [[ -f "$EVIDENCE_DIR/module025-installed-prerequisite.json" ]] || { echo 'Module 025 prerequisite evidence is missing.' >&2; exit 1; }

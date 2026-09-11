@@ -18,6 +18,7 @@ IDENTITY = ROOT / "scripts/release-test/verify-flowhive-installed-identity.py"
 FLOWHIVE = ROOT / "scripts/release-test/run-flowhive-psa-live-uat.py"
 ROLE = ROOT / "scripts/release-test/run-flowhive-my-role-browser.py"
 MODULE025 = ROOT / "scripts/release-test/check-module025-installed-prerequisite.py"
+PLANNER = ROOT / "scripts/release-test/reconcile-flowhive-planner.py"
 
 
 class InstalledAcceptanceContract(unittest.TestCase):
@@ -28,6 +29,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         cls.flowhive = FLOWHIVE.read_text()
         cls.role = ROLE.read_text()
         cls.module025 = MODULE025.read_text()
+        cls.planner = PLANNER.read_text()
 
     def test_workflow_is_main_only_environment_protected_and_read_only(self):
         for token in (
@@ -79,6 +81,22 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn('pm_local_login_fallback', self.identity)
         self.assertIn('"productionMutation": False', self.identity)
 
+    def test_planner_reconciliation_is_read_only_and_precedes_identity(self):
+        for token in (
+            "171e4430-95e4-4f80-be14-454dcc319ef2",
+            "/ai-planner/runs/",
+            "/ai-planner/runs/latest",
+            '"generationPosts": 0',
+            '"cancellationPosts": 0',
+            '"businessWritesRequested": False',
+            "/api/auth/session/logout",
+        ):
+            self.assertIn(token, self.planner)
+        self.assertIn("Reconcile prior planner operation before any generation", self.workflow)
+        self.assertIn("id: planner", self.workflow)
+        self.assertIn("steps.planner.outcome", self.workflow)
+        self.assertNotIn('"/ai-planner/runs", "POST"', self.planner)
+
     def test_flowhive_entrypoint_reconciles_before_one_generation_and_never_mocks(self):
         self.assertIn("PREVIOUS_PLANNER_RUN_ID", self.flowhive)
         self.assertIn("planner_run_snapshot", self.flowhive)
@@ -124,7 +142,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
             self.assertNotIn(forbidden_path, self.module025)
 
     def test_scripts_parse_as_python(self):
-        for source in (IDENTITY, FLOWHIVE, ROLE, MODULE025):
+        for source in (IDENTITY, FLOWHIVE, ROLE, MODULE025, PLANNER):
             ast.parse(source.read_text(), filename=str(source))
 
 
