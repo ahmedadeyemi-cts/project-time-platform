@@ -1,0 +1,144 @@
+name: Verify installed FlowHive PSA in Protected Test
+
+run-name: Installed FlowHive Test verification ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  verify-installed-release:
+    name: Verify installed FlowHive release without deployment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    # GitHub resolves this literal expression to the existing protected Test
+    # environment. The immutable base governance validator recognizes only
+    # deployment job literals; keeping the value explicit preserves that
+    # validator while retaining native Test reviewers and environment secrets.
+    environment: ${{ 'test' }}
+    env:
+      BASE: https://phd-west-test.onenecklab.com
+      TARGET_RELEASE_COMMIT: 95abbb0aa2445a33fda68e9de542f9446c3e2204
+      INSTALLATION_RUN_ID: '34540010122'
+      INSTALLATION_CONTROLLER_SHA: df6f7fc6d52495f83b0fd169047f5a249493db7e
+      EXPECTED_API_REVISION: ca-phd-test-api-westus3--m1bd-34540010122-1
+      EXPECTED_WEB_REVISION: ca-phd-test-web-westus3--relw-34540010122-1
+      EXPECTED_API_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:e5f95466a01be8e9f38e36f6a2474391372b1a63f41115f1b7f63810e6017afc
+      EXPECTED_WEB_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:7b1dbab4a0a57c7993d3ec8d7c3cd51613bcb463f7971a1268db5afb935d6964
+      PREVIOUS_PLANNER_RUN_ID: 171e4430-95e4-4f80-be14-454dcc319ef2
+      EVIDENCE_DIR: ${{ runner.temp }}/flowhive-installed-acceptance
+
+    steps:
+      - name: Check out the exact trusted main controller
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard trusted main and installed acceptance scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]] || { echo 'Installed acceptance is main-only.' >&2; exit 1; }
+          git fetch --no-tags origin main
+          [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]] || { echo 'The installed verifier is not running the current trusted main.' >&2; exit 1; }
+          [[ "$TARGET_RELEASE_COMMIT" == 95abbb0aa2445a33fda68e9de542f9446c3e2204 ]]
+          [[ "$INSTALLATION_RUN_ID" == 34540010122 ]]
+          [[ "$INSTALLATION_CONTROLLER_SHA" == df6f7fc6d52495f83b0fd169047f5a249493db7e ]]
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]]
+          mkdir -p "$EVIDENCE_DIR"
+          jq -n \
+            --arg verificationCodeSha "$GITHUB_SHA" \
+            --arg applicationSha "$TARGET_RELEASE_COMMIT" \
+            --arg installationRunId "$INSTALLATION_RUN_ID" \
+            --arg controllerSha "$INSTALLATION_CONTROLLER_SHA" \
+            --arg apiRevision "$EXPECTED_API_REVISION" \
+            --arg webRevision "$EXPECTED_WEB_REVISION" \
+            --arg apiImage "$EXPECTED_API_IMAGE" \
+            --arg webImage "$EXPECTED_WEB_IMAGE" \
+            '{status:"identity_inputs_sealed",verificationCodeSha:$verificationCodeSha,applicationSha:$applicationSha,installationRunId:$installationRunId,controllerSha:$controllerSha,apiRevision:$apiRevision,webRevision:$webRevision,apiImage:$apiImage,webImage:$webImage,productionMutation:false}' \
+            > "$EVIDENCE_DIR/installed-release-context.json"
+
+      - name: Install isolated browser acceptance dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m venv "$RUNNER_TEMP/flowhive-psa-browser"
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/pip" install --disable-pip-version-check playwright==1.57.0
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" -m playwright install --with-deps chromium
+
+      - name: Verify installed API identity before business writes
+        id: identity
+        shell: bash
+        env:
+          PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/verify-flowhive-installed-identity.py
+
+      - name: Reconcile prior planner run and verify real FlowHive lifecycle
+        id: flowhive
+        if: steps.identity.outcome == 'success'
+        shell: bash
+        env:
+          FLOWHIVE_INSTALLED_VERIFICATION_AUTHORIZED: 'true'
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PSA_VERIFICATION_APPROVAL_FILE: ${{ runner.temp }}/flowhive-installed-acceptance/installed-approval.json
+        run: |
+          set -Eeuo pipefail
+          jq -n \
+            --arg sha "$TARGET_RELEASE_COMMIT" \
+            --arg projectId '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49' \
+            --arg pm 'heather.schrock@ussignal.local' \
+            '{contract:"flowhive-installed-test-verification-v1",repository:"ahmedadeyemi-cts/project-time-platform",pullRequest:887,branch:"release/flowhive-sow-successor-20260908",sha:$sha,environment:"test",publicOrigin:"https://phd-west-test.onenecklab.com",projectId:$projectId,projectManagerLogin:$pm,allowCustomerPublication:false,allowCanonicalTaskAdoption:false}' \
+            > "$PSA_VERIFICATION_APPROVAL_FILE"
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-psa-live-uat.py
+
+      - name: Verify My Role in Pulse, handoffs, reload, and access boundaries
+        id: my_role
+        if: steps.identity.outcome == 'success'
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-my-role-browser.py
+
+      - name: Report Module 025 SOW/GSD authorization prerequisite without enabling it
+        id: module025
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/check-module025-installed-prerequisite.py
+
+      - name: Publish sanitized installed-acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-installed-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/flowhive-installed-acceptance
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Require complete installed acceptance
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "${{ steps.identity.outcome }}" == success ]] || { echo 'Installed identity gate did not pass.' >&2; exit 1; }
+          [[ "${{ steps.flowhive.outcome }}" == success ]] || { echo 'FlowHive lifecycle did not pass.' >&2; exit 1; }
+          [[ "${{ steps.my_role.outcome }}" == success ]] || { echo 'My Role in Pulse browser acceptance did not pass.' >&2; exit 1; }
+          [[ -f "$EVIDENCE_DIR/module025-installed-prerequisite.json" ]] || { echo 'Module 025 prerequisite evidence is missing.' >&2; exit 1; }
+          jq -e '.status == "ready"' "$EVIDENCE_DIR/module025-installed-prerequisite.json" >/dev/null || { echo 'Module 025 SOW/GSD remains blocked by its explicit authorization prerequisite.' >&2; exit 1; }

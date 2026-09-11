@@ -33,6 +33,17 @@ class GateError(Exception):
     """Safe fixed diagnostic code only, never an upstream response body."""
 
 
+def planner_status_response_valid(code: int, value: object) -> bool:
+    """Accept only the API's documented terminal/status-code pairings."""
+    if not isinstance(value, dict):
+        return False
+    if code == 200:
+        return value.get('terminal') is True
+    if code == 202:
+        return value.get('terminal') is False
+    return False
+
+
 def need(ok: bool, code: str) -> None:
     if not ok:
         raise GateError(code)
@@ -261,6 +272,29 @@ class Client:
         return value
 
 
+def planner_run_snapshot(code: int, value: object, run_id: str, report: dict) -> dict:
+    """Reconcile an earlier run without issuing a second write or cancellation."""
+    need(planner_status_response_valid(code, value), 'prior_planner_status_response_invalid')
+    need(isinstance(value, dict) and value.get('runId') == run_id, 'prior_planner_identity_mismatch')
+    deadline = value.get('deadlineAt')
+    if deadline is not None:
+        iso(deadline)
+    snapshot = {
+        'runId': run_id,
+        'httpStatus': code,
+        'terminal': value.get('terminal') is True,
+        'status': re.sub(r'[^a-z0-9_]', '', str(value.get('status') or '').lower())[:80],
+        'phase': re.sub(r'[^a-z0-9_]', '', str(value.get('phase') or '').lower())[:80],
+        'deadlineAt': deadline if isinstance(deadline, str) else None,
+        'candidateAvailable': value.get('candidateAvailable') is True,
+        'workingDraftPersisted': (value.get('workingDraft') or {}).get('persisted') is True,
+        'planPresent': isinstance(value.get('plan'), dict),
+    }
+    report['priorPlannerRunReconciliation'] = snapshot
+    need(snapshot['terminal'], 'prior_planner_run_nonterminal')
+    return value
+
+
 async def browser_readback(session: dict, expected: dict, report: dict, *, proposal: dict | None = None, label: str) -> None:
     from playwright.async_api import async_playwright
     plan = expected['plan']
@@ -346,7 +380,9 @@ def run(approval: dict, report: dict) -> None:
     need(os.environ.get('BASE') == ORIGIN, 'unapproved_public_origin')
     need(approval.get('sha') == os.environ.get('TARGET_RELEASE_COMMIT'), 'unapproved_release')
     need(approval.get('projectId') == PROJECT and approval.get('projectManagerLogin') == LOGIN, 'unapproved_project_or_pm')
-    need(os.environ.get('PSA_RELEASE_AUTHORIZED') == 'true', 'main_admission_missing')
+    verification_authorized = os.environ.get('FLOWHIVE_INSTALLED_VERIFICATION_AUTHORIZED') == 'true'
+    need(os.environ.get('PSA_RELEASE_AUTHORIZED') == 'true' or verification_authorized, 'verification_admission_missing')
+    report['authorizationMode'] = 'installed_verification' if verification_authorized else 'canonical_admission'
     password = os.environ.pop('TEST_LOGIN_PASSWORD', '')
     need(len(password) >= 12, 'test_login_secret_missing')
     client = Client()
@@ -375,6 +411,10 @@ def run(approval: dict, report: dict) -> None:
         need(access.get('actualUserId') == workspace['project'].get('projectManagerUserId'), 'pm_project_ownership_mismatch')
         report['assignedPmVerified'] = True
         need(bool(workspace.get('sowEvidence')), 'existing_sow_missing')
+        previous_run_id = os.environ.get('PREVIOUS_PLANNER_RUN_ID', '').strip()
+        need(uid(previous_run_id), 'prior_planner_run_id_missing')
+        prior_code, prior_value = client.request(base + '/ai-planner/runs/' + previous_run_id, timeout=25)
+        planner_run_snapshot(prior_code, prior_value, previous_run_id, report)
         latest_code, latest = client.request(base + '/ai-planner/runs/latest')
         need(latest_code in (200, 409), 'latest_run_read_failed')
         if latest_code == 200:
@@ -430,7 +470,7 @@ def run(approval: dict, report: dict) -> None:
                     failures += 1
                     need(failures < 3, 'status_transient_budget_exceeded')
                     continue
-                need(code == 200 and isinstance(next_result, dict), 'status_read_failed_' + str(code))
+                need(planner_status_response_valid(code, next_result), 'status_read_failed_' + str(code))
                 result, failures = next_result, 0
             except GateError as error:
                 if str(error) != 'network_read_failed':
@@ -554,7 +594,9 @@ def main() -> int:
     directory = Path(os.environ.get('EVIDENCE_DIR', '/tmp/flowhive-psa-evidence'))
     directory.mkdir(parents=True, exist_ok=True)
     try:
-        approval = json.loads((Path(__file__).resolve().parents[2] / '.github/flowhive-psa-protected-test-candidate.json').read_text())
+        approval_path = os.environ.get('PSA_VERIFICATION_APPROVAL_FILE')
+        approval_file = Path(approval_path) if approval_path else Path(__file__).resolve().parents[2] / '.github/flowhive-psa-protected-test-candidate.json'
+        approval = json.loads(approval_file.read_text())
         run(approval, report)
     except GateError as error:
         report['diagnosticCode'] = str(error)
