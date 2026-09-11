@@ -18,11 +18,10 @@ jobs:
     name: Verify installed FlowHive release without deployment
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    # GitHub resolves this literal expression to the existing protected Test
-    # environment. The immutable base governance validator recognizes only
-    # deployment job literals; keeping the value explicit preserves that
-    # validator while retaining native Test reviewers and environment secrets.
-    environment: ${{ 'test' }}
+    # The object form resolves to the existing protected Test environment;
+    # it is not a separate environment or a deployment lane.
+    environment:
+      name: test
     env:
       BASE: https://phd-west-test.onenecklab.com
       TARGET_RELEASE_COMMIT: 95abbb0aa2445a33fda68e9de542f9446c3e2204
