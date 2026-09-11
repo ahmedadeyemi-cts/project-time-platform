@@ -22,8 +22,13 @@ export const files = [
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'scripts/release-test/prepare-protected-test-scope-manifests.sh',
+  'scripts/release-test/check-module025-installed-prerequisite.py',
+  'scripts/release-test/run-flowhive-my-role-browser.py',
   'scripts/release-test/run-flowhive-psa-live-uat.py',
+  'scripts/release-test/verify-flowhive-installed-identity.py',
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
   'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-installed-acceptance.test.py',
   'tests/flowhive-psa-live-uat.test.py',
   'tests/flowhive-psa-migration-fixture.py',
   'tests/flowhive-psa-release-control.mjs',
@@ -177,8 +182,15 @@ export const protectedCutoverFinalFiles = [
 export const liveUatStatusFixBase = 'df6f7fc6d52495f83b0fd169047f5a249493db7e';
 export const liveUatStatusFixBranch = 'fix/flowhive-live-uat-status-20260910';
 export const liveUatStatusFixFiles = [
+  '.github/flowhive-psa-release-control-files.txt',
+  '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  '.github/workflows/flowhive-psa-release-control-ci.yml',
+  'scripts/release-test/check-module025-installed-prerequisite.py',
+  'scripts/release-test/run-flowhive-my-role-browser.py',
   'scripts/release-test/run-flowhive-psa-live-uat.py',
+  'scripts/release-test/verify-flowhive-installed-identity.py',
   'tests/flowhive-psa-live-uat.test.py',
+  'tests/flowhive-psa-installed-acceptance.test.py',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const staleSupersessionFiles = [

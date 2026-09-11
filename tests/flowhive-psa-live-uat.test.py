@@ -30,6 +30,25 @@ class AcceptanceDecisions(unittest.TestCase):
                             (202, {'terminal': True}), (202, None), (202, [])]:
             self.assertFalse(live.planner_status_response_valid(code, value))
 
+    def test_prior_planner_reconciliation_requires_matching_terminal_run(self):
+        run_id = '11111111-1111-4111-8111-111111111111'
+        report = {}
+        with self.assertRaises(live.GateError) as nonterminal:
+            live.planner_run_snapshot(202, {'runId': run_id, 'terminal': False, 'phase': 'inference'}, run_id, report)
+        self.assertEqual(str(nonterminal.exception), 'prior_planner_run_nonterminal')
+        self.assertEqual(report['priorPlannerRunReconciliation']['runId'], run_id)
+        self.assertFalse(report['priorPlannerRunReconciliation']['terminal'])
+
+        report = {}
+        with self.assertRaises(live.GateError) as identity:
+            live.planner_run_snapshot(200, {'runId': '22222222-2222-4222-8222-222222222222', 'terminal': True}, run_id, report)
+        self.assertEqual(str(identity.exception), 'prior_planner_identity_mismatch')
+
+        report = {}
+        terminal = live.planner_run_snapshot(200, {'runId': run_id, 'terminal': True, 'status': 'completed'}, run_id, report)
+        self.assertTrue(terminal['terminal'])
+        self.assertTrue(report['priorPlannerRunReconciliation']['terminal'])
+
     def test_substantive_fixture(self):
         p,s=fixture(); self.assertEqual(live.plan_checks(p,s)['leafTasks'],5)
     def test_reject_incomplete_or_fabricated_success(self):
