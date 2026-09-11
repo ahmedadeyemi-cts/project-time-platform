@@ -79,6 +79,7 @@ jobs:
         shell: bash
         env:
           PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
         run: |
           set -Eeuo pipefail
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/verify-flowhive-installed-identity.py
@@ -90,7 +91,7 @@ jobs:
         env:
           FLOWHIVE_INSTALLED_VERIFICATION_AUTHORIZED: 'true'
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
-          PSA_VERIFICATION_APPROVAL_FILE: ${{ runner.temp }}/flowhive-installed-acceptance/installed-approval.json
+          PSA_VERIFICATION_APPROVAL_FILE: ${{ github.workspace }}/flowhive-installed-acceptance/installed-approval.json
         run: |
           set -Eeuo pipefail
           jq -n \
