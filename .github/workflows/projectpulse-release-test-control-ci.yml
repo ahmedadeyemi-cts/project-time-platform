@@ -159,6 +159,22 @@ jobs:
             }
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_PROTECTED_CUTOVER_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-canonical-dispatch-20260911' ]]; then
+            expected="$CIT/flowhive-canonical-dispatch-files"
+            printf '%s\n' \
+              '.github/workflows/projectpulse-deploy-test.yml' \
+              'tests/flowhive-psa-release-control.mjs' \
+              'tests/flowhive-psa-release-workflow.test.py' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml' \
+              | LC_ALL=C sort -u > "$expected"
+            cmp -s "$CIT/diff" "$expected" || {
+              echo 'Canonical dispatch control differs from its exact governed file set.' >&2
+              diff -u "$expected" "$CIT/diff" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_FLOWHIVE_CANONICAL_DISPATCH_CONTROL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
