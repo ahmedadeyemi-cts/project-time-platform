@@ -179,7 +179,7 @@ export const protectedCutoverFinalFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const liveUatStatusFixBase = 'df6f7fc6d52495f83b0fd169047f5a249493db7e';
+export const liveUatStatusFixBase = 'b40d2e430c2385f57c3ce02e6d3b995ee1873a11';
 export const liveUatStatusFixBranch = 'fix/flowhive-live-uat-status-20260910';
 export const liveUatStatusFixFiles = [
   '.github/flowhive-psa-release-control-files.txt',
