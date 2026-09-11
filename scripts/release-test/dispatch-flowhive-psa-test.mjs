@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { authorize, repository, candidateBranch, candidatePullRequest, approvalPath, verifyApproval } from './flowhive-psa-admission.mjs';
+import { authorize, repository, admissionIssueNumber, candidateBranch, candidatePullRequest, approvalPath, verifyApproval } from './flowhive-psa-admission.mjs';
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
@@ -258,12 +258,14 @@ function verifyBoundedApproval(authorization, now) {
 }
 
 export function verifyProtectedCutoverAuthorization(authorization, now = new Date()) {
+  const approval = JSON.parse(fs.readFileSync(approvalPath, 'utf8'));
+  verifyApproval(approval, authorization?.candidate?.sha);
   assert.equal(authorization?.contract, 'flowhive-psa-protected-cutover-v1', 'PROTECTED_CUTOVER_CONTRACT');
-  assert.equal(authorization?.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260910', 'PROTECTED_CUTOVER_REFERENCE');
+  assert.equal(authorization?.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911', 'PROTECTED_CUTOVER_REFERENCE');
   assert.deepEqual(authorization?.candidate, {
-    pullRequest: candidatePullRequest,
-    branch: candidateBranch,
-    sha: '95abbb0aa2445a33fda68e9de542f9446c3e2204'
+    pullRequest: approval.pullRequest,
+    branch: approval.branch,
+    sha: approval.sha
   }, 'PROTECTED_CUTOVER_CANDIDATE');
   assert.deepEqual(authorization?.workflow, {
     id: workflowId, path: workflowPath, controllerBranch: 'main', event: 'workflow_dispatch',
@@ -1369,7 +1371,7 @@ async function main() {
   assert.equal(process.env.GITHUB_EVENT_NAME, 'issue_comment');
   const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   assert.equal(event.action, 'created');
-  assert.equal(event.issue?.number, candidatePullRequest);
+  assert.equal(event.issue?.number, admissionIssueNumber);
   assert.equal(event.comment?.user?.login, 'ahmedadeyemi-cts');
   assert.ok(event.issue.pull_request);
   const candidateSha = parseCommand(event.comment.body);
@@ -1391,7 +1393,7 @@ async function main() {
       controllerTransition: null }
   });
   let { dispatched, evidence } = admissionResult;
-  const summary = `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nController lifecycle: \`${admissionResult.lifecycle.policy}\`; final state: \`${admissionResult.lifecycle.finalState?.state || 'unknown'}\`. Run identity came from the dispatch response. Feature PR #${candidatePullRequest} remains unmerged. Live acceptance is not yet established.\n`;
+  const summary = `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nController lifecycle: \`${admissionResult.lifecycle.policy}\`; final state: \`${admissionResult.lifecycle.finalState?.state || 'unknown'}\`. Run identity came from the dispatch response. Reviewed application PR #${candidatePullRequest} is merged; live acceptance is not yet established.\n`;
   try {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   } catch (error) {

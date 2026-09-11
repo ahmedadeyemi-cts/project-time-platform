@@ -60,7 +60,9 @@ def verify(doc):
     release_guard=next(s for s in steps if s.get('name')=='Guard exact source and validate release')
     assert 'database/migrations/105_flowhive_reviewed_regeneration.sql' in release_guard['run']
     assert 'database/migrations/106_module025_sow_sell_register.sql' in release_guard['run']
+    assert 'database/migrations/107_module_066_operation_authorization_and_raid_actor.sql' in release_guard['run']
     assert 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql' in release_guard['run']
+    assert 'database/rollback/107_module_066_operation_authorization_and_raid_actor_rollback.sql' in release_guard['run']
     assert byid['psa_live_uat']['working-directory']=='control'
     assert byid['psa_live_uat']['timeout-minutes']=='20'
     assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true'"
@@ -191,7 +193,8 @@ class WorkflowContract(unittest.TestCase):
             with tempfile.TemporaryDirectory() as temp:
                 control=Path(temp)/'control';control.mkdir()
                 subprocess.run(['git','init','-q',str(control)],check=True)
-                subprocess.run(['git','-C',str(control),'-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','--quiet','--allow-empty','-m','fixture'],check=True)
+                fixture_env={**os.environ,'GIT_AUTHOR_DATE':'2026-01-01T00:00:00Z','GIT_COMMITTER_DATE':'2026-01-01T00:00:00Z'}
+                subprocess.run(['git','-C',str(control),'-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','--quiet','--allow-empty','-m','fixture'],check=True,env=fixture_env)
                 actual=subprocess.check_output(['git','-C',str(control),'rev-parse','HEAD'],text=True).strip()
                 env={**os.environ,'GITHUB_REF':'refs/heads/main','GITHUB_SHA':actual,
                      'GITHUB_EVENT_NAME':event,'RELEASE_BRANCH_INPUT':branch,

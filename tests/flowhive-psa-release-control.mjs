@@ -87,6 +87,18 @@ export const successorApprovalFiles = [
   'tests/flowhive-psa-release-control.mjs',
   'tests/flowhive-psa-release-workflow.test.py'
 ].sort();
+export const successorReleaseApprovalBase = '2057df629ebb1f3ef651295c0da541061b77d56a';
+export const successorReleaseApprovalBranch = 'control/flowhive-successor-approval-20260911';
+export const successorReleaseApprovalFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  '.github/flowhive-psa-protected-test-candidate.json',
+  '.github/workflows/projectpulse-deploy-test.yml',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'scripts/release-test/flowhive-psa-admission.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
+].sort();
 export const dispatchRecoveryBase = 'af5fcb463384096f668345ac7cc9bd00efef0a33';
 export const dispatchRecoveryBranch = 'fix/flowhive-dispatch-run-recovery-20260909';
 export const dispatchRecoveryFiles = [
@@ -326,7 +338,7 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','dispatch-run-recovery','stale-run-supersession','stale-run-activation','stale-run-renewal','migration106-wiring','release-stabilization','protected-cutover','protected-cutover-activation','protected-cutover-refresh','admission-permission-fix','admission-bot-claim-fix','protected-cutover-recovery','reservation-recovery-endpoint-fix','protected-cutover-final','live-uat-status-fix','installed-verification-environment','installed-verification-evidence','installed-acceptance-evidence','installed-acceptance-artifacts','installed-acceptance-readiness','installed-acceptance-visibility','installed-acceptance-planner','installed-acceptance-final'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','successor-release-approval','dispatch-run-recovery','stale-run-supersession','stale-run-activation','stale-run-renewal','migration106-wiring','release-stabilization','protected-cutover','protected-cutover-activation','protected-cutover-refresh','admission-permission-fix','admission-bot-claim-fix','protected-cutover-recovery','reservation-recovery-endpoint-fix','protected-cutover-final','live-uat-status-fix','installed-verification-environment','installed-verification-evidence','installed-acceptance-evidence','installed-acceptance-artifacts','installed-acceptance-readiness','installed-acceptance-visibility','installed-acceptance-planner','installed-acceptance-final'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
@@ -347,6 +359,10 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
   if (mode === 'successor-approval') {
     assert.equal(context?.base, successorApprovalBase, 'Successor approval must be based on the current trusted main.');
     assert.equal(context?.branch, successorApprovalBranch, 'Wrong successor approval branch.');
+  }
+  if (mode === 'successor-release-approval') {
+    assert.equal(context?.base, successorReleaseApprovalBase, 'Successor release approval must be based on the reviewed trusted main.');
+    assert.equal(context?.branch, successorReleaseApprovalBranch, 'Wrong successor release approval branch.');
   }
   if (mode === 'dispatch-run-recovery') {
     assert.equal(context?.base, dispatchRecoveryBase, 'Dispatch recovery must be based on merged trusted control main.');
@@ -432,14 +448,14 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.base, installedAcceptanceFinalBase, 'Installed acceptance final verifier must be based on current trusted main.');
     assert.equal(context?.branch, installedAcceptanceFinalBranch, 'Wrong installed acceptance final verifier branch.');
   }
-  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : mode === 'stale-run-renewal' ? staleSupersessionRenewalFiles : mode === 'migration106-wiring' ? migration106WiringFiles : mode === 'release-stabilization' ? releaseStabilizationFiles : mode === 'protected-cutover' ? protectedCutoverFiles : mode === 'protected-cutover-activation' ? protectedCutoverActivationFiles : mode === 'protected-cutover-refresh' ? protectedCutoverRefreshFiles : mode === 'admission-permission-fix' ? admissionPermissionFixFiles : mode === 'admission-bot-claim-fix' ? admissionBotClaimFixFiles : mode === 'protected-cutover-recovery' ? protectedCutoverRecoveryFiles : mode === 'reservation-recovery-endpoint-fix' ? reservationRecoveryEndpointFixFiles : mode === 'protected-cutover-final' ? protectedCutoverFinalFiles : mode === 'live-uat-status-fix' ? liveUatStatusFixFiles : mode === 'installed-verification-environment' ? installedVerificationEnvironmentFiles : mode === 'installed-verification-evidence' ? installedVerificationEvidenceFiles : mode === 'installed-acceptance-evidence' ? installedAcceptanceEvidenceFiles : mode === 'installed-acceptance-artifacts' ? installedAcceptanceArtifactsFiles : mode === 'installed-acceptance-readiness' ? installedAcceptanceReadinessFiles : mode === 'installed-acceptance-visibility' ? installedAcceptanceVisibilityFiles : mode === 'installed-acceptance-planner' ? installedAcceptancePlannerFiles : mode === 'installed-acceptance-final' ? installedAcceptanceFinalFiles : staleSupersessionFiles;
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'successor-release-approval' ? successorReleaseApprovalFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : mode === 'stale-run-renewal' ? staleSupersessionRenewalFiles : mode === 'migration106-wiring' ? migration106WiringFiles : mode === 'release-stabilization' ? releaseStabilizationFiles : mode === 'protected-cutover' ? protectedCutoverFiles : mode === 'protected-cutover-activation' ? protectedCutoverActivationFiles : mode === 'protected-cutover-refresh' ? protectedCutoverRefreshFiles : mode === 'admission-permission-fix' ? admissionPermissionFixFiles : mode === 'admission-bot-claim-fix' ? admissionBotClaimFixFiles : mode === 'protected-cutover-recovery' ? protectedCutoverRecoveryFiles : mode === 'reservation-recovery-endpoint-fix' ? reservationRecoveryEndpointFixFiles : mode === 'protected-cutover-final' ? protectedCutoverFinalFiles : mode === 'live-uat-status-fix' ? liveUatStatusFixFiles : mode === 'installed-verification-environment' ? installedVerificationEnvironmentFiles : mode === 'installed-verification-evidence' ? installedVerificationEvidenceFiles : mode === 'installed-acceptance-evidence' ? installedAcceptanceEvidenceFiles : mode === 'installed-acceptance-artifacts' ? installedAcceptanceArtifactsFiles : mode === 'installed-acceptance-readiness' ? installedAcceptanceReadinessFiles : mode === 'installed-acceptance-visibility' ? installedAcceptanceVisibilityFiles : mode === 'installed-acceptance-planner' ? installedAcceptancePlannerFiles : mode === 'installed-acceptance-final' ? installedAcceptanceFinalFiles : staleSupersessionFiles;
   assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
   for (const token of [
     'group: projectpulse-deploy-test', 'queue: max', 'cancel-in-progress: false', 'environment: test',
     'node scripts/release-test/flowhive-psa-admission.mjs', 'PSA_RELEASE_AUTHORIZED',
-    'refs/heads/main', '105_flowhive_reviewed_regeneration.sql', '106_module025_sow_sell_register.sql', 'build-and-run-flowhive-psa-migrations.sh',
+    'refs/heads/main', '105_flowhive_reviewed_regeneration.sql', '106_module025_sow_sell_register.sql', '107_module_066_operation_authorization_and_raid_actor.sql', 'build-and-run-flowhive-psa-migrations.sh',
     'run-flowhive-psa-live-uat.py', 'RELIABILITY_RELEASE_COMMIT:', 'Seal server-confirmed deployment identity',
     "steps.psa_live_uat.outputs.deployment_health_verified != 'true'",
   ]) {
@@ -480,6 +496,7 @@ export function validate() {
   const isSuccessorCandidateRefresh = process.env.GITHUB_HEAD_REF === successorCandidateRefreshBranch;
   const isSourceBaseCorrection = process.env.GITHUB_HEAD_REF === sourceBaseCorrectionBranch;
   const isSuccessorApproval = process.env.GITHUB_HEAD_REF === successorApprovalBranch;
+  const isSuccessorReleaseApproval = process.env.GITHUB_HEAD_REF === successorReleaseApprovalBranch;
   const isDispatchRunRecovery = process.env.GITHUB_HEAD_REF === dispatchRecoveryBranch;
   const isStaleSupersession = process.env.GITHUB_HEAD_REF === staleSupersessionBranch;
   const isStaleSupersessionActivation = process.env.GITHUB_HEAD_REF === staleSupersessionActivationBranch;
@@ -504,7 +521,7 @@ export function validate() {
   const isInstalledAcceptancePlanner = process.env.GITHUB_HEAD_REF === installedAcceptancePlannerBranch;
   const isInstalledAcceptanceFinal = process.env.GITHUB_HEAD_REF === installedAcceptanceFinalBranch;
   verifyFiles(changed, manifest,
-    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : isStaleSupersessionActivation ? 'stale-run-activation' : isStaleSupersessionRenewal ? 'stale-run-renewal' : isMigration106Wiring ? 'migration106-wiring' : isProtectedCutover ? 'protected-cutover' : isProtectedCutoverActivation ? 'protected-cutover-activation' : isProtectedCutoverRefresh ? 'protected-cutover-refresh' : isAdmissionPermissionFix ? 'admission-permission-fix' : isAdmissionBotClaimFix ? 'admission-bot-claim-fix' : isProtectedCutoverRecovery ? 'protected-cutover-recovery' : isReservationRecoveryEndpointFix ? 'reservation-recovery-endpoint-fix' : isProtectedCutoverFinal ? 'protected-cutover-final' : isInstalledAcceptanceFinal ? 'installed-acceptance-final' : isInstalledAcceptancePlanner ? 'installed-acceptance-planner' : isInstalledAcceptanceVisibility ? 'installed-acceptance-visibility' : isInstalledAcceptanceReadiness ? 'installed-acceptance-readiness' : isInstalledAcceptanceArtifacts ? 'installed-acceptance-artifacts' : isInstalledAcceptanceEvidence ? 'installed-acceptance-evidence' : isInstalledVerificationEvidence ? 'installed-verification-evidence' : isInstalledVerificationEnvironment ? 'installed-verification-environment' : isLiveUatStatusFix ? 'live-uat-status-fix' : isReleaseStabilization ? 'release-stabilization' : 'initial', context);
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isSuccessorReleaseApproval ? 'successor-release-approval' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isStaleSupersession ? 'stale-run-supersession' : isStaleSupersessionActivation ? 'stale-run-activation' : isStaleSupersessionRenewal ? 'stale-run-renewal' : isMigration106Wiring ? 'migration106-wiring' : isProtectedCutover ? 'protected-cutover' : isProtectedCutoverActivation ? 'protected-cutover-activation' : isProtectedCutoverRefresh ? 'protected-cutover-refresh' : isAdmissionPermissionFix ? 'admission-permission-fix' : isAdmissionBotClaimFix ? 'admission-bot-claim-fix' : isProtectedCutoverRecovery ? 'protected-cutover-recovery' : isReservationRecoveryEndpointFix ? 'reservation-recovery-endpoint-fix' : isProtectedCutoverFinal ? 'protected-cutover-final' : isInstalledAcceptanceFinal ? 'installed-acceptance-final' : isInstalledAcceptancePlanner ? 'installed-acceptance-planner' : isInstalledAcceptanceVisibility ? 'installed-acceptance-visibility' : isInstalledAcceptanceReadiness ? 'installed-acceptance-readiness' : isInstalledAcceptanceArtifacts ? 'installed-acceptance-artifacts' : isInstalledAcceptanceEvidence ? 'installed-acceptance-evidence' : isInstalledVerificationEvidence ? 'installed-verification-evidence' : isInstalledVerificationEnvironment ? 'installed-verification-environment' : isLiveUatStatusFix ? 'live-uat-status-fix' : isReleaseStabilization ? 'release-stabilization' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.
@@ -536,7 +553,7 @@ export function validate() {
     assert.equal(staleAuthorization.enabled, false, 'Stale supersession must remain inactive outside the reviewed activation branch.');
     assert.equal(staleAuthorization.activationDecision, 'hold');
   }
-  if (isProtectedCutover || isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal) {
+  if (isProtectedCutover || isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorReleaseApproval) {
     if (isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal) {
       assert.equal(base, isProtectedCutoverFinal ? protectedCutoverFinalBase : isProtectedCutoverRecovery ? protectedCutoverRecoveryBase : isProtectedCutoverRefresh ? protectedCutoverRefreshBase : protectedCutoverActivationBase, 'Activation must be based on the latest reviewed trusted controls.');
       assert.equal(protectedCutover.enabled, true, 'Activation must be explicitly enabled only in its reviewed branch.');
@@ -548,13 +565,13 @@ export function validate() {
       assert.ok(expiresAt - approvedAt <= 15 * 60 * 1000, 'Activation approval must remain bounded.');
     }
     assert.equal(protectedCutover.contract, 'flowhive-psa-protected-cutover-v1');
-    if (isProtectedCutover) {
+    if (isProtectedCutover || isSuccessorReleaseApproval) {
       assert.equal(protectedCutover.enabled, false, 'Protected cutover must remain inactive until separately approved.');
       assert.equal(protectedCutover.activationDecision, 'hold');
     }
+    const candidate = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-test-candidate.json', 'utf8'));
     assert.deepEqual(protectedCutover.candidate, {
-      pullRequest: 887, branch: 'release/flowhive-sow-successor-20260908',
-      sha: '95abbb0aa2445a33fda68e9de542f9446c3e2204'
+      pullRequest: candidate.pullRequest, branch: candidate.branch, sha: candidate.sha
     });
     if (isProtectedCutoverRecovery) {
       assert.deepEqual(protectedCutover.reservationRecovery, {
@@ -581,7 +598,7 @@ export function validate() {
     });
     assert.deepEqual(protectedCutover.requests.map(request => request.runId), [34495606530, 34377182662, 33654881418]);
     assert.equal(protectedCutover.serverDispatchInputsConfirmed, false);
-    if (isProtectedCutover) {
+    if (isProtectedCutover || isSuccessorReleaseApproval) {
       assert.deepEqual(protectedCutover.approval, { status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null });
     } else {
       assert.equal(protectedCutover.approval.status, 'approved');

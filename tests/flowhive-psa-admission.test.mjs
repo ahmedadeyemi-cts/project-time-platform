@@ -7,8 +7,9 @@ import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatc
 import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
-const pr = { number: candidatePullRequest, state: 'open', merged: false, draft: true,
-  head: { ref: candidateBranch, sha: approval.sha, repo: { full_name: repository } },
+const pr = { number: candidatePullRequest, state: 'closed', merged: true,
+  merge_commit_sha: approval.mergeCommit,
+  head: { ref: approval.sourceBranch, sha: approval.sha, repo: { full_name: repository } },
   base: { ref: 'main', repo: { full_name: repository } } };
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
@@ -101,8 +102,8 @@ function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount
       environmentReadCount += 1;
       return environmentReadCount === 1 || !protectionAfterFirstRead ? protection : protectionAfterFirstRead;
     }
-    if (url.startsWith('issues/887/comments?')) return comments;
-    if (url === 'issues/887/comments' && method === 'POST') {
+    if (url.startsWith(`issues/${candidatePullRequest}/comments?`)) return comments;
+    if (url === `issues/${candidatePullRequest}/comments` && method === 'POST') {
       const comment = { id: nextCommentId++, body: body?.body || '', user: { login: 'ahmedadeyemi-cts', id: 244059331 } };
       comments.push(comment);
       afterReservation?.({ runs, setJobCount: value => { currentJobCount = value; },
@@ -145,8 +146,8 @@ test('reject migration substitution and required-check dilution', () => {
   const a=clone(approval); a.migrations.reverse();assert.throws(()=>verifyApproval(a,a.sha));
   const b=clone(approval);b.requiredWorkflows=b.requiredWorkflows.slice(0,1);assert.throws(()=>verifyApproval(b,b.sha));
 });
-test('reject wrong repo, wrong head, changed branch and merged PR', () => {
-  for(const mutate of [p=>p.head.repo.full_name='someone/fork', p=>p.head.sha='0'.repeat(40), p=>p.head.ref='main', p=>p.merged=true]) {
+test('reject wrong repo, wrong head, changed branch and merge identity', () => {
+  for(const mutate of [p=>p.head.repo.full_name='someone/fork', p=>p.head.sha='0'.repeat(40), p=>p.head.ref='main', p=>p.state='open', p=>p.merged=false, p=>p.merge_commit_sha='0'.repeat(40)]) {
     const p=clone(pr);mutate(p);assert.throws(()=>verifyPullRequest(approval,p));
   }
 });
@@ -169,10 +170,13 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const candidate = approval.sha;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
-  assert.equal(approval.pullRequest, 887);
+  assert.equal(approval.pullRequest, 915);
   assert.equal(approval.branch, candidateBranch);
+  assert.equal(approval.sourceBranch, 'fix/flowhive-pr914-followup-20260911');
+  assert.equal(approval.mergeCommit, '2057df629ebb1f3ef651295c0da541061b77d56a');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
+  assert.notEqual(approval.sourceBase, approval.sha);
   verifySourceDrift(successorApprovalFiles, files);
   for (const unrelated of [
     'src/backend/ProjectTime.Api/Program.cs',
@@ -447,8 +451,8 @@ test('single-use authorization is stable across controller changes and trusts st
   const uncertainComments = [];
   let reservationWrites = 0;
   const uncertainReservationApi = async (url, method = 'GET', body) => {
-    if (url.startsWith('issues/887/comments?')) return uncertainComments;
-    if (url === 'issues/887/comments' && method === 'POST') {
+    if (url.startsWith(`issues/${candidatePullRequest}/comments?`)) return uncertainComments;
+    if (url === `issues/${candidatePullRequest}/comments` && method === 'POST') {
       reservationWrites += 1;
       uncertainComments.push({ id: 7003, body: body.body, user: { login: 'ahmedadeyemi-cts', id: 244059331 } });
       throw new Error('reservation response timeout');
@@ -465,8 +469,8 @@ test('workflow-token reservations bind the bot comment to the owner-triggered ad
   const comments = [];
   const control = 'e'.repeat(40);
   const api = async (url, method = 'GET', body) => {
-    if (url.startsWith('issues/887/comments?')) return comments;
-    if (url === 'issues/887/comments' && method === 'POST') {
+    if (url.startsWith(`issues/${candidatePullRequest}/comments?`)) return comments;
+    if (url === `issues/${candidatePullRequest}/comments` && method === 'POST') {
       const comment = { id: 7010, body: body.body,
         user: { login: 'github-actions[bot]', id: 41898282 } };
       comments.push(comment);
@@ -500,9 +504,9 @@ test('reviewed recovery consumes the stale bot reservation before creating one c
     observedAt: '2026-09-10T22:11:16.764Z', status: 'pre-dispatch-failed',
     dispatchSubmitted: false, controllerMutation: false };
   const api = async (url, method = 'GET', body) => {
-    if (url.startsWith('issues/887/comments?')) return comments;
+    if (url.startsWith(`issues/${candidatePullRequest}/comments?`)) return comments;
     if (url === 'issues/comments/7020') return comments[0];
-    if (url === 'issues/887/comments' && method === 'POST') {
+    if (url === `issues/${candidatePullRequest}/comments` && method === 'POST') {
       const comment = { id: 7021, body: body.body, user: { login: 'github-actions[bot]', id: 41898282 } };
       comments.push(comment); return comment;
     }

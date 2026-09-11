@@ -5,7 +5,10 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
-export const candidatePullRequest = 887;
+// PR887 remains the maintained release-coordination thread. The selected
+// successor is the reviewed, merged application PR915.
+export const admissionIssueNumber = 887;
+export const candidatePullRequest = 915;
 export const candidateBranch = 'release/flowhive-sow-successor-20260908';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
@@ -17,14 +20,28 @@ const migrations = [
   '103_module_066_flowhive_enterprise_psa_revamp.sql',
   '104_flowhive_bounded_ai_execution.sql',
   '105_flowhive_reviewed_regeneration.sql',
-  '106_module025_sow_sell_register.sql'
+  '106_module025_sow_sell_register.sql',
+  '107_module_066_operation_authorization_and_raid_actor.sql'
+];
+const requiredWorkflows = [
+  '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
+  '.github/workflows/celar-ai-production-hardening-ci.yml',
+  '.github/workflows/flowhive-enterprise-psa-ci.yml',
+  '.github/workflows/flowhive-psa-release-control-ci.yml',
+  '.github/workflows/project-planning-collaboration-ci.yml',
+  '.github/workflows/projectpulse-ci.yml',
+  '.github/workflows/security-posture-ci.yml',
+  '.github/workflows/shared-project-document-planning-ci.yml',
+  '.github/workflows/systemwide-enterprise-reliability-ci.yml'
 ];
 
 export function verifyApproval(approval, requestedSha) {
-  assert.equal(approval.contract, 'flowhive-psa-protected-test-candidate-v1');
+  assert.equal(approval.contract, 'flowhive-psa-protected-test-candidate-v2');
   assert.equal(approval.repository, repository);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
+  assert.equal(approval.sourceBranch, 'fix/flowhive-pr914-followup-20260911');
+  assert.equal(approval.mergeCommit, '2057df629ebb1f3ef651295c0da541061b77d56a');
   assert.equal(approval.environment, 'test');
   assert.equal(approval.publicOrigin, origin);
   assert.equal(approval.allowPrivateRuntimeMutation, false);
@@ -32,10 +49,13 @@ export function verifyApproval(approval, requestedSha) {
   assert.equal(approval.allowCanonicalTaskAdoption, false);
   assert.match(approval.sha, sha);
   assert.match(approval.sourceBase, sha);
+  assert.notEqual(approval.sourceBase, approval.sha,
+    'The approval base must be the reviewed trusted-main snapshot, not a self-referential candidate pin.');
   assert.equal(requestedSha, approval.sha, 'The candidate must be explicitly pinned in reviewed main-branch approval.');
   assert.deepEqual(approval.migrations.map(x => x.file), migrations);
   for (const item of approval.migrations) assert.match(item.sha256, hash);
-  assert.ok(Array.isArray(approval.requiredWorkflows) && approval.requiredWorkflows.length >= 21);
+  assert.deepEqual(approval.requiredWorkflows, requiredWorkflows,
+    'The approval must enumerate the exact applicable workflow set for the selected successor head.');
   assert.equal(new Set(approval.requiredWorkflows).size, approval.requiredWorkflows.length);
   for (const workflow of approval.requiredWorkflows) assert.match(workflow, /^\.github\/workflows\/[a-z0-9-]+\.yml$/);
   assert.equal(approval.projectId, '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49');
@@ -44,14 +64,14 @@ export function verifyApproval(approval, requestedSha) {
 
 export function verifyPullRequest(approval, pr) {
   assert.equal(pr.number, approval.pullRequest);
-  assert.equal(pr.state, 'open');
-  assert.equal(pr.merged, false);
+  assert.equal(pr.state, 'closed');
+  assert.equal(pr.merged, true);
   assert.equal(pr.head?.repo?.full_name, repository, 'Fork candidates are not authorized.');
   assert.equal(pr.base?.repo?.full_name, repository);
   assert.equal(pr.base?.ref, 'main');
-  assert.equal(pr.head?.ref, candidateBranch);
+  assert.equal(pr.head?.ref, approval.sourceBranch);
   assert.equal(pr.head?.sha, approval.sha, 'The approved candidate is no longer the PR head.');
-  // Draft is deliberately allowed for pre-merge acceptance. Nothing here merges the feature.
+  assert.equal(pr.merge_commit_sha, approval.mergeCommit, 'The reviewed merge commit changed.');
 }
 
 export function verifyRuns(approval, runs) {
@@ -123,7 +143,10 @@ export async function authorize() {
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8', timeout: 30000 }).trim();
   assert.equal(git('rev-parse', 'HEAD'), main.object.sha);
   git('fetch', '--no-tags', 'origin', candidateBranch);
-  git('merge-base', '--is-ancestor', approval.sourceBase, approval.sha);
+  // The successor application was merged into the reviewed main snapshot.
+  // The later control merge is then constrained to control-only drift from
+  // that snapshot, without widening the allowlist for application files.
+  git('merge-base', '--is-ancestor', approval.sha, approval.sourceBase);
   git('merge-base', '--is-ancestor', approval.sourceBase, main.object.sha);
   const controlFiles = fs.readFileSync(controlManifest, 'utf8').trim().split(/\r?\n/);
   const mainChanges = git('diff', '--name-only', `${approval.sourceBase}..${main.object.sha}`).split(/\r?\n/).filter(Boolean);
