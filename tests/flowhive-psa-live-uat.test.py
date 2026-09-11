@@ -26,7 +26,8 @@ class AcceptanceDecisions(unittest.TestCase):
     def test_planner_status_accepts_documented_nonterminal_202(self):
         self.assertTrue(live.planner_status_response_valid(200, {'terminal': True}))
         self.assertTrue(live.planner_status_response_valid(202, {'terminal': False, 'phase': 'inference'}))
-        for code, value in [(201, {}), (204, {}), (202, None), (202, [])]:
+        for code, value in [(200, {'terminal': False}), (201, {}), (204, {}),
+                            (202, {'terminal': True}), (202, None), (202, [])]:
             self.assertFalse(live.planner_status_response_valid(code, value))
 
     def test_substantive_fixture(self):

@@ -34,8 +34,14 @@ class GateError(Exception):
 
 
 def planner_status_response_valid(code: int, value: object) -> bool:
-    """Accept the API's 200 terminal and 202 nonterminal status envelopes."""
-    return code in (200, 202) and isinstance(value, dict)
+    """Accept only the API's documented terminal/status-code pairings."""
+    if not isinstance(value, dict):
+        return False
+    if code == 200:
+        return value.get('terminal') is True
+    if code == 202:
+        return value.get('terminal') is False
+    return False
 
 
 def need(ok: bool, code: str) -> None:
