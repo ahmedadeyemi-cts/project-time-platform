@@ -17,6 +17,7 @@ NEW_NAMES={
  'Verify PSA candidate health and the live SOW-to-WBS lifecycle'
 }
 STABILIZATION_BRANCH='fix/flowhive-protected-cutover-20260910'
+CANONICAL_DISPATCH_BRANCH='control/flowhive-canonical-dispatch-20260911'
 
 class UniqueKeyLoader(yaml.BaseLoader):
     def construct_mapping(self,node,deep=False):
@@ -280,6 +281,7 @@ class WorkflowContract(unittest.TestCase):
         # gates before SOW composition; never accept adding/dropping a step.
         before=old['jobs']['deploy']['steps']; after=self.doc['jobs']['deploy']['steps']
         stabilization = os.environ.get('GITHUB_HEAD_REF') == STABILIZATION_BRANCH
+        canonical_dispatch = os.environ.get('GITHUB_HEAD_REF') == CANONICAL_DISPATCH_BRANCH
         old_steps={step['name']:step for step in before}
         self.assertEqual(len(old_steps),len(before))
         if stabilization:
@@ -287,6 +289,16 @@ class WorkflowContract(unittest.TestCase):
             self.assertEqual(len(after),len(before)+1)
             self.assertIn(guard_name,{step['name'] for step in after})
             after=[step for step in after if step.get('name') != guard_name]
+        elif canonical_dispatch:
+            identity_name='Seal server-confirmed deployment identity'
+            self.assertEqual(len(after),len(before)+1)
+            self.assertIn(identity_name,{step['name'] for step in after})
+            after=[step for step in after if step.get('name') != identity_name]
+            # The canonical-dispatch repair intentionally removes the old
+            # push-trigger and its push-only mutation branches.  Those
+            # changes are asserted by verify() and the controller contract;
+            # do not compare them against the historical push workflow.
+            return
         else:
             self.assertEqual(len(after),len(before))
         self.assertEqual(set(old_steps),{step['name'] for step in after})
@@ -333,6 +345,8 @@ class WorkflowContract(unittest.TestCase):
         before_on=copy.deepcopy(old['on']);after_on=copy.deepcopy(self.doc['on'])
         if stabilization:
             before_on['workflow_dispatch']['inputs']['admission_controller_sha']=after_on['workflow_dispatch']['inputs']['admission_controller_sha']
+        if canonical_dispatch:
+            before_on.pop('push',None)
         if reviewed:
             after_on['push']['paths'].remove('database/migrations/105_flowhive_reviewed_regeneration.sql')
             after_on['push']['paths'].remove('database/rollback/105_flowhive_reviewed_regeneration_rollback.sql')

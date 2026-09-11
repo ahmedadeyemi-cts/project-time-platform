@@ -317,7 +317,8 @@ jobs:
           bash -n "$REV_WAIT"
 
           grep -Fq 'name: Deploy System-wide Enterprise Reliability and Utilization to Protected Test' "$CTL"
-          grep -Fq 'branches: [main]' "$CTL"
+          grep -Fq '  workflow_dispatch:' "$CTL"
+          ! grep -Fq $'\n  push:' "$CTL"
           grep -Fq 'if: >-' "$CTL"
           grep -Fq "github.ref == 'refs/heads/main'" "$CTL"
           grep -Fq "github.event_name == 'workflow_dispatch'" "$CTL"
