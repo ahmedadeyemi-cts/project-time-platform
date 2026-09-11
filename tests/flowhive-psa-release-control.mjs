@@ -440,13 +440,21 @@ export function verifyController(text) {
     'group: projectpulse-deploy-test', 'queue: max', 'cancel-in-progress: false', 'environment: test',
     'node scripts/release-test/flowhive-psa-admission.mjs', 'PSA_RELEASE_AUTHORIZED',
     'refs/heads/main', '105_flowhive_reviewed_regeneration.sql', '106_module025_sow_sell_register.sql', 'build-and-run-flowhive-psa-migrations.sh',
-    'run-flowhive-psa-live-uat.py', 'RELIABILITY_RELEASE_COMMIT:',
+    'run-flowhive-psa-live-uat.py', 'RELIABILITY_RELEASE_COMMIT:', 'Seal server-confirmed deployment identity',
     "steps.psa_live_uat.outputs.deployment_health_verified != 'true'",
   ]) {
     assert.ok(text.includes(token), `The Test controller is missing a required control: ${token}`);
   }
-  assert.match(text, /deploy:\s*\n[\s\S]*?if: >-\n[\s\S]*github\.event_name == 'push'[\s\S]*github\.event_name == 'workflow_dispatch'[\s\S]*inputs\.release_branch == 'main'[\s\S]*inputs\.release_branch == 'release\/flowhive-sow-successor-20260908'/,
-    'Every current deployment path must be bounded by the approved push or explicitly guarded manual-main/PSA dispatch lane.');
+  assert.match(text, /on:\s*\n\s+workflow_dispatch:/,
+    'The canonical Test controller must be dispatch-only.');
+  assert.doesNotMatch(text, /^\s+push:\s*$/m,
+    'Automatic push deployment must not remain enabled.');
+  assert.match(text, /deploy:\s*\n[\s\S]*?if: >-\n[\s\S]*github\.event_name == 'workflow_dispatch'[\s\S]*inputs\.release_branch == 'main'[\s\S]*inputs\.release_branch == 'release\/flowhive-sow-successor-20260908'/,
+    'Every current deployment path must be bounded by an explicitly guarded manual-main/PSA dispatch lane.');
+  assert.doesNotMatch(text, /github\.event_name == 'push'|GITHUB_EVENT_NAME.*== push/,
+    'The controller must not retain an executable push deployment path.');
+  assert.match(text, /deployment-identity\.json/,
+    'The controller must seal server-confirmed API/web identity evidence.');
   assert.doesNotMatch(text, /github\.event_name == 'workflow_dispatch' \|\| github\.ref == 'refs\/heads\/main'/,
     'The old unbounded workflow_dispatch job gate must not remain.');
   assert.ok(!/contents:\s*write/.test(text), 'The environment mutation job must not publish source.');
