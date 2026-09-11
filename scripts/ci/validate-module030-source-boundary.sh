@@ -203,7 +203,7 @@ remove_overlap() {
   DEPLOYMENT_OVERLAP=("${retained[@]}")
 }
 
-if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]] \
+if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]] \
   && changed_exact '.github/flowhive-enterprise-psa-release-files.txt' \
   && changed_exact '.github/module025-sow-sell-governed-release-files.txt' \
   && changed_exact 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' \

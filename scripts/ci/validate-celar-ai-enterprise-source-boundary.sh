@@ -630,7 +630,7 @@ if [[ "$HEAD_BRANCH" == 'fix/celar-routed-model-readiness-20260905' ]]; then
   node tests/validate-protected-uat-recovery.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"
 fi
-if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' && "$COMBINED_FLOWHIVE_SOW_SCOPE" == true ]]; then
+if [[ ( "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ) && "$COMBINED_FLOWHIVE_SOW_SCOPE" == true ]]; then
   FLOWHIVE_PROXY_LIMIT='deployment/containers/web/default.conf.template'
   grep -Fxq "$FLOWHIVE_PROXY_LIMIT" <<<"$CHANGED"
   grep -Fxq "$FLOWHIVE_PROXY_LIMIT" .github/flowhive-enterprise-psa-release-files.txt

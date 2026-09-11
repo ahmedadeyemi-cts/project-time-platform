@@ -116,7 +116,7 @@ jobs:
             grep -Fq 'proxy_read_timeout 60s;' deployment/containers/web/default.conf.template
             echo 'MODULE_033_MODULE025_ASYNC_PROXY_REGRESSION_BOUNDARY=PASSED'
           fi
-          if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]] \
+          if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]] \
             && grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
             && grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
             && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED" \

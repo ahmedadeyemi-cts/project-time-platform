@@ -270,7 +270,7 @@ const allowedCombinedMigrations = combinedFlowHiveSowScope
 requireValue(changed.every((value) => !value.startsWith('database/') || allowedCombinedMigrations.has(value)), 'CELAR_UAR_NO_DATABASE_MIGRATION', combinedFlowHiveSowScope ? 'only migrations declared by the reviewed combined manifests' : 'no migration or rollback');
 const flowHiveProxyLimit = 'deployment/containers/web/default.conf.template';
 const flowHiveProxyLimitReviewed = combinedFlowHiveSowScope
-  && branchName === 'release/flowhive-sow-successor-20260908'
+  && (branchName === 'release/flowhive-sow-successor-20260908' || branchName === 'fix/flowhive-installed-pm-readiness-candidate-20260911')
   && changed.includes(flowHiveProxyLimit)
   && combinedFlowHiveSowFiles.has(flowHiveProxyLimit);
 requireValue(

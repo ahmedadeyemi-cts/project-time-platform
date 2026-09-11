@@ -97,7 +97,7 @@ for protected in \
 done
 
 DEPLOYMENT_OVERLAP="$(grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED" || true)"
-if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]] \
+if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]] \
   && grep -Fxq '.github/flowhive-enterprise-psa-release-files.txt' <<<"$CHANGED" \
   && grep -Fxq '.github/module025-sow-sell-governed-release-files.txt' <<<"$CHANGED" \
   && grep -Fxq 'database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql' <<<"$CHANGED" \

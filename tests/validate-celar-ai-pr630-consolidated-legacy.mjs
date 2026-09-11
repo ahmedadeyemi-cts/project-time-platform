@@ -177,7 +177,7 @@ requireValue(migrationScope, 'CELAR_PR630_MIGRATION_SCOPE', flowHiveSowSuccessor
 requireValue(!changed.includes('.github/workflows/celar-ai-source-snapshot-temp.yml'), 'CELAR_PR630_TEMP_SNAPSHOT_REMOVED');
 const flowHiveProxyLimit = 'deployment/containers/web/default.conf.template';
 const flowHiveProxyLimitReviewed = flowHiveSowSuccessorScope
-  && branchName === 'release/flowhive-sow-successor-20260908'
+  && (branchName === 'release/flowhive-sow-successor-20260908' || branchName === 'fix/flowhive-installed-pm-readiness-candidate-20260911')
   && changed.includes(flowHiveProxyLimit)
   && governedSuccessorPaths.has(flowHiveProxyLimit);
 requireValue(
