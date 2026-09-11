@@ -167,4 +167,20 @@ jobs:
           [[ "${{ steps.sow.outcome }}" == success ]] || { echo 'Normal authorized Solution Architect SOW lifecycle did not pass.' >&2; exit 1; }
           [[ "${{ steps.my_role.outcome }}" == success ]] || { echo 'My Role in Pulse browser acceptance did not pass.' >&2; exit 1; }
           [[ -f "$EVIDENCE_DIR/module025-installed-prerequisite.json" ]] || { echo 'Module 025 prerequisite evidence is missing.' >&2; exit 1; }
-          jq -e '.status == "ready"' "$EVIDENCE_DIR/module025-installed-prerequisite.json" >/dev/null || { echo 'Module 025 SOW/GSD remains blocked by its explicit authorization prerequisite.' >&2; exit 1; }
+          [[ -f "$EVIDENCE_DIR/module025-installed-sa-uat.json" ]] || { echo 'Normal Solution Architect SOW evidence is missing.' >&2; exit 1; }
+          jq -e '
+            .status == "passed" and
+            .normalAuthorizedSolutionArchitect == true and
+            .fixtureMutation == false and
+            .mockedResponses == false and
+            .generationPosts == 1 and
+            .reviewedSaveReadback == true and
+            .retainedVersions.confirmed == true and
+            .retainedVersions.sowAndGsdDownloaded == true and
+            .retainedVersions.reopened == true and
+            .retainedVersions.archived == true
+          ' "$EVIDENCE_DIR/module025-installed-sa-uat.json" >/dev/null || {
+            echo 'Normal Solution Architect SOW lifecycle evidence did not pass its bounded acceptance contract.' >&2
+            exit 1
+          }
+          echo 'The exceptional Module 025 fixture prerequisite remains informational; normal authorized SA evidence is the acceptance gate.'

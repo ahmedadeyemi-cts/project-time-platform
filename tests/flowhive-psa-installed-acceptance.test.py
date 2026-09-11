@@ -176,6 +176,15 @@ class InstalledAcceptanceContract(unittest.TestCase):
         ):
             self.assertNotIn(forbidden_path, self.module025)
 
+    def test_workflow_gates_normal_sa_evidence_not_exceptional_fixture(self):
+        self.assertIn('module025-installed-sa-uat.json', self.workflow)
+        self.assertIn('.normalAuthorizedSolutionArchitect == true', self.workflow)
+        self.assertIn('.fixtureMutation == false', self.workflow)
+        self.assertIn('.generationPosts == 1', self.workflow)
+        self.assertIn('.retainedVersions.sowAndGsdDownloaded == true', self.workflow)
+        self.assertIn('exceptional Module 025 fixture prerequisite remains informational', self.workflow)
+        self.assertNotIn(".status == \"ready\"' \"$EVIDENCE_DIR/module025-installed-prerequisite.json\"", self.workflow)
+
     def test_scripts_parse_as_python(self):
         for source in (IDENTITY, FLOWHIVE, ROLE, MODULE025, MODULE025_SA, PLANNER):
             ast.parse(source.read_text(), filename=str(source))
