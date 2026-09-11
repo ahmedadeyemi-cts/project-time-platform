@@ -60,8 +60,10 @@ import hashlib,json,pathlib,shutil,sys
 control,source,out=map(pathlib.Path,sys.argv[1:4]); release=sys.argv[4]
 approval=json.loads((control/'.github/flowhive-psa-protected-test-candidate.json').read_text())
 if approval['sha']!=release or approval['environment']!='test': raise SystemExit('Unapproved migration candidate')
-expected=['103_module_066_flowhive_enterprise_psa_revamp.sql','104_flowhive_bounded_ai_execution.sql','105_flowhive_reviewed_regeneration.sql','106_module025_sow_sell_register.sql']
-if [x['file'] for x in approval['migrations']]!=expected: raise SystemExit('Unexpected migration set')
+legacy=['103_module_066_flowhive_enterprise_psa_revamp.sql','104_flowhive_bounded_ai_execution.sql','105_flowhive_reviewed_regeneration.sql','106_module025_sow_sell_register.sql']
+successor=legacy+['107_module_066_operation_authorization_and_raid_actor.sql']
+selected=[x['file'] for x in approval['migrations']]
+if selected not in (legacy, successor): raise SystemExit('Unexpected migration set')
 checks=[]
 for item in approval['migrations']:
     relative='database/migrations/'+item['file']; data=(source/relative).read_bytes()
@@ -86,7 +88,8 @@ DIGEST="$(resolve_migration_digest "$ACR" "$IMAGE")"
 [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'ERROR: Immutable migration digest unavailable.' >&2; exit 1; }
 export MAIN_RELEASE_EXPECTED_RELEASE_COMMIT="$RELEASE"
 export MAIN_RELEASE_CONTROL_SHA="${RELIABILITY_CONTROL_SHA:?Trusted controller revision is required.}"
-export MAIN_RELEASE_MIGRATION_SCOPE=flowhive-enterprise-psa-103-106-test
+MIGRATION_SUFFIX="$(jq -r '.migrations[-1].file' "$CONTROL_ROOT/.github/flowhive-psa-protected-test-candidate.json" | sed -E 's/^([0-9]+)_.*/\1/')"
+export MAIN_RELEASE_MIGRATION_SCOPE="flowhive-enterprise-psa-103-${MIGRATION_SUFFIX}-test"
 export MAIN_RELEASE_MIGRATION_IMAGE="$ACR.azurecr.io/${IMAGE%%:*}@$DIGEST"
 export MAIN_RELEASE_MIGRATION_JOB_NAME="fhpsa-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 export MAIN_RELEASE_MIGRATION_MODE=apply
@@ -94,7 +97,7 @@ export MAIN_RELEASE_MIGRATION_MODE=apply
 # exact temporary-job ownership, no retries, TLS, and cleanup before returning.
 bash "$CONTROL_ROOT/scripts/release-test/run-migration-job.sh"
 mkdir -p "${EVIDENCE_DIR:?Evidence directory is required.}"
-MIGRATIONS_JSON='["103_module_066_flowhive_enterprise_psa_revamp","104_flowhive_bounded_ai_execution","105_flowhive_reviewed_regeneration","106_module025_sow_sell_register"]'
+MIGRATIONS_JSON="$(jq -c '[.migrations[].file | sub("\\.sql$"; "")]' "$CONTROL_ROOT/.github/flowhive-psa-protected-test-candidate.json")"
 jq -n --arg releaseCommit "$RELEASE" --arg controlCommit "$MAIN_RELEASE_CONTROL_SHA" --arg image "$MAIN_RELEASE_MIGRATION_IMAGE" --argjson migrations "$MIGRATIONS_JSON" \
   '{status:"applied_and_verified",environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,image:$image,migrations:$migrations,productionMutation:false}' \
   > "$EVIDENCE_DIR/flowhive-psa-migrations.json"

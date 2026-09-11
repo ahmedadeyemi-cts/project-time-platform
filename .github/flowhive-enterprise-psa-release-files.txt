@@ -12,9 +12,11 @@ database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql
 database/migrations/104_flowhive_bounded_ai_execution.sql
 database/migrations/105_flowhive_reviewed_regeneration.sql
 database/migrations/106_module025_sow_sell_register.sql
+database/migrations/107_module_066_operation_authorization_and_raid_actor.sql
 database/rollback/103_module_066_flowhive_enterprise_psa_revamp_rollback.sql
 database/rollback/104_flowhive_bounded_ai_execution_rollback.sql
 database/rollback/105_flowhive_reviewed_regeneration_rollback.sql
+database/rollback/107_module_066_operation_authorization_and_raid_actor_rollback.sql
 deployment/containers/web/default.conf.template
 docs/modules/module-066-project-flowhive/BOUNDED-PLANNER-VALIDATION.md
 docs/modules/module-066-project-flowhive/ENTERPRISE-PSA-ACCEPTANCE.md
@@ -27,9 +29,11 @@ scripts/release-test/apply-flowhive-psa-migrations.sh
 scripts/release-test/build-and-run-flowhive-psa-migrations.sh
 scripts/release-test/prepare-protected-test-scope-manifests.sh
 scripts/release-test/reconcile-flowhive-planner.py
+scripts/release-test/resolve-flowhive-installed-deployment.py
 scripts/release-test/run-flowhive-my-role-browser.py
 scripts/release-test/run-flowhive-psa-live-uat.py
 scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+scripts/release-test/verify-flowhive-installed-identity.py
 src/backend/ProjectTime.Api/Assets/Fonts/NotoSansCJK-LICENSE.txt
 src/backend/ProjectTime.Api/Assets/Fonts/NotoSansCJKsc-Regular.otf
 src/backend/ProjectTime.Api/Directory.Build.targets
@@ -106,6 +110,7 @@ tests/FlowHiveExecutionTests/Program.cs
 tests/flowhive-psa-browser-bundle.mjs
 tests/flowhive-psa-financial-readback.test.mjs
 tests/flowhive-psa-installed-acceptance.test.py
+tests/flowhive-psa-installed-deployment.test.py
 tests/flowhive-psa-live-uat.test.py
 tests/flowhive-psa-migration-fixture.py
 tests/flowhive-psa-operation.test.mjs
@@ -118,6 +123,7 @@ tests/flowhive-psa-scope.mjs
 tests/flowhive-psa-scope.test.mjs
 tests/module025-sow-register-browser.py
 tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
+tests/test-module-066-operation-authorization-migration-107.sh
 tests/test-module025-sow-sell-register-migration-106.sh
 tests/test-pulse-ai-runtime-job-query-shape.sh
 tests/validate-celar-ai-pr630-consolidated-legacy.mjs

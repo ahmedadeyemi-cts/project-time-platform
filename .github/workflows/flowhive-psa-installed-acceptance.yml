@@ -4,6 +4,11 @@ run-name: Installed FlowHive Test verification ${{ github.sha }}
 
 on:
   workflow_dispatch:
+    inputs:
+      deployment_run_id:
+        description: Successful canonical Protected Test deployment run to verify
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,13 +29,8 @@ jobs:
       name: test
     env:
       BASE: https://phd-west-test.onenecklab.com
-      TARGET_RELEASE_COMMIT: 95abbb0aa2445a33fda68e9de542f9446c3e2204
-      INSTALLATION_RUN_ID: '34540010122'
-      INSTALLATION_CONTROLLER_SHA: df6f7fc6d52495f83b0fd169047f5a249493db7e
-      EXPECTED_API_REVISION: ca-phd-test-api-westus3--m1bd-34540010122-1
-      EXPECTED_WEB_REVISION: ca-phd-test-web-westus3--relw-34540010122-1
-      EXPECTED_API_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:e5f95466a01be8e9f38e36f6a2474391372b1a63f41115f1b7f63810e6017afc
-      EXPECTED_WEB_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:7b1dbab4a0a57c7993d3ec8d7c3cd51613bcb463f7971a1268db5afb935d6964
+      DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
+      INSTALLED_RELEASE_CONTEXT: ${{ github.workspace }}/flowhive-installed-acceptance/installed-release-context.json
       PREVIOUS_PLANNER_RUN_ID: 171e4430-95e4-4f80-be14-454dcc319ef2
       EVIDENCE_DIR: ${{ github.workspace }}/flowhive-installed-acceptance
 
@@ -49,22 +49,24 @@ jobs:
           [[ "$GITHUB_REF" == refs/heads/main ]] || { echo 'Installed acceptance is main-only.' >&2; exit 1; }
           git fetch --no-tags origin main
           [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]] || { echo 'The installed verifier is not running the current trusted main.' >&2; exit 1; }
-          [[ "$TARGET_RELEASE_COMMIT" == 95abbb0aa2445a33fda68e9de542f9446c3e2204 ]]
-          [[ "$INSTALLATION_RUN_ID" == 34540010122 ]]
-          [[ "$INSTALLATION_CONTROLLER_SHA" == df6f7fc6d52495f83b0fd169047f5a249493db7e ]]
+          [[ "$DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'A selected deployment run ID is required.' >&2; exit 1; }
           [[ "$BASE" == https://phd-west-test.onenecklab.com ]]
           mkdir -p "$EVIDENCE_DIR"
-          jq -n \
-            --arg verificationCodeSha "$GITHUB_SHA" \
-            --arg applicationSha "$TARGET_RELEASE_COMMIT" \
-            --arg installationRunId "$INSTALLATION_RUN_ID" \
-            --arg controllerSha "$INSTALLATION_CONTROLLER_SHA" \
-            --arg apiRevision "$EXPECTED_API_REVISION" \
-            --arg webRevision "$EXPECTED_WEB_REVISION" \
-            --arg apiImage "$EXPECTED_API_IMAGE" \
-            --arg webImage "$EXPECTED_WEB_IMAGE" \
-            '{status:"identity_inputs_sealed",verificationCodeSha:$verificationCodeSha,applicationSha:$applicationSha,installationRunId:$installationRunId,controllerSha:$controllerSha,apiRevision:$apiRevision,webRevision:$webRevision,apiImage:$apiImage,webImage:$webImage,productionMutation:false}' \
-            > "$EVIDENCE_DIR/installed-release-context.json"
+
+      - name: Resolve selected server-confirmed deployment identity
+        id: deployment_identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTPUT_CONTEXT: ${{ github.workspace }}/flowhive-installed-acceptance/installed-release-context.json
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/release-test/resolve-flowhive-installed-deployment.py
+          context="$EVIDENCE_DIR/installed-release-context.json"
+          echo "TARGET_RELEASE_COMMIT=$(jq -r '.applicationSha' "$context")" >> "$GITHUB_ENV"
+          echo "TARGET_RELEASE_BRANCH=$(jq -r '.applicationBranch' "$context")" >> "$GITHUB_ENV"
+          echo "INSTALLATION_RUN_ID=$(jq -r '.deploymentRunId' "$context")" >> "$GITHUB_ENV"
+          echo "INSTALLATION_CONTROLLER_SHA=$(jq -r '.controllerSha' "$context")" >> "$GITHUB_ENV"
 
       - name: Install isolated browser acceptance dependencies
         shell: bash
@@ -93,6 +95,7 @@ jobs:
           PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
           PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
           PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
+          INSTALLED_RELEASE_CONTEXT: ${{ github.workspace }}/flowhive-installed-acceptance/installed-release-context.json
         run: |
           set -Eeuo pipefail
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/verify-flowhive-installed-identity.py
@@ -110,10 +113,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           jq -n \
-            --arg sha "$TARGET_RELEASE_COMMIT" \
+            --slurpfile installed "$EVIDENCE_DIR/installed-release-context.json" \
             --arg projectId '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49' \
             --arg pm "$PROJECTPULSE_M025_PM_EMAIL" \
-            '{contract:"flowhive-installed-test-verification-v1",repository:"ahmedadeyemi-cts/project-time-platform",pullRequest:887,branch:"release/flowhive-sow-successor-20260908",sha:$sha,environment:"test",publicOrigin:"https://phd-west-test.onenecklab.com",projectId:$projectId,projectManagerLogin:$pm,allowCustomerPublication:false,allowCanonicalTaskAdoption:false}' \
+            '{contract:"flowhive-installed-test-verification-v2",repository:"ahmedadeyemi-cts/project-time-platform",pullRequest:$installed[0].applicationPullRequest,branch:$installed[0].applicationBranch,sha:$installed[0].applicationSha,deploymentRunId:$installed[0].deploymentRunId,environment:"test",publicOrigin:"https://phd-west-test.onenecklab.com",projectId:$projectId,projectManagerLogin:$pm,allowCustomerPublication:false,allowCanonicalTaskAdoption:false}' \
             > "$PSA_VERIFICATION_APPROVAL_FILE"
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-psa-live-uat.py
 

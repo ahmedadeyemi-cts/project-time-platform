@@ -7,6 +7,10 @@ test('extra and missing changes are both rejected', () => {
   assert.throws(() => verifyPaths(scope.slice(1), scope));
   assert.throws(() => verifyPaths([...scope, 'tests/flowhive-psa-extra.mjs'], scope));
 });
+test('a follow-up diff may use the existing reviewed release manifest, but cannot add an unreviewed path', () => {
+  verifyPaths([scope[0]], scope, { allowReviewedSuperset: true });
+  assert.throws(() => verifyPaths(['tests/flowhive-psa-unreviewed.mjs'], scope, { allowReviewedSuperset: true }));
+});
 test('duplicates, wildcards and traversal are not valid manifests', () => {
   for (const value of [[...scope, scope[0]], ['tests/flowhive-psa-*.mjs'], ['tests/../flowhive-psa-scope.mjs']])
     assert.throws(() => verifyPaths(value, value));
@@ -24,6 +28,7 @@ test('only specified FlowHive migrations are accepted', () => {
   const name='database/migrations/104_flowhive_bounded_ai_execution.sql';verifyPaths([name], [name]);
   for (const name of ['database/migrations/105_flowhive_reviewed_regeneration.sql', 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql']) verifyPaths([name], [name]);
   assert.throws(() => verifyPaths(['database/migrations/106_unreviewed.sql'], ['database/migrations/106_unreviewed.sql']));
+  verifyPaths(['database/migrations/107_module_066_operation_authorization_and_raid_actor.sql'], ['database/migrations/107_module_066_operation_authorization_and_raid_actor.sql']);
   assert.throws(() => verifyPaths(['database/migrations/999_unreviewed.sql'], ['database/migrations/999_unreviewed.sql']));
 });
 test('the combined successor may use the separately reviewed Module 025 manifest only', () => {

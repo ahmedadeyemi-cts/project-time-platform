@@ -27,8 +27,9 @@ class AcceptanceDecisions(unittest.TestCase):
         return {
             'sowEvidenceSummary': {'approvedSowScopeReady': True},
             'sowEvidence': [{
-                'documentId': '11111111-1111-4111-8111-111111111111',
-                'activeVersionId': '22222222-2222-4222-8222-222222222222',
+            'documentId': '11111111-1111-4111-8111-111111111111',
+            'workRegisterDocumentId': '33333333-3333-4333-8333-333333333333',
+            'activeVersionId': '22222222-2222-4222-8222-222222222222',
                 'documentVersion': 'v3',
                 'documentCategory': 'sow',
                 'citationCount': 4,
@@ -39,10 +40,12 @@ class AcceptanceDecisions(unittest.TestCase):
     def test_sow_readiness_requires_server_summary_and_document_gate(self):
         item = live.ready_sow(self.ready_workspace())
         self.assertEqual(item['documentVersion'], 'v3')
+        self.assertEqual(item['workRegisterDocumentId'], '33333333-3333-4333-8333-333333333333')
         for mutation in (
             lambda value: value.update(sowEvidenceSummary={'approvedSowScopeReady': False}),
             lambda value: value['sowEvidence'][0].update(readyForAiPlanner=False),
             lambda value: value['sowEvidence'][0].update(activeVersionId=None),
+            lambda value: value['sowEvidence'][0].update(workRegisterDocumentId=None),
             lambda value: value['sowEvidence'][0].update(citationCount=0),
             lambda value: value['sowEvidence'][0].update(documentCategory='gsd'),
         ):
@@ -55,7 +58,14 @@ class AcceptanceDecisions(unittest.TestCase):
         item = live.ready_sow(self.ready_workspace())
         receipt = live.sow_receipt(item, 'a' * 64)
         self.assertEqual(receipt['documentId'], item['documentId'])
+        self.assertEqual(receipt['workRegisterDocumentId'], item['workRegisterDocumentId'])
         self.assertEqual(receipt['sourceFingerprint'], 'a' * 64)
+
+    def test_sow_receipt_keeps_intake_and_work_register_identities_distinct(self):
+        item = live.ready_sow(self.ready_workspace())
+        self.assertNotEqual(item['documentId'], item['workRegisterDocumentId'])
+        self.assertEqual(live.sow_receipt(item, 'b' * 64)['workRegisterDocumentId'],
+                         '33333333-3333-4333-8333-333333333333')
 
     def test_planner_status_accepts_documented_nonterminal_202(self):
         self.assertTrue(live.planner_status_response_valid(200, {'terminal': True}))

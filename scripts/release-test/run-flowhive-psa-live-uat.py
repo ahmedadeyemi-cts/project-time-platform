@@ -69,7 +69,9 @@ def ready_sow(workspace: dict) -> dict:
             continue
         if item.get('readyForAiPlanner') is not True:
             continue
-        if not uid(item.get('documentId')) or not uid(item.get('activeVersionId')):
+        if (not uid(item.get('documentId'))
+                or not uid(item.get('workRegisterDocumentId'))
+                or not uid(item.get('activeVersionId'))):
             continue
         if not str(item.get('documentVersion') or '').strip():
             continue
@@ -84,6 +86,7 @@ def ready_sow(workspace: dict) -> dict:
 def sow_receipt(item: dict, fingerprint: str) -> dict:
     return {
         'documentId': item['documentId'],
+        'workRegisterDocumentId': item['workRegisterDocumentId'],
         'activeVersionId': item['activeVersionId'],
         'documentVersion': str(item['documentVersion']),
         'citationCount': item['citationCount'],
@@ -347,7 +350,7 @@ def authorized_project_and_sow(client: Client, project: str, report: dict) -> tu
     need(access.get('actualUserId') == workspace['project'].get('projectManagerUserId'),
          'pm_project_ownership_mismatch')
     item = ready_sow(workspace)
-    status, raw, content_type = client.download('/api/work-register/projects/documents/' + item['documentId'] + '/download')
+    status, raw, content_type = client.download('/api/work-register/projects/documents/' + item['workRegisterDocumentId'] + '/download')
     need(status == 200 and raw and 'json' not in content_type.lower(), 'approved_sow_download_failed')
     fingerprint = hashlib.sha256(raw).hexdigest()
     report['pmProjectScope'] = {
@@ -526,6 +529,7 @@ def run(approval: dict, report: dict) -> None:
         # without issuing any generation POST.
         boundary_workspace, boundary_sow, boundary_fingerprint = authorized_project_and_sow(client, PROJECT, report)
         need(boundary_sow.get('documentId') == sow_item.get('documentId')
+             and boundary_sow.get('workRegisterDocumentId') == sow_item.get('workRegisterDocumentId')
              and boundary_sow.get('activeVersionId') == sow_item.get('activeVersionId')
              and boundary_sow.get('documentVersion') == sow_item.get('documentVersion')
              and boundary_fingerprint == sow_fingerprint,

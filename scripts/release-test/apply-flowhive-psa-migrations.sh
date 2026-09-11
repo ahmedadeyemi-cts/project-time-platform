@@ -22,6 +22,9 @@ SQL
   if [[ -f database/migrations/106_module025_sow_sell_register.sql ]]; then
     psql -X -v ON_ERROR_STOP=1 -f database/migrations/106_module025_sow_sell_register.sql
   fi
+  if [[ -f database/migrations/107_module_066_operation_authorization_and_raid_actor.sql ]]; then
+    psql -X -v ON_ERROR_STOP=1 -f database/migrations/107_module_066_operation_authorization_and_raid_actor.sql
+  fi
 fi
 verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT (
@@ -72,5 +75,18 @@ SQL
   echo 'FLOWHIVE_PSA_MIGRATIONS_103_104_105_106=APPLIED_AND_VERIFIED'
 else
   echo 'FLOWHIVE_PSA_MIGRATIONS_103_104_105=APPLIED_AND_VERIFIED'
+fi
+if [[ -f database/migrations/107_module_066_operation_authorization_and_raid_actor.sql ]]; then
+  operation_auth_verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
+SELECT (
+  (SELECT count(*) FROM schema_migrations WHERE migration_id = '107_module_066_operation_authorization_and_raid_actor') = 1
+  AND to_regprocedure('public.projectpulse103_capture_raid_event()') IS NOT NULL
+  AND EXISTS(SELECT 1 FROM app_permissions WHERE permission_code='MANAGE_FLOWHIVE_MEETINGS_066')
+  AND EXISTS(SELECT 1 FROM app_permissions WHERE permission_code='MANAGE_FLOWHIVE_TASK_REMINDERS_066')
+)::text;
+SQL
+  )"
+  [[ "$operation_auth_verified" == true ]] || fail 'FlowHive operation authorization migration 107 is not fully applied and enforced.'
+  echo 'FLOWHIVE_PSA_MIGRATION_107=APPLIED_AND_VERIFIED'
 fi
 echo 'PRODUCTION_MUTATION=NONE'
