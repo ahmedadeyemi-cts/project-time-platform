@@ -105,7 +105,7 @@ FILES
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
   test -s .github/flowhive-enterprise-psa-release-files.txt
   grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-enterprise-psa-release-files.txt >> "$CIT/allowed-release-files"
-elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' ]]; then
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' || "$HEAD_BRANCH" == 'fix/flowhive-planner-time-budget-20260912' ]]; then
   test -s .github/flowhive-planner-output-budget-release-files.txt
   grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-planner-output-budget-release-files.txt >> "$CIT/allowed-release-files"
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
