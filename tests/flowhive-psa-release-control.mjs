@@ -150,6 +150,14 @@ export const dispatchLaneAdmissionFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+export const protectedCutoverLaneRefreshBase = '30d27ae3099262be84e4cc5b8456699f6cba5c3e';
+export const protectedCutoverLaneRefreshBranch = 'control/flowhive-protected-cutover-lane-refresh-20260912';
+export const protectedCutoverLaneRefreshFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
 export const staleSupersessionBase = '785eb54a4f280c9ff0e59951c31a30cad4c1a0da';
 export const staleSupersessionBranch = 'fix/flowhive-stale-run-supersession-20260909';
 export const staleSupersessionActivationBase = '2d31f842599927f0a62e692d2669f643dc9e287b';
@@ -402,7 +410,7 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','successor-release-approval','successor-cutover-activation','planner-output-budget-approval','planner-output-budget-activation','planner-output-budget-activation-refresh','dispatch-run-recovery','dispatch-lane-repair','dispatch-skipped-recovery','dispatch-receipt-parser','dispatch-lane-admission','stale-run-supersession','stale-run-activation','stale-run-renewal','migration106-wiring','release-stabilization','protected-cutover','protected-cutover-activation','protected-cutover-refresh','admission-permission-fix','admission-bot-claim-fix','protected-cutover-recovery','reservation-recovery-endpoint-fix','protected-cutover-final','live-uat-status-fix','installed-verification-environment','installed-verification-evidence','installed-acceptance-evidence','installed-acceptance-artifacts','installed-acceptance-readiness','installed-acceptance-visibility','installed-acceptance-planner','installed-acceptance-final'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','successor-release-approval','successor-cutover-activation','planner-output-budget-approval','planner-output-budget-activation','planner-output-budget-activation-refresh','dispatch-run-recovery','dispatch-lane-repair','dispatch-skipped-recovery','dispatch-receipt-parser','dispatch-lane-admission','stale-run-supersession','stale-run-activation','stale-run-renewal','migration106-wiring','release-stabilization','protected-cutover','protected-cutover-activation','protected-cutover-refresh','protected-cutover-lane-refresh','admission-permission-fix','admission-bot-claim-fix','protected-cutover-recovery','reservation-recovery-endpoint-fix','protected-cutover-final','live-uat-status-fix','installed-verification-environment','installed-verification-evidence','installed-acceptance-evidence','installed-acceptance-artifacts','installed-acceptance-readiness','installed-acceptance-visibility','installed-acceptance-planner','installed-acceptance-final'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
@@ -460,6 +468,10 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.base, dispatchLaneAdmissionBase, 'Dispatch lane admission must be based on merged trusted main.');
     assert.equal(context?.branch, dispatchLaneAdmissionBranch, 'Wrong dispatch lane admission branch.');
   }
+  if (mode === 'protected-cutover-lane-refresh') {
+    assert.equal(context?.base, protectedCutoverLaneRefreshBase, 'Protected cutover lane refresh must be based on the merged admission-lane correction.');
+    assert.equal(context?.branch, protectedCutoverLaneRefreshBranch, 'Wrong protected cutover lane refresh branch.');
+  }
   if (mode === 'stale-run-supersession') {
     assert.equal(context?.base, staleSupersessionBase, 'Stale supersession must be based on merged trusted main.');
     assert.equal(context?.branch, staleSupersessionBranch, 'Wrong stale supersession control branch.');
@@ -481,8 +493,10 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.branch, protectedCutoverBranch, 'Wrong protected cutover control branch.');
   }
   if (mode === 'protected-cutover-refresh') {
-    assert.equal(context?.base, protectedCutoverRefreshBase, 'Protected cutover refresh must be based on PR899 trusted main.');
-    assert.equal(context?.branch, protectedCutoverRefreshBranch, 'Wrong protected cutover refresh control branch.');
+    assert.equal(context?.base, context?.branch === protectedCutoverLaneRefreshBranch ? protectedCutoverLaneRefreshBase : protectedCutoverRefreshBase,
+      'Protected cutover refresh must be based on the reviewed trusted main.');
+    assert.equal(context?.branch, context?.branch === protectedCutoverLaneRefreshBranch ? protectedCutoverLaneRefreshBranch : protectedCutoverRefreshBranch,
+      'Wrong protected cutover refresh control branch.');
   }
   if (mode === 'admission-permission-fix') {
     assert.equal(context?.base, admissionPermissionFixBase, 'Permission fix must be based on the merged activation controls.');
@@ -541,7 +555,9 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.branch, installedAcceptanceFinalBranch, 'Wrong installed acceptance final verifier branch.');
   }
   const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'successor-release-approval' ? successorReleaseApprovalFiles : mode === 'successor-cutover-activation' ? successorCutoverActivationFiles : mode === 'planner-output-budget-approval' ? plannerOutputBudgetApprovalFiles : mode === 'planner-output-budget-activation' ? plannerOutputBudgetActivationFiles : mode === 'planner-output-budget-activation-refresh' ? plannerOutputBudgetActivationRefreshFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'dispatch-lane-repair' ? dispatchLaneRepairFiles : mode === 'dispatch-skipped-recovery' ? dispatchSkippedRecoveryFiles : mode === 'dispatch-receipt-parser' ? dispatchReceiptParserFiles : mode === 'dispatch-lane-admission' ? dispatchLaneAdmissionFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : mode === 'stale-run-renewal' ? staleSupersessionRenewalFiles : mode === 'migration106-wiring' ? migration106WiringFiles : mode === 'release-stabilization' ? releaseStabilizationFiles : mode === 'protected-cutover' ? protectedCutoverFiles : mode === 'protected-cutover-activation' ? protectedCutoverActivationFiles : mode === 'protected-cutover-refresh' ? protectedCutoverRefreshFiles : mode === 'admission-permission-fix' ? admissionPermissionFixFiles : mode === 'admission-bot-claim-fix' ? admissionBotClaimFixFiles : mode === 'protected-cutover-recovery' ? protectedCutoverRecoveryFiles : mode === 'reservation-recovery-endpoint-fix' ? reservationRecoveryEndpointFixFiles : mode === 'protected-cutover-final' ? protectedCutoverFinalFiles : mode === 'live-uat-status-fix' ? liveUatStatusFixFiles : mode === 'installed-verification-environment' ? installedVerificationEnvironmentFiles : mode === 'installed-verification-evidence' ? installedVerificationEvidenceFiles : mode === 'installed-acceptance-evidence' ? installedAcceptanceEvidenceFiles : mode === 'installed-acceptance-artifacts' ? installedAcceptanceArtifactsFiles : mode === 'installed-acceptance-readiness' ? installedAcceptanceReadinessFiles : mode === 'installed-acceptance-visibility' ? installedAcceptanceVisibilityFiles : mode === 'installed-acceptance-planner' ? installedAcceptancePlannerFiles : mode === 'installed-acceptance-final' ? installedAcceptanceFinalFiles : staleSupersessionFiles;
-  assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
+  const scopedExpected = process.env.GITHUB_HEAD_REF === protectedCutoverLaneRefreshBranch
+    ? protectedCutoverLaneRefreshFiles : expected;
+  assert.deepEqual([...changed].sort(), scopedExpected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
   for (const token of [
@@ -598,6 +614,7 @@ export function validate() {
   const isDispatchSkippedRecovery = process.env.GITHUB_HEAD_REF === dispatchSkippedRecoveryBranch;
   const isDispatchReceiptParser = process.env.GITHUB_HEAD_REF === dispatchReceiptParserBranch;
   const isDispatchLaneAdmission = process.env.GITHUB_HEAD_REF === dispatchLaneAdmissionBranch;
+  const isProtectedCutoverLaneRefresh = process.env.GITHUB_HEAD_REF === protectedCutoverLaneRefreshBranch;
   const isStaleSupersession = process.env.GITHUB_HEAD_REF === staleSupersessionBranch;
   const isStaleSupersessionActivation = process.env.GITHUB_HEAD_REF === staleSupersessionActivationBranch;
   const isStaleSupersessionRenewal = process.env.GITHUB_HEAD_REF === staleSupersessionRenewalBranch;
@@ -605,7 +622,7 @@ export function validate() {
   const isReleaseStabilization = process.env.GITHUB_HEAD_REF === releaseStabilizationBranch;
   const isProtectedCutover = process.env.GITHUB_HEAD_REF === protectedCutoverBranch;
   const isProtectedCutoverActivation = process.env.GITHUB_HEAD_REF === protectedCutoverActivationBranch;
-  const isProtectedCutoverRefresh = process.env.GITHUB_HEAD_REF === protectedCutoverRefreshBranch;
+  const isProtectedCutoverRefresh = process.env.GITHUB_HEAD_REF === protectedCutoverRefreshBranch || isProtectedCutoverLaneRefresh;
   const isAdmissionPermissionFix = process.env.GITHUB_HEAD_REF === admissionPermissionFixBranch;
   const isAdmissionBotClaimFix = process.env.GITHUB_HEAD_REF === admissionBotClaimFixBranch;
   const isProtectedCutoverRecovery = process.env.GITHUB_HEAD_REF === protectedCutoverRecoveryBranch;
@@ -660,10 +677,10 @@ export function validate() {
   }
   if (isProtectedCutover || isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorReleaseApproval || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery) {
     if (isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery) {
-      assert.equal(base, isDispatchSkippedRecovery ? dispatchSkippedRecoveryBase : isPlannerOutputBudgetActivationRefresh ? plannerOutputBudgetActivationRefreshBase : isPlannerOutputBudgetActivation ? plannerOutputBudgetActivationBase : isSuccessorCutoverActivation ? successorCutoverActivationBase : isProtectedCutoverFinal ? protectedCutoverFinalBase : isProtectedCutoverRecovery ? protectedCutoverRecoveryBase : isProtectedCutoverRefresh ? protectedCutoverRefreshBase : protectedCutoverActivationBase, 'Activation must be based on the latest reviewed trusted controls.');
+      assert.equal(base, isProtectedCutoverLaneRefresh ? protectedCutoverLaneRefreshBase : isDispatchSkippedRecovery ? dispatchSkippedRecoveryBase : isPlannerOutputBudgetActivationRefresh ? plannerOutputBudgetActivationRefreshBase : isPlannerOutputBudgetActivation ? plannerOutputBudgetActivationBase : isSuccessorCutoverActivation ? successorCutoverActivationBase : isProtectedCutoverFinal ? protectedCutoverFinalBase : isProtectedCutoverRecovery ? protectedCutoverRecoveryBase : isProtectedCutoverRefresh ? protectedCutoverRefreshBase : protectedCutoverActivationBase, 'Activation must be based on the latest reviewed trusted controls.');
       assert.equal(protectedCutover.enabled, true, 'Activation must be explicitly enabled only in its reviewed branch.');
       assert.equal(protectedCutover.activationDecision, 'approved');
-      assert.equal(protectedCutover.workflow.allowControllerActivation, isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery ? false : true);
+      assert.equal(protectedCutover.workflow.allowControllerActivation, isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery || isProtectedCutoverLaneRefresh ? false : true);
       assert.equal(protectedCutover.approval.status, 'approved');
       assert.equal(protectedCutover.approval.approvedBy, 'ahmedadeyemi-cts');
       const approvedAt = Date.parse(protectedCutover.approval.approvedAt);
@@ -726,7 +743,7 @@ export function validate() {
     assert.deepEqual(protectedCutover.workflow, {
       id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml',
       controllerBranch: 'main', event: 'workflow_dispatch',
-      transition: 'disabled_manually-to-active-once', allowControllerActivation: isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal
+      transition: 'disabled_manually-to-active-once', allowControllerActivation: isProtectedCutoverActivation || (isProtectedCutoverRefresh && !isProtectedCutoverLaneRefresh) || isProtectedCutoverRecovery || isProtectedCutoverFinal
     });
     assert.deepEqual(protectedCutover.environment, {
       environment: 'test', protectionRuleId: 65110773,
