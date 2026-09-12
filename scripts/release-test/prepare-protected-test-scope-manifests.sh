@@ -69,7 +69,10 @@ tests/validate-systemwide-image-build-controller.mjs
 tests/validate-utilization-role-scoping.mjs
 FILES
 sed -i 's/^[[:space:]]*//' "$CIT/allowed-release-files"
-if [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
+if [[ "$HEAD_BRANCH" == 'fix/flowhive-pm-acceptance-contract' ]]; then
+  node tests/validate-flowhive-pm-acceptance-scope.mjs
+  node tests/validate-flowhive-pm-acceptance-scope.mjs --print-files >> "$CIT/allowed-release-files"
+elif [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then
   node tests/validate-planner-fallback-build-release-scope.mjs
   echo 'deployment/containers/api/Dockerfile' >> "$CIT/allowed-release-files"
   echo 'tests/validate-planner-fallback-build-release-scope.mjs' >> "$CIT/allowed-release-files"

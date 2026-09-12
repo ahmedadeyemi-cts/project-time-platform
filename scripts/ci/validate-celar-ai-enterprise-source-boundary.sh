@@ -39,6 +39,12 @@ publish_mode() {
   printf 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=%s\n' "$mode"
 }
 
+if [[ "$HEAD_BRANCH" == 'fix/flowhive-pm-acceptance-contract' ]]; then
+  BASE_SHA="$BASE" node tests/validate-flowhive-pm-acceptance-scope.mjs
+  publish_mode FLOWHIVE_PSA_RELEASE_CONTROL
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
   BASE_SHA="$BASE" node tests/flowhive-psa-release-control.mjs
   publish_mode FLOWHIVE_PSA_RELEASE_CONTROL

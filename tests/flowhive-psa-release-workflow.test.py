@@ -94,6 +94,123 @@ def verify_ci_script_limits(doc):
             # with escaped shell quotes/braces. Keep long scripts literal instead.
             assert len(body) < 19000 or '${{' not in body, 'Long CI script must use step environment inputs'
 
+PM_ACCEPTANCE_BRANCH='fix/flowhive-pm-acceptance-contract'
+PM_ACCEPTANCE_PREFLIGHT={
+    'name':'Verify existing PM and uploaded SOW before deployment',
+    'id':'psa_acceptance_preflight',
+    'if':"steps.psa_admission.outputs.authorized == 'true'",
+    'shell':'bash',
+    'working-directory':'control',
+    'env':{
+        'BASE':'https://phd-west-test.onenecklab.com',
+        'PROJECTPULSE_M025_PM_EMAIL':'${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}',
+        'PROJECTPULSE_M025_PM_PASSWORD':'${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}',
+        'PREVIOUS_PLANNER_RUN_ID':'171e4430-95e4-4f80-be14-454dcc319ef2',
+    },
+    'run':'python3 scripts/release-test/check-flowhive-acceptance-inputs.py --read-only',
+}
+
+
+def verify_pm_acceptance_delta(before, after):
+    """Allow only the reviewed preflight insertion and existing-PM input wiring.
+
+    Compare the entire parsed workflow, including original step ordering and
+    every unrelated condition, script, permission and environment setting.
+    """
+    expected=copy.deepcopy(before)
+    steps=expected['jobs']['deploy']['steps']
+    for doc in (before, after):
+        rows=doc['jobs']['deploy']['steps']
+        names=[row.get('name') for row in rows]
+        ids=[row['id'] for row in rows if 'id' in row]
+        assert all(names) and len(set(names))==len(names), 'Duplicate or missing step name'
+        assert len(set(ids))==len(ids), 'Duplicate step id'
+    assert not any(step.get('id')=='psa_acceptance_preflight' for step in steps), 'Preflight already present in base'
+    admissions=[index for index,step in enumerate(steps) if step.get('id')=='psa_admission']
+    assert len(admissions)==1, 'Admission step missing or ambiguous'
+    live=[step for step in steps if step.get('id')=='psa_live_uat']
+    assert len(live)==1, 'Live acceptance step missing or ambiguous'
+    env=live[0]['env']
+    assert env.pop('TEST_LOGIN_PASSWORD',None)=='${{ secrets.PROJECTPULSE_M087_PASSWORD }}', 'Unexpected legacy credential mapping'
+    for key in ('PROJECTPULSE_M025_PM_EMAIL','PROJECTPULSE_M025_PM_PASSWORD','PREVIOUS_PLANNER_RUN_ID'):
+        assert key not in env, 'Unexpected existing PM input'
+        env[key]=PM_ACCEPTANCE_PREFLIGHT['env'][key]
+    steps.insert(admissions[0]+1,copy.deepcopy(PM_ACCEPTANCE_PREFLIGHT))
+    assert expected==after, 'Changes exceed the exact PM preflight and credential-wiring repair'
+
+
+class PmAcceptanceDeltaTests(unittest.TestCase):
+    def setUp(self):
+        self.before={
+            'on':{'workflow_dispatch':{}},
+            'permissions':{'contents':'read'},
+            'concurrency':{'group':'projectpulse-deploy-test','cancel-in-progress':'false'},
+            'jobs':{'deploy':{'environment':'test','steps':[
+                {'name':'Admission','id':'psa_admission','run':'admit'},
+                {'name':'Build','id':'build','run':'build'},
+                {'name':'Live acceptance','id':'psa_live_uat','if':'authorized','env':{
+                    'TEST_LOGIN_PASSWORD':'${{ secrets.PROJECTPULSE_M087_PASSWORD }}','BASE':'unchanged'},'run':'verify'},
+                {'name':'Legacy acceptance','id':'uat','env':{
+                    'TEST_LOGIN_PASSWORD':'${{ secrets.PROJECTPULSE_M087_PASSWORD }}'},'run':'legacy'},
+            ]}},
+        }
+        self.after=copy.deepcopy(self.before)
+        steps=self.after['jobs']['deploy']['steps']
+        steps.insert(1,copy.deepcopy(PM_ACCEPTANCE_PREFLIGHT))
+        env=steps[3]['env']
+        del env['TEST_LOGIN_PASSWORD']
+        env.update({key:PM_ACCEPTANCE_PREFLIGHT['env'][key] for key in (
+            'PROJECTPULSE_M025_PM_EMAIL','PROJECTPULSE_M025_PM_PASSWORD','PREVIOUS_PLANNER_RUN_ID')})
+
+    def test_exact_repair_passes_without_mutating_comparison_inputs(self):
+        before,after=copy.deepcopy(self.before),copy.deepcopy(self.after)
+        verify_pm_acceptance_delta(self.before,self.after)
+        self.assertEqual(before,self.before)
+        self.assertEqual(after,self.after)
+
+    def test_preflight_fields_and_position_cannot_be_weakened(self):
+        for key in PM_ACCEPTANCE_PREFLIGHT:
+            with self.subTest(field=key):
+                changed=copy.deepcopy(self.after)
+                del changed['jobs']['deploy']['steps'][1][key]
+                with self.assertRaises(AssertionError):verify_pm_acceptance_delta(self.before,changed)
+        changed=copy.deepcopy(self.after)
+        rows=changed['jobs']['deploy']['steps'];rows.insert(2,rows.pop(1))
+        with self.assertRaises(AssertionError):verify_pm_acceptance_delta(self.before,changed)
+        changed=copy.deepcopy(self.after)
+        changed['jobs']['deploy']['steps'][1]['run']+=' --generate'
+        with self.assertRaises(AssertionError):verify_pm_acceptance_delta(self.before,changed)
+
+    def test_missing_or_substituted_pm_inputs_fail(self):
+        for key in ('PROJECTPULSE_M025_PM_EMAIL','PROJECTPULSE_M025_PM_PASSWORD','PREVIOUS_PLANNER_RUN_ID'):
+            for remove in (True,False):
+                with self.subTest(field=key,remove=remove):
+                    changed=copy.deepcopy(self.after)
+                    env=changed['jobs']['deploy']['steps'][3]['env']
+                    if remove:del env[key]
+                    else:env[key]='wrong-input'
+                    with self.assertRaises(AssertionError):verify_pm_acceptance_delta(self.before,changed)
+
+    def test_unrelated_steps_and_security_settings_remain_exact(self):
+        mutations=[
+            lambda d:d['jobs']['deploy'].update(environment='production'),
+            lambda d:d['permissions'].update(contents='write'),
+            lambda d:d['concurrency'].update({'cancel-in-progress':'true'}),
+            lambda d:d['on'].update(push={}),
+            lambda d:d['jobs']['deploy']['steps'][2].update(run='other-build'),
+            lambda d:d['jobs']['deploy']['steps'][3].update({'if':'always()'}),
+            lambda d:d['jobs']['deploy']['steps'][4]['env'].update(TEST_LOGIN_PASSWORD='different-secret'),
+            lambda d:d['jobs']['deploy']['steps'].append({'name':'Extra','run':'extra'}),
+            lambda d:d['jobs']['deploy']['steps'].pop(),
+            lambda d:d['jobs']['deploy']['steps'].append(copy.deepcopy(d['jobs']['deploy']['steps'][1])),
+            lambda d:d['jobs']['deploy']['steps'][2].update(id='psa_live_uat'),
+        ]
+        for index,mutate in enumerate(mutations):
+            with self.subTest(mutation=index):
+                changed=copy.deepcopy(self.after);mutate(changed)
+                with self.assertRaises(AssertionError):verify_pm_acceptance_delta(self.before,changed)
+
+
 class WorkflowContract(unittest.TestCase):
     def setUp(self):self.doc=load((ROOT/CONTROLLER).read_text())
     def test_parsed_workflow(self):verify(self.doc)
@@ -279,6 +396,9 @@ class WorkflowContract(unittest.TestCase):
         successor_release = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-successor-approval-20260911'
         # No controller changes are permitted in the exact seven-file digest repair.
         if old==self.doc:
+            return
+        if os.environ.get('GITHUB_HEAD_REF') == PM_ACCEPTANCE_BRANCH:
+            verify_pm_acceptance_delta(old,self.doc)
             return
         # This integration starts from the already merged #875 controller.
         # Compare by unique step name because #874 deliberately moves the work

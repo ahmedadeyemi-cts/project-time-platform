@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       deployment_run_id:
-        description: Successful canonical Protected Test deployment run to verify
+        description: Canonical Protected Test installation to verify; acceptance may have failed
         required: true
         type: string
 
@@ -102,7 +102,7 @@ jobs:
 
       - name: Reconcile prior planner run and verify real FlowHive lifecycle
         id: flowhive
-        if: steps.identity.outcome == 'success'
+        if: ${{ !cancelled() && steps.identity.outcome == 'success' && steps.planner.outcome == 'success' }}
         shell: bash
         env:
           FLOWHIVE_INSTALLED_VERIFICATION_AUTHORIZED: 'true'
@@ -122,7 +122,7 @@ jobs:
 
       - name: Run normal authorized Solution Architect SOW lifecycle
         id: sow
-        if: steps.identity.outcome == 'success'
+        if: ${{ !cancelled() && steps.identity.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         env:
@@ -135,7 +135,7 @@ jobs:
 
       - name: Verify My Role in Pulse, handoffs, reload, and access boundaries
         id: my_role
-        if: always() && steps.identity.outcome != 'cancelled'
+        if: ${{ !cancelled() && steps.identity.outcome == 'success' }}
         shell: bash
         env:
           PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
@@ -146,7 +146,7 @@ jobs:
 
       - name: Report Module 025 SOW/GSD authorization prerequisite without enabling it
         id: module025
-        if: always() && steps.identity.outcome != 'cancelled'
+        if: ${{ !cancelled() && steps.identity.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         env:
