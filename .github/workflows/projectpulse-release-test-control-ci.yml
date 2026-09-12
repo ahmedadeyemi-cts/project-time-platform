@@ -187,6 +187,9 @@ jobs:
             echo 'EXACT_CELAR_RUNTIME_VERSION_CENTER_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == fix/sow-runtime-diagnostics-and-uat-isolation-20260906 || "$HEAD_BRANCH" == fix/sow-transport-prompt-20260906 || "$HEAD_BRANCH" == fix/sow-phase-runtime-retry-20260906 || "$HEAD_BRANCH" == fix/sow-generation-uat-20260906 || "$HEAD_BRANCH" == fix/flowhive-terminal-refusal-diagnostics-20260906 || "$HEAD_BRANCH" == fix/celar-runtime-preflight-evidence-20260906 || "$HEAD_BRANCH" == fix/celar-sow-cpu-inference-20260905 || "$HEAD_BRANCH" == fix/celar-sow-runtime-deadlines-20260905 || "$HEAD_BRANCH" == fix/celar-oracle-token-budget-20260905 || "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-time-budget-checkset-20260912' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_PLANNER_TIME_BUDGET_WORKFLOW_SET_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-time-budget-approval-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_PLANNER_TIME_BUDGET_APPROVAL_SCOPE=PASSED'

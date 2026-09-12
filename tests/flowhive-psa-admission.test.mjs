@@ -208,6 +208,24 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     'scripts/release-test/unincorporated-application-change.sh'
   ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], files));
 });
+test('successor approval enumerates only the workflows that ran for the exact PR933 head', () => {
+  assert.deepEqual(approval.requiredWorkflows, [
+    '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
+    '.github/workflows/celar-ai-production-hardening-ci.yml',
+    '.github/workflows/flowhive-detailed-planner-ci.yml',
+    '.github/workflows/flowhive-enterprise-psa-ci.yml',
+    '.github/workflows/module025-governed-protected-test-release-ci.yml',
+    '.github/workflows/project-planning-collaboration-ci.yml',
+    '.github/workflows/projectpulse-ci.yml',
+    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+    '.github/workflows/projectpulse-release-test-control-ci.yml',
+    '.github/workflows/security-posture-ci.yml',
+    '.github/workflows/shared-project-document-planning-ci.yml',
+    '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+  ]);
+  assert.equal(verifyRuns(approval, runs).length, approval.requiredWorkflows.length);
+  assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
+});
 test('release scope cannot absorb application files, unknown workflows or production changes', () => {
   verifyFiles(files,files);
   for(const extra of ['src/frontend/project-time-web/src/App.jsx','.github/workflows/random-deploy.yml','deployment/production/main.bicep'])
