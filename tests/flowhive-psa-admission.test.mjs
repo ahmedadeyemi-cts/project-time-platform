@@ -345,6 +345,30 @@ test('protected cutover assesses all three queued requests and permits exactly o
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
   assert.equal(fixture.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 1);
 });
+test('successor active-state cutover dispatches once without toggling the already-active controller', async () => {
+  const fixture = protectedCutoverApi();
+  const authorization = protectedCutoverAuthorization();
+  authorization.workflow.allowControllerActivation = false;
+  const directory = fs.mkdtempSync('/tmp/flowhive-successor-active-cutover-');
+  try {
+    const result = await runProtectedAdmissionLifecycle({
+      api: fixture.request,
+      activationRequired: false,
+      admissionOptions: {
+        candidateSha: approval.sha, controlSha: fixture.control,
+        admissionRunId: 9012, admissionRunAttempt: 1,
+        evidenceFile: `${directory}/attempt.json`, authorization,
+        authorizationNow: new Date('2026-09-10T19:05:00Z'),
+        submissionAuthorizationNow: new Date('2026-09-10T19:06:00Z'),
+        createdAfter: '2026-09-10T19:05:00Z'
+      }
+    });
+    assert.equal(result.dispatched.runId, 9001);
+    assert.equal(result.lifecycle.policy, 'active-after-approved-bootstrap');
+    assert.deepEqual(fixture.calls.filter(call => call.method === 'PUT'), []);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  assert.equal(fixture.calls.filter(call => call.method === 'POST' && call.url.includes('/dispatches')).length, 1);
+});
 test('reviewed activation transitions disabled to active once and closes without retrying', async () => {
   const fixture = protectedCutoverApi({ state: 'disabled_manually' });
   const authorization = protectedCutoverAuthorization();

@@ -178,6 +178,9 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-successor-approval-20260911' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_SUCCESSOR_RELEASE_APPROVAL_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-protected-cutover-successor-activation-20260912' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_SUCCESSOR_CUTOVER_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
