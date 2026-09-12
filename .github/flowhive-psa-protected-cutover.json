@@ -1,6 +1,6 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
-  "enabled": false,
+  "enabled": true,
   "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911",
   "candidate": {
     "pullRequest": 922,
@@ -80,10 +80,10 @@
   ],
   "serverDispatchInputsConfirmed": false,
   "approval": {
-    "status": "not-approved",
-    "approvedBy": null,
-    "approvedAt": null,
-    "expiresAt": null
+    "status": "approved",
+    "approvedBy": "ahmedadeyemi-cts",
+    "approvedAt": "2026-09-12T09:43:00Z",
+    "expiresAt": "2026-09-12T09:58:00Z"
   },
-  "activationDecision": "hold"
+  "activationDecision": "approved"
 }
