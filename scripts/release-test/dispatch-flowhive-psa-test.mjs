@@ -401,7 +401,9 @@ export function parseDispatchReceiptArchive(archive) {
     "    print(archive.read(files[0]).decode('utf-8'))"
   ].join('\n');
   try {
-    return JSON.parse(execFileSync('python3', ['-c', python], { input: archive, encoding: 'utf8' }));
+    return JSON.parse(execFileSync('python3', ['-c', python], {
+      input: archive, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+    }));
   } catch (error) {
     throw new Error(`PROTECTED_CUTOVER_DISPATCH_RECEIPT_PAYLOAD_INVALID: ${error.message}`);
   }
