@@ -209,9 +209,15 @@ assert.doesNotMatch(
 );
 assert.match(privateRagService, /Module025SowMaximumOutputTokens = 12_000/);
 assert.match(privateRagService, /Module025SowMaximumAnswerCharacters = 96_000/);
+assert.match(privateRagService, /FlowHivePlanMaximumOutputTokens = 12_000/);
+assert.match(privateRagService, /FlowHivePlanMaximumAnswerCharacters = 96_000/);
 assert.match(
   privateRagService,
-  /Math\.Max\(options\.MaximumOutputTokens, Module025SowMaximumOutputTokens\)/
+  /MaximumOutputTokensForPlanning\([\s\S]*?SowGsdPlanning => Math\.Max\(configuredMaximum, Module025SowMaximumOutputTokens\)[\s\S]*?ProjectFlowHivePlan => Math\.Max\(configuredMaximum, FlowHivePlanMaximumOutputTokens\)/
+);
+assert.match(
+  privateRagService,
+  /MaximumAnswerCharactersForPlanning\([\s\S]*?SowGsdPlanning => Math\.Max\(configuredMaximum, Module025SowMaximumAnswerCharacters\)[\s\S]*?ProjectFlowHivePlan => Math\.Max\(configuredMaximum, FlowHivePlanMaximumAnswerCharacters\)/
 );
 assert.match(privateRagService, /ParseModule025DetailedPlan/);
 assert.match(privateRagService, /validateModule025DetailedPlan: authoritativeSource is not null/);
@@ -252,7 +258,7 @@ assert.match(privateRagService, /Apply professional technical knowledge to deter
 assert.match(privateRagService, /Determine the technology-specific work that must actually occur/);
 assert.match(
   privateRagService,
-  /MaximumAnswerCharacters = Math\.Max\([\s\S]*?options\.MaximumAnswerCharacters,[\s\S]*?Module025SowMaximumAnswerCharacters/,
+  /MaximumAnswerCharactersForPlanning\([\s\S]*?SowGsdPlanning => Math\.Max\(configuredMaximum, Module025SowMaximumAnswerCharacters\)/,
   'Module 025 must allow the larger exhaustive JSON plan through the private-model response-size gate'
 );
 assert.match(
