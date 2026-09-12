@@ -139,6 +139,14 @@ function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount
 test('approved current draft candidate is admissible without merging', () => {
   verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr); verifyRuns(approval, runs);
 });
+test('protected cutover refresh uses a new approval reference and preserves historical evidence identity', () => {
+  const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
+  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PR930');
+  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
+  assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
+  assert.equal(authorization.reservationRecovery.approvalReference, authorization.supersedesApprovalReference);
+  assert.equal(authorization.reservationRecovery.status, 'terminal-skipped-no-mutation');
+});
 test('admission accepts only the candidate source branch or the protected deployment lane', () => {
   verifyTargetReleaseBranch(candidateBranch);
   verifyTargetReleaseBranch(protectedTestReleaseLane);
