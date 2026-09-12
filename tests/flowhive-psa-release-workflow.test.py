@@ -276,6 +276,7 @@ class WorkflowContract(unittest.TestCase):
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
         reviewed = os.environ.get('GITHUB_HEAD_REF') == 'fix/flowhive-reviewed-regeneration-control-20260907'
         successor = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-sow-successor-approval-20260909'
+        successor_release = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-successor-approval-20260911'
         # No controller changes are permitted in the exact seven-file digest repair.
         if old==self.doc:
             return
@@ -333,6 +334,13 @@ class WorkflowContract(unittest.TestCase):
                 if step['name'] == 'Publish protected-Test release summary':
                     b['run']=b['run'].replace('Release lane: exact pre-merge FlowHive/SOW successor candidate; PR #887 remains unmerged', 'Release lane: exact pre-merge PSA candidate; feature PR #872 remains unmerged')
                     b['run']=b['run'].replace('Migrations 103/104/105/106: applied and verified', 'Migrations 103/104/105: applied and verified')
+            if successor_release and (b.get('id') == 'migration' or b.get('name') == 'Guard exact source and validate release'):
+                ending='\n' if b['run'].endswith('\n') else ''
+                b['run']='\n'.join(line for line in b['run'].splitlines()
+                                    if 'database/migrations/107_' not in line
+                                    and 'database/rollback/107_' not in line) + ending
+            if successor_release and step['name'] == 'Publish protected-Test release summary':
+                b['run']=b['run'].replace('Migrations 103/104/105/106/107: applied and verified', 'Migrations 103/104/105/106: applied and verified')
             if reviewed and (b.get('id') == 'migration' or b.get('name') == 'Guard exact source and validate release'):
                 ending='\n' if b['run'].endswith('\n') else ''
                 b['run']='\n'.join(line for line in b['run'].splitlines()
