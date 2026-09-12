@@ -1,4 +1,3 @@
 .github/flowhive-planner-output-budget-release-files.txt
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
-src/backend/ProjectTime.Api/Modules/ProjectFlowHiveExecutionPolicy.cs
 tests/FlowHiveDetailedPlannerTests/Program.cs
