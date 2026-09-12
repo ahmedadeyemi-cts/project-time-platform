@@ -33,18 +33,14 @@ const migrations = [
 ];
 const requiredWorkflows = [
   '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
-  '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
   '.github/workflows/celar-ai-production-hardening-ci.yml',
-  '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
-  '.github/workflows/deepseek-v4-provider-ci.yml',
   '.github/workflows/flowhive-detailed-planner-ci.yml',
+  '.github/workflows/flowhive-enterprise-psa-ci.yml',
   '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/project-planning-collaboration-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
-  '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
-  '.github/workflows/pulse-ai-system-intelligence-ci.yml',
-  '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
   '.github/workflows/security-posture-ci.yml',
   '.github/workflows/shared-project-document-planning-ci.yml',
   '.github/workflows/systemwide-enterprise-reliability-ci.yml'
