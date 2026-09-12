@@ -92,6 +92,8 @@ export const successorReleaseApprovalBranch = 'control/flowhive-successor-approv
 export const successorReleaseApprovalFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
   '.github/workflows/projectpulse-deploy-test.yml',
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
