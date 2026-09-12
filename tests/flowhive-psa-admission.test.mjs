@@ -555,6 +555,12 @@ test('reviewed recovery consumes a terminal skipped dispatch before creating one
   const reference = protectedCutoverAuthorization().approvalReference;
   const oldBody = `FLOWHIVE_PSA_ADMISSION_CLAIM_V1 candidate=${approval.sha} approval=${reference} controller=${oldControl} run=9020 attempt=1 status=reserved observedAt=2026-09-12T10:10:03.389Z`;
   const comments = [{ id: 7022, body: oldBody, user: { login: 'github-actions[bot]', id: 41898282 } }];
+  const receiptPayload = { schema: 'flowhive-psa-dispatch-attempt-v1', repository,
+    candidatePullRequest, candidateSha: approval.sha, controllerSha: oldControl, workflowId: 315562561,
+    workflowPath: '.github/workflows/projectpulse-deploy-test.yml', admissionRunId: 9020,
+    admissionRunAttempt: 1, attempt: 1, dispatchAttempted: true, dispatchWriteCount: 1,
+    dispatch: { method: 'POST', path: 'actions/workflows/315562561/dispatches', requestFingerprint: 'b'.repeat(64) },
+    run: { id: 9022, headSha: oldControl, headBranch: 'main', event: 'workflow_dispatch' } };
   const recovery = { commentId: 7022, admissionRunId: 9020, admissionRunAttempt: 1,
     candidateSha: approval.sha, approvalReference: reference, controllerSha: oldControl,
     observedAt: '2026-09-12T10:10:03.389Z', status: 'terminal-skipped-no-mutation',
@@ -588,7 +594,8 @@ test('reviewed recovery consumes a terminal skipped dispatch before creating one
     throw new Error(`UNEXPECTED_TERMINAL_SKIP_RECOVERY_REQUEST ${method} ${url}`);
   };
   const claim = await claimSingleUse(api, { candidateSha: approval.sha, controlSha: control,
-    approvalReference: reference, admissionRunId: 9021, admissionRunAttempt: 1, reservationRecovery: recovery });
+    approvalReference: reference, admissionRunId: 9021, admissionRunAttempt: 1, reservationRecovery: recovery,
+    artifactArchiveReader: async () => receiptPayload });
   assert.deepEqual(claim.supersededReservations, [{ commentId: 7022, admissionRunId: 9020,
     controllerSha: oldControl, observedAt: recovery.observedAt,
     disposition: 'terminal-skipped-no-mutation', deploymentRunId: 9022 }]);

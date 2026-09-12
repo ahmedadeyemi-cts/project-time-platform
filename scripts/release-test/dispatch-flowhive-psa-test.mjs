@@ -342,6 +342,67 @@ export function verifyDispatchReceiptBinding(receipt, recovery) {
   return receipt;
 }
 
+export function verifyDispatchReceiptPayload(payload, receipt, recovery) {
+  assert.equal(payload?.schema, dispatchEvidenceSchema, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_SCHEMA');
+  assert.equal(payload?.repository, repository, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_REPOSITORY');
+  assert.equal(Number(payload?.candidatePullRequest), candidatePullRequest, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_PR');
+  assert.equal(payload?.candidateSha, receipt.candidateSha, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_CANDIDATE');
+  assert.equal(payload?.controllerSha, receipt.controllerSha, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_CONTROLLER');
+  assert.equal(Number(payload?.workflowId), workflowId, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_WORKFLOW');
+  assert.equal(payload?.workflowPath, workflowPath, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_WORKFLOW_PATH');
+  assert.equal(Number(payload?.admissionRunId), Number(receipt.admissionRunId), 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_ADMISSION_RUN');
+  assert.equal(Number(payload?.admissionRunAttempt), Number(receipt.admissionRunAttempt), 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_ADMISSION_ATTEMPT');
+  assert.equal(Number(payload?.attempt), Number(receipt.admissionRunAttempt), 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_ATTEMPT');
+  assert.equal(payload?.dispatchAttempted, true, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_ATTEMPTED');
+  assert.equal(payload?.dispatchWriteCount, 1, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_WRITE_COUNT');
+  assert.equal(payload?.dispatch?.method, 'POST', 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_METHOD');
+  assert.equal(payload?.dispatch?.path, receipt.dispatchPath, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_PATH');
+  assert.equal(payload?.dispatch?.requestFingerprint, receipt.dispatchRequestFingerprint,
+    'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_FINGERPRINT');
+  assert.equal(Number(payload?.run?.id), Number(receipt.deploymentRunId), 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_DEPLOYMENT_RUN');
+  assert.equal(payload?.run?.headSha, receipt.controllerSha, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_RUN_CONTROLLER');
+  assert.equal(payload?.run?.headBranch, 'main', 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_RUN_BRANCH');
+  assert.equal(payload?.run?.event, 'workflow_dispatch', 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_RUN_EVENT');
+  assert.equal(recovery?.deploymentRunId, receipt.deploymentRunId, 'PROTECTED_CUTOVER_DISPATCH_PAYLOAD_RECOVERY_RUN');
+  return payload;
+}
+
+async function downloadDispatchReceiptArtifact(artifact, stage = 'single-use-claim-recovery-dispatch-artifact-download') {
+  const token = process.env.GH_TOKEN;
+  assert.ok(token, 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_TOKEN_REQUIRED');
+  const archiveUrl = artifact?.archive_download_url ||
+    `https://api.github.com/repos/${repository}/actions/artifacts/${artifact?.id}/zip`;
+  let response;
+  try {
+    response = await fetch(archiveUrl, {
+      headers: {
+        Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': githubApiVersion
+      }
+    });
+  } catch (error) {
+    throw new GithubApiError({ stage, method: 'GET', path: `actions/artifacts/${artifact?.id}/zip`, status: 'network', requestId: null, cause: error });
+  }
+  if (!response.ok) {
+    throw new GithubApiError({ stage, method: 'GET', path: `actions/artifacts/${artifact?.id}/zip`, status: response.status,
+      requestId: response.headers?.get('x-github-request-id') });
+  }
+  const archive = Buffer.from(await response.arrayBuffer());
+  const python = [
+    'import json, sys, zipfile',
+    'with zipfile.ZipFile(sys.stdin.buffer) as archive:',
+    "    files = [name for name in archive.namelist() if not name.endswith('/') ]",
+    "    if files != ['flowhive-psa-dispatch-attempt.json']:",
+    "        raise ValueError('unexpected dispatch evidence archive contents')",
+    "    print(archive.read(files[0]).decode('utf-8'))"
+  ].join('\n');
+  try {
+    return JSON.parse(execFileSync('python3', ['-c', python], { input: archive, encoding: 'utf8' }));
+  } catch (error) {
+    throw new Error(`PROTECTED_CUTOVER_DISPATCH_RECEIPT_PAYLOAD_INVALID: ${error.message}`);
+  }
+}
+
 export function readInspectOnlyContext(env = process.env, authorization = readProtectedCutoverAuthorization(), nowOverride = null) {
   assert.equal(env.GITHUB_REPOSITORY, repository, 'PROTECTED_CUTOVER_INSPECT_REPOSITORY');
   assert.equal(env.GITHUB_REF, 'refs/heads/main', 'PROTECTED_CUTOVER_INSPECT_REF');
@@ -1053,7 +1114,8 @@ async function verifyClaimExecution(api, { runId, runAttempt, controlSha }) {
   return { id: runId, attempt: runAttempt, event: run.event, headSha: run.head_sha, actor: run.actor.login };
 }
 
-async function verifyStaleReservationRecovery(api, recovery, { candidateSha, approvalReference, controlSha }) {
+async function verifyStaleReservationRecovery(api, recovery, { candidateSha, approvalReference, controlSha,
+  artifactArchiveReader = downloadDispatchReceiptArtifact }) {
   const terminalSkipped = recovery?.status === 'terminal-skipped-no-mutation';
   assert.ok(terminalSkipped || recovery?.status === 'pre-dispatch-failed', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_STATUS');
   assert.equal(recovery?.dispatchSubmitted, terminalSkipped, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DISPATCH');
@@ -1111,6 +1173,8 @@ async function verifyStaleReservationRecovery(api, recovery, { candidateSha, app
     assert.equal(artifact?.name, receipt.artifactName, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ARTIFACT_NAME');
     assert.equal(artifact?.expired, false, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ARTIFACT_EXPIRED');
     assert.equal(artifact?.digest, receipt.artifactDigest, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ARTIFACT_DIGEST');
+    const payload = await artifactArchiveReader(artifact);
+    verifyDispatchReceiptPayload(payload, receipt, recovery);
     const admissionArtifacts = await api(`actions/runs/${recovery.admissionRunId}/artifacts?per_page=100`, 'GET', undefined,
       'single-use-claim-recovery-admission-artifacts-read');
     assert.ok(Array.isArray(admissionArtifacts?.artifacts),
@@ -1136,7 +1200,8 @@ async function verifyStaleReservationRecovery(api, recovery, { candidateSha, app
 }
 
 export async function claimSingleUse(api = request, { candidateSha, controlSha, approvalReference,
-  admissionRunId = null, admissionRunAttempt = null, reservationRecovery = null }) {
+  admissionRunId = null, admissionRunAttempt = null, reservationRecovery = null,
+  artifactArchiveReader = downloadDispatchReceiptArtifact }) {
   const marker = singleUseClaimMarker({ candidateSha, controlSha, approvalReference, admissionRunId, admissionRunAttempt });
   const supersededReservations = [];
   for (let page = 1; page <= 10; page += 1) {
@@ -1157,7 +1222,7 @@ export async function claimSingleUse(api = request, { candidateSha, controlSha, 
       if (parsed.controlSha !== controlSha) {
         if (reservationRecovery && Number(comment.id) === Number(reservationRecovery.commentId)) {
           supersededReservations.push(await verifyStaleReservationRecovery(api, reservationRecovery, {
-            candidateSha, approvalReference, controlSha
+            candidateSha, approvalReference, controlSha, artifactArchiveReader
           }));
           continue;
         }
