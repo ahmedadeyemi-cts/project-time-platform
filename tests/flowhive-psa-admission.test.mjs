@@ -142,11 +142,16 @@ test('approved current draft candidate is admissible without merging', () => {
 test('protected cutover refresh uses a new approval reference and preserves historical evidence identity', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
   const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912';
+  const candidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-candidate-refresh-20260912';
   assert.equal(authorization.approvalReference, activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
-    : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE');
+    : candidateRefresh
+      ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-RELEASE'
+      : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE');
   assert.equal(authorization.supersedesApprovalReference, activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE'
+    : candidateRefresh
+      ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
     : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-CHECKSET-RELEASE');
   assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
@@ -172,9 +177,9 @@ test('live planner candidate activation is bounded and otherwise remains inactiv
     assert.equal(authorization.approval.expiresAt, null);
   }
   assert.deepEqual(authorization.candidate, {
-    pullRequest: 955,
-    branch: 'fix/flowhive-planner-output-budget-20260912',
-    sha: 'ad91335d412e3966716536eb6f39c3f70108ebb9'
+    pullRequest: approval.pullRequest,
+    branch: approval.branch,
+    sha: approval.sha
   });
 });
 test('admission accepts only the candidate source branch or the protected deployment lane', () => {
@@ -229,10 +234,10 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const candidate = approval.sha;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
-  assert.equal(approval.pullRequest, 955);
+  assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, 'fix/flowhive-planner-output-budget-20260912');
-  assert.equal(approval.mergeCommit, 'a5f3252af878f2e83efe84951516307eb0ba4bc8');
+  assert.equal(approval.mergeCommit, 'ed75fc0223c5967296d932fa7f46ac6790081020');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
@@ -243,7 +248,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     'scripts/release-test/unincorporated-application-change.sh'
   ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], files));
 });
-test('successor approval enumerates only the workflows that ran for the exact PR955 head', () => {
+test('successor approval enumerates only the workflows that ran for the exact selected application head', () => {
   assert.deepEqual(approval.requiredWorkflows, [
     '.github/workflows/celar-ai-production-hardening-ci.yml',
     '.github/workflows/projectpulse-ci.yml',
