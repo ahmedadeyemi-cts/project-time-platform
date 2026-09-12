@@ -353,7 +353,8 @@ export const plannerTimeBudgetApprovalFiles = [
 export const plannerProviderBudgetSuccessorApprovalBase = 'e173a4dc499dae723b2597d0ba1fde657a18f1d1';
 export const plannerProviderBudgetSuccessorApprovalBranch = 'control/flowhive-planner-provider-budget-approval-20260912';
 export const plannerProviderBudgetSuccessorApprovalFiles = [
-  'scripts/release-test/flowhive-psa-admission.mjs'
+  'scripts/release-test/flowhive-psa-admission.mjs',
+  'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const plannerTimeBudgetWorkflowSetBase = '59467301b02f9bf60531079f0c9dd51925eaa63d';
 export const plannerTimeBudgetWorkflowSetBranch = 'control/flowhive-planner-time-budget-checkset-20260912';
