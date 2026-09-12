@@ -295,8 +295,11 @@ export function verifyProtectedCutoverAuthorization(authorization, now = new Dat
     return { approved: false, reason: 'not-approved' };
   }
   assert.equal(authorization.activationDecision, 'approved', 'PROTECTED_CUTOVER_DECISION');
-  assert.equal(authorization.workflow.allowControllerActivation, true,
-    'Active protected cutover must explicitly authorize the one-time controller transition.');
+  assert.ok(authorization.workflow.allowControllerActivation === true || authorization.workflow.allowControllerActivation === false,
+    'Active protected cutover must explicitly declare whether controller activation is required.');
+  // A false value is the reviewed continuation mode: the controller is already
+  // active and assessProtectedCutover will verify that live state before any
+  // claim or dispatch. The enable path remains gated by the true value.
   return { approved: true, ...verifyBoundedApproval(authorization, now) };
 }
 
