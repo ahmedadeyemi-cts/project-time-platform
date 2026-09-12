@@ -290,6 +290,7 @@ export function verifyProtectedCutoverAuthorization(authorization, now = new Dat
     assert.ok(Number.isSafeInteger(recovery.admissionRunId) && recovery.admissionRunId > 0, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_ADMISSION_RUN');
     assert.ok(Number.isSafeInteger(recovery.deploymentRunId) && recovery.deploymentRunId > 0, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_DEPLOYMENT_RUN');
     assert.notEqual(recovery.admissionRunId, recovery.deploymentRunId, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_RUN_COLLISION');
+    verifyDispatchReceiptBinding(recovery.dispatchReceipt, recovery);
   }
   verifyNativeEnvironmentProtectionContract(authorization?.environment);
   assert.deepEqual(authorization?.requests?.map(request => request.runId), protectedCutoverRunIds,
@@ -319,6 +320,26 @@ export function verifyProtectedCutoverAuthorization(authorization, now = new Dat
   // active and assessProtectedCutover will verify that live state before any
   // claim or dispatch. The enable path remains gated by the true value.
   return { approved: true, ...verifyBoundedApproval(authorization, now) };
+}
+
+export function verifyDispatchReceiptBinding(receipt, recovery) {
+  assert.ok(receipt && typeof receipt === 'object', 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_REQUIRED');
+  assert.equal(receipt.schema, dispatchEvidenceSchema, 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_SCHEMA');
+  assert.ok(Number.isSafeInteger(receipt.artifactId) && receipt.artifactId > 0,
+    'PROTECTED_CUTOVER_DISPATCH_RECEIPT_ARTIFACT');
+  assert.match(receipt.artifactName || '', new RegExp(`^flowhive-psa-dispatch-evidence-${recovery.admissionRunId}-\\d+$`),
+    'PROTECTED_CUTOVER_DISPATCH_RECEIPT_ARTIFACT_NAME');
+  assert.match(receipt.artifactDigest || '', /^sha256:[a-f0-9]{64}$/, 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_ARTIFACT_DIGEST');
+  assert.equal(receipt.candidateSha, recovery.candidateSha, 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_CANDIDATE');
+  assert.equal(receipt.controllerSha, recovery.controllerSha, 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_CONTROLLER');
+  assert.equal(Number(receipt.admissionRunId), Number(recovery.admissionRunId), 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_ADMISSION_RUN');
+  assert.equal(Number(receipt.admissionRunAttempt), Number(recovery.admissionRunAttempt), 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_ADMISSION_ATTEMPT');
+  assert.equal(receipt.dispatchPath, `actions/workflows/${workflowId}/dispatches`, 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_PATH');
+  assert.match(receipt.dispatchRequestFingerprint || '', /^[a-f0-9]{64}$/, 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_FINGERPRINT');
+  assert.equal(receipt.dispatchWriteCount, 1, 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_WRITE_COUNT');
+  assert.equal(Number(receipt.deploymentRunId), Number(recovery.deploymentRunId), 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_DEPLOYMENT_RUN');
+  assert.equal(Number(receipt.deploymentRunAttempt), Number(recovery.deploymentRunAttempt), 'PROTECTED_CUTOVER_DISPATCH_RECEIPT_DEPLOYMENT_ATTEMPT');
+  return receipt;
 }
 
 export function readInspectOnlyContext(env = process.env, authorization = readProtectedCutoverAuthorization(), nowOverride = null) {
@@ -1083,6 +1104,22 @@ async function verifyStaleReservationRecovery(api, recovery, { candidateSha, app
     assert.equal(Number(deployment?.run_attempt), recovery.deploymentRunAttempt, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_ATTEMPT_READBACK');
     assert.equal(deployment?.status, 'completed', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_STATUS');
     assert.equal(deployment?.conclusion, 'skipped', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_CONCLUSION');
+    const receipt = verifyDispatchReceiptBinding(recovery.dispatchReceipt, recovery);
+    const artifact = await api(`actions/artifacts/${receipt.artifactId}`, 'GET', undefined,
+      'single-use-claim-recovery-dispatch-artifact-read');
+    assert.equal(Number(artifact?.id), receipt.artifactId, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ARTIFACT_ID');
+    assert.equal(artifact?.name, receipt.artifactName, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ARTIFACT_NAME');
+    assert.equal(artifact?.expired, false, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ARTIFACT_EXPIRED');
+    assert.equal(artifact?.digest, receipt.artifactDigest, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ARTIFACT_DIGEST');
+    const admissionArtifacts = await api(`actions/runs/${recovery.admissionRunId}/artifacts?per_page=100`, 'GET', undefined,
+      'single-use-claim-recovery-admission-artifacts-read');
+    assert.ok(Array.isArray(admissionArtifacts?.artifacts),
+      'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ADMISSION_ARTIFACTS');
+    const recorded = admissionArtifacts.artifacts.find(item => Number(item?.id) === receipt.artifactId);
+    assert.ok(recorded, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ARTIFACT_NOT_FROM_ADMISSION');
+    assert.equal(recorded.name, receipt.artifactName, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ADMISSION_ARTIFACT_NAME');
+    if (recorded.digest !== undefined) assert.equal(recorded.digest, receipt.artifactDigest,
+      'PROTECTED_CUTOVER_RESERVATION_RECOVERY_ADMISSION_ARTIFACT_DIGEST');
     const jobs = await api(`actions/runs/${recovery.deploymentRunId}/jobs?per_page=100`, 'GET', undefined,
       'single-use-claim-recovery-deployment-jobs-read');
     assert.ok(Array.isArray(jobs?.jobs) && jobs.jobs.length > 0,

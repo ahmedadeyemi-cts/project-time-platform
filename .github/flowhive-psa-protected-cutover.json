@@ -97,7 +97,22 @@
     "dispatchSubmitted": true,
     "controllerMutation": false,
     "deploymentRunId": 34687729664,
-    "deploymentRunAttempt": 1
+    "deploymentRunAttempt": 1,
+    "dispatchReceipt": {
+      "artifactId": 10296121750,
+      "artifactName": "flowhive-psa-dispatch-evidence-34687715702-1",
+      "artifactDigest": "sha256:dcbd54c84059b52885bc5e54956574c8c01354ddad3efe39a156850e371e378c",
+      "schema": "flowhive-psa-dispatch-attempt-v1",
+      "candidateSha": "86c9be03b87e588eeec47492e35131177716263b",
+      "controllerSha": "e2289c617b69b1a563ee8bd6f01aaa5c54965c6a",
+      "admissionRunId": 34687715702,
+      "admissionRunAttempt": 1,
+      "dispatchPath": "actions/workflows/315562561/dispatches",
+      "dispatchRequestFingerprint": "c4c46ec21d11e1f69e6d375aa2f395b1cd1be8f7f6046823f6e83dd53974f955",
+      "dispatchWriteCount": 1,
+      "deploymentRunId": 34687729664,
+      "deploymentRunAttempt": 1
+    }
   },
   "activationDecision": "approved"
 }

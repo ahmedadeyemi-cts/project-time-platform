@@ -558,7 +558,13 @@ test('reviewed recovery consumes a terminal skipped dispatch before creating one
   const recovery = { commentId: 7022, admissionRunId: 9020, admissionRunAttempt: 1,
     candidateSha: approval.sha, approvalReference: reference, controllerSha: oldControl,
     observedAt: '2026-09-12T10:10:03.389Z', status: 'terminal-skipped-no-mutation',
-    dispatchSubmitted: true, controllerMutation: false, deploymentRunId: 9022, deploymentRunAttempt: 1 };
+    dispatchSubmitted: true, controllerMutation: false, deploymentRunId: 9022, deploymentRunAttempt: 1,
+    dispatchReceipt: { artifactId: 9023, artifactName: 'flowhive-psa-dispatch-evidence-9020-1',
+      artifactDigest: `sha256:${'a'.repeat(64)}`, schema: 'flowhive-psa-dispatch-attempt-v1',
+      candidateSha: approval.sha, controllerSha: oldControl, admissionRunId: 9020,
+      admissionRunAttempt: 1, dispatchPath: 'actions/workflows/315562561/dispatches',
+      dispatchRequestFingerprint: 'b'.repeat(64), dispatchWriteCount: 1,
+      deploymentRunId: 9022, deploymentRunAttempt: 1 } };
   const api = async (url, method = 'GET', body) => {
     if (url.startsWith(`issues/${candidatePullRequest}/comments?`)) return comments;
     if (url === 'issues/comments/7022') return comments[0];
@@ -572,6 +578,11 @@ test('reviewed recovery consumes a terminal skipped dispatch before creating one
       run_attempt: 1, actor: { login: 'ahmedadeyemi-cts' } };
     if (url === 'actions/runs/9022') return { id: 9022, workflow_id: 315562561, event: 'workflow_dispatch',
       head_branch: 'main', head_sha: oldControl, run_attempt: 1, status: 'completed', conclusion: 'skipped' };
+    if (url === 'actions/artifacts/9023') return { id: 9023, name: 'flowhive-psa-dispatch-evidence-9020-1',
+      digest: `sha256:${'a'.repeat(64)}`, expired: false };
+    if (url === 'actions/runs/9020/artifacts?per_page=100') return { total_count: 1, artifacts: [{
+      id: 9023, name: 'flowhive-psa-dispatch-evidence-9020-1', digest: `sha256:${'a'.repeat(64)}`, expired: false
+    }] };
     if (url === 'actions/runs/9022/jobs?per_page=100') return { jobs: [{ id: 90220, status: 'completed', conclusion: 'skipped' }] };
     if (url === 'actions/runs/9022/pending_deployments') return [];
     throw new Error(`UNEXPECTED_TERMINAL_SKIP_RECOVERY_REQUEST ${method} ${url}`);
@@ -583,6 +594,16 @@ test('reviewed recovery consumes a terminal skipped dispatch before creating one
     disposition: 'terminal-skipped-no-mutation', deploymentRunId: 9022 }]);
   assert.equal(claim.commentId, 7023);
   assert.equal(comments.length, 2);
+});
+test('terminal skipped recovery rejects missing or mismatched dispatch receipts', () => {
+  const missing = protectedCutoverAuthorization();
+  delete missing.reservationRecovery.dispatchReceipt;
+  assert.throws(() => verifyProtectedCutoverAuthorization(missing, new Date('2026-09-10T19:05:00Z')),
+    /PROTECTED_CUTOVER_DISPATCH_RECEIPT_REQUIRED/);
+  const mismatched = protectedCutoverAuthorization();
+  mismatched.reservationRecovery.dispatchReceipt.deploymentRunId += 1;
+  assert.throws(() => verifyProtectedCutoverAuthorization(mismatched, new Date('2026-09-10T19:05:00Z')),
+    /PROTECTED_CUTOVER_DISPATCH_RECEIPT_DEPLOYMENT_RUN/);
 });
 test('protected lifecycle keeps the active operating state after one approved bootstrap', async () => {
   const fixture = protectedCutoverApi({ state: 'disabled_manually' });
