@@ -4,10 +4,17 @@ import { authorizedModulesFromNavigationState } from '../module-directory-author
 import { PROJECTPULSE_MODULES } from '../module-availability-registry.js';
 
 const EMPTY = JSON.stringify({ roleCodes: [], viewAsActive: false, accessReady: false, modules: [] });
-const EVENTS = [...new Set([...EFFECTIVE_ROLE_AUTHORITY_EVENTS, 'projectpulse:auth-session-cleared'])];
+// The module-availability bridge publishes this event after the server-backed
+// RBAC refresh completes. Without it, My Role remains stuck on its initial
+// loading snapshot and never exposes the effective user's authorized links.
+export const ROLE_JOURNEY_AUTHORITY_EVENTS = Object.freeze([
+  ...new Set([...EFFECTIVE_ROLE_AUTHORITY_EVENTS,
+    'projectpulse:auth-session-cleared',
+    'projectpulse:permission-navigation-updated'])
+]);
 function subscribe(listener) {
-  EVENTS.forEach((event) => window.addEventListener(event, listener));
-  return () => EVENTS.forEach((event) => window.removeEventListener(event, listener));
+  ROLE_JOURNEY_AUTHORITY_EVENTS.forEach((event) => window.addEventListener(event, listener));
+  return () => ROLE_JOURNEY_AUTHORITY_EVENTS.forEach((event) => window.removeEventListener(event, listener));
 }
 function snapshot() {
   if (typeof window === 'undefined') return EMPTY;
