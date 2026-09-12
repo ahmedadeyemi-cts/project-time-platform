@@ -141,8 +141,8 @@ test('approved current draft candidate is admissible without merging', () => {
 });
 test('protected cutover refresh uses a new approval reference and preserves historical evidence identity', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PM-IDENTITY');
-  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PR930');
+  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-TIME-BUDGET');
+  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PM-IDENTITY');
   assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
   assert.equal(authorization.reservationRecovery.status, 'terminal-skipped-no-mutation');
@@ -187,7 +187,7 @@ test('superseded dispatch receipt remains audit evidence and is not current-cand
   assert.notEqual(authorization.reservationRecovery.candidateSha, approval.sha);
   assert.equal(authorization.reservationRecovery.candidateSha, '86c9be03b87e588eeec47492e35131177716263b');
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
-  assert.doesNotThrow(() => verifyProtectedCutoverAuthorization(authorization, new Date('2026-09-12T13:00:00Z')));
+  assert.doesNotThrow(() => verifyProtectedCutoverAuthorization(authorization, new Date('2026-09-12T13:10:00Z')));
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
   const reviewedMain = approval.sourceBase;

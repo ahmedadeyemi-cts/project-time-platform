@@ -7,9 +7,9 @@ import { authorize, repository, admissionIssueNumber, candidateBranch, candidate
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
-const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PR930';
+const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PM-IDENTITY';
 const historicalRecoveryApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911';
-const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PM-IDENTITY';
+const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-TIME-BUDGET';
 const historicalRecoveryCandidateSha = '86c9be03b87e588eeec47492e35131177716263b';
 // This is the protected-Test lane selector, not the candidate's source ref.
 // The candidate source branch and SHA remain bound by flowhive-psa-admission;
