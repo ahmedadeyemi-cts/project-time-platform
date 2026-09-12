@@ -628,12 +628,12 @@ export function validate() {
     assert.equal(staleAuthorization.enabled, false, 'Stale supersession must remain inactive outside the reviewed activation branch.');
     assert.equal(staleAuthorization.activationDecision, 'hold');
   }
-  if (isProtectedCutover || isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorReleaseApproval || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh) {
-    if (isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh) {
-      assert.equal(base, isPlannerOutputBudgetActivationRefresh ? plannerOutputBudgetActivationRefreshBase : isPlannerOutputBudgetActivation ? plannerOutputBudgetActivationBase : isSuccessorCutoverActivation ? successorCutoverActivationBase : isProtectedCutoverFinal ? protectedCutoverFinalBase : isProtectedCutoverRecovery ? protectedCutoverRecoveryBase : isProtectedCutoverRefresh ? protectedCutoverRefreshBase : protectedCutoverActivationBase, 'Activation must be based on the latest reviewed trusted controls.');
+  if (isProtectedCutover || isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorReleaseApproval || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery) {
+    if (isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery) {
+      assert.equal(base, isDispatchSkippedRecovery ? dispatchSkippedRecoveryBase : isPlannerOutputBudgetActivationRefresh ? plannerOutputBudgetActivationRefreshBase : isPlannerOutputBudgetActivation ? plannerOutputBudgetActivationBase : isSuccessorCutoverActivation ? successorCutoverActivationBase : isProtectedCutoverFinal ? protectedCutoverFinalBase : isProtectedCutoverRecovery ? protectedCutoverRecoveryBase : isProtectedCutoverRefresh ? protectedCutoverRefreshBase : protectedCutoverActivationBase, 'Activation must be based on the latest reviewed trusted controls.');
       assert.equal(protectedCutover.enabled, true, 'Activation must be explicitly enabled only in its reviewed branch.');
       assert.equal(protectedCutover.activationDecision, 'approved');
-      assert.equal(protectedCutover.workflow.allowControllerActivation, isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh ? false : true);
+      assert.equal(protectedCutover.workflow.allowControllerActivation, isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery ? false : true);
       assert.equal(protectedCutover.approval.status, 'approved');
       assert.equal(protectedCutover.approval.approvedBy, 'ahmedadeyemi-cts');
       const approvedAt = Date.parse(protectedCutover.approval.approvedAt);
@@ -660,6 +660,22 @@ export function validate() {
         controllerSha: 'c78d346042314a7395a2ceeaa46f2737e6c0b076',
         observedAt: '2026-09-10T22:11:16.764Z',
         status: 'pre-dispatch-failed', dispatchSubmitted: false, controllerMutation: false
+      });
+    }
+    if (isDispatchSkippedRecovery) {
+      assert.deepEqual(protectedCutover.reservationRecovery, {
+        status: 'terminal-skipped-no-mutation',
+        commentId: 5645243064,
+        admissionRunId: 34687715702,
+        admissionRunAttempt: 1,
+        candidateSha: '86c9be03b87e588eeec47492e35131177716263b',
+        approvalReference: 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911',
+        controllerSha: 'e2289c617b69b1a563ee8bd6f01aaa5c54965c6a',
+        observedAt: '2026-09-12T10:10:03.389Z',
+        dispatchSubmitted: true,
+        controllerMutation: false,
+        deploymentRunId: 34687729664,
+        deploymentRunAttempt: 1
       });
     }
     assert.deepEqual(protectedCutover.workflow, {
