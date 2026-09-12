@@ -7,6 +7,11 @@ import { authorize, repository, admissionIssueNumber, candidateBranch, candidate
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
+// This is the protected-Test lane selector, not the candidate's source ref.
+// The candidate source branch and SHA remain bound by flowhive-psa-admission;
+// the deployment controller accepts this stable lane name before checking the
+// exact approved SHA.
+export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const unresolvedRequestIds = Object.freeze([34495606530, 34377182662, 33654881418]);
 const knownNonexecutingRun = unresolvedRequestIds[2];
 const dispatchSha = /^[a-f0-9]{40}$/;
@@ -734,7 +739,7 @@ export function buildDispatchRequest(candidateSha, controllerSha) {
       return_run_details: true,
       inputs: {
         release_sha: candidateSha,
-        release_branch: candidateBranch,
+        release_branch: protectedTestReleaseLane,
         recover_private_runtime: false,
         admission_controller_sha: controllerSha
       }
@@ -746,7 +751,7 @@ export function verifyDispatchInputs(inputs, candidateSha, controllerSha) {
   assert.match(controllerSha, dispatchSha);
   assert.deepEqual(inputs, {
     release_sha: candidateSha,
-    release_branch: candidateBranch,
+    release_branch: protectedTestReleaseLane,
     recover_private_runtime: false,
     admission_controller_sha: controllerSha
   }, 'The submitted dispatch inputs must remain bound to the admitted candidate.');
