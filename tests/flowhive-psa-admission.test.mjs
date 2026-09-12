@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifyWorkflowException, verifySourceDrift, verifyTargetReleaseBranch, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
@@ -142,8 +141,8 @@ test('approved current draft candidate is admissible without merging', () => {
 });
 test('protected cutover refresh uses a new approval reference and preserves historical evidence identity', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-PROVIDER-BUDGET-RELEASE');
-  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-PROVIDER-BUDGET');
+  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-SHAPE-RELEASE');
+  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-PROVIDER-BUDGET-RELEASE');
   assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
   assert.equal(authorization.reservationRecovery.status, 'terminal-skipped-no-mutation');
@@ -195,10 +194,10 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const candidate = approval.sha;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
-  assert.equal(approval.pullRequest, 937);
+  assert.equal(approval.pullRequest, 943);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, 'fix/flowhive-planner-provider-budget-20260912');
-  assert.equal(approval.mergeCommit, '3707d013675b7edd130c74c666b11315cdb32c9e');
+  assert.equal(approval.mergeCommit, 'e15634c22377476c40f25f67faffda47248c8110');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
@@ -209,55 +208,32 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     'scripts/release-test/unincorporated-application-change.sh'
   ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], files));
 });
-test('successor approval enumerates only the workflows that ran for the exact PR937 head', () => {
+test('successor approval enumerates only the workflows that ran for the exact PR943 head', () => {
   assert.deepEqual(approval.requiredWorkflows, [
     '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
     '.github/workflows/celar-ai-production-hardening-ci.yml',
     '.github/workflows/flowhive-detailed-planner-ci.yml',
-    '.github/workflows/flowhive-enterprise-psa-ci.yml',
     '.github/workflows/module025-governed-protected-test-release-ci.yml',
-    '.github/workflows/project-planning-collaboration-ci.yml',
     '.github/workflows/projectpulse-ci.yml',
     '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
     '.github/workflows/projectpulse-release-test-control-ci.yml',
     '.github/workflows/security-posture-ci.yml',
     '.github/workflows/shared-project-document-planning-ci.yml',
-    '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+    '.github/workflows/systemwide-enterprise-reliability-ci.yml',
+    '.github/workflows/deepseek-v4-provider-ci.yml',
+    '.github/workflows/pulse-ai-system-intelligence-ci.yml',
+    '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+    '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
+    '.github/workflows/celar-ai-enterprise-retrieval-ci.yml'
   ]);
   assert.equal(verifyRuns(approval, runs).length, approval.requiredWorkflows.length);
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
-test('missing Module 025 is accepted only with base-path-filter evidence and remains fail-closed', () => {
-  const changedFiles = [
-    '.github/workflows/flowhive-psa-release-control-ci.yml',
-    '.github/workflows/module025-governed-protected-test-release-ci.yml',
-    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
-    '.github/workflows/projectpulse-release-test-control-ci.yml',
-    'docs/modules/module-066-project-flowhive/BOUNDED-PLANNER-VALIDATION.md',
-    'docs/modules/module-066-project-flowhive/REVIEWED-REGENERATION-REPAIR.md',
-    'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh',
-    'scripts/release-test/prepare-protected-test-scope-manifests.sh',
-    'scripts/release-test/run-flowhive-psa-live-uat.py',
-    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs',
-    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveExecutionPolicy.cs',
-    'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx',
-    'src/frontend/project-time-web/src/flowhive-planner-operation.js',
-    'tests/FlowHiveExecutionTests/Program.cs',
-    'tests/flowhive-psa-migration-fixture.py',
-    'tests/flowhive-psa-react-browser.py',
-    'tests/validate-flowhive-sow-evidence-autoadmission.mjs'
-  ];
-  const baseWorkflow = execFileSync('git', ['show', `${pr.base.sha}:${approval.workflowExceptions[0].workflow}`], { encoding: 'utf8' });
-  assert.deepEqual(verifyWorkflowException(approval, pr, changedFiles, baseWorkflow), [approval.workflowExceptions[0].workflow]);
-  const missing = runs.filter(run => run.path !== approval.workflowExceptions[0].workflow);
-  assert.throws(() => verifyRuns(approval, missing), /Required exact-SHA CI is missing/);
-  assert.equal(verifyRuns(approval, missing, [approval.workflowExceptions[0].workflow]).length, missing.length);
-  const invalidApproval = clone(approval);
-  const invalidFiles = [...changedFiles, 'src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx'];
-  invalidApproval.workflowExceptions[0].candidateChangedFilesSha256 = crypto.createHash('sha256')
-    .update(`${[...invalidFiles].sort().join('\n')}\n`).digest('hex');
-  invalidApproval.workflowExceptions[0].candidateChangedFilesCount = invalidFiles.length;
-  assert.throws(() => verifyWorkflowException(invalidApproval, pr, invalidFiles, baseWorkflow), /path filter/);
+test('the selected PR has a real Module 025 check and no synthetic workflow exception', () => {
+  assert.deepEqual(approval.workflowExceptions, []);
+  assert.deepEqual(verifyWorkflowException(approval, pr, [
+    'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
+  ], ''), []);
 });
 test('release scope cannot absorb application files, unknown workflows or production changes', () => {
   verifyFiles(files,files);
