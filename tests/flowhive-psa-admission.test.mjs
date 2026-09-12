@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, verifyTargetReleaseBranch, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
+import { verifyApproval, verifyPullRequest, verifyRuns, verifyWorkflowException, verifySourceDrift, verifyTargetReleaseBranch, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
@@ -10,7 +11,7 @@ const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
   merge_commit_sha: approval.mergeCommit,
   head: { ref: approval.sourceBranch, sha: approval.sha, repo: { full_name: repository } },
-  base: { ref: 'main', repo: { full_name: repository } } };
+  base: { ref: 'main', sha: '1499f0c3de0782ee11f29cec84a3679b64207f5a', repo: { full_name: repository } } };
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));
@@ -225,6 +226,38 @@ test('successor approval enumerates only the workflows that ran for the exact PR
   ]);
   assert.equal(verifyRuns(approval, runs).length, approval.requiredWorkflows.length);
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
+});
+test('missing Module 025 is accepted only with base-path-filter evidence and remains fail-closed', () => {
+  const changedFiles = [
+    '.github/workflows/flowhive-psa-release-control-ci.yml',
+    '.github/workflows/module025-governed-protected-test-release-ci.yml',
+    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+    '.github/workflows/projectpulse-release-test-control-ci.yml',
+    'docs/modules/module-066-project-flowhive/BOUNDED-PLANNER-VALIDATION.md',
+    'docs/modules/module-066-project-flowhive/REVIEWED-REGENERATION-REPAIR.md',
+    'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh',
+    'scripts/release-test/prepare-protected-test-scope-manifests.sh',
+    'scripts/release-test/run-flowhive-psa-live-uat.py',
+    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs',
+    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveExecutionPolicy.cs',
+    'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx',
+    'src/frontend/project-time-web/src/flowhive-planner-operation.js',
+    'tests/FlowHiveExecutionTests/Program.cs',
+    'tests/flowhive-psa-migration-fixture.py',
+    'tests/flowhive-psa-react-browser.py',
+    'tests/validate-flowhive-sow-evidence-autoadmission.mjs'
+  ];
+  const baseWorkflow = execFileSync('git', ['show', `${pr.base.sha}:${approval.workflowExceptions[0].workflow}`], { encoding: 'utf8' });
+  assert.deepEqual(verifyWorkflowException(approval, pr, changedFiles, baseWorkflow), [approval.workflowExceptions[0].workflow]);
+  const missing = runs.filter(run => run.path !== approval.workflowExceptions[0].workflow);
+  assert.throws(() => verifyRuns(approval, missing), /Required exact-SHA CI is missing/);
+  assert.equal(verifyRuns(approval, missing, [approval.workflowExceptions[0].workflow]).length, missing.length);
+  const invalidApproval = clone(approval);
+  const invalidFiles = [...changedFiles, 'src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx'];
+  invalidApproval.workflowExceptions[0].candidateChangedFilesSha256 = crypto.createHash('sha256')
+    .update(`${[...invalidFiles].sort().join('\n')}\n`).digest('hex');
+  invalidApproval.workflowExceptions[0].candidateChangedFilesCount = invalidFiles.length;
+  assert.throws(() => verifyWorkflowException(invalidApproval, pr, invalidFiles, baseWorkflow), /path filter/);
 });
 test('release scope cannot absorb application files, unknown workflows or production changes', () => {
   verifyFiles(files,files);

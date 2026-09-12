@@ -350,10 +350,9 @@ export const plannerTimeBudgetApprovalFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const plannerProviderBudgetSuccessorApprovalBase = '1c028e14b8dc73c634f4bd77d6b25e06d8fedc00';
+export const plannerProviderBudgetSuccessorApprovalBase = '784d033e7d9cef0ff50f27a1589711e40e1859cc';
 export const plannerProviderBudgetSuccessorApprovalBranch = 'control/flowhive-planner-provider-budget-approval-20260912';
 export const plannerProviderBudgetSuccessorApprovalFiles = [
-  '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -69,6 +70,14 @@ export function verifyApproval(approval, requestedSha) {
     'The approval must enumerate the exact applicable workflow set for the selected successor head.');
   assert.equal(new Set(approval.requiredWorkflows).size, approval.requiredWorkflows.length);
   for (const workflow of approval.requiredWorkflows) assert.match(workflow, /^\.github\/workflows\/[a-z0-9-]+\.yml$/);
+  assert.deepEqual(approval.workflowExceptions, [{
+    workflow: '.github/workflows/module025-governed-protected-test-release-ci.yml',
+    reasonCode: 'pull-request-path-filter-no-match',
+    baseCommit: '1499f0c3de0782ee11f29cec84a3679b64207f5a',
+    baseWorkflowSha256: '2d65bd6b744a45b947095c8c2c087a43ab21b63b0f6118d194287e92c10fb0cf',
+    candidateChangedFilesSha256: 'afeb662618e239f0deeca867dff887283cd7c3418d71b8affbdb5965c692da1c',
+    candidateChangedFilesCount: 17
+  }], 'The missing Module 025 run must have explicit, reviewable path-filter evidence.');
   assert.equal(approval.projectId, '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49');
   assert.equal(approval.projectManagerLogin, 'heather.schrock@ussignal.local');
 }
@@ -85,7 +94,7 @@ export function verifyPullRequest(approval, pr) {
   assert.equal(pr.merge_commit_sha, approval.mergeCommit, 'The reviewed merge commit changed.');
 }
 
-export function verifyRuns(approval, runs) {
+export function verifyRuns(approval, runs, allowedMissing = []) {
   const latest = new Map();
   for (const run of runs) {
     if (run.head_sha !== approval.sha || run.event !== 'pull_request') continue;
@@ -97,7 +106,10 @@ export function verifyRuns(approval, runs) {
   }
   for (const workflow of approval.requiredWorkflows) {
     const run = latest.get(workflow);
-    assert.ok(run, `Required exact-SHA CI is missing: ${workflow}`);
+    if (!run) {
+      assert.ok(allowedMissing.includes(workflow), `Required exact-SHA CI is missing: ${workflow}`);
+      continue;
+    }
     assert.equal(run.status, 'completed', `Required CI has not finished: ${workflow}`);
     assert.equal(run.conclusion, 'success', `Required CI did not pass: ${workflow}`);
   }
@@ -106,6 +118,35 @@ export function verifyRuns(approval, runs) {
     assert.ok(run.conclusion === 'success' || run.conclusion === 'skipped', `Candidate CI failed: ${workflow}`);
   }
   return [...latest.values()].map(run => ({ path: run.path, runId: run.id, attempt: run.run_attempt, conclusion: run.conclusion }));
+}
+
+function digestLines(lines) {
+  return crypto.createHash('sha256').update(`${[...lines].sort().join('\n')}\n`).digest('hex');
+}
+
+function workflowPathMatches(pattern, filename) {
+  const expression = `^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*')}$`;
+  return new RegExp(expression).test(filename);
+}
+
+export function verifyWorkflowException(approval, pullRequest, changedFiles, baseWorkflowContent) {
+  const [exception] = approval.workflowExceptions || [];
+  assert.ok(exception, 'The candidate must explain every missing required workflow.');
+  assert.equal(exception.workflow, '.github/workflows/module025-governed-protected-test-release-ci.yml');
+  assert.equal(exception.reasonCode, 'pull-request-path-filter-no-match');
+  assert.equal(exception.baseCommit, pullRequest.base?.sha, 'Path-filter evidence must bind to the actual PR base.');
+  assert.equal(crypto.createHash('sha256').update(baseWorkflowContent).digest('hex'), exception.baseWorkflowSha256,
+    'Path-filter evidence must bind to the actual base workflow bytes.');
+  assert.equal(digestLines(changedFiles), exception.candidateChangedFilesSha256,
+    'Path-filter evidence must bind to the actual candidate file inventory.');
+  assert.equal(changedFiles.length, exception.candidateChangedFilesCount);
+  const pathsBlock = baseWorkflowContent.match(/\n\s+paths:\s*\n([\s\S]*?)\n\s+permissions:/);
+  assert.ok(pathsBlock, 'The base Module 025 workflow must expose a pull-request path filter.');
+  const pathFilters = [...pathsBlock[1].matchAll(/^\s*-\s*["']([^"']+)["']\s*$/gm)].map(match => match[1]);
+  assert.ok(pathFilters.length > 0, 'The base Module 025 path filter must not be empty.');
+  assert.ok(changedFiles.every(file => !pathFilters.some(pattern => workflowPathMatches(pattern, file))),
+    'A missing workflow may be excepted only when no candidate file matches its base path filter.');
+  return [exception.workflow];
 }
 
 export function verifySourceDrift(changed, allowed) {
@@ -148,6 +189,12 @@ export async function authorize() {
   verifyPullRequest(approval, pr);
   const branch = await github(`/repos/${repository}/git/ref/heads/${candidateBranch}`);
   assert.equal(branch.object.sha, approval.sha);
+  const git = (...args) => execFileSync('git', args, { encoding: 'utf8', timeout: 30000 }).trim();
+  const fileResponse = await github(`/repos/${repository}/pulls/${candidatePullRequest}/files?per_page=100`);
+  assert.ok(Array.isArray(fileResponse) && fileResponse.length > 0, 'The candidate file inventory is missing.');
+  const candidateFiles = fileResponse.map(file => file.filename).sort();
+  const workflowExceptions = verifyWorkflowException(approval, pr, candidateFiles,
+    git('show', `${pr.base.sha}:${approval.workflowExceptions[0].workflow}`));
   const runs = [];
   for (let page = 1; page <= 10; page++) {
     const result = await github(`/repos/${repository}/actions/runs?head_sha=${approval.sha}&event=pull_request&per_page=100&page=${page}`);
@@ -156,8 +203,7 @@ export async function authorize() {
     if (result.workflow_runs.length < 100) break;
     assert.ok(page < 10, 'CI pagination exceeded the bounded admission limit.');
   }
-  const checks = verifyRuns(approval, runs);
-  const git = (...args) => execFileSync('git', args, { encoding: 'utf8', timeout: 30000 }).trim();
+  const checks = verifyRuns(approval, runs, workflowExceptions);
   assert.equal(git('rev-parse', 'HEAD'), main.object.sha);
   git('fetch', '--no-tags', 'origin', candidateBranch);
   // The successor application was merged into the reviewed main snapshot.
