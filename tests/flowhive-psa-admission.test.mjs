@@ -170,10 +170,10 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const candidate = approval.sha;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
-  assert.equal(approval.pullRequest, 915);
+  assert.equal(approval.pullRequest, 922);
   assert.equal(approval.branch, candidateBranch);
-  assert.equal(approval.sourceBranch, 'fix/flowhive-pr914-followup-20260911');
-  assert.equal(approval.mergeCommit, '2057df629ebb1f3ef651295c0da541061b77d56a');
+  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-output-budget-20260912');
+  assert.equal(approval.mergeCommit, 'dbe8c34eeb0b23ab0726cb414a614ec7f6ea221a');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
