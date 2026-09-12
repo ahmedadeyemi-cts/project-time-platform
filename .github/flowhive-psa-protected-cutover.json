@@ -1,8 +1,8 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
   "enabled": true,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PR930",
-  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911",
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PM-IDENTITY",
+  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PR930",
   "candidate": {
     "pullRequest": 922,
     "branch": "fix/flowhive-planner-output-budget-20260912",
@@ -83,8 +83,8 @@
   "approval": {
     "status": "approved",
     "approvedBy": "ahmedadeyemi-cts",
-    "approvedAt": "2026-09-12T11:40:00Z",
-    "expiresAt": "2026-09-12T11:55:00Z"
+    "approvedAt": "2026-09-12T11:55:00Z",
+    "expiresAt": "2026-09-12T12:10:00Z"
   },
   "reservationRecovery": {
     "status": "terminal-skipped-no-mutation",

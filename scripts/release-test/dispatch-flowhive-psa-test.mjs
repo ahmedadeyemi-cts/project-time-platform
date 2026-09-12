@@ -7,8 +7,9 @@ import { authorize, repository, admissionIssueNumber, candidateBranch, candidate
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
-const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911';
-const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PR930';
+const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PR930';
+const historicalRecoveryApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911';
+const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PM-IDENTITY';
 // This is the protected-Test lane selector, not the candidate's source ref.
 // The candidate source branch and SHA remain bound by flowhive-psa-admission;
 // the deployment controller accepts this stable lane name before checking the
@@ -288,7 +289,7 @@ export function verifyProtectedCutoverAuthorization(authorization, now = new Dat
     assert.equal(recovery.dispatchSubmitted, true, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_DISPATCH');
     assert.equal(recovery.controllerMutation, false, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_MUTATION');
     assert.equal(recovery.candidateSha, approval.sha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_CANDIDATE');
-    assert.equal(recovery.approvalReference, previousProtectedCutoverApprovalReference,
+    assert.equal(recovery.approvalReference, historicalRecoveryApprovalReference,
       'PROTECTED_CUTOVER_RESERVATION_RECOVERY_HISTORICAL_REFERENCE');
     assert.match(recovery.controllerSha || '', dispatchSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_CONTROLLER');
     assert.ok(Number.isSafeInteger(recovery.commentId) && recovery.commentId > 0, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_COMMENT');
