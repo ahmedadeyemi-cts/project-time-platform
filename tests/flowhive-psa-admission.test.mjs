@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, verifyTargetReleaseBranch, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
@@ -182,24 +182,31 @@ test('later failed rerun or unknown failed workflow cannot hide behind older gre
 test('source drift allows only reviewed control paths; application drift is rejected', () => {
   verifySourceDrift(files,files);assert.throws(()=>verifySourceDrift([...files,'src/backend/ProjectTime.Api/Program.cs'],files));
 });
+test('superseded dispatch receipt remains audit evidence and is not current-candidate recovery', () => {
+  const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
+  assert.notEqual(authorization.reservationRecovery.candidateSha, approval.sha);
+  assert.equal(authorization.reservationRecovery.candidateSha, '86c9be03b87e588eeec47492e35131177716263b');
+  assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
+  assert.doesNotThrow(() => verifyProtectedCutoverAuthorization(authorization, new Date('2026-09-12T13:00:00Z')));
+});
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
   const reviewedMain = approval.sourceBase;
   const candidate = approval.sha;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
-  assert.equal(approval.pullRequest, 922);
+  assert.equal(approval.pullRequest, 933);
   assert.equal(approval.branch, candidateBranch);
-  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-output-budget-20260912');
-  assert.equal(approval.mergeCommit, 'dbe8c34eeb0b23ab0726cb414a614ec7f6ea221a');
+  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-time-budget-20260912');
+  assert.equal(approval.mergeCommit, '3b2c0111f780b85ee7258ff91e56cd92d144828a');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
-  verifySourceDrift(successorApprovalFiles, files);
+  verifySourceDrift(plannerTimeBudgetApprovalFiles, files);
   for (const unrelated of [
     'src/backend/ProjectTime.Api/Program.cs',
     'src/frontend/project-time-web/src/App.jsx',
     'scripts/release-test/unincorporated-application-change.sh'
-  ]) assert.throws(() => verifySourceDrift([...successorApprovalFiles, unrelated], files));
+  ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], files));
 });
 test('release scope cannot absorb application files, unknown workflows or production changes', () => {
   verifyFiles(files,files);
