@@ -1,128 +1,119 @@
-# 025 SOW Generator + Claude Review Workflow
+# 025 SOW/GSD Workspace
 
 ## Status
-Applied as a full demo-ready frontend workflow suite.
+Applied as the current, persistent Module 025 implementation. This document replaces an
+earlier hash-route SOW Generator prototype (see History below); none of that prototype's
+behavior exists in the current codebase.
 
-## 025A Dashboard + SOW Workspace
-Adds the SOW Generator module to the dashboard and opens the `#sow-generator` workspace.
+## What it is
+Module 025 gives Solution Architects (SAs) a governed workspace to author Statements of
+Work (SOW) and General Solution Designs (GSD) as a single persistent record per engagement
+— from a free-text Service Overview, through Celar AI-assisted scoping, SA review,
+confirmation, and document export.
 
-## 025B Word Template + Field Mapping
-Adds Word template placeholder controls, template metadata, and field mapping preview. Backend Word generation will be wired later.
+## Roles and access
+- Solution Architects create and own their own engagements.
+- Managers and team leads get read-only visibility into their direct reports' engagements
+  (scoped via `reporting_relationships`); they cannot edit.
+- Administrators have full read/write access across all engagements.
+- Administrator "View-As" is always read-only, even for an SA's own records.
 
-## 025C Claude Draft Studio
-Adds Claude-assisted draft generation controls, section-by-section regeneration, editable draft sections, and prompt context preview. The live Claude provider will use the existing shared API key pattern already used by the timesheet generator.
+## Lifecycle
+`draft` → `review_ready` → `confirmed` → `archived`, with `reopen` (`confirmed` →
+`review_ready`) and `unarchive`.
 
-## 025D Solution Architect Review + Signed Handoff
-Adds human review controls, hallucination checklist, signed SOW/GSD readiness checklist, and Sales-to-Delivery handoff preview.
+- **draft** — created; Service Overview being written.
+- **review_ready** — Celar AI has generated a Plan/Design/Implement/Validate/Release scope
+  for SA review.
+- **confirmed** — SA has confirmed the reviewed package; enables `.docx`/`.xlsx` download.
+- **archived** — removed from the active work queue (`is_active=false`); restorable via
+  unarchive.
 
-## 025E Project Document Visibility
-Keeps SOW/GSD documents tied to the existing Project Hours / SOW-GSD / Engineer Allocation area. PMs, Engineers, and Leads should access the same canonical documents through Project Workspace / Engineering Documents.
+Editing the Service Overview on an already-generated engagement resets its status to
+`draft` and clears `last_generated_at`, since the scope must be regenerated against the
+new description.
 
-## Design Rule
-One SOW/GSD document record. One uploaded file. Many controlled views. No duplicate SOW/GSD upload location.
+## Scope generation (Celar AI)
+`POST /api/module025/sow-gsd/{id}/generate` calls
+`CelarAiEnterprisePlatformService.ComposeAsync` (capability `SowGsdPlanning`) with the
+Service Overview, in `sow_draft` mode. The returned work packages are classified into the
+five Plan/Design/Implement/Validate/Release phases; each phase receives AI-suggested hours,
+an objective, and the full detail set (activities, technical tasks, deliverables,
+US Signal/customer responsibilities, prerequisites, dependencies, assumptions, open
+questions, acceptance criteria, validation steps, risks). If Celar AI can't support a
+phase's work with evidence, that phase's objective says so explicitly and its suggested
+hours stay at 0 — unsupported claims are never fabricated as generic scope.
 
-## Later Backend Wiring
-- Shared Claude provider endpoint.
-- Word template parsing and `.docx` generation.
-- Canonical SOW/GSD document lookup.
-- Signed SOW/GSD upload enforcement.
-- Sales-complete trigger.
-- Email to PTC and Executive.
-- PM/Engineer assignment email with SOW/GSD.
-- SOW-aware AI time-entry scope validation.
+AI-suggested hours (`suggested_hours`) and Solution-Architect-reviewed hours
+(`final_hours`) are stored as separate columns; only `final_hours` drives the confirmed
+GSD's level of effort.
 
-## 025F Dashboard Placement Fix
+## Confirmation requirements
+`POST /api/module025/sow-gsd/{id}/confirm` requires: a generated scope exists, a customer
+is selected or entered, an Account Executive is selected, a Resale person is selected, all
+five phases have an objective, and total `final_hours` is greater than zero.
 
-Status: Applied pending validation and commit.
+## Customer program / GSD template
+A `customer_program` of `toyota` or `hyundai` automatically selects the **HAEA Staff Aug
+GSD KUS UVO Telematics 1** template for GSD export; `standard` uses the default GSD
+template. This pairing is enforced by a database check constraint tying
+`customer_program` to `gsd_template_key`.
 
-Scope:
-- Move SOW Generator card into the dashboard module card grid.
-- Prevent orphan rendering above the application header.
-- Keep the SOW Generator workspace attached to the dashboard grid.
-- Hide the page context helper panel for the demo view.
+## Document export
+Confirmed engagements can be downloaded as:
 
-## 025G Stable Demo Fix
+- **SOW (`.docx`)** — a hand-built minimal OOXML Word document
+  (`Module025SowGsdDocumentExporter.CreateSowDocx`), not the OpenXML SDK.
+- **GSD (`.xlsx`)** — a ClosedXML workbook (`CreateGsdXlsx`) with a summary sheet, a
+  P-D-I-V-R detail sheet, and a scope/assumptions sheet.
 
-Status: Applied pending validation and commit.
+Both exports read from the same document model built from the confirmed engagement and its
+phase rows; there is no separate uploaded template file.
 
-Scope:
-- Customer field changed to onboarded-customer dropdown with API fallback.
-- Project Type now includes Service Request.
-- Added Save Signed Handoff + Trigger Email workflow control.
-- Signed handoff requires customer, project, SA review, signed SOW, GSD, and canonical document review.
-- Download draft now creates a Word-compatible `.doc` file.
-- Uploaded Word template becomes the selected template reference.
-- Claude prompt now instructs process-aligned scope and deliverable drafting based on the SA description.
-- Replaced previous endless-scroll rendering with stable one-time rendering and limited retries.
+## Database
+- `module025_sow_gsd_engagements` — one row per SOW/GSD engagement. `engagement_number`
+  (e.g. `SOW-2026-000123`) and `owner_user_id` are immutable after creation, enforced by
+  trigger `module025_protect_sow_gsd_identity`.
+- `module025_sow_gsd_phases` — exactly 5 rows per engagement (plan/design/implement/
+  validate/release), each with independent `suggested_hours` (AI) and `final_hours` (SA).
+- `module025_sow_gsd_events` — append-only audit trail (`created`, `ai_generated`,
+  `confirmed`, `reopened`, `archived`, `unarchived`).
 
-## 025H Demo Hardening
+Migration: `database/migrations/099_module025_sow_gsd_workspace.sql` · rollback:
+`database/rollback/099_module025_sow_gsd_workspace_rollback.sql`.
 
-Status: Applied pending validation and commit.
+## Frontend
+`src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx` — a persistent
+(non-hash-route) workspace: a work queue (active/archived tabs, search, a per-SA filter
+for managers/admins), an engagement editor with 900ms-debounced autosave and optimistic
+revision-conflict handling, the five phase editors, and confirm/reopen/archive/download
+actions.
 
-Scope:
-- Customer dropdown is seeded from existing Customer Directory database records during deployment.
-- Project Type includes Service Request.
-- Replaced prior Module 025 injected scripts with a bounded, stable renderer to stop endless scrolling.
-- Save Signed Handoff + Trigger Email validates customer, project, SA review, signed SOW, GSD, and canonical document review.
-- Download Word Draft produces a Word-compatible document.
-- Uploaded Word template becomes the selected template reference.
-- Claude prompt preview instructs process-aligned scope and deliverable drafting from the Solution Architect description.
+## API surface
+- `GET /api/module025/sow-gsd/bootstrap` — current user, access, customers, AE/resale
+  directories, visible SAs, static catalogs.
+- `GET /api/module025/sow-gsd` — list (`state=active|archived`, `ownerUserId`, `search`).
+- `POST /api/module025/sow-gsd` — create.
+- `GET /api/module025/sow-gsd/{id}` — read.
+- `PUT /api/module025/sow-gsd/{id}` — save (optimistic revision via `expectedRevision`).
+- `POST /api/module025/sow-gsd/{id}/generate` — Celar AI scope generation.
+- `POST /api/module025/sow-gsd/{id}/confirm`, `/reopen`, `/archive`, `/unarchive` —
+  lifecycle transitions.
+- `GET /api/module025/sow-gsd/{id}/sow.docx`, `/gsd.xlsx` — confirmed-only document export.
 
-## 025I SOW Route Isolation
+## Workflow placement
+- Module 024 validates signed SOW/GSD intake readiness.
+- Module 025 (this module) supplies the governed SOW/GSD authoring and export workspace.
+- Module 026 supplies CRM-originated context.
+- Module 027 prepares the signed handoff, PTC/Executive notification, and PM/Engineer
+  assignment trigger from a confirmed Module 025 package.
+- Module 028 uses the confirmed SOW/GSD scope context for SOW-aware AI time-entry
+  generation.
 
-Status: Applied pending validation and commit.
-
-Scope:
-- Isolate `#sow-generator` as a focused route.
-- Hide dashboard cards, including Notifications and the Module 025 launch card, while viewing the SOW Generator workspace.
-- Keep the SOW Generator dashboard card visible on `#dashboard`.
-- Stop the visual endless-scroll behavior caused by dashboard cards and SOW workspace rendering together.
-
-## 025J Parse-Safe Final Demo
-
-Status: Applied pending validation and commit.
-
-Scope:
-- Removed all prior duplicated/broken Module 025 injected blocks.
-- Replaced them with a single parse-safe Module 025 demo block.
-- Customer dropdown is seeded from Customer Directory database records.
-- Project Type includes Service Request.
-- `#sow-generator` is route-isolated so dashboard cards do not display above the SOW Generator.
-- Download Word Draft produces a Word-compatible `.doc`.
-- Signed handoff validates customer, project, Solution Architect, signed SOW, GSD, SA review, and canonical document review.
-- Claude prompt preview instructs process-aligned scope and deliverable drafting.
-
-## 025K Research-Backed SOW Demo
-
-Status: Applied pending validation and commit.
-
-Scope:
-- Recovered Module 025 into a single parse-safe block.
-- Added Research Actual Delivery Process workflow.
-- Added Process Research Brief section.
-- SOW draft generation now uses the research brief to create project scope and deliverables.
-- Customer dropdown is seeded from Customer Directory database records.
-- Project Type includes Service Request.
-- `#sow-generator` is route-isolated so dashboard cards do not display above the SOW Generator.
-- Download Word Draft produces a Word-compatible `.doc`.
-- Signed handoff validates customer, project, Solution Architect, research review, signed SOW, GSD, SA review, and canonical document review.
-
-## 025L Newline Format Fix
-
-Status: Applied pending validation and commit.
-
-Scope:
-- Fixed research brief and generated SOW sections so they render real line breaks instead of literal `\n`.
-- Added browser-state normalization so previously saved draft content is cleaned up on load.
-- Ensured Word-compatible download uses readable line breaks.
-
-## 025M Standalone SOW Route
-
-Status: Applied pending validation and commit.
-
-Scope:
-- Replaced all prior Module 025 injected blocks with a standalone route shell.
-- `#sow-generator` now displays as a focused full-page workspace overlay instead of rendering inside the dashboard grid.
-- Prevents the underlying app route, notifications card, dashboard card, and user-admin page from appearing behind or above the SOW Generator.
-- Keeps the Module 025 dashboard card available on `#dashboard`.
-- Keeps research-backed SOW generation, customer dropdown, Service Request project type, Word download, and signed handoff validation.
+## History
+This document originally tracked an earlier hash-route (`#sow-generator`) SOW Generator
+prototype (sub-passes 025A through 025M): dashboard-card injection, a Claude draft studio,
+a research-brief workflow, and several rendering/endless-scroll fixes, downloading a
+Word-compatible `.doc`. That prototype was fully replaced on 2026-08-30 by the persistent
+Module 025 SOW/GSD Workspace described above. The corresponding `docs/help/025*` articles
+for that prototype have been marked superseded rather than deleted.

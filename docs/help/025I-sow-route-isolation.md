@@ -1,9 +1,10 @@
-# 025I SOW Route Isolation
+# 025I SOW Route Isolation (Superseded)
 
-## Purpose
-Prevent dashboard cards from appearing above the SOW Generator workspace.
+This document described a route-isolation fix for an earlier hash-route (`#sow-generator`)
+SOW Generator prototype that no longer exists in the codebase. It was fully replaced on
+2026-08-30 by the persistent Module 025 SOW/GSD Workspace, a normal application route with
+no dashboard-overlay or endless-scroll behavior to isolate.
 
-## Behavior
-- On `#dashboard`, the SOW Generator card appears with other modules.
-- On `#sow-generator`, dashboard cards are hidden and the SOW Generator workspace is shown by itself.
-- This prevents the visual endless-scroll behavior caused by dashboard and route content rendering together.
+See [025A SOW & GSD Workspace](025A-sow-generator-dashboard-workspace.md) and
+[docs/production/025_SOW_GENERATOR_CLAUDE_REVIEW_WORKFLOW.md](../production/025_SOW_GENERATOR_CLAUDE_REVIEW_WORKFLOW.md)
+for the current implementation.
