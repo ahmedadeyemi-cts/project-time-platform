@@ -552,8 +552,12 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         {
             var refused = generation.Status == "project_planning_safety_refusal";
             var transient = generation.Status == "project_planning_ai_temporarily_unavailable";
-            var retry = transient && attempt < ProjectFlowHiveExecutionPolicy.MaximumAttempts
-                && DateTimeOffset.UtcNow.AddSeconds(30) < stored.DeadlineAt;
+            var retry = transient
+                && stored.DeadlineAt is { } deadline
+                && ProjectFlowHiveExecutionPolicy.CanRetry(
+                    attempt,
+                    deadline,
+                    DateTimeOffset.UtcNow);
             var retryLog = retry
                 ? $"AI route retry {attempt} is scheduled within the fixed two-attempt and five-minute budgets."
                 : transient

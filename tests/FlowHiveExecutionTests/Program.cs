@@ -106,6 +106,9 @@ Check(fingerprint != ProjectFlowHiveExecutionPolicy.Fingerprint(seed,Guid.NewGui
 Check(fingerprint != ProjectFlowHiveExecutionPolicy.Fingerprint(seed,actor,actor,"different","comprehensive","source"), "requested scope participates in identity");
 Check(!ProjectFlowHiveExecutionPolicy.CanAttempt(2,DateTimeOffset.UtcNow.AddMinutes(1),DateTimeOffset.UtcNow), "two-attempt budget is terminal");
 Check(!ProjectFlowHiveExecutionPolicy.CanAttempt(0,DateTimeOffset.UtcNow.AddSeconds(-1),DateTimeOffset.UtcNow), "expired operation cannot attempt inference");
+Check(ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(5),DateTimeOffset.UtcNow), "a first transient failure can retry when the full bounded request still fits");
+Check(!ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(4).AddSeconds(20),DateTimeOffset.UtcNow), "a late transient failure cannot start a retry that would outlive the run");
+Check(!ProjectFlowHiveExecutionPolicy.CanRetry(2,DateTimeOffset.UtcNow.AddMinutes(5),DateTimeOffset.UtcNow), "the retry budget remains capped at two attempts");
 Check(!ProjectFlowHiveExecutionPolicy.MatchesWorkingCopy(null,Guid.NewGuid()), "null starting version is not an overwrite wildcard");
 var module = typeof(ProjectFlowHiveExecutionPolicy).Assembly.GetType("ProjectTime.Api.Modules.ProjectFlowHiveAiPlannerOrchestrationModule")!;
 var save = module.GetMethod("SaveWorkingCopyAsync",BindingFlags.NonPublic|BindingFlags.Static)!;

@@ -11,7 +11,12 @@ public static class ProjectFlowHiveExecutionPolicy
     public const string Migration = "104_flowhive_bounded_ai_execution";
     public const int MaximumAttempts = 2;
     public static readonly TimeSpan OverallBudget = TimeSpan.FromMinutes(5);
-    public static readonly TimeSpan InferenceBudget = TimeSpan.FromMinutes(2);
+    // A source-grounded five-phase plan is one provider request. The previous
+    // two-minute slice expired while the private model was still assembling the
+    // detailed response, causing the worker to repeat the same request. Leave a
+    // small persistence/retry margin inside the existing five-minute run.
+    public static readonly TimeSpan InferenceBudget = TimeSpan.FromMinutes(4);
+    public static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
 
     public static string Fingerprint(ProjectFlowHivePlanRequest plan, Guid actual, Guid effective,
         string outcome, string detail, string sources) => Hash(JsonSerializer.Serialize(new
@@ -26,6 +31,9 @@ public static class ProjectFlowHiveExecutionPolicy
     public static bool IsActive(string status) => status is "queued" or "processing" or "generating";
     public static bool CanAttempt(int attempts, DateTimeOffset deadline, DateTimeOffset now) =>
         attempts >= 0 && attempts < MaximumAttempts && now < deadline;
+    public static bool CanRetry(int attempt, DateTimeOffset deadline, DateTimeOffset now) =>
+        CanAttempt(attempt, deadline, now)
+        && now + RetryDelay + InferenceBudget < deadline;
     public static bool MatchesWorkingCopy(Guid? expected, Guid? actual) => expected == actual;
 
     internal static string SelectionFingerprint(ProjectPlanningDocumentResolution documents) =>
