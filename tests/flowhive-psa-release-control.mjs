@@ -223,7 +223,8 @@ export const liveUatPmSecretWiringBranch = 'fix/flowhive-live-uat-pm-secret-wiri
 export const liveUatPmSecretWiringFiles = [
   '.github/workflows/projectpulse-deploy-test.yml',
   'scripts/release-test/prepare-protected-test-scope-manifests.sh',
-  'tests/flowhive-psa-release-control.mjs'
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
 ].sort();
 export const installedVerificationEnvironmentBase = '25868daaca1115dca4440f7acb3927ebdd6da3ae';
 export const installedVerificationEnvironmentBranch = 'fix/flowhive-installed-verification-environment-20260910';

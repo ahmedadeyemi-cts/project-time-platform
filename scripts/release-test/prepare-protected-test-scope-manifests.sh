@@ -107,6 +107,7 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-live-uat-pm-secret-wiring-20260912' ]]; 
 .github/workflows/projectpulse-deploy-test.yml
 scripts/release-test/prepare-protected-test-scope-manifests.sh
 tests/flowhive-psa-release-control.mjs
+tests/flowhive-psa-release-workflow.test.py
 FILES
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
   cat >> "$CIT/allowed-release-files" <<'FILES'

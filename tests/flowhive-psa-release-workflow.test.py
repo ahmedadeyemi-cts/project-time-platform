@@ -18,6 +18,7 @@ NEW_NAMES={
 }
 STABILIZATION_BRANCH='fix/flowhive-protected-cutover-20260910'
 CANONICAL_DISPATCH_BRANCH='control/flowhive-canonical-dispatch-20260911'
+LIVE_UAT_PM_SECRET_WIRING_BRANCH='fix/flowhive-live-uat-pm-secret-wiring-20260912'
 
 class UniqueKeyLoader(yaml.BaseLoader):
     def construct_mapping(self,node,deep=False):
@@ -65,6 +66,9 @@ def verify(doc):
     assert 'database/rollback/107_module_066_operation_authorization_and_raid_actor_rollback.sql' in release_guard['run']
     assert byid['psa_live_uat']['working-directory']=='control'
     assert byid['psa_live_uat']['timeout-minutes']=='20'
+    if os.environ.get('GITHUB_HEAD_REF') == LIVE_UAT_PM_SECRET_WIRING_BRANCH:
+        assert byid['psa_live_uat']['env']['PROJECTPULSE_M025_PM_EMAIL']=='${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}'
+        assert byid['psa_live_uat']['env']['PROJECTPULSE_M025_PM_PASSWORD']=='${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}'
     assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true'"
     assert byid['module025_fixture']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.uat.outcome == 'success' }}"
     assert byid['module025_uat']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.module025_fixture.outcome == 'success' }}"
@@ -286,6 +290,7 @@ class WorkflowContract(unittest.TestCase):
         before=old['jobs']['deploy']['steps']; after=self.doc['jobs']['deploy']['steps']
         stabilization = os.environ.get('GITHUB_HEAD_REF') == STABILIZATION_BRANCH
         canonical_dispatch = os.environ.get('GITHUB_HEAD_REF') == CANONICAL_DISPATCH_BRANCH
+        pm_secret_wiring = os.environ.get('GITHUB_HEAD_REF') == LIVE_UAT_PM_SECRET_WIRING_BRANCH
         old_steps={step['name']:step for step in before}
         self.assertEqual(len(old_steps),len(before))
         if stabilization:
@@ -319,6 +324,10 @@ class WorkflowContract(unittest.TestCase):
                     b['env'].pop('MODULE025_UAT_EXPIRES_AT',None)
             if reviewed and b.get('id') == 'assigned_work_uat':
                 b['env'].pop('RELIABILITY_RELEASE_COMMIT',None)
+            if pm_secret_wiring and b.get('id') == 'psa_live_uat':
+                for key in ('PROJECTPULSE_M025_PM_EMAIL','PROJECTPULSE_M025_PM_PASSWORD'):
+                    self.assertEqual(b['env'].get(key), '${{ secrets.' + key + ' }}')
+                    a['env'][key]=b['env'][key]
             if successor:
                 for key in ['if','run']:
                     if key in b:
