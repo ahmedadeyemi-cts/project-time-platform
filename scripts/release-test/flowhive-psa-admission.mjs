@@ -194,7 +194,7 @@ export async function authorize() {
   assert.ok(Array.isArray(fileResponse) && fileResponse.length > 0, 'The candidate file inventory is missing.');
   const candidateFiles = fileResponse.map(file => file.filename).sort();
   const workflowExceptions = verifyWorkflowException(approval, pr, candidateFiles,
-    git('show', `${pr.base.sha}:${approval.workflowExceptions[0].workflow}`));
+    execFileSync('git', ['show', `${pr.base.sha}:${approval.workflowExceptions[0].workflow}`], { encoding: 'utf8', timeout: 30000 }));
   const runs = [];
   for (let page = 1; page <= 10; page++) {
     const result = await github(`/repos/${repository}/actions/runs?head_sha=${approval.sha}&event=pull_request&per_page=100&page=${page}`);
