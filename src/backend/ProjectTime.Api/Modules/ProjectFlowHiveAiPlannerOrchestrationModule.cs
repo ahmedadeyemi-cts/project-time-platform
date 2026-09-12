@@ -221,7 +221,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         await using var command = new NpgsqlCommand($"""
             UPDATE {RunTable} SET status='needs_attention',phase='deadline_exceeded',progress_percent=100,
                 completed_at=NOW(),updated_at=NOW(),row_version=gen_random_uuid(),
-                blockers='["The five-minute planner deadline expired. Existing work is preserved; inspect the last stage before an explicit retry."]'::jsonb
+                blockers='["The twelve-minute planner deadline expired. Existing work is preserved; inspect the last stage before an explicit retry."]'::jsonb
             WHERE status IN ('queued','processing','generating') AND (deadline_at IS NULL OR deadline_at<=clock_timestamp());
             """, connection);
         command.CommandTimeout = 5;
@@ -559,7 +559,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                     deadline,
                     DateTimeOffset.UtcNow);
             var retryLog = retry
-                ? $"AI route retry {attempt} is scheduled within the fixed two-attempt and five-minute budgets."
+                ? $"AI route retry {attempt} is scheduled within the fixed two-attempt and twelve-minute budgets."
                 : transient
                     ? "The bounded AI route retry limit was reached. Review the evidence status and start AI Planner again when private generation is available."
                     : generation.Message;

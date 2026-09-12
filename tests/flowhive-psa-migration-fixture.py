@@ -107,9 +107,12 @@ if successor_staging:
     assert approved_successor is not None and approved_successor['sha256']==successor_hash
     migration_entries=approval['migrations']
     selected_sha=pr['head']['sha']
-elif pr.get('head',{}).get('ref')=='feature/flowhive-enterprise-psa-revamp-20260906':
+elif pr.get('head',{}).get('ref') in {
+    'feature/flowhive-enterprise-psa-revamp-20260906',
+    'fix/flowhive-planner-provider-budget-20260912',
+}:
     assert os.environ.get('GITHUB_EVENT_NAME')=='pull_request'
-    assert pr['number']==872
+    assert pr['number']==(937 if pr['head']['ref']=='fix/flowhive-planner-provider-budget-20260912' else 872)
     assert pr['head']['repo']['full_name']=='ahmedadeyemi-cts/project-time-platform'
     selected_sha=pr['head']['sha']
 assert subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()==selected_sha

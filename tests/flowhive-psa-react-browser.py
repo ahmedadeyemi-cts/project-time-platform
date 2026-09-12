@@ -103,7 +103,7 @@ async def main(readback_mode=None):
                 elif path.endswith('/ai-planner/runs') and request.method=='POST':
                     posted=request.post_data_json;state['posts'].append(posted)
                     state['run']={'runId':RUN,'projectId':A,'terminal':False,'status':'processing','phase':'extract_scope','progressPercent':30,
-                        'createdAt':'2026-09-06T21:00:00Z','deadlineAt':'2026-09-06T21:05:00Z','attemptCount':1,
+                        'createdAt':'2026-09-06T21:00:00Z','deadlineAt':'2026-09-06T21:12:00Z','attemptCount':1,
                         'workingDraft':{'persisted':False},'blockers':[],'warnings':[]}
                     body=state['run'];status=202
                 elif path.endswith('/cancel'):

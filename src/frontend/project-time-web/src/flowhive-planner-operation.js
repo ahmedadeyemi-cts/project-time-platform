@@ -10,7 +10,7 @@ export function abortableDelay(milliseconds, signal) {
 
 /** Observes an existing durable run. It never creates, retries or cancels server work. */
 export async function observePlanner({ projectId, initial, read, onUpdate, signal,
-  delay = abortableDelay, now = Date.now, maximumObservationMs = 330000 }) {
+  delay = abortableDelay, now = Date.now, maximumObservationMs = 750000 }) {
   if (!projectId || !initial?.runId || initial.projectId !== projectId) throw new Error('Planner project/run identity mismatch.');
   if (signal?.aborted) throw new DOMException('Observation stopped', 'AbortError');
   if (typeof initial.terminal !== 'boolean') throw new Error('Planner response contract invalid.');

@@ -53,7 +53,7 @@ in finalization rolls back every write. An identical replay returns its original
 receipt; a changed decision cannot reuse it. The rollback refuses to erase review
 evidence after use. The API does not enable apply before the migration receipt.
 
-Human review is not another inference attempt and does not extend the AI deadline.
+Human review is not another inference attempt and does not extend the twelve-minute AI deadline.
 The browser does not retry uncertain writes. It verifies nested project identities,
 run identity, preview validity and the exact working-copy receipt before adoption.
 Read-only review recovery is available after a known conflict. An ambiguous save

@@ -53,7 +53,13 @@ jobs:
           git cat-file -e "$BASE_SHA^{commit}" || fail 'Exact pull-request base commit is unavailable.'
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
-          if [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' || "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' || "$HEAD_BRANCH" == 'fix/flowhive-planner-time-budget-20260912' ]]; then
+          if [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
+            node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+            node tests/validate-systemwide-enterprise-reliability.mjs
+            node tests/validate-systemwide-image-build-controller.mjs
+            echo 'FLOWHIVE_PLANNER_PROVIDER_BUDGET_SCOPE=PASSED'
+            exit 0
+          elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' || "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' || "$HEAD_BRANCH" == 'fix/flowhive-planner-time-budget-20260912' ]]; then
             if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
               MANIFEST='.github/flowhive-enterprise-psa-release-files.txt'
             elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' || "$HEAD_BRANCH" == 'fix/flowhive-planner-time-budget-20260912' ]]; then

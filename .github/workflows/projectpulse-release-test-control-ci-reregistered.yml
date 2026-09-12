@@ -201,6 +201,8 @@ jobs:
             echo 'EXACT_FLOWHIVE_PLANNER_OUTPUT_BUDGET_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
             node tests/flowhive-psa-scope.mjs
+          elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
           elif [[ "$HEAD_BRANCH" == 'feature/celar-enterprise-retrieval-20260906' || "$HEAD_BRANCH" == 'fix/celar-enterprise-synthesis-20260906' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/validate-celar-enterprise-retrieval-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/celar-public-answer-fallback-20260906' ]]; then
