@@ -178,6 +178,35 @@ foreach (var phase in new[] { "Plan", "Design", "Implement", "Validate", "Releas
 {
     Assert(parsedModule025.Tasks.Count(task => task.Phase == phase) == 2, $"module025_{phase.ToLowerInvariant()}_coverage");
 }
+
+var phaseLocalWbsPlans = new List<PulseAiPrivateFlowHivePlan>();
+foreach (var phase in new[] { "Plan", "Design", "Implement", "Validate", "Release" })
+{
+    var phaseTasks = parsedModule025.Tasks
+        .Where(task => task.Phase == phase)
+        .Select((task, index) => task with
+        {
+            // A provider may restart WBS numbering inside each bounded phase
+            // response. Assembly, not the model, owns global proposal identity.
+            Wbs = $"1.{index + 1}",
+            Predecessors = index == 1 ? ["1.1"] : []
+        })
+        .ToArray();
+    phaseLocalWbsPlans.Add(parsedModule025 with { Tasks = phaseTasks });
+}
+var assembledPhaseLocalWbs = PulseAiPrivateRagService.AssembleModule025PhasePlans(phaseLocalWbsPlans);
+Assert(assembledPhaseLocalWbs.Tasks.Select(task => task.Wbs).Distinct(StringComparer.OrdinalIgnoreCase).Count()
+       == assembledPhaseLocalWbs.Tasks.Count,
+    "module025_phase_local_wbs_is_normalized_without_duplicate_proposal_ids");
+Assert(assembledPhaseLocalWbs.Tasks.Count(task => task.Phase == "Plan" && task.Wbs == "1.1") == 1
+       && assembledPhaseLocalWbs.Tasks.Count(task => task.Phase == "Design" && task.Wbs == "2.1") == 1
+       && assembledPhaseLocalWbs.Tasks.Count(task => task.Phase == "Release" && task.Wbs == "5.2") == 1,
+    "module025_phase_local_wbs_receives_deterministic_phase_scope");
+Assert(assembledPhaseLocalWbs.Tasks
+        .Where(task => task.Phase == "Design" && task.Wbs == "2.2")
+        .SelectMany(task => task.Predecessors)
+        .Contains("1.1", StringComparer.OrdinalIgnoreCase),
+    "module025_phase_local_predecessor_resolves_to_prior_phase");
 Assert(parsedModule025.Tasks.All(task => task.CitationIds.SequenceEqual(new[] { 1 })), "module025_server_authorized_citation_bound");
 Assert(parsedModule025.Tasks.All(task => task.EstimatedDurationDays > 0m && task.EstimatedHours is > 0m), "module025_duration_and_effort_normalized");
 Assert(parsedModule025.Tasks.All(task => (task.DetailedSteps?.Count ?? 0) >= 2), "module025_structured_and_string_steps_preserved");

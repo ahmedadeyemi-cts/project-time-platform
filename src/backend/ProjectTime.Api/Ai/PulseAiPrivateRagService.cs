@@ -1655,20 +1655,7 @@ public sealed class PulseAiPrivateRagService
                 logger?.LogInformation("Module025 phase validated. CorrelationId={CorrelationId} Phase={Phase} WorkPackages={WorkPackages} CompletedPhases={CompletedPhases} ElapsedSeconds={ElapsedSeconds}",
                     request.CorrelationId, phase, accepted.Tasks.Count, plans.Count, (int)elapsed.Elapsed.TotalSeconds);
             }
-            var combined = plans[0] with
-            {
-                Objective = Limit(string.Join(" ", plans.Select(plan => plan.Objective).Distinct()), 4_000, string.Empty),
-                Tasks = plans.SelectMany(plan => plan.Tasks).ToArray(),
-                Milestones = plans.SelectMany(plan => plan.Milestones).ToArray(),
-                Dependencies = plans.SelectMany(plan => plan.Dependencies).Distinct().ToArray(),
-                RequiredRoles = plans.SelectMany(plan => plan.RequiredRoles).Distinct().ToArray(),
-                Assumptions = plans.SelectMany(plan => plan.Assumptions).Distinct().ToArray(),
-                Risks = plans.SelectMany(plan => plan.Risks).Distinct().ToArray(),
-                OutOfScopeItems = plans.SelectMany(plan => plan.OutOfScopeItems).Distinct().ToArray(),
-                OpenQuestions = plans.SelectMany(plan => plan.OpenQuestions).Distinct().ToArray(),
-                Conflicts = plans.SelectMany(plan => plan.Conflicts).Distinct().ToArray(),
-                Confidence = plans.Min(plan => plan.Confidence)
-            };
+            var combined = AssembleModule025PhasePlans(plans);
             var content = JsonSerializer.Serialize(combined);
             if (content.Length > Module025SowMaximumAnswerCharacters || combined.Tasks.Count > 100)
                 return last! with { Status = "private_model_failed", Content = string.Empty,
@@ -1697,6 +1684,101 @@ public sealed class PulseAiPrivateRagService
             logger?.LogInformation("Module025 generation attempt ended. CorrelationId={CorrelationId} LastPhase={Phase} CompletedPhases={CompletedPhases} ElapsedSeconds={ElapsedSeconds}",
                 request.CorrelationId, currentPhase, plans.Count, (int)elapsed.Elapsed.TotalSeconds);
         }
+    }
+
+    internal static PulseAiPrivateFlowHivePlan AssembleModule025PhasePlans(
+        IReadOnlyList<PulseAiPrivateFlowHivePlan> phasePlans)
+    {
+        if (phasePlans.Count != Module025DeliveryPhases.Length)
+            throw new JsonException("Module 025 requires one validated response for every delivery phase.");
+
+        var rows = new List<(PulseAiPrivateFlowHiveTask Task, int PhaseIndex, string SourceWbs, string CanonicalWbs)>();
+        for (var phaseIndex = 0; phaseIndex < Module025DeliveryPhases.Length; phaseIndex++)
+        {
+            var phase = Module025DeliveryPhases[phaseIndex];
+            var phaseTasks = phasePlans[phaseIndex].Tasks
+                .Where(task => string.Equals(task.Phase, phase, StringComparison.Ordinal))
+                .ToArray();
+            if (phaseTasks.Length < 2)
+                throw new JsonException($"Module 025 requires at least two work packages in the {phase} phase.");
+
+            for (var taskIndex = 0; taskIndex < phaseTasks.Length; taskIndex++)
+            {
+                var sourceWbs = phaseTasks[taskIndex].Wbs.Trim();
+                rows.Add((phaseTasks[taskIndex], phaseIndex, sourceWbs,
+                    $"{phaseIndex + 1}.{taskIndex + 1}"));
+            }
+        }
+
+        var bySourceWbs = rows
+            .GroupBy(row => row.SourceWbs, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+        var unresolved = new List<string>();
+        var normalized = rows.Select(row =>
+        {
+            var predecessors = new List<string>();
+            foreach (var predecessor in row.Task.Predecessors ?? [])
+            {
+                var reference = predecessor.Trim();
+                if (reference.Length == 0) continue;
+
+                bySourceWbs.TryGetValue(reference, out var candidates);
+                var currentPhase = candidates?
+                    .Where(candidate => candidate.PhaseIndex == row.PhaseIndex)
+                    .ToArray() ?? [];
+                var priorPhases = candidates?
+                    .Where(candidate => candidate.PhaseIndex < row.PhaseIndex)
+                    .OrderByDescending(candidate => candidate.PhaseIndex)
+                    .ToArray() ?? [];
+                var usesCurrentPhaseConvention = reference.StartsWith(
+                    $"{row.PhaseIndex + 1}.", StringComparison.Ordinal);
+                (PulseAiPrivateFlowHiveTask Task, int PhaseIndex, string SourceWbs, string CanonicalWbs)? target =
+                    usesCurrentPhaseConvention
+                        ? currentPhase.FirstOrDefault()
+                        : priorPhases.FirstOrDefault();
+                if (target is null && !usesCurrentPhaseConvention)
+                    target = currentPhase.FirstOrDefault();
+
+                if (target is null || string.Equals(target.Value.CanonicalWbs, row.CanonicalWbs, StringComparison.Ordinal))
+                {
+                    unresolved.Add($"{row.CanonicalWbs} predecessor {reference}");
+                    continue;
+                }
+
+                predecessors.Add(target.Value.CanonicalWbs);
+            }
+
+            return row.Task with
+            {
+                Wbs = row.CanonicalWbs,
+                Predecessors = predecessors.Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            };
+        }).ToArray();
+
+        var dependencyQuestions = unresolved
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(value =>
+                $"The generated proposal included an unresolvable or self-referencing predecessor ({value}); it was not invented or retained and requires PM/Engineering review.")
+            .ToArray();
+        var first = phasePlans[0];
+        return first with
+        {
+            Objective = Limit(string.Join(" ", phasePlans.Select(plan => plan.Objective).Distinct()), 4_000, string.Empty),
+            Tasks = normalized,
+            Milestones = phasePlans.SelectMany(plan => plan.Milestones).ToArray(),
+            Dependencies = phasePlans.SelectMany(plan => plan.Dependencies).Distinct().ToArray(),
+            RequiredRoles = phasePlans.SelectMany(plan => plan.RequiredRoles).Distinct().ToArray(),
+            Assumptions = phasePlans.SelectMany(plan => plan.Assumptions).Distinct().ToArray(),
+            Risks = phasePlans.SelectMany(plan => plan.Risks).Distinct().ToArray(),
+            OutOfScopeItems = phasePlans.SelectMany(plan => plan.OutOfScopeItems).Distinct().ToArray(),
+            OpenQuestions = phasePlans.SelectMany(plan => plan.OpenQuestions)
+                .Concat(dependencyQuestions)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(80)
+                .ToArray(),
+            Conflicts = phasePlans.SelectMany(plan => plan.Conflicts).Distinct().ToArray(),
+            Confidence = phasePlans.Min(plan => plan.Confidence)
+        };
     }
 
     private static string Module025PhaseSystemInstruction(
