@@ -12,22 +12,21 @@ The repository owner may post this exact command on PR #887 after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 95abbb0aa2445a33fda68e9de542f9446c3e2204
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 2cf8cf49af86bd7a802c467785ddb36829649789
 ```
 
 The admission workflow executes main-owned code only. It checks the exact open PR #887,
-repository, successor branch, candidate SHA, 22 required successful exact-SHA PR workflows,
+repository, successor branch, candidate SHA, 15 required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
 feature branch is not renamed or implicitly approved by a prefix match.
 
-This combined candidate includes PR891 at `2ebae9f12660a3def85ba39d43fde528275cc0eb`
-through integration commit `21075bc35bc1f7071d6c598f46666c7f18649449`, current-main
-reconciliation `e0b8fa3f2b19009fb865eb5f50a07101461e39bf`, and the final CI/scope repair
-`95abbb0aa2445a33fda68e9de542f9446c3e2204`. Its trusted source base is current main
-`d2262ccbef31800883589197d03122bd51bb87cc`; migrations 103/104/105/106 retain their
-reviewed SHA-256 values.
+This successor is PR947, merged to trusted main as `f8cf17a022b008f7fee81f7f2226e774c3056e69`,
+and carries the phase-local WBS identity correction at application commit
+`2cf8cf49af86bd7a802c467785ddb36829649789`. Its trusted source base is that merge commit;
+migrations 103/104/105/106/107 retain their reviewed SHA-256 values. PR891 and the existing
+FlowHive/SOW application scope remain in the merged ancestry.
 
 The supervisor shares the existing admission lock and refuses every unresolved
 workflow run before the single dispatch write. This keeps the native Test
