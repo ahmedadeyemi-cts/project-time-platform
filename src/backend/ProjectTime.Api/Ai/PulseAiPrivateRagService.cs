@@ -58,6 +58,13 @@ public sealed class PulseAiPrivateRagService
             _ => configuredMaximum
         };
 
+    // FlowHive and Module 025 both require the same source-grounded,
+    // five-phase detailed contract. Keep the provider work bounded per phase
+    // for FlowHive as well; a single twelve-thousand-token completion can sit
+    // behind the private gateway until the live planner operation expires.
+    internal static bool ShouldGenerateBoundedPhasePlan(bool flowHive, bool hasAuthoritativeScope) =>
+        flowHive || hasAuthoritativeScope;
+
     public async Task<object> GetReadinessAsync(CancellationToken cancellationToken = default)
     {
         var options = Options();
@@ -591,7 +598,8 @@ public sealed class PulseAiPrivateRagService
                     ? 0.05m
                     : flowHive ? 0.15m : query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature ? 0.05m : 0.10m,
                 CorrelationId: query.CorrelationId);
-            var model = usePrivateModelWhenAvailable && authoritativeSource is not null
+            var boundedPhasePlan = ShouldGenerateBoundedPhasePlan(flowHive, authoritativeSource is not null);
+            var model = usePrivateModelWhenAvailable && boundedPhasePlan
                 ? await GenerateModule025PhasesCoreAsync(modelRequest, retrieval,
                     (phaseRequest, token) => _model.GenerateAsync(phaseRequest,
                         options with { MaximumAnswerCharacters = Module025SowMaximumAnswerCharacters }, token),
@@ -618,7 +626,7 @@ public sealed class PulseAiPrivateRagService
                         retrieval,
                         model,
                         options,
-                        validateModule025DetailedPlan: authoritativeSource is not null)
+                        validateModule025DetailedPlan: authoritativeSource is not null || flowHive)
                     : ParseDetailedAnswer(answerRunId, query, retrieval, model, options);
             }
             else if ((flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode))
@@ -1815,8 +1823,8 @@ public sealed class PulseAiPrivateRagService
         PulseAiPrivateRetrievalResult retrieval,
         IReadOnlyList<string> requiredPhases)
     {
-        if (retrieval.Chunks.Count != 1)
-            throw new JsonException("Module 025 requires exactly one server-authorized Service Overview citation.");
+        if (retrieval.Chunks.Count == 0)
+            throw new JsonException("A detailed phase plan requires at least one server-authorized source citation.");
 
         using var document = JsonDocument.Parse(content, new JsonDocumentOptions { MaxDepth = 128 });
         var root = document.RootElement;
