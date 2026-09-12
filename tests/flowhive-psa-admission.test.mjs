@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifySourceDrift, repository, candidateBranch, candidatePullRequest } from '../scripts/release-test/flowhive-psa-admission.mjs';
-import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, protectedTestReleaseLane } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
+import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, protectedTestReleaseLane, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, successorApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
@@ -611,6 +611,17 @@ test('terminal skipped recovery rejects missing or mismatched dispatch receipts'
   mismatched.reservationRecovery.dispatchReceipt.deploymentRunId += 1;
   assert.throws(() => verifyProtectedCutoverAuthorization(mismatched, new Date('2026-09-10T19:05:00Z')),
     /PROTECTED_CUTOVER_DISPATCH_RECEIPT_DEPLOYMENT_RUN/);
+});
+test('dispatch receipt parser reads a real ZIP from non-seekable stdin and rejects malformed archives', () => {
+  const expected = { schema: 'flowhive-psa-dispatch-attempt-v1', run: { id: 9022 } };
+  const archive = execFileSync('python3', ['-c', [
+    'import io, sys, zipfile',
+    'buffer = io.BytesIO()',
+    "with zipfile.ZipFile(buffer, 'w') as archive: archive.writestr('flowhive-psa-dispatch-attempt.json', sys.stdin.read())",
+    'sys.stdout.buffer.write(buffer.getvalue())'
+  ].join('\n')], { input: JSON.stringify(expected) });
+  assert.deepEqual(parseDispatchReceiptArchive(archive), expected);
+  assert.throws(() => parseDispatchReceiptArchive(Buffer.from('not-a-zip')), /PROTECTED_CUTOVER_DISPATCH_RECEIPT_PAYLOAD_INVALID/);
 });
 test('protected lifecycle keeps the active operating state after one approved bootstrap', async () => {
   const fixture = protectedCutoverApi({ state: 'disabled_manually' });
