@@ -85,5 +85,19 @@
     "approvedAt": "2026-09-12T10:28:00Z",
     "expiresAt": "2026-09-12T10:43:00Z"
   },
+  "reservationRecovery": {
+    "status": "terminal-skipped-no-mutation",
+    "commentId": 5645243064,
+    "admissionRunId": 34687715702,
+    "admissionRunAttempt": 1,
+    "candidateSha": "86c9be03b87e588eeec47492e35131177716263b",
+    "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911",
+    "controllerSha": "e2289c617b69b1a563ee8bd6f01aaa5c54965c6a",
+    "observedAt": "2026-09-12T10:10:03.389Z",
+    "dispatchSubmitted": true,
+    "controllerMutation": false,
+    "deploymentRunId": 34687729664,
+    "deploymentRunAttempt": 1
+  },
   "activationDecision": "approved"
 }

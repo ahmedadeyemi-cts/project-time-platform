@@ -549,6 +549,41 @@ test('reviewed recovery consumes the stale bot reservation before creating one c
   assert.equal(claim.commentId, 7021);
   assert.equal(comments.length, 2);
 });
+test('reviewed recovery consumes a terminal skipped dispatch before creating one current-controller claim', async () => {
+  const control = 'f'.repeat(40);
+  const oldControl = 'b'.repeat(40);
+  const reference = protectedCutoverAuthorization().approvalReference;
+  const oldBody = `FLOWHIVE_PSA_ADMISSION_CLAIM_V1 candidate=${approval.sha} approval=${reference} controller=${oldControl} run=9020 attempt=1 status=reserved observedAt=2026-09-12T10:10:03.389Z`;
+  const comments = [{ id: 7022, body: oldBody, user: { login: 'github-actions[bot]', id: 41898282 } }];
+  const recovery = { commentId: 7022, admissionRunId: 9020, admissionRunAttempt: 1,
+    candidateSha: approval.sha, approvalReference: reference, controllerSha: oldControl,
+    observedAt: '2026-09-12T10:10:03.389Z', status: 'terminal-skipped-no-mutation',
+    dispatchSubmitted: true, controllerMutation: false, deploymentRunId: 9022, deploymentRunAttempt: 1 };
+  const api = async (url, method = 'GET', body) => {
+    if (url.startsWith(`issues/${candidatePullRequest}/comments?`)) return comments;
+    if (url === 'issues/comments/7022') return comments[0];
+    if (url === `issues/${candidatePullRequest}/comments` && method === 'POST') {
+      const comment = { id: 7023, body: body.body, user: { login: 'github-actions[bot]', id: 41898282 } };
+      comments.push(comment); return comment;
+    }
+    if (url === 'actions/runs/9020') return { id: 9020, event: 'issue_comment', head_branch: 'main', head_sha: oldControl,
+      run_attempt: 1, actor: { login: 'ahmedadeyemi-cts' }, status: 'completed', conclusion: 'success' };
+    if (url === 'actions/runs/9021') return { id: 9021, event: 'issue_comment', head_branch: 'main', head_sha: control,
+      run_attempt: 1, actor: { login: 'ahmedadeyemi-cts' } };
+    if (url === 'actions/runs/9022') return { id: 9022, workflow_id: 315562561, event: 'workflow_dispatch',
+      head_branch: 'main', head_sha: oldControl, run_attempt: 1, status: 'completed', conclusion: 'skipped' };
+    if (url === 'actions/runs/9022/jobs?per_page=100') return { jobs: [{ id: 90220, status: 'completed', conclusion: 'skipped' }] };
+    if (url === 'actions/runs/9022/pending_deployments') return [];
+    throw new Error(`UNEXPECTED_TERMINAL_SKIP_RECOVERY_REQUEST ${method} ${url}`);
+  };
+  const claim = await claimSingleUse(api, { candidateSha: approval.sha, controlSha: control,
+    approvalReference: reference, admissionRunId: 9021, admissionRunAttempt: 1, reservationRecovery: recovery });
+  assert.deepEqual(claim.supersededReservations, [{ commentId: 7022, admissionRunId: 9020,
+    controllerSha: oldControl, observedAt: recovery.observedAt,
+    disposition: 'terminal-skipped-no-mutation', deploymentRunId: 9022 }]);
+  assert.equal(claim.commentId, 7023);
+  assert.equal(comments.length, 2);
+});
 test('protected lifecycle keeps the active operating state after one approved bootstrap', async () => {
   const fixture = protectedCutoverApi({ state: 'disabled_manually' });
   const directory = fs.mkdtempSync('/tmp/flowhive-protected-cutover-lifecycle-success-');

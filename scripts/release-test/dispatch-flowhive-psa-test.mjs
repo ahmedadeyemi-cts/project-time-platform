@@ -278,6 +278,19 @@ export function verifyProtectedCutoverAuthorization(authorization, now = new Dat
   }, 'PROTECTED_CUTOVER_WORKFLOW');
   assert.equal(authorization?.serverDispatchInputsConfirmed, false,
     'Original historical dispatch inputs are not server-confirmed and must remain unused.');
+  if (authorization?.reservationRecovery) {
+    const recovery = authorization.reservationRecovery;
+    assert.equal(recovery.status, 'terminal-skipped-no-mutation', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_STATUS');
+    assert.equal(recovery.dispatchSubmitted, true, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_DISPATCH');
+    assert.equal(recovery.controllerMutation, false, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_MUTATION');
+    assert.equal(recovery.candidateSha, approval.sha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_CANDIDATE');
+    assert.equal(recovery.approvalReference, authorization.approvalReference, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_REFERENCE');
+    assert.match(recovery.controllerSha || '', dispatchSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_CONTROLLER');
+    assert.ok(Number.isSafeInteger(recovery.commentId) && recovery.commentId > 0, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_COMMENT');
+    assert.ok(Number.isSafeInteger(recovery.admissionRunId) && recovery.admissionRunId > 0, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_ADMISSION_RUN');
+    assert.ok(Number.isSafeInteger(recovery.deploymentRunId) && recovery.deploymentRunId > 0, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_DEPLOYMENT_RUN');
+    assert.notEqual(recovery.admissionRunId, recovery.deploymentRunId, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_RUN_COLLISION');
+  }
   verifyNativeEnvironmentProtectionContract(authorization?.environment);
   assert.deepEqual(authorization?.requests?.map(request => request.runId), protectedCutoverRunIds,
     'PROTECTED_CUTOVER_REQUEST_SET');
@@ -1020,8 +1033,9 @@ async function verifyClaimExecution(api, { runId, runAttempt, controlSha }) {
 }
 
 async function verifyStaleReservationRecovery(api, recovery, { candidateSha, approvalReference, controlSha }) {
-  assert.equal(recovery?.status, 'pre-dispatch-failed', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_STATUS');
-  assert.equal(recovery?.dispatchSubmitted, false, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DISPATCH');
+  const terminalSkipped = recovery?.status === 'terminal-skipped-no-mutation';
+  assert.ok(terminalSkipped || recovery?.status === 'pre-dispatch-failed', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_STATUS');
+  assert.equal(recovery?.dispatchSubmitted, terminalSkipped, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DISPATCH');
   assert.equal(recovery?.controllerMutation, false, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_CONTROLLER');
   assert.equal(recovery?.candidateSha, candidateSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_CANDIDATE');
   assert.equal(recovery?.approvalReference, approvalReference, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_REFERENCE');
@@ -1035,7 +1049,12 @@ async function verifyStaleReservationRecovery(api, recovery, { candidateSha, app
   assert.equal(parsed.candidateSha, candidateSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_CANDIDATE');
   assert.equal(parsed.approvalReference, approvalReference, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_REFERENCE');
   assert.equal(parsed.controlSha, recovery.controllerSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_CONTROLLER');
-  assert.equal(parsed.runId, null, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_RUN');
+  if (terminalSkipped) {
+    assert.equal(parsed.runId, recovery.admissionRunId, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_RUN');
+    assert.equal(parsed.runAttempt, recovery.admissionRunAttempt, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_ATTEMPT');
+  } else {
+    assert.equal(parsed.runId, null, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_RUN');
+  }
   assert.equal(parsed.observedAt, recovery.observedAt, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MARKER_TIME');
   const run = await api(`actions/runs/${recovery.admissionRunId}`, 'GET', undefined,
     'single-use-claim-recovery-run-read');
@@ -1046,9 +1065,37 @@ async function verifyStaleReservationRecovery(api, recovery, { candidateSha, app
   assert.equal(Number(run?.run_attempt), Number(recovery.admissionRunAttempt), 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_ATTEMPT');
   assert.equal(run?.actor?.login, trustedClaimAuthor.login, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_ACTOR');
   assert.equal(run?.status, 'completed', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_STATUS');
-  assert.equal(run?.conclusion, 'failure', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_CONCLUSION');
+  assert.equal(run?.conclusion, terminalSkipped ? 'success' : 'failure', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUN_CONCLUSION');
+  if (terminalSkipped) {
+    assert.ok(Number.isSafeInteger(recovery.deploymentRunId) && recovery.deploymentRunId > 0,
+      'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_RUN');
+    assert.ok(Number.isSafeInteger(recovery.deploymentRunAttempt) && recovery.deploymentRunAttempt > 0,
+      'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_ATTEMPT');
+    assert.notEqual(recovery.deploymentRunId, recovery.admissionRunId,
+      'PROTECTED_CUTOVER_RESERVATION_RECOVERY_RUNS_MUST_DIFFER');
+    const deployment = await api(`actions/runs/${recovery.deploymentRunId}`, 'GET', undefined,
+      'single-use-claim-recovery-deployment-run-read');
+    assert.equal(Number(deployment?.id), recovery.deploymentRunId, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_ID');
+    assert.equal(deployment?.workflow_id, workflowId, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_WORKFLOW');
+    assert.equal(deployment?.event, 'workflow_dispatch', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_EVENT');
+    assert.equal(deployment?.head_branch, 'main', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_BRANCH');
+    assert.equal(deployment?.head_sha, recovery.controllerSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_CONTROLLER');
+    assert.equal(Number(deployment?.run_attempt), recovery.deploymentRunAttempt, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_ATTEMPT_READBACK');
+    assert.equal(deployment?.status, 'completed', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_STATUS');
+    assert.equal(deployment?.conclusion, 'skipped', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_CONCLUSION');
+    const jobs = await api(`actions/runs/${recovery.deploymentRunId}/jobs?per_page=100`, 'GET', undefined,
+      'single-use-claim-recovery-deployment-jobs-read');
+    assert.ok(Array.isArray(jobs?.jobs) && jobs.jobs.length > 0,
+      'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_JOBS');
+    assert.ok(jobs.jobs.every(job => job.status === 'completed' && job.conclusion === 'skipped'),
+      'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_EXECUTION');
+    const pending = await api(`actions/runs/${recovery.deploymentRunId}/pending_deployments`, 'GET', undefined,
+      'single-use-claim-recovery-deployment-pending-read');
+    assert.deepEqual(pending, [], 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_DEPLOYMENT_PENDING');
+  }
   return { commentId: Number(comment.id), admissionRunId: Number(run.id), controllerSha: parsed.controlSha,
-    observedAt: parsed.observedAt, disposition: recovery.status };
+    observedAt: parsed.observedAt, disposition: recovery.status,
+    ...(terminalSkipped ? { deploymentRunId: recovery.deploymentRunId } : {}) };
 }
 
 export async function claimSingleUse(api = request, { candidateSha, controlSha, approvalReference,
