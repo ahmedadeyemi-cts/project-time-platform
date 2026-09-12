@@ -388,9 +388,13 @@ async function downloadDispatchReceiptArtifact(artifact, stage = 'single-use-cla
       requestId: response.headers?.get('x-github-request-id') });
   }
   const archive = Buffer.from(await response.arrayBuffer());
+  return parseDispatchReceiptArchive(archive);
+}
+
+export function parseDispatchReceiptArchive(archive) {
   const python = [
-    'import json, sys, zipfile',
-    'with zipfile.ZipFile(sys.stdin.buffer) as archive:',
+    'import io, json, sys, zipfile',
+    'with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as archive:',
     "    files = [name for name in archive.namelist() if not name.endswith('/') ]",
     "    if files != ['flowhive-psa-dispatch-attempt.json']:",
     "        raise ValueError('unexpected dispatch evidence archive contents')",
