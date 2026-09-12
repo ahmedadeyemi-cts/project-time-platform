@@ -12,6 +12,7 @@ on:
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
       - 'tests/validate-systemwide-image-build-controller.mjs'
       - '.github/module025-sow-sell-governed-release-files.txt'
+      - '.github/flowhive-enterprise-psa-release-files.txt'
 
 permissions:
   contents: read
@@ -51,8 +52,8 @@ jobs:
           git cat-file -e "$BASE_SHA^{commit}" || fail 'Exact pull-request base commit is unavailable.'
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
-          if [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
-            if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
+          if [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' || "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' ]]; then
+            if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' || "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' ]]; then
               MANIFEST='.github/flowhive-enterprise-psa-release-files.txt'
             else
               MANIFEST='.github/module025-sow-sell-governed-release-files.txt'
