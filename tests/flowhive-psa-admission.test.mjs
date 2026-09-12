@@ -144,19 +144,24 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912';
   const candidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-candidate-refresh-20260912';
   const finalActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-final-activation-20260912';
+  const latencyRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-candidate-refresh-20260912';
   assert.equal(authorization.approvalReference, activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
     : candidateRefresh
       ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-RELEASE'
       : finalActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-ACTIVATION'
+      : latencyRefresh
+        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-LATENCY-RELEASE'
       : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE');
   assert.equal(authorization.supersedesApprovalReference, activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE'
     : candidateRefresh
       ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
-      : finalActivation
-        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-RELEASE'
+    : finalActivation
+      ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-RELEASE'
+      : latencyRefresh
+        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-ACTIVATION'
     : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-CHECKSET-RELEASE');
   assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
@@ -241,8 +246,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
-  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-output-budget-20260912');
-  assert.equal(approval.mergeCommit, 'ed75fc0223c5967296d932fa7f46ac6790081020');
+  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-phase-latency-20260912');
+  assert.equal(approval.mergeCommit, '7be13b5ff60239db6c068f8a5f373a9fb2f844ac');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
