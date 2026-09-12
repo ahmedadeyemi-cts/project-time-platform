@@ -190,6 +190,9 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-live-planner-candidate-refresh-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_LIVE_PLANNER_CANDIDATE_REFRESH_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-output-budget-candidate-refresh-20260912' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_PLANNER_OUTPUT_BUDGET_CANDIDATE_REFRESH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-live-planner-activation-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_LIVE_PLANNER_ACTIVATION_SCOPE=PASSED'

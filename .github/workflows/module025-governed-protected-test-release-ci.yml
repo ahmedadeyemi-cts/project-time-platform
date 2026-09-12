@@ -59,6 +59,10 @@ jobs:
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'FLOWHIVE_LIVE_PLANNER_CANDIDATE_REFRESH_SCOPE=PASSED'
             exit 0
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-output-budget-candidate-refresh-20260912' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'FLOWHIVE_PLANNER_OUTPUT_BUDGET_CANDIDATE_REFRESH_SCOPE=PASSED'
+            exit 0
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
             node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
             node tests/validate-systemwide-enterprise-reliability.mjs
