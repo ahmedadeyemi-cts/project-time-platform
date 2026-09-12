@@ -49,6 +49,8 @@ jobs:
             node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
           elif [[ "$GITHUB_HEAD_REF" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$GITHUB_HEAD_REF" == 'feature/flowhive-psa-graphical-exports-20260908' || "$GITHUB_HEAD_REF" == 'release/flowhive-sow-successor-20260908' || "$GITHUB_HEAD_REF" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
             node tests/flowhive-psa-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
           elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-canonical-dispatch-20260911' ]]; then
             node --input-type=module -e "import fs from 'node:fs'; import { verifyController } from './tests/flowhive-psa-release-control.mjs'; verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));"
           else
@@ -93,7 +95,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           test -s .github/flowhive-psa-protected-test-candidate.json || { echo 'ERROR: trusted candidate approval file is missing.' >&2; exit 1; }
-          if [[ "$FEATURE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
+          if [[ "$FEATURE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$FEATURE_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
             [[ "$FEATURE_HEAD" =~ ^[a-f0-9]{40}$ ]]
             echo "sha=$FEATURE_HEAD" >> "$GITHUB_OUTPUT"
             if [[ "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then

@@ -123,6 +123,11 @@ elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
     grep -Fxq "$required" "$FLOWHIVE_RELEASE_MANIFEST"
   done
   publish_mode FLOWHIVE_V2_SHARED_PLANNING
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
+  ALLOWED_DATABASE='^(database/(migrations/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution|105_flowhive_reviewed_regeneration|106_module025_sow_sell_register)\.sql|rollback/(103_module_066_flowhive_enterprise_psa_revamp_rollback|104_flowhive_bounded_ai_execution_rollback|105_flowhive_reviewed_regeneration_rollback)\.sql))$'
+  node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+  node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+  publish_mode FLOWHIVE_PLANNER_PROVIDER_BUDGET
 elif [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$COMBINED_FLOWHIVE_SOW_SCOPE" == true ]]; then
   ALLOWED_DATABASE='^(database/(migrations/(103_module_066_flowhive_enterprise_psa_revamp|104_flowhive_bounded_ai_execution|105_flowhive_reviewed_regeneration|106_module025_sow_sell_register)\.sql|rollback/(103_module_066_flowhive_enterprise_psa_revamp_rollback|104_flowhive_bounded_ai_execution_rollback|105_flowhive_reviewed_regeneration_rollback)\.sql))$'
   node tests/flowhive-psa-scope.mjs
