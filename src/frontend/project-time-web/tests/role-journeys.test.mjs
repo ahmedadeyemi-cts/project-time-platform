@@ -75,6 +75,11 @@ test('dedicated page shares Module 999; authenticated navigation is React-owned'
   assert(!result.includes('createRoot'));
   assert(!result.includes('document.createElement'));
 });
+test('My Role refreshes authorized workspace links after the RBAC bridge publishes navigation', () => {
+  const contextSource = fs.readFileSync(path.join(webRoot, 'src/role-journeys/use-role-journey-context.js'), 'utf8');
+  assert.match(contextSource, /projectpulse:permission-navigation-updated/);
+  assert.match(contextSource, /ROLE_JOURNEY_AUTHORITY_EVENTS/);
+});
 test('all other hash routes preserve the original result', () => {
   const parser = transformJourneyApp(fixture).match(/function getRouteFromHash\(\) \{[\s\S]*?\n\}/)[0];
   const run = (hash) => Function('window', `${parser}; return getRouteFromHash();`)({ location: { hash } });
