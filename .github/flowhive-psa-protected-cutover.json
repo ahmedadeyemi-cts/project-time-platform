@@ -5,7 +5,7 @@
   "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-TIME-BUDGET",
   "candidate": {
     "pullRequest": 937,
-    "branch": "fix/flowhive-planner-time-budget-20260912",
+    "branch": "fix/flowhive-planner-provider-budget-20260912",
     "sha": "0c9a6ced887d5fcfbffb22d81f8041eb6e7b340a"
   },
   "workflow": {
