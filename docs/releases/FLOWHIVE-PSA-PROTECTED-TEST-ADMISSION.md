@@ -1,4 +1,4 @@
-# FlowHive PSA — exact pre-merge Protected Test admission
+# FlowHive PSA — exact reviewed Protected Test admission
 
 This is a release-control change, not a merge or completion of successor PR #887.
 It admits only the candidate pinned in `.github/flowhive-psa-protected-test-candidate.json`
@@ -52,10 +52,11 @@ and the live assessment. Run `34495606530` uses controller
 queued with zero jobs, no pending deployment, no approval and no artifacts. Their
 raw GitHub status remains visible and distinct from the repository's protected
 nonterminal disposition. Activation is a separately reviewed, bounded approval
-for this candidate and current controller, followed by the existing native Test
+for this candidate and current controller, expiring at `2026-09-12T18:20:05Z`,
+followed by the existing native Test
 deployment approval. When that
 activation is reviewed, the maintained entrypoint performs one guarded
-`disabled_manually` → `active` transition, re-reads the exact three-request
+active-state admission without toggling the already-active controller, re-reads the exact three-request
 assessment, admits at most one dispatch, and reports the resulting controller
 state. A successful bootstrap deliberately leaves the canonical controller
 `active`; it does not silently recreate an enable → dispatch → disable cycle.

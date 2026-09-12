@@ -200,8 +200,10 @@ export const protectedCutoverFiles = [
   'tests/flowhive-psa-release-control.mjs',
   'tests/flowhive-psa-release-workflow.test.py'
 ].sort();
-export const protectedCutoverActivationBase = '1a2119f76e6f0f09634b5f1586f5a524ab1b0d1e';
-export const protectedCutoverActivationBranch = 'control/flowhive-protected-cutover-activation-20260910';
+// The active-state activation mode is retained for the current reviewed
+// candidate; the prior disabled-to-active experiment remains in Git history.
+export const protectedCutoverActivationBase = '3247fc42e1a5b2e0ebc287e63621d896fc8b7619';
+export const protectedCutoverActivationBranch = 'control/flowhive-my-role-cutover-activation-20260912';
 export const protectedCutoverActivationFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
@@ -821,7 +823,7 @@ export function validate() {
       assert.equal(base, isPlannerOutputShapeBranchCorrection ? plannerOutputShapeBranchCorrectionBase : isPlannerOutputShapeActivation ? plannerOutputShapeActivationBase : isPlannerProviderBudgetActivation ? plannerProviderBudgetActivationBase : isPlannerTimeBudgetActivation ? plannerTimeBudgetActivationBase : isProtectedCutoverLaneRefresh ? protectedCutoverLaneRefreshBase : isProtectedCutoverPmIdentityRefresh ? protectedCutoverPmIdentityRefreshBase : isDispatchSkippedRecovery ? dispatchSkippedRecoveryBase : isPlannerOutputBudgetActivationRefresh ? plannerOutputBudgetActivationRefreshBase : isPlannerOutputBudgetActivation ? plannerOutputBudgetActivationBase : isSuccessorCutoverActivation ? successorCutoverActivationBase : isProtectedCutoverFinal ? protectedCutoverFinalBase : isProtectedCutoverRecovery ? protectedCutoverRecoveryBase : isProtectedCutoverRefresh ? protectedCutoverRefreshBase : protectedCutoverActivationBase, 'Activation must be based on the latest reviewed trusted controls.');
       assert.equal(protectedCutover.enabled, true, 'Activation must be explicitly enabled only in its reviewed branch.');
       assert.equal(protectedCutover.activationDecision, 'approved');
-      assert.equal(protectedCutover.workflow.allowControllerActivation, isPlannerOutputShapeActivation || isPlannerOutputShapeBranchCorrection || isPlannerProviderBudgetActivation || isPlannerTimeBudgetActivation || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery || isProtectedCutoverLaneRefresh || isProtectedCutoverPmIdentityRefresh ? false : true);
+      assert.equal(protectedCutover.workflow.allowControllerActivation, isProtectedCutoverActivation || isPlannerOutputShapeActivation || isPlannerOutputShapeBranchCorrection || isPlannerProviderBudgetActivation || isPlannerTimeBudgetActivation || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery || isProtectedCutoverLaneRefresh || isProtectedCutoverPmIdentityRefresh ? false : true);
       assert.equal(protectedCutover.approval.status, 'approved');
       assert.equal(protectedCutover.approval.approvedBy, 'ahmedadeyemi-cts');
       const approvedAt = Date.parse(protectedCutover.approval.approvedAt);
@@ -884,7 +886,7 @@ export function validate() {
     assert.deepEqual(protectedCutover.workflow, {
       id: 315562561, path: '.github/workflows/projectpulse-deploy-test.yml',
       controllerBranch: 'main', event: 'workflow_dispatch',
-      transition: 'disabled_manually-to-active-once', allowControllerActivation: isProtectedCutoverActivation || (isProtectedCutoverRefresh && !isProtectedCutoverLaneRefresh && !isProtectedCutoverPmIdentityRefresh) || isProtectedCutoverRecovery || isProtectedCutoverFinal
+      transition: 'disabled_manually-to-active-once', allowControllerActivation: (isProtectedCutoverRefresh && !isProtectedCutoverLaneRefresh && !isProtectedCutoverPmIdentityRefresh) || isProtectedCutoverRecovery || isProtectedCutoverFinal
     });
     assert.deepEqual(protectedCutover.environment, {
       environment: 'test', protectionRuleId: 65110773,
