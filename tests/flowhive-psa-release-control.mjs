@@ -202,8 +202,8 @@ export const protectedCutoverFiles = [
 ].sort();
 // The active-state activation mode is retained for the current reviewed
 // candidate; the prior disabled-to-active experiment remains in Git history.
-export const protectedCutoverActivationBase = '3247fc42e1a5b2e0ebc287e63621d896fc8b7619';
-export const protectedCutoverActivationBranch = 'control/flowhive-my-role-cutover-activation-20260912';
+export const protectedCutoverActivationBase = 'c408e70cbf01fb63ad3716f5364476591c7e2d9d';
+export const protectedCutoverActivationBranch = 'control/flowhive-my-role-cutover-activation-refresh-20260912';
 export const protectedCutoverActivationFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',

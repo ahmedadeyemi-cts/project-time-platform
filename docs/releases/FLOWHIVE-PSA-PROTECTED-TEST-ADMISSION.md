@@ -53,9 +53,9 @@ queued with zero jobs, no pending deployment, no approval and no artifacts. Thei
 raw GitHub status remains visible and distinct from the repository's protected
 nonterminal disposition. The prior activation attempt was rejected before its
 deployment POST because its approval listed workflows that did not run for PR949;
-this refresh records only the six actual successful `pull_request` workflows and
-returns the cutover to inactive/hold. Activation is a separately reviewed, bounded
-approval for this candidate and current controller, followed by the existing native Test
+the reviewed check-set refresh records only the six actual successful `pull_request`
+workflows. The current activation is bounded through `2026-09-12T18:34:31Z` and is
+followed by the existing native Test
 deployment approval. When that
 activation is reviewed, the maintained entrypoint performs one guarded
 active-state admission without toggling the already-active controller, re-reads the exact three-request

@@ -147,14 +147,17 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
   assert.equal(authorization.reservationRecovery.status, 'terminal-skipped-no-mutation');
 });
-test('My Role candidate check-set refresh returns cutover to inactive hold', () => {
+test('My Role candidate activation is bounded and uses the already-active controller', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  assert.equal(authorization.enabled, false);
-  assert.equal(authorization.activationDecision, 'hold');
+  assert.equal(authorization.enabled, true);
+  assert.equal(authorization.activationDecision, 'approved');
   assert.equal(authorization.workflow.allowControllerActivation, false);
-  assert.deepEqual(authorization.approval, {
-    status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null
-  });
+  assert.equal(authorization.approval.status, 'approved');
+  assert.equal(authorization.approval.approvedBy, 'ahmedadeyemi-cts');
+  const approvedAt = Date.parse(authorization.approval.approvedAt);
+  const expiresAt = Date.parse(authorization.approval.expiresAt);
+  assert.ok(Number.isFinite(approvedAt) && Number.isFinite(expiresAt));
+  assert.ok(expiresAt > approvedAt && expiresAt - approvedAt <= 15 * 60 * 1000);
   assert.deepEqual(authorization.candidate, {
     pullRequest: 949,
     branch: 'fix/flowhive-my-role-navigation-refresh-20260912',
