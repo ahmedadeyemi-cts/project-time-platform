@@ -102,6 +102,12 @@ FILES
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
   test -s .github/flowhive-enterprise-psa-release-files.txt
   grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-enterprise-psa-release-files.txt >> "$CIT/allowed-release-files"
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-live-uat-pm-secret-wiring-20260912' ]]; then
+  cat >> "$CIT/allowed-release-files" <<'FILES'
+.github/workflows/projectpulse-deploy-test.yml
+scripts/release-test/prepare-protected-test-scope-manifests.sh
+tests/flowhive-psa-release-control.mjs
+FILES
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
   cat >> "$CIT/allowed-release-files" <<'FILES'
 .github/flowhive-psa-protected-cutover.json

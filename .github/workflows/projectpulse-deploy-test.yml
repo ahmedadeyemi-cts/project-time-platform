@@ -967,6 +967,8 @@ jobs:
         env:
           PSA_RELEASE_AUTHORIZED: ${{ steps.psa_admission.outputs.authorized }}
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
+          PROJECTPULSE_M025_PM_PASSWORD: ${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}
           BASE: ${{ steps.contract.outputs.base }}
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_API_APP: ${{ vars.AZURE_API_APP }}
