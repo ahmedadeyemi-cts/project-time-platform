@@ -6,10 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged application PR915.
+// successor is the reviewed, merged planner-budget application PR922.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 915;
-export const candidateBranch = 'release/flowhive-sow-successor-20260908';
+export const candidatePullRequest = 922;
+export const candidateBranch = 'fix/flowhive-planner-output-budget-20260912';
+export const candidateSourceBranch = 'fix/flowhive-planner-output-budget-20260912';
+export const candidateMergeCommit = 'dbe8c34eeb0b23ab0726cb414a614ec7f6ea221a';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -25,11 +27,18 @@ const migrations = [
 ];
 const requiredWorkflows = [
   '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
+  '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
   '.github/workflows/celar-ai-production-hardening-ci.yml',
-  '.github/workflows/flowhive-enterprise-psa-ci.yml',
-  '.github/workflows/flowhive-psa-release-control-ci.yml',
-  '.github/workflows/project-planning-collaboration-ci.yml',
+  '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+  '.github/workflows/deepseek-v4-provider-ci.yml',
+  '.github/workflows/flowhive-detailed-planner-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
+  '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
+  '.github/workflows/pulse-ai-system-intelligence-ci.yml',
+  '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
   '.github/workflows/security-posture-ci.yml',
   '.github/workflows/shared-project-document-planning-ci.yml',
   '.github/workflows/systemwide-enterprise-reliability-ci.yml'
@@ -40,8 +49,8 @@ export function verifyApproval(approval, requestedSha) {
   assert.equal(approval.repository, repository);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
-  assert.equal(approval.sourceBranch, 'fix/flowhive-pr914-followup-20260911');
-  assert.equal(approval.mergeCommit, '2057df629ebb1f3ef651295c0da541061b77d56a');
+  assert.equal(approval.sourceBranch, candidateSourceBranch);
+  assert.equal(approval.mergeCommit, candidateMergeCommit);
   assert.equal(approval.environment, 'test');
   assert.equal(approval.publicOrigin, origin);
   assert.equal(approval.allowPrivateRuntimeMutation, false);
