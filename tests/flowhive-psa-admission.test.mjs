@@ -141,21 +141,36 @@ test('approved current draft candidate is admissible without merging', () => {
 });
 test('protected cutover refresh uses a new approval reference and preserves historical evidence identity', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE');
-  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-CHECKSET-RELEASE');
+  const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912';
+  assert.equal(authorization.approvalReference, activation
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
+    : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE');
+  assert.equal(authorization.supersedesApprovalReference, activation
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE'
+    : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-CHECKSET-RELEASE');
   assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
   assert.equal(authorization.reservationRecovery.status, 'terminal-skipped-no-mutation');
 });
-test('live planner candidate remains inactive until fresh approval', () => {
+test('live planner candidate activation is bounded and otherwise remains inactive', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  assert.equal(authorization.enabled, false);
-  assert.equal(authorization.activationDecision, 'hold');
+  const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912';
+  assert.equal(authorization.enabled, activation);
+  assert.equal(authorization.activationDecision, activation ? 'approved' : 'hold');
   assert.equal(authorization.workflow.allowControllerActivation, false);
-  assert.equal(authorization.approval.status, 'not-approved');
-  assert.equal(authorization.approval.approvedBy, null);
-  assert.equal(authorization.approval.approvedAt, null);
-  assert.equal(authorization.approval.expiresAt, null);
+  if (activation) {
+    assert.equal(authorization.approval.status, 'approved');
+    assert.equal(authorization.approval.approvedBy, 'ahmedadeyemi-cts');
+    const approvedAt = Date.parse(authorization.approval.approvedAt);
+    const expiresAt = Date.parse(authorization.approval.expiresAt);
+    assert.ok(Number.isFinite(approvedAt) && Number.isFinite(expiresAt) && expiresAt > approvedAt);
+    assert.ok(expiresAt - approvedAt <= 15 * 60 * 1000);
+  } else {
+    assert.equal(authorization.approval.status, 'not-approved');
+    assert.equal(authorization.approval.approvedBy, null);
+    assert.equal(authorization.approval.approvedAt, null);
+    assert.equal(authorization.approval.expiresAt, null);
+  }
   assert.deepEqual(authorization.candidate, {
     pullRequest: 955,
     branch: 'fix/flowhive-planner-output-budget-20260912',
