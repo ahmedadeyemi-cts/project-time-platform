@@ -18,6 +18,7 @@ export const files = [
   'scripts/release-test/resolve-flowhive-installed-deployment.py',
   'tests/flowhive-installed-resolution.test.py',
   'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-workflow.test.py',
   'tests/validate-flowhive-pm-acceptance-scope.mjs',
 ].sort();
 
