@@ -37,6 +37,15 @@ Assert(
         PulseAiPrivateRagPolicy.TimesheetFeature,
         4_000) == 4_000,
     "ordinary_private_rag_output_budget_is_unchanged");
+Assert(
+    PulseAiPrivateRagService.ShouldGenerateBoundedPhasePlan(flowHive: true, hasAuthoritativeScope: false),
+    "flowhive_planner_uses_bounded_phase_generation");
+Assert(
+    !PulseAiPrivateRagService.ShouldGenerateBoundedPhasePlan(flowHive: false, hasAuthoritativeScope: false),
+    "ordinary_private_rag_does_not_use_planner_phase_generation");
+Assert(
+    PulseAiPrivateRagService.ShouldGenerateBoundedPhasePlan(flowHive: false, hasAuthoritativeScope: true),
+    "module025_authoritative_scope_uses_bounded_phase_generation");
 
 var flowHiveInstructionFactory = typeof(PulseAiPrivateRagService).GetMethod(
     "FlowHiveSystemInstruction",
