@@ -291,8 +291,8 @@ export const plannerOutputBudgetApprovalFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const plannerOutputBudgetActivationBase = '322dcbaef78c0e356ebe38e6b35859a82f033292';
-export const plannerOutputBudgetActivationBranch = 'control/flowhive-planner-output-budget-activation-20260912';
+export const plannerOutputBudgetActivationBase = 'e6ba3b8bd3d36653f04616514699ac242432bb1c';
+export const plannerOutputBudgetActivationBranch = 'control/flowhive-planner-output-budget-activation-refresh-20260912';
 export const plannerOutputBudgetActivationFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   'tests/flowhive-psa-release-control.mjs'
