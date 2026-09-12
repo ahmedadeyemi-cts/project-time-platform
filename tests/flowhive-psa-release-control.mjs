@@ -953,10 +953,13 @@ export function validate() {
   verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));
   const supervisor = fs.readFileSync('.github/workflows/flowhive-psa-protected-test-admission.yml', 'utf8');
   const admissionGuide = fs.readFileSync('docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md', 'utf8');
+  const module025Workflow = fs.readFileSync('.github/workflows/module025-governed-protected-test-release-ci.yml', 'utf8');
   assert.ok(!/azure\/login|id-token:|environment:|contents:\s*write/.test(supervisor), 'Admission cannot mutate a cloud environment or source.');
   assert.ok(supervisor.includes('github.event.issue.number == 887') && supervisor.includes("github.actor == 'ahmedadeyemi-cts'"));
   assert.match(admissionGuide, /exact command as a comment on PR #887's\s+issue thread/);
   assert.match(admissionGuide, /not on the candidate PR or another issue/);
+  assert.match(module025Workflow, /- '\.github\/flowhive-psa-release-control-files\.txt'/);
+  assert.match(module025Workflow, /- '\.github\/workflows\/module025-governed-protected-test-release-ci\.yml'/);
   assert.ok(supervisor.includes('group: module025-protected-uat-control') && supervisor.includes('cancel-in-progress: false'));
   assert.ok(supervisor.includes('FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE'));
   assert.ok(supervisor.includes('issues: write') && supervisor.includes('pull-requests: write'),

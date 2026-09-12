@@ -14,6 +14,8 @@ on:
       - '.github/module025-sow-sell-governed-release-files.txt'
       - '.github/flowhive-enterprise-psa-release-files.txt'
       - '.github/flowhive-planner-output-budget-release-files.txt'
+      - '.github/flowhive-psa-release-control-files.txt'
+      - '.github/workflows/module025-governed-protected-test-release-ci.yml'
 
 permissions:
   contents: read
