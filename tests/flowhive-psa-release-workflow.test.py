@@ -60,7 +60,9 @@ def verify(doc):
     release_guard=next(s for s in steps if s.get('name')=='Guard exact source and validate release')
     assert 'database/migrations/105_flowhive_reviewed_regeneration.sql' in release_guard['run']
     assert 'database/migrations/106_module025_sow_sell_register.sql' in release_guard['run']
+    assert 'database/migrations/107_module_066_operation_authorization_and_raid_actor.sql' in release_guard['run']
     assert 'database/rollback/105_flowhive_reviewed_regeneration_rollback.sql' in release_guard['run']
+    assert 'database/rollback/107_module_066_operation_authorization_and_raid_actor_rollback.sql' in release_guard['run']
     assert byid['psa_live_uat']['working-directory']=='control'
     assert byid['psa_live_uat']['timeout-minutes']=='20'
     assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true'"
@@ -191,7 +193,8 @@ class WorkflowContract(unittest.TestCase):
             with tempfile.TemporaryDirectory() as temp:
                 control=Path(temp)/'control';control.mkdir()
                 subprocess.run(['git','init','-q',str(control)],check=True)
-                subprocess.run(['git','-C',str(control),'-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','--quiet','--allow-empty','-m','fixture'],check=True)
+                fixture_env={**os.environ,'GIT_AUTHOR_DATE':'2026-01-01T00:00:00Z','GIT_COMMITTER_DATE':'2026-01-01T00:00:00Z'}
+                subprocess.run(['git','-C',str(control),'-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','--quiet','--allow-empty','-m','fixture'],check=True,env=fixture_env)
                 actual=subprocess.check_output(['git','-C',str(control),'rev-parse','HEAD'],text=True).strip()
                 env={**os.environ,'GITHUB_REF':'refs/heads/main','GITHUB_SHA':actual,
                      'GITHUB_EVENT_NAME':event,'RELEASE_BRANCH_INPUT':branch,
@@ -273,6 +276,7 @@ class WorkflowContract(unittest.TestCase):
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
         reviewed = os.environ.get('GITHUB_HEAD_REF') == 'fix/flowhive-reviewed-regeneration-control-20260907'
         successor = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-sow-successor-approval-20260909'
+        successor_release = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-successor-approval-20260911'
         # No controller changes are permitted in the exact seven-file digest repair.
         if old==self.doc:
             return
@@ -330,6 +334,13 @@ class WorkflowContract(unittest.TestCase):
                 if step['name'] == 'Publish protected-Test release summary':
                     b['run']=b['run'].replace('Release lane: exact pre-merge FlowHive/SOW successor candidate; PR #887 remains unmerged', 'Release lane: exact pre-merge PSA candidate; feature PR #872 remains unmerged')
                     b['run']=b['run'].replace('Migrations 103/104/105/106: applied and verified', 'Migrations 103/104/105: applied and verified')
+            if successor_release and (b.get('id') == 'migration' or b.get('name') == 'Guard exact source and validate release'):
+                ending='\n' if b['run'].endswith('\n') else ''
+                b['run']='\n'.join(line for line in b['run'].splitlines()
+                                    if 'database/migrations/107_' not in line
+                                    and 'database/rollback/107_' not in line) + ending
+            if successor_release and step['name'] == 'Publish protected-Test release summary':
+                b['run']=b['run'].replace('Migrations 103/104/105/106/107: applied and verified', 'Migrations 103/104/105/106: applied and verified')
             if reviewed and (b.get('id') == 'migration' or b.get('name') == 'Guard exact source and validate release'):
                 ending='\n' if b['run'].endswith('\n') else ''
                 b['run']='\n'.join(line for line in b['run'].splitlines()

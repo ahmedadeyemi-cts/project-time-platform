@@ -1,11 +1,11 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
-  "enabled": true,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260910",
+  "enabled": false,
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911",
   "candidate": {
-    "pullRequest": 887,
+    "pullRequest": 915,
     "branch": "release/flowhive-sow-successor-20260908",
-    "sha": "95abbb0aa2445a33fda68e9de542f9446c3e2204"
+    "sha": "0a932e2be4b3c1ca4e178d9d1b109390de3ca747"
   },
   "workflow": {
     "id": 315562561,
@@ -13,7 +13,7 @@
     "controllerBranch": "main",
     "event": "workflow_dispatch",
     "transition": "disabled_manually-to-active-once",
-    "allowControllerActivation": true
+    "allowControllerActivation": false
   },
   "environment": {
     "environment": "test",
@@ -79,23 +79,11 @@
     }
   ],
   "serverDispatchInputsConfirmed": false,
-  "reservationRecovery": {
-    "commentId": 5626123050,
-    "admissionRunId": 34536122774,
-    "admissionRunAttempt": 1,
-    "candidateSha": "95abbb0aa2445a33fda68e9de542f9446c3e2204",
-    "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260910",
-    "controllerSha": "c78d346042314a7395a2ceeaa46f2737e6c0b076",
-    "observedAt": "2026-09-10T22:11:16.764Z",
-    "status": "pre-dispatch-failed",
-    "dispatchSubmitted": false,
-    "controllerMutation": false
-  },
   "approval": {
-    "status": "approved",
-    "approvedBy": "ahmedadeyemi-cts",
-    "approvedAt": "2026-09-10T22:46:55Z",
-    "expiresAt": "2026-09-10T23:01:55Z"
+    "status": "not-approved",
+    "approvedBy": null,
+    "approvedAt": null,
+    "expiresAt": null
   },
-  "activationDecision": "approved"
+  "activationDecision": "hold"
 }

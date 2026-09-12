@@ -129,7 +129,23 @@ sql('''CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE TABLE schema_migrations(migration_id TEXT PRIMARY KEY,description TEXT,applied_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE projects(project_id UUID PRIMARY KEY);
 CREATE TABLE app_users(user_id UUID PRIMARY KEY);
-CREATE TABLE app_permissions(permission_code TEXT PRIMARY KEY,permission_name TEXT,module_code TEXT,permission_description TEXT);
+CREATE TABLE app_roles(
+    app_role_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    role_code TEXT NOT NULL UNIQUE,
+    role_name TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE);
+CREATE TABLE app_permissions(
+    app_permission_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    permission_code TEXT NOT NULL UNIQUE,
+    permission_name TEXT,
+    module_code TEXT,
+    permission_description TEXT);
+CREATE TABLE app_role_permissions(
+    app_role_permission_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    app_role_id UUID NOT NULL REFERENCES app_roles(app_role_id),
+    app_permission_id UUID NOT NULL REFERENCES app_permissions(app_permission_id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(app_role_id,app_permission_id));
 CREATE TABLE project_flowhive_plans(plan_id UUID PRIMARY KEY);
 CREATE TABLE project_notification_dispatches(project_notification_dispatch_id UUID PRIMARY KEY);
 CREATE TABLE project_flowhive_customer_shares(share_id UUID PRIMARY KEY);
@@ -137,7 +153,19 @@ CREATE TABLE project_flowhive_raid_items(raid_item_id UUID PRIMARY KEY,project_i
     updated_by_user_id UUID NOT NULL REFERENCES app_users,title TEXT,status TEXT);
 INSERT INTO schema_migrations(migration_id) VALUES('086_module_066_flowhive_enterprise_pm');
 INSERT INTO projects VALUES('11111111-1111-4111-8111-111111111111');
-INSERT INTO app_users VALUES('22222222-2222-4222-8222-222222222222');''')
+INSERT INTO app_users VALUES('22222222-2222-4222-8222-222222222222');
+INSERT INTO app_roles(role_code,role_name) VALUES
+    ('SUPER_ADMINISTRATOR','Super Administrator'),
+    ('SYSTEM_ADMINISTRATOR','System Administrator'),
+    ('ADMINISTRATOR','Administrator'),
+    ('PROJECT_MANAGER','Project Manager'),
+    ('PROJECT_MANAGEMENT','Project Management'),
+    ('PROJECT_MANAGEMENT_LEAD','Project Management Lead'),
+    ('PROJECT_MANAGEMENT_TEAM_LEAD','Project Management Team Lead'),
+    ('PM_TEAM_LEAD','PM Team Lead');
+INSERT INTO app_permissions(permission_code,permission_name,module_code,permission_description) VALUES
+    ('MANAGE_FLOWHIVE_MEETINGS_066','Manage FlowHive meetings','066','Synthetic fixture permission'),
+    ('MANAGE_FLOWHIVE_TASK_REMINDERS_066','Manage FlowHive task reminders','066','Synthetic fixture permission');''')
 if module025_staging:
     # Model the already-reviewed Module 025 workspace migration so the exact
     # 106 entrypoint is exercised against its real dependency boundary.
