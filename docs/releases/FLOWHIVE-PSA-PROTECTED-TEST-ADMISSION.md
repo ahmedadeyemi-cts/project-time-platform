@@ -8,23 +8,23 @@ canonical task mutations are not authorized by this approval.
 
 ## Admission
 
-The repository owner may post this exact command on PR #887 after these controls
+The repository owner may post this exact command after these controls
 have been reviewed, tested and merged to main:
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 9aa4f2459731db381e98d2ad5e7fa98894326cf3
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA ad91335d412e3966716536eb6f39c3f70108ebb9
 ```
 
-The admission workflow executes main-owned code only. It checks the exact open PR #887,
+The admission workflow executes main-owned code only. It checks the exact merged PR #955,
 repository, successor branch, candidate SHA, 6 required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
 feature branch is not renamed or implicitly approved by a prefix match.
 
-This successor is PR949, merged to trusted main as `2e57c8a36a6f25073cc34bd7a986a1895284bd57`,
-and carries the My Role workspace-authority correction at application commit
-`9aa4f2459731db381e98d2ad5e7fa98894326cf3`. Its trusted source base is that merge commit;
+This successor is PR955, merged to trusted main as `a5f3252af878f2e83efe84951516307eb0ba4bc8`,
+and carries the bounded live FlowHive planner correction at application commit
+`ad91335d412e3966716536eb6f39c3f70108ebb9`. Its trusted source base is that merge commit;
 migrations 103/104/105/106/107 retain their reviewed SHA-256 values. PR891, PR947 and the
 existing FlowHive/SOW application scope remain in the merged ancestry.
 
@@ -51,11 +51,11 @@ and the live assessment. Run `34495606530` uses controller
 `9f30078c2c407d4d3576ccefd663a145be50c6c4`; all three are required to remain
 queued with zero jobs, no pending deployment, no approval and no artifacts. Their
 raw GitHub status remains visible and distinct from the repository's protected
-nonterminal disposition. The prior activation attempt was rejected before its
+nonterminal disposition. The prior PR949 activation attempt was rejected before its
 deployment POST because its approval listed workflows that did not run for PR949;
 the reviewed check-set refresh records only the six actual successful `pull_request`
-workflows. The current activation is bounded through `2026-09-12T18:34:31Z` and is
-followed by the existing native Test
+workflows. This refreshed approval remains inactive until its current-head control
+review, native Test approval, and one-time admission are complete, followed by the existing native Test
 deployment approval. When that
 activation is reviewed, the maintained entrypoint performs one guarded
 active-state admission without toggling the already-active controller, re-reads the exact three-request
@@ -194,10 +194,10 @@ the reviewed PR880 control merge integrated into PR872.
 The approved `sourceBase` is `4871d47fbeaad0fd5c08ddca27f193d682a0ea92`, the
 reviewed PR880 main merge already contained in the candidate. The PR874 merge
 remains an ancestor and is retained as historical repair evidence. Current main
-`040709cdac0a940ad8feffbd730f1be35ce50280` adds only the reviewed candidate-
-approval control delta; an application path is still rejected by source drift.
-PR872 and its frozen candidate remain historical reference material; PR887 remains
-draft and unmerged. Required exact-source CI now also includes
+`a5f3252af878f2e83efe84951516307eb0ba4bc8` is the trusted main snapshot containing
+the merged planner correction and this candidate refresh is the only later control
+delta. PR872 and its frozen candidate remain historical reference material; PR887 is
+merged and remains in the maintained application ancestry. Required exact-source CI now also includes
 the PSA admission/migration contract workflow (22 total).
 
 The failed previous candidate deployment `34068097426`, job `101580331315`,
