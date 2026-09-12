@@ -1,4 +1,4 @@
 .github/flowhive-planner-output-budget-release-files.txt
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
 tests/FlowHiveDetailedPlannerTests/Program.cs
-tests/validate-systemwide-image-build-controller.mjs
+tests/validate-flowhive-planner-phase-assembly-scope.mjs
