@@ -141,8 +141,8 @@ test('approved current draft candidate is admissible without merging', () => {
 });
 test('protected cutover refresh uses a new approval reference and preserves historical evidence identity', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-SHAPE-RELEASE');
-  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-PROVIDER-BUDGET-RELEASE');
+  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-RELEASE');
+  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-PHASE-ASSEMBLY-RELEASE');
   assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
   assert.equal(authorization.reservationRecovery.status, 'terminal-skipped-no-mutation');
@@ -194,10 +194,10 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const candidate = approval.sha;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
-  assert.equal(approval.pullRequest, 943);
+  assert.equal(approval.pullRequest, 949);
   assert.equal(approval.branch, candidateBranch);
-  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-output-budget-20260912');
-  assert.equal(approval.mergeCommit, 'e15634c22377476c40f25f67faffda47248c8110');
+  assert.equal(approval.sourceBranch, 'fix/flowhive-my-role-navigation-refresh-20260912');
+  assert.equal(approval.mergeCommit, '2e57c8a36a6f25073cc34bd7a986a1895284bd57');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
@@ -208,7 +208,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     'scripts/release-test/unincorporated-application-change.sh'
   ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], files));
 });
-test('successor approval enumerates only the workflows that ran for the exact PR943 head', () => {
+test('successor approval enumerates only the workflows that ran for the exact PR949 head', () => {
   assert.deepEqual(approval.requiredWorkflows, [
     '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
     '.github/workflows/celar-ai-production-hardening-ci.yml',
