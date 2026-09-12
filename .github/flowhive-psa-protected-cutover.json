@@ -5,7 +5,7 @@
   "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-PROVIDER-BUDGET-RELEASE",
   "candidate": {
     "pullRequest": 943,
-    "branch": "fix/flowhive-planner-provider-budget-20260912",
+    "branch": "fix/flowhive-planner-output-budget-20260912",
     "sha": "87251872a7e4e2ad37bc8196854f4e0193c871b1"
   },
   "workflow": {
@@ -83,8 +83,8 @@
   "approval": {
     "status": "approved",
     "approvedBy": "ahmedadeyemi-cts",
-    "approvedAt": "2026-09-12T15:46:22Z",
-    "expiresAt": "2026-09-12T16:01:22Z"
+    "approvedAt": "2026-09-12T15:55:25Z",
+    "expiresAt": "2026-09-12T16:10:25Z"
   },
   "reservationRecovery": {
     "status": "terminal-skipped-no-mutation",
