@@ -7,6 +7,10 @@ on:
       - '.github/workflows/projectpulse-deploy-test.yml'
       - 'scripts/release-test/*flowhive-psa*'
       - 'tests/flowhive-psa-*'
+      - 'tests/flowhive-installed-resolution.test.py'
+      - 'tests/validate-flowhive-pm-acceptance-scope.mjs'
+      - 'scripts/release-test/check-flowhive-acceptance-inputs.py'
+      - 'scripts/release-test/resolve-flowhive-installed-deployment.py'
 permissions:
   contents: read
   actions: read
@@ -37,7 +41,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
-          if [[ "$GITHUB_HEAD_REF" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pm-acceptance-contract' ]]; then
+            node tests/validate-flowhive-pm-acceptance-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
             node tests/validate-sow-generation-uat-scope.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pr914-followup-20260911' ]]; then
             node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
@@ -51,8 +57,12 @@ jobs:
           node --test tests/flowhive-psa-admission.test.mjs
           python tests/flowhive-psa-live-uat.test.py
           python tests/flowhive-psa-installed-acceptance.test.py
+          python tests/flowhive-installed-resolution.test.py
+          node tests/validate-flowhive-pm-acceptance-scope.mjs --self-test
           python tests/flowhive-psa-release-workflow.test.py
           python -m py_compile \
+            scripts/release-test/check-flowhive-acceptance-inputs.py \
+            scripts/release-test/resolve-flowhive-installed-deployment.py \
             scripts/release-test/check-module025-installed-prerequisite.py \
             scripts/release-test/run-flowhive-my-role-browser.py \
             scripts/release-test/verify-flowhive-installed-identity.py

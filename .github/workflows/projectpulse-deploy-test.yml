@@ -141,6 +141,18 @@ jobs:
           RECOVER_PRIVATE_RUNTIME: ${{ inputs.recover_private_runtime }}
         run: node scripts/release-test/flowhive-psa-admission.mjs
 
+      - name: Verify existing PM and uploaded SOW before deployment
+        id: psa_acceptance_preflight
+        if: steps.psa_admission.outputs.authorized == 'true'
+        shell: bash
+        working-directory: control
+        env:
+          BASE: https://phd-west-test.onenecklab.com
+          PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
+          PROJECTPULSE_M025_PM_PASSWORD: ${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}
+          PREVIOUS_PLANNER_RUN_ID: 171e4430-95e4-4f80-be14-454dcc319ef2
+        run: python3 scripts/release-test/check-flowhive-acceptance-inputs.py --read-only
+
       - name: Install isolated live-browser acceptance dependencies
         if: steps.psa_admission.outputs.authorized == 'true'
         shell: bash
@@ -966,7 +978,9 @@ jobs:
         working-directory: control
         env:
           PSA_RELEASE_AUTHORIZED: ${{ steps.psa_admission.outputs.authorized }}
-          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
+          PROJECTPULSE_M025_PM_PASSWORD: ${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}
+          PREVIOUS_PLANNER_RUN_ID: 171e4430-95e4-4f80-be14-454dcc319ef2
           BASE: ${{ steps.contract.outputs.base }}
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_API_APP: ${{ vars.AZURE_API_APP }}
