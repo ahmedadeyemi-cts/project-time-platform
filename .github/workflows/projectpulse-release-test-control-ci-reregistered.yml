@@ -196,6 +196,9 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-time-budget-approval-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_PLANNER_TIME_BUDGET_APPROVAL_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-provider-budget-approval-20260912' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_PLANNER_PROVIDER_BUDGET_SUCCESSOR_APPROVAL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/validate-flowhive-planner-output-budget-scope.mjs
             echo 'EXACT_FLOWHIVE_PLANNER_OUTPUT_BUDGET_SCOPE=PASSED'
