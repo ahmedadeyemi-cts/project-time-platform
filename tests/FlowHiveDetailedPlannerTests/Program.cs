@@ -70,6 +70,8 @@ Assert(module025PhaseInstruction.Contains("exactly two detailed tasks for this p
     "module025_phase_prompt_is_bounded");
 Assert(module025PhaseInstruction.Contains("Return exactly two distinct detailed tasks for the requested phase only", StringComparison.Ordinal),
     "module025_phase_prompt_preserves_distinct_task_contract");
+Assert(module025PhaseInstruction.Contains("1536 output tokens", StringComparison.Ordinal),
+    "module025_phase_prompt_matches_completion_budget");
 Assert(module025PhaseInstruction.Contains("This is phase 4 of five", StringComparison.Ordinal),
     "module025_phase_prompt_binds_phase_index");
 
@@ -243,7 +245,7 @@ var phaseCalls = 0;
 Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> phaseModel = (request, token) =>
 {
     var phase = phaseNames[phaseCalls++];
-    Assert(request.MaximumOutputTokens == 4096, "module025_phase_completion_bounded");
+    Assert(request.MaximumOutputTokens == 1536, "module025_phase_completion_bounded");
     Assert(request.SystemInstruction.Contains($"Return ONLY {phase} tasks"), "module025_phase_request_scoped");
     Assert(request.Sources.Single() == module025Source, "module025_phase_source_authority_preserved");
     var payload = JsonSerializer.Serialize(parsedModule025 with
