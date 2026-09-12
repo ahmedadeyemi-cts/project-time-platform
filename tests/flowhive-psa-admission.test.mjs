@@ -141,23 +141,20 @@ test('approved current draft candidate is admissible without merging', () => {
 });
 test('protected cutover refresh uses a new approval reference and preserves historical evidence identity', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-RELEASE');
-  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-PHASE-ASSEMBLY-RELEASE');
+  assert.equal(authorization.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-CHECKSET-RELEASE');
+  assert.equal(authorization.supersedesApprovalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-RELEASE');
   assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
   assert.equal(authorization.reservationRecovery.status, 'terminal-skipped-no-mutation');
 });
-test('My Role candidate activation is bounded and uses the already-active controller', () => {
+test('My Role candidate check-set refresh returns cutover to inactive hold', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  assert.equal(authorization.enabled, true);
-  assert.equal(authorization.activationDecision, 'approved');
+  assert.equal(authorization.enabled, false);
+  assert.equal(authorization.activationDecision, 'hold');
   assert.equal(authorization.workflow.allowControllerActivation, false);
-  assert.equal(authorization.approval.status, 'approved');
-  assert.equal(authorization.approval.approvedBy, 'ahmedadeyemi-cts');
-  const approvedAt = Date.parse(authorization.approval.approvedAt);
-  const expiresAt = Date.parse(authorization.approval.expiresAt);
-  assert.ok(Number.isFinite(approvedAt) && Number.isFinite(expiresAt));
-  assert.ok(expiresAt > approvedAt && expiresAt - approvedAt <= 15 * 60 * 1000);
+  assert.deepEqual(authorization.approval, {
+    status: 'not-approved', approvedBy: null, approvedAt: null, expiresAt: null
+  });
   assert.deepEqual(authorization.candidate, {
     pullRequest: 949,
     branch: 'fix/flowhive-my-role-navigation-refresh-20260912',
@@ -190,6 +187,11 @@ test('CI must be complete, successful and for exact source', () => {
   for(const mutate of [r=>r.head_sha='0'.repeat(40),r=>r.conclusion='failure',r=>r.status='in_progress',r=>r.event='push']) {
     const r=clone(runs);mutate(r[0]);assert.throws(()=>verifyRuns(approval,r));
   }
+});
+test('pull_request_target governance evidence cannot satisfy the exact PR check set', () => {
+  const targetOnly = clone(runs);
+  targetOnly[0].event = 'pull_request_target';
+  assert.throws(() => verifyRuns(approval, targetOnly), /Required exact-SHA CI is missing/);
 });
 test('later failed rerun or unknown failed workflow cannot hide behind older green result', () => {
   assert.throws(()=>verifyRuns(approval,[...runs,{...runs[0],run_attempt:2,conclusion:'failure'}]));
@@ -227,21 +229,12 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
 });
 test('successor approval enumerates only the workflows that ran for the exact PR949 head', () => {
   assert.deepEqual(approval.requiredWorkflows, [
-    '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
     '.github/workflows/celar-ai-production-hardening-ci.yml',
-    '.github/workflows/flowhive-detailed-planner-ci.yml',
-    '.github/workflows/module025-governed-protected-test-release-ci.yml',
     '.github/workflows/projectpulse-ci.yml',
-    '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
-    '.github/workflows/projectpulse-release-test-control-ci.yml',
     '.github/workflows/security-posture-ci.yml',
-    '.github/workflows/shared-project-document-planning-ci.yml',
     '.github/workflows/systemwide-enterprise-reliability-ci.yml',
-    '.github/workflows/deepseek-v4-provider-ci.yml',
     '.github/workflows/pulse-ai-system-intelligence-ci.yml',
-    '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
-    '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
-    '.github/workflows/celar-ai-enterprise-retrieval-ci.yml'
+    '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
   ]);
   assert.equal(verifyRuns(approval, runs).length, approval.requiredWorkflows.length);
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);

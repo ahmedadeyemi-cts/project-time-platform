@@ -16,7 +16,7 @@ DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 9aa4f2459731db381e98d2ad5e7fa98894326cf3
 ```
 
 The admission workflow executes main-owned code only. It checks the exact open PR #887,
-repository, successor branch, candidate SHA, 15 required successful exact-SHA PR workflows,
+repository, successor branch, candidate SHA, 6 required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
@@ -51,9 +51,11 @@ and the live assessment. Run `34495606530` uses controller
 `9f30078c2c407d4d3576ccefd663a145be50c6c4`; all three are required to remain
 queued with zero jobs, no pending deployment, no approval and no artifacts. Their
 raw GitHub status remains visible and distinct from the repository's protected
-nonterminal disposition. Activation is a separately reviewed, bounded approval
-for this candidate and current controller, expiring at `2026-09-12T18:20:05Z`,
-followed by the existing native Test
+nonterminal disposition. The prior activation attempt was rejected before its
+deployment POST because its approval listed workflows that did not run for PR949;
+this refresh records only the six actual successful `pull_request` workflows and
+returns the cutover to inactive/hold. Activation is a separately reviewed, bounded
+approval for this candidate and current controller, followed by the existing native Test
 deployment approval. When that
 activation is reviewed, the maintained entrypoint performs one guarded
 active-state admission without toggling the already-active controller, re-reads the exact three-request

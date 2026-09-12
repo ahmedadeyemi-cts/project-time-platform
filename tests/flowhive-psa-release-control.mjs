@@ -365,8 +365,8 @@ export const plannerOutputShapeBranchCorrectionFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const plannerPhaseCandidateRefreshBase = '2e57c8a36a6f25073cc34bd7a986a1895284bd57';
-export const plannerPhaseCandidateRefreshBranch = 'control/flowhive-my-role-candidate-refresh-20260912';
+export const plannerPhaseCandidateRefreshBase = '67cc1dda877ef77a22c98e9c6e8b0bd3d6231e2a';
+export const plannerPhaseCandidateRefreshBranch = 'control/flowhive-my-role-checkset-refresh-20260912';
 export const plannerPhaseCandidateRefreshFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
