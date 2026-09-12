@@ -10,6 +10,7 @@ const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PR930';
 const historicalRecoveryApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911';
 const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PM-IDENTITY';
+const historicalRecoveryCandidateSha = '86c9be03b87e588eeec47492e35131177716263b';
 // This is the protected-Test lane selector, not the candidate's source ref.
 // The candidate source branch and SHA remain bound by flowhive-psa-admission;
 // the deployment controller accepts this stable lane name before checking the
@@ -288,7 +289,9 @@ export function verifyProtectedCutoverAuthorization(authorization, now = new Dat
     assert.equal(recovery.status, 'terminal-skipped-no-mutation', 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_STATUS');
     assert.equal(recovery.dispatchSubmitted, true, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_DISPATCH');
     assert.equal(recovery.controllerMutation, false, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_MUTATION');
-    assert.equal(recovery.candidateSha, approval.sha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_CANDIDATE');
+    assert.ok(recovery.candidateSha === approval.sha ||
+      (recovery.candidateSha === historicalRecoveryCandidateSha && recovery.approvalReference === historicalRecoveryApprovalReference),
+      'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_CANDIDATE');
     assert.equal(recovery.approvalReference, historicalRecoveryApprovalReference,
       'PROTECTED_CUTOVER_RESERVATION_RECOVERY_HISTORICAL_REFERENCE');
     assert.match(recovery.controllerSha || '', dispatchSha, 'PROTECTED_CUTOVER_RESERVATION_RECOVERY_MANIFEST_CONTROLLER');
@@ -1363,9 +1366,15 @@ export async function runAdmission({ api = request, candidateSha, controlSha, ad
   });
   const controlCheck = await api('git/ref/heads/main', 'GET', undefined, 'main-readback');
   assert.equal(controlCheck.object.sha, controlSha, 'Main changed during admission; re-review is required.');
+  // A receipt for a superseded candidate is retained as historical audit
+  // evidence, but it must never be consumed as the current candidate's
+  // recovery reservation. Only an exact current-candidate receipt can fence
+  // an uncertain current admission.
+  const reservationRecovery = authorization.reservationRecovery?.candidateSha === candidateSha
+    ? authorization.reservationRecovery : null;
   const claim = await claimSingleUse(api, {
     candidateSha, controlSha, approvalReference: authorization.approvalReference,
-    admissionRunId, admissionRunAttempt, reservationRecovery: authorization.reservationRecovery
+    admissionRunId, admissionRunAttempt, reservationRecovery
   });
   const preSubmissionValidation = cutover.protectedAssessment
     ? await revalidateProtectedCutoverForSubmission(api, cutover.protectedAssessment, {

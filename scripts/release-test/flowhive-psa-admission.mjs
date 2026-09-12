@@ -6,18 +6,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged planner-budget application PR922.
+// successor is the reviewed, merged planner-budget application PR933.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 922;
-export const candidateBranch = 'fix/flowhive-planner-output-budget-20260912';
-export const candidateSourceBranch = 'fix/flowhive-planner-output-budget-20260912';
+export const candidatePullRequest = 933;
+export const candidateBranch = 'fix/flowhive-planner-time-budget-20260912';
+export const candidateSourceBranch = 'fix/flowhive-planner-time-budget-20260912';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = 'dbe8c34eeb0b23ab0726cb414a614ec7f6ea221a';
+export const candidateMergeCommit = '3b2c0111f780b85ee7258ff91e56cd92d144828a';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
