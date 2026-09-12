@@ -196,7 +196,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, 943);
   assert.equal(approval.branch, candidateBranch);
-  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-provider-budget-20260912');
+  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-output-budget-20260912');
   assert.equal(approval.mergeCommit, 'e15634c22377476c40f25f67faffda47248c8110');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);

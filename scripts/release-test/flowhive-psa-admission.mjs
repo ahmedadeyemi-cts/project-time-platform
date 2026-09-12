@@ -10,8 +10,8 @@ export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // successor is the reviewed, merged planner-output-shape application PR943.
 export const admissionIssueNumber = 887;
 export const candidatePullRequest = 943;
-export const candidateBranch = 'fix/flowhive-planner-provider-budget-20260912';
-export const candidateSourceBranch = 'fix/flowhive-planner-provider-budget-20260912';
+export const candidateBranch = 'fix/flowhive-planner-output-budget-20260912';
+export const candidateSourceBranch = 'fix/flowhive-planner-output-budget-20260912';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
