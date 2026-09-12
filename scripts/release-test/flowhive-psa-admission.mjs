@@ -11,6 +11,12 @@ export const admissionIssueNumber = 887;
 export const candidatePullRequest = 922;
 export const candidateBranch = 'fix/flowhive-planner-output-budget-20260912';
 export const candidateSourceBranch = 'fix/flowhive-planner-output-budget-20260912';
+// The deployment controller intentionally checks out trusted main, while its
+// protected PSA lane is named independently from the candidate source branch.
+// Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
+// never valid for this admission path.
+export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
+export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
 export const candidateMergeCommit = 'dbe8c34eeb0b23ab0726cb414a614ec7f6ea221a';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
@@ -112,6 +118,12 @@ export function verifySourceDrift(changed, allowed) {
   for (const name of changed) assert.ok(permitted.has(name), `Main has a source change absent from this candidate: ${name}`);
 }
 
+export function verifyTargetReleaseBranch(branch) {
+  if (branch === undefined || branch === '') return;
+  assert.ok(authorizedReleaseBranches.includes(branch),
+    `The PSA release branch must be one of: ${authorizedReleaseBranches.join(', ')}`);
+}
+
 async function github(resource) {
   assert.ok(resource.startsWith(`/repos/${repository}/`));
   const response = await fetch(`https://api.github.com${resource}`, {
@@ -130,7 +142,7 @@ export async function authorize() {
   assert.ok(process.env.GH_TOKEN, 'The read-only admission token is required.');
   const approval = JSON.parse(fs.readFileSync(approvalPath, 'utf8'));
   verifyApproval(approval, process.env.TARGET_RELEASE_COMMIT);
-  if (process.env.TARGET_RELEASE_BRANCH) assert.equal(process.env.TARGET_RELEASE_BRANCH, candidateBranch);
+  verifyTargetReleaseBranch(process.env.TARGET_RELEASE_BRANCH);
   assert.notEqual(process.env.RECOVER_PRIVATE_RUNTIME, 'true', 'Private runtime recovery is not part of this candidate approval.');
   const main = await github(`/repos/${repository}/git/ref/heads/main`);
   assert.match(main.object?.sha || '', sha, 'The current main response is missing or malformed.');

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { authorize, repository, admissionIssueNumber, candidateBranch, candidatePullRequest, approvalPath, verifyApproval } from './flowhive-psa-admission.mjs';
+import { authorize, repository, admissionIssueNumber, candidateBranch, candidatePullRequest, approvalPath, verifyApproval, protectedTestReleaseLane } from './flowhive-psa-admission.mjs';
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
@@ -11,7 +11,7 @@ const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
 // The candidate source branch and SHA remain bound by flowhive-psa-admission;
 // the deployment controller accepts this stable lane name before checking the
 // exact approved SHA.
-export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
+export { protectedTestReleaseLane };
 export const unresolvedRequestIds = Object.freeze([34495606530, 34377182662, 33654881418]);
 const knownNonexecutingRun = unresolvedRequestIds[2];
 const dispatchSha = /^[a-f0-9]{40}$/;
