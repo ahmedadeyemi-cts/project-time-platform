@@ -11,10 +11,11 @@ public static class ProjectFlowHiveExecutionPolicy
     public const string Migration = "104_flowhive_bounded_ai_execution";
     public const int MaximumAttempts = 2;
     public static readonly TimeSpan OverallBudget = TimeSpan.FromMinutes(12);
-    // A source-grounded five-phase plan is one provider request. The previous
-    // four-minute slice expired while the private model was still assembling the
-    // detailed response, before the provider's ten-minute background budget.
-    // Keep two minutes for bounded retry scheduling and persistence.
+    // A source-grounded five-phase plan is a bounded provider sequence: one
+    // request per phase, within the single durable operation budget. The
+    // previous four-minute slice expired while the private model was assembling
+    // one oversized response. Keep two minutes for bounded retry scheduling and
+    // persistence after the phase sequence.
     public static readonly TimeSpan InferenceBudget = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
 
