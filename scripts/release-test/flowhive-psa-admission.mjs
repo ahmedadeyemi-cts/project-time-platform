@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged planner-budget application PR937.
+// successor is the reviewed, merged planner-output-shape application PR943.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 937;
+export const candidatePullRequest = 943;
 export const candidateBranch = 'fix/flowhive-planner-provider-budget-20260912';
 export const candidateSourceBranch = 'fix/flowhive-planner-provider-budget-20260912';
 // The deployment controller intentionally checks out trusted main, while its
@@ -18,7 +18,7 @@ export const candidateSourceBranch = 'fix/flowhive-planner-provider-budget-20260
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '3707d013675b7edd130c74c666b11315cdb32c9e';
+export const candidateMergeCommit = 'e15634c22377476c40f25f67faffda47248c8110';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -36,15 +36,18 @@ const requiredWorkflows = [
   '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
   '.github/workflows/celar-ai-production-hardening-ci.yml',
   '.github/workflows/flowhive-detailed-planner-ci.yml',
-  '.github/workflows/flowhive-enterprise-psa-ci.yml',
   '.github/workflows/module025-governed-protected-test-release-ci.yml',
-  '.github/workflows/project-planning-collaboration-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   '.github/workflows/security-posture-ci.yml',
   '.github/workflows/shared-project-document-planning-ci.yml',
-  '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+  '.github/workflows/systemwide-enterprise-reliability-ci.yml',
+  '.github/workflows/deepseek-v4-provider-ci.yml',
+  '.github/workflows/pulse-ai-system-intelligence-ci.yml',
+  '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+  '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
+  '.github/workflows/celar-ai-enterprise-retrieval-ci.yml'
 ];
 
 export function verifyApproval(approval, requestedSha) {
@@ -70,14 +73,7 @@ export function verifyApproval(approval, requestedSha) {
     'The approval must enumerate the exact applicable workflow set for the selected successor head.');
   assert.equal(new Set(approval.requiredWorkflows).size, approval.requiredWorkflows.length);
   for (const workflow of approval.requiredWorkflows) assert.match(workflow, /^\.github\/workflows\/[a-z0-9-]+\.yml$/);
-  assert.deepEqual(approval.workflowExceptions, [{
-    workflow: '.github/workflows/module025-governed-protected-test-release-ci.yml',
-    reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: '1499f0c3de0782ee11f29cec84a3679b64207f5a',
-    baseWorkflowSha256: '2d65bd6b744a45b947095c8c2c087a43ab21b63b0f6118d194287e92c10fb0cf',
-    candidateChangedFilesSha256: 'afeb662618e239f0deeca867dff887283cd7c3418d71b8affbdb5965c692da1c',
-    candidateChangedFilesCount: 17
-  }], 'The missing Module 025 run must have explicit, reviewable path-filter evidence.');
+  assert.deepEqual(approval.workflowExceptions, [], 'The successor approval must not retain an obsolete missing-workflow exception.');
   assert.equal(approval.projectId, '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49');
   assert.equal(approval.projectManagerLogin, 'heather.schrock@ussignal.local');
 }
@@ -130,6 +126,7 @@ function workflowPathMatches(pattern, filename) {
 }
 
 export function verifyWorkflowException(approval, pullRequest, changedFiles, baseWorkflowContent) {
+  if ((approval.workflowExceptions || []).length === 0) return [];
   const [exception] = approval.workflowExceptions || [];
   assert.ok(exception, 'The candidate must explain every missing required workflow.');
   assert.equal(exception.workflow, '.github/workflows/module025-governed-protected-test-release-ci.yml');
@@ -194,7 +191,9 @@ export async function authorize() {
   assert.ok(Array.isArray(fileResponse) && fileResponse.length > 0, 'The candidate file inventory is missing.');
   const candidateFiles = fileResponse.map(file => file.filename).sort();
   const workflowExceptions = verifyWorkflowException(approval, pr, candidateFiles,
-    execFileSync('git', ['show', `${pr.base.sha}:${approval.workflowExceptions[0].workflow}`], { encoding: 'utf8', timeout: 30000 }));
+    approval.workflowExceptions.length > 0
+      ? execFileSync('git', ['show', `${pr.base.sha}:${approval.workflowExceptions[0].workflow}`], { encoding: 'utf8', timeout: 30000 })
+      : '');
   const runs = [];
   for (let page = 1; page <= 10; page++) {
     const result = await github(`/repos/${repository}/actions/runs?head_sha=${approval.sha}&event=pull_request&per_page=100&page=${page}`);
