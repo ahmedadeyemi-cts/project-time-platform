@@ -8,6 +8,8 @@ public sealed class PulseAiPrivateRagService
 {
     private const int Module025SowMaximumOutputTokens = 12_000;
     private const int Module025SowMaximumAnswerCharacters = 96_000;
+    private const int FlowHivePlanMaximumOutputTokens = 12_000;
+    private const int FlowHivePlanMaximumAnswerCharacters = 96_000;
     private static readonly string[] Module025DeliveryPhases =
     [
         "Plan",
@@ -39,6 +41,22 @@ public sealed class PulseAiPrivateRagService
 
     public PulseAiPrivateRagOptions Options() =>
         CelarAiPrivateModelRuntime.Apply(PulseAiPrivateRagOptions.FromEnvironment());
+
+    internal static int MaximumOutputTokensForPlanning(string featureCode, int configuredMaximum) =>
+        featureCode switch
+        {
+            CelarAiCapabilityCatalog.SowGsdPlanning => Math.Max(configuredMaximum, Module025SowMaximumOutputTokens),
+            CelarAiCapabilityCatalog.ProjectFlowHivePlan => Math.Max(configuredMaximum, FlowHivePlanMaximumOutputTokens),
+            _ => configuredMaximum
+        };
+
+    internal static int MaximumAnswerCharactersForPlanning(string featureCode, int configuredMaximum) =>
+        featureCode switch
+        {
+            CelarAiCapabilityCatalog.SowGsdPlanning => Math.Max(configuredMaximum, Module025SowMaximumAnswerCharacters),
+            CelarAiCapabilityCatalog.ProjectFlowHivePlan => Math.Max(configuredMaximum, FlowHivePlanMaximumAnswerCharacters),
+            _ => configuredMaximum
+        };
 
     public async Task<object> GetReadinessAsync(CancellationToken cancellationToken = default)
     {
@@ -566,9 +584,9 @@ public sealed class PulseAiPrivateRagService
                 UserInstruction: userInstruction,
                 Sources: retrieval.Chunks,
                 OutputSchemaName: modelSchema,
-                MaximumOutputTokens: query.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
-                    ? Math.Max(options.MaximumOutputTokens, Module025SowMaximumOutputTokens)
-                    : options.MaximumOutputTokens,
+                MaximumOutputTokens: MaximumOutputTokensForPlanning(
+                    query.FeatureCode,
+                    options.MaximumOutputTokens),
                 Temperature: query.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
                     ? 0.05m
                     : flowHive ? 0.15m : query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature ? 0.05m : 0.10m,
@@ -581,14 +599,12 @@ public sealed class PulseAiPrivateRagService
                 : usePrivateModelWhenAvailable
                 ? await _model.GenerateAsync(
                     modelRequest,
-                    query.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
-                        ? options with
-                        {
-                            MaximumAnswerCharacters = Math.Max(
-                                options.MaximumAnswerCharacters,
-                                Module025SowMaximumAnswerCharacters)
-                        }
-                        : options,
+                    options with
+                    {
+                        MaximumAnswerCharacters = MaximumAnswerCharactersForPlanning(
+                            query.FeatureCode,
+                            options.MaximumAnswerCharacters)
+                    },
                     cancellationToken)
                 : EmptyModel("private_model_disabled_by_request");
 

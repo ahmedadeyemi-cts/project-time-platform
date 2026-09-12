@@ -17,6 +17,27 @@ static string NormalizePdfText(string value) => string.Join(
     ' ',
     value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
+Assert(
+    PulseAiPrivateRagService.MaximumOutputTokensForPlanning(
+        CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+        4_000) == 12_000,
+    "flowhive_detailed_plan_output_budget_not_default_rag_budget");
+Assert(
+    PulseAiPrivateRagService.MaximumAnswerCharactersForPlanning(
+        CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+        24_000) == 96_000,
+    "flowhive_detailed_plan_answer_limit_not_default_rag_limit");
+Assert(
+    PulseAiPrivateRagService.MaximumOutputTokensForPlanning(
+        CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+        16_000) == 16_000,
+    "flowhive_configured_output_budget_is_not_reduced");
+Assert(
+    PulseAiPrivateRagService.MaximumOutputTokensForPlanning(
+        PulseAiPrivateRagPolicy.TimesheetFeature,
+        4_000) == 4_000,
+    "ordinary_private_rag_output_budget_is_unchanged");
+
 var module025Parser = typeof(PulseAiPrivateRagService).GetMethod(
     "ParseModule025DetailedPlan",
     BindingFlags.NonPublic | BindingFlags.Static);
