@@ -33,21 +33,12 @@ const migrations = [
   '107_module_066_operation_authorization_and_raid_actor.sql'
 ];
 const requiredWorkflows = [
-  '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
   '.github/workflows/celar-ai-production-hardening-ci.yml',
-  '.github/workflows/flowhive-detailed-planner-ci.yml',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
-  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
-  '.github/workflows/projectpulse-release-test-control-ci.yml',
   '.github/workflows/security-posture-ci.yml',
-  '.github/workflows/shared-project-document-planning-ci.yml',
   '.github/workflows/systemwide-enterprise-reliability-ci.yml',
-  '.github/workflows/deepseek-v4-provider-ci.yml',
   '.github/workflows/pulse-ai-system-intelligence-ci.yml',
-  '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
-  '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
-  '.github/workflows/celar-ai-enterprise-retrieval-ci.yml'
+  '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
 ];
 
 export function verifyApproval(approval, requestedSha) {
