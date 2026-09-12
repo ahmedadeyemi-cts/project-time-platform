@@ -102,6 +102,15 @@ FILES
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
   test -s .github/flowhive-enterprise-psa-release-files.txt
   grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-enterprise-psa-release-files.txt >> "$CIT/allowed-release-files"
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-installed-verifier-resolution-20260912' ]]; then
+  cat >> "$CIT/allowed-release-files" <<'FILES'
+.github/workflows/flowhive-psa-installed-acceptance.yml
+.github/workflows/flowhive-psa-release-control-ci.yml
+scripts/release-test/resolve-flowhive-installed-deployment.py
+tests/flowhive-psa-installed-acceptance.test.py
+tests/flowhive-psa-installed-resolution.test.py
+tests/flowhive-psa-release-control.mjs
+FILES
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
   cat >> "$CIT/allowed-release-files" <<'FILES'
 .github/flowhive-psa-protected-cutover.json

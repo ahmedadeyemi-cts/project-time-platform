@@ -27,6 +27,30 @@ def require(condition: bool, code: str) -> None:
         raise ResolutionError(code)
 
 
+def deployment_disposition(run: object, identity: object, health: object | None = None) -> str:
+    """Classify a deployment only after its server-sealed install evidence is read.
+
+    A failed controller run is verifiable only when the deployment workflow had
+    already sealed immutable API/web identities and health before a later
+    verification-only failure.  A failure before those facts are sealed is
+    never a valid installed-release input.
+    """
+    require(isinstance(run, dict), "deployment_run_response_invalid")
+    require(run.get("status") == "completed", "selected_run_not_terminal")
+    if run.get("conclusion") == "success":
+        return "successful"
+    require(run.get("conclusion") == "failure", "selected_run_not_successful")
+    require(isinstance(identity, dict) and identity.get("status") == "identity_inputs_sealed",
+            "failed_before_identity_sealed")
+    require(isinstance(health, dict) and health.get("deploymentHealthVerified") is True,
+            "failed_without_deployment_health")
+    require(health.get("productionMutation") is False,
+            "failed_deployment_health_mutation_invalid")
+    require(str(health.get("sourceCommit") or "") == str(identity.get("applicationSha") or ""),
+            "failed_deployment_health_source_mismatch")
+    return "failed_after_identity_sealed"
+
+
 def api_json(path: str, token: str) -> object:
     request = Request(
         "https://api.github.com" + path,
@@ -79,8 +103,6 @@ def main() -> int:
         require(run.get("event") == "workflow_dispatch", "selected_run_not_manual_dispatch")
         require(run.get("head_branch") == "main" and run.get("head_sha") == current_sha,
                 "selected_run_wrong_controller")
-        require(run.get("status") == "completed" and run.get("conclusion") == "success",
-                "selected_run_not_successful")
 
         artifacts = api_json(f"/repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100", token)
         require(isinstance(artifacts, dict) and isinstance(artifacts.get("artifacts"), list),
@@ -100,6 +122,16 @@ def main() -> int:
                 raise ResolutionError("deployment_identity_json_invalid") from None
 
         require(isinstance(identity, dict), "deployment_identity_invalid")
+        health = None
+        if run.get("status") == "completed" and run.get("conclusion") == "failure":
+            health_names = [name for name in bundle.namelist()
+                            if name.endswith("deployment-health-verified.json")]
+            require(len(health_names) == 1, "deployment_health_file_missing_or_ambiguous")
+            try:
+                health = json.loads(bundle.read(health_names[0]))
+            except (KeyError, ValueError):
+                raise ResolutionError("deployment_health_json_invalid") from None
+        disposition = deployment_disposition(run, identity, health)
         require(identity.get("environment") == "test" and identity.get("productionMutation") is False,
                 "deployment_identity_environment_invalid")
         require(str(identity.get("deploymentRunId")) == run_id
@@ -136,7 +168,8 @@ def main() -> int:
             "apiImage": identity["apiImage"],
             "webImage": identity["webImage"],
             "productionMutation": False,
-            "source": "server_confirmed_successful_dispatch_artifact_and_current_main_candidate_manifest",
+            "deploymentDisposition": disposition,
+            "source": "server_confirmed_install_identity_artifact_and_current_main_candidate_manifest",
         }
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(context, indent=2) + "\n")

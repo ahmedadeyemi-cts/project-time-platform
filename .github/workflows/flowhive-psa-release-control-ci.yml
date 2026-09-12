@@ -51,6 +51,7 @@ jobs:
           node --test tests/flowhive-psa-admission.test.mjs
           python tests/flowhive-psa-live-uat.test.py
           python tests/flowhive-psa-installed-acceptance.test.py
+          python tests/flowhive-psa-installed-resolution.test.py
           python tests/flowhive-psa-release-workflow.test.py
           python -m py_compile \
             scripts/release-test/check-module025-installed-prerequisite.py \

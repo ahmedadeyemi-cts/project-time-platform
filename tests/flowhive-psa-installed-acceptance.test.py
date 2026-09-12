@@ -16,6 +16,7 @@ ROOT = Path(__file__).parents[1]
 WORKFLOW = ROOT / ".github/workflows/flowhive-psa-installed-acceptance.yml"
 DEPLOY = ROOT / ".github/workflows/projectpulse-deploy-test.yml"
 IDENTITY = ROOT / "scripts/release-test/verify-flowhive-installed-identity.py"
+RESOLVER = ROOT / "scripts/release-test/resolve-flowhive-installed-deployment.py"
 FLOWHIVE = ROOT / "scripts/release-test/run-flowhive-psa-live-uat.py"
 ROLE = ROOT / "scripts/release-test/run-flowhive-my-role-browser.py"
 PLATFORM = ROOT / "src/backend/ProjectTime.Api/Modules/PlatformOperationsContracts.cs"
@@ -30,6 +31,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         cls.workflow = WORKFLOW.read_text()
         cls.deploy = DEPLOY.read_text()
         cls.identity = IDENTITY.read_text()
+        cls.resolver = RESOLVER.read_text()
         cls.flowhive = FLOWHIVE.read_text()
         cls.role = ROLE.read_text()
         cls.platform = PLATFORM.read_text()
@@ -74,7 +76,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn("EVIDENCE_DIR: ${{ runner.temp }}", self.workflow)
         self.assertIn("EVIDENCE_DIR: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
         self.assertIn("PSA_VERIFICATION_APPROVAL_FILE: ${{ github.workspace }}/flowhive-installed-acceptance/installed-approval.json", self.workflow)
-        self.assertIn("if: always() && steps.identity.outcome != 'cancelled'", self.workflow)
+        self.assertIn("if: always() && steps.identity.outcome == 'success'", self.workflow)
         self.assertIn("path: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
 
     def test_installed_identity_is_immutable_and_server_checked(self):
@@ -103,6 +105,18 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn('MANAGE_ALL', self.identity)
         self.assertNotIn('pm_local_login_fallback', self.identity)
         self.assertIn('"productionMutation": False', self.identity)
+
+    def test_failed_deployment_requires_sealed_install_identity_before_verification(self):
+        for token in (
+            "deployment_disposition",
+            "failed_after_identity_sealed",
+            "failed_before_identity_sealed",
+            "failed_without_deployment_health",
+            "deployment-health-verified.json",
+            '"deploymentDisposition": disposition',
+            "server_confirmed_install_identity_artifact",
+        ):
+            self.assertIn(token, self.resolver)
 
     def test_release_marker_consumes_the_controller_written_source_variable(self):
         self.assertIn('"PROJECTPULSE_SOURCE_COMMIT"', self.platform)

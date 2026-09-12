@@ -135,7 +135,7 @@ jobs:
 
       - name: Verify My Role in Pulse, handoffs, reload, and access boundaries
         id: my_role
-        if: always() && steps.identity.outcome != 'cancelled'
+        if: always() && steps.identity.outcome == 'success'
         shell: bash
         env:
           PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
