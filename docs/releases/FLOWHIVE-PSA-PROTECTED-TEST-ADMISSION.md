@@ -1,6 +1,6 @@
 # FlowHive PSA — exact reviewed Protected Test admission
 
-This is a release-control change, not a merge or completion of successor PR #887.
+This is a release-control change, not an application merge or completion of the installed release.
 It admits only the candidate pinned in `.github/flowhive-psa-protected-test-candidate.json`
 through the existing `.github/workflows/projectpulse-deploy-test.yml` controller.
 Production, private-runtime recovery, customer publication, baseline adoption and
@@ -8,8 +8,9 @@ canonical task mutations are not authorized by this approval.
 
 ## Admission
 
-The repository owner may post this exact command after these controls
-have been reviewed, tested and merged to main:
+After these controls have been reviewed, tested and merged to main, the
+repository owner must post this exact command as a comment on PR #887's
+issue thread (not on the candidate PR or another issue):
 
 ```
 DEPLOY FLOWHIVE PSA PROTECTED TEST SHA ad91335d412e3966716536eb6f39c3f70108ebb9

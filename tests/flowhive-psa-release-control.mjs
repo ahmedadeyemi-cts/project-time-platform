@@ -952,8 +952,11 @@ export function validate() {
   assert.equal(staleAuthorization.evidence.requestToRunBinding.response, null);
   verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));
   const supervisor = fs.readFileSync('.github/workflows/flowhive-psa-protected-test-admission.yml', 'utf8');
+  const admissionGuide = fs.readFileSync('docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md', 'utf8');
   assert.ok(!/azure\/login|id-token:|environment:|contents:\s*write/.test(supervisor), 'Admission cannot mutate a cloud environment or source.');
   assert.ok(supervisor.includes('github.event.issue.number == 887') && supervisor.includes("github.actor == 'ahmedadeyemi-cts'"));
+  assert.match(admissionGuide, /exact command as a comment on PR #887's\s+issue thread/);
+  assert.match(admissionGuide, /not on the candidate PR or another issue/);
   assert.ok(supervisor.includes('group: module025-protected-uat-control') && supervisor.includes('cancel-in-progress: false'));
   assert.ok(supervisor.includes('FLOWHIVE_PSA_DISPATCH_EVIDENCE_FILE'));
   assert.ok(supervisor.includes('issues: write') && supervisor.includes('pull-requests: write'),
