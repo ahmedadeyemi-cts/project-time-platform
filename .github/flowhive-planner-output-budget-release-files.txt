@@ -4,3 +4,4 @@ scripts/release-test/prepare-protected-test-scope-manifests.sh
 src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
 src/backend/ProjectTime.Api/Modules/ProjectFlowHiveExecutionPolicy.cs
 tests/FlowHiveExecutionTests/Program.cs
+tests/validate-flowhive-sow-evidence-autoadmission.mjs
