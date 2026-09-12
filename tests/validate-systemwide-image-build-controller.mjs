@@ -221,8 +221,11 @@ assert.match(
 );
 assert.match(privateRagService, /ParseModule025DetailedPlan/);
 assert.match(privateRagService, /validateModule025DetailedPlan: authoritativeSource is not null/);
-assert.match(privateRagService, /normally 10 to 20 tasks, with multiple tasks per phase/);
-assert.match(privateRagService, /at least ten detailed delivery work packages/);
+assert.match(privateRagService, /normally 10 to 20 tasks, with multiple tasks per phase where the work requires them/);
+assert.match(privateRagService, /at least two tasks for every phase and at least ten tasks total/);
+assert.match(privateRagService, /exactly two detailed tasks for this phase/);
+assert.match(privateRagService, /Return exactly two distinct detailed tasks for the requested phase only/);
+assert.match(privateRagService, /Return exactly two complete technology-specific work packages/);
 assert.match(privateRagService, /at least two work packages in the \{phase\} phase/);
 assert.match(privateRagService, /at least four distinct execution steps in the \{phase\} phase/);
 assert.match(privateRagService, /at least two distinct deliverables in the \{phase\} phase/);

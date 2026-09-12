@@ -38,6 +38,32 @@ Assert(
         4_000) == 4_000,
     "ordinary_private_rag_output_budget_is_unchanged");
 
+var flowHiveInstructionFactory = typeof(PulseAiPrivateRagService).GetMethod(
+    "FlowHiveSystemInstruction",
+    BindingFlags.NonPublic | BindingFlags.Static);
+Assert(flowHiveInstructionFactory is not null, "flowhive_system_instruction_available");
+var flowHiveInstruction = (string)flowHiveInstructionFactory!.Invoke(
+    null,
+    [CelarAiCapabilityCatalog.SowGsdPlanning, true])!;
+Assert(flowHiveInstruction.Contains("normally 10 to 20 tasks, with multiple tasks per phase where the work requires them", StringComparison.Ordinal),
+    "module025_prompt_preserves_detailed_output_contract");
+Assert(flowHiveInstruction.Contains("at least two tasks for every phase and at least ten tasks total", StringComparison.Ordinal),
+    "module025_prompt_preserves_phase_floor");
+
+var module025PhaseInstructionFactory = typeof(PulseAiPrivateRagService).GetMethod(
+    "Module025PhaseSystemInstruction",
+    BindingFlags.NonPublic | BindingFlags.Static);
+Assert(module025PhaseInstructionFactory is not null, "module025_phase_instruction_available");
+var module025PhaseInstruction = (string)module025PhaseInstructionFactory!.Invoke(
+    null,
+    [flowHiveInstruction, "Validate", 3, "[]", ""])!;
+Assert(module025PhaseInstruction.Contains("exactly two detailed tasks for this phase", StringComparison.Ordinal),
+    "module025_phase_prompt_is_bounded");
+Assert(module025PhaseInstruction.Contains("Return exactly two distinct detailed tasks for the requested phase only", StringComparison.Ordinal),
+    "module025_phase_prompt_preserves_distinct_task_contract");
+Assert(module025PhaseInstruction.Contains("This is phase 4 of five", StringComparison.Ordinal),
+    "module025_phase_prompt_binds_phase_index");
+
 var module025Parser = typeof(PulseAiPrivateRagService).GetMethod(
     "ParseModule025DetailedPlan",
     BindingFlags.NonPublic | BindingFlags.Static);
