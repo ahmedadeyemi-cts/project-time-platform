@@ -218,7 +218,6 @@ export const liveUatStatusFixFiles = [
   'tests/flowhive-psa-installed-acceptance.test.py',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const liveUatPmSecretWiringBase = '85c5149db4f06c0d4290c3081312d9c68f7ac4d1';
 export const liveUatPmSecretWiringBranch = 'fix/flowhive-live-uat-pm-secret-wiring-20260912';
 export const liveUatPmSecretWiringFiles = [
   '.github/workflows/projectpulse-deploy-test.yml',
@@ -438,7 +437,7 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.branch, liveUatStatusFixBranch, 'Wrong live UAT verifier fix branch.');
   }
   if (mode === 'live-uat-pm-secret-wiring') {
-    assert.equal(context?.base, liveUatPmSecretWiringBase, 'Live UAT PM secret wiring must be based on current trusted main.');
+    assert.equal(context?.base, execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim(), 'Live UAT PM secret wiring must be based on current trusted main.');
     assert.equal(context?.branch, liveUatPmSecretWiringBranch, 'Wrong live UAT PM secret wiring branch.');
   }
   if (mode === 'installed-verification-environment') {
