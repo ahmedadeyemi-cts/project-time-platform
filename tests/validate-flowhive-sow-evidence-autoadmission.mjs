@@ -30,7 +30,8 @@ assert(
 );
 // A two-attempt total budget replaces the old three-call (initial + two retries) path.
 assert.match(executionPolicy, /MaximumAttempts = 2/);
-assert.match(executionPolicy, /OverallBudget = TimeSpan.FromMinutes\(5\)/);
+assert.match(executionPolicy, /OverallBudget = TimeSpan.FromMinutes\(12\)/);
+assert.match(executionPolicy, /InferenceBudget = TimeSpan.FromMinutes\(10\)/);
 assert.match(plannerOrchestration, /attempt_count=attempt_count\+1[\s\S]*?deadline_at>clock_timestamp\(\) AND attempt_count<2/);
 assert.match(
   plannerOrchestration,
@@ -64,7 +65,7 @@ assert.match(plannerOrchestration, /status is "completed" or "completed_with_sch
 assert.doesNotMatch(plannerWorkspace, /AI_PLANNER_POLL_ATTEMPTS\s*=\s*800/);
 assert.match(plannerWorkspace, /observePlanner\(/);
 assert.match(plannerWorkspace, /async function cancelPlanner\(/);
-assert.match(observation, /maximumObservationMs = 330000/);
+assert.match(observation, /maximumObservationMs = 750000/);
 assert.match(observation, /\+\+failures >= 3/);
 assert.match(observation, /options\.signal\?\.removeEventListener/);
 assert.match(plannerWorkspace, /aria-live="polite"/);

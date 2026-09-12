@@ -106,9 +106,11 @@ Check(fingerprint != ProjectFlowHiveExecutionPolicy.Fingerprint(seed,Guid.NewGui
 Check(fingerprint != ProjectFlowHiveExecutionPolicy.Fingerprint(seed,actor,actor,"different","comprehensive","source"), "requested scope participates in identity");
 Check(!ProjectFlowHiveExecutionPolicy.CanAttempt(2,DateTimeOffset.UtcNow.AddMinutes(1),DateTimeOffset.UtcNow), "two-attempt budget is terminal");
 Check(!ProjectFlowHiveExecutionPolicy.CanAttempt(0,DateTimeOffset.UtcNow.AddSeconds(-1),DateTimeOffset.UtcNow), "expired operation cannot attempt inference");
-Check(ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(5),DateTimeOffset.UtcNow), "a first transient failure can retry when the full bounded request still fits");
-Check(!ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(4).AddSeconds(20),DateTimeOffset.UtcNow), "a late transient failure cannot start a retry that would outlive the run");
-Check(!ProjectFlowHiveExecutionPolicy.CanRetry(2,DateTimeOffset.UtcNow.AddMinutes(5),DateTimeOffset.UtcNow), "the retry budget remains capped at two attempts");
+Check(ProjectFlowHiveExecutionPolicy.OverallBudget == TimeSpan.FromMinutes(12), "the durable planner deadline is twelve minutes and remains bounded");
+Check(ProjectFlowHiveExecutionPolicy.InferenceBudget == TimeSpan.FromMinutes(10), "the provider request may use the configured ten-minute background budget");
+Check(ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(11),DateTimeOffset.UtcNow), "a first transient failure can retry when the full bounded request still fits");
+Check(!ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(10).AddSeconds(20),DateTimeOffset.UtcNow), "a late transient failure cannot start a retry that would outlive the run");
+Check(!ProjectFlowHiveExecutionPolicy.CanRetry(2,DateTimeOffset.UtcNow.AddMinutes(12),DateTimeOffset.UtcNow), "the retry budget remains capped at two attempts");
 Check(!ProjectFlowHiveExecutionPolicy.MatchesWorkingCopy(null,Guid.NewGuid()), "null starting version is not an overwrite wildcard");
 var module = typeof(ProjectFlowHiveExecutionPolicy).Assembly.GetType("ProjectTime.Api.Modules.ProjectFlowHiveAiPlannerOrchestrationModule")!;
 var save = module.GetMethod("SaveWorkingCopyAsync",BindingFlags.NonPublic|BindingFlags.Static)!;
@@ -144,7 +146,7 @@ Check(await Queue("scope",currentVersion)==run,"duplicate clicks reuse the exact
 try { await Queue("changed scope",currentVersion); throw new Exception("A conflicting run was accepted"); }
 catch (Exception e) when(e.GetType().Name=="PlannerConflict") { Check(true,"different active inputs produce a conflict instead of another job"); }
 Check((long)(await Sql("SELECT count(*) FROM project_flowhive_ai_planner_runs"))! == 1,"one click sequence creates one durable operation");
-Check((double)(await Sql("SELECT EXTRACT(EPOCH FROM deadline_at-created_at)::double precision FROM project_flowhive_ai_planner_runs WHERE run_id=@r",("r",run)))! <= 301,"deadline is stored at creation");
+Check((double)(await Sql("SELECT EXTRACT(EPOCH FROM deadline_at-created_at)::double precision FROM project_flowhive_ai_planner_runs WHERE run_id=@r",("r",run)))! <= 721,"deadline is stored at creation within the twelve-minute bound");
 foreach(var sql in new[] {
     "UPDATE project_flowhive_ai_planner_runs SET deadline_at=deadline_at+INTERVAL '1 hour' WHERE run_id=@r",
     "UPDATE project_flowhive_ai_planner_runs SET attempt_count=3 WHERE run_id=@r",

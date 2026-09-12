@@ -545,7 +545,7 @@ def run(approval: dict, report: dict) -> None:
         need(uid(run_id) and result.get('projectId') == PROJECT, 'run_identity_missing')
         report['runId'] = run_id
         report['acknowledgementSeconds'] = round(time.monotonic() - generation_start, 3)
-        deadline = generation_start + 330  # Backend failure ceiling is 300s; bounded observation grace only.
+        deadline = generation_start + 750  # Backend failure ceiling is 720s; bounded observation grace only.
         stage_started = time.monotonic()
         stage = str(result.get('phase') or '')
         report['stages'] = []
@@ -555,7 +555,7 @@ def run(approval: dict, report: dict) -> None:
             need(result.get('executionContract') == CONTRACT, 'bounded_execution_not_deployed')
             need(type(result.get('attemptCount')) is int and 0 <= result['attemptCount'] <= 2, 'orchestration_budget_exceeded')
             need(result.get('maximumAttempts') == 2, 'orchestration_budget_changed')
-            need((iso(result['deadlineAt']) - iso(result['createdAt'])).total_seconds() <= 301, 'backend_deadline_not_bounded')
+            need((iso(result['deadlineAt']) - iso(result['createdAt'])).total_seconds() <= 721, 'backend_deadline_not_bounded')
             new_stage = str(result.get('phase') or '')
             if new_stage != stage:
                 report['stages'].append({'stage': re.sub('[^a-z0-9_]', '', stage.lower())[:80], 'observedSeconds': round(time.monotonic() - stage_started, 3)})

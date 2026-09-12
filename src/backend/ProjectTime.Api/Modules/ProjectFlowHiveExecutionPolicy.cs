@@ -10,12 +10,12 @@ public static class ProjectFlowHiveExecutionPolicy
     public const string Contract = "flowhive-bounded-execution-v1-20260906";
     public const string Migration = "104_flowhive_bounded_ai_execution";
     public const int MaximumAttempts = 2;
-    public static readonly TimeSpan OverallBudget = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan OverallBudget = TimeSpan.FromMinutes(12);
     // A source-grounded five-phase plan is one provider request. The previous
-    // two-minute slice expired while the private model was still assembling the
-    // detailed response, causing the worker to repeat the same request. Leave a
-    // small persistence/retry margin inside the existing five-minute run.
-    public static readonly TimeSpan InferenceBudget = TimeSpan.FromMinutes(4);
+    // four-minute slice expired while the private model was still assembling the
+    // detailed response, before the provider's ten-minute background budget.
+    // Keep two minutes for bounded retry scheduling and persistence.
+    public static readonly TimeSpan InferenceBudget = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
 
     public static string Fingerprint(ProjectFlowHivePlanRequest plan, Guid actual, Guid effective,
