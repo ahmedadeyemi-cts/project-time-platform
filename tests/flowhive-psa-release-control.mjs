@@ -127,6 +127,14 @@ export const dispatchLaneRepairFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+export const dispatchSkippedRecoveryBase = 'a2dc9e7050851cc763b1bd7ed915d390e8585ceb';
+export const dispatchSkippedRecoveryBranch = 'fix/flowhive-psa-skipped-dispatch-recovery-20260912';
+export const dispatchSkippedRecoveryFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
 export const staleSupersessionBase = '785eb54a4f280c9ff0e59951c31a30cad4c1a0da';
 export const staleSupersessionBranch = 'fix/flowhive-stale-run-supersession-20260909';
 export const staleSupersessionActivationBase = '2d31f842599927f0a62e692d2669f643dc9e287b';
@@ -379,7 +387,7 @@ export function verifyRepairContext(context) {
 }
 export function verifyFiles(changed, manifest, mode = 'initial', context = null) {
   assert.deepEqual(manifest, files, 'Approval must retain the exact reviewed control-only file list.');
-  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','successor-release-approval','successor-cutover-activation','planner-output-budget-approval','planner-output-budget-activation','planner-output-budget-activation-refresh','dispatch-run-recovery','dispatch-lane-repair','stale-run-supersession','stale-run-activation','stale-run-renewal','migration106-wiring','release-stabilization','protected-cutover','protected-cutover-activation','protected-cutover-refresh','admission-permission-fix','admission-bot-claim-fix','protected-cutover-recovery','reservation-recovery-endpoint-fix','protected-cutover-final','live-uat-status-fix','installed-verification-environment','installed-verification-evidence','installed-acceptance-evidence','installed-acceptance-artifacts','installed-acceptance-readiness','installed-acceptance-visibility','installed-acceptance-planner','installed-acceptance-final'].includes(mode), 'Unrecognized control repair.');
+  assert.ok(['initial','pr874-digest-repair','reviewed-regeneration-105','candidate-refresh','successor-candidate-refresh','source-base-correction','successor-approval','successor-release-approval','successor-cutover-activation','planner-output-budget-approval','planner-output-budget-activation','planner-output-budget-activation-refresh','dispatch-run-recovery','dispatch-lane-repair','dispatch-skipped-recovery','stale-run-supersession','stale-run-activation','stale-run-renewal','migration106-wiring','release-stabilization','protected-cutover','protected-cutover-activation','protected-cutover-refresh','admission-permission-fix','admission-bot-claim-fix','protected-cutover-recovery','reservation-recovery-endpoint-fix','protected-cutover-final','live-uat-status-fix','installed-verification-environment','installed-verification-evidence','installed-acceptance-evidence','installed-acceptance-artifacts','installed-acceptance-readiness','installed-acceptance-visibility','installed-acceptance-planner','installed-acceptance-final'].includes(mode), 'Unrecognized control repair.');
   if (mode === 'pr874-digest-repair') verifyRepairContext(context);
   if (mode === 'reviewed-regeneration-105') {
     assert.equal(context?.base, reviewedRegenerationBase, 'Reviewed regeneration control must be based on current main.');
@@ -424,6 +432,10 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
   if (mode === 'dispatch-lane-repair') {
     assert.equal(context?.base, dispatchLaneRepairBase, 'Dispatch-lane repair must be based on the merged trusted controller.');
     assert.equal(context?.branch, dispatchLaneRepairBranch, 'Wrong dispatch-lane repair branch.');
+  }
+  if (mode === 'dispatch-skipped-recovery') {
+    assert.equal(context?.base, dispatchSkippedRecoveryBase, 'Skipped-dispatch recovery must be based on the corrected trusted controller.');
+    assert.equal(context?.branch, dispatchSkippedRecoveryBranch, 'Wrong skipped-dispatch recovery branch.');
   }
   if (mode === 'stale-run-supersession') {
     assert.equal(context?.base, staleSupersessionBase, 'Stale supersession must be based on merged trusted main.');
@@ -505,7 +517,7 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.base, installedAcceptanceFinalBase, 'Installed acceptance final verifier must be based on current trusted main.');
     assert.equal(context?.branch, installedAcceptanceFinalBranch, 'Wrong installed acceptance final verifier branch.');
   }
-  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'successor-release-approval' ? successorReleaseApprovalFiles : mode === 'successor-cutover-activation' ? successorCutoverActivationFiles : mode === 'planner-output-budget-approval' ? plannerOutputBudgetApprovalFiles : mode === 'planner-output-budget-activation' ? plannerOutputBudgetActivationFiles : mode === 'planner-output-budget-activation-refresh' ? plannerOutputBudgetActivationRefreshFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'dispatch-lane-repair' ? dispatchLaneRepairFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : mode === 'stale-run-renewal' ? staleSupersessionRenewalFiles : mode === 'migration106-wiring' ? migration106WiringFiles : mode === 'release-stabilization' ? releaseStabilizationFiles : mode === 'protected-cutover' ? protectedCutoverFiles : mode === 'protected-cutover-activation' ? protectedCutoverActivationFiles : mode === 'protected-cutover-refresh' ? protectedCutoverRefreshFiles : mode === 'admission-permission-fix' ? admissionPermissionFixFiles : mode === 'admission-bot-claim-fix' ? admissionBotClaimFixFiles : mode === 'protected-cutover-recovery' ? protectedCutoverRecoveryFiles : mode === 'reservation-recovery-endpoint-fix' ? reservationRecoveryEndpointFixFiles : mode === 'protected-cutover-final' ? protectedCutoverFinalFiles : mode === 'live-uat-status-fix' ? liveUatStatusFixFiles : mode === 'installed-verification-environment' ? installedVerificationEnvironmentFiles : mode === 'installed-verification-evidence' ? installedVerificationEvidenceFiles : mode === 'installed-acceptance-evidence' ? installedAcceptanceEvidenceFiles : mode === 'installed-acceptance-artifacts' ? installedAcceptanceArtifactsFiles : mode === 'installed-acceptance-readiness' ? installedAcceptanceReadinessFiles : mode === 'installed-acceptance-visibility' ? installedAcceptanceVisibilityFiles : mode === 'installed-acceptance-planner' ? installedAcceptancePlannerFiles : mode === 'installed-acceptance-final' ? installedAcceptanceFinalFiles : staleSupersessionFiles;
+  const expected = mode === 'initial' ? files : mode === 'pr874-digest-repair' ? repairFiles : mode === 'reviewed-regeneration-105' ? reviewedRegenerationFiles : mode === 'candidate-refresh' ? candidateRefreshFiles : mode === 'successor-candidate-refresh' ? successorCandidateRefreshFiles : mode === 'source-base-correction' ? sourceBaseCorrectionFiles : mode === 'successor-approval' ? successorApprovalFiles : mode === 'successor-release-approval' ? successorReleaseApprovalFiles : mode === 'successor-cutover-activation' ? successorCutoverActivationFiles : mode === 'planner-output-budget-approval' ? plannerOutputBudgetApprovalFiles : mode === 'planner-output-budget-activation' ? plannerOutputBudgetActivationFiles : mode === 'planner-output-budget-activation-refresh' ? plannerOutputBudgetActivationRefreshFiles : mode === 'dispatch-run-recovery' ? dispatchRecoveryFiles : mode === 'dispatch-lane-repair' ? dispatchLaneRepairFiles : mode === 'dispatch-skipped-recovery' ? dispatchSkippedRecoveryFiles : mode === 'stale-run-activation' ? staleSupersessionActivationFiles : mode === 'stale-run-renewal' ? staleSupersessionRenewalFiles : mode === 'migration106-wiring' ? migration106WiringFiles : mode === 'release-stabilization' ? releaseStabilizationFiles : mode === 'protected-cutover' ? protectedCutoverFiles : mode === 'protected-cutover-activation' ? protectedCutoverActivationFiles : mode === 'protected-cutover-refresh' ? protectedCutoverRefreshFiles : mode === 'admission-permission-fix' ? admissionPermissionFixFiles : mode === 'admission-bot-claim-fix' ? admissionBotClaimFixFiles : mode === 'protected-cutover-recovery' ? protectedCutoverRecoveryFiles : mode === 'reservation-recovery-endpoint-fix' ? reservationRecoveryEndpointFixFiles : mode === 'protected-cutover-final' ? protectedCutoverFinalFiles : mode === 'live-uat-status-fix' ? liveUatStatusFixFiles : mode === 'installed-verification-environment' ? installedVerificationEnvironmentFiles : mode === 'installed-verification-evidence' ? installedVerificationEvidenceFiles : mode === 'installed-acceptance-evidence' ? installedAcceptanceEvidenceFiles : mode === 'installed-acceptance-artifacts' ? installedAcceptanceArtifactsFiles : mode === 'installed-acceptance-readiness' ? installedAcceptanceReadinessFiles : mode === 'installed-acceptance-visibility' ? installedAcceptanceVisibilityFiles : mode === 'installed-acceptance-planner' ? installedAcceptancePlannerFiles : mode === 'installed-acceptance-final' ? installedAcceptanceFinalFiles : staleSupersessionFiles;
   assert.deepEqual([...changed].sort(), expected, 'Unexpected or missing file in the release-control PR.');
 }
 export function verifyController(text) {
@@ -560,6 +572,7 @@ export function validate() {
   const isPlannerOutputBudgetActivationRefresh = process.env.GITHUB_HEAD_REF === plannerOutputBudgetActivationRefreshBranch;
   const isDispatchRunRecovery = process.env.GITHUB_HEAD_REF === dispatchRecoveryBranch;
   const isDispatchLaneRepair = process.env.GITHUB_HEAD_REF === dispatchLaneRepairBranch;
+  const isDispatchSkippedRecovery = process.env.GITHUB_HEAD_REF === dispatchSkippedRecoveryBranch;
   const isStaleSupersession = process.env.GITHUB_HEAD_REF === staleSupersessionBranch;
   const isStaleSupersessionActivation = process.env.GITHUB_HEAD_REF === staleSupersessionActivationBranch;
   const isStaleSupersessionRenewal = process.env.GITHUB_HEAD_REF === staleSupersessionRenewalBranch;
@@ -583,7 +596,7 @@ export function validate() {
   const isInstalledAcceptancePlanner = process.env.GITHUB_HEAD_REF === installedAcceptancePlannerBranch;
   const isInstalledAcceptanceFinal = process.env.GITHUB_HEAD_REF === installedAcceptanceFinalBranch;
   verifyFiles(changed, manifest,
-    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isSuccessorReleaseApproval ? 'successor-release-approval' : isSuccessorCutoverActivation ? 'successor-cutover-activation' : isPlannerOutputBudgetApproval ? 'planner-output-budget-approval' : isPlannerOutputBudgetActivation ? 'planner-output-budget-activation' : isPlannerOutputBudgetActivationRefresh ? 'planner-output-budget-activation-refresh' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isDispatchLaneRepair ? 'dispatch-lane-repair' : isStaleSupersession ? 'stale-run-supersession' : isStaleSupersessionActivation ? 'stale-run-activation' : isStaleSupersessionRenewal ? 'stale-run-renewal' : isMigration106Wiring ? 'migration106-wiring' : isProtectedCutover ? 'protected-cutover' : isProtectedCutoverActivation ? 'protected-cutover-activation' : isProtectedCutoverRefresh ? 'protected-cutover-refresh' : isAdmissionPermissionFix ? 'admission-permission-fix' : isAdmissionBotClaimFix ? 'admission-bot-claim-fix' : isProtectedCutoverRecovery ? 'protected-cutover-recovery' : isReservationRecoveryEndpointFix ? 'reservation-recovery-endpoint-fix' : isProtectedCutoverFinal ? 'protected-cutover-final' : isInstalledAcceptanceFinal ? 'installed-acceptance-final' : isInstalledAcceptancePlanner ? 'installed-acceptance-planner' : isInstalledAcceptanceVisibility ? 'installed-acceptance-visibility' : isInstalledAcceptanceReadiness ? 'installed-acceptance-readiness' : isInstalledAcceptanceArtifacts ? 'installed-acceptance-artifacts' : isInstalledAcceptanceEvidence ? 'installed-acceptance-evidence' : isInstalledVerificationEvidence ? 'installed-verification-evidence' : isInstalledVerificationEnvironment ? 'installed-verification-environment' : isLiveUatStatusFix ? 'live-uat-status-fix' : isReleaseStabilization ? 'release-stabilization' : 'initial', context);
+    isRepair ? 'pr874-digest-repair' : isReviewedRegeneration ? 'reviewed-regeneration-105' : isCandidateRefresh ? 'candidate-refresh' : isSuccessorCandidateRefresh ? 'successor-candidate-refresh' : isSourceBaseCorrection ? 'source-base-correction' : isSuccessorApproval ? 'successor-approval' : isSuccessorReleaseApproval ? 'successor-release-approval' : isSuccessorCutoverActivation ? 'successor-cutover-activation' : isPlannerOutputBudgetApproval ? 'planner-output-budget-approval' : isPlannerOutputBudgetActivation ? 'planner-output-budget-activation' : isPlannerOutputBudgetActivationRefresh ? 'planner-output-budget-activation-refresh' : isDispatchRunRecovery ? 'dispatch-run-recovery' : isDispatchLaneRepair ? 'dispatch-lane-repair' : isDispatchSkippedRecovery ? 'dispatch-skipped-recovery' : isStaleSupersession ? 'stale-run-supersession' : isStaleSupersessionActivation ? 'stale-run-activation' : isStaleSupersessionRenewal ? 'stale-run-renewal' : isMigration106Wiring ? 'migration106-wiring' : isProtectedCutover ? 'protected-cutover' : isProtectedCutoverActivation ? 'protected-cutover-activation' : isProtectedCutoverRefresh ? 'protected-cutover-refresh' : isAdmissionPermissionFix ? 'admission-permission-fix' : isAdmissionBotClaimFix ? 'admission-bot-claim-fix' : isProtectedCutoverRecovery ? 'protected-cutover-recovery' : isReservationRecoveryEndpointFix ? 'reservation-recovery-endpoint-fix' : isProtectedCutoverFinal ? 'protected-cutover-final' : isInstalledAcceptanceFinal ? 'installed-acceptance-final' : isInstalledAcceptancePlanner ? 'installed-acceptance-planner' : isInstalledAcceptanceVisibility ? 'installed-acceptance-visibility' : isInstalledAcceptanceReadiness ? 'installed-acceptance-readiness' : isInstalledAcceptanceArtifacts ? 'installed-acceptance-artifacts' : isInstalledAcceptanceEvidence ? 'installed-acceptance-evidence' : isInstalledVerificationEvidence ? 'installed-verification-evidence' : isInstalledVerificationEnvironment ? 'installed-verification-environment' : isLiveUatStatusFix ? 'live-uat-status-fix' : isReleaseStabilization ? 'release-stabilization' : 'initial', context);
   if (isRepair) {
     // The repair cannot alter the admitted environment workflow, permissions,
     // migration bytes or dispatcher. Only its exact seven-file list is allowed.
@@ -615,12 +628,12 @@ export function validate() {
     assert.equal(staleAuthorization.enabled, false, 'Stale supersession must remain inactive outside the reviewed activation branch.');
     assert.equal(staleAuthorization.activationDecision, 'hold');
   }
-  if (isProtectedCutover || isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorReleaseApproval || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh) {
-    if (isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh) {
-      assert.equal(base, isPlannerOutputBudgetActivationRefresh ? plannerOutputBudgetActivationRefreshBase : isPlannerOutputBudgetActivation ? plannerOutputBudgetActivationBase : isSuccessorCutoverActivation ? successorCutoverActivationBase : isProtectedCutoverFinal ? protectedCutoverFinalBase : isProtectedCutoverRecovery ? protectedCutoverRecoveryBase : isProtectedCutoverRefresh ? protectedCutoverRefreshBase : protectedCutoverActivationBase, 'Activation must be based on the latest reviewed trusted controls.');
+  if (isProtectedCutover || isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorReleaseApproval || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery) {
+    if (isProtectedCutoverActivation || isProtectedCutoverRefresh || isProtectedCutoverRecovery || isProtectedCutoverFinal || isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery) {
+      assert.equal(base, isDispatchSkippedRecovery ? dispatchSkippedRecoveryBase : isPlannerOutputBudgetActivationRefresh ? plannerOutputBudgetActivationRefreshBase : isPlannerOutputBudgetActivation ? plannerOutputBudgetActivationBase : isSuccessorCutoverActivation ? successorCutoverActivationBase : isProtectedCutoverFinal ? protectedCutoverFinalBase : isProtectedCutoverRecovery ? protectedCutoverRecoveryBase : isProtectedCutoverRefresh ? protectedCutoverRefreshBase : protectedCutoverActivationBase, 'Activation must be based on the latest reviewed trusted controls.');
       assert.equal(protectedCutover.enabled, true, 'Activation must be explicitly enabled only in its reviewed branch.');
       assert.equal(protectedCutover.activationDecision, 'approved');
-      assert.equal(protectedCutover.workflow.allowControllerActivation, isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh ? false : true);
+      assert.equal(protectedCutover.workflow.allowControllerActivation, isSuccessorCutoverActivation || isPlannerOutputBudgetActivation || isPlannerOutputBudgetActivationRefresh || isDispatchSkippedRecovery ? false : true);
       assert.equal(protectedCutover.approval.status, 'approved');
       assert.equal(protectedCutover.approval.approvedBy, 'ahmedadeyemi-cts');
       const approvedAt = Date.parse(protectedCutover.approval.approvedAt);
@@ -647,6 +660,37 @@ export function validate() {
         controllerSha: 'c78d346042314a7395a2ceeaa46f2737e6c0b076',
         observedAt: '2026-09-10T22:11:16.764Z',
         status: 'pre-dispatch-failed', dispatchSubmitted: false, controllerMutation: false
+      });
+    }
+    if (isDispatchSkippedRecovery) {
+      assert.deepEqual(protectedCutover.reservationRecovery, {
+        status: 'terminal-skipped-no-mutation',
+        commentId: 5645243064,
+        admissionRunId: 34687715702,
+        admissionRunAttempt: 1,
+        candidateSha: '86c9be03b87e588eeec47492e35131177716263b',
+        approvalReference: 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911',
+        controllerSha: 'e2289c617b69b1a563ee8bd6f01aaa5c54965c6a',
+        observedAt: '2026-09-12T10:10:03.389Z',
+        dispatchSubmitted: true,
+        controllerMutation: false,
+        deploymentRunId: 34687729664,
+        deploymentRunAttempt: 1,
+        dispatchReceipt: {
+          artifactId: 10296121750,
+          artifactName: 'flowhive-psa-dispatch-evidence-34687715702-1',
+          artifactDigest: 'sha256:dcbd54c84059b52885bc5e54956574c8c01354ddad3efe39a156850e371e378c',
+          schema: 'flowhive-psa-dispatch-attempt-v1',
+          candidateSha: '86c9be03b87e588eeec47492e35131177716263b',
+          controllerSha: 'e2289c617b69b1a563ee8bd6f01aaa5c54965c6a',
+          admissionRunId: 34687715702,
+          admissionRunAttempt: 1,
+          dispatchPath: 'actions/workflows/315562561/dispatches',
+          dispatchRequestFingerprint: 'c4c46ec21d11e1f69e6d375aa2f395b1cd1be8f7f6046823f6e83dd53974f955',
+          dispatchWriteCount: 1,
+          deploymentRunId: 34687729664,
+          deploymentRunAttempt: 1
+        }
       });
     }
     assert.deepEqual(protectedCutover.workflow, {
