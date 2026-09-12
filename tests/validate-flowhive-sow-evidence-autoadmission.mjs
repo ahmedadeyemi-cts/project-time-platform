@@ -34,7 +34,7 @@ assert.match(executionPolicy, /OverallBudget = TimeSpan.FromMinutes\(5\)/);
 assert.match(plannerOrchestration, /attempt_count=attempt_count\+1[\s\S]*?deadline_at>clock_timestamp\(\) AND attempt_count<2/);
 assert.match(
   plannerOrchestration,
-  /ProjectFlowHiveExecutionPolicy\.CanRetry\([\s\S]*?stored\.DeadlineAt is \{ \} deadline/,
+  /stored\.DeadlineAt is \{ \} deadline[\s\S]*?ProjectFlowHiveExecutionPolicy\.CanRetry\(/,
   'A retry must be admitted by the full-budget retry policy, not by a deadline-only check.'
 );
 assert.match(plannerOrchestration, /retry \? "processing" : "needs_attention"[\s\S]*?completed: !retry/);
