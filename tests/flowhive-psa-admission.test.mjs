@@ -143,15 +143,20 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
   const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912';
   const candidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-candidate-refresh-20260912';
+  const finalActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-final-activation-20260912';
   assert.equal(authorization.approvalReference, activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
     : candidateRefresh
       ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-RELEASE'
+      : finalActivation
+        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-ACTIVATION'
       : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE');
   assert.equal(authorization.supersedesApprovalReference, activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE'
     : candidateRefresh
       ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
+      : finalActivation
+        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-RELEASE'
     : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-CHECKSET-RELEASE');
   assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
@@ -159,7 +164,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
 });
 test('live planner candidate activation is bounded and otherwise remains inactive', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912';
+  const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-final-activation-20260912';
   assert.equal(authorization.enabled, activation);
   assert.equal(authorization.activationDecision, activation ? 'approved' : 'hold');
   assert.equal(authorization.workflow.allowControllerActivation, false);
