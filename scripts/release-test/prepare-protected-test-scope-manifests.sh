@@ -119,6 +119,17 @@ scripts/release-test/flowhive-psa-admission.mjs
 tests/flowhive-psa-admission.test.mjs
 tests/flowhive-psa-release-control.mjs
 FILES
+elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-live-provider-output-refresh-20260913' ]]; then
+  cat >> "$CIT/allowed-release-files" <<'FILES'
+.github/flowhive-psa-protected-cutover.json
+.github/flowhive-psa-protected-test-candidate.json
+docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md
+scripts/release-test/dispatch-flowhive-psa-test.mjs
+scripts/release-test/flowhive-psa-admission.mjs
+scripts/release-test/prepare-protected-test-scope-manifests.sh
+tests/flowhive-psa-admission.test.mjs
+tests/flowhive-psa-release-control.mjs
+FILES
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
   cat >> "$CIT/allowed-release-files" <<'FILES'
 .github/flowhive-psa-protected-cutover.json

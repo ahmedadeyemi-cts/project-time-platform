@@ -163,6 +163,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const finalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-final-refresh-20260913';
   const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
   const providerContractRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-contract-refresh-20260913';
+  const liveProviderOutputRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-provider-output-refresh-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
   assert.equal(authorization.approvalReference, providerContractRefresh
@@ -322,12 +323,15 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const finalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-final-refresh-20260913';
   const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
   const providerContractRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-contract-refresh-20260913';
+  const liveProviderOutputRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-provider-output-refresh-20260913';
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, providerContractRefresh
+  assert.equal(approval.mergeCommit, liveProviderOutputRefresh
+    ? '4ca175430d697631520e9ddb6370e8a90c6b3fa2'
+    : providerContractRefresh
     ? '7e4bfd58f29822368e1c019f27523c3953ae9ccc'
     : liveRepairRefresh || nativeRenewal
     ? '98853fa2508db9e7839e0bf478b37a7a7e9c467c'
@@ -335,7 +339,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       ? '781a9540051dd405b9d5846d5367e8e94791d9c5'
     : process.env.GITHUB_HEAD_REF
       ? '50317992e55349c52bef56f26383f105152f7f5d'
-      : '7e4bfd58f29822368e1c019f27523c3953ae9ccc');
+      : '4ca175430d697631520e9ddb6370e8a90c6b3fa2');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
