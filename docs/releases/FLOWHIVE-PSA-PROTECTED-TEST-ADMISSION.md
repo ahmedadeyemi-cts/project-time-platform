@@ -13,20 +13,20 @@ repository owner must post this exact command as a comment on PR #887's
 issue thread (not on the candidate PR or another issue):
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 719a9185289d908f2a53a72ebc275f4a645f4859
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 228a62f21c94ebcf72a57a3d23573e03aaf06dfa
 ```
 
-The admission workflow executes main-owned code only. It checks the exact merged PR #976,
+The admission workflow executes main-owned code only. It checks the exact merged PR #980,
 repository, successor branch, candidate SHA, 6 required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
 feature branch is not renamed or implicitly approved by a prefix match.
 
-This successor is PR976, merged to trusted main as `98853fa2508db9e7839e0bf478b37a7a7e9c467c`,
+This successor is PR980, merged to trusted main as `781a9540051dd405b9d5846d5367e8e94791d9c5`,
 and carries the bounded live FlowHive planner correction at application commit
-`719a9185289d908f2a53a72ebc275f4a645f4859`. Its trusted source base is the pre-merge trusted
-main `050d8ef9f526d2cb09c3287aac1a25b088e98fce`;
+`228a62f21c94ebcf72a57a3d23573e03aaf06dfa`. Its reviewed application source base is
+`719a9185289d908f2a53a72ebc275f4a645f4859`;
 migrations 103/104/105/106/107 retain their reviewed SHA-256 values. PR891, PR947 and the
 existing FlowHive/SOW application scope remain in the merged ancestry.
 
