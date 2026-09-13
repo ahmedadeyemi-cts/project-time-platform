@@ -10,7 +10,7 @@ const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
   merge_commit_sha: approval.mergeCommit,
   head: { ref: approval.sourceBranch, sha: approval.sha, repo: { full_name: repository } },
-  base: { ref: 'main', sha: '975227592535d28d309973f00dfcd1958cf19209', repo: { full_name: repository } } };
+  base: { ref: 'main', sha: '22d0508eac4064a0c66dd9f65b8f315f4e202d6f', repo: { full_name: repository } } };
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));
@@ -146,6 +146,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const finalActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-final-activation-20260912';
   const latencyRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-candidate-refresh-20260912';
   const contextBudgetRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-candidate-refresh-20260912';
+  const singleBatchRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-candidate-refresh-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
   assert.equal(authorization.approvalReference, activation
@@ -156,6 +157,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-ACTIVATION'
     : contextBudgetActivation
       ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-ACTIVATION'
+    : singleBatchRefresh
+        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-RELEASE'
     : contextBudgetRefresh
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-RELEASE'
       : latencyRefresh
@@ -171,6 +174,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-RELEASE'
       : contextBudgetActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-RELEASE'
+      : singleBatchRefresh
+        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-ACTIVATION'
       : contextBudgetRefresh
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-LATENCY-ACTIVATION'
       : latencyRefresh
@@ -261,8 +266,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
-  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-context-budget-20260912');
-  assert.equal(approval.mergeCommit, '975227592535d28d309973f00dfcd1958cf19209');
+  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-single-batch-20260913');
+  assert.equal(approval.mergeCommit, '22d0508eac4064a0c66dd9f65b8f315f4e202d6f');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);

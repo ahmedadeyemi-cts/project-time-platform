@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
-  "enabled": true,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-ACTIVATION",
-  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-RELEASE",
+  "enabled": false,
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-RELEASE",
+  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-ACTIVATION",
   "candidate": {
-    "pullRequest": 964,
-    "branch": "fix/flowhive-planner-context-budget-20260912",
-    "sha": "8a29b893ab5c823011b73bb732eee5513614d2d7"
+    "pullRequest": 967,
+    "branch": "fix/flowhive-planner-single-batch-20260913",
+    "sha": "d5ea2bdff5831f65dc758ae23fe340eb6faaefde"
   },
   "workflow": {
     "id": 315562561,
@@ -81,10 +81,10 @@
   ],
   "serverDispatchInputsConfirmed": false,
   "approval": {
-    "status": "approved",
-    "approvedBy": "ahmedadeyemi-cts",
-    "approvedAt": "2026-09-13T00:39:32Z",
-    "expiresAt": "2026-09-13T00:54:32Z"
+    "status": "not-approved",
+    "approvedBy": null,
+    "approvedAt": null,
+    "expiresAt": null
   },
   "reservationRecovery": {
     "status": "terminal-skipped-no-mutation",
@@ -115,5 +115,5 @@
       "deploymentRunAttempt": 1
     }
   },
-  "activationDecision": "approved"
+  "activationDecision": "hold"
 }
