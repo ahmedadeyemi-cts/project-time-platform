@@ -172,6 +172,13 @@ class AcceptanceDecisions(unittest.TestCase):
         self.assertIsNotNone(live.iso('2026-09-08T00:00:00Z').tzinfo)
         for stamp in [None,'nonsense','2026-09-08T00:00:00']:
             with self.assertRaises(live.GateError):live.iso(stamp)
+    def test_planner_failure_evidence_is_stable_and_bounded(self):
+        self.assertEqual(
+            live.stable_diagnostic('provider_celar_ai_private_model_output_truncated'),
+            'provider_celar_ai_private_model_output_truncated')
+        self.assertEqual(live.stable_diagnostic('raw provider response / untrusted text'),
+                         'raw_provider_response___untrusted_text')
+        self.assertLessEqual(live.stable_diagnostic('x' * 300).__len__(), 160)
     def test_no_generation_retry_no_mocked_live_data(self):
         source=Path(spec.origin).read_text()
         self.assertEqual(source.count("client.start_posts += 1"),1)

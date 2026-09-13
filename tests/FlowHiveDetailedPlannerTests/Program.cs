@@ -298,7 +298,7 @@ var batchPayload = JsonSerializer.Serialize(parsedModule025 with
 Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> batchModel = (request, token) =>
 {
     batchCalls++;
-    Assert(request.MaximumOutputTokens == 8192, "module025_single_batch_completion_bounded");
+    Assert(request.MaximumOutputTokens == 4096, "module025_single_batch_completion_bounded");
     Assert(request.SystemInstruction.Contains("one bounded provider request", StringComparison.Ordinal),
         "module025_single_batch_request_scoped");
     Assert(!request.SystemInstruction.Contains("Return ONLY Plan tasks", StringComparison.Ordinal),
@@ -316,6 +316,41 @@ var phasedResult = await RunPhases(batchModel);
 Assert(phasedResult.Succeeded && batchCalls == 1, "module025_five_validated_phases_complete_in_one_provider_request");
 var phasedPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(null, new object[] { phasedResult.Content, module025Retrieval })!;
 Assert(phasedPlan.Tasks.Count == 10, "module025_assembled_contract_passes");
+var compactBatchPayload = JsonSerializer.Serialize(new
+{
+    objective = "Deliver a source-grounded Cisco Unified Communications Manager upgrade plan with explicit technical work, evidence, review gates, and unresolved customer decisions preserved.",
+    tasks = parsedModule025.Tasks.Select(task => new
+    {
+        wbs = task.Wbs,
+        phase = task.Phase,
+        name = task.Name,
+        description = task.Description,
+        estimatedHours = task.EstimatedHours,
+        estimatedDurationDays = task.EstimatedDurationDays,
+        requiredRoles = task.RequiredRoles,
+        predecessors = task.Predecessors,
+        detailedSteps = task.DetailedSteps
+    })
+});
+var compactBatchResult = await RunPhases((request, token) =>
+{
+    Assert(request.MaximumOutputTokens == 4096, "module025_compact_batch_completion_budget");
+    return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+        compactBatchPayload, 100, compactBatchPayload.Length, "", DateTimeOffset.UtcNow));
+});
+var compactPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(null, new object[] { compactBatchResult.Content, module025Retrieval })!;
+Assert(compactBatchResult.Succeeded && compactPlan.Tasks.Count == 10,
+    "module025_compact_provider_contract_completes");
+Assert(compactPlan.Tasks.All(task =>
+        (task.Inputs?.Count ?? 0) > 0
+        && (task.Outputs?.Count ?? 0) > 0
+        && (task.AcceptanceCriteria?.Count ?? 0) > 0
+        && (task.ValidationSteps?.Count ?? 0) > 0
+        && (task.CustomerResponsibilities?.Count ?? 0) > 0
+        && (task.UsSignalResponsibilities?.Count ?? 0) > 0
+        && (task.Prerequisites?.Count ?? 0) > 0
+        && (task.Risks?.Count ?? 0) > 0),
+    "module025_compact_provider_fields_are_server_completed_per_task");
 var boundedBatchCalls = 0;
 var boundedBatchResult = await RunPhases((request, token) =>
 {

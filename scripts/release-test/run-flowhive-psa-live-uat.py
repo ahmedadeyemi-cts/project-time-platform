@@ -104,6 +104,11 @@ def iso(value: object) -> datetime:
         raise GateError('timestamp_invalid') from None
 
 
+def stable_diagnostic(value: object) -> str:
+    """Retain bounded diagnostic identity, never provider or source text."""
+    return re.sub(r'[^A-Za-z0-9_-]', '_', str(value or ''))[:160]
+
+
 def plan_checks(plan: dict, schedule: dict, project: str = PROJECT) -> dict:
     need(isinstance(plan, dict) and plan.get('projectId') == project, 'generated_plan_wrong_project')
     need(plan.get('sourceKind') == 'celar_ai', 'generated_plan_not_ai')
@@ -583,6 +588,16 @@ def run(approval: dict, report: dict) -> None:
         report['generationSeconds'] = round(time.monotonic() - generation_start, 3)
         report['terminalStatus'] = re.sub('[^a-z_]', '', str(result.get('status', '')))[:80]
         report['orchestrationAttempts'] = result['attemptCount']
+        if result.get('status') not in TERMINAL_OK:
+            report['plannerFailureEvidence'] = {
+                'status': stable_diagnostic(result.get('status')),
+                'phase': stable_diagnostic(result.get('phase')),
+                'providerDiagnostics': [
+                    stable_diagnostic(blocker)
+                    for blocker in (result.get('blockers') or [])
+                    if str(blocker).startswith('provider_')
+                ][:12],
+            }
         need(result.get('status') in TERMINAL_OK, 'planner_terminal_failure')
         need(result.get('phase') == 'candidate_review_required' and result.get('candidateAvailable') is True,
              'proposal_review_not_required_for_existing_work')

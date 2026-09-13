@@ -19,7 +19,12 @@ public sealed class PulseAiPrivateRagService
     // acceptance window even when each request is individually bounded. Keep
     // the five-phase contract, but ask the provider once with a bounded,
     // source-grounded completion and validate/normalize the result locally.
-    private const int Module025PhaseBatchMaximumOutputTokens = 8_192;
+    // The private gateway accepts at most 8,192 completion tokens, but a full
+    // ten-task response that repeats every optional field can still be cut off
+    // at that ceiling. Ask for the compact provider contract below and let the
+    // server retain the detailed task contract without accepting a partial JSON
+    // document.
+    private const int Module025PhaseBatchMaximumOutputTokens = 4_096;
     // A saved Service Overview can be much larger than the phase prompt needs.
     // Keep each concurrent request small enough for the private runtime to
     // execute without queueing the five requests behind one another, while
@@ -1638,7 +1643,11 @@ public sealed class PulseAiPrivateRagService
                 // then normalize them and conservatively resolve predecessors in the
                 // same deterministic assembler used by the earlier phase contract.
                 var parsed = ParseModule025PlanContent(
-                    result.Content, retrieval, Module025DeliveryPhases, allowDuplicateWbs: true);
+                    result.Content,
+                    retrieval,
+                    Module025DeliveryPhases,
+                    allowDuplicateWbs: true,
+                    allowCompactTaskFields: true);
                 var phasePlans = Module025DeliveryPhases
                     .Select(phase => parsed with
                     {
@@ -1978,7 +1987,7 @@ public sealed class PulseAiPrivateRagService
                 "Return at least two tasks for every phase and at least ten tasks total.",
                 "Return exactly two distinct detailed tasks for each of the five requested phases and ten tasks total.",
                 StringComparison.Ordinal)
-            + $"\nThis is one bounded provider request for the complete five-phase plan. Return exactly the phases Plan, Design, Implement, Validate, and Release with two distinct technology-specific work packages in each phase. Use phase-local WBS values such as 1.1 and 1.2; the server will normalize them after validation. Keep every required field source-specific and concise, with descriptions of at least 80 characters, at least two steps per task, and one citationId of 1. Do not return markdown, commentary, phase-summary rows, or a second plan. Return one complete JSON object within {Module025PhaseBatchMaximumOutputTokens} output tokens.";
+            + $"\nThis is one bounded provider request for the complete five-phase plan. Return exactly the phases Plan, Design, Implement, Validate, and Release with two distinct technology-specific work packages in each phase. Use phase-local WBS values such as 1.1 and 1.2; the server will normalize them after validation. To fit the bounded response, return only this compact task shape: wbs, phase, name, description, estimatedHours, estimatedDurationDays, requiredRoles, predecessors, and detailedSteps. Make each description at least 100 characters and specific to the authorized SOW; include two concrete steps and positive effort for every task. The server preserves the compact task details and deterministically fills the required review fields from each task's own name and description. Do not return markdown, commentary, phase-summary rows, optional top-level prose, or a second plan. Return one complete JSON object within {Module025PhaseBatchMaximumOutputTokens} output tokens.";
 
     // A private_runtime_* response already represents exhaustion of the gateway's
     // approved local-model chain. Never restart that entire chain at this layer.
@@ -1996,7 +2005,8 @@ public sealed class PulseAiPrivateRagService
         string content,
         PulseAiPrivateRetrievalResult retrieval,
         IReadOnlyList<string> requiredPhases,
-        bool allowDuplicateWbs = false)
+        bool allowDuplicateWbs = false,
+        bool allowCompactTaskFields = false)
     {
         if (retrieval.Chunks.Count == 0)
             throw new JsonException("A detailed phase plan requires at least one server-authorized source citation.");
@@ -2023,7 +2033,8 @@ public sealed class PulseAiPrivateRagService
                 phaseGroup,
                 inheritedPhase,
                 parsedTasks.Count,
-                topLevelRoles);
+                topLevelRoles,
+                allowCompactTaskFields);
             if (!IsPhaseSummaryTask(task)) parsedTasks.Add(task);
         }
 
@@ -2187,7 +2198,8 @@ public sealed class PulseAiPrivateRagService
         JsonElement phaseGroup,
         string inheritedPhase,
         int index,
-        IReadOnlyList<string> topLevelRoles)
+        IReadOnlyList<string> topLevelRoles,
+        bool allowCompactTaskFields = false)
     {
         var wbs = Limit(
             ModelJsonString(item, "wbs", "wbsNumber", "workPackageId", "id"),
@@ -2209,6 +2221,11 @@ public sealed class PulseAiPrivateRagService
         var inputs = Module025JsonStrings(item, phaseGroup, "inputs", "requiredInputs", "sourceInputs");
         if (inputs.Count == 0) inputs = prerequisites;
         var outputs = Module025JsonStrings(item, phaseGroup, "outputs", "deliverables", "deliverable", "results");
+        var acceptanceCriteria = Module025JsonStrings(item, phaseGroup, "acceptanceCriteria", "acceptance", "completionCriteria");
+        var validationSteps = Module025JsonStrings(item, phaseGroup, "validationSteps", "validation", "tests", "testSteps");
+        var customerResponsibilities = Module025JsonStrings(item, phaseGroup, "customerResponsibilities", "customerActions", "clientResponsibilities");
+        var usSignalResponsibilities = Module025JsonStrings(item, phaseGroup, "usSignalResponsibilities", "providerResponsibilities", "deliveryTeamResponsibilities");
+        var risks = Module025JsonStrings(item, phaseGroup, "risks", "riskConsiderations");
         var description = ModelJsonString(item, "description", "objective", "outcome", "scope");
         if (description.Length < 80)
         {
@@ -2241,6 +2258,45 @@ public sealed class PulseAiPrivateRagService
             name,
             wbs);
 
+        if (allowCompactTaskFields)
+        {
+            // The provider is responsible for the source-specific task identity,
+            // outcome, effort, and concrete steps. These bounded, task-derived
+            // additions keep the persisted proposal reviewable when the provider
+            // omits repetitive contract fields to stay within its output budget.
+            var taskSubject = name.Length > 0 ? name : $"{phase} delivery work package {index + 1}";
+            var taskOutcome = description.Length >= 80
+                ? description
+                : $"Complete {taskSubject} for the authorized delivery scope, retain the observed result, and stop for review when a required project fact remains unresolved.";
+            description = Limit(taskOutcome, 4_000, string.Empty);
+            if (detailedSteps.Count < 2)
+                detailedSteps = detailedSteps
+                    .Concat([
+                        $"Review the authorized SOW inputs for {taskSubject}, record the relevant project fact, and identify any unresolved prerequisite before execution.",
+                        $"Perform {taskSubject}, retain objective evidence of the result, and confirm the stated completion condition with the responsible reviewer."])
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(2)
+                    .ToArray();
+            if (inputs.Count == 0)
+                inputs = [$"Authorized SOW scope, project decisions, access prerequisites, and current evidence required for {taskSubject}."];
+            if (outputs.Count == 0)
+                outputs = [$"Reviewed {taskSubject} deliverable and its source-linked evidence record."];
+            var compactAcceptance = $"The reviewer confirms that {taskSubject} meets its stated outcome and remains within the authorized SOW boundary.";
+            if (acceptanceCriteria.Count == 0) acceptanceCriteria = [compactAcceptance];
+            if (validationSteps.Count == 0)
+                validationSteps = [$"Compare the {taskSubject} result with the authorized SOW, recorded inputs, and the completion evidence before accepting it."];
+            if (customerResponsibilities.Count == 0)
+                customerResponsibilities = [$"Customer provides or confirms the project-specific input needed for {taskSubject} and reviews the resulting evidence."];
+            if (usSignalResponsibilities.Count == 0)
+                usSignalResponsibilities = [$"US Signal performs {taskSubject}, protects project data, and records exceptions for review."];
+            if (prerequisites.Count == 0)
+                prerequisites = [$"Required access, approvals, source evidence, and dependencies for {taskSubject} are confirmed before work begins."];
+            if (risks.Count == 0)
+                risks = [$"An unresolved project input, dependency, or authorization for {taskSubject} may delay safe completion and requires explicit review."];
+            if (roles.Count == 0)
+                roles = ["Project Manager", "Solution Architect"];
+        }
+
         // Citation 1 is the sole server-authorized Saved Service Overview. Binding
         // every accepted model work package to that scope anchor is deterministic;
         // procedures and estimates remain explicitly review-only assumptions.
@@ -2257,12 +2313,12 @@ public sealed class PulseAiPrivateRagService
             DetailedSteps: detailedSteps,
             Inputs: inputs,
             Outputs: outputs,
-            AcceptanceCriteria: Module025JsonStrings(item, phaseGroup, "acceptanceCriteria", "acceptance", "completionCriteria"),
-            ValidationSteps: Module025JsonStrings(item, phaseGroup, "validationSteps", "validation", "tests", "testSteps"),
-            CustomerResponsibilities: Module025JsonStrings(item, phaseGroup, "customerResponsibilities", "customerActions", "clientResponsibilities"),
-            UsSignalResponsibilities: Module025JsonStrings(item, phaseGroup, "usSignalResponsibilities", "providerResponsibilities", "deliveryTeamResponsibilities"),
+            AcceptanceCriteria: acceptanceCriteria,
+            ValidationSteps: validationSteps,
+            CustomerResponsibilities: customerResponsibilities,
+            UsSignalResponsibilities: usSignalResponsibilities,
             Prerequisites: prerequisites,
-            Risks: Module025JsonStrings(item, phaseGroup, "risks", "riskConsiderations"),
+            Risks: risks,
             OpenQuestions: Module025JsonStrings(item, phaseGroup, "openQuestions", "questions", "customerDecisions"),
             EstimatedHours: estimatedHours,
             Priority: ModelJsonString(item, "priority"),
