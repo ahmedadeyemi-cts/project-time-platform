@@ -271,70 +271,65 @@ Assert(parsedModule025.Milestones.Count == 1, "module025_model_milestone_preserv
 Assert(parsedModule025.Milestones[0].CitationIds.SequenceEqual(new[] { 1 }), "module025_milestone_citation_bound");
 Assert(parsedModule025.Milestones[0].Name.Contains("CUCM", StringComparison.Ordinal), "module025_milestone_content_preserved");
 
-// Exercise the live-shaped orchestration with one bounded provider request.
-// The protected Test runtime serializes provider work, so five concurrent
-// phase requests can consume the entire live acceptance budget even when each
-// response is individually bounded. The server still validates every phase
-// and owns deterministic WBS assembly.
+// Exercise the live-shaped orchestration with one bounded provider request per
+// phase. Each response contains exactly two tasks; the server validates every
+// phase and owns deterministic WBS assembly.
 var phaseGenerator = typeof(PulseAiPrivateRagService).GetMethod(
     "GenerateModule025PhasesAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
 var phaseRequest = new PulseAiPrivateModelRequest(CelarAiCapabilityCatalog.SowGsdPlanning,
     "sow_draft", "comprehensive", "Return at least two tasks for every phase and at least ten tasks total.",
     "Generate the requested service", [module025Source], "PulseAiPrivateFlowHivePlan", 12000, 0.05m, "phase-test");
-var batchCalls = 0;
-var batchPayload = JsonSerializer.Serialize(parsedModule025 with
-{
-    Tasks = parsedModule025.Tasks
-        .GroupBy(task => task.Phase, StringComparer.Ordinal)
-        .SelectMany(group => group.Select((task, index) => task with
+var phaseCalls = 0;
+var phaseNames = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
+var phasePayloads = parsedModule025.Tasks
+    .GroupBy(task => task.Phase, StringComparer.Ordinal)
+    .ToDictionary(
+        group => group.Key,
+        group => JsonSerializer.Serialize(new
         {
-            // Model output may restart numbering inside each phase. The
-            // server must normalize those identities after validation.
-            Wbs = $"1.{index + 1}",
-            Predecessors = index == 1 ? ["1.1"] : []
-        }))
-        .ToArray()
-});
-Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> batchModel = (request, token) =>
+            objective = $"Deliver the authorized {group.Key} work packages with source-linked review evidence.",
+            tasks = group.Select((task, index) => new
+            {
+                wbs = $"1.{index + 1}",
+                phase = group.Key,
+                name = task.Name,
+                description = task.Description,
+                estimatedHours = task.EstimatedHours,
+                estimatedDurationDays = task.EstimatedDurationDays,
+                requiredRoles = task.RequiredRoles,
+                predecessors = index == 1 ? new[] { "1.1" } : Array.Empty<string>(),
+                detailedSteps = task.DetailedSteps
+            })
+        }),
+        StringComparer.Ordinal);
+string PhaseFromRequest(PulseAiPrivateModelRequest request) =>
+    phaseNames.Single(phase => request.SystemInstruction.Contains($"ONLY {phase} tasks", StringComparison.Ordinal));
+Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> phaseModel = (request, token) =>
 {
-    batchCalls++;
-    Assert(request.MaximumOutputTokens == 1024, "module025_single_batch_completion_bounded");
-    Assert(request.SystemInstruction.Contains("one bounded provider request", StringComparison.Ordinal),
-        "module025_single_batch_request_scoped");
-    Assert(!request.SystemInstruction.Contains("Return ONLY Plan tasks", StringComparison.Ordinal),
-        "module025_no_phase_fanout_prompt");
-    Assert(request.Sources.Single() == module025Source, "module025_batch_source_authority_preserved");
+    phaseCalls++;
+    var phase = PhaseFromRequest(request);
+    Assert(request.MaximumOutputTokens == 768, "module025_phase_completion_bounded");
+    Assert(request.SystemInstruction.Contains($"This is phase {Array.IndexOf(phaseNames, phase) + 1} of five", StringComparison.Ordinal),
+        "module025_phase_request_scoped");
+    Assert(request.Sources.Single() == module025Source, "module025_phase_source_authority_preserved");
+    var payload = phasePayloads[phase];
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
-        batchPayload, 100, batchPayload.Length, "", DateTimeOffset.UtcNow));
+        payload, 100, payload.Length, "", DateTimeOffset.UtcNow));
 };
 async Task<PulseAiPrivateModelResult> RunPhases(Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> model,
     CancellationToken token = default,
     PulseAiPrivateModelRequest? requestToRun = null,
     PulseAiPrivateRetrievalResult? retrievalToRun = null) => await (Task<PulseAiPrivateModelResult>)phaseGenerator.Invoke(null,
         new object[] { requestToRun ?? phaseRequest, retrievalToRun ?? module025Retrieval, model, token })!;
-var phasedResult = await RunPhases(batchModel);
-Assert(phasedResult.Succeeded && batchCalls == 1, "module025_five_validated_phases_complete_in_one_provider_request");
+var phasedResult = await RunPhases(phaseModel);
+Assert(phasedResult.Succeeded && phaseCalls == 5, "module025_five_validated_phases_complete_in_bounded_provider_requests");
 var phasedPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(null, new object[] { phasedResult.Content, module025Retrieval })!;
 Assert(phasedPlan.Tasks.Count == 10, "module025_assembled_contract_passes");
-var compactBatchPayload = JsonSerializer.Serialize(new
-{
-    objective = "Deliver a source-grounded Cisco Unified Communications Manager upgrade plan with explicit technical work, evidence, review gates, and unresolved customer decisions preserved.",
-    tasks = parsedModule025.Tasks.Select(task => new
-    {
-        wbs = task.Wbs,
-        phase = task.Phase,
-        name = task.Name,
-        description = task.Description,
-        estimatedHours = task.EstimatedHours,
-        estimatedDurationDays = task.EstimatedDurationDays,
-        requiredRoles = task.RequiredRoles,
-        predecessors = task.Predecessors,
-        detailedSteps = task.DetailedSteps
-    })
-});
 var compactBatchResult = await RunPhases((request, token) =>
 {
-    Assert(request.MaximumOutputTokens == 1024, "module025_compact_batch_completion_budget");
+    var phase = PhaseFromRequest(request);
+    Assert(request.MaximumOutputTokens == 768, "module025_compact_phase_completion_budget");
+    var compactBatchPayload = phasePayloads[phase];
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
         compactBatchPayload, 100, compactBatchPayload.Length, "", DateTimeOffset.UtcNow));
 });
@@ -359,13 +354,14 @@ var boundedBatchResult = await RunPhases((request, token) =>
         "module025_batch_request_does_not_forward_full_service_overview");
     Assert(request.Sources.Single().TextSha256 == longModule025Source.TextSha256,
         "module025_batch_request_preserves_full_scope_text_hash");
+    var phasePayload = phasePayloads[PhaseFromRequest(request)];
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
-        batchPayload, 100, batchPayload.Length, "", DateTimeOffset.UtcNow));
+        phasePayload, 100, phasePayload.Length, "", DateTimeOffset.UtcNow));
 },
     requestToRun: phaseRequest with { Sources = [longModule025Source] },
     retrievalToRun: longModule025Retrieval);
-Assert(boundedBatchResult.Succeeded && boundedBatchCalls == 1,
-    "module025_bounded_source_batch_completes_without_losing_citations");
+Assert(boundedBatchResult.Succeeded && boundedBatchCalls == 5,
+    "module025_bounded_source_phases_complete_without_losing_citations");
 var invalidCalls = 0;
 var invalidResult = await RunPhases((request, token) =>
 {
@@ -373,8 +369,8 @@ var invalidResult = await RunPhases((request, token) =>
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
         "{\"tasks\":[]}", 100, 12, "", DateTimeOffset.UtcNow));
 });
-Assert(!invalidResult.Succeeded && invalidCalls == 1 && invalidResult.Content.Length == 0,
-    "module025_invalid_batch_has_no_draft_or_retry_loop");
+Assert(!invalidResult.Succeeded && invalidCalls == 2 && invalidResult.Content.Length == 0,
+    "module025_invalid_phase_has_no_draft_or_unbounded_retry_loop");
 var refusalCalls = 0;
 var refusalResult = await RunPhases((request, token) =>
 {
@@ -391,8 +387,8 @@ var transientResult = await RunPhases((request, token) =>
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model",
         "", 100, 0, "private_model_http_502", DateTimeOffset.UtcNow));
 });
-Assert(!transientResult.Succeeded && transientCalls == 1 && transientResult.DiagnosticCode == "private_model_http_502",
-    "module025_provider_failure_is_terminal_without_phase_retry_fanout");
+Assert(!transientResult.Succeeded && transientCalls == 2 && transientResult.DiagnosticCode.StartsWith("private_model_http_502", StringComparison.Ordinal),
+    "module025_transient_phase_failure_has_one_bounded_retry");
 var phaseCore = typeof(PulseAiPrivateRagService).GetMethod(
     "GenerateModule025PhasesCoreAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
 async Task<PulseAiPrivateModelResult> RunBoundedPhases(
@@ -421,10 +417,10 @@ var repairDeadlineResult = await RunBoundedPhases(async (request, token) => {
     repairDeadlineCalls++;
     await Task.Delay(Timeout.Infinite, token);
     return new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
-        batchPayload, 100, batchPayload.Length, "", DateTimeOffset.UtcNow);
+        phasePayloads["Plan"], 100, phasePayloads["Plan"].Length, "", DateTimeOffset.UtcNow);
 }, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(50));
-Assert(repairDeadlineCalls == 1 && repairDeadlineResult.DiagnosticCode.Contains("generation_deadline_exceeded"),
-    "module025_single_batch_obeys_total_deadline");
+Assert(repairDeadlineCalls == 1 && repairDeadlineResult.DiagnosticCode == "private_module025_phase_deadline_exceeded",
+    "module025_phase_generation_obeys_phase_deadline");
 using (var shutdown = new CancellationTokenSource())
 {
     shutdown.Cancel();
@@ -434,7 +430,7 @@ using (var shutdown = new CancellationTokenSource())
         await RunBoundedPhases((request, token) =>
         {
             token.ThrowIfCancellationRequested();
-            return batchModel(request, token);
+            return phaseModel(request, token);
         }, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(1), shutdown.Token);
     }
     catch (OperationCanceledException) { propagated = true; }
@@ -510,7 +506,7 @@ using (var cancelled = new CancellationTokenSource())
         await RunPhases((request, token) =>
         {
             token.ThrowIfCancellationRequested();
-            return batchModel(request, token);
+            return phaseModel(request, token);
         }, cancelled.Token);
     }
     catch (OperationCanceledException) { cancellationObserved = true; }
