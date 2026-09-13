@@ -51,6 +51,15 @@ jobs:
             node tests/flowhive-psa-scope.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
             node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-compact-batch-20260913' ]]; then
+            test -s .github/flowhive-planner-compact-batch-release-files.txt
+            grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-planner-compact-batch-release-files.txt | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-compact-batch-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-compact-batch-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-compact-batch-files" "$RUNNER_TEMP/flowhive-planner-compact-batch-actual" || {
+              echo 'Planner compact-batch PR differs from its exact reviewed release manifest.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-compact-batch-files" "$RUNNER_TEMP/flowhive-planner-compact-batch-actual" >&2 || true
+              exit 1
+            }
           elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-canonical-dispatch-20260911' ]]; then
             node --input-type=module -e "import fs from 'node:fs'; import { verifyController } from './tests/flowhive-psa-release-control.mjs'; verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));"
           else
