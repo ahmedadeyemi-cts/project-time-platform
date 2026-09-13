@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged live FlowHive planner latency correction PR961.
+// successor is the reviewed, merged live FlowHive planner context-budget correction PR964.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 961;
-export const candidateBranch = 'fix/flowhive-planner-phase-latency-20260912';
-export const candidateSourceBranch = 'fix/flowhive-planner-phase-latency-20260912';
+export const candidatePullRequest = 964;
+export const candidateBranch = 'fix/flowhive-planner-context-budget-20260912';
+export const candidateSourceBranch = 'fix/flowhive-planner-context-budget-20260912';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '7be13b5ff60239db6c068f8a5f373a9fb2f844ac';
+export const candidateMergeCommit = '975227592535d28d309973f00dfcd1958cf19209';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
