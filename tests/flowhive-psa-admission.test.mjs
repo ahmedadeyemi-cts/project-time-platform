@@ -159,7 +159,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
     : contextBudgetActivation
       ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-ACTIVATION'
     : singleBatchActivation
-      ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-ACTIVATION'
+      ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-ACTIVATION-RENEWAL-01'
     : singleBatchRefresh
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-RELEASE'
     : contextBudgetRefresh
@@ -178,7 +178,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
       : contextBudgetActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-RELEASE'
       : singleBatchActivation
-        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-RELEASE'
+        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-ACTIVATION'
       : singleBatchRefresh
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-ACTIVATION'
       : contextBudgetRefresh
