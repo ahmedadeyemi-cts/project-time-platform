@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace ProjectTime.Api.Ai;
 
@@ -13,6 +14,11 @@ public sealed class PulseAiPrivateRagService
     // durable operation. The phase requests are issued concurrently below;
     // deterministic assembly still owns global WBS identity and dependencies.
     private const int Module025PhaseMaximumOutputTokens = 768;
+    // A saved Service Overview can be much larger than the phase prompt needs.
+    // Keep each concurrent request small enough for the private runtime to
+    // execute without queueing the five requests behind one another, while
+    // retaining the original source hash and citation identity for review.
+    private const int Module025PhaseSourceMaximumCharacters = 8_000;
     private const int FlowHivePlanMaximumOutputTokens = 12_000;
     private const int FlowHivePlanMaximumAnswerCharacters = 96_000;
     private static readonly string[] Module025DeliveryPhases =
@@ -1606,7 +1612,8 @@ public sealed class PulseAiPrivateRagService
         {
             var phaseResults = await Task.WhenAll(
                 Module025DeliveryPhases.Select((phase, index) => GenerateModule025PhaseAsync(
-                    request, retrieval, generate, phase, index, phaseTimeout, generationDeadline.Token, logger)));
+                    request, BoundModule025PhaseRetrieval(retrieval, phase, index), generate, phase, index,
+                    phaseTimeout, generationDeadline.Token, logger)));
             var failedPhase = phaseResults.FirstOrDefault(result => result.Plan is null);
             if (failedPhase is not null)
                 return failedPhase.Result;
@@ -1671,6 +1678,7 @@ public sealed class PulseAiPrivateRagService
             var phaseRequest = request with
             {
                 MaximumOutputTokens = Module025PhaseMaximumOutputTokens,
+                Sources = retrieval.Chunks,
                 SystemInstruction = Module025PhaseSystemInstruction(
                     request.SystemInstruction,
                     phase,
@@ -1723,6 +1731,105 @@ public sealed class PulseAiPrivateRagService
         PulseAiPrivateFlowHivePlan? Plan,
         int InputCharacters,
         PulseAiPrivateModelResult Result);
+
+    private static PulseAiPrivateRetrievalResult BoundModule025PhaseRetrieval(
+        PulseAiPrivateRetrievalResult retrieval,
+        string phase,
+        int phaseIndex)
+    {
+        if (retrieval.Chunks.Count == 0
+            || retrieval.Chunks.Sum(chunk => chunk.Text.Length) <= Module025PhaseSourceMaximumCharacters)
+            return retrieval;
+
+        var remaining = Module025PhaseSourceMaximumCharacters;
+        var boundedChunks = new List<PulseAiPrivateRetrievedChunk>();
+        foreach (var chunk in retrieval.Chunks)
+        {
+            if (remaining <= 0) break;
+            var chunkBudget = retrieval.Chunks.Count == 1
+                ? remaining
+                : Math.Min(2_000, remaining);
+            var boundedText = BoundModule025PhaseSourceText(
+                chunk.Text,
+                phase,
+                phaseIndex,
+                chunkBudget);
+            if (boundedText.Length == 0) continue;
+            boundedChunks.Add(chunk with { Text = boundedText });
+            remaining -= boundedText.Length;
+        }
+
+        var bounded = boundedChunks.ToArray();
+        return retrieval with { Chunks = bounded };
+    }
+
+    private static string BoundModule025PhaseSourceText(
+        string text,
+        string phase,
+        int phaseIndex,
+        int maximumCharacters)
+    {
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+        if (normalized.Length <= maximumCharacters)
+            return normalized;
+
+        var keywords = phase switch
+        {
+            "Plan" => new[] { "scope", "requirement", "objective", "deliverable", "dependency", "acceptance" },
+            "Design" => new[] { "design", "architecture", "topology", "integration", "interface", "security" },
+            "Implement" => new[] { "implement", "configure", "install", "migrate", "deploy", "build" },
+            "Validate" => new[] { "test", "validate", "verify", "acceptance", "failover", "performance" },
+            "Release" => new[] { "release", "handoff", "document", "training", "support", "closeout" },
+            _ => Array.Empty<string>()
+        };
+
+        var units = Regex.Split(normalized, @"(?<=[.!?])\s+|\n{2,}")
+            .Select(value => value.Trim())
+            .Where(value => value.Length > 0)
+            .ToArray();
+        if (units.Length == 0)
+            units = [normalized];
+
+        var ranked = units
+            .Select((unit, index) => new
+            {
+                Unit = unit,
+                Index = index,
+                Score = keywords.Count(keyword => unit.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            })
+            .OrderByDescending(value => value.Score)
+            .ThenBy(value => value.Index)
+            .ToList();
+
+        var selected = new List<(int Index, string Unit)>();
+        var length = 0;
+        foreach (var candidate in ranked)
+        {
+            var separatorLength = selected.Count == 0 ? 0 : 1;
+            if (length + separatorLength + candidate.Unit.Length > maximumCharacters)
+                continue;
+            selected.Add((candidate.Index, candidate.Unit));
+            length += separatorLength + candidate.Unit.Length;
+        }
+
+        if (selected.Count == 0)
+        {
+            var windowSize = Math.Min(maximumCharacters, normalized.Length);
+            var windowStart = Math.Min(
+                Math.Max(0, normalized.Length - windowSize),
+                phaseIndex * Math.Max(1, normalized.Length - windowSize) / 4);
+            return normalized.Substring(windowStart, windowSize);
+        }
+
+        var ordered = selected
+            .OrderBy(value => value.Index)
+            .Select(value => value.Unit)
+            .ToArray();
+        var bounded = string.Join("\n", ordered);
+        return bounded.Length <= maximumCharacters
+            ? bounded
+            : bounded[..maximumCharacters];
+    }
 
     internal static PulseAiPrivateFlowHivePlan AssembleModule025PhasePlans(
         IReadOnlyList<PulseAiPrivateFlowHivePlan> phasePlans)
