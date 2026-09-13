@@ -236,6 +236,15 @@ jobs:
             node tests/flowhive-psa-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
             node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-compact-batch-20260913' ]]; then
+            test -s .github/flowhive-planner-compact-batch-release-files.txt
+            grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-planner-compact-batch-release-files.txt | LC_ALL=C sort -u > "$CIT/flowhive-planner-compact-batch-files"
+            cmp -s "$CIT/diff" "$CIT/flowhive-planner-compact-batch-files" || {
+              echo 'Planner compact-batch change differs from its exact reviewed release manifest.' >&2
+              diff -u "$CIT/flowhive-planner-compact-batch-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_FLOWHIVE_PLANNER_COMPACT_BATCH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/celar-enterprise-retrieval-20260906' || "$HEAD_BRANCH" == 'fix/celar-enterprise-synthesis-20260906' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/validate-celar-enterprise-retrieval-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/celar-public-answer-fallback-20260906' ]]; then

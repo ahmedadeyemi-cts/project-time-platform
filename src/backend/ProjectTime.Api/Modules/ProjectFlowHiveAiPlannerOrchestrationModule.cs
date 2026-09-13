@@ -563,15 +563,24 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                 : transient
                     ? "The bounded AI route retry limit was reached. Review the evidence status and start AI Planner again when private generation is available."
                     : generation.Message;
+            var providerDiagnostics = (generation.Composition?.TargetDecisions ?? [])
+                .Where(decision => decision.Outcome is "failed" or "refused")
+                .Select(decision => $"provider_{Clean(decision.Target, 40, "unknown")}_{Clean(decision.ReasonCode, 120, "unclassified")}")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var failureBlockers = generation.MissingEvidence
+                .Concat(providerDiagnostics)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             await UpdateRunAsync(
                 connection,
                 stored.RunId,
                 retry ? "processing" : "needs_attention",
                 retry ? "ai_route_retry" : refused ? "safety_refusal" : "evidence_review",
                 retry ? 70 : 100,
-                generation.MissingEvidence,
+                failureBlockers,
                 generation.Warnings,
-                [retryLog],
+                [retryLog, ..providerDiagnostics.Select(diagnostic => $"Sanitized provider diagnostic: {diagnostic}.")],
                 null,
                 null,
                 null,

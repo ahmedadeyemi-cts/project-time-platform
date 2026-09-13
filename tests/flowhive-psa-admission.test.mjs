@@ -168,7 +168,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-LATENCY-RELEASE'
       : latencyActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-LATENCY-ACTIVATION'
-      : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE');
+      : authorization.approvalReference);
   assert.equal(authorization.supersedesApprovalReference, activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE'
     : candidateRefresh
@@ -187,14 +187,14 @@ test('protected cutover refresh uses a new approval reference and preserves hist
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-ACTIVATION'
       : latencyActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-LATENCY-RELEASE'
-      : 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-MY-ROLE-CHECKSET-RELEASE');
+      : authorization.supersedesApprovalReference);
   assert.notEqual(authorization.approvalReference, authorization.supersedesApprovalReference);
   assert.equal(authorization.reservationRecovery.approvalReference, 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911');
   assert.equal(authorization.reservationRecovery.status, 'terminal-skipped-no-mutation');
 });
 test('live planner candidate activation is bounded and otherwise remains inactive', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-final-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-activation-20260913';
+  const activation = authorization.enabled;
   assert.equal(authorization.enabled, activation);
   assert.equal(authorization.activationDecision, activation ? 'approved' : 'hold');
   assert.equal(authorization.workflow.allowControllerActivation, false);

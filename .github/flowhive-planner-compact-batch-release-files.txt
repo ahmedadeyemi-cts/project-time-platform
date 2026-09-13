@@ -1,0 +1,10 @@
+.github/flowhive-planner-compact-batch-release-files.txt
+.github/workflows/flowhive-psa-release-control-ci.yml
+.github/workflows/projectpulse-release-test-control-ci-reregistered.yml
+.github/workflows/projectpulse-release-test-control-ci.yml
+scripts/release-test/run-flowhive-psa-live-uat.py
+src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+tests/FlowHiveDetailedPlannerTests/Program.cs
+tests/flowhive-psa-admission.test.mjs
+tests/flowhive-psa-live-uat.test.py
