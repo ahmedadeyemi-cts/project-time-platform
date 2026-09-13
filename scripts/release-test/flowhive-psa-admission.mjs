@@ -196,16 +196,14 @@ export async function authorize() {
   const checks = verifyRuns(approval, runs, workflowExceptions);
   assert.equal(git('rev-parse', 'HEAD'), main.object.sha);
   git('fetch', '--no-tags', 'origin', candidateBranch);
-  // The successor application was merged into the reviewed main snapshot.
-  // The later control merge is then constrained to control-only drift from
-  // that snapshot, without widening the allowlist for application files.
-  // sourceBase is the reviewed main snapshot from which the candidate was
-  // built. The candidate must descend from that base; checking the reverse
-  // direction rejects every legitimate successor commit before dispatch.
+  // sourceBase proves the candidate was built from the reviewed application
+  // base. The merge commit is the narrower boundary for current-main drift:
+  // it already contains the approved application, so only later control
+  // changes may be admitted without another application approval.
   git('merge-base', '--is-ancestor', approval.sourceBase, approval.sha);
-  git('merge-base', '--is-ancestor', approval.sourceBase, main.object.sha);
+  git('merge-base', '--is-ancestor', approval.mergeCommit, main.object.sha);
   const controlFiles = fs.readFileSync(controlManifest, 'utf8').trim().split(/\r?\n/);
-  const mainChanges = git('diff', '--name-only', `${approval.sourceBase}..${main.object.sha}`).split(/\r?\n/).filter(Boolean);
+  const mainChanges = git('diff', '--name-only', `${approval.mergeCommit}..${main.object.sha}`).split(/\r?\n/).filter(Boolean);
   verifySourceDrift(mainChanges, controlFiles);
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `authorized=true\nrelease_sha=${approval.sha}\n`);
   console.log(`FLOWHIVE_PSA_RELEASE_ADMISSION=PASS sha=${approval.sha} checks=${checks.length} productionMutation=false`);
