@@ -1,0 +1,166 @@
+name: Repair PR 737 Migration 095 runtime-role compatibility
+
+on:
+  push:
+    branches:
+      - ops/pr737-protected-uat-observer-20260823
+    paths:
+      - '.github/workflows/pr737-migration095-role-compatibility-repair.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr737-migration095-role-compatibility-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Publish permanent Migration 095 compatibility repair
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: projectpulse
+          POSTGRES_PASSWORD: projectpulse
+          POSTGRES_DB: projectpulse_validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U projectpulse -d projectpulse_validation"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      EXPECTED_HEAD: 437e9b25fc2827c849ec8188cdca8b4a4fee2cfe
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGDATABASE: projectpulse_validation
+      PGUSER: projectpulse
+      PGPASSWORD: projectpulse
+
+    steps:
+      - name: Check out exact PR 737 candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 437e9b25fc2827c849ec8188cdca8b4a4fee2cfe
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply bounded permanent Migration 095 repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_HEAD" ]]
+          python3 - <<'PY'
+          from pathlib import Path
+
+          migration_path = Path('database/migrations/095_project_planning_collaboration_access.sql')
+          source = migration_path.read_text(encoding='utf-8')
+          old = '''GRANT SELECT,INSERT,UPDATE,DELETE ON TABLE project_planning_collaborators TO "ptp_app";
+          GRANT SELECT,INSERT ON TABLE project_planning_collaboration_audit_events TO "ptp_app";
+          GRANT SELECT ON TABLE project_planning_095_permissions_created,project_planning_095_role_grants TO "ptp_app";
+          '''
+          new = '''-- Runtime database roles differ across supported environments. Grant only to
+          -- canonical roles that already exist; migrations must never create login roles.
+          DO $projectpulse095_runtime_grants$
+          DECLARE
+              role_name TEXT;
+          BEGIN
+              FOREACH role_name IN ARRAY ARRAY['ptp_app', 'projectpulse_app']
+              LOOP
+                  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+                      EXECUTE format(
+                          'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE project_planning_collaborators TO %I',
+                          role_name
+                      );
+                      EXECUTE format(
+                          'GRANT SELECT, INSERT ON TABLE project_planning_collaboration_audit_events TO %I',
+                          role_name
+                      );
+                      EXECUTE format(
+                          'GRANT SELECT ON TABLE project_planning_095_permissions_created, project_planning_095_role_grants TO %I',
+                          role_name
+                      );
+                  END IF;
+              END LOOP;
+          END;
+          $projectpulse095_runtime_grants$;
+          '''
+          if source.count(old) != 1:
+              raise SystemExit('Expected exactly one legacy Migration 095 direct-grant block.')
+          migration_path.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          test_path = Path('tests/test-project-planning-collaboration-migration-095.sh')
+          test = test_path.read_text(encoding='utf-8')
+          boundary = "grep -Fq '095-project-planning-collaboration' \"$RUNNER\"\n"
+          addition = '''grep -Fq 'projectpulse095_runtime_grants' "$MIGRATION"
+          grep -Fq "ARRAY['ptp_app', 'projectpulse_app']" "$MIGRATION"
+          grep -Fq 'IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name)' "$MIGRATION"
+          ! grep -Fq 'TO "ptp_app";' "$MIGRATION"
+          '''
+          if test.count(boundary) != 1:
+              raise SystemExit('Migration 095 test insertion boundary changed.')
+          test_path.write_text(test.replace(boundary, boundary + addition, 1), encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Execute absent-role and alternate-role SQL regression
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE project_planning_collaborators(id integer);
+          CREATE TABLE project_planning_collaboration_audit_events(id integer);
+          CREATE TABLE project_planning_095_permissions_created(id integer);
+          CREATE TABLE project_planning_095_role_grants(id integer);
+          SQL
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('database/migrations/095_project_planning_collaboration_access.sql').read_text(encoding='utf-8')
+          start = source.index('DO $projectpulse095_runtime_grants$')
+          end_marker = '$projectpulse095_runtime_grants$;'
+          end = source.index(end_marker, start) + len(end_marker)
+          Path('/tmp/migration095-runtime-grants.sql').write_text(source[start:end] + '\n', encoding='utf-8')
+          PY
+          psql -X -v ON_ERROR_STOP=1 -f /tmp/migration095-runtime-grants.sql
+          psql -X -v ON_ERROR_STOP=1 -c 'CREATE ROLE projectpulse_app;'
+          psql -X -v ON_ERROR_STOP=1 -f /tmp/migration095-runtime-grants.sql
+          [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT has_table_privilege('projectpulse_app','project_planning_collaborators','SELECT,INSERT,UPDATE,DELETE');")" == true ]]
+          [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT has_table_privilege('projectpulse_app','project_planning_collaboration_audit_events','SELECT,INSERT');")" == true ]]
+          [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT has_table_privilege('projectpulse_app','project_planning_095_permissions_created','SELECT');")" == true ]]
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          echo 'MIGRATION_095_RUNTIME_ROLE_COMPATIBILITY=PASSED'
+
+      - name: Publish permanent source commit to PR 737
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          expected_paths="$(printf '%s\n' \
+            database/migrations/095_project_planning_collaboration_access.sql \
+            tests/test-project-planning-collaboration-migration-095.sh)"
+          actual_paths="$(git diff --name-only | sort)"
+          [[ "$actual_paths" == "$expected_paths" ]] || {
+            echo 'Unexpected changed paths:' >&2
+            printf '%s\n' "$actual_paths" >&2
+            exit 1
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            database/migrations/095_project_planning_collaboration_access.sql \
+            tests/test-project-planning-collaboration-migration-095.sh
+          git diff --cached --check
+          git commit -m 'Make Migration 095 runtime grants environment compatible'
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          [[ "$(git rev-parse "origin/$TARGET_BRANCH")" == "$EXPECTED_HEAD" ]] || {
+            echo 'PR #737 moved while the repair was validating.' >&2
+            exit 1
+          }
+          git push --force-with-lease="refs/heads/$TARGET_BRANCH:$EXPECTED_HEAD" \
+            origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "MIGRATION_095_REPAIR_SHA=$(git rev-parse HEAD)"
+          echo 'PRODUCTION_MUTATION=NONE'
