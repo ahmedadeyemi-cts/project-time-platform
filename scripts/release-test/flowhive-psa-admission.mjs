@@ -7,18 +7,19 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged live FlowHive planner runtime correction PR980.
+// successor is the reviewed, merged live FlowHive planner provider-contract
+// correction PR982.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 980;
-export const candidateBranch = 'fix/flowhive-planner-live-repair-20260913';
-export const candidateSourceBranch = 'fix/flowhive-planner-live-repair-20260913';
+export const candidatePullRequest = 982;
+export const candidateBranch = 'fix/flowhive-planner-provider-contract-20260913';
+export const candidateSourceBranch = 'fix/flowhive-planner-provider-contract-20260913';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '781a9540051dd405b9d5846d5367e8e94791d9c5';
+export const candidateMergeCommit = '7e4bfd58f29822368e1c019f27523c3953ae9ccc';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -149,6 +150,15 @@ export function verifyTargetReleaseBranch(branch) {
     `The PSA release branch must be one of: ${authorizedReleaseBranches.join(', ')}`);
 }
 
+export function verifyCandidateCommitObject(approval, git = (...args) =>
+  execFileSync('git', args, { encoding: 'utf8', timeout: 30000 }).trim()) {
+  assert.match(approval?.sha || '', sha, 'The approved candidate SHA is malformed.');
+  const resolved = git('rev-parse', '--verify', `${approval.sha}^{commit}`);
+  assert.equal(resolved, approval.sha,
+    'The approved candidate commit must be present in the executing trusted-main checkout.');
+  return resolved;
+}
+
 async function github(resource) {
   assert.ok(resource.startsWith(`/repos/${repository}/`));
   const response = await fetch(`https://api.github.com${resource}`, {
@@ -175,9 +185,11 @@ export async function authorize() {
   assert.equal(main.object.sha, process.env.GITHUB_SHA, 'The trusted main controller is no longer current.');
   const pr = await github(`/repos/${repository}/pulls/${candidatePullRequest}`);
   verifyPullRequest(approval, pr);
-  const branch = await github(`/repos/${repository}/git/ref/heads/${candidateBranch}`);
-  assert.equal(branch.object.sha, approval.sha);
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8', timeout: 30000 }).trim();
+  // Normal PR merges delete the source branch. The PR API's retained head
+  // identity plus this checked-out commit-object check bind the candidate
+  // without requiring a mutable branch ref to survive the merge.
+  verifyCandidateCommitObject(approval, git);
   const fileResponse = await github(`/repos/${repository}/pulls/${candidatePullRequest}/files?per_page=100`);
   assert.ok(Array.isArray(fileResponse) && fileResponse.length > 0, 'The candidate file inventory is missing.');
   const candidateFiles = fileResponse.map(file => file.filename).sort();
@@ -195,7 +207,6 @@ export async function authorize() {
   }
   const checks = verifyRuns(approval, runs, workflowExceptions);
   assert.equal(git('rev-parse', 'HEAD'), main.object.sha);
-  git('fetch', '--no-tags', 'origin', candidateBranch);
   // sourceBase proves the candidate was built from the reviewed application
   // base. The merge commit is the narrower boundary for current-main drift:
   // it already contains the approved application, so only later control
