@@ -298,7 +298,7 @@ var batchPayload = JsonSerializer.Serialize(parsedModule025 with
 Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> batchModel = (request, token) =>
 {
     batchCalls++;
-    Assert(request.MaximumOutputTokens == 2048, "module025_single_batch_completion_bounded");
+    Assert(request.MaximumOutputTokens == 1024, "module025_single_batch_completion_bounded");
     Assert(request.SystemInstruction.Contains("one bounded provider request", StringComparison.Ordinal),
         "module025_single_batch_request_scoped");
     Assert(!request.SystemInstruction.Contains("Return ONLY Plan tasks", StringComparison.Ordinal),
@@ -334,7 +334,7 @@ var compactBatchPayload = JsonSerializer.Serialize(new
 });
 var compactBatchResult = await RunPhases((request, token) =>
 {
-    Assert(request.MaximumOutputTokens == 2048, "module025_compact_batch_completion_budget");
+    Assert(request.MaximumOutputTokens == 1024, "module025_compact_batch_completion_budget");
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
         compactBatchPayload, 100, compactBatchPayload.Length, "", DateTimeOffset.UtcNow));
 });
