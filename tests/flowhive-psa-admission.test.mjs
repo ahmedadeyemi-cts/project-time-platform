@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { verifyApproval, verifyPullRequest, verifyRuns, verifyWorkflowException, verifySourceDrift, verifyTargetReleaseBranch, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
+import { verifyApproval, verifyPullRequest, verifyRuns, verifyWorkflowException, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
@@ -139,6 +139,17 @@ function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount
 test('approved current draft candidate is admissible without merging', () => {
   verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr); verifyRuns(approval, runs);
 });
+test('merged candidate remains bound after normal source-branch deletion', () => {
+  const calls = [];
+  assert.equal(verifyCandidateCommitObject(approval, (...args) => {
+    calls.push(args);
+    return approval.sha;
+  }), approval.sha);
+  assert.deepEqual(calls, [['rev-parse', '--verify', `${approval.sha}^{commit}`]]);
+  assert.doesNotThrow(() => verifyCandidateCommitObject(approval));
+  assert.throws(() => verifyCandidateCommitObject(approval, () => 'f'.repeat(40)),
+    /approved candidate commit must be present/);
+});
 test('protected cutover refresh uses a new approval reference and preserves historical evidence identity', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
   const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912';
@@ -151,9 +162,12 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
   const finalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-final-refresh-20260913';
   const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
+  const providerContractRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-contract-refresh-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
-  assert.equal(authorization.approvalReference, finalRefresh
+  assert.equal(authorization.approvalReference, providerContractRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-PROVIDER-CONTRACT-REFRESH-06'
+    : finalRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-PROVIDER-BUDGET-FINAL-REFRESH-05'
     : nativeRenewal
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04'
@@ -178,7 +192,9 @@ test('protected cutover refresh uses a new approval reference and preserves hist
       : latencyActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-LATENCY-ACTIVATION'
       : authorization.approvalReference);
-  assert.equal(authorization.supersedesApprovalReference, finalRefresh
+  assert.equal(authorization.supersedesApprovalReference, providerContractRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-PROVIDER-BUDGET-FINAL-REFRESH-05'
+    : finalRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04'
     : nativeRenewal
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
@@ -305,18 +321,21 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
   const finalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-final-refresh-20260913';
   const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
+  const providerContractRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-contract-refresh-20260913';
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, liveRepairRefresh || nativeRenewal
+  assert.equal(approval.mergeCommit, providerContractRefresh
+    ? '7e4bfd58f29822368e1c019f27523c3953ae9ccc'
+    : liveRepairRefresh || nativeRenewal
     ? '98853fa2508db9e7839e0bf478b37a7a7e9c467c'
     : finalRefresh
       ? '781a9540051dd405b9d5846d5367e8e94791d9c5'
-    : approval.pullRequest === 980
-      ? '781a9540051dd405b9d5846d5367e8e94791d9c5'
-    : '50317992e55349c52bef56f26383f105152f7f5d');
+    : process.env.GITHUB_HEAD_REF
+      ? '50317992e55349c52bef56f26383f105152f7f5d'
+      : '7e4bfd58f29822368e1c019f27523c3953ae9ccc');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
