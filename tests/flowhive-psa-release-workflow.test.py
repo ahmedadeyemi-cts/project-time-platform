@@ -373,7 +373,7 @@ class WorkflowContract(unittest.TestCase):
         assert doc['permissions']=={'actions':'write','contents':'read','issues':'write','pull-requests':'write'}
         assert doc['concurrency']['group']=='module025-protected-uat-control'
         assert doc['concurrency']['cancel-in-progress']=='false'
-        job=doc['jobs']['admit'];assert 'environment' not in job
+        job=doc['jobs']['admit'];assert job['environment']=='test'
         assert "github.actor == 'ahmedadeyemi-cts'" in job['if'] and 'github.event.issue.number == 887' in job['if']
         assert all('azure/login' not in s.get('uses','') for s in job['steps'])
         dispatch=next(s for s in job['steps'] if s.get('name','').startswith('Authorize and dispatch once'))

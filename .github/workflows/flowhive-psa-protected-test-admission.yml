@@ -19,6 +19,7 @@ jobs:
       github.actor == 'ahmedadeyemi-cts' &&
       startsWith(github.event.comment.body, 'DEPLOY FLOWHIVE PSA PROTECTED TEST SHA ')
     runs-on: ubuntu-24.04
+    environment: test
     timeout-minutes: 15
     steps:
       - name: Check out trusted main admission controls only

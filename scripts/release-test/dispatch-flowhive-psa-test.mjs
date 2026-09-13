@@ -7,9 +7,9 @@ import { authorize, repository, admissionIssueNumber, candidateBranch, candidate
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
-const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-COMPACT-BATCH-ACTIVATION-RENEWAL-02';
+const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03';
 const historicalRecoveryApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911';
-const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03';
+const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04';
 const historicalRecoveryCandidateSha = '86c9be03b87e588eeec47492e35131177716263b';
 // This is the protected-Test lane selector, not the candidate's source ref.
 // The candidate source branch and SHA remain bound by flowhive-psa-admission;
@@ -132,7 +132,7 @@ export function readAdmissionExecutionContext(env = process.env) {
 export function createDispatchEvidence({ candidateSha, controlSha, dispatch, admissionRunId = null,
   admissionRunAttempt = null, attempt = admissionRunAttempt ?? 1, startedAt = nowIso(),
   cutoverAssessment = null, singleUseClaim = null, preSubmissionValidation = null,
-  controllerTransition = null }) {
+  controllerTransition = null, nativeApproval = null }) {
   return {
     schema: dispatchEvidenceSchema,
     repository,
@@ -159,6 +159,7 @@ export function createDispatchEvidence({ candidateSha, controlSha, dispatch, adm
     singleUseClaim,
     preSubmissionValidation,
     controllerTransition,
+    nativeApproval,
     run: null,
     errors: [],
     reportingErrors: []
@@ -264,6 +265,71 @@ function verifyBoundedApproval(authorization, now) {
   assert.ok(expiresAt > nowMs, 'PROTECTED_CUTOVER_APPROVAL_EXPIRED');
   assert.ok(expiresAt - approvedAt <= 15 * 60 * 1000, 'PROTECTED_CUTOVER_APPROVAL_WINDOW');
   return { approvedAt: new Date(approvedAt).toISOString(), expiresAt: new Date(expiresAt).toISOString() };
+}
+
+export function verifyNativeTestAdmissionApproval({ run, approvals, pendingDeployments, environment,
+  runId, controllerSha, now = new Date() }) {
+  assert.equal(run?.id, runId, 'NATIVE_TEST_ADMISSION_RUN_ID');
+  assert.equal(run?.path, '.github/workflows/flowhive-psa-protected-test-admission.yml',
+    'NATIVE_TEST_ADMISSION_WORKFLOW');
+  assert.equal(run?.event, 'issue_comment', 'NATIVE_TEST_ADMISSION_EVENT');
+  assert.equal(run?.head_sha, controllerSha, 'NATIVE_TEST_ADMISSION_CONTROLLER');
+  assert.ok(['in_progress', 'completed'].includes(run?.status), 'NATIVE_TEST_ADMISSION_NOT_STARTED');
+  verifyNativeEnvironmentProtection(environment, {
+    environment: 'test', canAdminsBypass: false, preventSelfReview: false,
+    requiredReviewerLogin: 'ahmedadeyemi-cts', requiredReviewerId: 244059331,
+    protectionRuleId: 65110773
+  });
+  assert.ok(Array.isArray(approvals), 'NATIVE_TEST_ADMISSION_APPROVAL_HISTORY');
+  const matching = approvals.filter(item => item?.state === 'approved' &&
+    item?.user?.login === 'ahmedadeyemi-cts' && Number(item?.user?.id) === 244059331 &&
+    Array.isArray(item?.environments) && item.environments.some(env =>
+      Number(env?.id) === 18367106269 && env?.name === 'test'));
+  assert.equal(matching.length, 1, 'NATIVE_TEST_ADMISSION_SINGLE_APPROVAL');
+  assert.deepEqual(pendingDeployments, [], 'NATIVE_TEST_ADMISSION_PENDING_AFTER_APPROVAL');
+  const effectiveAt = Date.parse(run.run_started_at || run.created_at || '');
+  const nowMs = now instanceof Date ? now.getTime() : Date.parse(now);
+  assert.ok(Number.isFinite(effectiveAt) && Number.isFinite(nowMs), 'NATIVE_TEST_ADMISSION_TIMES');
+  assert.ok(effectiveAt <= nowMs, 'NATIVE_TEST_ADMISSION_NOT_EFFECTIVE');
+  const expiresAt = effectiveAt + 15 * 60 * 1000;
+  assert.ok(nowMs < expiresAt, 'NATIVE_TEST_ADMISSION_WINDOW_EXPIRED');
+  return {
+    approved: true,
+    mode: 'native-test-environment',
+    runId,
+    environment: 'test',
+    environmentId: 18367106269,
+    approvedBy: matching[0].user.login,
+    approvedById: 244059331,
+    effectiveAt: new Date(effectiveAt).toISOString(),
+    expiresAt: new Date(expiresAt).toISOString()
+  };
+}
+
+export async function readNativeTestAdmissionApproval(api = request, { runId, controllerSha,
+  authorization, now = new Date() }) {
+  assert.ok(Number.isSafeInteger(Number(runId)) && Number(runId) > 0, 'NATIVE_TEST_ADMISSION_RUN_REQUIRED');
+  const [run, approvals, pendingDeployments, environment] = await Promise.all([
+    api(`actions/runs/${runId}`, 'GET', undefined, 'native-test-admission-run-read'),
+    api(`actions/runs/${runId}/approvals`, 'GET', undefined, 'native-test-admission-approval-read'),
+    api(`actions/runs/${runId}/pending_deployments`, 'GET', undefined, 'native-test-admission-pending-read'),
+    api('environments/test', 'GET', undefined, 'native-test-environment-read')
+  ]);
+  verifyNativeEnvironmentProtection(environment, authorization.environment);
+  return verifyNativeTestAdmissionApproval({ run, approvals, pendingDeployments, environment,
+    runId: Number(runId), controllerSha, now });
+}
+
+export function materializeNativeTestApproval(authorization, nativeApproval) {
+  assert.equal(authorization?.approval?.mode, 'native-test-environment',
+    'NATIVE_TEST_ADMISSION_MODE');
+  assert.equal(nativeApproval?.approved, true, 'NATIVE_TEST_ADMISSION_REQUIRED');
+  return { ...authorization, approval: {
+    mode: 'native-test-environment', status: 'approved',
+    approvedBy: nativeApproval.approvedBy,
+    approvedAt: nativeApproval.effectiveAt,
+    expiresAt: nativeApproval.expiresAt
+  } };
 }
 
 export function verifyProtectedCutoverAuthorization(authorization, now = new Date()) {
@@ -1358,7 +1424,7 @@ export async function revalidateProtectedCutoverForSubmission(api = request, ass
 export async function runAdmission({ api = request, candidateSha, controlSha, admissionRunId,
   admissionRunAttempt, evidenceFile, authorization = readProtectedCutoverAuthorization(),
   authorizationNow = new Date(), submissionAuthorizationNow = null, createdAfter = nowIso(),
-  controllerTransition = null }) {
+  controllerTransition = null, nativeApproval = null }) {
   assert.match(candidateSha || '', dispatchSha, 'PROTECTED_CUTOVER_ADMISSION_CANDIDATE');
   assert.match(controlSha || '', dispatchSha, 'PROTECTED_CUTOVER_ADMISSION_CONTROLLER');
   const cutover = await verifyReleaseCutover(api, {
@@ -1391,18 +1457,18 @@ export async function runAdmission({ api = request, candidateSha, controlSha, ad
   } : null;
   const dispatched = await dispatchWithEvidence({ api, candidateSha, controlSha, createdAfter,
     admissionRunId, admissionRunAttempt, evidenceFile, cutoverAssessment: cutoverEvidence,
-    singleUseClaim: claim, preSubmissionValidation, controllerTransition });
+    singleUseClaim: claim, preSubmissionValidation, controllerTransition, nativeApproval });
   return { ...dispatched, cutover: finalAssessment ? { ...cutover, protectedAssessment: finalAssessment } : cutover,
     claim, preSubmissionValidation };
 }
 
 export async function dispatchWithEvidence({ api = request, candidateSha, controlSha, createdAfter = nowIso(),
   admissionRunId, admissionRunAttempt, evidenceFile, cutoverAssessment = null,
-  singleUseClaim = null, preSubmissionValidation = null, controllerTransition = null }) {
+  singleUseClaim = null, preSubmissionValidation = null, controllerTransition = null, nativeApproval = null }) {
   const dispatch = verifyDispatchRequest(buildDispatchRequest(candidateSha, controlSha), candidateSha, controlSha);
   let evidence = createDispatchEvidence({ candidateSha, controlSha, dispatch, admissionRunId,
     admissionRunAttempt, startedAt: createdAfter, cutoverAssessment, singleUseClaim, preSubmissionValidation,
-    controllerTransition });
+    controllerTransition, nativeApproval });
   const saveEvidence = patch => {
     evidence = { ...evidence, ...patch };
     persistDispatchEvidence(evidence, evidenceFile);
@@ -1559,16 +1625,22 @@ async function main() {
   const controlSha = process.env.GITHUB_SHA;
   const admission = readAdmissionExecutionContext();
   const cutoverAuthorization = readProtectedCutoverAuthorization();
+  const nativeApproval = await readNativeTestAdmissionApproval(request, {
+    runId: admission.admissionRunId,
+    controllerSha: controlSha,
+    authorization: cutoverAuthorization
+  });
+  const effectiveAuthorization = materializeNativeTestApproval(cutoverAuthorization, nativeApproval);
   const admissionResult = await runProtectedAdmissionLifecycle({
     api: request,
-    activationRequired: cutoverAuthorization.enabled === true && cutoverAuthorization.workflow.allowControllerActivation === true,
+    activationRequired: effectiveAuthorization.enabled === true && effectiveAuthorization.workflow.allowControllerActivation === true,
     activationOptions: {
-      candidateSha, executingControllerSha: controlSha, authorization: cutoverAuthorization
+      candidateSha, executingControllerSha: controlSha, authorization: effectiveAuthorization
     },
     admissionOptions: { candidateSha, controlSha,
       admissionRunId: admission.admissionRunId, admissionRunAttempt: admission.admissionRunAttempt,
-      evidenceFile: evidencePath(), authorization: cutoverAuthorization,
-      controllerTransition: null }
+      evidenceFile: evidencePath(), authorization: effectiveAuthorization,
+      controllerTransition: null, nativeApproval }
   });
   let { dispatched, evidence } = admissionResult;
   const summary = `## FlowHive PSA candidate admission\n\nCandidate: \`${candidateSha}\`\n\nTrusted controller: \`${controlSha}\`\n\nDeployment run: ${dispatched.runId}\n\nController lifecycle: \`${admissionResult.lifecycle.policy}\`; final state: \`${admissionResult.lifecycle.finalState?.state || 'unknown'}\`. Run identity came from the dispatch response. Reviewed application PR #${candidatePullRequest} is merged; live acceptance is not yet established.\n`;

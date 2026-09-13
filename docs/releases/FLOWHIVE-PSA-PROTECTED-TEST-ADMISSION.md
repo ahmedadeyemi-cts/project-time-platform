@@ -16,7 +16,12 @@ issue thread (not on the candidate PR or another issue):
 DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 719a9185289d908f2a53a72ebc275f4a645f4859
 ```
 
-The admission workflow executes main-owned code only. It checks the exact merged PR #976,
+The admission workflow executes main-owned code only. It first enters the native
+`test` environment gate and cannot execute the admission script until the saved
+Test reviewer rule approves that specific admission run. The job is limited to
+15 minutes; the script reads the server review history for its own run, requires
+one approval by `ahmedadeyemi-cts` for environment `test`, and materializes the
+bounded approval only in memory for that run. It checks the exact merged PR #976,
 repository, successor branch, candidate SHA, 6 required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
@@ -37,8 +42,9 @@ The normal read-only cutover gate still requires all three
 known requests (`34495606530`, `34377182662`, and `33654881418`) to be
 server-confirmed terminal with completed attempts and no pending deployment.
 The reviewed `.github/flowhive-psa-protected-cutover.json` provides a separate,
-initially inactive exception for this exact candidate: when separately approved
-and unexpired, one shared assessment verifies the exact three queued records,
+native-gated exception for this exact candidate: the admission job itself is
+held by the saved Test environment reviewer rule, and only after that server
+approval does one shared assessment verify the exact three queued records,
 every observed attempt's zero jobs, empty Test approval history and pending
 deployments, empty concurrency/artifact inventories, exact historical workflow
 blobs and complete native Test protection. The same assessment is passed to the
