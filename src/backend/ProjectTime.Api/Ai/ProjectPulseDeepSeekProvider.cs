@@ -123,7 +123,7 @@ public sealed class ProjectPulseDeepSeekProvider(
             or CelarAiCapabilityCatalog.ProjectForgePlanEstimate;
         return (int)Math.Clamp(
             (long)finalOutputTokens + (planning ? 8_192 : 2_048),
-            planning ? 16_384 : 2_048,
+            planning ? 8_192 : 2_048,
             16_384);
     }
 

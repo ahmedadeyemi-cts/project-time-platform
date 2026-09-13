@@ -92,8 +92,10 @@ foreach (var planningFeature in new[] {
     CelarAiCapabilityCatalog.ProjectFlowHivePlan,
     CelarAiCapabilityCatalog.ProjectForgePlanEstimate })
 {
-    Check(Budget(4_000, planningFeature) == 16_384,
-        "Structured planning reserves the bounded window for reasoning plus cited JSON.");
+    Check(Budget(1_024, planningFeature) == 9_216,
+        "Bounded planner requests reserve reasoning without silently expanding to the full provider window.");
+    Check(Budget(4_000, planningFeature) == 12_192,
+        "Structured planning reserves a bounded reasoning window plus cited JSON.");
     Check(Budget(int.MaxValue, planningFeature) == 16_384,
         "Planning token arithmetic cannot overflow the bounded window.");
 }
