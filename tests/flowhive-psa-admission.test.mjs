@@ -10,7 +10,7 @@ const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
   merge_commit_sha: approval.mergeCommit,
   head: { ref: approval.sourceBranch, sha: approval.sha, repo: { full_name: repository } },
-  base: { ref: 'main', sha: '22d0508eac4064a0c66dd9f65b8f315f4e202d6f', repo: { full_name: repository } } };
+  base: { ref: 'main', sha: approval.sourceBase, repo: { full_name: repository } } };
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));
@@ -271,8 +271,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
-  assert.equal(approval.sourceBranch, 'fix/flowhive-planner-single-batch-20260913');
-  assert.equal(approval.mergeCommit, '22d0508eac4064a0c66dd9f65b8f315f4e202d6f');
+  assert.equal(approval.sourceBranch, candidateBranch);
+  assert.equal(approval.mergeCommit, '50317992e55349c52bef56f26383f105152f7f5d');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
