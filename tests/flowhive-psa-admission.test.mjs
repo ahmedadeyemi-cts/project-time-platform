@@ -149,9 +149,12 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const singleBatchRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-candidate-refresh-20260913';
   const singleBatchActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-activation-20260913';
   const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
+  const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
-  assert.equal(authorization.approvalReference, liveRepairRefresh
+  assert.equal(authorization.approvalReference, nativeRenewal
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04'
+    : liveRepairRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
     : activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
@@ -172,7 +175,9 @@ test('protected cutover refresh uses a new approval reference and preserves hist
       : latencyActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-LATENCY-ACTIVATION'
       : authorization.approvalReference);
-  assert.equal(authorization.supersedesApprovalReference, liveRepairRefresh
+  assert.equal(authorization.supersedesApprovalReference, nativeRenewal
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
+    : liveRepairRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-COMPACT-BATCH-ACTIVATION-RENEWAL-02'
     : activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE'
@@ -200,16 +205,25 @@ test('protected cutover refresh uses a new approval reference and preserves hist
 test('live planner candidate activation is bounded and otherwise remains inactive', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
   const activation = authorization.enabled;
+  const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
   assert.equal(authorization.enabled, activation);
   assert.equal(authorization.activationDecision, activation ? 'approved' : 'hold');
   assert.equal(authorization.workflow.allowControllerActivation, false);
   if (activation) {
-    assert.equal(authorization.approval.status, 'approved');
-    assert.equal(authorization.approval.approvedBy, 'ahmedadeyemi-cts');
-    const approvedAt = Date.parse(authorization.approval.approvedAt);
-    const expiresAt = Date.parse(authorization.approval.expiresAt);
-    assert.ok(Number.isFinite(approvedAt) && Number.isFinite(expiresAt) && expiresAt > approvedAt);
-    assert.ok(expiresAt - approvedAt <= 15 * 60 * 1000);
+    if (nativeRenewal) {
+      assert.equal(authorization.approval.mode, 'native-test-environment');
+      assert.equal(authorization.approval.status, 'native-required');
+      assert.equal(authorization.approval.approvedBy, null);
+      assert.equal(authorization.approval.approvedAt, null);
+      assert.equal(authorization.approval.expiresAt, null);
+    } else {
+      assert.equal(authorization.approval.status, 'approved');
+      assert.equal(authorization.approval.approvedBy, 'ahmedadeyemi-cts');
+      const approvedAt = Date.parse(authorization.approval.approvedAt);
+      const expiresAt = Date.parse(authorization.approval.expiresAt);
+      assert.ok(Number.isFinite(approvedAt) && Number.isFinite(expiresAt) && expiresAt > approvedAt);
+      assert.ok(expiresAt - approvedAt <= 15 * 60 * 1000);
+    }
   } else {
     assert.equal(authorization.approval.status, 'not-approved');
     assert.equal(authorization.approval.approvedBy, null);
@@ -230,6 +244,16 @@ test('admission accepts only the candidate source branch or the protected deploy
   for (const branch of ['main', 'fix/unreviewed', 'release/other', 'refs/heads/main']) {
     assert.throws(() => verifyTargetReleaseBranch(branch), /PSA release branch/);
   }
+});
+test('canonical deployment controller keeps the native Test gate before mutations', () => {
+  const source = fs.readFileSync(new URL('../.github/workflows/projectpulse-deploy-test.yml', import.meta.url), 'utf8');
+  const environment = source.indexOf('\n    environment: test', source.indexOf('\n  deploy:'));
+  const firstMutation = Math.min(...['az containerapp secret set', 'az containerapp update', 'az acr build']
+    .map(marker => source.indexOf(marker)).filter(index => index >= 0));
+  assert.ok(environment >= 0 && firstMutation > environment);
+  assert.match(source, /group:\s*projectpulse-deploy-test/);
+  assert.match(source, /queue:\s*max/);
+  assert.match(source, /cancel-in-progress:\s*false/);
 });
 for (const [field, value] of [['environment','production'], ['publicOrigin','https://elsewhere.invalid'], ['sha','1'.repeat(40)], ['allowPrivateRuntimeMutation',true], ['allowCanonicalTaskAdoption',true], ['allowCustomerPublication',true], ['projectId','1'.repeat(36)]]) {
   test('reject unapproved '+field, () => { const a=clone(approval); a[field]=value; assert.throws(()=>verifyApproval(a,approval.sha)); });
@@ -273,12 +297,13 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const reviewedMain = approval.sourceBase;
   const candidate = approval.sha;
   const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
+  const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, liveRepairRefresh
+  assert.equal(approval.mergeCommit, liveRepairRefresh || nativeRenewal
     ? '98853fa2508db9e7839e0bf478b37a7a7e9c467c'
     : '50317992e55349c52bef56f26383f105152f7f5d');
   assert.equal(approval.sourceBase, reviewedMain);
