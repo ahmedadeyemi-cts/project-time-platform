@@ -24,12 +24,11 @@ public sealed class PulseAiPrivateRagService
     // at that ceiling. Ask for the compact provider contract below and let the
     // server retain the detailed task contract without accepting a partial JSON
     // document.
-    // The live protected-Test provider completed neither the 4,096-token
-    // compact batch nor its bounded recovery before the ten-minute durable
-    // inference budget expired. Keep the source-specific task fields, but
-    // make the provider contract small enough to finish inside that budget;
+    // The live protected-Test provider still exhausted the ten-minute durable
+    // inference budget at 2,048 tokens. Keep the source-specific task fields,
+    // but use the smallest complete compact contract that the parser accepts;
     // repetitive review fields remain deterministically server-completed.
-    private const int Module025PhaseBatchMaximumOutputTokens = 2_048;
+    private const int Module025PhaseBatchMaximumOutputTokens = 1_024;
     // A saved Service Overview can be much larger than the phase prompt needs.
     // Keep each concurrent request small enough for the private runtime to
     // execute without queueing the five requests behind one another, while
@@ -1992,7 +1991,7 @@ public sealed class PulseAiPrivateRagService
                 "Return at least two tasks for every phase and at least ten tasks total.",
                 "Return exactly two distinct detailed tasks for each of the five requested phases and ten tasks total.",
                 StringComparison.Ordinal)
-            + $"\nThis is one bounded provider request for the complete five-phase plan. Return exactly the phases Plan, Design, Implement, Validate, and Release with two distinct technology-specific work packages in each phase. Use phase-local WBS values such as 1.1 and 1.2; the server will normalize them after validation. To finish within the bounded runtime, return only this compact task shape: wbs, phase, name, description, estimatedHours, estimatedDurationDays, requiredRoles, predecessors, and detailedSteps. Make each description at least 80 characters and specific to the authorized SOW; include two concise concrete steps and positive effort for every task. The server preserves these source-specific task fields and deterministically fills repetitive review fields from each task's own name and description. Do not return markdown, commentary, phase-summary rows, optional top-level prose, or a second plan. Return one complete JSON object within {Module025PhaseBatchMaximumOutputTokens} output tokens.";
+            + $"\nThis is one bounded provider request for the complete five-phase plan. Return exactly Plan, Design, Implement, Validate, and Release with two distinct technology-specific tasks per phase. Use phase-local WBS values such as 1.1 and 1.2; the server normalizes them. Return only this compact task shape: wbs, phase, name, description, estimatedHours, requiredRoles, predecessors, and detailedSteps. Make each description at least 80 characters and specific to the authorized SOW; use two concise concrete steps and positive effort. The server fills repetitive review fields from each task's own name and description. Return one complete JSON object within {Module025PhaseBatchMaximumOutputTokens} output tokens, with no markdown, commentary, summary rows, optional prose, or second plan.";
 
     // A private_runtime_* response already represents exhaustion of the gateway's
     // approved local-model chain. Never restart that entire chain at this layer.
