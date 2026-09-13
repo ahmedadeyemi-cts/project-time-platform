@@ -463,6 +463,7 @@ export const plannerCompactBatchAdmissionAncestryFixFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
