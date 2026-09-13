@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
   "enabled": true,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04",
-  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03",
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-PROVIDER-BUDGET-FINAL-REFRESH-05",
+  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04",
   "candidate": {
-    "pullRequest": 976,
+    "pullRequest": 980,
     "branch": "fix/flowhive-planner-live-repair-20260913",
-    "sha": "719a9185289d908f2a53a72ebc275f4a645f4859"
+    "sha": "228a62f21c94ebcf72a57a3d23573e03aaf06dfa"
   },
   "workflow": {
     "id": 315562561,

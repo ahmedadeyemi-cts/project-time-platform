@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged live FlowHive planner runtime correction PR976.
+// successor is the reviewed, merged live FlowHive planner runtime correction PR980.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 976;
+export const candidatePullRequest = 980;
 export const candidateBranch = 'fix/flowhive-planner-live-repair-20260913';
 export const candidateSourceBranch = 'fix/flowhive-planner-live-repair-20260913';
 // The deployment controller intentionally checks out trusted main, while its
@@ -18,7 +18,7 @@ export const candidateSourceBranch = 'fix/flowhive-planner-live-repair-20260913'
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '98853fa2508db9e7839e0bf478b37a7a7e9c467c';
+export const candidateMergeCommit = '781a9540051dd405b9d5846d5367e8e94791d9c5';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';

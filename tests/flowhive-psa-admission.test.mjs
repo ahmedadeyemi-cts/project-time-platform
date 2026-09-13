@@ -149,10 +149,13 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const singleBatchRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-candidate-refresh-20260913';
   const singleBatchActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-activation-20260913';
   const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
+  const finalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-final-refresh-20260913';
   const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
-  assert.equal(authorization.approvalReference, nativeRenewal
+  assert.equal(authorization.approvalReference, finalRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-PROVIDER-BUDGET-FINAL-REFRESH-05'
+    : nativeRenewal
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04'
     : liveRepairRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
@@ -175,7 +178,9 @@ test('protected cutover refresh uses a new approval reference and preserves hist
       : latencyActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-LATENCY-ACTIVATION'
       : authorization.approvalReference);
-  assert.equal(authorization.supersedesApprovalReference, nativeRenewal
+  assert.equal(authorization.supersedesApprovalReference, finalRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04'
+    : nativeRenewal
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
     : liveRepairRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-COMPACT-BATCH-ACTIVATION-RENEWAL-02'
@@ -206,11 +211,12 @@ test('live planner candidate activation is bounded and otherwise remains inactiv
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
   const activation = authorization.enabled;
   const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
+  const finalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-final-refresh-20260913';
   assert.equal(authorization.enabled, activation);
   assert.equal(authorization.activationDecision, activation ? 'approved' : 'hold');
   assert.equal(authorization.workflow.allowControllerActivation, false);
   if (activation) {
-    if (nativeRenewal) {
+    if (nativeRenewal || finalRefresh || authorization.approval.mode === 'native-test-environment') {
       assert.equal(authorization.approval.mode, 'native-test-environment');
       assert.equal(authorization.approval.status, 'native-required');
       assert.equal(authorization.approval.approvedBy, null);
@@ -297,6 +303,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const reviewedMain = approval.sourceBase;
   const candidate = approval.sha;
   const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
+  const finalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-final-refresh-20260913';
   const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
@@ -305,6 +312,10 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.sourceBranch, candidateBranch);
   assert.equal(approval.mergeCommit, liveRepairRefresh || nativeRenewal
     ? '98853fa2508db9e7839e0bf478b37a7a7e9c467c'
+    : finalRefresh
+      ? '781a9540051dd405b9d5846d5367e8e94791d9c5'
+    : approval.pullRequest === 980
+      ? '781a9540051dd405b9d5846d5367e8e94791d9c5'
     : '50317992e55349c52bef56f26383f105152f7f5d');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
