@@ -121,6 +121,44 @@ var module025Retrieval = new PulseAiPrivateRetrievalResult(
     DataAsOf: DateTimeOffset.UtcNow,
     DiagnosticCode: string.Empty);
 
+var boundedSourceFactory = typeof(PulseAiPrivateRagService).GetMethod(
+    "BoundModule025PhaseRetrieval", BindingFlags.NonPublic | BindingFlags.Static);
+Assert(boundedSourceFactory is not null, "module025_phase_source_bounding_available");
+var longServiceOverview = string.Join(
+    "\n\n",
+    Enumerable.Range(0, 1_200).Select(index =>
+        $"Scope item {index}: the customer requires architecture, integration, implementation, validation, release handoff, and acceptance evidence for the authorized delivery boundary."));
+var longModule025Source = module025Source with
+{
+    Text = longServiceOverview,
+    SourceSha256 = new string('c', 64),
+    TextSha256 = new string('d', 64)
+};
+var longModule025Retrieval = module025Retrieval with { Chunks = [longModule025Source] };
+var boundedDesignRetrieval = (PulseAiPrivateRetrievalResult)boundedSourceFactory!.Invoke(
+    null,
+    [longModule025Retrieval, "Design", 1])!;
+Assert(boundedDesignRetrieval.Chunks.Single().Text.Length <= 8_000,
+    "module025_phase_source_is_bounded_for_private_runtime");
+Assert(boundedDesignRetrieval.Chunks.Single().SourceSha256 == longModule025Source.SourceSha256
+       && boundedDesignRetrieval.Chunks.Single().TextSha256 == longModule025Source.TextSha256,
+    "module025_phase_source_hashes_remain_bound_to_full_saved_scope");
+Assert(boundedDesignRetrieval.Chunks.Single().Text.Contains("architecture", StringComparison.OrdinalIgnoreCase),
+    "module025_phase_source_retains_phase_relevant_scope");
+var secondLongModule025Source = longModule025Source with
+{
+    ChunkId = "module025-service-overview-2",
+    RankOrder = 2,
+    TextSha256 = new string('e', 64)
+};
+var boundedMultiRetrieval = (PulseAiPrivateRetrievalResult)boundedSourceFactory.Invoke(
+    null,
+    [longModule025Retrieval with { Chunks = [longModule025Source, secondLongModule025Source] }, "Validate", 3])!;
+Assert(boundedMultiRetrieval.Chunks.Sum(chunk => chunk.Text.Length) <= 8_000,
+    "module025_multi_source_phase_budget_is_aggregate");
+Assert(boundedMultiRetrieval.Chunks.Any(chunk => chunk.RankOrder == 1),
+    "module025_multi_source_phase_keeps_primary_citation");
+
 var module025Phases = new[] { "Planning", "Architecture and Design", "Implementation", "Testing and Validation", "Operational Handoff" };
 var module025Payload = JsonSerializer.Serialize(new
 {
@@ -255,12 +293,32 @@ Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResu
         payload, 100, payload.Length, "", DateTimeOffset.UtcNow));
 };
 async Task<PulseAiPrivateModelResult> RunPhases(Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> model,
-    CancellationToken token = default) => await (Task<PulseAiPrivateModelResult>)phaseGenerator.Invoke(null,
-        new object[] { phaseRequest, module025Retrieval, model, token })!;
+    CancellationToken token = default,
+    PulseAiPrivateModelRequest? requestToRun = null,
+    PulseAiPrivateRetrievalResult? retrievalToRun = null) => await (Task<PulseAiPrivateModelResult>)phaseGenerator.Invoke(null,
+        new object[] { requestToRun ?? phaseRequest, retrievalToRun ?? module025Retrieval, model, token })!;
 var phasedResult = await RunPhases(phaseModel);
 Assert(phasedResult.Succeeded && phaseCalls == 5, "module025_five_validated_phases_complete");
 var phasedPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(null, new object[] { phasedResult.Content, module025Retrieval })!;
 Assert(phasedPlan.Tasks.Count == 10, "module025_assembled_contract_passes");
+var boundedPhaseCalls = 0;
+var boundedPhaseResult = await RunPhases((request, token) =>
+{
+    boundedPhaseCalls++;
+    var phase = phaseNames.Single(name => request.SystemInstruction.Contains($"Return ONLY {name} tasks", StringComparison.Ordinal));
+    Assert(request.Sources.Single().Text.Length <= 8_000,
+        "module025_phase_request_does_not_forward_full_service_overview");
+    Assert(request.Sources.Single().TextSha256 == longModule025Source.TextSha256,
+        "module025_phase_request_preserves_full_scope_text_hash");
+    var payload = JsonSerializer.Serialize(parsedModule025 with
+    { Tasks = parsedModule025.Tasks.Where(task => task.Phase == phase).ToArray() });
+    return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+        payload, 100, payload.Length, "", DateTimeOffset.UtcNow));
+},
+    requestToRun: phaseRequest with { Sources = [longModule025Source] },
+    retrievalToRun: longModule025Retrieval);
+Assert(boundedPhaseResult.Succeeded && boundedPhaseCalls == 5,
+    "module025_bounded_source_phases_complete_without_losing_citations");
 var invalidCalls = 0;
 var invalidResult = await RunPhases((request, token) =>
 {
