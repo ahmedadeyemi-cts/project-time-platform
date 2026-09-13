@@ -31,8 +31,12 @@ migrations 103/104/105/106/107 retain their reviewed SHA-256 values. PR891, PR94
 existing FlowHive/SOW application scope remain in the merged ancestry.
 
 The supervisor shares the existing admission lock and refuses every unresolved
-workflow run before the single dispatch write. This keeps the native Test
-environment gate and existing serialization as the release transaction boundary.
+workflow run before the single dispatch write. The supervisor is read-only with
+respect to cloud resources; the canonical `projectpulse-deploy-test` job remains
+the native Test environment boundary for all deployment mutations. Its Test
+review is therefore created on the exact returned deployment run, not on the
+admission bookkeeping run. This preserves the immutable deployment-governance
+manifest and existing serialization.
 The normal read-only cutover gate still requires all three
 known requests (`34495606530`, `34377182662`, and `33654881418`) to be
 server-confirmed terminal with completed attempts and no pending deployment.

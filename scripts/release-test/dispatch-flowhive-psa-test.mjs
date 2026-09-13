@@ -7,9 +7,9 @@ import { authorize, repository, admissionIssueNumber, candidateBranch, candidate
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
-const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-COMPACT-BATCH-ACTIVATION-RENEWAL-02';
+const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03';
 const historicalRecoveryApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911';
-const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03';
+const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04';
 const historicalRecoveryCandidateSha = '86c9be03b87e588eeec47492e35131177716263b';
 // This is the protected-Test lane selector, not the candidate's source ref.
 // The candidate source branch and SHA remain bound by flowhive-psa-admission;
@@ -325,6 +325,13 @@ export function verifyProtectedCutoverAuthorization(authorization, now = new Dat
   assert.equal(authorization.activationDecision, 'approved', 'PROTECTED_CUTOVER_DECISION');
   assert.ok(authorization.workflow.allowControllerActivation === true || authorization.workflow.allowControllerActivation === false,
     'Active protected cutover must explicitly declare whether controller activation is required.');
+  if (authorization.approval?.mode === 'native-test-environment') {
+    assert.equal(authorization.approval.status, 'native-required', 'NATIVE_TEST_CONTROLLER_APPROVAL_STATUS');
+    assert.equal(authorization.approval.approvedBy, null, 'NATIVE_TEST_CONTROLLER_APPROVER');
+    assert.equal(authorization.approval.approvedAt, null, 'NATIVE_TEST_CONTROLLER_APPROVED_AT');
+    assert.equal(authorization.approval.expiresAt, null, 'NATIVE_TEST_CONTROLLER_EXPIRES_AT');
+    return { approved: true, mode: 'native-test-environment', nativeApprovalRequired: true };
+  }
   // A false value is the reviewed continuation mode: the controller is already
   // active and assessProtectedCutover will verify that live state before any
   // claim or dispatch. The enable path remains gated by the true value.
