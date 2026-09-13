@@ -147,6 +147,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const latencyRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-candidate-refresh-20260912';
   const contextBudgetRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-candidate-refresh-20260912';
   const singleBatchRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-candidate-refresh-20260913';
+  const singleBatchActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-activation-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
   assert.equal(authorization.approvalReference, activation
@@ -157,6 +158,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-ACTIVATION'
     : contextBudgetActivation
       ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-ACTIVATION'
+    : singleBatchActivation
+      ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-ACTIVATION-RENEWAL-01'
     : singleBatchRefresh
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-RELEASE'
     : contextBudgetRefresh
@@ -174,6 +177,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-RELEASE'
       : contextBudgetActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-RELEASE'
+      : singleBatchActivation
+        ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-SINGLE-BATCH-ACTIVATION'
       : singleBatchRefresh
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-CONTEXT-BUDGET-ACTIVATION'
       : contextBudgetRefresh
@@ -189,7 +194,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
 });
 test('live planner candidate activation is bounded and otherwise remains inactive', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
-  const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-final-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
+  const activation = process.env.GITHUB_HEAD_REF === 'control/flowhive-live-planner-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-output-budget-final-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913' || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-activation-20260913';
   assert.equal(authorization.enabled, activation);
   assert.equal(authorization.activationDecision, activation ? 'approved' : 'hold');
   assert.equal(authorization.workflow.allowControllerActivation, false);

@@ -202,6 +202,9 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-single-batch-candidate-refresh-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_PLANNER_SINGLE_BATCH_CANDIDATE_REFRESH_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-single-batch-activation-20260913' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_PLANNER_SINGLE_BATCH_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-latency-activation-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_PLANNER_LATENCY_ACTIVATION_SCOPE=PASSED'
