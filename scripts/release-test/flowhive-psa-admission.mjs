@@ -199,7 +199,10 @@ export async function authorize() {
   // The successor application was merged into the reviewed main snapshot.
   // The later control merge is then constrained to control-only drift from
   // that snapshot, without widening the allowlist for application files.
-  git('merge-base', '--is-ancestor', approval.sha, approval.sourceBase);
+  // sourceBase is the reviewed main snapshot from which the candidate was
+  // built. The candidate must descend from that base; checking the reverse
+  // direction rejects every legitimate successor commit before dispatch.
+  git('merge-base', '--is-ancestor', approval.sourceBase, approval.sha);
   git('merge-base', '--is-ancestor', approval.sourceBase, main.object.sha);
   const controlFiles = fs.readFileSync(controlManifest, 'utf8').trim().split(/\r?\n/);
   const mainChanges = git('diff', '--name-only', `${approval.sourceBase}..${main.object.sha}`).split(/\r?\n/).filter(Boolean);
