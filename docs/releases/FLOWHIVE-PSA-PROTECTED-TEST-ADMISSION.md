@@ -13,19 +13,20 @@ repository owner must post this exact command as a comment on PR #887's
 issue thread (not on the candidate PR or another issue):
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA d5ea2bdff5831f65dc758ae23fe340eb6faaefde
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 050d8ef9f526d2cb09c3287aac1a25b088e98fce
 ```
 
-The admission workflow executes main-owned code only. It checks the exact merged PR #967,
+The admission workflow executes main-owned code only. It checks the exact merged PR #970,
 repository, successor branch, candidate SHA, 6 required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
 feature branch is not renamed or implicitly approved by a prefix match.
 
-This successor is PR967, merged to trusted main as `22d0508eac4064a0c66dd9f65b8f315f4e202d6f`,
+This successor is PR970, merged to trusted main as `50317992e55349c52bef56f26383f105152f7f5d`,
 and carries the bounded live FlowHive planner correction at application commit
-`d5ea2bdff5831f65dc758ae23fe340eb6faaefde`. Its trusted source base is that merge commit;
+`050d8ef9f526d2cb09c3287aac1a25b088e98fce`. Its trusted source base is the pre-merge trusted
+main `2bd2445f9791370df6193d73c7255d44d9a41d00`;
 migrations 103/104/105/106/107 retain their reviewed SHA-256 values. PR891, PR947 and the
 existing FlowHive/SOW application scope remain in the merged ancestry.
 
@@ -195,7 +196,7 @@ the reviewed PR880 control merge integrated into PR872.
 The approved `sourceBase` is `4871d47fbeaad0fd5c08ddca27f193d682a0ea92`, the
 reviewed PR880 main merge already contained in the candidate. The PR874 merge
 remains an ancestor and is retained as historical repair evidence. Current main
-`22d0508eac4064a0c66dd9f65b8f315f4e202d6f` is the trusted main snapshot containing
+`50317992e55349c52bef56f26383f105152f7f5d` is the trusted main snapshot containing
 the merged planner correction and this candidate refresh is the only later control
 delta. PR872 and its frozen candidate remain historical reference material; PR887 is
 merged and remains in the maintained application ancestry. Required exact-source CI now also includes
