@@ -148,9 +148,12 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const contextBudgetRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-candidate-refresh-20260912';
   const singleBatchRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-candidate-refresh-20260913';
   const singleBatchActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-single-batch-activation-20260913';
+  const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
-  assert.equal(authorization.approvalReference, activation
+  assert.equal(authorization.approvalReference, liveRepairRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
+    : activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
     : candidateRefresh
       ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-OUTPUT-BUDGET-RELEASE'
@@ -169,7 +172,9 @@ test('protected cutover refresh uses a new approval reference and preserves hist
       : latencyActivation
         ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-PLANNER-LATENCY-ACTIVATION'
       : authorization.approvalReference);
-  assert.equal(authorization.supersedesApprovalReference, activation
+  assert.equal(authorization.supersedesApprovalReference, liveRepairRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-COMPACT-BATCH-ACTIVATION-RENEWAL-02'
+    : activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE'
     : candidateRefresh
       ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
@@ -267,12 +272,15 @@ test('superseded dispatch receipt remains audit evidence and is not current-cand
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
   const reviewedMain = approval.sourceBase;
   const candidate = approval.sha;
+  const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, '50317992e55349c52bef56f26383f105152f7f5d');
+  assert.equal(approval.mergeCommit, liveRepairRefresh
+    ? '98853fa2508db9e7839e0bf478b37a7a7e9c467c'
+    : '50317992e55349c52bef56f26383f105152f7f5d');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
