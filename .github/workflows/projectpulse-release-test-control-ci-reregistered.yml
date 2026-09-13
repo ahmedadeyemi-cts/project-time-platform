@@ -211,6 +211,9 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-admission-ancestry-fix-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_PLANNER_COMPACT_BATCH_ADMISSION_ANCESTRY_FIX_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-source-drift-boundary-20260913' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_FLOWHIVE_PLANNER_COMPACT_BATCH_SOURCE_DRIFT_BOUNDARY_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-single-batch-activation-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'EXACT_FLOWHIVE_PLANNER_SINGLE_BATCH_ACTIVATION_SCOPE=PASSED'
