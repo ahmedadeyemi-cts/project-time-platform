@@ -1,0 +1,180 @@
+name: Temporary FlowHive Repair Publisher
+
+on:
+  push:
+    branches:
+      - feature/project-planning-collaboration-access-20260818
+    paths:
+      - '.github/workflows/temporary-flowhive-repair-publisher.yml'
+      - '.flowhive-repair/**'
+      - 'tmp/flowhive-repair/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FLOWHIVE_STAGING_BASE: af375ce3a6642b4e831ac22474d9fc871f2e4ec3
+  FLOWHIVE_BRANCH: feature/project-planning-collaboration-access-20260818
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact PR branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Discover and validate staged repair bundle
+        id: bundle
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          git cat-file -e "$FLOWHIVE_STAGING_BASE^{commit}" || fail 'The exact staging base is unavailable.'
+
+          git diff --diff-filter=A --name-only "$FLOWHIVE_STAGING_BASE...HEAD" \
+            | LC_ALL=C sort -V > "$RUNNER_TEMP/added-files"
+          echo 'Files added after the exact source-export base:'
+          cat "$RUNNER_TEMP/added-files"
+
+          grep -E '(^|/)(flowhive|FlowHive|repair|bundle|segment|part)' "$RUNNER_TEMP/added-files" \
+            | grep -Ev '^\.github/workflows/' \
+            | while IFS= read -r file; do
+                [[ -f "$file" ]] && printf '%s\n' "$file"
+              done \
+            | LC_ALL=C sort -V > "$RUNNER_TEMP/candidates"
+
+          [[ -s "$RUNNER_TEMP/candidates" ]] || {
+            echo 'No repair segment candidates were found.' >&2
+            exit 1
+          }
+
+          echo 'Repair segment candidates:'
+          while IFS= read -r file; do
+            printf '%s  %s bytes  sha256=%s\n' \
+              "$file" "$(stat -c %s "$file")" "$(sha256sum "$file" | cut -d' ' -f1)"
+          done < "$RUNNER_TEMP/candidates"
+
+          cat $(cat "$RUNNER_TEMP/candidates") > "$RUNNER_TEMP/flowhive.bundle.raw"
+          tr -d '\r\n\t ' < "$RUNNER_TEMP/flowhive.bundle.raw" > "$RUNNER_TEMP/flowhive.bundle.compact"
+
+          BUNDLE=''
+          if unzip -tqq "$RUNNER_TEMP/flowhive.bundle.raw" >/dev/null 2>&1; then
+            BUNDLE="$RUNNER_TEMP/flowhive.bundle.raw"
+          elif base64 --decode "$RUNNER_TEMP/flowhive.bundle.compact" > "$RUNNER_TEMP/flowhive.bundle.decoded" 2>/dev/null \
+            && unzip -tqq "$RUNNER_TEMP/flowhive.bundle.decoded" >/dev/null 2>&1; then
+            BUNDLE="$RUNNER_TEMP/flowhive.bundle.decoded"
+          elif tar -tf "$RUNNER_TEMP/flowhive.bundle.raw" >/dev/null 2>&1; then
+            BUNDLE="$RUNNER_TEMP/flowhive.bundle.raw"
+          elif base64 --decode "$RUNNER_TEMP/flowhive.bundle.compact" > "$RUNNER_TEMP/flowhive.bundle.decoded" 2>/dev/null \
+            && tar -tf "$RUNNER_TEMP/flowhive.bundle.decoded" >/dev/null 2>&1; then
+            BUNDLE="$RUNNER_TEMP/flowhive.bundle.decoded"
+          else
+            fail 'The staged FlowHive bundle is incomplete or is not a valid zip/tar archive.'
+          fi
+
+          install -d -m 0700 "$RUNNER_TEMP/flowhive-repair"
+          if unzip -tqq "$BUNDLE" >/dev/null 2>&1; then
+            unzip -q "$BUNDLE" -d "$RUNNER_TEMP/flowhive-repair"
+          else
+            tar -xf "$BUNDLE" -C "$RUNNER_TEMP/flowhive-repair"
+          fi
+
+          find "$RUNNER_TEMP/flowhive-repair" -type f -printf '%P\n' | LC_ALL=C sort > "$RUNNER_TEMP/extracted-files"
+          [[ -s "$RUNNER_TEMP/extracted-files" ]] || fail 'The repair archive extracted no files.'
+          echo 'Validated repair archive contents:'
+          cat "$RUNNER_TEMP/extracted-files"
+
+          echo "archive_root=$RUNNER_TEMP/flowhive-repair" >> "$GITHUB_OUTPUT"
+          echo "candidate_manifest=$RUNNER_TEMP/candidates" >> "$GITHUB_OUTPUT"
+
+      - name: Apply exact repair archive
+        shell: bash
+        env:
+          ARCHIVE_ROOT: ${{ steps.bundle.outputs.archive_root }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          APPLY_SCRIPT="$(find "$ARCHIVE_ROOT" -type f \( -name 'apply-flowhive-repair.sh' -o -name 'apply.sh' -o -name 'publish.sh' \) | head -1)"
+          if [[ -n "$APPLY_SCRIPT" ]]; then
+            chmod 0700 "$APPLY_SCRIPT"
+            PROJECTPULSE_REPOSITORY_ROOT="$GITHUB_WORKSPACE" bash "$APPLY_SCRIPT"
+          else
+            CONTENT_ROOT="$ARCHIVE_ROOT"
+            if [[ -d "$ARCHIVE_ROOT/project-time-platform" ]]; then
+              CONTENT_ROOT="$ARCHIVE_ROOT/project-time-platform"
+            elif [[ -d "$ARCHIVE_ROOT/repository" ]]; then
+              CONTENT_ROOT="$ARCHIVE_ROOT/repository"
+            elif [[ -d "$ARCHIVE_ROOT/files" ]]; then
+              CONTENT_ROOT="$ARCHIVE_ROOT/files"
+            fi
+            rsync -a --exclude '.git/' --exclude '.github/workflows/temporary-flowhive-repair-publisher.yml' \
+              "$CONTENT_ROOT/" "$GITHUB_WORKSPACE/"
+          fi
+
+          git status --short
+          [[ -n "$(git status --short)" ]] || fail 'The validated repair archive made no repository changes.'
+
+      - name: Validate FlowHive source contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash -n scripts/release-test/run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
+          bash -n scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          git diff --check
+
+      - name: Validate backend and detailed planner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+
+      - name: Validate frontend production build
+        shell: bash
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Publish repair and remove temporary staging
+        shell: bash
+        env:
+          ARCHIVE_ROOT: ${{ steps.bundle.outputs.archive_root }}
+          CANDIDATE_MANIFEST: ${{ steps.bundle.outputs.candidate_manifest }}
+        run: |
+          set -Eeuo pipefail
+          while IFS= read -r file; do
+            rm -f "$file"
+          done < "$CANDIDATE_MANIFEST"
+          rm -f .github/workflows/temporary-flowhive-source-export.yml
+          rm -f .github/workflows/temporary-flowhive-repair-publisher.yml
+          find .flowhive-repair tmp/flowhive-repair -type d -empty -delete 2>/dev/null || true
+
+          git add -A
+          git diff --cached --check
+          git diff --cached --quiet && {
+            echo 'ERROR: No final repair diff remains after staging cleanup.' >&2
+            exit 1
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Complete server-owned FlowHive AI Planner redesign'
+          git push origin "HEAD:$FLOWHIVE_BRANCH"
