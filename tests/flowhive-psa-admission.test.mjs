@@ -276,6 +276,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
+  assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', reviewedMain, candidate], { stdio: 'ignore' }));
+  assert.throws(() => execFileSync('git', ['merge-base', '--is-ancestor', candidate, reviewedMain], { stdio: 'ignore' }));
   verifySourceDrift(plannerTimeBudgetApprovalFiles, files);
   for (const unrelated of [
     'src/backend/ProjectTime.Api/Program.cs',
