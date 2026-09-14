@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged SOW/My Role/Celar repair PR994.
+// successor is the reviewed, merged SOW/My Role live-acceptance repair PR1003.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 994;
-export const candidateBranch = 'fix/module025-my-role-celar-repair-20260914';
-export const candidateSourceBranch = 'fix/module025-my-role-celar-repair-20260914';
+export const candidatePullRequest = 1003;
+export const candidateBranch = 'fix/module025-sow-role-live-acceptance-20260914';
+export const candidateSourceBranch = 'fix/module025-sow-role-live-acceptance-20260914';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e';
+export const candidateMergeCommit = '46097cb87db57c73d218910f9dfbe393ecd487fe';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -54,7 +54,7 @@ const requiredWorkflows = [
 const retiredWorkflows = [
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml'
 ];
-const historicalWorkflowExceptions = [
+export const historicalWorkflowExceptions = Object.freeze([
   {
     workflow: '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
     reasonCode: 'historical-head-ref-binding-defect',
@@ -65,7 +65,7 @@ const historicalWorkflowExceptions = [
     conclusion: 'failure',
     sourceCorrection: 'explicit-github-head-ref-binding'
   }
-];
+]);
 
 export const supersededCheckWorkflows = Object.freeze([
   {
@@ -84,8 +84,8 @@ export function verifySupersededCheckBinding(binding) {
   assert.deepEqual(binding?.candidate, {
     pullRequest: 1003,
     branch: 'fix/module025-sow-role-live-acceptance-20260914',
-    headSha: 'caaeac5401bcc847dc8befb452c8772d8270223e',
-    baseSha: '62320ac18c160bfe7d25f04a998274daebfafbfc'
+    headSha: '1a87d5c532d28caa7237bf9f4ec4c0b0a63095cc',
+    baseSha: 'fa8631297ae2420523a2079072433c771e6f61e6'
   }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
   assert.deepEqual(binding?.supersedes, {
     pullRequest: 994,
@@ -128,8 +128,8 @@ export function verifyApproval(approval, requestedSha) {
   assert.deepEqual(approval.retiredWorkflows, retiredWorkflows,
     'The retired controller list must be explicit and exact.');
   for (const workflow of approval.requiredWorkflows) assert.match(workflow, /^\.github\/workflows\/[a-z0-9-]+\.yml$/);
-  assert.deepEqual(approval.workflowExceptions, historicalWorkflowExceptions,
-    'Only the exact pre-correction duplicate-controller failure may be superseded.');
+  assert.deepEqual(approval.workflowExceptions, [],
+    'The refreshed candidate must not inherit a historical failure as a current check exception.');
   assert.equal(approval.projectId, '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49');
   assert.equal(approval.projectManagerLogin, 'heather.schrock@ussignal.local');
   if (approval.successorCheckBinding) verifySupersededCheckBinding(approval.successorCheckBinding);
