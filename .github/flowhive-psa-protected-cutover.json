@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
   "enabled": true,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-NATIVE-ACTIVE-03",
-  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-NATIVE-ACTIVE-02",
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-FLOWHIVE-PLANNER-PROVIDER-DEADLINE-01",
+  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-NATIVE-ACTIVE-03",
   "candidate": {
-    "pullRequest": 1014,
-    "branch": "fix/module025-sow-provider-deadline-20260914",
-    "sha": "874e903d131660f0b5796d2388e007fd94f20f5c"
+    "pullRequest": 1017,
+    "branch": "fix/flowhive-planner-provider-deadline-retry-20260914",
+    "sha": "ac4ec6d23a2c41d1c3f226921b0efc5710f8fac5"
   },
   "workflow": {
     "id": 315562561,
@@ -121,15 +121,15 @@
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
+      "pullRequest": 1017,
+      "branch": "fix/flowhive-planner-provider-deadline-retry-20260914",
+      "headSha": "ac4ec6d23a2c41d1c3f226921b0efc5710f8fac5",
+      "baseSha": "fd8e41edd3313f2e18259a24e3949b48dd3ffec5"
+    },
+    "supersedes": {
       "pullRequest": 1014,
       "branch": "fix/module025-sow-provider-deadline-20260914",
       "headSha": "874e903d131660f0b5796d2388e007fd94f20f5c",
-      "baseSha": "ef2140f91004704dfe9432239ac5394b389d6fe5"
-    },
-    "supersedes": {
-      "pullRequest": 1009,
-      "branch": "fix/module025-sow-role-live-repair-20260914",
-      "headSha": "482e0a2de99d563381e6c1bf5e2e2ffbf24298df",
       "installedAcceptanceRunId": 34895217042,
       "installedAcceptanceConclusion": "failure"
     },
