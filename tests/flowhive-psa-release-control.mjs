@@ -388,7 +388,7 @@ export const module025SowRoleCandidateRefreshFiles = [
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 
-export const module025SowRoleLiveAcceptanceBase = '62320ac18c160bfe7d25f04a998274daebfafbfc';
+export const module025SowRoleLiveAcceptanceBase = 'fa8631297ae2420523a2079072433c771e6f61e6';
 export const module025SowRoleLiveAcceptanceBranch = 'fix/module025-sow-role-live-acceptance-20260914';
 export const module025SowRoleLiveAcceptanceFiles = [
   '.github/workflows/flowhive-psa-release-control-ci.yml',
@@ -402,6 +402,7 @@ export const module025SowRoleLiveAcceptanceFiles = [
   'src/frontend/project-time-web/src/module-availability-bridge.js',
   'src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js',
   'src/frontend/project-time-web/tests/role-journeys.test.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/FlowHiveDetailedPlannerTests/Program.cs'
 ].sort();
 
