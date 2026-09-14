@@ -411,6 +411,12 @@ var deadlineResult = await RunPhases((request, token) =>
 });
 Assert(deadlineResult.Succeeded && deadlineCalls == 6,
     "module025_provider_deadline_has_one_phase_retry_without_unbounded_loop");
+Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("provider_deadline_exceeded"),
+    "flowhive_provider_deadline_is_retryable_at_orchestrator_boundary");
+Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("private_module025_phase_deadline_exceeded_phase_design"),
+    "flowhive_phase_deadline_diagnostic_is_retryable_at_orchestrator_boundary");
+Assert(!ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("private_model_safety_refusal"),
+    "flowhive_safety_refusal_is_not_retryable_at_orchestrator_boundary");
 var phaseCore = typeof(PulseAiPrivateRagService).GetMethod(
     "GenerateModule025PhasesCoreAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
 async Task<PulseAiPrivateModelResult> RunBoundedPhases(

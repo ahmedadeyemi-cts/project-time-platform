@@ -132,6 +132,37 @@ internal static class ProjectPlanningAiOrchestrator
                     .ToArray());
         }
 
+        // A private provider deadline is an availability failure, not an
+        // evidence-quality failure. Preserve the route diagnostics and let the
+        // durable worker consume its existing bounded retry budget. Previously
+        // this fell through to the evidence gate, which converted a transient
+        // Celar AI deadline into terminal needs_attention before retry policy
+        // could run.
+        var retryableProviderDiagnostics = (composition.TargetDecisions ?? [])
+            .Where(decision => decision.Outcome is "failed" or "unavailable")
+            .Select(decision => decision.ReasonCode)
+            .Where(IsRetryableProviderDiagnostic)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (retryableProviderDiagnostics.Length > 0)
+        {
+            return new ProjectPlanningGenerationResult(
+                false,
+                "project_planning_ai_temporarily_unavailable",
+                "The private AI provider exceeded a bounded attempt deadline. No planning draft was changed; the durable worker may use its remaining retry budget.",
+                composition,
+                null,
+                null,
+                null,
+                composition.MissingEvidence
+                    .Concat(retryableProviderDiagnostics.Select(code => $"private_provider_{code}"))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                composition.Warnings.Concat(documents.Warnings)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray());
+        }
+
         var currentDocumentIds = documents.CurrentDocumentIds;
         var currentCitations = composition.Citations
             .Where(citation => currentDocumentIds.Contains(citation.DocumentId)
@@ -548,6 +579,20 @@ internal static class ProjectPlanningAiOrchestrator
         var clean = value?.Trim() ?? string.Empty;
         if (clean.Length == 0) clean = fallback;
         return clean.Length <= maximum ? clean : clean[..maximum];
+    }
+
+    internal static bool IsRetryableProviderDiagnostic(string? diagnostic)
+    {
+        var normalized = (diagnostic ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized is
+            "provider_deadline_exceeded"
+            or "private_model_timeout"
+            or "private_model_http_502"
+            or "private_model_http_503"
+            or "private_model_http_504"
+            or "private_model_transport_failure"
+            || normalized.StartsWith("private_module025_generation_deadline_exceeded", StringComparison.Ordinal)
+            || normalized.StartsWith("private_module025_phase_deadline_exceeded", StringComparison.Ordinal);
     }
 
     private sealed record DurablePlannerRow(
