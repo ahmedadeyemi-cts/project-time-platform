@@ -81,6 +81,18 @@ def phase_payload(phase: dict) -> dict:
     return {key: phase.get(key) if key != "finalHours" else float(phase.get(key) or 0) for key in ("phaseCode", "finalHours", "objective", *DETAIL_FIELDS, "loeRationale")}
 
 
+def phase_skeleton(phases: object) -> tuple[str, ...]:
+    """Validate the create response without requiring generated content yet."""
+    require(isinstance(phases, list) and len(phases) == 5, "sow_phase_count_not_five_before_generation")
+    codes = tuple(sorted(
+        str(item.get("phaseCode", "")).lower()
+        for item in phases
+        if isinstance(item, dict)
+    ))
+    require(codes == tuple(sorted(PHASE_CODES)), "sow_phase_skeleton_incomplete")
+    return codes
+
+
 def phase_quality(phases: object) -> dict:
     require(isinstance(phases, list) and len(phases) == 5, "sow_phase_count_not_five")
     by_code = {str(item.get("phaseCode", "")).lower(): item for item in phases if isinstance(item, dict)}
@@ -237,7 +249,7 @@ async def main() -> int:
         require(status == 200 and isinstance(detail, dict), "module025_detail_http_" + str(status))
         current = detail.get("engagement") or {}
         phases = current.get("phases") or []
-        phase_quality(phases)
+        phase_skeleton(phases)
 
         edited_overview = service_overview + " SA review marker: confirm customer change window and rollback owner."
         save_payload = {

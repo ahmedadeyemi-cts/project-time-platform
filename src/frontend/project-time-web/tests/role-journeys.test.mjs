@@ -8,7 +8,7 @@ import { ROLE_JOURNEYS, JOURNEY_ROUTE, LIFECYCLE, canonicalRole, roleCatalog, ma
 import roleJourneysPlugin, { APP_ANCHORS, transformJourneyApp, transformJourneyRegistry, verifyJourneySources } from '../scripts/role-journeys-vite-plugin.mjs';
 
 const webRoot = fileURLToPath(new URL('../', import.meta.url));
-const fixture = `${APP_ANCHORS.guide}\n${APP_ANCHORS.route}\nconst page = <>${APP_ANCHORS.navigation}</nav></>;`;
+const fixture = `${APP_ANCHORS.guide}\n${APP_ANCHORS.route}\n${APP_ANCHORS.runtimeAliases}\n  legacy: 'retained'\n});\nconst page = <>${APP_ANCHORS.navigation}</nav></>;`;
 const registry = `const ROUTE_ALIASES = Object.freeze({\n  legacy: 'retained'\n});`;
 
 test('all 15 playbooks and 60 steps satisfy the content contract', () => {
@@ -70,6 +70,7 @@ test('unknown and nonregistered module routes fail content verification', () => 
 test('dedicated page shares Module 999; authenticated navigation is React-owned', () => {
   const result = transformJourneyApp(fixture);
   assert(result.includes("return route === 'my-role-in-pulse' ? 'user-guide' : route;"));
+  assert(result.includes("'my-role-in-pulse': 'user-guide',"));
   assert(result.includes('data-module-number="999"'));
   assert(result.includes('RoleJourneyGuideRouter.jsx'));
   assert(!result.includes('createRoot'));
@@ -86,6 +87,13 @@ test('all other hash routes preserve the original result', () => {
   assert.equal(run('#my-role-in-pulse'), 'user-guide');
   for (const route of ['user-guide', 'timesheet', 'project-flowhive', 'sow-generator', 'role-admin']) assert.equal(run(`#${route}`), route);
   assert.equal(run(''), 'dashboard');
+});
+test('the runtime route normalizer reaches the dedicated page through the real App path', () => {
+  const result = transformJourneyApp(fixture);
+  const aliases = result.match(/const PROJECTPULSE_RUNTIME_ROUTE_ALIASES = Object\.freeze\(\{[\s\S]*?\n\}\);/)[0];
+  const parser = "function normalizeRoute(hash) { const cleaned = (hash || window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].trim(); return PROJECTPULSE_RUNTIME_ROUTE_ALIASES[cleaned] || cleaned || 'dashboard'; }";
+  const run = Function('window', `${aliases}\n${parser}; return normalizeRoute('#my-role-in-pulse');`);
+  assert.equal(run({ location: { hash: '#my-role-in-pulse' } }), 'user-guide');
 });
 test('application transform is idempotent and rejects incomplete installation', () => {
   const result = transformJourneyApp(fixture);
