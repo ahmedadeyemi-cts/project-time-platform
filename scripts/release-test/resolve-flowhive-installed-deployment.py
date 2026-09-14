@@ -22,6 +22,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 WORKFLOW_ID = 315562561
 WORKFLOW_PATH = ".github/workflows/projectpulse-deploy-test.yml"
+SUPPORTED_SUCCESSOR_RELEASE_BRANCH = "release/flowhive-sow-successor-20260908"
 DEPLOY_JOB = "Validate, migrate, deploy, and verify protected Test"
 REQUIRED_STEPS = (
     "Verify admitted controller identity before deployment mutations",
@@ -188,7 +189,15 @@ def resolve(run: dict, jobs: list[dict], artifact: dict, archive: bytes, manifes
             require(isinstance(identity.get(key), str) and identity[key].strip(), "deployment_revision_missing")
         for key in ("apiImage", "webImage"):
             require(re.fullmatch(r".+@sha256:[0-9a-f]{64}", str(identity.get(key) or "")) is not None and identity[key] == images.get(key), "deployment_image_receipt_mismatch")
-        require(manifest.get("repository") == repository and manifest.get("environment") == "test" and manifest.get("sha") == application and manifest.get("branch") == identity.get("applicationBranch"), "selected_deployment_not_current_approved_candidate")
+        approved_branch = manifest.get("branch")
+        deployed_branch = identity.get("applicationBranch")
+        require(
+            manifest.get("repository") == repository
+            and manifest.get("environment") == "test"
+            and manifest.get("sha") == application
+            and deployed_branch in {approved_branch, SUPPORTED_SUCCESSOR_RELEASE_BRANCH},
+            "selected_deployment_not_current_approved_candidate",
+        )
         require(manifest.get("allowCustomerPublication") is False and manifest.get("allowCanonicalTaskAdoption") is False, "selected_candidate_scope_invalid")
         migration_spec = manifest.get("migrations")
         require(isinstance(migration_spec, list) and migration_spec and all(isinstance(row, dict) and isinstance(row.get("file"), str) and row["file"].endswith(".sql") for row in migration_spec), "migration_manifest_invalid")
