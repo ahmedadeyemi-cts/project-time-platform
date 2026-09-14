@@ -59,6 +59,10 @@ jobs:
             node tests/validate-systemwide-image-build-controller.mjs
             echo 'FLOWHIVE_PLANNER_PROVIDER_BUDGET_SCOPE=PASSED'
             exit 0
+          elif [[ "$HEAD_BRANCH" == 'fix/sow-role-installed-acceptance-20260913' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'INSTALLED_SOW_ROLE_ACCEPTANCE_SCOPE=PASSED'
+            exit 0
           elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' || "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' || "$HEAD_BRANCH" == 'fix/flowhive-planner-time-budget-20260912' ]]; then
             if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
               MANIFEST='.github/flowhive-enterprise-psa-release-files.txt'
