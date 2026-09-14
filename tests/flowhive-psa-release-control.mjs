@@ -426,6 +426,10 @@ export const plannerProviderDeadlineCandidateRefreshBase = 'c732a335ba43d6c8824b
 export const plannerProviderDeadlineCandidateRefreshBranch = 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914';
 export const plannerProviderDeadlineCandidateRefreshFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
+  '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+  '.github/workflows/deepseek-v4-provider-ci.yml',
+  '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
+  '.github/workflows/pulse-ai-system-intelligence-ci.yml',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'

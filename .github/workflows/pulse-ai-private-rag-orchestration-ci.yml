@@ -29,6 +29,7 @@ on:
       - 'src/frontend/project-time-web/src/PulseAiPrivateRagWorkbench.jsx'
       - 'src/frontend/project-time-web/src/pulse-ai-private-rag-workbench.css'
       - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
+  workflow_dispatch:
 
 permissions:
   contents: read
