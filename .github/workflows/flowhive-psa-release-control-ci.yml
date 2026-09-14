@@ -142,6 +142,8 @@ jobs:
               diff -u "$RUNNER_TEMP/module025-sow-role-candidate-refresh-files" "$RUNNER_TEMP/module025-sow-role-candidate-refresh-actual" >&2 || true
               exit 1
             }
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-admission-manifest-order-20260914' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-canonical-dispatch-20260911' ]]; then
             node --input-type=module -e "import fs from 'node:fs'; import { verifyController } from './tests/flowhive-psa-release-control.mjs'; verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));"
           else

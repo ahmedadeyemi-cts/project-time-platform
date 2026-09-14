@@ -326,6 +326,11 @@ test('later failed rerun or unknown failed workflow cannot hide behind older gre
 test('source drift allows only reviewed control paths; application drift is rejected', () => {
   verifySourceDrift(files,files);assert.throws(()=>verifySourceDrift([...files,'src/backend/ProjectTime.Api/Program.cs'],files));
 });
+test('the checked-in control manifest is sorted before trusted-main admission', () => {
+  const manifest = fs.readFileSync(new URL('../.github/flowhive-psa-release-control-files.txt', import.meta.url), 'utf8')
+    .trim().split(/\r?\n/);
+  assert.deepEqual(manifest, [...new Set(manifest)].sort());
+});
 test('superseded dispatch receipt remains audit evidence and is not current-candidate recovery', () => {
   const authorization = protectedCutoverAuthorization();
   assert.notEqual(authorization.reservationRecovery.candidateSha, approval.sha);
@@ -348,6 +353,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     || process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913';
   const installedSowRoleIdentityLane = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-identity-lane-20260913';
   const module025SowRoleCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-20260914';
+  const admissionManifestOrder = process.env.GITHUB_HEAD_REF === 'control/module025-admission-manifest-order-20260914';
   const sourceDriftFiles = process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913'
     || installedVerifierMainPath
     || installedVerifierStepNames
@@ -359,7 +365,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefresh
+  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefresh || admissionManifestOrder
     ? '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e'
     : liveProviderOutputRefresh || installedVerifierMainPath || installedVerifierStepNames || module025MyRoleCelarRepair || installedSowRoleScope || installedSowRoleIdentityLane
     ? '4ca175430d697631520e9ddb6370e8a90c6b3fa2'

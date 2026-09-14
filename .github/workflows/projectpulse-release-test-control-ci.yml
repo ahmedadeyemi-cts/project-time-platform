@@ -349,6 +349,8 @@ jobs:
               exit 1
             }
             echo 'EXACT_MODULE025_SOW_ROLE_CANDIDATE_REFRESH_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'control/module025-admission-manifest-order-20260914' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
             grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-pr734-governed-release-files.txt | LC_ALL=C sort -u > "$CIT/flowhive-pr734-files"
             cmp -s "$CIT/diff" "$CIT/flowhive-pr734-files" || {
