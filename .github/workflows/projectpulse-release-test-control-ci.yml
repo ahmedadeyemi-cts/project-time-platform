@@ -302,6 +302,21 @@ jobs:
             }
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' ]]; then
             run_release_control
+          elif [[ "$HEAD_BRANCH" == 'control/module025-release-trigger-coverage-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-enterprise-psa-ci.yml' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              '.github/workflows/runtime-navigation-work-register-responsive-ci.yml' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              'tests/flowhive-psa-release-workflow.test.py' \
+              | LC_ALL=C sort -u > "$CIT/module025-release-trigger-coverage-files"
+            cmp -s "$CIT/diff" "$CIT/module025-release-trigger-coverage-files" || {
+              echo 'Module 025 release trigger coverage contains an unreviewed file.' >&2
+              diff -u "$CIT/module025-release-trigger-coverage-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-repair-20260914' ]]; then
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-final-20260914' ]]; then

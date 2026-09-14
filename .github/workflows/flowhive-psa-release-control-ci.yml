@@ -7,10 +7,15 @@ on:
       - '.github/workflows/projectpulse-deploy-test.yml'
       - 'scripts/release-test/*flowhive-psa*'
       - 'tests/flowhive-psa-*'
+      - 'tests/FlowHiveDetailedPlannerTests/**'
       - 'tests/flowhive-installed-resolution.test.py'
       - 'tests/validate-flowhive-pm-acceptance-scope.mjs'
       - 'scripts/release-test/check-flowhive-acceptance-inputs.py'
       - 'scripts/release-test/resolve-flowhive-installed-deployment.py'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
+      - 'src/frontend/project-time-web/src/role-journeys/**'
+      - 'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs'
+      - 'src/frontend/project-time-web/tests/role-journeys.test.mjs'
 permissions:
   contents: read
   actions: read
@@ -224,6 +229,8 @@ jobs:
           elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-candidate-refresh-1009-20260914' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-candidate-refresh-1014-20260914' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-release-trigger-coverage-20260914' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-admission-scope-20260914' ]]; then
             printf '%s\n' \

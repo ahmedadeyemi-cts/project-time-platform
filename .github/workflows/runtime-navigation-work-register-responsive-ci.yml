@@ -20,6 +20,9 @@ on:
       - 'src/frontend/project-time-web/src/module-availability-bridge.js'
       - 'src/frontend/project-time-web/src/module-directory-authority.js'
       - 'src/frontend/project-time-web/src/unified-project-financial-workspace.css'
+      - 'src/frontend/project-time-web/src/role-journeys/**'
+      - 'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs'
+      - 'src/frontend/project-time-web/tests/role-journeys.test.mjs'
   workflow_dispatch:
 
 permissions:
