@@ -32,9 +32,8 @@ catalog.
   — at that point, add a *separate* deployment-method entry rather than reusing this
   interactive one, so the two access paths don't get conflated.
 - **A different Azure subscription** (e.g. a brand-new one) — rejected: the test
-  subscription already exists, already has its budget-guardrail tooling
-  (`deployment/azure/scripts/az00c-*`), and is the one the team intends for
-  non-production work.
+  subscription already exists and is the one the team intends for non-production
+  work.
 
 ## Consequences
 
@@ -44,3 +43,18 @@ catalog.
   cannot yet be deployed unattended from GitHub Actions or any other CI runner.
   That's an acceptable trade for a DEV environment but must be revisited before this
   pattern is reused for anything closer to production.
+
+## Correction (2026-09-14, post-verification)
+
+The original text of this ADR described `deployment/azure/scripts/az00c-*` as
+"budget-guardrail tooling," implying automated enforcement. Verified against the
+repo: `az00c-test-subscription-cost-check.sh` is explicitly **read-only reporting**
+(its own header states it creates/updates/deletes no resources) — it prints
+WARNING/CRITICAL/EMERGENCY/CEILING labels at $150/$180/$195/$200 based on Cost
+Management data, but a human must act on the output; nothing stops spend
+automatically. A separate script, `az00d-create-test-subscription-budget.sh`,
+creates an actual Azure Budget/alert resource and was not previously referenced
+here. **Action for the walking-skeleton stage:** confirm `az00d`'s budget/alert is
+applied to the test subscription (or apply it) before provisioning DEV resources,
+and treat `az00c` as a manual check to run periodically — not as a safety net that
+fires on its own.
