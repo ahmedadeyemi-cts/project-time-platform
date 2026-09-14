@@ -299,6 +299,8 @@ jobs:
             }
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-repair-20260914' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-final-20260914' ]]; then
             printf '%s\n' \
               '.github/flowhive-psa-protected-cutover.json' \

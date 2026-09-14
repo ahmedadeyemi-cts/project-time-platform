@@ -183,7 +183,9 @@ async def main() -> int:
         "status": "failed",
         "environment": "test",
         "sourceCommit": os.environ.get("TARGET_RELEASE_COMMIT", ""),
-        "applicationSha": "95abbb0aa2445a33fda68e9de542f9446c3e2204",
+        # The installed identity is resolved by the workflow immediately
+        # before this verifier runs. Never report a historical candidate SHA.
+        "applicationSha": os.environ.get("TARGET_RELEASE_COMMIT", ""),
         "productionMutation": False,
         "fixtureMutation": False,
         "mockedResponses": False,
@@ -194,6 +196,8 @@ async def main() -> int:
     engagement_id = ""
     archived = False
     try:
+        require(re.fullmatch(r"[0-9a-f]{40}", report["applicationSha"]) is not None,
+                "installed_application_identity_missing")
         email = os.environ.get("PROJECTPULSE_M025_SA_EMAIL", "")
         password = os.environ.get("PROJECTPULSE_M025_SA_PASSWORD", "")
         require(email.endswith(".local") or email.endswith("@ussignal.local"), "solution_architect_email_missing")
