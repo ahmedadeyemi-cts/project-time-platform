@@ -1,8 +1,8 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
-  "enabled": false,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-FINAL-01",
-  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-PROVIDER-OUTPUT-REFRESH-07",
+  "enabled": true,
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-NATIVE-01",
+  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-FINAL-01",
   "candidate": {
     "pullRequest": 1003,
     "branch": "fix/module025-sow-role-live-acceptance-20260914",
@@ -14,7 +14,7 @@
     "controllerBranch": "main",
     "event": "workflow_dispatch",
     "transition": "disabled_manually-to-active-once",
-    "allowControllerActivation": false
+    "allowControllerActivation": true
   },
   "environment": {
     "environment": "test",
@@ -81,7 +81,8 @@
   ],
   "serverDispatchInputsConfirmed": false,
   "approval": {
-    "status": "not-approved",
+    "mode": "native-test-environment",
+    "status": "native-required",
     "approvedBy": null,
     "approvedAt": null,
     "expiresAt": null
@@ -115,7 +116,7 @@
       "deploymentRunAttempt": 1
     }
   },
-  "activationDecision": "hold",
+  "activationDecision": "approved",
   "successorCheckBinding": {
     "status": "review-only",
     "deploymentEligible": false,

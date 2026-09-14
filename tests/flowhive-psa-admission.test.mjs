@@ -235,11 +235,12 @@ test('protected cutover refresh uses a new approval reference and preserves hist
 test('live planner candidate activation is bounded and otherwise remains inactive', () => {
   const authorization = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
   const activation = authorization.enabled;
+  const nativeCutoverActivation = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-native-activation-20260914';
   const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
   const finalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-final-refresh-20260913';
   assert.equal(authorization.enabled, activation);
   assert.equal(authorization.activationDecision, activation ? 'approved' : 'hold');
-  assert.equal(authorization.workflow.allowControllerActivation, false);
+  assert.equal(authorization.workflow.allowControllerActivation, nativeCutoverActivation);
   if (activation) {
     if (nativeRenewal || finalRefresh || authorization.approval.mode === 'native-test-environment') {
       assert.equal(authorization.approval.mode, 'native-test-environment');
@@ -359,6 +360,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const module025SowRoleLiveAcceptance = process.env.GITHUB_HEAD_REF === 'fix/module025-sow-role-live-acceptance-20260914';
   const module025SowRoleCandidateRefreshFinal = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-final-20260914';
   const module025SowRoleAdmissionScope = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-admission-scope-20260914';
+  const module025SowRoleNativeActivation = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-native-activation-20260914';
   const installedSowRoleScope = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-acceptance-scope-20260913'
     || process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913';
   const installedSowRoleIdentityLane = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-identity-lane-20260913';
@@ -379,7 +381,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefreshFinal || module025SowRoleAdmissionScope
+  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefreshFinal || module025SowRoleAdmissionScope || module025SowRoleNativeActivation
     ? '46097cb87db57c73d218910f9dfbe393ecd487fe'
     : module025SowRoleCandidateRefresh || admissionManifestOrder || module025SowRoleLiveAcceptance
     ? '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e'

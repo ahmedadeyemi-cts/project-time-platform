@@ -179,6 +179,21 @@ jobs:
               diff -u "$RUNNER_TEMP/module025-sow-role-admission-scope-files" "$RUNNER_TEMP/module025-sow-role-admission-scope-actual" >&2 || true
               exit 1
             }
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-native-activation-20260914' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-protected-cutover.json' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-native-activation-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-native-activation-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-native-activation-files" "$RUNNER_TEMP/module025-sow-role-native-activation-actual" || {
+              echo 'SOW/My Role native activation contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-native-activation-files" "$RUNNER_TEMP/module025-sow-role-native-activation-actual" >&2 || true
+              exit 1
+            }
           elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-candidate-refresh-20260914' ]]; then
             printf '%s\n' \
               '.github/flowhive-psa-protected-cutover.json' \
