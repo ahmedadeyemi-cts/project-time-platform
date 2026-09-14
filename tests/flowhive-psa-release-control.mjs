@@ -356,6 +356,7 @@ export const installedVerifierStepNamesBranch = 'fix/flowhive-installed-verifier
 export const installedVerifierStepNamesFiles = [
   'scripts/release-test/resolve-flowhive-installed-deployment.py',
   'tests/flowhive-installed-resolution.test.py',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const plannerOutputBudgetApprovalBase = 'dbe8c34eeb0b23ab0726cb414a614ec7f6ea221a';
