@@ -326,6 +326,11 @@ test('later failed rerun or unknown failed workflow cannot hide behind older gre
 test('source drift allows only reviewed control paths; application drift is rejected', () => {
   verifySourceDrift(files,files);assert.throws(()=>verifySourceDrift([...files,'src/backend/ProjectTime.Api/Program.cs'],files));
 });
+test('the checked-in control manifest is sorted before trusted-main admission', () => {
+  const manifest = fs.readFileSync(new URL('../.github/flowhive-psa-release-control-files.txt', import.meta.url), 'utf8')
+    .trim().split(/\r?\n/);
+  assert.deepEqual(manifest, [...new Set(manifest)].sort());
+});
 test('superseded dispatch receipt remains audit evidence and is not current-candidate recovery', () => {
   const authorization = protectedCutoverAuthorization();
   assert.notEqual(authorization.reservationRecovery.candidateSha, approval.sha);
