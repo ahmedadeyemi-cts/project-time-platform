@@ -15,6 +15,7 @@ const installedSowRoleAcceptanceSourceFiles = [
 ].sort();
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1009-20260914';
+const module025MyRoleLiveVerifier = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-live-verifier-20260914';
 const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
   merge_commit_sha: approval.mergeCommit,
@@ -384,7 +385,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefresh1009
+  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier
     ? '4fbb7aaca14de7b84eff8fa7b7d7acb2df275c86'
     : module025SowRoleCandidateRefreshFinal || module025SowRoleAdmissionScope || module025SowRoleNativeActivation || module025SowRoleNativeActive || module025SowRoleLiveRepair
     ? '46097cb87db57c73d218910f9dfbe393ecd487fe'
@@ -443,7 +444,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.equal(approval.workflowExceptions.length, 0);
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    module025SowRoleCandidateRefresh1009 ? 34878722284 : 34861784220);
+    module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
 });
 test('path-filtered workflow omission is bound to the candidate inventory and base bytes', () => {
   const workflow = approval.workflowPathOmissions[0].workflow;
