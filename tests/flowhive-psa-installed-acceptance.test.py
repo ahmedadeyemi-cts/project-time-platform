@@ -217,6 +217,20 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn('"PROJECTPULSE_RELEASE_SHA",\n            "PROJECTPULSE_SOURCE_COMMIT"', self.platform)
         self.assertIn('PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT"', self.deploy)
 
+    def test_sow_acceptance_preserves_safe_terminal_provider_diagnostics(self):
+        for token in (
+            '"generationTerminal"',
+            '"diagnosticCode"',
+            '"failureStage"',
+            '"targetDecisions"',
+            'module025_generation_terminal_failure',
+        ):
+            self.assertIn(token, self.module025_sa)
+        generation_block = self.module025_sa.split('report["generationTerminal"]', 1)[1]
+        self.assertNotIn('generation.get("serviceOverview")', generation_block)
+        self.assertNotIn('generation.get("sessionToken")', generation_block)
+        self.assertNotIn('generation.get("password")', generation_block)
+
     def test_planner_reconciliation_is_read_only_and_precedes_identity(self):
         for token in (
             "171e4430-95e4-4f80-be14-454dcc319ef2",

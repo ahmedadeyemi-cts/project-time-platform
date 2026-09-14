@@ -389,6 +389,16 @@ var transientResult = await RunPhases((request, token) =>
 });
 Assert(!transientResult.Succeeded && transientCalls == 2 && transientResult.DiagnosticCode.StartsWith("private_model_http_502", StringComparison.Ordinal),
     "module025_transient_phase_failure_has_one_bounded_retry");
+var deadlineCalls = 0;
+var deadlineResult = await RunPhases((request, token) =>
+{
+    deadlineCalls++;
+    return Task.FromResult(deadlineCalls == 1
+        ? new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model", "", 100, 0, "provider_deadline_exceeded", DateTimeOffset.UtcNow)
+        : new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model", phasePayloads[PhaseFromRequest(request)], 100, 100, "", DateTimeOffset.UtcNow));
+});
+Assert(deadlineResult.Succeeded && deadlineCalls == 6,
+    "module025_provider_deadline_has_one_phase_retry_without_unbounded_loop");
 var phaseCore = typeof(PulseAiPrivateRagService).GetMethod(
     "GenerateModule025PhasesCoreAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
 async Task<PulseAiPrivateModelResult> RunBoundedPhases(
