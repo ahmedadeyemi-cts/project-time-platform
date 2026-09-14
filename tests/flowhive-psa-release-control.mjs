@@ -337,9 +337,11 @@ export const installedSowRoleAcceptanceBase = 'be8f883c452bb190cf43ced3142df03e0
 export const installedSowRoleAcceptanceBranch = 'fix/sow-role-installed-acceptance-20260913';
 export const installedSowRoleAcceptanceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
+  '.github/workflows/flowhive-psa-release-control-ci.yml',
   'scripts/release-test/run-module025-installed-sa-uat.py',
   'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs',
   'src/frontend/project-time-web/tests/role-journeys.test.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-installed-acceptance.test.py',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
