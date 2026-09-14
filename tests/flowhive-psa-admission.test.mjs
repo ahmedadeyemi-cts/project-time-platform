@@ -325,12 +325,13 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const providerContractRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-contract-refresh-20260913';
   const liveProviderOutputRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-provider-output-refresh-20260913';
   const installedSowRoleScope = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-acceptance-scope-20260913';
+  const installedSowRoleIdentityLane = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-identity-lane-20260913';
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, liveProviderOutputRefresh || installedSowRoleScope
+  assert.equal(approval.mergeCommit, liveProviderOutputRefresh || installedSowRoleScope || installedSowRoleIdentityLane
     ? '4ca175430d697631520e9ddb6370e8a90c6b3fa2'
     : providerContractRefresh
     ? '7e4bfd58f29822368e1c019f27523c3953ae9ccc'

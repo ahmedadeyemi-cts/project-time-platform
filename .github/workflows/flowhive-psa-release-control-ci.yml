@@ -76,7 +76,10 @@ jobs:
           elif [[ "$GITHUB_HEAD_REF" == 'fix/installed-sow-role-identity-lane-20260913' ]]; then
             printf '%s\n' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/flowhive-psa-release-control-files.txt' \
               'scripts/release-test/resolve-flowhive-installed-deployment.py' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
               'tests/flowhive-installed-resolution.test.py' \
               'tests/flowhive-psa-installed-acceptance.test.py' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-identity-lane-files"
