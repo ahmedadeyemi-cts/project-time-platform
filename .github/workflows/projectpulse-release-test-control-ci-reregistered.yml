@@ -1,74 +1,15 @@
 name: Validate Governed Protected-Test Release Controller
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/module-loading-assignment-propagation-ci.yml'
-      - '.github/workflows/module-management-owner-drawer-ci.yml'
-      - '.github/workflows/module025-protected-uat-control.yml'
-      - '.github/workflows/module033-project-forge-ci.yml'
-      - '.github/workflows/deep-intelligence-read-contract-ci.yml'
-      - '.github/workflows/projectpulse-deploy-test.yml'
-      - '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml'
-      - '.github/workflows/projectpulse-release-test-control-ci.yml'
-      - '.github/workflows/protected-uat-celar-ai-pr782-workflow-control.yml'
-      - '.github/workflows/runtime-navigation-work-register-responsive-ci.yml'
-      - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
-      - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
-      - 'database/migrations/040_scoped_role_policy_versions/00_schema.sql'
-      - 'database/migrations/097_project_planning_identity_safe_admission.sql'
-      - 'database/migrations/100_module001b_catalog_ownership_reconciliation.sql'
-      - 'database/rollback/097_project_planning_identity_safe_admission_rollback.sql'
-      - 'database/rollback/100_module001b_catalog_ownership_reconciliation_rollback.sql'
-      - 'deployment/containers/web/default.conf.template'
-      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
-      - 'scripts/release-test/prepare-protected-test-scope-manifests.sh'
-      - 'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh'
-      - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
-      - 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
-      - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
-      - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
-      - 'scripts/wait-containerapp-ready-revision.sh'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
-      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs'
-      - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
-      - 'src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
-      - 'src/backend/ProjectTime.Api/Modules/Module025ProtectedTestUatAccess.cs'
-      - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs'
-      - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs'
-      - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs'
-      - 'src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs'
-      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs'
-      - 'src/backend/ProjectTime.Api/Program.cs'
-      - 'tests/ProjectTime.Api.AuthorizationTests/Program.cs'
-      - 'tests/validate-celar-ai-pr630-consolidated.mjs'
-      - 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
-      - 'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs'
-      - 'src/frontend/project-time-web/src/App.jsx'
-      - 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
-      - 'src/frontend/project-time-web/src/background-request-role-gate.js'
-      - 'src/frontend/project-time-web/src/module-availability-bridge.js'
-      - 'src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx'
-      - 'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx'
-      - 'src/frontend/project-time-web/src/project-flowhive-center.css'
-      - 'tests/CelarAiInternalDataTests/Program.cs'
-      - 'tests/FlowHiveDetailedPlannerTests/Program.cs'
-      - 'tests/test-module-catalog-owner-repair-migration-093.sh'
-      - 'tests/test-project-planning-identity-safe-admission-migration-097.sh'
-      - 'tests/test-pulse-ai-runtime-job-query-shape.sh'
-      - 'tests/validate-utilization-role-scoping.mjs'
-      - 'tests/validate-systemwide-image-build-controller.mjs'
-      - 'tests/validate-systemwide-enterprise-reliability.mjs'
-      - 'tests/validate-flowhive-sow-evidence-autoadmission.mjs'
-      - 'tests/validate-module-management-owner-drawer.mjs'
+  # Retired duplicate controller: preserve the source for historical audit,
+  # but never create a new pull_request check that could be mistaken for the
+  # maintained controller's exact candidate check.
+  workflow_dispatch:
+    inputs:
+      retirement_audit_reference:
+        description: Historical audit reference for an explicit manual inspection
+        required: true
+        type: string
 
 permissions:
   contents: read

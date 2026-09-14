@@ -349,6 +349,27 @@ jobs:
               exit 1
             }
             echo 'EXACT_MODULE025_SOW_ROLE_CANDIDATE_REFRESH_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'src/backend/ProjectTime.Api/DynamicRbacAdministrationModule.g.cs' \
+              'src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs' \
+              'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs' \
+              'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs' \
+              'src/backend/ProjectTime.Api/ScopedRolePolicyPersistence.g.cs' \
+              'src/frontend/project-time-web/src/module-availability-bridge.js' \
+              'src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js' \
+              'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              | LC_ALL=C sort -u > "$CIT/module025-sow-role-live-acceptance-files"
+            cmp -s "$CIT/diff" "$CIT/module025-sow-role-live-acceptance-files" || {
+              echo 'SOW/My Role live acceptance repair contains an unreviewed file.' >&2
+              diff -u "$CIT/module025-sow-role-live-acceptance-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_MODULE025_SOW_ROLE_LIVE_ACCEPTANCE_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/module025-admission-manifest-order-20260914' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then

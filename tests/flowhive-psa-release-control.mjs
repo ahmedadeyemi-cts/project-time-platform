@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { verifyApproval, controlManifest } from '../scripts/release-test/flowhive-psa-admission.mjs';
+import { verifyApproval, verifySupersededCheckBinding, controlManifest } from '../scripts/release-test/flowhive-psa-admission.mjs';
 
 export const files = [
   '.github/flowhive-psa-protected-cutover.json',
@@ -374,7 +374,7 @@ export const module025MyRoleCelarRepairFiles = [
   'tests/flowhive-psa-installed-acceptance.test.py',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const module025SowRoleCandidateRefreshBase = '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e';
+export const module025SowRoleCandidateRefreshBase = '62320ac18c160bfe7d25f04a998274daebfafbfc';
 export const module025SowRoleCandidateRefreshBranch = 'control/module025-sow-role-candidate-refresh-20260914';
 export const module025SowRoleCandidateRefreshFiles = [
   '.github/flowhive-psa-protected-cutover.json',
@@ -387,6 +387,17 @@ export const module025SowRoleCandidateRefreshFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+
+export function verifyModule025SowRoleSuccessorBinding() {
+  const candidate = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-test-candidate.json', 'utf8'));
+  const cutover = JSON.parse(fs.readFileSync('.github/flowhive-psa-protected-cutover.json', 'utf8'));
+  verifySupersededCheckBinding(candidate.successorCheckBinding);
+  assert.deepEqual(cutover.successorCheckBinding, candidate.successorCheckBinding,
+    'The cutover and candidate manifests must bind the same successor checks.');
+  assert.equal(candidate.successorCheckBinding.deploymentEligible, false,
+    'The pre-registration binding cannot authorize deployment.');
+  return candidate.successorCheckBinding;
+}
 export const admissionManifestOrderBase = '7542d24f17fe963b8c4a94c76b9a37331dabb704';
 export const admissionManifestOrderBranch = 'control/module025-admission-manifest-order-20260914';
 export const admissionManifestOrderFiles = [
@@ -1068,6 +1079,7 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
   if (mode === 'module025-sow-role-candidate-refresh') {
     assert.equal(context?.base, module025SowRoleCandidateRefreshBase, 'SOW/My Role candidate refresh must be based on merged PR994 main.');
     assert.equal(context?.branch, module025SowRoleCandidateRefreshBranch, 'Wrong SOW/My Role candidate refresh branch.');
+    verifyModule025SowRoleSuccessorBinding();
   }
   if (mode === 'admission-manifest-order') {
     assert.equal(context?.base, admissionManifestOrderBase, 'Admission manifest correction must be based on the merged PR1001 main.');
