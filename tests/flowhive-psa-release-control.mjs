@@ -422,12 +422,13 @@ export const module025SowRoleCandidateRefresh1014Files = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const plannerProviderDeadlineCandidateRefreshBase = 'c732a335ba43d6c8824b7f7fa80a0f9aefee1c58';
+export const plannerProviderDeadlineCandidateRefreshBase = 'd6c124e7641ed11ac54440113cd785e54d80ee3b';
 export const plannerProviderDeadlineCandidateRefreshBranch = 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914';
 export const plannerProviderDeadlineCandidateRefreshFiles = [
-  '.github/flowhive-psa-protected-test-candidate.json',
-  'scripts/release-test/flowhive-psa-admission.mjs',
-  'tests/flowhive-psa-admission.test.mjs',
+  '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+  '.github/workflows/deepseek-v4-provider-ci.yml',
+  '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
+  '.github/workflows/pulse-ai-system-intelligence-ci.yml',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const triggerCoverageBase = '0b2f3a41b24e1fcb8699379d2d5ceb55093467d3';

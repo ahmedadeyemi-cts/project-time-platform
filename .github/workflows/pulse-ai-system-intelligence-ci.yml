@@ -21,6 +21,7 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs'
       - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
       - 'src/frontend/project-time-web/**'
+  workflow_dispatch:
 
 permissions:
   contents: read

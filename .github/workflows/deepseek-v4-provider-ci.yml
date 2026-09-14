@@ -6,6 +6,7 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs'
       - 'tests/DeepSeekProviderTests/**'
       - '.github/workflows/deepseek-v4-provider-ci.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
