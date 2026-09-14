@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-test-candidate-v2",
   "repository": "ahmedadeyemi-cts/project-time-platform",
-  "pullRequest": 984,
-  "branch": "fix/flowhive-planner-live-provider-output-20260913",
-  "sourceBranch": "fix/flowhive-planner-live-provider-output-20260913",
-  "sha": "99658d3f16a2badb1498b3ae393f0b572be319fd",
-  "mergeCommit": "4ca175430d697631520e9ddb6370e8a90c6b3fa2",
-  "sourceBase": "c68e057d2083302feae9b3fdfa97b59d4817b8a4",
+  "pullRequest": 994,
+  "branch": "fix/module025-my-role-celar-repair-20260914",
+  "sourceBranch": "fix/module025-my-role-celar-repair-20260914",
+  "sha": "cdd2f644017c96f88371dca8b81dafcab0d63b77",
+  "mergeCommit": "6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e",
+  "sourceBase": "c74fd53eb7a5299d6024bb0123c03ebed226fb47",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -16,13 +16,38 @@
   "allowCanonicalTaskAdoption": false,
   "requiredWorkflows": [
     ".github/workflows/celar-ai-production-hardening-ci.yml",
+    ".github/workflows/celar-ai-enterprise-api-diagnostics.yml",
+    ".github/workflows/celar-ai-enterprise-retrieval-ci.yml",
+    ".github/workflows/celar-ai-runtime-rebrand-ci.yml",
+    ".github/workflows/deepseek-v4-provider-ci.yml",
+    ".github/workflows/enterprise-experience-system-ci.yml",
+    ".github/workflows/flowhive-detailed-planner-ci.yml",
+    ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/projectpulse-ci.yml",
-    ".github/workflows/security-posture-ci.yml",
-    ".github/workflows/systemwide-enterprise-reliability-ci.yml",
+    ".github/workflows/projectpulse-release-test-control-ci.yml",
+    ".github/workflows/pulse-ai-private-rag-orchestration-ci.yml",
     ".github/workflows/pulse-ai-system-intelligence-ci.yml",
-    ".github/workflows/celar-ai-runtime-rebrand-ci.yml"
+    ".github/workflows/runtime-navigation-work-register-responsive-ci.yml",
+    ".github/workflows/security-posture-ci.yml",
+    ".github/workflows/shared-project-document-planning-ci.yml",
+    ".github/workflows/systemwide-enterprise-reliability-ci.yml"
   ],
-  "workflowExceptions": [],
+  "retiredWorkflows": [
+    ".github/workflows/projectpulse-release-test-control-ci-reregistered.yml"
+  ],
+  "workflowExceptions": [
+    {
+      "workflow": ".github/workflows/projectpulse-release-test-control-ci-reregistered.yml",
+      "reasonCode": "historical-head-ref-binding-defect",
+      "candidateRunId": 34805681512,
+      "candidateRunAttempt": 1,
+      "candidateSha": "cdd2f644017c96f88371dca8b81dafcab0d63b77",
+      "event": "pull_request",
+      "conclusion": "failure",
+      "sourceCorrection": "explicit-github-head-ref-binding"
+    }
+  ],
   "migrations": [
     {
       "file": "103_module_066_flowhive_enterprise_psa_revamp.sql",

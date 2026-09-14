@@ -21,6 +21,16 @@ const pr = { number: candidatePullRequest, state: 'closed', merged: true,
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));
+runs.push({
+  id: 34805681512,
+  path: '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml@refs/pull/994/merge',
+  event: 'pull_request',
+  head_sha: approval.sha,
+  status: 'completed',
+  conclusion: 'failure',
+  run_attempt: 1,
+  head_repository: { full_name: repository }
+});
 const historicalFence = readHistoricalFenceSources();
 const nativeEnvironmentProtection = {
   name: 'test', can_admins_bypass: false,
@@ -337,6 +347,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const installedSowRoleScope = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-acceptance-scope-20260913'
     || process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913';
   const installedSowRoleIdentityLane = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-identity-lane-20260913';
+  const module025SowRoleCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-20260914';
   const sourceDriftFiles = process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913'
     || installedVerifierMainPath
     || installedVerifierStepNames
@@ -348,7 +359,9 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, liveProviderOutputRefresh || installedVerifierMainPath || installedVerifierStepNames || module025MyRoleCelarRepair || installedSowRoleScope || installedSowRoleIdentityLane
+  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefresh
+    ? '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e'
+    : liveProviderOutputRefresh || installedVerifierMainPath || installedVerifierStepNames || module025MyRoleCelarRepair || installedSowRoleScope || installedSowRoleIdentityLane
     ? '4ca175430d697631520e9ddb6370e8a90c6b3fa2'
     : providerContractRefresh
     ? '7e4bfd58f29822368e1c019f27523c3953ae9ccc'
@@ -358,7 +371,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       ? '781a9540051dd405b9d5846d5367e8e94791d9c5'
     : process.env.GITHUB_HEAD_REF
       ? '50317992e55349c52bef56f26383f105152f7f5d'
-      : '4ca175430d697631520e9ddb6370e8a90c6b3fa2');
+      : '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
@@ -378,20 +391,51 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
 test('successor approval enumerates only the workflows that ran for the exact selected application head', () => {
   assert.deepEqual(approval.requiredWorkflows, [
     '.github/workflows/celar-ai-production-hardening-ci.yml',
+    '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
+    '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
+    '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+    '.github/workflows/deepseek-v4-provider-ci.yml',
+    '.github/workflows/enterprise-experience-system-ci.yml',
+    '.github/workflows/flowhive-detailed-planner-ci.yml',
+    '.github/workflows/flowhive-enterprise-psa-ci.yml',
+    '.github/workflows/flowhive-psa-release-control-ci.yml',
     '.github/workflows/projectpulse-ci.yml',
-    '.github/workflows/security-posture-ci.yml',
-    '.github/workflows/systemwide-enterprise-reliability-ci.yml',
+    '.github/workflows/projectpulse-release-test-control-ci.yml',
+    '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
     '.github/workflows/pulse-ai-system-intelligence-ci.yml',
-    '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
+    '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
+    '.github/workflows/security-posture-ci.yml',
+    '.github/workflows/shared-project-document-planning-ci.yml',
+    '.github/workflows/systemwide-enterprise-reliability-ci.yml'
   ]);
-  assert.equal(verifyRuns(approval, runs).length, approval.requiredWorkflows.length);
+  assert.equal(verifyRuns(approval, runs).length, approval.requiredWorkflows.length + 1);
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
-test('the selected PR has a real Module 025 check and no synthetic workflow exception', () => {
-  assert.deepEqual(approval.workflowExceptions, []);
+test('the selected PR has a real Module 025 check and only the exact historical controller exception', () => {
+  assert.equal(approval.workflowExceptions.length, 1);
+  assert.equal(approval.workflowExceptions[0].candidateRunId, 34805681512);
   assert.deepEqual(verifyWorkflowException(approval, pr, [
     'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
   ], ''), []);
+});
+test('historical controller exception cannot absorb another failure or rerun', () => {
+  const exceptionRun = {
+    id: 34805681512,
+    path: '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml@refs/pull/994/merge',
+    event: 'pull_request',
+    head_sha: approval.sha,
+    status: 'completed',
+    conclusion: 'failure',
+    run_attempt: 1,
+    head_repository: { full_name: repository }
+  };
+  const cleanRuns = runs.filter(run => run.id !== 34805681512);
+  assert.equal(verifyRuns(approval, [...cleanRuns, exceptionRun]).length, approval.requiredWorkflows.length + 1);
+  assert.throws(() => verifyRuns(approval, [...cleanRuns, { ...exceptionRun, id: 34805681513 }]), /Historical exception run identity changed/);
+  assert.throws(() => verifyRuns(approval, [...cleanRuns, { ...exceptionRun, run_attempt: 2 }]), /Historical exception attempt changed/);
+  assert.throws(() => verifyRuns(approval, [...cleanRuns, { ...exceptionRun, head_sha: 'a'.repeat(40) }]), /exact historical exception run is missing/);
+  assert.throws(() => verifyRuns(approval, [...cleanRuns, { ...exceptionRun, path: '.github\/workflows\/other.yml@refs\/pull\/994\/merge' }]), /exact historical exception run is missing/);
+  assert.throws(() => verifyRuns(approval, [...cleanRuns, { ...exceptionRun, conclusion: 'cancelled' }]), /Historical exception conclusion changed/);
 });
 test('release scope cannot absorb application files, unknown workflows or production changes', () => {
   verifyFiles(files,files);

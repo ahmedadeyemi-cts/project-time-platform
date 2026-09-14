@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
   "enabled": true,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-PROVIDER-OUTPUT-REFRESH-07",
-  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-PROVIDER-BUDGET-FINAL-REFRESH-05",
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-REFRESH-01",
+  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-PROVIDER-OUTPUT-REFRESH-07",
   "candidate": {
-    "pullRequest": 984,
-    "branch": "fix/flowhive-planner-live-provider-output-20260913",
-    "sha": "99658d3f16a2badb1498b3ae393f0b572be319fd"
+    "pullRequest": 994,
+    "branch": "fix/module025-my-role-celar-repair-20260914",
+    "sha": "cdd2f644017c96f88371dca8b81dafcab0d63b77"
   },
   "workflow": {
     "id": 315562561,
