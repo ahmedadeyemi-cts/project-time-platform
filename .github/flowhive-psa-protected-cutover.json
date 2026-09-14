@@ -4,9 +4,9 @@
   "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-NATIVE-ACTIVE-02",
   "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-NATIVE-01",
   "candidate": {
-    "pullRequest": 1003,
-    "branch": "fix/module025-sow-role-live-acceptance-20260914",
-    "sha": "1a87d5c532d28caa7237bf9f4ec4c0b0a63095cc"
+    "pullRequest": 1009,
+    "branch": "fix/module025-sow-role-live-repair-20260914",
+    "sha": "482e0a2de99d563381e6c1bf5e2e2ffbf24298df"
   },
   "workflow": {
     "id": 315562561,
@@ -121,16 +121,16 @@
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
+      "pullRequest": 1009,
+      "branch": "fix/module025-sow-role-live-repair-20260914",
+      "headSha": "482e0a2de99d563381e6c1bf5e2e2ffbf24298df",
+      "baseSha": "0799fc6d8b2d6cc55f42f244af4c100b635d74b2"
+    },
+    "supersedes": {
       "pullRequest": 1003,
       "branch": "fix/module025-sow-role-live-acceptance-20260914",
       "headSha": "1a87d5c532d28caa7237bf9f4ec4c0b0a63095cc",
-      "baseSha": "fa8631297ae2420523a2079072433c771e6f61e6"
-    },
-    "supersedes": {
-      "pullRequest": 994,
-      "branch": "fix/module025-my-role-celar-repair-20260914",
-      "headSha": "cdd2f644017c96f88371dca8b81dafcab0d63b77",
-      "installedAcceptanceRunId": 34861784220,
+      "installedAcceptanceRunId": 34878722284,
       "installedAcceptanceConclusion": "failure"
     },
     "requiredChecks": [

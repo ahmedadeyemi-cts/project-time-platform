@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, workflowPathOmissions, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   'scripts/release-test/run-module025-installed-sa-uat.py',
@@ -14,6 +14,7 @@ const installedSowRoleAcceptanceSourceFiles = [
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
+const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1009-20260914';
 const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
   merge_commit_sha: approval.mergeCommit,
@@ -370,8 +371,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const admissionManifestOrder = process.env.GITHUB_HEAD_REF === 'control/module025-admission-manifest-order-20260914';
   const sourceDriftFiles = module025SowRoleCandidateRefreshFinal
     ? [...new Set([...files, ...module025SowRoleCandidateRefreshFinalFiles])].sort()
-    : module025SowRoleLiveAcceptance || module025SowRoleLiveRepair
-    ? [...new Set([...files, ...(module025SowRoleLiveRepair ? module025SowRoleLiveRepairFiles : module025SowRoleLiveAcceptanceFiles)])].sort()
+    : module025SowRoleLiveAcceptance || module025SowRoleLiveRepair || module025SowRoleCandidateRefresh1009
+    ? [...new Set([...files, ...(module025SowRoleCandidateRefresh1009 ? module025SowRoleCandidateRefresh1009Files : module025SowRoleLiveRepair ? module025SowRoleLiveRepairFiles : module025SowRoleLiveAcceptanceFiles)])].sort()
     : process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913'
     || installedVerifierMainPath
     || installedVerifierStepNames
@@ -383,7 +384,9 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefreshFinal || module025SowRoleAdmissionScope || module025SowRoleNativeActivation || module025SowRoleNativeActive || module025SowRoleLiveRepair
+  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefresh1009
+    ? '4fbb7aaca14de7b84eff8fa7b7d7acb2df275c86'
+    : module025SowRoleCandidateRefreshFinal || module025SowRoleAdmissionScope || module025SowRoleNativeActivation || module025SowRoleNativeActive || module025SowRoleLiveRepair
     ? '46097cb87db57c73d218910f9dfbe393ecd487fe'
     : module025SowRoleCandidateRefresh || admissionManifestOrder || module025SowRoleLiveAcceptance
     ? '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e'
@@ -439,7 +442,8 @@ test('successor approval enumerates only the workflows that ran for the exact se
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
   assert.equal(approval.workflowExceptions.length, 0);
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
-  assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId, 34861784220);
+  assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
+    module025SowRoleCandidateRefresh1009 ? 34878722284 : 34861784220);
 });
 test('path-filtered workflow omission is bound to the candidate inventory and base bytes', () => {
   const workflow = approval.workflowPathOmissions[0].workflow;
