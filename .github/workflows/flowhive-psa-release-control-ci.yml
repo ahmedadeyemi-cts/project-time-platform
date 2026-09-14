@@ -104,6 +104,26 @@ jobs:
               diff -u "$RUNNER_TEMP/installed-sow-role-identity-lane-files" "$RUNNER_TEMP/installed-sow-role-identity-lane-actual" >&2 || true
               exit 1
             }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-my-role-celar-repair-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs' \
+              'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx' \
+              'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-celar-repair-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-celar-repair-actual"
+            cmp -s "$RUNNER_TEMP/module025-my-role-celar-repair-files" "$RUNNER_TEMP/module025-my-role-celar-repair-actual" || {
+              echo 'Module 025/My Role/Celar repair PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-my-role-celar-repair-files" "$RUNNER_TEMP/module025-my-role-celar-repair-actual" >&2 || true
+              exit 1
+            }
           elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-canonical-dispatch-20260911' ]]; then
             node --input-type=module -e "import fs from 'node:fs'; import { verifyController } from './tests/flowhive-psa-release-control.mjs'; verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));"
           else

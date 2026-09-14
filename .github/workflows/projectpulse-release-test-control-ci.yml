@@ -101,6 +101,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
         run: |
           set -Eeuo pipefail
           CIT="$RUNNER_TEMP"
@@ -309,6 +310,26 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' ]]; then
             node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
             echo 'MODULE025_SOW_SELL_REGISTER_NONDEPLOYMENT_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'fix/module025-my-role-celar-repair-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs' \
+              'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx' \
+              'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$CIT/module025-my-role-celar-repair-files"
+            cmp -s "$CIT/diff" "$CIT/module025-my-role-celar-repair-files" || {
+              echo 'Module 025/My Role/Celar repair PR contains an unreviewed file.' >&2
+              diff -u "$CIT/module025-my-role-celar-repair-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_MODULE025_MY_ROLE_CELAR_REPAIR_SCOPE=PASSED'
           elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
             grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-pr734-governed-release-files.txt | LC_ALL=C sort -u > "$CIT/flowhive-pr734-files"
             cmp -s "$CIT/diff" "$CIT/flowhive-pr734-files" || {
