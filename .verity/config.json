@@ -1,0 +1,5 @@
+{
+  "version": "1.0",
+  "model_profile": "balanced",
+  "prod_promote": "confirm"
+}

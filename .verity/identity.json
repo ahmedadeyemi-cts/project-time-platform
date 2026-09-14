@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "name": "Pulse Azure DEV Environment",
+  "slug": "pulse-azure-dev-environment",
+  "owner": "rpmcds12",
+  "image_prefix": "ghcr.io/rpmcds12/pulse-azure-dev-environment",
+  "locked_at": "2026-09-14T20:49:40.629Z"
+}
