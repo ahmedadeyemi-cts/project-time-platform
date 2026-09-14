@@ -27,6 +27,18 @@ Assert(
         CelarAiCapabilityCatalog.ProjectFlowHivePlan,
         24_000) == 96_000,
     "flowhive_detailed_plan_answer_limit_not_default_rag_limit");
+var ragServiceType = typeof(PulseAiPrivateRagService);
+var privateTimeout = (string name) => (TimeSpan)ragServiceType
+    .GetField(name, BindingFlags.NonPublic | BindingFlags.Static)!
+    .GetValue(null)!;
+Assert(
+    privateTimeout("Module025AuthoritativeGenerationTimeout") == TimeSpan.FromMinutes(40)
+        && privateTimeout("Module025AuthoritativePhaseTimeout") == TimeSpan.FromMinutes(8),
+    "module025_authoritative_sow_budget_allows_slow_private_phases_with_outer_bound");
+Assert(
+    privateTimeout("FlowHiveGenerationTimeout") == TimeSpan.FromMinutes(40)
+        && privateTimeout("FlowHivePhaseTimeout") == TimeSpan.FromMinutes(10),
+    "flowhive_planner_budget_remains_unchanged_by_module025_sow_fix");
 Assert(
     PulseAiPrivateRagService.MaximumOutputTokensForPlanning(
         CelarAiCapabilityCatalog.ProjectFlowHivePlan,
