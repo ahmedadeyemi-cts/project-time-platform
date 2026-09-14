@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 export const APP_ANCHORS = Object.freeze({
   guide: "import SystemUserGuide from './SystemUserGuide.Module001.g.jsx';",
   route: "function getRouteFromHash() {\n  const hash = window.location.hash || '#dashboard';\n  return hash.replace('#', '') || 'dashboard';\n}",
+  runtimeAliases: "const PROJECTPULSE_RUNTIME_ROUTE_ALIASES = Object.freeze({",
   navigation: '<nav className="enterprise-top-navigation" aria-label="Workspace navigation">'
 });
 const MARKER = 'MY_ROLE_IN_PULSE_ROUTE_V1';
@@ -19,6 +20,7 @@ export function transformJourneyApp(source) {
   if (source.includes(`/* ${MARKER} */`)) {
     if (!source.includes("import SystemUserGuide from './role-journeys/RoleJourneyGuideRouter.jsx';")
       || !source.includes(`return route === '${JOURNEY_ROUTE}' ? 'user-guide' : route;`)
+      || !source.includes(`'${JOURNEY_ROUTE}': 'user-guide',`)
       || !source.includes('data-role-journeys-launch="true"')) {
       throw new Error('[role-journeys] Partial application integration.');
     }
@@ -28,6 +30,8 @@ export function transformJourneyApp(source) {
     "import SystemUserGuide from './role-journeys/RoleJourneyGuideRouter.jsx';", 'generated guide import');
   code = exactlyOnce(code, APP_ANCHORS.route,
     `function getRouteFromHash() {\n  const hash = window.location.hash || '#dashboard';\n  const route = hash.replace('#', '') || 'dashboard';\n  return route === '${JOURNEY_ROUTE}' ? 'user-guide' : route;\n}`, 'hash route parser');
+  code = exactlyOnce(code, APP_ANCHORS.runtimeAliases,
+    `${APP_ANCHORS.runtimeAliases}\n  '${JOURNEY_ROUTE}': 'user-guide',`, 'runtime route alias registry');
   code = exactlyOnce(code, APP_ANCHORS.navigation,
     `${APP_ANCHORS.navigation}\n          <a href="#${JOURNEY_ROUTE}" data-module-number="999" data-role-journeys-launch="true" aria-current={window.location.hash === '#${JOURNEY_ROUTE}' ? 'page' : undefined}>My Role in Pulse</a>`, 'authenticated navigation');
   return `/* ${MARKER} */\n${code}`;

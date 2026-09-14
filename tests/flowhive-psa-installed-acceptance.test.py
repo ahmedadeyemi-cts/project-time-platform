@@ -308,6 +308,14 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn('PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED', self.module025_sa)
         self.assertNotIn('route.fulfill(', self.module025_sa)
 
+    def test_sow_acceptance_does_not_require_generated_quality_before_generation(self):
+        self.assertIn('def phase_skeleton(phases: object)', self.module025_sa)
+        self.assertIn('phase_skeleton(phases)', self.module025_sa)
+        self.assertIn('counts = phase_quality(current.get("phases"))', self.module025_sa)
+        self.assertEqual(self.module025_sa.count('phase_quality('), 2,
+                         'phase quality must be defined once and asserted only after generation')
+        self.assertIn('report["generationPosts"] = 1', self.module025_sa)
+
     def test_module025_is_explicitly_blocking_without_fixture_mutation(self):
         self.assertIn("protectedTestUatRoleFixture", self.module025)
         self.assertIn("protected_module025_fixture_disabled_or_not_authorized", self.module025)
