@@ -66,6 +66,9 @@ class InstalledAcceptanceContract(unittest.TestCase):
         for token in (
             "workflow_dispatch:",
             "deployment_run_id:",
+            "acceptance_scope:",
+            "sow_role",
+            "ACCEPTANCE_SCOPE: ${{ inputs.acceptance_scope }}",
             "environment:\n      name: test",
             "permissions:\n  contents: read\n  actions: read",
             "DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}",
@@ -108,7 +111,25 @@ class InstalledAcceptanceContract(unittest.TestCase):
             with self.subTest(step=name):
                 self.assertEqual(self.condition(self.step(self.verification_job, name)), identity_gate)
         self.assertEqual(self.condition(self.step(self.verification_job, "flowhive")),
-                         identity_gate + " && steps.planner.outcome == 'success'")
+                         "!cancelled() && inputs.acceptance_scope == 'full' && "
+                         "steps.identity.outcome == 'success' && steps.planner.outcome == 'success'")
+        self.assertEqual(self.condition(self.step(self.verification_job, "planner")),
+                         "!cancelled() && inputs.acceptance_scope == 'full'")
+
+    def test_sow_role_scope_skips_flowhive_without_weakening_other_gates(self):
+        for token in (
+            "case \"$ACCEPTANCE_SCOPE\" in",
+            "full|sow_role",
+            "inputs.acceptance_scope == 'full'",
+            "FLOWHIVE_ACCEPTANCE_SCOPE=sow_role",
+            "FlowHive generation and lifecycle checks were intentionally not invoked.",
+            "Normal authorized Solution Architect SOW lifecycle did not pass.",
+            "My Role in Pulse browser acceptance did not pass.",
+        ):
+            self.assertIn(token, self.workflow)
+        self.assertIn("if [[ \"$ACCEPTANCE_SCOPE\" == full ]]; then", self.workflow)
+        self.assertIn("steps.sow.outcome", self.workflow)
+        self.assertIn("steps.my_role.outcome", self.workflow)
 
     def test_both_actual_flowhive_callers_receive_existing_pm_and_prior_context(self):
         callers = ((self.deployment_job, "psa_live_uat"), (self.verification_job, "flowhive"))

@@ -9,6 +9,14 @@ on:
         description: Canonical Protected Test installation to verify; acceptance may have failed
         required: true
         type: string
+      acceptance_scope:
+        description: Installed acceptance slice; full includes FlowHive, sow_role verifies SOW Generator and My Role only
+        required: true
+        type: choice
+        options:
+          - full
+          - sow_role
+        default: full
 
 permissions:
   contents: read
@@ -30,6 +38,7 @@ jobs:
     env:
       BASE: https://phd-west-test.onenecklab.com
       DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
+      ACCEPTANCE_SCOPE: ${{ inputs.acceptance_scope }}
       INSTALLED_RELEASE_CONTEXT: ${{ github.workspace }}/flowhive-installed-acceptance/installed-release-context.json
       PREVIOUS_PLANNER_RUN_ID: 171e4430-95e4-4f80-be14-454dcc319ef2
       EVIDENCE_DIR: ${{ github.workspace }}/flowhive-installed-acceptance
@@ -50,6 +59,10 @@ jobs:
           git fetch --no-tags origin main
           [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]] || { echo 'The installed verifier is not running the current trusted main.' >&2; exit 1; }
           [[ "$DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'A selected deployment run ID is required.' >&2; exit 1; }
+          case "$ACCEPTANCE_SCOPE" in
+            full|sow_role) ;;
+            *) echo 'Unsupported installed-acceptance scope.' >&2; exit 1 ;;
+          esac
           [[ "$BASE" == https://phd-west-test.onenecklab.com ]]
           mkdir -p "$EVIDENCE_DIR"
 
@@ -78,6 +91,7 @@ jobs:
 
       - name: Reconcile prior planner operation before any generation
         id: planner
+        if: ${{ !cancelled() && inputs.acceptance_scope == 'full' }}
         continue-on-error: true
         shell: bash
         env:
@@ -102,7 +116,7 @@ jobs:
 
       - name: Reconcile prior planner run and verify real FlowHive lifecycle
         id: flowhive
-        if: ${{ !cancelled() && steps.identity.outcome == 'success' && steps.planner.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.acceptance_scope == 'full' && steps.identity.outcome == 'success' && steps.planner.outcome == 'success' }}
         shell: bash
         env:
           FLOWHIVE_INSTALLED_VERIFICATION_AUTHORIZED: 'true'
@@ -169,9 +183,18 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          case "$ACCEPTANCE_SCOPE" in
+            full|sow_role) ;;
+            *) echo 'Installed acceptance scope was not validated.' >&2; exit 1 ;;
+          esac
           [[ "${{ steps.identity.outcome }}" == success ]] || { echo 'Installed identity gate did not pass.' >&2; exit 1; }
-          [[ "${{ steps.planner.outcome }}" == success ]] || { echo 'Prior planner operation was not reconciled.' >&2; exit 1; }
-          [[ "${{ steps.flowhive.outcome }}" == success ]] || { echo 'FlowHive lifecycle did not pass.' >&2; exit 1; }
+          if [[ "$ACCEPTANCE_SCOPE" == full ]]; then
+            [[ "${{ steps.planner.outcome }}" == success ]] || { echo 'Prior planner operation was not reconciled.' >&2; exit 1; }
+            [[ "${{ steps.flowhive.outcome }}" == success ]] || { echo 'FlowHive lifecycle did not pass.' >&2; exit 1; }
+          else
+            echo 'FLOWHIVE_ACCEPTANCE_SCOPE=sow_role'
+            echo 'FlowHive generation and lifecycle checks were intentionally not invoked.'
+          fi
           [[ "${{ steps.sow.outcome }}" == success ]] || { echo 'Normal authorized Solution Architect SOW lifecycle did not pass.' >&2; exit 1; }
           [[ "${{ steps.my_role.outcome }}" == success ]] || { echo 'My Role in Pulse browser acceptance did not pass.' >&2; exit 1; }
           [[ -f "$EVIDENCE_DIR/module025-installed-prerequisite.json" ]] || { echo 'Module 025 prerequisite evidence is missing.' >&2; exit 1; }
