@@ -108,7 +108,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn("path: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
 
     def test_independent_business_checks_keep_identity_and_cancellation_gates(self):
-        identity_gate = "!cancelled() && steps.identity.outcome == 'success'"
+        identity_gate = "!cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.identity.outcome == 'success'"
         for name in ("sow", "my_role", "module025"):
             with self.subTest(step=name):
                 self.assertEqual(self.condition(self.step(self.verification_job, name)), identity_gate)
@@ -330,6 +330,10 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn('.retainedVersions.sowAndGsdDownloaded == true', self.workflow)
         self.assertIn('exceptional Module 025 fixture prerequisite remains informational', self.workflow)
         self.assertNotIn(".status == \"ready\"' \"$EVIDENCE_DIR/module025-installed-prerequisite.json\"", self.workflow)
+
+    def test_sow_role_scope_gates_only_the_selected_installed_acceptance_slice(self):
+        scope_gate = "(inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role')"
+        self.assertGreaterEqual(self.workflow.count(scope_gate), 3)
 
     def test_scripts_parse_as_python(self):
         for source in (IDENTITY, FLOWHIVE, ROLE, MODULE025, MODULE025_SA, PLANNER, PREFLIGHT):

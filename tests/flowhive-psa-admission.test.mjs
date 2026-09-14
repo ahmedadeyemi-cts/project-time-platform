@@ -5,6 +5,13 @@ import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifyWorkflowException, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+const installedSowRoleAcceptanceSourceFiles = [
+  '.github/flowhive-psa-release-control-files.txt',
+  'scripts/release-test/run-module025-installed-sa-uat.py',
+  'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs',
+  'src/frontend/project-time-web/tests/role-journeys.test.mjs',
+  'tests/flowhive-psa-release-control.mjs'
+].sort();
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
@@ -324,8 +331,12 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const nativeRenewal = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-renewal-safe-20260913';
   const providerContractRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-contract-refresh-20260913';
   const liveProviderOutputRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-provider-output-refresh-20260913';
-  const installedSowRoleScope = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-acceptance-scope-20260913';
+  const installedSowRoleScope = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-acceptance-scope-20260913'
+    || process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913';
   const installedSowRoleIdentityLane = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-identity-lane-20260913';
+  const sourceDriftFiles = process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913'
+    ? [...new Set([...files, ...installedSowRoleAcceptanceSourceFiles])].sort()
+    : files;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
@@ -350,13 +361,13 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', approval.mergeCommit, 'HEAD'], { stdio: 'ignore' }));
   const postMergeControlChanges = execFileSync('git', ['diff', '--name-only', `${approval.mergeCommit}..HEAD`], { encoding: 'utf8' })
     .split(/\r?\n/).filter(Boolean).sort();
-  verifySourceDrift(postMergeControlChanges, files);
-  verifySourceDrift(plannerTimeBudgetApprovalFiles, files);
+  verifySourceDrift(postMergeControlChanges, sourceDriftFiles);
+  verifySourceDrift(plannerTimeBudgetApprovalFiles, sourceDriftFiles);
   for (const unrelated of [
     'src/backend/ProjectTime.Api/Program.cs',
     'src/frontend/project-time-web/src/App.jsx',
     'scripts/release-test/unincorporated-application-change.sh'
-  ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], files));
+  ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], sourceDriftFiles));
 });
 test('successor approval enumerates only the workflows that ran for the exact selected application head', () => {
   assert.deepEqual(approval.requiredWorkflows, [
