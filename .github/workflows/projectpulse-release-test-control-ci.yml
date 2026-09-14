@@ -350,19 +350,7 @@ jobs:
             }
             echo 'EXACT_MODULE025_SOW_ROLE_CANDIDATE_REFRESH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/module025-admission-manifest-order-20260914' ]]; then
-            printf '%s\n' \
-              '.github/flowhive-psa-release-control-files.txt' \
-              '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml' \
-              '.github/workflows/projectpulse-release-test-control-ci.yml' \
-              'tests/flowhive-psa-admission.test.mjs' \
-              'tests/flowhive-psa-release-control.mjs' \
-              | LC_ALL=C sort -u > "$CIT/module025-admission-manifest-order-files"
-            cmp -s "$CIT/diff" "$CIT/module025-admission-manifest-order-files" || {
-              echo 'Admission manifest-order correction contains an unreviewed file.' >&2
-              diff -u "$CIT/module025-admission-manifest-order-files" "$CIT/diff" >&2 || true
-              exit 1
-            }
-            echo 'EXACT_MODULE025_ADMISSION_MANIFEST_ORDER_SCOPE=PASSED'
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
             grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-pr734-governed-release-files.txt | LC_ALL=C sort -u > "$CIT/flowhive-pr734-files"
             cmp -s "$CIT/diff" "$CIT/flowhive-pr734-files" || {
