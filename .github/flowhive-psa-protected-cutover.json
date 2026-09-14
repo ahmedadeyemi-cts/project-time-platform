@@ -116,5 +116,32 @@
       "deploymentRunAttempt": 1
     }
   },
-  "activationDecision": "approved"
+  "activationDecision": "approved",
+  "successorCheckBinding": {
+    "status": "review-only",
+    "deploymentEligible": false,
+    "candidate": {
+      "pullRequest": 1003,
+      "branch": "fix/module025-sow-role-live-acceptance-20260914",
+      "headSha": "caaeac5401bcc847dc8befb452c8772d8270223e",
+      "baseSha": "62320ac18c160bfe7d25f04a998274daebfafbfc"
+    },
+    "supersedes": {
+      "pullRequest": 994,
+      "branch": "fix/module025-my-role-celar-repair-20260914",
+      "headSha": "cdd2f644017c96f88371dca8b81dafcab0d63b77",
+      "installedAcceptanceRunId": 34861784220,
+      "installedAcceptanceConclusion": "failure"
+    },
+    "requiredChecks": [
+      {
+        "workflow": ".github/workflows/flowhive-psa-release-control-ci.yml",
+        "check": "contracts"
+      },
+      {
+        "workflow": ".github/workflows/projectpulse-release-test-control-ci.yml",
+        "check": "Validate governed Test controller, exact scope, and rollback boundaries"
+      }
+    ]
+  }
 }
