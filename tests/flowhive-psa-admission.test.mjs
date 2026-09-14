@@ -15,7 +15,8 @@ const installedSowRoleAcceptanceSourceFiles = [
 ].sort();
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1009-20260914';
-const module025MyRoleLiveVerifier = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-live-verifier-20260914';
+const module025MyRoleLiveVerifier = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-live-verifier-20260914'
+  || process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-scope-boundary-20260914';
 const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
   merge_commit_sha: approval.mergeCommit,

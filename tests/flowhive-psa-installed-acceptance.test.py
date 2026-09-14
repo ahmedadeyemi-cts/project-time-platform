@@ -275,7 +275,6 @@ class InstalledAcceptanceContract(unittest.TestCase):
             "data-role-journeys-launch",
             "rj-step-details",
             "#project-flowhive",
-            '.project-flowhive-center[data-module="066"]',
             "#signed-handoff",
             '.sales-delivery-workflow-center[data-module="027"]',
             "my_role_access_boundary_missing",
@@ -335,11 +334,12 @@ class InstalledAcceptanceContract(unittest.TestCase):
             'assigned_role_route_invalid',
             'my_role_access_boundary_missing',
             '#project-flowhive',
-            '.project-flowhive-center[data-module="066"]',
             '#signed-handoff',
             '.sales-delivery-workflow-center[data-module="027"]',
         ):
             self.assertIn(token, self.role)
+        self.assertIn('flowHiveRouteVisited": False', self.role)
+        self.assertIn('blockedWrites', self.role)
         for forbidden in ('#project-intake', 'data-module="020"', 'Work-task handoff', 'Resource handoff'):
             self.assertNotIn(forbidden, self.role)
 

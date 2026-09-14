@@ -160,6 +160,19 @@ jobs:
               diff -u "$RUNNER_TEMP/module025-my-role-live-verifier-files" "$RUNNER_TEMP/module025-my-role-live-verifier-actual" >&2 || true
               exit 1
             }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-my-role-scope-boundary-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/run-flowhive-my-role-browser.py' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-scope-boundary-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-scope-boundary-actual"
+            cmp -s "$RUNNER_TEMP/module025-my-role-scope-boundary-files" "$RUNNER_TEMP/module025-my-role-scope-boundary-actual" || {
+              echo 'Module 025/My Role scope-boundary PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-my-role-scope-boundary-files" "$RUNNER_TEMP/module025-my-role-scope-boundary-actual" >&2 || true
+              exit 1
+            }
           elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sow-role-live-repair-20260914' ]]; then
             printf '%s\n' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
