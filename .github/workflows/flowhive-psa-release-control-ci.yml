@@ -66,7 +66,6 @@ jobs:
               'scripts/release-test/run-module025-installed-sa-uat.py' \
               'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs' \
               'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
-              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
               'tests/flowhive-psa-release-control.mjs' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-actual"
