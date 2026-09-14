@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged SOW/My Role live-acceptance repair PR1003.
+// successor is the reviewed, merged SOW/My Role live-repair PR1009.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 1003;
-export const candidateBranch = 'fix/module025-sow-role-live-acceptance-20260914';
-export const candidateSourceBranch = 'fix/module025-sow-role-live-acceptance-20260914';
+export const candidatePullRequest = 1009;
+export const candidateBranch = 'fix/module025-sow-role-live-repair-20260914';
+export const candidateSourceBranch = 'fix/module025-sow-role-live-repair-20260914';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '46097cb87db57c73d218910f9dfbe393ecd487fe';
+export const candidateMergeCommit = '4fbb7aaca14de7b84eff8fa7b7d7acb2df275c86';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -77,7 +77,7 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1003 did not touch any file in the enterprise-experience workflow's
+// PR1009 did not touch any file in the enterprise-experience workflow's
 // pull-request path filter. GitHub therefore correctly omitted that workflow
 // for the exact candidate SHA. Keep the omission explicit and bound to the
 // reviewed base bytes and candidate file inventory; it is not a generic
@@ -86,10 +86,10 @@ export const workflowPathOmissions = Object.freeze([
   {
     workflow: '.github/workflows/enterprise-experience-system-ci.yml',
     reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'fa8631297ae2420523a2079072433c771e6f61e6',
+    baseCommit: '0799fc6d8b2d6cc55f42f244af4c100b635d74b2',
     baseWorkflowSha256: '2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c',
-    candidateChangedFilesSha256: 'a104c21989d9dfd784bd1a215cdf415995867da2dda449cf4d073690511cfb54',
-    candidateChangedFilesCount: 14
+    candidateChangedFilesSha256: 'c32310eed9f6775b80b66c765947d18e5468a8789bf550a67494f365bcdeda29',
+    candidateChangedFilesCount: 9
   }
 ]);
 
@@ -97,16 +97,16 @@ export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
   assert.deepEqual(binding?.candidate, {
+    pullRequest: 1009,
+    branch: 'fix/module025-sow-role-live-repair-20260914',
+    headSha: '482e0a2de99d563381e6c1bf5e2e2ffbf24298df',
+    baseSha: '0799fc6d8b2d6cc55f42f244af4c100b635d74b2'
+  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
+  assert.deepEqual(binding?.supersedes, {
     pullRequest: 1003,
     branch: 'fix/module025-sow-role-live-acceptance-20260914',
     headSha: '1a87d5c532d28caa7237bf9f4ec4c0b0a63095cc',
-    baseSha: 'fa8631297ae2420523a2079072433c771e6f61e6'
-  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
-  assert.deepEqual(binding?.supersedes, {
-    pullRequest: 994,
-    branch: 'fix/module025-my-role-celar-repair-20260914',
-    headSha: 'cdd2f644017c96f88371dca8b81dafcab0d63b77',
-    installedAcceptanceRunId: 34861784220,
+    installedAcceptanceRunId: 34878722284,
     installedAcceptanceConclusion: 'failure'
   }, 'SUCCESSOR_CHECK_BINDING_SUPERSEDED_RUN');
   assert.deepEqual(binding?.requiredChecks, supersededCheckWorkflows, 'SUCCESSOR_CHECK_BINDING_CHECK_SET');

@@ -297,7 +297,7 @@ jobs:
               diff -u "$CIT/module025-my-role-celar-repair-files" "$CIT/diff" >&2 || true
               exit 1
             }
-          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
+          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-repair-20260914' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
