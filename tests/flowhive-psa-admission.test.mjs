@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, workflowPathOmissions, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleCandidateRefreshFinalFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   'scripts/release-test/run-module025-installed-sa-uat.py',
@@ -358,6 +358,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const installedVerifierStepNames = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-step-names-20260914';
   const module025MyRoleCelarRepair = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-celar-repair-20260914';
   const module025SowRoleLiveAcceptance = process.env.GITHUB_HEAD_REF === 'fix/module025-sow-role-live-acceptance-20260914';
+  const module025SowRoleLiveRepair = process.env.GITHUB_HEAD_REF === 'fix/module025-sow-role-live-repair-20260914';
   const module025SowRoleCandidateRefreshFinal = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-final-20260914';
   const module025SowRoleAdmissionScope = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-admission-scope-20260914';
   const module025SowRoleNativeActivation = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-native-activation-20260914';
@@ -369,8 +370,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const admissionManifestOrder = process.env.GITHUB_HEAD_REF === 'control/module025-admission-manifest-order-20260914';
   const sourceDriftFiles = module025SowRoleCandidateRefreshFinal
     ? [...new Set([...files, ...module025SowRoleCandidateRefreshFinalFiles])].sort()
-    : module025SowRoleLiveAcceptance
-    ? [...new Set([...files, ...module025SowRoleLiveAcceptanceFiles])].sort()
+    : module025SowRoleLiveAcceptance || module025SowRoleLiveRepair
+    ? [...new Set([...files, ...(module025SowRoleLiveRepair ? module025SowRoleLiveRepairFiles : module025SowRoleLiveAcceptanceFiles)])].sort()
     : process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913'
     || installedVerifierMainPath
     || installedVerifierStepNames
@@ -382,7 +383,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefreshFinal || module025SowRoleAdmissionScope || module025SowRoleNativeActivation || module025SowRoleNativeActive
+  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefreshFinal || module025SowRoleAdmissionScope || module025SowRoleNativeActivation || module025SowRoleNativeActive || module025SowRoleLiveRepair
     ? '46097cb87db57c73d218910f9dfbe393ecd487fe'
     : module025SowRoleCandidateRefresh || admissionManifestOrder || module025SowRoleLiveAcceptance
     ? '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e'

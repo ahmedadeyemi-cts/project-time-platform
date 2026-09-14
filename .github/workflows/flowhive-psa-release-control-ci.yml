@@ -147,6 +147,24 @@ jobs:
               diff -u "$RUNNER_TEMP/module025-sow-role-live-acceptance-files" "$RUNNER_TEMP/module025-sow-role-live-acceptance-actual" >&2 || true
               exit 1
             }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sow-role-live-repair-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/run-flowhive-my-role-browser.py' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-repair-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-repair-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-live-repair-files" "$RUNNER_TEMP/module025-sow-role-live-repair-actual" || {
+              echo 'SOW/My Role live repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-live-repair-files" "$RUNNER_TEMP/module025-sow-role-live-repair-actual" >&2 || true
+              exit 1
+            }
           elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-candidate-refresh-final-20260914' ]]; then
             printf '%s\n' \
               '.github/flowhive-psa-protected-cutover.json' \

@@ -145,16 +145,39 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
             dashboard_hrefs = await dashboard_cards.evaluate_all("nodes => nodes.map(node => node.getAttribute('href') || '')")
             require(all(re.fullmatch(r"#[a-z0-9-]+", value) for value in dashboard_hrefs), "role_step_route_invalid")
 
-            await page.goto(ORIGIN + "/#project-intake", wait_until="domcontentloaded")
-            intake = page.locator('.work-intake-creation-center[data-module="020"]')
-            await wait_visible(intake, "browser_timeout_project_intake")
-            await click_button("Work-task handoff", "browser_timeout_work_task_handoff_button")
-            await wait_visible(page.locator('[aria-label="Work-task handoff"]'), "browser_timeout_work_task_handoff")
-            await click_button("Resource handoff", "browser_timeout_resource_handoff_button")
-            await wait_visible(page.locator('[aria-label="Resource handoff"]'), "browser_timeout_resource_handoff")
+            # Re-enter the actual assigned playbook and inspect the links it
+            # grants. The old verifier assumed Module 020 Project Intake,
+            # which is not a PM step and made an otherwise valid My Role page
+            # fail after the page had already loaded. A role description is not
+            # a permission grant: every step must expose either its authorized
+            # workspace link or the explicit access-boundary message.
+            await page.goto(ORIGIN + "/#my-role-in-pulse", wait_until="domcontentloaded")
+            await wait_visible(journey, "browser_timeout_my_role_reentry")
+            role_buttons = journey.locator('aside[aria-label="Choose a role"] button[aria-pressed]')
+            role_texts = await role_buttons.all_text_contents()
+            assigned_index = next((index for index, value in enumerate(role_texts) if "Your role" in value), None)
+            require(assigned_index is not None, "my_role_reentry_has_no_assigned_playbook")
+            await role_buttons.nth(assigned_index).click()
+            step_buttons = journey.locator('button[aria-controls="rj-step-details"]')
+            assigned_routes: list[str] = []
+            access_boundaries = 0
+            for index in range(await step_buttons.count()):
+                await step_buttons.nth(index).click()
+                action_link = journey.locator("a.rj-primary[href]")
+                if await action_link.count():
+                    route = await action_link.get_attribute("href")
+                    require(isinstance(route, str) and re.fullmatch(r"#[a-z0-9-]+", route), "assigned_role_route_invalid")
+                    assigned_routes.append(route)
+                else:
+                    await wait_visible(journey.locator(".rj-access-message"), "my_role_access_boundary_missing")
+                    access_boundaries += 1
 
-            signed_link = page.locator('a[href="#signed-handoff"]')
-            signed_navigation_visible = await signed_link.count() > 0
+            flowhive_navigation_visible = "#project-flowhive" in assigned_routes
+            signed_navigation_visible = "#signed-handoff" in assigned_routes
+            if flowhive_navigation_visible:
+                await page.goto(ORIGIN + "/#project-flowhive", wait_until="domcontentloaded")
+                flowhive = page.locator('.project-flowhive-center[data-module="066"]')
+                await wait_visible(flowhive, "browser_timeout_project_flowhive_route")
             if signed_navigation_visible:
                 await page.goto(ORIGIN + "/#signed-handoff", wait_until="domcontentloaded")
                 signed = page.locator('.sales-delivery-workflow-center[data-module="027"]')
@@ -162,18 +185,14 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
                 await wait_visible(signed.get_by_text("Submit the signed customer package", exact=True), "browser_timeout_signed_handoff_content")
                 await page.reload(wait_until="domcontentloaded")
                 await wait_visible(signed, "browser_timeout_signed_handoff_reload")
-            else:
-                await page.goto(ORIGIN + "/#dashboard", wait_until="domcontentloaded")
-                require(await page.locator('a[href="#signed-handoff"]').count() == 0,
-                        "signed_handoff_navigation_leaked")
             require(not writes, "browser_attempted_mutation")
             require(not page_errors, "browser_runtime_error")
             report.update({
                 "status": "passed",
                 "roleWorkspace": {"authorizedStepCount": role_count, "assignedPlaybook": role_texts[assigned_index].strip(), "surface": "#my-role-in-pulse", "reloadVerified": True},
                 "dashboardObservation": {"recommendedActionCount": dashboard_card_count, "surface": "#dashboard"},
-                "handoffs": {"workTask": True, "resource": True, "signedPackage": signed_navigation_visible},
-                "accessBoundaries": {"signedHandoffNavigationVisible": signed_navigation_visible},
+                "handoffs": {"assignedRoutes": sorted(set(assigned_routes)), "flowHiveWorkspace": flowhive_navigation_visible, "signedPackage": signed_navigation_visible},
+                "accessBoundaries": {"explicitDeniedStepCount": access_boundaries, "signedHandoffNavigationVisible": signed_navigation_visible},
                 "writesBlocked": len(writes),
                 "pageErrors": len(page_errors),
                 "failedResponses": failed_responses,

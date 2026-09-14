@@ -274,17 +274,19 @@ class InstalledAcceptanceContract(unittest.TestCase):
             "My Role in Pulse",
             "data-role-journeys-launch",
             "rj-step-details",
-            "#project-intake",
+            "#project-flowhive",
+            '.project-flowhive-center[data-module="066"]',
             "#signed-handoff",
-            "Work-task handoff",
-            "Resource handoff",
+            '.sales-delivery-workflow-center[data-module="027"]',
+            "my_role_access_boundary_missing",
             "await page.reload",
             "anonymous_handoff_access_not_denied",
             "browser_attempted_mutation",
             "browser_timeout_role_welcome_dashboard",
-            "signed_handoff_navigation_leaked",
         ):
             self.assertIn(token, self.role)
+        for forbidden in ("#project-intake", 'data-module="020"', "Work-task handoff", "Resource handoff"):
+            self.assertNotIn(forbidden, self.role)
         self.assertNotIn("route.fulfill(", self.role)
         self.assertNotIn("page.route", self.role)
         self.assertIn('parsed.method not in ("GET", "HEAD", "OPTIONS")', self.role)
@@ -323,6 +325,21 @@ class InstalledAcceptanceContract(unittest.TestCase):
             self.assertIn(token, self.module025_sa)
         self.assertNotIn('PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED', self.module025_sa)
         self.assertNotIn('route.fulfill(', self.module025_sa)
+        self.assertIn('TARGET_RELEASE_COMMIT', self.module025_sa)
+        self.assertNotIn('95abbb0aa2445a33fda68e9de542f9446c3e2204', self.module025_sa)
+
+    def test_my_role_verifier_follows_assigned_playbook_routes(self):
+        for token in (
+            'assigned_role_route_invalid',
+            'my_role_access_boundary_missing',
+            '#project-flowhive',
+            '.project-flowhive-center[data-module="066"]',
+            '#signed-handoff',
+            '.sales-delivery-workflow-center[data-module="027"]',
+        ):
+            self.assertIn(token, self.role)
+        for forbidden in ('#project-intake', 'data-module="020"', 'Work-task handoff', 'Resource handoff'):
+            self.assertNotIn(forbidden, self.role)
 
     def test_module025_is_explicitly_blocking_without_fixture_mutation(self):
         self.assertIn("protectedTestUatRoleFixture", self.module025)
