@@ -391,6 +391,7 @@ export const admissionManifestOrderBase = '7542d24f17fe963b8c4a94c76b9a37331dabb
 export const admissionManifestOrderBranch = 'control/module025-admission-manifest-order-20260914';
 export const admissionManifestOrderFiles = [
   '.github/flowhive-psa-release-control-files.txt',
+  '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'tests/flowhive-psa-admission.test.mjs',
