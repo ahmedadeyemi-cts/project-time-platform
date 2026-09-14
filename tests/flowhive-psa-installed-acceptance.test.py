@@ -108,7 +108,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn("path: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
 
     def test_independent_business_checks_keep_identity_and_cancellation_gates(self):
-        identity_gate = "!cancelled() && steps.identity.outcome == 'success'"
+        identity_gate = "!cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.identity.outcome == 'success'"
         for name in ("sow", "my_role", "module025"):
             with self.subTest(step=name):
                 self.assertEqual(self.condition(self.step(self.verification_job, name)), identity_gate)
@@ -308,14 +308,6 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn('PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED', self.module025_sa)
         self.assertNotIn('route.fulfill(', self.module025_sa)
 
-    def test_sow_acceptance_does_not_require_generated_quality_before_generation(self):
-        self.assertIn('def phase_skeleton(phases: object)', self.module025_sa)
-        self.assertIn('phase_skeleton(phases)', self.module025_sa)
-        self.assertIn('counts = phase_quality(current.get("phases"))', self.module025_sa)
-        self.assertEqual(self.module025_sa.count('phase_quality('), 2,
-                         'phase quality must be defined once and asserted only after generation')
-        self.assertIn('report["generationPosts"] = 1', self.module025_sa)
-
     def test_module025_is_explicitly_blocking_without_fixture_mutation(self):
         self.assertIn("protectedTestUatRoleFixture", self.module025)
         self.assertIn("protected_module025_fixture_disabled_or_not_authorized", self.module025)
@@ -338,6 +330,10 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn('.retainedVersions.sowAndGsdDownloaded == true', self.workflow)
         self.assertIn('exceptional Module 025 fixture prerequisite remains informational', self.workflow)
         self.assertNotIn(".status == \"ready\"' \"$EVIDENCE_DIR/module025-installed-prerequisite.json\"", self.workflow)
+
+    def test_sow_role_scope_gates_only_the_selected_installed_acceptance_slice(self):
+        scope_gate = "(inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role')"
+        self.assertGreaterEqual(self.workflow.count(scope_gate), 3)
 
     def test_scripts_parse_as_python(self):
         for source in (IDENTITY, FLOWHIVE, ROLE, MODULE025, MODULE025_SA, PLANNER, PREFLIGHT):

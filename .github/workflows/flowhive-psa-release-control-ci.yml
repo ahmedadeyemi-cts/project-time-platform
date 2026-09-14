@@ -63,12 +63,9 @@ jobs:
           elif [[ "$GITHUB_HEAD_REF" == 'fix/sow-role-installed-acceptance-20260913' ]]; then
             printf '%s\n' \
               '.github/flowhive-psa-release-control-files.txt' \
-              '.github/workflows/flowhive-psa-release-control-ci.yml' \
               'scripts/release-test/run-module025-installed-sa-uat.py' \
               'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs' \
               'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
-              'tests/flowhive-psa-admission.test.mjs' \
-              'tests/flowhive-psa-installed-acceptance.test.py' \
               'tests/flowhive-psa-release-control.mjs' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-actual"
