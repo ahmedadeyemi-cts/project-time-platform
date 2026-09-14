@@ -38,7 +38,6 @@ const requiredWorkflows = [
   '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
   '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
   '.github/workflows/deepseek-v4-provider-ci.yml',
-  '.github/workflows/enterprise-experience-system-ci.yml',
   '.github/workflows/flowhive-detailed-planner-ci.yml',
   '.github/workflows/flowhive-enterprise-psa-ci.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
@@ -75,6 +74,22 @@ export const supersededCheckWorkflows = Object.freeze([
   {
     workflow: '.github/workflows/projectpulse-release-test-control-ci.yml',
     check: 'Validate governed Test controller, exact scope, and rollback boundaries'
+  }
+]);
+
+// PR1003 did not touch any file in the enterprise-experience workflow's
+// pull-request path filter. GitHub therefore correctly omitted that workflow
+// for the exact candidate SHA. Keep the omission explicit and bound to the
+// reviewed base bytes and candidate file inventory; it is not a generic
+// missing-check exemption.
+export const workflowPathOmissions = Object.freeze([
+  {
+    workflow: '.github/workflows/enterprise-experience-system-ci.yml',
+    reasonCode: 'pull-request-path-filter-no-match',
+    baseCommit: 'fa8631297ae2420523a2079072433c771e6f61e6',
+    baseWorkflowSha256: '2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c',
+    candidateChangedFilesSha256: 'a104c21989d9dfd784bd1a215cdf415995867da2dda449cf4d073690511cfb54',
+    candidateChangedFilesCount: 14
   }
 ]);
 
@@ -130,6 +145,8 @@ export function verifyApproval(approval, requestedSha) {
   for (const workflow of approval.requiredWorkflows) assert.match(workflow, /^\.github\/workflows\/[a-z0-9-]+\.yml$/);
   assert.deepEqual(approval.workflowExceptions, [],
     'The refreshed candidate must not inherit a historical failure as a current check exception.');
+  assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions,
+    'A path-filtered workflow omission must be explicit and cryptographically bound.');
   assert.equal(approval.projectId, '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49');
   assert.equal(approval.projectManagerLogin, 'heather.schrock@ussignal.local');
   if (approval.successorCheckBinding) verifySupersededCheckBinding(approval.successorCheckBinding);
@@ -230,6 +247,32 @@ export function verifyWorkflowException(approval, pullRequest, changedFiles, bas
   return [exception.workflow];
 }
 
+export function verifyWorkflowPathOmission(omission, pullRequest, changedFiles, baseWorkflowContent) {
+  const required = new Set(requiredWorkflows);
+  assert.ok(!required.has(omission.workflow), 'A path-filtered workflow cannot also be required.');
+  assert.equal(omission.reasonCode, 'pull-request-path-filter-no-match');
+  assert.equal(omission.baseCommit, pullRequest.base?.sha,
+    'Path-filter omission must bind to the actual candidate base.');
+  assert.equal(crypto.createHash('sha256').update(baseWorkflowContent).digest('hex'), omission.baseWorkflowSha256,
+    'Path-filter omission must bind to the actual base workflow bytes.');
+  assert.equal(digestLines(changedFiles), omission.candidateChangedFilesSha256,
+    'Path-filter omission must bind to the actual candidate file inventory.');
+  assert.equal(changedFiles.length, omission.candidateChangedFilesCount);
+  const pathsBlock = baseWorkflowContent.match(/\n\s+paths:\s*\n([\s\S]*?)\n\s+workflow_dispatch:/);
+  assert.ok(pathsBlock, 'The omitted workflow must expose a pull-request path filter.');
+  const pathFilters = [...pathsBlock[1].matchAll(/^\s*-\s*["']([^"']+)["']\s*$/gm)].map(match => match[1]);
+  assert.ok(pathFilters.length > 0, 'The omitted workflow path filter must not be empty.');
+  assert.ok(changedFiles.every(file => !pathFilters.some(pattern => workflowPathMatches(pattern, file))),
+    'A workflow may be omitted only when no candidate file matches its pull-request path filter.');
+  return omission.workflow;
+}
+
+export function verifyWorkflowPathOmissions(omissions, pullRequest, changedFiles, baseWorkflowContent) {
+  assert.deepEqual(omissions, workflowPathOmissions,
+    'The candidate must use the reviewed path-filter omission set exactly.');
+  return omissions.map(omission => verifyWorkflowPathOmission(omission, pullRequest, changedFiles, baseWorkflowContent));
+}
+
 export function verifySourceDrift(changed, allowed) {
   assert.deepEqual(allowed, [...new Set(allowed)].sort(), 'The control-only manifest must be sorted and unique.');
   const permitted = new Set(allowed);
@@ -294,6 +337,8 @@ export async function authorize() {
   const fileResponse = await github(`/repos/${repository}/pulls/${candidatePullRequest}/files?per_page=100`);
   assert.ok(Array.isArray(fileResponse) && fileResponse.length > 0, 'The candidate file inventory is missing.');
   const candidateFiles = fileResponse.map(file => file.filename).sort();
+  verifyWorkflowPathOmissions(approval.workflowPathOmissions, pr, candidateFiles,
+    execFileSync('git', ['show', `${pr.base.sha}:${approval.workflowPathOmissions[0].workflow}`], { encoding: 'utf8', timeout: 30000 }));
   const workflowExceptions = verifyWorkflowException(approval, pr, candidateFiles,
     approval.workflowExceptions.length > 0
       ? execFileSync('git', ['show', `${pr.base.sha}:${approval.workflowExceptions[0].workflow}`], { encoding: 'utf8', timeout: 30000 })
