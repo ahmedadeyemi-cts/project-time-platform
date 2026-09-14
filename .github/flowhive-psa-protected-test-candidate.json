@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-test-candidate-v2",
   "repository": "ahmedadeyemi-cts/project-time-platform",
-  "pullRequest": 1009,
-  "branch": "fix/module025-sow-role-live-repair-20260914",
-  "sourceBranch": "fix/module025-sow-role-live-repair-20260914",
-  "sha": "482e0a2de99d563381e6c1bf5e2e2ffbf24298df",
-  "mergeCommit": "4fbb7aaca14de7b84eff8fa7b7d7acb2df275c86",
-  "sourceBase": "0799fc6d8b2d6cc55f42f244af4c100b635d74b2",
+  "pullRequest": 1014,
+  "branch": "fix/module025-sow-provider-deadline-20260914",
+  "sourceBranch": "fix/module025-sow-provider-deadline-20260914",
+  "sha": "874e903d131660f0b5796d2388e007fd94f20f5c",
+  "mergeCommit": "2844d70c3891fd74effeba044876942f7a3863cf",
+  "sourceBase": "ef2140f91004704dfe9432239ac5394b389d6fe5",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -40,26 +40,26 @@
     {
       "workflow": ".github/workflows/enterprise-experience-system-ci.yml",
       "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "0799fc6d8b2d6cc55f42f244af4c100b635d74b2",
+      "baseCommit": "ef2140f91004704dfe9432239ac5394b389d6fe5",
       "baseWorkflowSha256": "2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c",
-      "candidateChangedFilesSha256": "c32310eed9f6775b80b66c765947d18e5468a8789bf550a67494f365bcdeda29",
-      "candidateChangedFilesCount": 9
+      "candidateChangedFilesSha256": "187ff717f9d75854a887cb7690365efacece322622d03d7343befbc9b17a02a3",
+      "candidateChangedFilesCount": 2
     }
   ],
   "successorCheckBinding": {
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
+      "pullRequest": 1014,
+      "branch": "fix/module025-sow-provider-deadline-20260914",
+      "headSha": "874e903d131660f0b5796d2388e007fd94f20f5c",
+      "baseSha": "ef2140f91004704dfe9432239ac5394b389d6fe5"
+    },
+    "supersedes": {
       "pullRequest": 1009,
       "branch": "fix/module025-sow-role-live-repair-20260914",
       "headSha": "482e0a2de99d563381e6c1bf5e2e2ffbf24298df",
-      "baseSha": "0799fc6d8b2d6cc55f42f244af4c100b635d74b2"
-    },
-    "supersedes": {
-      "pullRequest": 1003,
-      "branch": "fix/module025-sow-role-live-acceptance-20260914",
-      "headSha": "1a87d5c532d28caa7237bf9f4ec4c0b0a63095cc",
-      "installedAcceptanceRunId": 34878722284,
+      "installedAcceptanceRunId": 34895217042,
       "installedAcceptanceConclusion": "failure"
     },
     "requiredChecks": [
