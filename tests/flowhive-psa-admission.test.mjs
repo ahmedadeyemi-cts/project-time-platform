@@ -18,7 +18,8 @@ const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'co
 const module025SowRoleCandidateRefresh1014 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1014-20260914'
   || process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914';
-const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-approval-20260914';
+const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-approval-20260914'
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-base-correction-20260914';
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
 const module025MyRoleLiveVerifier = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-live-verifier-20260914'
@@ -28,7 +29,7 @@ const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
   merge_commit_sha: approval.mergeCommit,
   head: { ref: approval.sourceBranch, sha: approval.sha, repo: { full_name: repository } },
-  base: { ref: 'main', sha: approval.sourceBase, repo: { full_name: repository } } };
+  base: { ref: 'main', sha: plannerControlCandidateApproval ? '90d2ee572329cf55b29cd87579ad5232a875ef78' : approval.sourceBase, repo: { full_name: repository } } };
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));

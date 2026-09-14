@@ -86,7 +86,7 @@ export const workflowPathOmissions = Object.freeze([
   {
     workflow: '.github/workflows/enterprise-experience-system-ci.yml',
     reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'd6c124e7641ed11ac54440113cd785e54d80ee3b',
+    baseCommit: '90d2ee572329cf55b29cd87579ad5232a875ef78',
     baseWorkflowSha256: '2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c',
     candidateChangedFilesSha256: '631242a97af20f609cf1239ec8f42689acfeb2435d57837121118303213f8886',
     candidateChangedFilesCount: 5
