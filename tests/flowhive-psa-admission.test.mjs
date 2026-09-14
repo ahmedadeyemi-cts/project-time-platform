@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
+import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, workflowPathOmissions, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleCandidateRefreshFinalFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
@@ -415,7 +416,6 @@ test('successor approval enumerates only the workflows that ran for the exact se
     '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
     '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
     '.github/workflows/deepseek-v4-provider-ci.yml',
-    '.github/workflows/enterprise-experience-system-ci.yml',
     '.github/workflows/flowhive-detailed-planner-ci.yml',
     '.github/workflows/flowhive-enterprise-psa-ci.yml',
     '.github/workflows/flowhive-psa-release-control-ci.yml',
@@ -433,7 +433,26 @@ test('successor approval enumerates only the workflows that ran for the exact se
 });
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
   assert.equal(approval.workflowExceptions.length, 0);
+  assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId, 34861784220);
+});
+test('path-filtered workflow omission is bound to the candidate inventory and base bytes', () => {
+  const workflow = approval.workflowPathOmissions[0].workflow;
+  const source = execFileSync('git', ['show', `${approval.sourceBase}:${workflow}`], { encoding: 'utf8' });
+  const changed = execFileSync('git', ['diff', '--name-only', `${approval.sourceBase}...${approval.sha}`], { encoding: 'utf8' })
+    .trim().split(/\r?\n/).filter(Boolean).sort();
+  assert.deepEqual(verifyWorkflowPathOmissions(approval.workflowPathOmissions, pr, changed, source), [workflow]);
+  const pathMatched = [...changed.slice(1), 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'].sort();
+  const pathMatchedDigest = crypto.createHash('sha256').update(`${pathMatched.join('\n')}\n`).digest('hex');
+  const pathMatchedOmission = [{ ...approval.workflowPathOmissions[0],
+    candidateChangedFilesSha256: pathMatchedDigest, candidateChangedFilesCount: pathMatched.length }];
+  assert.throws(() => verifyWorkflowPathOmission(pathMatchedOmission[0], pr, pathMatched, source),
+    /pull-request path filter/);
+  assert.throws(() => verifyWorkflowPathOmissions(approval.workflowPathOmissions,
+    { ...pr, base: { ...pr.base, sha: 'b'.repeat(40) } }, changed, source), /actual candidate base/);
+  assert.throws(() => verifyWorkflowPathOmission(approval.workflowPathOmissions[0], pr, changed,
+    source.replace('src/frontend/project-time-web/src/EnterpriseExperienceController.jsx', 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx\n      - \'src/frontend/project-time-web/src/Unreviewed.jsx\'')),
+    /base workflow bytes/);
 });
 test('historical controller exception cannot absorb another failure or rerun', () => {
   const legacyApproval = clone(approval);
