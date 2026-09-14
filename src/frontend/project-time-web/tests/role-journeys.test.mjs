@@ -8,6 +8,7 @@ import { ROLE_JOURNEYS, JOURNEY_ROUTE, LIFECYCLE, canonicalRole, roleCatalog, ma
 import roleJourneysPlugin, { APP_ANCHORS, transformJourneyApp, transformJourneyRegistry, verifyJourneySources } from '../scripts/role-journeys-vite-plugin.mjs';
 
 const webRoot = fileURLToPath(new URL('../', import.meta.url));
+const repositoryRoot = path.resolve(webRoot, '../../..');
 const enterpriseExperienceController = fs.readFileSync(path.join(webRoot, 'src/EnterpriseExperienceController.jsx'), 'utf8');
 const fixture = `${APP_ANCHORS.guide}\n${APP_ANCHORS.route}\n${APP_ANCHORS.runtimeAliases}\n  legacy: 'retained'\n});\nconst page = <>${APP_ANCHORS.navigation}</nav></>;`;
 const registry = `const ROUTE_ALIASES = Object.freeze({\n  legacy: 'retained'\n});`;
@@ -81,6 +82,25 @@ test('My Role refreshes authorized workspace links after the RBAC bridge publish
   const contextSource = fs.readFileSync(path.join(webRoot, 'src/role-journeys/use-role-journey-context.js'), 'utf8');
   assert.match(contextSource, /projectpulse:permission-navigation-updated/);
   assert.match(contextSource, /ROLE_JOURNEY_AUTHORITY_EVENTS/);
+  assert.match(contextSource, /journeyRoleCodes/);
+});
+test('My Role consumes server-derived journey assignment without changing permission authority', () => {
+  const bridge = fs.readFileSync(path.join(webRoot, 'src/module-availability-bridge.js'), 'utf8');
+  const contextSource = fs.readFileSync(path.join(webRoot, 'src/role-journeys/use-role-journey-context.js'), 'utf8');
+  assert.match(bridge, /journeyRoleCodes: normalizedRoleCodes\(bootstrap\?\.actor\?\.journeyRoleCodes/);
+  assert.match(bridge, /actorRoleCodes: actorRoles/);
+  assert.match(contextSource, /navigation\.journeyRoleCodes/);
+  assert.doesNotMatch(contextSource, /authorizedModulesFromNavigationState\([^\n]*journeyRoleCodes/);
+});
+test('server derives educational PM assignment from owned project scope without granting access', () => {
+  const persistence = fs.readFileSync(path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs'), 'utf8');
+  const support = fs.readFileSync(path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs'), 'utf8');
+  const bootstrap = fs.readFileSync(path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs'), 'utf8');
+  assert.match(persistence, /project_manager_user_id = @user_id/);
+  assert.match(persistence, /journeyRoles\.Add\("PROJECT_MANAGEMENT"\)/);
+  assert.match(support, /string\[\] JourneyRoleCodes/);
+  assert.match(bootstrap, /actor\.JourneyRoleCodes/);
+  assert.doesNotMatch(persistence, /INSERT INTO app_user_role_assignments/);
 });
 test('enterprise chrome leaves the dedicated My Role hero visible', () => {
   assert.match(enterpriseExperienceController, /\.role-journeys/);

@@ -24,8 +24,11 @@ function snapshot() {
   // is ready; use the same authority as the existing Modules directory.
   const allowed = navigation?.state === 'ready'
     ? authorizedModulesFromNavigationState(PROJECTPULSE_MODULES, navigation) : null;
+  const journeyRoleCodes = navigation?.state === 'ready'
+    ? (navigation.journeyRoleCodes || authority.roleCodes || [])
+    : (authority.roleCodes || []);
   return JSON.stringify({
-    roleCodes: authority.roleCodes || [], viewAsActive: Boolean(authority.viewAsActive),
+    roleCodes: journeyRoleCodes, viewAsActive: Boolean(authority.viewAsActive),
     accessReady: allowed !== null,
     modules: (allowed || []).map(({ route, displayName }) => ({ route, displayName }))
   });

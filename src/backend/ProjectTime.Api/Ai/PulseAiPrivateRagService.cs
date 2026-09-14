@@ -9,18 +9,18 @@ public sealed class PulseAiPrivateRagService
 {
     private const int Module025SowMaximumOutputTokens = 12_000;
     private const int Module025SowMaximumAnswerCharacters = 96_000;
-    // Each phase returns exactly two detailed work packages. Keep the provider
-    // completion concise enough for five bounded phase requests to run in one
-    // durable operation. Phase requests are issued sequentially below so each
-    // compact response gets a bounded provider budget; deterministic assembly
-    // still owns global WBS identity and dependencies.
-    private const int Module025PhaseMaximumOutputTokens = 768;
+    // Each phase returns exactly two detailed work packages. The installed
+    // Protected-Test evidence showed that the former 768-token ceiling ended
+    // a complete Celar response before its JSON could satisfy the phase
+    // contract. 2048 remains a bounded per-phase budget while leaving room for
+    // the required descriptions, steps, roles, risks, and acceptance fields.
+    private const int Module025PhaseMaximumOutputTokens = 2_048;
     // Generate one small, source-grounded response per delivery phase. A single
     // ten-task response was observed to finish transport successfully while
     // returning too few task objects for the contract. Per-phase requests keep
-    // the model's JSON small enough to complete and let the server own the
-    // cross-phase WBS and predecessor assembly.
-    private const int Module025PhaseBatchMaximumOutputTokens = 768;
+    // the model's JSON bounded and let the server own the cross-phase WBS and
+    // predecessor assembly.
+    private const int Module025PhaseBatchMaximumOutputTokens = 2_048;
     // A saved Service Overview can be much larger than the phase prompt needs.
     // Keep each concurrent request small enough for the private runtime to
     // execute without queueing the five requests behind one another, while

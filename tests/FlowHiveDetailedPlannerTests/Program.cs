@@ -70,7 +70,7 @@ Assert(module025PhaseInstruction.Contains("exactly two detailed tasks for this p
     "module025_phase_prompt_is_bounded");
 Assert(module025PhaseInstruction.Contains("Return exactly two distinct detailed tasks for the requested phase only", StringComparison.Ordinal),
     "module025_phase_prompt_preserves_distinct_task_contract");
-Assert(module025PhaseInstruction.Contains("768 output tokens", StringComparison.Ordinal),
+Assert(module025PhaseInstruction.Contains("2048 output tokens", StringComparison.Ordinal),
     "module025_phase_prompt_matches_completion_budget");
 Assert(module025PhaseInstruction.Contains("This is phase 4 of five", StringComparison.Ordinal),
     "module025_phase_prompt_binds_phase_index");
@@ -308,7 +308,7 @@ Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResu
 {
     phaseCalls++;
     var phase = PhaseFromRequest(request);
-    Assert(request.MaximumOutputTokens == 768, "module025_phase_completion_bounded");
+    Assert(request.MaximumOutputTokens == 2_048, "module025_phase_completion_bounded");
     Assert(request.SystemInstruction.Contains($"This is phase {Array.IndexOf(phaseNames, phase) + 1} of five", StringComparison.Ordinal),
         "module025_phase_request_scoped");
     Assert(request.Sources.Single() == module025Source, "module025_phase_source_authority_preserved");
@@ -328,7 +328,7 @@ Assert(phasedPlan.Tasks.Count == 10, "module025_assembled_contract_passes");
 var compactBatchResult = await RunPhases((request, token) =>
 {
     var phase = PhaseFromRequest(request);
-    Assert(request.MaximumOutputTokens == 768, "module025_compact_phase_completion_budget");
+    Assert(request.MaximumOutputTokens == 2_048, "module025_compact_phase_completion_budget");
     var compactBatchPayload = phasePayloads[phase];
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
         compactBatchPayload, 100, compactBatchPayload.Length, "", DateTimeOffset.UtcNow));

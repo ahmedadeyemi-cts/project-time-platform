@@ -22,6 +22,11 @@ public static partial class ScopedRolePolicyModule
             connection,
             transaction,
             effectiveUserId.Value);
+        var journeyRoleCodes = await LoadJourneyRoleCodesAsync(
+            connection,
+            transaction,
+            effectiveUserId.Value,
+            roleCodes);
         var email = Convert.ToString(context.Items["ProjectPulseSessionEmail"])
             ?? string.Empty;
         var isViewAs = actualUserId.Value != effectiveUserId.Value
@@ -32,8 +37,34 @@ public static partial class ScopedRolePolicyModule
             effectiveUserId.Value,
             email,
             roleCodes,
+            journeyRoleCodes,
             isViewAs,
             roleCodes.Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static async Task<string[]> LoadJourneyRoleCodesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        Guid userId,
+        IEnumerable<string> assignedRoleCodes)
+    {
+        var journeyRoles = new HashSet<string>(assignedRoleCodes, StringComparer.OrdinalIgnoreCase);
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM projects p
+                WHERE p.project_manager_user_id = @user_id
+                  AND UPPER(COALESCE(p.status, '')) NOT IN ('ARCHIVED', 'DELETED')
+            );
+            """, connection, transaction);
+        command.Parameters.AddWithValue("user_id", userId);
+        if (Convert.ToBoolean(await command.ExecuteScalarAsync()))
+        {
+            // This is educational assignment evidence only. It does not add an
+            // app role, a module grant, or any endpoint authorization.
+            journeyRoles.Add("PROJECT_MANAGEMENT");
+        }
+        return journeyRoles.ToArray();
     }
 
     private static async Task<string[]> LoadCanonicalRoleCodesAsync(

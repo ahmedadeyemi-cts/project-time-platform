@@ -124,6 +124,27 @@ jobs:
               diff -u "$RUNNER_TEMP/module025-my-role-celar-repair-files" "$RUNNER_TEMP/module025-my-role-celar-repair-actual" >&2 || true
               exit 1
             }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'src/backend/ProjectTime.Api/DynamicRbacAdministrationModule.g.cs' \
+              'src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs' \
+              'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs' \
+              'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs' \
+              'src/backend/ProjectTime.Api/ScopedRolePolicyPersistence.g.cs' \
+              'src/frontend/project-time-web/src/module-availability-bridge.js' \
+              'src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js' \
+              'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-acceptance-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-acceptance-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-live-acceptance-files" "$RUNNER_TEMP/module025-sow-role-live-acceptance-actual" || {
+              echo 'SOW/My Role live acceptance repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-live-acceptance-files" "$RUNNER_TEMP/module025-sow-role-live-acceptance-actual" >&2 || true
+              exit 1
+            }
           elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-candidate-refresh-20260914' ]]; then
             printf '%s\n' \
               '.github/flowhive-psa-protected-cutover.json' \
