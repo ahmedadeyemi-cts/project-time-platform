@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifyPullRequest, verifyRuns, verifyWorkflowException, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   'scripts/release-test/run-module025-installed-sa-uat.py',
@@ -333,20 +333,22 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const liveProviderOutputRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-provider-output-refresh-20260913';
   const installedVerifierMainPath = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-main-path-20260914';
   const installedVerifierStepNames = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-step-names-20260914';
+  const module025MyRoleCelarRepair = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-celar-repair-20260914';
   const installedSowRoleScope = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-acceptance-scope-20260913'
     || process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913';
   const installedSowRoleIdentityLane = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-identity-lane-20260913';
   const sourceDriftFiles = process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913'
     || installedVerifierMainPath
     || installedVerifierStepNames
-    ? [...new Set([...files, ...installedSowRoleAcceptanceSourceFiles])].sort()
+    || module025MyRoleCelarRepair
+    ? [...new Set([...files, ...installedSowRoleAcceptanceSourceFiles, ...(module025MyRoleCelarRepair ? module025MyRoleCelarRepairFiles : [])])].sort()
     : files;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, liveProviderOutputRefresh || installedVerifierMainPath || installedVerifierStepNames || installedSowRoleScope || installedSowRoleIdentityLane
+  assert.equal(approval.mergeCommit, liveProviderOutputRefresh || installedVerifierMainPath || installedVerifierStepNames || module025MyRoleCelarRepair || installedSowRoleScope || installedSowRoleIdentityLane
     ? '4ca175430d697631520e9ddb6370e8a90c6b3fa2'
     : providerContractRefresh
     ? '7e4bfd58f29822368e1c019f27523c3953ae9ccc'
