@@ -361,6 +361,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const module025SowRoleCandidateRefreshFinal = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-final-20260914';
   const module025SowRoleAdmissionScope = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-admission-scope-20260914';
   const module025SowRoleNativeActivation = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-native-activation-20260914';
+  const module025SowRoleNativeActive = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-native-active-20260914';
   const installedSowRoleScope = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-acceptance-scope-20260913'
     || process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913';
   const installedSowRoleIdentityLane = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-identity-lane-20260913';
@@ -381,7 +382,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefreshFinal || module025SowRoleAdmissionScope || module025SowRoleNativeActivation
+  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefreshFinal || module025SowRoleAdmissionScope || module025SowRoleNativeActivation || module025SowRoleNativeActive
     ? '46097cb87db57c73d218910f9dfbe393ecd487fe'
     : module025SowRoleCandidateRefresh || admissionManifestOrder || module025SowRoleLiveAcceptance
     ? '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e'
