@@ -99,6 +99,10 @@ jobs:
             python3 tests/flowhive-installed-resolution.test.py
             echo 'INSTALLED_SOW_ROLE_IDENTITY_LANE_SCOPE=PASSED'
             exit 0
+          elif [[ "$HEAD_BRANCH" == 'fix/sow-role-installed-acceptance-20260913' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'INSTALLED_SOW_ROLE_ACCEPTANCE_SCOPE=PASSED'
+            exit 0
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
             node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
             node tests/validate-systemwide-enterprise-reliability.mjs
