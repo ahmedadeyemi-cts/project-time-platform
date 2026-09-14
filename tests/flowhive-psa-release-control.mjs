@@ -1016,7 +1016,7 @@ export function validate() {
   const base = git('merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD');
   assert.match(base, /^[0-9a-f]{40}$/);
   const changed = git('diff', '--name-only', base, 'HEAD').split(/\r?\n/).filter(Boolean);
-  const manifest = fs.readFileSync(controlManifest, 'utf8').trim().split(/\r?\n/);
+  const manifest = fs.readFileSync(controlManifest, 'utf8').trim().split(/\r?\n/).sort();
   const event = process.env.GITHUB_EVENT_PATH
     ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : null;
   const context = { event, eventName: process.env.GITHUB_EVENT_NAME,

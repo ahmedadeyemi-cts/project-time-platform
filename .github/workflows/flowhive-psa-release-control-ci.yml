@@ -60,6 +60,21 @@ jobs:
               diff -u "$RUNNER_TEMP/flowhive-planner-compact-batch-files" "$RUNNER_TEMP/flowhive-planner-compact-batch-actual" >&2 || true
               exit 1
             }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/sow-role-installed-acceptance-20260913' ]]; then
+            printf '%s\n' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs' \
+              'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-actual"
+            cmp -s "$RUNNER_TEMP/installed-sow-role-acceptance-files" "$RUNNER_TEMP/installed-sow-role-acceptance-actual" || {
+              echo 'Installed SOW/My Role acceptance PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/installed-sow-role-acceptance-files" "$RUNNER_TEMP/installed-sow-role-acceptance-actual" >&2 || true
+              exit 1
+            }
           elif [[ "$GITHUB_HEAD_REF" == 'fix/installed-sow-role-acceptance-scope-20260913' ]]; then
             printf '%s\n' \
               '.github/workflows/flowhive-psa-installed-acceptance.yml' \
