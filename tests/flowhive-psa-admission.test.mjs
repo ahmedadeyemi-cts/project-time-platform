@@ -347,6 +347,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const installedSowRoleScope = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-acceptance-scope-20260913'
     || process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913';
   const installedSowRoleIdentityLane = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-identity-lane-20260913';
+  const module025SowRoleCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-20260914';
   const sourceDriftFiles = process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913'
     || installedVerifierMainPath
     || installedVerifierStepNames
@@ -358,7 +359,9 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, liveProviderOutputRefresh || installedVerifierMainPath || installedVerifierStepNames || module025MyRoleCelarRepair || installedSowRoleScope || installedSowRoleIdentityLane
+  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefresh
+    ? '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e'
+    : liveProviderOutputRefresh || installedVerifierMainPath || installedVerifierStepNames || module025MyRoleCelarRepair || installedSowRoleScope || installedSowRoleIdentityLane
     ? '4ca175430d697631520e9ddb6370e8a90c6b3fa2'
     : providerContractRefresh
     ? '7e4bfd58f29822368e1c019f27523c3953ae9ccc'
