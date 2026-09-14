@@ -137,7 +137,9 @@ jobs:
               'src/frontend/project-time-web/src/module-availability-bridge.js' \
               'src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js' \
               'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
               'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-release-control.mjs' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-acceptance-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-acceptance-actual"
             cmp -s "$RUNNER_TEMP/module025-sow-role-live-acceptance-files" "$RUNNER_TEMP/module025-sow-role-live-acceptance-actual" || {
