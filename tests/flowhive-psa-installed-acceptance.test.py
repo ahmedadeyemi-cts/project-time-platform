@@ -283,6 +283,8 @@ class InstalledAcceptanceContract(unittest.TestCase):
             "anonymous_handoff_access_not_denied",
             "browser_attempted_mutation",
             "browser_timeout_role_welcome_dashboard",
+            "wait_for_assigned_role",
+            'filter(has_text="Your role")',
         ):
             self.assertIn(token, self.role)
         for forbidden in ("#project-intake", 'data-module="020"', "Work-task handoff", "Resource handoff"):
