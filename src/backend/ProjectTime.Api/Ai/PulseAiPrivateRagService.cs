@@ -29,6 +29,15 @@ public sealed class PulseAiPrivateRagService
     private const int Module025PhaseSourceMaximumCharacters = 8_000;
     private const int FlowHivePlanMaximumOutputTokens = 12_000;
     private const int FlowHivePlanMaximumAnswerCharacters = 96_000;
+    // Module 025's authoritative SOW path must tolerate the real private
+    // provider's bounded phase latency without changing FlowHive's separate
+    // planner budget. The outer SOW request has the same 40-minute ceiling;
+    // each of its five phases receives an eight-minute slice so a slow phase
+    // is still cancelled before it can consume the whole operation.
+    private static readonly TimeSpan Module025AuthoritativeGenerationTimeout = TimeSpan.FromMinutes(40);
+    private static readonly TimeSpan Module025AuthoritativePhaseTimeout = TimeSpan.FromMinutes(8);
+    private static readonly TimeSpan FlowHiveGenerationTimeout = TimeSpan.FromMinutes(40);
+    private static readonly TimeSpan FlowHivePhaseTimeout = TimeSpan.FromMinutes(10);
     private static readonly string[] Module025DeliveryPhases =
     [
         "Plan",
@@ -623,8 +632,8 @@ public sealed class PulseAiPrivateRagService
                     (phaseRequest, token) => _model.GenerateAsync(phaseRequest,
                         options with { MaximumAnswerCharacters = Module025SowMaximumAnswerCharacters }, token),
                     cancellationToken,
-                    authoritativeSource is null ? TimeSpan.FromMinutes(40) : TimeSpan.FromMinutes(20),
-                    authoritativeSource is null ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(4),
+                    authoritativeSource is null ? FlowHiveGenerationTimeout : Module025AuthoritativeGenerationTimeout,
+                    authoritativeSource is null ? FlowHivePhaseTimeout : Module025AuthoritativePhaseTimeout,
                     _logger)
                 : usePrivateModelWhenAvailable
                 ? await _model.GenerateAsync(
@@ -1607,7 +1616,7 @@ public sealed class PulseAiPrivateRagService
         Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> generate,
         CancellationToken cancellationToken) =>
         GenerateModule025PhasesCoreAsync(request, retrieval, generate, cancellationToken,
-            TimeSpan.FromMinutes(40), TimeSpan.FromMinutes(10), null);
+            FlowHiveGenerationTimeout, FlowHivePhaseTimeout, null);
 
     private static async Task<PulseAiPrivateModelResult> GenerateModule025PhasesCoreAsync(
         PulseAiPrivateModelRequest request,
