@@ -18,6 +18,7 @@ const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'co
 const module025SowRoleCandidateRefresh1014 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1014-20260914'
   || process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914';
+const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-approval-20260914';
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
 const module025MyRoleLiveVerifier = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-live-verifier-20260914'
@@ -403,7 +404,9 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, plannerProviderDeadlineCandidateRefresh
+  assert.equal(approval.mergeCommit, plannerControlCandidateApproval
+    ? 'f25f41e773b7ea1e0a991cb5589d9e24c2bb3246'
+    : plannerProviderDeadlineCandidateRefresh
     ? '832576a4b8dae1da94bc31c689381b6f38ad151f'
     : module025SowRoleCandidateRefresh1014
     ? '2844d70c3891fd74effeba044876942f7a3863cf'
@@ -470,17 +473,18 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh ? 34895217042
+    module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
 });
 test('workflow-dispatch evidence is candidate-bound and cannot substitute another run', () => {
-  const binding = workflowDispatchChecks[0];
-  const pullRequestRunsWithoutDispatch = runs.filter(run => run.path !== binding.workflow);
-  assert.doesNotThrow(() => verifyWorkflowDispatchCheck(binding, dispatchRuns[0], approval));
-  assert.throws(() => verifyWorkflowDispatchCheck(binding, { ...dispatchRuns[0], head_sha: 'a'.repeat(40) }, approval), /candidate/);
-  assert.throws(() => verifyRuns(approval, pullRequestRunsWithoutDispatch), /workflow-dispatch check is missing/);
-  assert.throws(() => verifyRuns(approval, [...runs, { ...dispatchRuns[0], conclusion: 'failure' }]), /did not pass/);
-  assert.throws(() => verifyRuns(approval, [...runs, { ...dispatchRuns[0], id: binding.runId + 1 }]), /identity changed/);
+  assert.deepEqual(workflowDispatchChecks, [], 'The reviewed PR1020 candidate uses exact pull_request checks only.');
+  assert.deepEqual(dispatchRuns, [], 'No workflow-dispatch exception may remain for the reviewed candidate.');
+  assert.throws(() => verifyRuns(approval, [...runs, {
+    id: 34906452416, path: '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
+    event: 'workflow_dispatch', head_sha: approval.sha, head_branch: approval.branch,
+    status: 'completed', conclusion: 'success', run_attempt: 1,
+    head_repository: { full_name: repository }
+  }]), /Unbound workflow-dispatch run/);
 });
 test('path-filtered workflow omission is bound to the candidate inventory and base bytes', () => {
   const workflow = approval.workflowPathOmissions[0].workflow;

@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged FlowHive planner provider-deadline repair PR1017.
+// successor is the reviewed, merged FlowHive planner-control candidate PR1020.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 1017;
-export const candidateBranch = 'fix/flowhive-planner-provider-deadline-retry-20260914';
-export const candidateSourceBranch = 'fix/flowhive-planner-provider-deadline-retry-20260914';
+export const candidatePullRequest = 1020;
+export const candidateBranch = 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914';
+export const candidateSourceBranch = 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '832576a4b8dae1da94bc31c689381b6f38ad151f';
+export const candidateMergeCommit = 'f25f41e773b7ea1e0a991cb5589d9e24c2bb3246';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -77,7 +77,7 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1017 did not touch any file in the enterprise-experience workflow's
+// PR1020 did not touch any file in the enterprise-experience workflow's
 // pull-request path filter. GitHub therefore correctly omitted that workflow
 // for the exact candidate SHA. Keep the omission explicit and bound to the
 // reviewed base bytes and candidate file inventory; it is not a generic
@@ -86,37 +86,22 @@ export const workflowPathOmissions = Object.freeze([
   {
     workflow: '.github/workflows/enterprise-experience-system-ci.yml',
     reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'fd8e41edd3313f2e18259a24e3949b48dd3ffec5',
+    baseCommit: 'd6c124e7641ed11ac54440113cd785e54d80ee3b',
     baseWorkflowSha256: '2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c',
-    candidateChangedFilesSha256: '8bd2823d4201890c4eee88ab74140cd286905cac9dceff7a518c4de77971c570',
-    candidateChangedFilesCount: 6
+    candidateChangedFilesSha256: '631242a97af20f609cf1239ec8f42689acfeb2435d57837121118303213f8886',
+    candidateChangedFilesCount: 5
   }
 ]);
-
-// The retrieval workflow has an explicit workflow_dispatch entrypoint. Its
-// pull-request path filter did not match the reviewed candidate, so admission
-// binds the independently executed exact-SHA run instead of dropping the
-// required workflow from the approval set.
-export const workflowDispatchChecks = Object.freeze([
-  {
-    workflow: '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
-    runId: 34906452416,
-    runAttempt: 1,
-    event: 'workflow_dispatch',
-    headSha: 'ac4ec6d23a2c41d1c3f226921b0efc5710f8fac5',
-    headBranch: 'fix/flowhive-planner-provider-deadline-retry-20260914',
-    conclusion: 'success'
-  }
-]);
+export const workflowDispatchChecks = Object.freeze([]);
 
 export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
   assert.deepEqual(binding?.candidate, {
-    pullRequest: 1017,
-    branch: 'fix/flowhive-planner-provider-deadline-retry-20260914',
-    headSha: 'ac4ec6d23a2c41d1c3f226921b0efc5710f8fac5',
-    baseSha: 'fd8e41edd3313f2e18259a24e3949b48dd3ffec5'
+    pullRequest: 1020,
+    branch: 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914',
+    headSha: '6604bc45d46ef6a0fcded90fc88aa4eba30b180b',
+    baseSha: 'd6c124e7641ed11ac54440113cd785e54d80ee3b'
   }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
   assert.deepEqual(binding?.supersedes, {
     pullRequest: 1014,
