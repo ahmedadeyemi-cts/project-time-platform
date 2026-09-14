@@ -158,7 +158,10 @@ function prepareNativeSystemChat() {
 
   const genericDefectAction = '<button type="button" className="help-report-defect-button" onClick={() => openRoute(\'defect-tracker\')}>Report a Defect</button>';
   const governedDefectAction = '<button type="button" className="help-report-defect-button" onClick={openDefectTracker}>Report a defect — Module 076</button>';
-  if (!source.includes(governedDefectAction)) {
+  // Module 076 may already be installed by the canonical source injector.
+  // Accept that exact governed action as the installed state; only transform
+  // the older generic action when it is still present.
+  if (!source.includes(governedDefectAction) && !source.includes(genericDefectAction)) {
     source = replaceRequired(
       source,
       genericDefectAction,

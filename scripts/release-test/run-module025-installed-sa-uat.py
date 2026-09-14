@@ -280,6 +280,11 @@ async def main() -> int:
             status, generation, _ = http(f"/api/module025/sow-gsd/{engagement_id}/generations/{generation_id}", token=token)
             require(status == 200 and isinstance(generation, dict), "module025_generation_poll_http_" + str(status))
             if generation.get("terminal") is True:
+                report["generationTerminal"] = {
+                    key: generation.get(key)
+                    for key in ("status", "phase", "diagnosticCode", "failureStage", "targetDecisions")
+                    if generation.get(key) not in (None, "", [])
+                }
                 require(generation.get("status") == "module025_detailed_scope_generated", "module025_generation_terminal_failure")
                 break
             require(time.monotonic() < deadline, "module025_generation_deadline_exceeded")

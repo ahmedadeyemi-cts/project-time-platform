@@ -8,6 +8,7 @@ import { ROLE_JOURNEYS, JOURNEY_ROUTE, LIFECYCLE, canonicalRole, roleCatalog, ma
 import roleJourneysPlugin, { APP_ANCHORS, transformJourneyApp, transformJourneyRegistry, verifyJourneySources } from '../scripts/role-journeys-vite-plugin.mjs';
 
 const webRoot = fileURLToPath(new URL('../', import.meta.url));
+const enterpriseExperienceController = fs.readFileSync(path.join(webRoot, 'src/EnterpriseExperienceController.jsx'), 'utf8');
 const fixture = `${APP_ANCHORS.guide}\n${APP_ANCHORS.route}\n${APP_ANCHORS.runtimeAliases}\n  legacy: 'retained'\n});\nconst page = <>${APP_ANCHORS.navigation}</nav></>;`;
 const registry = `const ROUTE_ALIASES = Object.freeze({\n  legacy: 'retained'\n});`;
 
@@ -80,6 +81,13 @@ test('My Role refreshes authorized workspace links after the RBAC bridge publish
   const contextSource = fs.readFileSync(path.join(webRoot, 'src/role-journeys/use-role-journey-context.js'), 'utf8');
   assert.match(contextSource, /projectpulse:permission-navigation-updated/);
   assert.match(contextSource, /ROLE_JOURNEY_AUTHORITY_EVENTS/);
+});
+test('enterprise chrome leaves the dedicated My Role hero visible', () => {
+  assert.match(enterpriseExperienceController, /\.role-journeys/);
+  assert.match(enterpriseExperienceController, /function isExcludedLegacyHeader\(element\)/);
+  const exclusionBody = enterpriseExperienceController.match(/function isExcludedLegacyHeader\(element\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(exclusionBody, /['"]\.role-journeys['"]/);
+  assert.match(fs.readFileSync(path.join(webRoot, 'src/role-journeys/MyRoleInPulse.jsx'), 'utf8'), /<h1 id="role-journeys-title">My Role in Pulse<\/h1>/);
 });
 test('all other hash routes preserve the original result', () => {
   const parser = transformJourneyApp(fixture).match(/function getRouteFromHash\(\) \{[\s\S]*?\n\}/)[0];

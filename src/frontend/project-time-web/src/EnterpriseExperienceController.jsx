@@ -192,6 +192,10 @@ function isExcludedLegacyHeader(element) {
     '.enterprise-top-bar',
     '.enterprise-sidebar',
     `#${PAGE_CHROME_HOST_ID}`,
+    // The dedicated My Role journey owns its visible hero. It is a real
+    // workspace page, not the legacy Module 999 guide header; excluding it
+    // prevents the enterprise chrome decorator from hiding its h1.
+    '.role-journeys',
     '[role="dialog"]',
     '[aria-modal="true"]',
     '.drawer',

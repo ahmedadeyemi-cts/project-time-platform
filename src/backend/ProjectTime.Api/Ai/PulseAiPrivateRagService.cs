@@ -1959,10 +1959,18 @@ public sealed class PulseAiPrivateRagService
 
     // A private_runtime_* response already represents exhaustion of the gateway's
     // approved local-model chain. Never restart that entire chain at this layer.
-    // Retry only an unclassified proxy 502/503/504, within the shared phase budget.
+    // Retry exactly once for a transport/deadline failure that may have affected
+    // one phase request. Authentication, policy, safety, parsing, and missing
+    // configuration failures remain terminal; this is not a generation loop.
     private static bool IsTransientModule025ModelFailure(PulseAiPrivateModelResult result) =>
         result.Status == "private_model_failed"
-        && result.DiagnosticCode is "private_model_http_502" or "private_model_http_503" or "private_model_http_504";
+        && result.DiagnosticCode is
+            "private_model_http_502"
+            or "private_model_http_503"
+            or "private_model_http_504"
+            or "private_model_timeout"
+            or "provider_deadline_exceeded"
+            or "private_model_transport_failure";
 
     private static PulseAiPrivateFlowHivePlan ParseModule025DetailedPlan(
         string content,
