@@ -430,16 +430,22 @@ export const module025SowRoleNativeActiveFiles = [
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 
-export const module025SowRoleLiveAcceptanceBase = '0799fc6d8b2d6cc55f42f244af4c100b635d74b2';
+export const module025SowRoleLiveAcceptanceBase = 'fa8631297ae2420523a2079072433c771e6f61e6';
 export const module025SowRoleLiveAcceptanceBranch = 'fix/module025-sow-role-live-acceptance-20260914';
 export const module025SowRoleLiveAcceptanceFiles = [
   '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
-  'scripts/release-test/run-flowhive-my-role-browser.py',
-  'scripts/release-test/run-module025-installed-sa-uat.py',
   'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
+  'src/backend/ProjectTime.Api/DynamicRbacAdministrationModule.g.cs',
+  'src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs',
+  'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs',
+  'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs',
+  'src/backend/ProjectTime.Api/ScopedRolePolicyPersistence.g.cs',
+  'src/frontend/project-time-web/src/module-availability-bridge.js',
+  'src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js',
+  'src/frontend/project-time-web/tests/role-journeys.test.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/FlowHiveDetailedPlannerTests/Program.cs',
-  'tests/flowhive-psa-installed-acceptance.test.py',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const module025SowRoleLiveRepairBase = '0799fc6d8b2d6cc55f42f244af4c100b635d74b2';
@@ -451,6 +457,7 @@ export const module025SowRoleLiveRepairFiles = [
   'scripts/release-test/run-module025-installed-sa-uat.py',
   'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
   'tests/FlowHiveDetailedPlannerTests/Program.cs',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-installed-acceptance.test.py',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
