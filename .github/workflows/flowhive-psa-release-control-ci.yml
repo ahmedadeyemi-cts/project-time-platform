@@ -64,6 +64,7 @@ jobs:
             printf '%s\n' \
               '.github/workflows/flowhive-psa-installed-acceptance.yml' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'tests/flowhive-psa-admission.test.mjs' \
               'tests/flowhive-psa-installed-acceptance.test.py' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-actual"
