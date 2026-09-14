@@ -131,6 +131,9 @@ jobs:
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
           [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$CIT/diff"
+          run_release_control() {
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+          }
           if [[ "$HEAD_BRANCH" == 'fix/flowhive-reviewed-regeneration-control-20260907' ]]; then
             [[ "$CURRENT_BASE_SHA" == '7e5c378dcb15b2b2a00511fa69f90d2411eec336' ]] \
               || fail 'Reviewed regeneration control is not based on current main.'
@@ -139,15 +142,15 @@ jobs:
               diff -u "$CIT/e-flowhive-reviewed-regeneration-files" "$CIT/diff" >&2 || true
               exit 1
             }
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/flowhive-psa-release-control.mjs
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-sow-successor-approval-20260909' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-stale-run-supersession-20260909' ]]; then
             [[ "$CURRENT_BASE_SHA" == '785eb54a4f280c9ff0e59951c31a30cad4c1a0da' ]] \
               || fail 'Stale-run supersession control is not based on trusted merged main.'
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
             [[ "$CURRENT_BASE_SHA" == '526cfc0d2eb993c35557db190eb5ae87d29bda65' ]] \
               || fail 'Protected cutover control is not based on merged PR896 main.'
@@ -156,7 +159,7 @@ jobs:
               diff -u "$CIT/e-flowhive-protected-cutover-files" "$CIT/diff" >&2 || true
               exit 1
             }
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-canonical-dispatch-20260911' ]]; then
             expected="$CIT/flowhive-canonical-dispatch-files"
             printf '%s\n' \
@@ -173,54 +176,54 @@ jobs:
               exit 1
             }
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-successor-approval-20260911' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-protected-cutover-successor-activation-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
           elif [[ "$HEAD_BRANCH" == fix/sow-runtime-diagnostics-and-uat-isolation-20260906 || "$HEAD_BRANCH" == fix/sow-transport-prompt-20260906 || "$HEAD_BRANCH" == fix/sow-phase-runtime-retry-20260906 || "$HEAD_BRANCH" == fix/sow-generation-uat-20260906 || "$HEAD_BRANCH" == fix/flowhive-terminal-refusal-diagnostics-20260906 || "$HEAD_BRANCH" == fix/celar-runtime-preflight-evidence-20260906 || "$HEAD_BRANCH" == fix/celar-sow-cpu-inference-20260905 || "$HEAD_BRANCH" == fix/celar-sow-runtime-deadlines-20260905 || "$HEAD_BRANCH" == fix/celar-oracle-token-budget-20260905 || "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-live-planner-candidate-refresh-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-live-repair-renewal-safe-20260913' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-latency-candidate-refresh-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-context-budget-candidate-refresh-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-context-budget-activation-20260913' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-single-batch-candidate-refresh-20260913' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-candidate-refresh-20260913' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-activation-20260913' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-admission-ancestry-fix-20260913' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-source-drift-boundary-20260913' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-activation-renewal-20260913' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-single-batch-activation-20260913' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-latency-activation-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-output-budget-candidate-refresh-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-output-budget-final-activation-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-live-planner-activation-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-time-budget-activation-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-time-budget-checkset-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-time-budget-approval-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-provider-budget-approval-20260912' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/validate-flowhive-planner-output-budget-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
@@ -298,9 +301,9 @@ jobs:
               exit 1
             }
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-repair-20260914' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-final-20260914' ]]; then
             printf '%s\n' \
               '.github/flowhive-psa-protected-cutover.json' \
@@ -331,11 +334,11 @@ jobs:
               diff -u "$CIT/module025-sow-role-admission-scope-files" "$CIT/diff" >&2 || true
               exit 1
             }
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-native-activation-20260914' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-native-active-20260914' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-20260914' ]]; then
             printf '%s\n' \
               '.github/flowhive-psa-protected-cutover.json' \
@@ -354,7 +357,7 @@ jobs:
               exit 1
             }
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
-            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-admission-manifest-order-20260914' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
