@@ -333,7 +333,7 @@ export const installedAcceptanceFinalFiles = [
   'tests/flowhive-psa-installed-acceptance.test.py',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const installedSowRoleAcceptanceBase = 'f7c0ce11edbc1f4dbc610bef30eea984b229d283';
+export const installedSowRoleAcceptanceBase = '2dc8f2ff79f2ba57130072c2db95b12956e0de12';
 export const installedSowRoleAcceptanceBranch = 'fix/sow-role-installed-acceptance-20260913';
 export const installedSowRoleAcceptanceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
