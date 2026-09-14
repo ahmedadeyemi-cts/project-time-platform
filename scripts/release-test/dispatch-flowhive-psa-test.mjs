@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { authorize, repository, admissionIssueNumber, candidateBranch, candidatePullRequest, approvalPath, verifyApproval, protectedTestReleaseLane } from './flowhive-psa-admission.mjs';
+import { authorize, repository, admissionIssueNumber, candidateBranch, candidatePullRequest, approvalPath, verifyApproval, verifySupersededCheckBinding, protectedTestReleaseLane } from './flowhive-psa-admission.mjs';
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
@@ -269,6 +269,11 @@ function verifyBoundedApproval(authorization, now) {
 export function verifyProtectedCutoverAuthorization(authorization, now = new Date()) {
   const approval = JSON.parse(fs.readFileSync(approvalPath, 'utf8'));
   verifyApproval(approval, authorization?.candidate?.sha);
+  if (authorization?.successorCheckBinding) {
+    verifySupersededCheckBinding(authorization.successorCheckBinding);
+    assert.deepEqual(authorization.successorCheckBinding, approval.successorCheckBinding,
+      'PROTECTED_CUTOVER_SUCCESSOR_CHECK_BINDING');
+  }
   assert.equal(authorization?.contract, 'flowhive-psa-protected-cutover-v1', 'PROTECTED_CUTOVER_CONTRACT');
   assert.equal(authorization?.approvalReference, currentProtectedCutoverApprovalReference, 'PROTECTED_CUTOVER_REFERENCE');
   assert.equal(authorization?.supersedesApprovalReference, previousProtectedCutoverApprovalReference,

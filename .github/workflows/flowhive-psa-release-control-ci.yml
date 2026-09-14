@@ -163,6 +163,9 @@ jobs:
               diff -u "$RUNNER_TEMP/module025-sow-role-candidate-refresh-files" "$RUNNER_TEMP/module025-sow-role-candidate-refresh-actual" >&2 || true
               exit 1
             }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_MODULE025_SOW_ROLE_LIVE_ACCEPTANCE_SCOPE=PASSED'
           elif [[ "$GITHUB_HEAD_REF" == 'control/module025-admission-manifest-order-20260914' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-canonical-dispatch-20260911' ]]; then

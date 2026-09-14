@@ -140,17 +140,14 @@ jobs:
               exit 1
             }
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_REVIEWED_REGENERATION_CONTROL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/flowhive-psa-release-control.mjs
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-sow-successor-approval-20260909' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_SOW_SUCCESSOR_APPROVAL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-stale-run-supersession-20260909' ]]; then
             [[ "$CURRENT_BASE_SHA" == '785eb54a4f280c9ff0e59951c31a30cad4c1a0da' ]] \
               || fail 'Stale-run supersession control is not based on trusted merged main.'
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_STALE_RUN_SUPERSESSION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
             [[ "$CURRENT_BASE_SHA" == '526cfc0d2eb993c35557db190eb5ae87d29bda65' ]] \
               || fail 'Protected cutover control is not based on merged PR896 main.'
@@ -160,7 +157,6 @@ jobs:
               exit 1
             }
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PROTECTED_CUTOVER_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-canonical-dispatch-20260911' ]]; then
             expected="$CIT/flowhive-canonical-dispatch-files"
             printf '%s\n' \
@@ -176,82 +172,57 @@ jobs:
               diff -u "$expected" "$CIT/diff" >&2 || true
               exit 1
             }
-            echo 'EXACT_FLOWHIVE_CANONICAL_DISPATCH_CONTROL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-successor-approval-20260911' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_SUCCESSOR_RELEASE_APPROVAL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-protected-cutover-successor-activation-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_SUCCESSOR_CUTOVER_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/celar-1am-central-runtime-version-20260905' ]]; then
             bash scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
             node src/frontend/project-time-web/scripts/validate-module-084-celar-ai-runtime-version.mjs
-            echo 'EXACT_CELAR_RUNTIME_VERSION_CENTER_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == fix/sow-runtime-diagnostics-and-uat-isolation-20260906 || "$HEAD_BRANCH" == fix/sow-transport-prompt-20260906 || "$HEAD_BRANCH" == fix/sow-phase-runtime-retry-20260906 || "$HEAD_BRANCH" == fix/sow-generation-uat-20260906 || "$HEAD_BRANCH" == fix/flowhive-terminal-refusal-diagnostics-20260906 || "$HEAD_BRANCH" == fix/celar-runtime-preflight-evidence-20260906 || "$HEAD_BRANCH" == fix/celar-sow-cpu-inference-20260905 || "$HEAD_BRANCH" == fix/celar-sow-runtime-deadlines-20260905 || "$HEAD_BRANCH" == fix/celar-oracle-token-budget-20260905 || "$HEAD_BRANCH" == fix/celar-routed-model-readiness-20260905 || "$HEAD_BRANCH" == fix/celar-hostname-runtime-20260905 || "$HEAD_BRANCH" == fix/protected-uat-recovery-and-ai-readiness-20260905 || "$HEAD_BRANCH" == 'fix/module064-deepseek-chat-answer-20260905' ]]; then
             node tests/validate-celar-ai-pr630-consolidated.mjs
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-live-planner-candidate-refresh-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_LIVE_PLANNER_CANDIDATE_REFRESH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-live-repair-renewal-safe-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_NATIVE_TEST_APPROVAL_RENEWAL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-latency-candidate-refresh-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_LATENCY_CANDIDATE_REFRESH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-context-budget-candidate-refresh-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_CONTEXT_BUDGET_CANDIDATE_REFRESH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-context-budget-activation-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_CONTEXT_BUDGET_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-single-batch-candidate-refresh-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_SINGLE_BATCH_CANDIDATE_REFRESH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-candidate-refresh-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_COMPACT_BATCH_CANDIDATE_REFRESH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-activation-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_COMPACT_BATCH_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-admission-ancestry-fix-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_COMPACT_BATCH_ADMISSION_ANCESTRY_FIX_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-source-drift-boundary-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_COMPACT_BATCH_SOURCE_DRIFT_BOUNDARY_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-compact-batch-activation-renewal-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_COMPACT_BATCH_ACTIVATION_RENEWAL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-single-batch-activation-20260913' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_SINGLE_BATCH_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-latency-activation-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_LATENCY_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-output-budget-candidate-refresh-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_OUTPUT_BUDGET_CANDIDATE_REFRESH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-output-budget-final-activation-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_OUTPUT_BUDGET_FINAL_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-live-planner-activation-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_LIVE_PLANNER_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-time-budget-activation-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_TIME_BUDGET_ACTIVATION_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-time-budget-checkset-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_TIME_BUDGET_WORKFLOW_SET_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-time-budget-approval-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_TIME_BUDGET_APPROVAL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-provider-budget-approval-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_PROVIDER_BUDGET_SUCCESSOR_APPROVAL_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/validate-flowhive-planner-output-budget-scope.mjs
-            echo 'EXACT_FLOWHIVE_PLANNER_OUTPUT_BUDGET_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
             node tests/flowhive-psa-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
@@ -264,7 +235,6 @@ jobs:
               diff -u "$CIT/flowhive-planner-compact-batch-files" "$CIT/diff" >&2 || true
               exit 1
             }
-            echo 'EXACT_FLOWHIVE_PLANNER_COMPACT_BATCH_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feature/celar-enterprise-retrieval-20260906' || "$HEAD_BRANCH" == 'fix/celar-enterprise-synthesis-20260906' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/validate-celar-enterprise-retrieval-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/celar-public-answer-fallback-20260906' ]]; then
@@ -283,14 +253,12 @@ jobs:
               diff -u "$CIT/e-uat-defects" "$CIT/diff" >&2 || true
               exit 1
             }
-            echo 'EXACT_PROTECTED_UAT_VALIDATION_DEFECTS_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'fix/celar-internal-trust-evidence-20260903' ]]; then
             cmp -s "$CIT/diff" "$CIT/e-celar-internal-trust-evidence-files" || {
               echo 'Celar internal-data trust-evidence repair differs from its exact governed file set.' >&2
               diff -u "$CIT/e-celar-internal-trust-evidence-files" "$CIT/diff" >&2 || true
               exit 1
             }
-            echo 'EXACT_CELAR_INTERNAL_TRUST_EVIDENCE_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
             test -s "$SHARED_PLANNING_MANIFEST" || fail 'The shared project-document planning release manifest is missing.'
             grep -Ev '^[[:space:]]*(#|$)' "$SHARED_PLANNING_MANIFEST" | LC_ALL=C sort -u > "$CIT/shared-project-document-planning-files"
@@ -307,7 +275,6 @@ jobs:
             if grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64|one-time-flowhive-clean)' "$CIT/diff"; then
               fail 'Temporary recovery or publisher artifacts are forbidden from the clean release.'
             fi
-            echo 'EXACT_SHARED_PROJECT_DOCUMENT_PLANNING_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' ]]; then
             node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
             echo 'MODULE025_SOW_SELL_REGISTER_NONDEPLOYMENT_SCOPE=PASSED'
@@ -330,28 +297,8 @@ jobs:
               diff -u "$CIT/module025-my-role-celar-repair-files" "$CIT/diff" >&2 || true
               exit 1
             }
-            echo 'EXACT_MODULE025_MY_ROLE_CELAR_REPAIR_SCOPE=PASSED'
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
-            printf '%s\n' \
-              '.github/workflows/flowhive-psa-release-control-ci.yml' \
-              '.github/workflows/projectpulse-release-test-control-ci.yml' \
-              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
-              'src/backend/ProjectTime.Api/DynamicRbacAdministrationModule.g.cs' \
-              'src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs' \
-              'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs' \
-              'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs' \
-              'src/backend/ProjectTime.Api/ScopedRolePolicyPersistence.g.cs' \
-              'src/frontend/project-time-web/src/module-availability-bridge.js' \
-              'src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js' \
-              'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
-              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
-              | LC_ALL=C sort -u > "$CIT/module025-sow-role-live-acceptance-files"
-            cmp -s "$CIT/diff" "$CIT/module025-sow-role-live-acceptance-files" || {
-              echo 'SOW/My Role live acceptance repair contains an unreviewed file.' >&2
-              diff -u "$CIT/module025-sow-role-live-acceptance-files" "$CIT/diff" >&2 || true
-              exit 1
-            }
-            echo 'EXACT_MODULE025_SOW_ROLE_LIVE_ACCEPTANCE_SCOPE=PASSED'
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-20260914' ]]; then
             printf '%s\n' \
               '.github/flowhive-psa-protected-cutover.json' \
@@ -369,7 +316,8 @@ jobs:
               diff -u "$CIT/module025-sow-role-candidate-refresh-files" "$CIT/diff" >&2 || true
               exit 1
             }
-            echo 'EXACT_MODULE025_SOW_ROLE_CANDIDATE_REFRESH_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$HEAD_BRANCH" == 'control/module025-admission-manifest-order-20260914' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
@@ -386,26 +334,24 @@ jobs:
               diff -u "$CIT/e-777-workspace" "$CIT/diff" >&2 || true
               exit 1
             }
-            echo 'EXACT_PR777_MODULE025_WORKSPACE_SCOPE=PASSED'
           elif cmp -s "$CIT/diff" "$CIT/e-runtime-repair-files"; then
-            echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
+          :
           elif cmp -s "$CIT/diff" "$CIT/e-assigned-work-repair-files"; then
-            echo 'EXACT_ASSIGNED_WORK_REPAIR_SCOPE=PASSED'
+          :
           elif cmp -s "$CIT/diff" "$CIT/e-pr719-module-directory-owner-001a-files"; then
-            echo 'EXACT_PR719_MODULE_DIRECTORY_OWNER_001A_SCOPE=PASSED'
+          :
           elif cmp -s "$CIT/diff" "$CIT/e-modules-directory-authority-starvation-files"; then
-            echo 'EXACT_MODULES_DIRECTORY_AUTHORITY_STARVATION_SCOPE=PASSED'
+          :
           elif cmp -s "$CIT/diff" "$CIT/e-module001b-live-uat-repair-files"; then
-            echo 'EXACT_MODULE001B_LIVE_UAT_REPAIR_SCOPE=PASSED'
+          :
           elif [[ "$HEAD_BRANCH" == 'fix/utilization-manager-team-summary-authorization-20260903' ]]; then
             cmp -s "$CIT/diff" "$CIT/e-utilization-manager-authorization-repair-files" || {
               echo 'Manager utilization authorization repair differs from its exact governed file set.' >&2
               diff -u "$CIT/e-utilization-manager-authorization-repair-files" "$CIT/diff" >&2 || true
               exit 1
             }
-            echo 'EXACT_UTILIZATION_MANAGER_AUTHORIZATION_REPAIR_SCOPE=PASSED'
           elif cmp -s "$CIT/diff" "$CIT/e-protected-uat-merged-main-relaunch-governance-files"; then
-            echo 'EXACT_PROTECTED_UAT_MERGED_MAIN_RELAUNCH_GOVERNANCE_SCOPE=PASSED'
+          :
           else
             comm -23 "$CIT/diff" "$CIT/allowed-release-files" > "$CIT/unexpected-release-files"
             [[ ! -s "$CIT/unexpected-release-files" ]] || {
@@ -683,6 +629,18 @@ jobs:
           grep -A5 -F -- '- name: Reassert disabled Protected-Test workflow' "$FINALIZER" | grep -Fq 'set -Eeuo pipefail'
           grep -Fq 'sealing_status="NOT VERIFIED (workflow state ${final_workflow_state:-unavailable}, unexpected active deployments ${final_unexpected_active_count:-unavailable}, quarantined jobs ${final_quarantined_jobs_count:-unavailable}); manual sealing required immediately"' "$FINALIZER"
 
+      - name: Complete governed protected-Test controller contracts
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -Eeuo pipefail
+          CTL='.github/workflows/projectpulse-deploy-test.yml'
+          MODULE025_SUPERVISOR='.github/workflows/module025-protected-uat-control.yml'
+          UTIL_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+          WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
+          MODULE025_UAT='scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
           ! grep -Fq 'full_imae' "$CTL"
           ! grep -Eq 'local[[:space:]]+repository="\$1".*image="\$repository:' "$CTL"
           ! grep -Eq '^[[:space:]]*environment:[[:space:]]*production([[:space:]]|$)' "$CTL"

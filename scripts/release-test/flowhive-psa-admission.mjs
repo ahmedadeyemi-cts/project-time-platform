@@ -67,6 +67,42 @@ const historicalWorkflowExceptions = [
   }
 ];
 
+export const supersededCheckWorkflows = Object.freeze([
+  {
+    workflow: '.github/workflows/flowhive-psa-release-control-ci.yml',
+    check: 'contracts'
+  },
+  {
+    workflow: '.github/workflows/projectpulse-release-test-control-ci.yml',
+    check: 'Validate governed Test controller, exact scope, and rollback boundaries'
+  }
+]);
+
+export function verifySupersededCheckBinding(binding) {
+  assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
+  assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
+  assert.deepEqual(binding?.candidate, {
+    pullRequest: 1003,
+    branch: 'fix/module025-sow-role-live-acceptance-20260914',
+    headSha: 'caaeac5401bcc847dc8befb452c8772d8270223e',
+    baseSha: '62320ac18c160bfe7d25f04a998274daebfafbfc'
+  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
+  assert.deepEqual(binding?.supersedes, {
+    pullRequest: 994,
+    branch: 'fix/module025-my-role-celar-repair-20260914',
+    headSha: 'cdd2f644017c96f88371dca8b81dafcab0d63b77',
+    installedAcceptanceRunId: 34861784220,
+    installedAcceptanceConclusion: 'failure'
+  }, 'SUCCESSOR_CHECK_BINDING_SUPERSEDED_RUN');
+  assert.deepEqual(binding?.requiredChecks, supersededCheckWorkflows, 'SUCCESSOR_CHECK_BINDING_CHECK_SET');
+  assert.match(binding.candidate.headSha, sha);
+  assert.match(binding.candidate.baseSha, sha);
+  assert.match(binding.supersedes.headSha, sha);
+  assert.notEqual(binding.candidate.headSha, binding.supersedes.headSha, 'SUCCESSOR_CHECK_BINDING_MUST_CHANGE_HEAD');
+  assert.equal(binding.candidate.pullRequest !== binding.supersedes.pullRequest, true, 'SUCCESSOR_CHECK_BINDING_PR_IDENTITY');
+  return binding;
+}
+
 export function verifyApproval(approval, requestedSha) {
   assert.equal(approval.contract, 'flowhive-psa-protected-test-candidate-v2');
   assert.equal(approval.repository, repository);
@@ -96,6 +132,7 @@ export function verifyApproval(approval, requestedSha) {
     'Only the exact pre-correction duplicate-controller failure may be superseded.');
   assert.equal(approval.projectId, '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49');
   assert.equal(approval.projectManagerLogin, 'heather.schrock@ussignal.local');
+  if (approval.successorCheckBinding) verifySupersededCheckBinding(approval.successorCheckBinding);
 }
 
 export function verifyPullRequest(approval, pr) {
