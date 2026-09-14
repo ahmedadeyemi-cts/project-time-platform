@@ -185,10 +185,12 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
 
             flowhive_navigation_visible = "#project-flowhive" in assigned_routes
             signed_navigation_visible = "#signed-handoff" in assigned_routes
-            if flowhive_navigation_visible:
-                await page.goto(ORIGIN + "/#project-flowhive", wait_until="domcontentloaded")
-                flowhive = page.locator('.project-flowhive-center[data-module="066"]')
-                await wait_visible(flowhive, "browser_timeout_project_flowhive_route")
+            # Module 066 has its own installed acceptance lane. This Module
+            # 025/My Role verifier proves that the assigned playbook exposes
+            # the authorized route, but does not enter the workspace: its
+            # mount performs a separate readiness operation and would turn a
+            # read-only role-journey check into a FlowHive mutation attempt.
+            # The FlowHive verifier owns that route's read/write lifecycle.
             if signed_navigation_visible:
                 await page.goto(ORIGIN + "/#signed-handoff", wait_until="domcontentloaded")
                 signed = page.locator('.sales-delivery-workflow-center[data-module="027"]')
@@ -202,7 +204,7 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
                 "status": "passed",
                 "roleWorkspace": {"authorizedStepCount": role_count, "assignedPlaybook": role_texts[assigned_index].strip(), "surface": "#my-role-in-pulse", "reloadVerified": True},
                 "dashboardObservation": {"recommendedActionCount": dashboard_card_count, "surface": "#dashboard"},
-                "handoffs": {"assignedRoutes": sorted(set(assigned_routes)), "flowHiveWorkspace": flowhive_navigation_visible, "signedPackage": signed_navigation_visible},
+                "handoffs": {"assignedRoutes": sorted(set(assigned_routes)), "flowHiveWorkspace": flowhive_navigation_visible, "flowHiveRouteVisited": False, "signedPackage": signed_navigation_visible},
                 "accessBoundaries": {"explicitDeniedStepCount": access_boundaries, "signedHandoffNavigationVisible": signed_navigation_visible},
                 "writesBlocked": len(writes),
                 "pageErrors": len(page_errors),
@@ -215,6 +217,7 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
                 "hash": await page.evaluate("window.location.hash"),
                 "journeyCount": await page.locator("#my-role-in-pulse").count(),
                 "headingCount": await page.get_by_role("heading", name="My Role in Pulse", exact=True).count(),
+                "blockedWrites": writes[:20],
                 "failedResponses": failed_responses,
                 "pageErrors": len(page_errors),
             }
