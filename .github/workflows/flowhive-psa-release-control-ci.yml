@@ -78,6 +78,7 @@ jobs:
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
               '.github/flowhive-psa-release-control-files.txt' \
               'scripts/release-test/resolve-flowhive-installed-deployment.py' \
+              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
               'tests/flowhive-psa-admission.test.mjs' \
               'tests/flowhive-psa-release-control.mjs' \
               'tests/flowhive-installed-resolution.test.py' \

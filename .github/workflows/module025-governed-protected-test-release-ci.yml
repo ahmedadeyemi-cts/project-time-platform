@@ -79,6 +79,26 @@ jobs:
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'FLOWHIVE_PLANNER_OUTPUT_BUDGET_CANDIDATE_REFRESH_SCOPE=PASSED'
             exit 0
+          elif [[ "$HEAD_BRANCH" == 'fix/installed-sow-role-identity-lane-20260913' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-release-control-files.txt' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+              'scripts/release-test/resolve-flowhive-installed-deployment.py' \
+              'tests/flowhive-installed-resolution.test.py' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-identity-lane-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-identity-lane-actual"
+            cmp -s "$RUNNER_TEMP/installed-sow-role-identity-lane-files" "$RUNNER_TEMP/installed-sow-role-identity-lane-actual" || {
+              echo 'Installed identity-lane verifier PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/installed-sow-role-identity-lane-files" "$RUNNER_TEMP/installed-sow-role-identity-lane-actual" >&2 || true
+              exit 1
+            }
+            python3 tests/flowhive-installed-resolution.test.py
+            echo 'INSTALLED_SOW_ROLE_IDENTITY_LANE_SCOPE=PASSED'
+            exit 0
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
             node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
             node tests/validate-systemwide-enterprise-reliability.mjs
