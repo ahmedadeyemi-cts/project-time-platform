@@ -14,6 +14,7 @@ import re
 import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, build_opener
 
 ORIGIN = "https://phd-west-test.onenecklab.com"
@@ -65,13 +66,22 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
         browser = await playwright.chromium.launch(headless=True)
         context = await browser.new_context(viewport={"width": 1600, "height": 1000})
         writes: list[str] = []
+        observability_posts: list[str] = []
         page_errors: list[str] = []
         failed_responses: list[dict] = []
 
         async def guard(route):
             parsed = route.request
+            parsed_path = urlsplit(parsed.url).path
+            if parsed.method == "POST" and parsed_path == "/api/client-diagnostics":
+                # This is the application's normal sanitized telemetry path,
+                # not a business mutation. Let the real session send it while
+                # keeping every other non-read request blocked and reported.
+                observability_posts.append(parsed_path)
+                await route.continue_()
+                return
             if parsed.method not in ("GET", "HEAD", "OPTIONS"):
-                writes.append(parsed.method + " " + parsed.url.split("?", 1)[0])
+                writes.append(parsed.method + " " + parsed_path)
                 await route.abort()
                 return
             await route.continue_()
@@ -207,6 +217,7 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
                 "handoffs": {"assignedRoutes": sorted(set(assigned_routes)), "flowHiveWorkspace": flowhive_navigation_visible, "flowHiveRouteVisited": False, "signedPackage": signed_navigation_visible},
                 "accessBoundaries": {"explicitDeniedStepCount": access_boundaries, "signedHandoffNavigationVisible": signed_navigation_visible},
                 "writesBlocked": len(writes),
+                "observabilityPosts": len(observability_posts),
                 "pageErrors": len(page_errors),
                 "failedResponses": failed_responses,
                 "finalUrl": page.url,
@@ -218,6 +229,7 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
                 "journeyCount": await page.locator("#my-role-in-pulse").count(),
                 "headingCount": await page.get_by_role("heading", name="My Role in Pulse", exact=True).count(),
                 "blockedWrites": writes[:20],
+                "observabilityPosts": len(observability_posts),
                 "failedResponses": failed_responses,
                 "pageErrors": len(page_errors),
             }

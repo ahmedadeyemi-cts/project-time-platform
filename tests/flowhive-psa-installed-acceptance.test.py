@@ -281,6 +281,9 @@ class InstalledAcceptanceContract(unittest.TestCase):
             "await page.reload",
             "anonymous_handoff_access_not_denied",
             "browser_attempted_mutation",
+            "/api/client-diagnostics",
+            "observability_posts",
+            "observabilityPosts",
             "browser_timeout_role_welcome_dashboard",
             "wait_for_assigned_role",
             'filter(has_text="Your role")',
@@ -340,6 +343,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
             self.assertIn(token, self.role)
         self.assertIn('flowHiveRouteVisited": False', self.role)
         self.assertIn('blockedWrites', self.role)
+        self.assertIn('parsed.method == "POST"', self.role)
         for forbidden in ('#project-intake', 'data-module="020"', 'Work-task handoff', 'Resource handoff'):
             self.assertNotIn(forbidden, self.role)
 
