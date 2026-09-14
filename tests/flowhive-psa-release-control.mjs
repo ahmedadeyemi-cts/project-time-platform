@@ -392,6 +392,7 @@ export const admissionManifestOrderBranch = 'control/module025-admission-manifes
 export const admissionManifestOrderFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'tests/flowhive-psa-admission.test.mjs',
