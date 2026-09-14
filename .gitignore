@@ -58,3 +58,4 @@ logs/
 # Python bytecode
 __pycache__/
 *.py[cod]
+.verity/deploy-access.md
