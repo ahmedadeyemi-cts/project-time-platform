@@ -22,6 +22,16 @@ REPO = "ahmedadeyemi-cts/project-time-platform"
 APP, CONTROLLER, VERIFIER = "a" * 40, "b" * 40, "c" * 40
 API = "registry.invalid/api@sha256:" + "d" * 64
 WEB = "registry.invalid/web@sha256:" + "e" * 64
+REAL_MAIN_PATH_SKIPPED_STEPS = (
+    "Admit the exact reviewed PSA candidate using trusted main controls",
+    "Verify existing PM and uploaded SOW before deployment",
+    "Install isolated live-browser acceptance dependencies",
+    "Guard exact source, manual Test scope, and no-migration boundary",
+    "Prove authenticated Oracle HTTPS services before Azure mutation",
+    "Snapshot the protected Test API",
+    "Preserve the currently deployed immutable API image",
+    "Configure the protected token and deploy the Test API revision",
+)
 
 
 def case(conclusion="failure"):
@@ -104,6 +114,9 @@ def standard_main_case():
 
 
 class ResolutionTests(unittest.TestCase):
+    def test_main_path_skip_names_match_server_recorded_workflow(self):
+        self.assertEqual(resolver.MAIN_PATH_SKIPPED_STEPS, REAL_MAIN_PATH_SKIPPED_STEPS)
+
     def test_failed_acceptance_keeps_installation_and_failure_separate(self):
         context = validate(case())
         self.assertEqual(context["controllerSha"], CONTROLLER)

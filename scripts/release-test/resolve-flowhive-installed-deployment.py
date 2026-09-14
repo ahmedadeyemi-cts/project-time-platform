@@ -62,8 +62,8 @@ MAIN_PATH_SKIPPED_STEPS = (
     "Verify existing PM and uploaded SOW before deployment",
     "Install isolated live-browser acceptance dependencies",
     "Guard exact source, manual Test scope, and no-migration boundary",
-    "Prove authenticated Oracle HTTPS services before API mutation",
-    "Snapshot protected Test API",
+    "Prove authenticated Oracle HTTPS services before Azure mutation",
+    "Snapshot the protected Test API",
     "Preserve the currently deployed immutable API image",
     "Configure the protected token and deploy the Test API revision",
 )
