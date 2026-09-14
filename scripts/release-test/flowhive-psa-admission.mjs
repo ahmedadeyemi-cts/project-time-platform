@@ -93,6 +93,22 @@ export const workflowPathOmissions = Object.freeze([
   }
 ]);
 
+// The retrieval workflow has an explicit workflow_dispatch entrypoint. Its
+// pull-request path filter did not match the reviewed candidate, so admission
+// binds the independently executed exact-SHA run instead of dropping the
+// required workflow from the approval set.
+export const workflowDispatchChecks = Object.freeze([
+  {
+    workflow: '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
+    runId: 34906452416,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: 'ac4ec6d23a2c41d1c3f226921b0efc5710f8fac5',
+    headBranch: 'fix/flowhive-planner-provider-deadline-retry-20260914',
+    conclusion: 'success'
+  }
+]);
+
 export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
@@ -147,6 +163,8 @@ export function verifyApproval(approval, requestedSha) {
     'The refreshed candidate must not inherit a historical failure as a current check exception.');
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions,
     'A path-filtered workflow omission must be explicit and cryptographically bound.');
+  assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks,
+    'Workflow-dispatch evidence must be exact, reviewed, and candidate-bound.');
   assert.equal(approval.projectId, '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49');
   assert.equal(approval.projectManagerLogin, 'heather.schrock@ussignal.local');
   if (approval.successorCheckBinding) verifySupersededCheckBinding(approval.successorCheckBinding);
@@ -176,13 +194,38 @@ export function verifyHistoricalWorkflowException(exception, run, approval) {
   assert.equal(run.head_sha, approval.sha, 'Historical exception is not attached to the approved candidate.');
 }
 
+export function verifyWorkflowDispatchCheck(binding, run, approval) {
+  assert.deepEqual(binding, workflowDispatchChecks.find(item => item.workflow === binding?.workflow),
+    'The workflow-dispatch binding must match the reviewed exact-SHA evidence.');
+  assert.equal(run.id, binding.runId, 'The workflow-dispatch run identity changed.');
+  assert.equal(run.run_attempt, binding.runAttempt, 'The workflow-dispatch attempt changed.');
+  assert.equal(run.event, binding.event, 'The workflow-dispatch event changed.');
+  assert.equal(run.head_sha, binding.headSha, 'The workflow-dispatch candidate changed.');
+  assert.equal(run.head_sha, approval.sha, 'The workflow-dispatch run is not attached to the approved candidate.');
+  assert.equal(run.head_branch, binding.headBranch, 'The workflow-dispatch branch changed.');
+  assert.equal(String(run.path || '').split('@')[0], binding.workflow, 'The workflow-dispatch workflow changed.');
+  assert.equal(run.status, 'completed', 'The workflow-dispatch check has not finished.');
+  assert.equal(run.conclusion, binding.conclusion, 'The workflow-dispatch check did not pass.');
+  return run;
+}
+
 export function verifyRuns(approval, runs, allowedMissing = []) {
   const exceptions = new Map((approval.workflowExceptions || []).map(exception => [exception.workflow, exception]));
+  const dispatchBindings = new Map((approval.workflowDispatchChecks || []).map(binding => [binding.workflow, binding]));
   const latest = new Map();
+  const dispatchRuns = new Map();
   for (const run of runs) {
-    if (run.head_sha !== approval.sha || run.event !== 'pull_request') continue;
-    assert.equal(run.head_repository?.full_name, repository, 'CI must run against the same repository.');
+    if (run.head_sha !== approval.sha) continue;
     const workflow = String(run.path || '').split('@')[0];
+    if (run.event === 'workflow_dispatch') {
+      assert.equal(run.head_repository?.full_name, repository, 'CI must run against the same repository.');
+      const prior = dispatchRuns.get(workflow);
+      if (!prior || Number(run.id) > Number(prior.id) ||
+        (run.id === prior.id && Number(run.run_attempt) > Number(prior.run_attempt))) dispatchRuns.set(workflow, run);
+      continue;
+    }
+    if (run.event !== 'pull_request') continue;
+    assert.equal(run.head_repository?.full_name, repository, 'CI must run against the same repository.');
     const prior = latest.get(workflow);
     if (!prior || Number(run.id) > Number(prior.id) ||
       (run.id === prior.id && Number(run.run_attempt) > Number(prior.run_attempt))) latest.set(workflow, run);
@@ -190,6 +233,13 @@ export function verifyRuns(approval, runs, allowedMissing = []) {
   for (const workflow of approval.requiredWorkflows) {
     const run = latest.get(workflow);
     if (!run) {
+      const dispatchBinding = dispatchBindings.get(workflow);
+      if (dispatchBinding) {
+        const dispatchRun = dispatchRuns.get(workflow);
+        assert.ok(dispatchRun, `The exact workflow-dispatch check is missing: ${workflow}`);
+        verifyWorkflowDispatchCheck(dispatchBinding, dispatchRun, approval);
+        continue;
+      }
       assert.ok(allowedMissing.includes(workflow), `Required exact-SHA CI is missing: ${workflow}`);
       continue;
     }
@@ -209,7 +259,17 @@ export function verifyRuns(approval, runs, allowedMissing = []) {
     assert.equal(run.status, 'completed', `Another candidate check is still active: ${workflow}`);
     assert.ok(run.conclusion === 'success' || run.conclusion === 'skipped', `Candidate CI failed: ${workflow}`);
   }
-  return [...latest.values()].map(run => ({ path: run.path, runId: run.id, attempt: run.run_attempt, conclusion: run.conclusion }));
+  for (const [workflow, run] of dispatchRuns) {
+    const binding = dispatchBindings.get(workflow);
+    assert.ok(binding, `Unbound workflow-dispatch run is not admissible: ${workflow}`);
+    verifyWorkflowDispatchCheck(binding, run, approval);
+  }
+  return [
+    ...latest.values(),
+    ...[...dispatchRuns.entries()]
+      .filter(([workflow]) => dispatchBindings.has(workflow))
+      .map(([, run]) => run)
+  ].map(run => ({ path: run.path, runId: run.id, attempt: run.run_attempt, conclusion: run.conclusion }));
 }
 
 function digestLines(lines) {
@@ -270,7 +330,15 @@ export function verifyWorkflowPathOmission(omission, pullRequest, changedFiles, 
 export function verifyWorkflowPathOmissions(omissions, pullRequest, changedFiles, baseWorkflowContent) {
   assert.deepEqual(omissions, workflowPathOmissions,
     'The candidate must use the reviewed path-filter omission set exactly.');
-  return omissions.map(omission => verifyWorkflowPathOmission(omission, pullRequest, changedFiles, baseWorkflowContent));
+  return omissions.map(omission => {
+    const content = typeof baseWorkflowContent === 'function'
+      ? baseWorkflowContent(omission)
+      : baseWorkflowContent instanceof Map
+        ? baseWorkflowContent.get(omission.workflow)
+        : baseWorkflowContent;
+    assert.equal(typeof content, 'string', `Missing base workflow bytes for ${omission.workflow}.`);
+    return verifyWorkflowPathOmission(omission, pullRequest, changedFiles, content);
+  });
 }
 
 export function verifySourceDrift(changed, allowed) {
@@ -337,8 +405,8 @@ export async function authorize() {
   const fileResponse = await github(`/repos/${repository}/pulls/${candidatePullRequest}/files?per_page=100`);
   assert.ok(Array.isArray(fileResponse) && fileResponse.length > 0, 'The candidate file inventory is missing.');
   const candidateFiles = fileResponse.map(file => file.filename).sort();
-  verifyWorkflowPathOmissions(approval.workflowPathOmissions, pr, candidateFiles,
-    execFileSync('git', ['show', `${pr.base.sha}:${approval.workflowPathOmissions[0].workflow}`], { encoding: 'utf8', timeout: 30000 }));
+  verifyWorkflowPathOmissions(approval.workflowPathOmissions, pr, candidateFiles, omission =>
+    execFileSync('git', ['show', `${pr.base.sha}:${omission.workflow}`], { encoding: 'utf8', timeout: 30000 }));
   const workflowExceptions = verifyWorkflowException(approval, pr, candidateFiles,
     approval.workflowExceptions.length > 0
       ? execFileSync('git', ['show', `${pr.base.sha}:${approval.workflowExceptions[0].workflow}`], { encoding: 'utf8', timeout: 30000 })
@@ -350,6 +418,13 @@ export async function authorize() {
     runs.push(...result.workflow_runs);
     if (result.workflow_runs.length < 100) break;
     assert.ok(page < 10, 'CI pagination exceeded the bounded admission limit.');
+  }
+  for (let page = 1; page <= 10; page++) {
+    const result = await github(`/repos/${repository}/actions/runs?head_sha=${approval.sha}&event=workflow_dispatch&per_page=100&page=${page}`);
+    assert.ok(Array.isArray(result.workflow_runs));
+    runs.push(...result.workflow_runs);
+    if (result.workflow_runs.length < 100) break;
+    assert.ok(page < 10, 'Workflow-dispatch CI pagination exceeded the bounded admission limit.');
   }
   const checks = verifyRuns(approval, runs, workflowExceptions);
   assert.equal(git('rev-parse', 'HEAD'), main.object.sha);

@@ -46,6 +46,17 @@
       "candidateChangedFilesCount": 6
     }
   ],
+  "workflowDispatchChecks": [
+    {
+      "workflow": ".github/workflows/celar-ai-enterprise-retrieval-ci.yml",
+      "runId": 34906452416,
+      "runAttempt": 1,
+      "event": "workflow_dispatch",
+      "headSha": "ac4ec6d23a2c41d1c3f226921b0efc5710f8fac5",
+      "headBranch": "fix/flowhive-planner-provider-deadline-retry-20260914",
+      "conclusion": "success"
+    }
+  ],
   "successorCheckBinding": {
     "status": "review-only",
     "deploymentEligible": false,

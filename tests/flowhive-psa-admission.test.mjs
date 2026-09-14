@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, workflowPathOmissions, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
+import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, verifyWorkflowDispatchCheck, workflowPathOmissions, workflowDispatchChecks, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
@@ -31,6 +31,9 @@ const pr = { number: candidatePullRequest, state: 'closed', merged: true,
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));
+const dispatchRuns = workflowDispatchChecks.map(binding => ({ id: binding.runId, path: binding.workflow,
+  event: binding.event, head_sha: binding.headSha, head_branch: binding.headBranch, status: 'completed',
+  conclusion: binding.conclusion, run_attempt: binding.runAttempt, head_repository: { full_name: repository } }));
 const historicalFence = readHistoricalFenceSources();
 const nativeEnvironmentProtection = {
   name: 'test', can_admins_bypass: false,
@@ -154,7 +157,7 @@ function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount
   return { request, calls, control, runs, comments };
 }
 test('approved current draft candidate is admissible without merging', () => {
-  verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr); verifyRuns(approval, runs);
+  verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr); verifyRuns(approval, [...runs, ...dispatchRuns]);
 });
 test('merged candidate remains bound after normal source-branch deletion', () => {
   const calls = [];
@@ -458,15 +461,26 @@ test('successor approval enumerates only the workflows that ran for the exact se
     '.github/workflows/shared-project-document-planning-ci.yml',
     '.github/workflows/systemwide-enterprise-reliability-ci.yml'
   ]);
-  assert.equal(verifyRuns(approval, runs).length, approval.requiredWorkflows.length);
+  assert.equal(verifyRuns(approval, [...runs, ...dispatchRuns]).length,
+    approval.requiredWorkflows.length + workflowDispatchChecks.length);
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
   assert.equal(approval.workflowExceptions.length, 0);
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
+  assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
     module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
+});
+test('workflow-dispatch evidence is candidate-bound and cannot substitute another run', () => {
+  const binding = workflowDispatchChecks[0];
+  const pullRequestRunsWithoutDispatch = runs.filter(run => run.path !== binding.workflow);
+  assert.doesNotThrow(() => verifyWorkflowDispatchCheck(binding, dispatchRuns[0], approval));
+  assert.throws(() => verifyWorkflowDispatchCheck(binding, { ...dispatchRuns[0], head_sha: 'a'.repeat(40) }, approval), /candidate/);
+  assert.throws(() => verifyRuns(approval, pullRequestRunsWithoutDispatch), /workflow-dispatch check is missing/);
+  assert.throws(() => verifyRuns(approval, [...runs, { ...dispatchRuns[0], conclusion: 'failure' }]), /did not pass/);
+  assert.throws(() => verifyRuns(approval, [...runs, { ...dispatchRuns[0], id: binding.runId + 1 }]), /identity changed/);
 });
 test('path-filtered workflow omission is bound to the candidate inventory and base bytes', () => {
   const workflow = approval.workflowPathOmissions[0].workflow;
@@ -490,6 +504,7 @@ test('historical controller exception cannot absorb another failure or rerun', (
   const legacyApproval = clone(approval);
   legacyApproval.sha = 'cdd2f644017c96f88371dca8b81dafcab0d63b77';
   legacyApproval.workflowExceptions = historicalWorkflowExceptions;
+  legacyApproval.workflowDispatchChecks = [];
   const exceptionRun = {
     id: 34805681512,
     path: '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml@refs/pull/994/merge',
