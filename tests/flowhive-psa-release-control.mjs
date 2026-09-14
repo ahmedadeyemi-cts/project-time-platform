@@ -422,14 +422,10 @@ export const module025SowRoleCandidateRefresh1014Files = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const plannerProviderDeadlineCandidateRefreshBase = '832576a4b8dae1da94bc31c689381b6f38ad151f';
+export const plannerProviderDeadlineCandidateRefreshBase = 'c732a335ba43d6c8824b7f7fa80a0f9aefee1c58';
 export const plannerProviderDeadlineCandidateRefreshBranch = 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914';
 export const plannerProviderDeadlineCandidateRefreshFiles = [
-  '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
-  '.github/workflows/flowhive-psa-release-control-ci.yml',
-  '.github/workflows/projectpulse-release-test-control-ci.yml',
-  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
