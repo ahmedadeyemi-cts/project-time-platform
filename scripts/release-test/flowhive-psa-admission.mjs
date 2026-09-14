@@ -7,19 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged live FlowHive planner output-shape
-// correction PR984.
+// successor is the reviewed, merged SOW/My Role/Celar repair PR994.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 984;
-export const candidateBranch = 'fix/flowhive-planner-live-provider-output-20260913';
-export const candidateSourceBranch = 'fix/flowhive-planner-live-provider-output-20260913';
+export const candidatePullRequest = 994;
+export const candidateBranch = 'fix/module025-my-role-celar-repair-20260914';
+export const candidateSourceBranch = 'fix/module025-my-role-celar-repair-20260914';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '4ca175430d697631520e9ddb6370e8a90c6b3fa2';
+export const candidateMergeCommit = '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -35,11 +34,37 @@ const migrations = [
 ];
 const requiredWorkflows = [
   '.github/workflows/celar-ai-production-hardening-ci.yml',
+  '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
+  '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
+  '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+  '.github/workflows/deepseek-v4-provider-ci.yml',
+  '.github/workflows/enterprise-experience-system-ci.yml',
+  '.github/workflows/flowhive-detailed-planner-ci.yml',
+  '.github/workflows/flowhive-enterprise-psa-ci.yml',
+  '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
-  '.github/workflows/security-posture-ci.yml',
-  '.github/workflows/systemwide-enterprise-reliability-ci.yml',
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
+  '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
   '.github/workflows/pulse-ai-system-intelligence-ci.yml',
-  '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
+  '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
+  '.github/workflows/security-posture-ci.yml',
+  '.github/workflows/shared-project-document-planning-ci.yml',
+  '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+];
+const retiredWorkflows = [
+  '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml'
+];
+const historicalWorkflowExceptions = [
+  {
+    workflow: '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
+    reasonCode: 'historical-head-ref-binding-defect',
+    candidateRunId: 34805681512,
+    candidateRunAttempt: 1,
+    candidateSha: 'cdd2f644017c96f88371dca8b81dafcab0d63b77',
+    event: 'pull_request',
+    conclusion: 'failure',
+    sourceCorrection: 'explicit-github-head-ref-binding'
+  }
 ];
 
 export function verifyApproval(approval, requestedSha) {
@@ -64,8 +89,11 @@ export function verifyApproval(approval, requestedSha) {
   assert.deepEqual(approval.requiredWorkflows, requiredWorkflows,
     'The approval must enumerate the exact applicable workflow set for the selected successor head.');
   assert.equal(new Set(approval.requiredWorkflows).size, approval.requiredWorkflows.length);
+  assert.deepEqual(approval.retiredWorkflows, retiredWorkflows,
+    'The retired controller list must be explicit and exact.');
   for (const workflow of approval.requiredWorkflows) assert.match(workflow, /^\.github\/workflows\/[a-z0-9-]+\.yml$/);
-  assert.deepEqual(approval.workflowExceptions, [], 'The successor approval must not retain an obsolete missing-workflow exception.');
+  assert.deepEqual(approval.workflowExceptions, historicalWorkflowExceptions,
+    'Only the exact pre-correction duplicate-controller failure may be superseded.');
   assert.equal(approval.projectId, '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49');
   assert.equal(approval.projectManagerLogin, 'heather.schrock@ussignal.local');
 }
@@ -82,7 +110,20 @@ export function verifyPullRequest(approval, pr) {
   assert.equal(pr.merge_commit_sha, approval.mergeCommit, 'The reviewed merge commit changed.');
 }
 
+export function verifyHistoricalWorkflowException(exception, run, approval) {
+  assert.deepEqual(exception, historicalWorkflowExceptions[0],
+    'Only the reviewed historical controller failure may be superseded.');
+  assert.equal(run.id, exception.candidateRunId, 'Historical exception run identity changed.');
+  assert.equal(run.run_attempt, exception.candidateRunAttempt, 'Historical exception attempt changed.');
+  assert.equal(run.head_sha, exception.candidateSha, 'Historical exception candidate changed.');
+  assert.equal(run.event, exception.event, 'Historical exception event changed.');
+  assert.equal(run.conclusion, exception.conclusion, 'Historical exception conclusion changed.');
+  assert.equal(run.path.split('@')[0], exception.workflow, 'Historical exception workflow changed.');
+  assert.equal(run.head_sha, approval.sha, 'Historical exception is not attached to the approved candidate.');
+}
+
 export function verifyRuns(approval, runs, allowedMissing = []) {
+  const exceptions = new Map((approval.workflowExceptions || []).map(exception => [exception.workflow, exception]));
   const latest = new Map();
   for (const run of runs) {
     if (run.head_sha !== approval.sha || run.event !== 'pull_request') continue;
@@ -101,7 +142,16 @@ export function verifyRuns(approval, runs, allowedMissing = []) {
     assert.equal(run.status, 'completed', `Required CI has not finished: ${workflow}`);
     assert.equal(run.conclusion, 'success', `Required CI did not pass: ${workflow}`);
   }
+  for (const exception of approval.workflowExceptions || []) {
+    const run = latest.get(exception.workflow);
+    assert.ok(run, `The exact historical exception run is missing: ${exception.workflow}`);
+    verifyHistoricalWorkflowException(exception, run, approval);
+  }
   for (const [workflow, run] of latest) {
+    if (exceptions.has(workflow)) {
+      verifyHistoricalWorkflowException(exceptions.get(workflow), run, approval);
+      continue;
+    }
     assert.equal(run.status, 'completed', `Another candidate check is still active: ${workflow}`);
     assert.ok(run.conclusion === 'success' || run.conclusion === 'skipped', `Candidate CI failed: ${workflow}`);
   }
@@ -121,6 +171,11 @@ export function verifyWorkflowException(approval, pullRequest, changedFiles, bas
   if ((approval.workflowExceptions || []).length === 0) return [];
   const [exception] = approval.workflowExceptions || [];
   assert.ok(exception, 'The candidate must explain every missing required workflow.');
+  if (exception.reasonCode === 'historical-head-ref-binding-defect') {
+    assert.deepEqual(approval.workflowExceptions, historicalWorkflowExceptions,
+      'The historical controller exception must remain exact and singular.');
+    return [];
+  }
   assert.equal(exception.workflow, '.github/workflows/module025-governed-protected-test-release-ci.yml');
   assert.equal(exception.reasonCode, 'pull-request-path-filter-no-match');
   assert.equal(exception.baseCommit, pullRequest.base?.sha, 'Path-filter evidence must bind to the actual PR base.');
@@ -190,6 +245,15 @@ export async function authorize() {
   // identity plus this checked-out commit-object check bind the candidate
   // without requiring a mutable branch ref to survive the merge.
   verifyCandidateCommitObject(approval, git);
+  for (const exception of approval.workflowExceptions || []) {
+    const source = git('show', `HEAD:${exception.workflow}`);
+    assert.match(source, /PR_HEAD_REF: \$\{\{ github\.head_ref \}\}/,
+      'Historical controller source must bind the pull-request head explicitly.');
+    assert.match(source, /HEAD_BRANCH="\$\{PR_HEAD_REF:-\$\{GITHUB_HEAD_REF:-\$\{GITHUB_REF_NAME:-\}\}\}"/,
+      'Historical controller must use the explicit pull-request head binding.');
+    assert.match(source, /control\/module025-sow-role-candidate-refresh-20260914/,
+      'The corrected controller must retain an exact governed scope path.');
+  }
   const fileResponse = await github(`/repos/${repository}/pulls/${candidatePullRequest}/files?per_page=100`);
   assert.ok(Array.isArray(fileResponse) && fileResponse.length > 0, 'The candidate file inventory is missing.');
   const candidateFiles = fileResponse.map(file => file.filename).sort();

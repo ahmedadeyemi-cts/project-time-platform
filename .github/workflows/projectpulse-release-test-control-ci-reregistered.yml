@@ -101,6 +101,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REF: ${{ github.head_ref }}
         run: |
           set -Eeuo pipefail
           CIT="$RUNNER_TEMP"
@@ -118,7 +119,7 @@ jobs:
           FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
           MIG_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
           SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
-          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+          HEAD_BRANCH="${PR_HEAD_REF:-${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}}"
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
           git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
@@ -309,6 +310,24 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' ]]; then
             node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
             echo 'MODULE025_SOW_SELL_REGISTER_NONDEPLOYMENT_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-20260914' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-protected-cutover.json' \
+              '.github/flowhive-psa-protected-test-candidate.json' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
+              'scripts/release-test/flowhive-psa-admission.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$CIT/module025-sow-role-candidate-refresh-files"
+            cmp -s "$CIT/diff" "$CIT/module025-sow-role-candidate-refresh-files" || {
+              echo 'SOW/My Role candidate refresh contains an unreviewed file.' >&2
+              diff -u "$CIT/module025-sow-role-candidate-refresh-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
+            echo 'EXACT_MODULE025_SOW_ROLE_CANDIDATE_REFRESH_SCOPE=PASSED'
           elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
             grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-pr734-governed-release-files.txt | LC_ALL=C sort -u > "$CIT/flowhive-pr734-files"
             cmp -s "$CIT/diff" "$CIT/flowhive-pr734-files" || {
@@ -356,6 +375,7 @@ jobs:
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_REF: ${{ github.head_ref }}
         run: |
           set -Eeuo pipefail
           CIT="$RUNNER_TEMP"
@@ -373,7 +393,7 @@ jobs:
           FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
           MIG_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
           SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
-          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+          HEAD_BRANCH="${PR_HEAD_REF:-${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}}"
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
           git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
