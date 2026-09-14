@@ -101,7 +101,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          GITHUB_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -Eeuo pipefail
           CIT="$RUNNER_TEMP"
@@ -119,7 +119,7 @@ jobs:
           FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
           MIG_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
           SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
-          HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
           git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
