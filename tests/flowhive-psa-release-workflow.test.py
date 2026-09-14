@@ -227,6 +227,32 @@ class WorkflowContract(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 verify_ci_script_limits({'jobs':{'fixture':{'steps':[{'run':body}]}}})
 
+    def test_candidate_trigger_coverage_includes_shared_planner_and_role_journey_sources(self):
+        flowhive = load((ROOT/'.github/workflows/flowhive-enterprise-psa-ci.yml').read_text())
+        admission = load((ROOT/'.github/workflows/flowhive-psa-release-control-ci.yml').read_text())
+        runtime = load((ROOT/'.github/workflows/runtime-navigation-work-register-responsive-ci.yml').read_text())
+
+        def paths(document):
+            pull_request = document['on']['pull_request']
+            return set(pull_request['paths'])
+
+        flowhive_paths = paths(flowhive)
+        admission_paths = paths(admission)
+        runtime_paths = paths(runtime)
+        for expected in [
+            'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
+            'tests/FlowHiveDetailedPlannerTests/**'
+        ]:
+            self.assertIn(expected, flowhive_paths)
+            self.assertIn(expected, admission_paths)
+        for expected in [
+            'src/frontend/project-time-web/src/role-journeys/**',
+            'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs',
+            'src/frontend/project-time-web/tests/role-journeys.test.mjs'
+        ]:
+            self.assertIn(expected, admission_paths)
+            self.assertIn(expected, runtime_paths)
+
     def test_ci_databases_use_masked_ephemeral_credentials_and_loopback_only(self):
         # The control-only branch intentionally has no FlowHive feature CI.
         # Both changed fixture jobs are exercised on the feature candidate itself.

@@ -7,10 +7,15 @@ on:
       - '.github/workflows/projectpulse-deploy-test.yml'
       - 'scripts/release-test/*flowhive-psa*'
       - 'tests/flowhive-psa-*'
+      - 'tests/FlowHiveDetailedPlannerTests/**'
       - 'tests/flowhive-installed-resolution.test.py'
       - 'tests/validate-flowhive-pm-acceptance-scope.mjs'
       - 'scripts/release-test/check-flowhive-acceptance-inputs.py'
       - 'scripts/release-test/resolve-flowhive-installed-deployment.py'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
+      - 'src/frontend/project-time-web/src/role-journeys/**'
+      - 'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs'
+      - 'src/frontend/project-time-web/tests/role-journeys.test.mjs'
 permissions:
   contents: read
   actions: read
