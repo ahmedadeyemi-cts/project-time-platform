@@ -114,6 +114,7 @@ function installPermissionNavigationGuard(nativeFetch) {
   let permissionEvidenceState = sessionToken() ? 'loading' : 'anonymous';
   let effectiveActor = {
     roleCodes: [],
+    journeyRoleCodes: [],
     isViewAs: Boolean(activeViewAs()),
     permanentFullControl: false
   };
@@ -334,6 +335,7 @@ function installPermissionNavigationGuard(nativeFetch) {
       state: permissionEvidenceState,
       isViewAs: effectiveActor.isViewAs,
       roleCodes: [...effectiveActor.roleCodes],
+      journeyRoleCodes: [...effectiveActor.journeyRoleCodes],
       permanentFullControl: Boolean(effectiveActor.permanentFullControl),
       authoritySource: effectiveActor.authoritySource || '',
       refreshing: effectiveActor.refreshing === true,
@@ -401,7 +403,7 @@ function installPermissionNavigationGuard(nativeFetch) {
     lastReadyIdentity = '';
     deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
     permissionEvidenceState = 'anonymous';
-    effectiveActor = { roleCodes: [], isViewAs: false, permanentFullControl: false };
+    effectiveActor = { roleCodes: [], journeyRoleCodes: [], isViewAs: false, permanentFullControl: false };
     applyVisibility();
     publishNavigationState();
     return;
@@ -416,6 +418,7 @@ function installPermissionNavigationGuard(nativeFetch) {
     effectiveActor = {
       ...lastReadyNavigation.effectiveActor,
       roleCodes: [...lastReadyNavigation.effectiveActor.roleCodes],
+      journeyRoleCodes: [...lastReadyNavigation.effectiveActor.journeyRoleCodes],
       explicitDeniedModuleNumbers: [...lastReadyNavigation.effectiveActor.explicitDeniedModuleNumbers],
       explicitGrantedModuleNumbers: [...lastReadyNavigation.effectiveActor.explicitGrantedModuleNumbers],
       activeDynamicModuleNumbers: [...lastReadyNavigation.effectiveActor.activeDynamicModuleNumbers],
@@ -430,6 +433,7 @@ function installPermissionNavigationGuard(nativeFetch) {
     deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
     effectiveActor = {
       roleCodes: [],
+      journeyRoleCodes: [],
       isViewAs: Boolean(requestedViewAsUserId),
       permanentFullControl: false,
       authoritySource: 'permission_refresh_pending',
@@ -511,6 +515,7 @@ function installPermissionNavigationGuard(nativeFetch) {
     permissionEvidenceState = 'ready';
     effectiveActor = {
       roleCodes: actorRoles,
+      journeyRoleCodes: normalizedRoleCodes(bootstrap?.actor?.journeyRoleCodes || actorRoles),
       isViewAs: effectiveViewAs,
       permanentFullControl: actualSuperAdministrator,
       authoritySource: security?.authoritySource
@@ -533,6 +538,7 @@ function installPermissionNavigationGuard(nativeFetch) {
       effectiveActor: {
         ...effectiveActor,
         roleCodes: [...effectiveActor.roleCodes],
+        journeyRoleCodes: [...effectiveActor.journeyRoleCodes],
         explicitDeniedModuleNumbers: [...effectiveActor.explicitDeniedModuleNumbers],
         explicitGrantedModuleNumbers: [...effectiveActor.explicitGrantedModuleNumbers],
         activeDynamicModuleNumbers: [...effectiveActor.activeDynamicModuleNumbers],
@@ -552,6 +558,7 @@ function installPermissionNavigationGuard(nativeFetch) {
       effectiveActor = {
         ...lastReadyNavigation.effectiveActor,
         roleCodes: [...lastReadyNavigation.effectiveActor.roleCodes],
+        journeyRoleCodes: [...lastReadyNavigation.effectiveActor.journeyRoleCodes],
         explicitDeniedModuleNumbers: [...lastReadyNavigation.effectiveActor.explicitDeniedModuleNumbers],
         explicitGrantedModuleNumbers: [...lastReadyNavigation.effectiveActor.explicitGrantedModuleNumbers],
         activeDynamicModuleNumbers: [...lastReadyNavigation.effectiveActor.activeDynamicModuleNumbers],
@@ -566,6 +573,7 @@ function installPermissionNavigationGuard(nativeFetch) {
       permissionEvidenceState = 'unavailable';
       effectiveActor = {
         roleCodes: [],
+        journeyRoleCodes: [],
         isViewAs: Boolean(activeViewAs()),
         permanentFullControl: false,
         authoritySource: 'server_endpoint_authorization_only',

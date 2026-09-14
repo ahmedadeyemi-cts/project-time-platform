@@ -134,7 +134,8 @@ public static partial class ScopedRolePolicyModule
                 actor.ActualUserId,
                 actor.EffectiveUserId,
                 actor.Email,
-                actor.RoleCodes
+                actor.RoleCodes,
+                actor.JourneyRoleCodes
             },
             superAdministratorInvariant = new
             {

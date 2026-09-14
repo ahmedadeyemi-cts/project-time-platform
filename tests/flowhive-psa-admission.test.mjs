@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   'scripts/release-test/run-module025-installed-sa-uat.py',
@@ -360,12 +360,15 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const installedVerifierMainPath = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-main-path-20260914';
   const installedVerifierStepNames = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-step-names-20260914';
   const module025MyRoleCelarRepair = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-celar-repair-20260914';
+  const module025SowRoleLiveAcceptance = process.env.GITHUB_HEAD_REF === 'fix/module025-sow-role-live-acceptance-20260914';
   const installedSowRoleScope = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-acceptance-scope-20260913'
     || process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913';
   const installedSowRoleIdentityLane = process.env.GITHUB_HEAD_REF === 'fix/installed-sow-role-identity-lane-20260913';
   const module025SowRoleCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-20260914';
   const admissionManifestOrder = process.env.GITHUB_HEAD_REF === 'control/module025-admission-manifest-order-20260914';
-  const sourceDriftFiles = process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913'
+  const sourceDriftFiles = module025SowRoleLiveAcceptance
+    ? [...new Set([...files, ...module025SowRoleLiveAcceptanceFiles])].sort()
+    : process.env.GITHUB_HEAD_REF === 'fix/sow-role-installed-acceptance-20260913'
     || installedVerifierMainPath
     || installedVerifierStepNames
     || module025MyRoleCelarRepair
@@ -376,7 +379,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefresh || admissionManifestOrder
+  assert.equal(approval.mergeCommit, module025SowRoleCandidateRefresh || admissionManifestOrder || module025SowRoleLiveAcceptance
     ? '6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e'
     : liveProviderOutputRefresh || installedVerifierMainPath || installedVerifierStepNames || module025MyRoleCelarRepair || installedSowRoleScope || installedSowRoleIdentityLane
     ? '4ca175430d697631520e9ddb6370e8a90c6b3fa2'

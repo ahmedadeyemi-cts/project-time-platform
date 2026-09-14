@@ -171,6 +171,7 @@ public static partial class ScopedRolePolicyModule
         Guid EffectiveUserId,
         string Email,
         string[] RoleCodes,
+        string[] JourneyRoleCodes,
         bool IsViewAs,
         bool IsSuperAdministrator);
 
