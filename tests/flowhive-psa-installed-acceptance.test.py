@@ -207,7 +207,9 @@ class InstalledAcceptanceContract(unittest.TestCase):
 
     def test_installed_resolver_accepts_only_the_reviewed_candidate_or_successor_lane(self):
         self.assertIn('SUPPORTED_SUCCESSOR_RELEASE_BRANCH = "release/flowhive-sow-successor-20260908"', self.resolver)
-        self.assertIn('deployed_branch in {approved_branch, SUPPORTED_SUCCESSOR_RELEASE_BRANCH}', self.resolver)
+        self.assertIn('if deployed_branch == "main":', self.resolver)
+        self.assertIn('application == controller', self.resolver)
+        self.assertIn('deployed_branch in {manifest.get("branch"), SUPPORTED_SUCCESSOR_RELEASE_BRANCH}', self.resolver)
         self.assertIn('manifest.get("sha") == application', self.resolver)
 
     def test_release_marker_consumes_the_controller_written_source_variable(self):
