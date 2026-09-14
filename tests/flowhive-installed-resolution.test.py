@@ -75,6 +75,34 @@ def validate(data, artifact_mutation=None):
     return resolver.resolve(run, jobs, artifact, archive, manifest, REPO, VERIFIER)
 
 
+def standard_main_case():
+    run, jobs, manifest, receipts = case()
+    identity = receipts["deployment-identity.json"]
+    identity["applicationBranch"] = "main"
+    identity["applicationSha"] = CONTROLLER
+    receipts["immutable-images.json"]["migrationImage"] = API.replace("/api@", "/migrations@")
+    receipts["migrations.json"] = {
+        "status": "applied_and_verified",
+        "environment": "test",
+        "productionMutation": False,
+        "image": receipts["immutable-images.json"]["migrationImage"],
+        "migrations": list(resolver.STANDARD_MAIN_MIGRATIONS),
+    }
+    receipts["release-boundary.json"] = {
+        "environment": "test", "applicationRelease": CONTROLLER, "productionMutation": False,
+    }
+    receipts["deployment-health-verified.json"]["sourceCommit"] = CONTROLLER
+    receipts.pop("flowhive-psa-migrations.json")
+    steps = jobs[0]["steps"]
+    for name in resolver.MAIN_PATH_SKIPPED_STEPS:
+        existing = next((step for step in steps if step["name"] == name), None)
+        if existing is None:
+            steps.append({"name": name, "number": len(steps) + 1, "status": "completed", "conclusion": "skipped"})
+        else:
+            existing["conclusion"] = "skipped"
+    return run, jobs, manifest, receipts
+
+
 class ResolutionTests(unittest.TestCase):
     def test_failed_acceptance_keeps_installation_and_failure_separate(self):
         context = validate(case())
@@ -91,6 +119,24 @@ class ResolutionTests(unittest.TestCase):
         context = validate(case("success"))
         self.assertEqual(context["deploymentConclusion"], "success")
         self.assertEqual(context["failedAcceptanceSteps"], [])
+
+    def test_standard_main_release_accepts_installed_identity_without_candidate_lane(self):
+        context = validate(standard_main_case())
+        self.assertEqual(context["applicationBranch"], "main")
+        self.assertEqual(context["applicationSha"], CONTROLLER)
+        self.assertIsNone(context["applicationPullRequest"])
+        self.assertEqual(context["deploymentConclusion"], "failure")
+        self.assertEqual(context["failedAcceptanceSteps"], ["Verify PSA candidate health and the live SOW-to-WBS lifecycle"])
+
+    def test_standard_main_release_rejects_active_candidate_path_or_mismatched_identity(self):
+        data = standard_main_case()
+        next(step for step in data[1][0]["steps"] if step["name"] == resolver.MAIN_PATH_SKIPPED_STEPS[0])["conclusion"] = "success"
+        with self.assertRaisesRegex(resolver.ResolutionError, "main_path_step_not_skipped"):
+            validate(data)
+        data = standard_main_case()
+        data[3]["deployment-identity.json"]["applicationSha"] = APP
+        with self.assertRaisesRegex(resolver.ResolutionError, "main_release_identity_not_bound_to_controller"):
+            validate(data)
 
     def test_each_installation_step_must_have_succeeded(self):
         for name in resolver.REQUIRED_STEPS:
@@ -189,7 +235,7 @@ class ResolutionTests(unittest.TestCase):
         data[2]["pullRequest"] = 984
         context = validate(data)
         self.assertEqual(context["applicationSha"], APP)
-        self.assertEqual(context["applicationBranch"], data[2]["branch"])
+        self.assertEqual(context["applicationBranch"], "release/flowhive-sow-successor-20260908")
 
     def test_unapproved_deployment_branch_is_rejected_even_for_candidate_sha(self):
         data = case()

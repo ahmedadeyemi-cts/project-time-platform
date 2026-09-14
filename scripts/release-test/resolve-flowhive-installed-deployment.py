@@ -24,6 +24,19 @@ WORKFLOW_ID = 315562561
 WORKFLOW_PATH = ".github/workflows/projectpulse-deploy-test.yml"
 SUPPORTED_SUCCESSOR_RELEASE_BRANCH = "release/flowhive-sow-successor-20260908"
 DEPLOY_JOB = "Validate, migrate, deploy, and verify protected Test"
+STANDARD_MAIN_MIGRATIONS = (
+    "086_module_066_flowhive_enterprise_pm",
+    "088_systemwide_enterprise_reliability",
+    "093_assigned_work_canonical_visibility_repair",
+    "094_flowhive_canonical_sow_authority",
+    "095_project_planning_collaboration_access",
+    "096_project_planning_document_authority",
+    "097_project_planning_identity_safe_admission",
+    "098_module_management_owner_storage_reconciliation",
+    "098_customer_directory_source_authority",
+    "099_module025_sow_gsd_workspace",
+    "100_module001b_catalog_ownership_reconciliation",
+)
 REQUIRED_STEPS = (
     "Verify admitted controller identity before deployment mutations",
     "Admit the exact reviewed PSA candidate using trusted main controls",
@@ -43,6 +56,16 @@ ACCEPTANCE_STEPS = {
 ROLLBACK_STEPS = (
     "Restore exact prior Test images after application failure",
     "Rollback protected Test API configuration on failure",
+)
+MAIN_PATH_SKIPPED_STEPS = (
+    "Admit the exact reviewed PSA candidate using trusted main controls",
+    "Verify existing PM and uploaded SOW before deployment",
+    "Install isolated live-browser acceptance dependencies",
+    "Guard exact source, manual Test scope, and no-migration boundary",
+    "Prove authenticated Oracle HTTPS services before API mutation",
+    "Snapshot protected Test API",
+    "Preserve the currently deployed immutable API image",
+    "Configure the protected token and deploy the Test API revision",
 )
 MAX_RESPONSE = 4_000_000
 MAX_ARCHIVE = 32_000_000
@@ -118,7 +141,7 @@ def inventory(path: str, key: str, token: str) -> list[dict]:
     raise ResolutionError("github_inventory_limit")
 
 
-def installation_steps(run: dict, jobs: list[dict]) -> list[str]:
+def installation_steps(run: dict, jobs: list[dict], application_branch: str) -> list[str]:
     require(len(jobs) == 1 and jobs[0].get("name") == DEPLOY_JOB, "deployment_job_missing_or_ambiguous")
     job = jobs[0]
     require(job.get("run_id") == run.get("id") and job.get("status") == "completed", "deployment_job_not_complete")
@@ -129,9 +152,14 @@ def installation_steps(run: dict, jobs: list[dict]) -> list[str]:
     names = [row.get("name") for row in rows]
     require(all(isinstance(name, str) and name for name in names) and len(set(names)) == len(names), "deployment_steps_ambiguous")
     steps = {row["name"]: row for row in rows}
-    for name in REQUIRED_STEPS:
+    required_steps = REQUIRED_STEPS
+    if application_branch == "main":
+        for name in MAIN_PATH_SKIPPED_STEPS:
+            require(steps.get(name, {}).get("conclusion") == "skipped", "main_path_step_not_skipped")
+        required_steps = tuple(name for name in required_steps if name not in MAIN_PATH_SKIPPED_STEPS)
+    for name in required_steps:
         require(steps.get(name, {}).get("conclusion") == "success", "installation_step_not_successful")
-    positions = [names.index(name) for name in REQUIRED_STEPS]
+    positions = [names.index(name) for name in required_steps]
     require(positions == sorted(positions), "installation_step_order_invalid")
     for name in ROLLBACK_STEPS:
         require(steps.get(name, {}).get("conclusion") == "skipped", "rollback_not_excluded")
@@ -167,7 +195,6 @@ def resolve(run: dict, jobs: list[dict], artifact: dict, archive: bytes, manifes
     require(run.get("status") == "completed" and run.get("conclusion") in {"success", "failure"}, "selected_run_not_terminal")
     attempt = run.get("run_attempt")
     require(type(run.get("id")) is int and run["id"] > 0 and type(attempt) is int and attempt > 0, "deployment_attempt_invalid")
-    failed = installation_steps(run, jobs)
     run_id = str(run["id"])
     expected_name = f"systemwide-enterprise-reliability-test-evidence-{run_id}-{attempt}"
     provenance = artifact.get("workflow_run") or {}
@@ -179,9 +206,13 @@ def resolve(run: dict, jobs: list[dict], artifact: dict, archive: bytes, manifes
         require(sum(info.file_size for info in bundle.infolist()) <= MAX_ARCHIVE, "deployment_artifact_expanded_too_large")
         identity = read_receipt(bundle, "deployment-identity.json")
         images = read_receipt(bundle, "immutable-images.json")
-        migrations = read_receipt(bundle, "flowhive-psa-migrations.json")
         health = read_receipt(bundle, "deployment-health-verified.json")
         application = identity.get("applicationSha")
+        deployed_branch = identity.get("applicationBranch")
+        require(isinstance(deployed_branch, str) and deployed_branch, "deployment_branch_invalid")
+        failed = installation_steps(run, jobs, deployed_branch)
+        migration_receipt_name = "migrations.json" if deployed_branch == "main" else "flowhive-psa-migrations.json"
+        migrations = read_receipt(bundle, migration_receipt_name)
         require(identity.get("environment") == "test" and identity.get("productionMutation") is False, "deployment_identity_environment_invalid")
         require(str(identity.get("deploymentRunId")) == run_id and str(identity.get("deploymentAttempt")) == str(attempt) and identity.get("controllerSha") == controller, "deployment_identity_run_binding_invalid")
         require(sha(application), "deployment_identity_application_sha_invalid")
@@ -189,21 +220,41 @@ def resolve(run: dict, jobs: list[dict], artifact: dict, archive: bytes, manifes
             require(isinstance(identity.get(key), str) and identity[key].strip(), "deployment_revision_missing")
         for key in ("apiImage", "webImage"):
             require(re.fullmatch(r".+@sha256:[0-9a-f]{64}", str(identity.get(key) or "")) is not None and identity[key] == images.get(key), "deployment_image_receipt_mismatch")
-        approved_branch = manifest.get("branch")
-        deployed_branch = identity.get("applicationBranch")
         require(
             manifest.get("repository") == repository
             and manifest.get("environment") == "test"
-            and manifest.get("sha") == application
-            and deployed_branch in {approved_branch, SUPPORTED_SUCCESSOR_RELEASE_BRANCH},
-            "selected_deployment_not_current_approved_candidate",
+            and manifest.get("allowCustomerPublication") is False
+            and manifest.get("allowCanonicalTaskAdoption") is False,
+            "selected_candidate_scope_invalid",
         )
-        require(manifest.get("allowCustomerPublication") is False and manifest.get("allowCanonicalTaskAdoption") is False, "selected_candidate_scope_invalid")
-        migration_spec = manifest.get("migrations")
-        require(isinstance(migration_spec, list) and migration_spec and all(isinstance(row, dict) and isinstance(row.get("file"), str) and row["file"].endswith(".sql") for row in migration_spec), "migration_manifest_invalid")
-        expected_migrations = [row["file"][:-4] for row in migration_spec]
-        require(len(set(expected_migrations)) == len(expected_migrations), "migration_manifest_ambiguous")
-        require(migrations.get("status") == "applied_and_verified" and migrations.get("environment") == "test" and migrations.get("productionMutation") is False and migrations.get("releaseCommit") == application and migrations.get("controlCommit") == controller and migrations.get("migrations") == expected_migrations, "deployment_migrations_not_verified")
+        if deployed_branch == "main":
+            require(application == controller, "main_release_identity_not_bound_to_controller")
+            boundary = read_receipt(bundle, "release-boundary.json")
+            require(boundary.get("applicationRelease") == application and boundary.get("environment") == "test" and boundary.get("productionMutation") is False, "main_release_boundary_invalid")
+            expected_migrations = list(STANDARD_MAIN_MIGRATIONS)
+            require(
+                migrations.get("status") == "applied_and_verified"
+                and migrations.get("productionMutation") is False
+                and migrations.get("migrations") == expected_migrations
+                and migrations.get("image") == images.get("migrationImage"),
+                "deployment_migrations_not_verified",
+            )
+        else:
+            migration_spec = manifest.get("migrations")
+            require(isinstance(migration_spec, list) and migration_spec and all(isinstance(row, dict) and isinstance(row.get("file"), str) and row["file"].endswith(".sql") for row in migration_spec), "migration_manifest_invalid")
+            expected_migrations = [row["file"][:-4] for row in migration_spec]
+            require(len(set(expected_migrations)) == len(expected_migrations), "migration_manifest_ambiguous")
+            require(manifest.get("sha") == application, "selected_deployment_not_current_approved_candidate")
+            require(deployed_branch in {manifest.get("branch"), SUPPORTED_SUCCESSOR_RELEASE_BRANCH}, "selected_deployment_not_current_approved_candidate")
+            require(
+                migrations.get("status") == "applied_and_verified"
+                and migrations.get("environment") == "test"
+                and migrations.get("productionMutation") is False
+                and migrations.get("releaseCommit") == application
+                and migrations.get("controlCommit") == controller
+                and migrations.get("migrations") == expected_migrations,
+                "deployment_migrations_not_verified",
+            )
         require(health.get("deploymentHealthVerified") is True and health.get("sourceCommit") == application and health.get("productionMutation") is False, "deployment_health_not_verified")
         # Assigned-work acceptance temporarily changes the revision, not the
         # image. Retain the successful final same-image reconciliation receipt.
@@ -216,8 +267,8 @@ def resolve(run: dict, jobs: list[dict], artifact: dict, archive: bytes, manifes
             require(cleanup.get("phase") == "converged" and cleanup.get("latestReadyRevision") == final_api and cleanup.get("expectedRevisionActive") is True and str(cleanup.get("trafficWeight")) == "100" and cleanup.get("activeRevisions") == [final_api] and cleanup.get("healthState") == "Healthy" and cleanup.get("productionMutation") is False and cleanup.get("expectedImage") == identity["apiImage"] and cleanup.get("observedImage") == identity["apiImage"], "fixture_cleanup_not_reconciled")
     return {
         "status": "identity_inputs_sealed", "environment": "test",
-        "applicationSha": application, "applicationBranch": manifest["branch"],
-        "applicationPullRequest": manifest.get("pullRequest"),
+        "applicationSha": application, "applicationBranch": deployed_branch,
+        "applicationPullRequest": None if deployed_branch == "main" else manifest.get("pullRequest"),
         "deploymentRunId": run_id, "deploymentAttempt": str(attempt),
         "controllerSha": controller, "verificationCodeSha": verifier_sha,
         "apiRevision": final_api, "initialApiRevision": identity["apiRevision"],
