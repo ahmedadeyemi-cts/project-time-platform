@@ -183,6 +183,20 @@ class ResolutionTests(unittest.TestCase):
             with self.assertRaises(resolver.ResolutionError):
                 validate(data)
 
+    def test_supported_successor_release_lane_is_bound_to_exact_candidate_sha(self):
+        data = case()
+        data[2]["branch"] = "fix/flowhive-planner-live-provider-output-20260913"
+        data[2]["pullRequest"] = 984
+        context = validate(data)
+        self.assertEqual(context["applicationSha"], APP)
+        self.assertEqual(context["applicationBranch"], data[2]["branch"])
+
+    def test_unapproved_deployment_branch_is_rejected_even_for_candidate_sha(self):
+        data = case()
+        data[3]["deployment-identity.json"]["applicationBranch"] = "release/unapproved-lane"
+        with self.assertRaisesRegex(resolver.ResolutionError, "selected_deployment_not_current_approved_candidate"):
+            validate(data)
+
     def test_missing_migration_or_migration_release_mismatch_is_rejected(self):
         for mutation in (lambda r: r.update(status="started"), lambda r: r.update(releaseCommit=VERIFIER),
                          lambda r: r.update(controlCommit=VERIFIER), lambda r: r.update(migrations=["103_first"]),

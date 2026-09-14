@@ -31,6 +31,7 @@ MODULE025 = ROOT / "scripts/release-test/check-module025-installed-prerequisite.
 MODULE025_SA = ROOT / "scripts/release-test/run-module025-installed-sa-uat.py"
 PLANNER = ROOT / "scripts/release-test/reconcile-flowhive-planner.py"
 PREFLIGHT = ROOT / "scripts/release-test/check-flowhive-acceptance-inputs.py"
+RESOLVER = ROOT / "scripts/release-test/resolve-flowhive-installed-deployment.py"
 
 
 class InstalledAcceptanceContract(unittest.TestCase):
@@ -45,6 +46,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         cls.module025 = MODULE025.read_text()
         cls.module025_sa = MODULE025_SA.read_text()
         cls.planner = PLANNER.read_text()
+        cls.resolver = RESOLVER.read_text()
         cls.verification_job = yaml.safe_load(cls.workflow)["jobs"]["verify-installed-release"]
         cls.deployment_job = yaml.safe_load(cls.deploy)["jobs"]["deploy"]
 
@@ -202,6 +204,11 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn('MANAGE_ALL', self.identity)
         self.assertNotIn('pm_local_login_fallback', self.identity)
         self.assertIn('"productionMutation": False', self.identity)
+
+    def test_installed_resolver_accepts_only_the_reviewed_candidate_or_successor_lane(self):
+        self.assertIn('SUPPORTED_SUCCESSOR_RELEASE_BRANCH = "release/flowhive-sow-successor-20260908"', self.resolver)
+        self.assertIn('deployed_branch in {approved_branch, SUPPORTED_SUCCESSOR_RELEASE_BRANCH}', self.resolver)
+        self.assertIn('manifest.get("sha") == application', self.resolver)
 
     def test_release_marker_consumes_the_controller_written_source_variable(self):
         self.assertIn('"PROJECTPULSE_SOURCE_COMMIT"', self.platform)
