@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
-  "enabled": true,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-REFRESH-01",
+  "enabled": false,
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-FINAL-01",
   "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-PROVIDER-OUTPUT-REFRESH-07",
   "candidate": {
-    "pullRequest": 994,
-    "branch": "fix/module025-my-role-celar-repair-20260914",
-    "sha": "cdd2f644017c96f88371dca8b81dafcab0d63b77"
+    "pullRequest": 1003,
+    "branch": "fix/module025-sow-role-live-acceptance-20260914",
+    "sha": "1a87d5c532d28caa7237bf9f4ec4c0b0a63095cc"
   },
   "workflow": {
     "id": 315562561,
@@ -81,8 +81,7 @@
   ],
   "serverDispatchInputsConfirmed": false,
   "approval": {
-    "mode": "native-test-environment",
-    "status": "native-required",
+    "status": "not-approved",
     "approvedBy": null,
     "approvedAt": null,
     "expiresAt": null
@@ -116,15 +115,15 @@
       "deploymentRunAttempt": 1
     }
   },
-  "activationDecision": "approved",
+  "activationDecision": "hold",
   "successorCheckBinding": {
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
       "pullRequest": 1003,
       "branch": "fix/module025-sow-role-live-acceptance-20260914",
-      "headSha": "caaeac5401bcc847dc8befb452c8772d8270223e",
-      "baseSha": "62320ac18c160bfe7d25f04a998274daebfafbfc"
+      "headSha": "1a87d5c532d28caa7237bf9f4ec4c0b0a63095cc",
+      "baseSha": "fa8631297ae2420523a2079072433c771e6f61e6"
     },
     "supersedes": {
       "pullRequest": 994,

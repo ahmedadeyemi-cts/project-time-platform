@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-test-candidate-v2",
   "repository": "ahmedadeyemi-cts/project-time-platform",
-  "pullRequest": 994,
-  "branch": "fix/module025-my-role-celar-repair-20260914",
-  "sourceBranch": "fix/module025-my-role-celar-repair-20260914",
-  "sha": "cdd2f644017c96f88371dca8b81dafcab0d63b77",
-  "mergeCommit": "6e70e260a8c81624938d8ee3ff5a9b6e9b55d64e",
-  "sourceBase": "c74fd53eb7a5299d6024bb0123c03ebed226fb47",
+  "pullRequest": 1003,
+  "branch": "fix/module025-sow-role-live-acceptance-20260914",
+  "sourceBranch": "fix/module025-sow-role-live-acceptance-20260914",
+  "sha": "1a87d5c532d28caa7237bf9f4ec4c0b0a63095cc",
+  "mergeCommit": "46097cb87db57c73d218910f9dfbe393ecd487fe",
+  "sourceBase": "fa8631297ae2420523a2079072433c771e6f61e6",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -36,26 +36,15 @@
   "retiredWorkflows": [
     ".github/workflows/projectpulse-release-test-control-ci-reregistered.yml"
   ],
-  "workflowExceptions": [
-    {
-      "workflow": ".github/workflows/projectpulse-release-test-control-ci-reregistered.yml",
-      "reasonCode": "historical-head-ref-binding-defect",
-      "candidateRunId": 34805681512,
-      "candidateRunAttempt": 1,
-      "candidateSha": "cdd2f644017c96f88371dca8b81dafcab0d63b77",
-      "event": "pull_request",
-      "conclusion": "failure",
-      "sourceCorrection": "explicit-github-head-ref-binding"
-    }
-  ],
+  "workflowExceptions": [],
   "successorCheckBinding": {
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
       "pullRequest": 1003,
       "branch": "fix/module025-sow-role-live-acceptance-20260914",
-      "headSha": "caaeac5401bcc847dc8befb452c8772d8270223e",
-      "baseSha": "62320ac18c160bfe7d25f04a998274daebfafbfc"
+      "headSha": "1a87d5c532d28caa7237bf9f4ec4c0b0a63095cc",
+      "baseSha": "fa8631297ae2420523a2079072433c771e6f61e6"
     },
     "supersedes": {
       "pullRequest": 994,
