@@ -119,7 +119,7 @@ jobs:
           FIXTURE='src/backend/ProjectTime.Api/Modules/Module001BProtectedTestUatFixtureModule.cs'
           MIG_BUILDER='scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
           SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
-          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+          HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
           git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
