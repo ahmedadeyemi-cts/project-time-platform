@@ -403,7 +403,8 @@ export const module025SowRoleLiveAcceptanceFiles = [
   'src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js',
   'src/frontend/project-time-web/tests/role-journeys.test.mjs',
   'tests/flowhive-psa-admission.test.mjs',
-  'tests/FlowHiveDetailedPlannerTests/Program.cs'
+  'tests/FlowHiveDetailedPlannerTests/Program.cs',
+  'tests/flowhive-psa-release-control.mjs'
 ].sort();
 
 export function verifyModule025SowRoleSuccessorBinding() {
