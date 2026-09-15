@@ -366,6 +366,7 @@ jobs:
               '.github/workflows/projectpulse-release-test-control-ci.yml' \
               'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
               'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
               'tests/flowhive-psa-release-control.mjs' \
               | LC_ALL=C sort -u > "$CIT/flowhive-planner-compact-phase-fix-files"
             cmp -s "$CIT/diff" "$CIT/flowhive-planner-compact-phase-fix-files" || {

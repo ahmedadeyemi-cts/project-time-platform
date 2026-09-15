@@ -502,6 +502,7 @@ export const plannerCompactPhaseFixFiles = [
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
   'tests/FlowHiveDetailedPlannerTests/Program.cs',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const module025SowRoleAdmissionScopeBase = 'a2cbab29c3b27fe4ad1dedbf091ae6f98ba39faf';
