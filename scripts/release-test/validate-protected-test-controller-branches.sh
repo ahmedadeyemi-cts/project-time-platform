@@ -7,7 +7,7 @@ p='control/flowhive-planner-'
 d='20260915'
 is_planner_release_control_branch() {
   case "$HEAD_BRANCH" in
-    'control/module025-sow-role-candidate-refresh-1009-20260914'|'control/module025-sow-role-candidate-refresh-1014-20260914'|'control/flowhive-pr1044-dispatch-evidence-20260915'|"$p"provider-deadline-candidate-refresh-20260914|"$p"control-path-omissions-20260914|"$p"candidate-approval-refresh-$d|"$p"admission-manifest-refresh-$d|"$p"live-completion-admission-evidence-$d|"$p"compact-phase-native-gate-$d|"$p"parallel-phase-candidate-refresh-$d|'fix/flowhive-planner-capacity-safe-'"$d"|'fix/flowhive-planner-live-capacity-repair-'"$d"|"$p"live-capacity-candidate-refresh-$d|"$p"capacity-safe-candidate-refresh-$d|"$p"live-completion-candidate-refresh-$d) return 0 ;;
+    'control/module025-sow-role-candidate-refresh-1009-20260914'|'control/module025-sow-role-candidate-refresh-1014-20260914'|'control/flowhive-pr1044-dispatch-evidence-20260915'|'control/flowhive-pr1044-source-drift-boundary-20260915'|"$p"provider-deadline-candidate-refresh-20260914|"$p"control-path-omissions-20260914|"$p"candidate-approval-refresh-$d|"$p"admission-manifest-refresh-$d|"$p"live-completion-admission-evidence-$d|"$p"compact-phase-native-gate-$d|"$p"parallel-phase-candidate-refresh-$d|'fix/flowhive-planner-capacity-safe-'"$d"|'fix/flowhive-planner-live-capacity-repair-'"$d"|"$p"live-capacity-candidate-refresh-$d|"$p"capacity-safe-candidate-refresh-$d|"$p"live-completion-candidate-refresh-$d) return 0 ;;
     *) return 1 ;;
   esac
 }
