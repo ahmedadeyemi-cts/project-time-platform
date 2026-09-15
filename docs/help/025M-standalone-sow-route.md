@@ -1,11 +1,10 @@
-# 025M Standalone SOW Route
+# 025M Standalone SOW Route (Superseded)
 
-## Purpose
-Fix the SOW Generator route so it no longer renders on top of the dashboard or User Administration page.
+This document described a standalone full-page route fix for an earlier hash-route
+(`#sow-generator`) SOW Generator prototype that no longer exists in the codebase. It was
+fully replaced on 2026-08-30 by the persistent Module 025 SOW/GSD Workspace, a normal
+application route rendered in place rather than as a route-shell overlay.
 
-## Changes
-- Standalone full-page SOW Generator route shell.
-- Dashboard card remains on the dashboard.
-- `#sow-generator` hides the underlying application by using a route shell.
-- Prevents the visual endless-scroll behavior.
-- Keeps research-backed SOW generation and Word download.
+See [025A SOW & GSD Workspace](025A-sow-generator-dashboard-workspace.md) and
+[docs/production/025_SOW_GENERATOR_CLAUDE_REVIEW_WORKFLOW.md](../production/025_SOW_GENERATOR_CLAUDE_REVIEW_WORKFLOW.md)
+for the current implementation.
