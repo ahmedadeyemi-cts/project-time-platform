@@ -108,6 +108,9 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-2026091
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' || "$HEAD_BRANCH" == 'fix/flowhive-planner-time-budget-20260912' ]]; then
   test -s .github/flowhive-planner-output-budget-release-files.txt
   grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-planner-output-budget-release-files.txt >> "$CIT/allowed-release-files"
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-parallel-phases-20260915' ]]; then
+  test -s .github/flowhive-planner-parallel-phases-release-files.txt
+  grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-planner-parallel-phases-release-files.txt >> "$CIT/allowed-release-files"
 elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-provider-budget-approval-20260912' ]]; then
   cat >> "$CIT/allowed-release-files" <<'FILES'
 .github/flowhive-psa-protected-cutover.json

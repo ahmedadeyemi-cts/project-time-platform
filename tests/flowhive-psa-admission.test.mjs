@@ -28,7 +28,8 @@ const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control
 const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
 const plannerCompactPhaseCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-candidate-refresh-20260915';
 const plannerCompactPhaseNativeGate = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-native-gate-20260915';
-const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate;
+const plannerParallelPhaseFix = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-parallel-phases-20260915';
+const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate || plannerParallelPhaseFix;
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
 const plannerCompactPhaseFix = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-compact-phase-20260915';
