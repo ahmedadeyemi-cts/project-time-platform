@@ -410,6 +410,26 @@ jobs:
               exit 1
             }
             node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-live-celar-budget-main-20260915' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-enterprise-psa-release-files.txt' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/CelarAiOracleExternalRuntimeTests/Program.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-scope.mjs' \
+              'tests/validate-systemwide-image-build-controller.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-budget-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-budget-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-live-celar-budget-files" "$RUNNER_TEMP/flowhive-planner-live-celar-budget-actual" || {
+              echo 'FlowHive Celar planner budget repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-live-celar-budget-files" "$RUNNER_TEMP/flowhive-planner-live-celar-budget-actual" >&2 || true
+              exit 1
+            }
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
           else
             node tests/flowhive-psa-release-control.mjs
           fi

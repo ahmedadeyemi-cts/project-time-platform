@@ -50,8 +50,14 @@ var flowHiveBatchOutputTokens = (int)ragServiceType
     .GetField("FlowHiveBatchMaximumOutputTokens", BindingFlags.NonPublic | BindingFlags.Static)!
     .GetValue(null)!;
 Assert(
-    flowHiveBatchOutputTokens == 1_536,
-    "flowhive_single_batch_response_budget_is_safe_for_single_slot_runtime");
+    flowHiveBatchOutputTokens == 1_280,
+    "flowhive_single_batch_response_budget_fits_single_slot_runtime");
+var flowHiveBatchSourceMaximumCharacters = (int)ragServiceType
+    .GetField("FlowHiveBatchSourceMaximumCharacters", BindingFlags.NonPublic | BindingFlags.Static)!
+    .GetValue(null)!;
+Assert(
+    flowHiveBatchSourceMaximumCharacters == 3_000,
+    "flowhive_single_batch_source_budget_fits_live_provider_window");
 Assert(
     PulseAiPrivateRagService.MaximumOutputTokensForPlanning(
         CelarAiCapabilityCatalog.ProjectFlowHivePlan,
@@ -544,13 +550,15 @@ var flowHiveBatchResult = await RunFlowHiveBatch(async (request, token) =>
     var active = Interlocked.Increment(ref flowHiveBatchActive);
     flowHiveBatchCalls++;
     flowHiveBatchMaximum = Math.Max(flowHiveBatchMaximum, active);
-    Assert(request.MaximumOutputTokens == 1_536, "flowhive_single_batch_output_budget_is_bounded");
+    Assert(request.MaximumOutputTokens == 1_280, "flowhive_single_batch_output_budget_is_bounded");
     Assert(!request.SystemInstruction.Contains("ONLY Plan tasks", StringComparison.Ordinal),
         "flowhive_single_batch_does_not_scope_to_one_phase");
     Assert(request.UserInstruction.Contains("single compact response", StringComparison.Ordinal),
         "flowhive_single_batch_prompt_is_explicit");
     Assert(request.SystemInstruction.Contains("Do not return detailedSteps", StringComparison.Ordinal),
         "flowhive_single_batch_provider_contract_omits_server_completed_fields");
+    Assert(request.Sources.Single().Text.Length <= 3_000,
+        "flowhive_single_batch_source_is_bounded_for_live_provider_window");
     Assert(request.Sources.Single() == module025Source, "flowhive_single_batch_source_authority_preserved");
     await Task.Yield();
     Interlocked.Decrement(ref flowHiveBatchActive);

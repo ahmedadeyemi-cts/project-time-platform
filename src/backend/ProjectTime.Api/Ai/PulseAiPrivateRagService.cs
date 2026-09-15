@@ -32,11 +32,15 @@ public sealed class PulseAiPrivateRagService
     // The protected Test Gemma runtime is throughput-bound rather than
     // context-bound. The previous 2,048-token ceiling was observed to consume
     // the entire ten-minute durable inference window before returning JSON.
-    // 1,536 tokens still cover ten compact source-grounded tasks because the
+    // 1,280 tokens still cover ten compact source-grounded tasks because the
     // server supplies the repetitive review fields after parsing, while
     // leaving deterministic validation and persistence time in the same run.
-    private const int FlowHiveBatchMaximumOutputTokens = 1_536;
-    private const int FlowHiveBatchSourceMaximumCharacters = 4_000;
+    // The installed Test candidate demonstrated that the 1,536-token envelope
+    // could consume the entire ten-minute Celar transport window before JSON
+    // was returned. Keep the five-phase contract unchanged and reduce only the
+    // provider envelope that caused that live timeout.
+    private const int FlowHiveBatchMaximumOutputTokens = 1_280;
+    private const int FlowHiveBatchSourceMaximumCharacters = 3_000;
     // Module 025 uses one small, source-grounded response per delivery phase.
     // FlowHive uses one bounded five-phase response because the live Celar AI
     // runtime can expose only one inference slot; five concurrent requests
@@ -1769,7 +1773,7 @@ public sealed class PulseAiPrivateRagService
                 "Return at least two tasks for every phase and at least ten tasks total.",
                 "Return exactly ten distinct tasks: two for each requested phase.",
                 StringComparison.Ordinal)
-            + "\nThis is one compact bounded FlowHive request. Return ONLY one JSON object with exactly ten tasks: two Plan, two Design, two Implement, two Validate, and two Release. Use WBS 1.1, 1.2 through 5.1, 5.2. For each task return only wbs, phase, name, a source-grounded description of at least 80 characters, estimatedHours, estimatedDurationDays, requiredRoles, predecessors, and citationId 1. Do not return detailedSteps, inputs, outputs, acceptance, validation, responsibilities, prerequisites, or risks; the server fills those task-derived review fields after parsing. Do not return markdown, phase summaries as tasks, or more than ten tasks, and do not invent customer facts.";
+            + "\nThis is one compact bounded FlowHive request. Return ONLY one JSON object with exactly ten tasks: two Plan, two Design, two Implement, two Validate, and two Release. Use WBS 1.1, 1.2 through 5.1, 5.2. For each task return only wbs, phase, name, a source-grounded description of at least 80 characters, estimatedHours, estimatedDurationDays, requiredRoles, predecessors, and citationId 1. Keep each description concise and specific to the authorized SOW. Do not return detailedSteps, inputs, outputs, acceptance, validation, responsibilities, prerequisites, or risks; the server fills those task-derived review fields after parsing. Do not return markdown, phase summaries as tasks, or more than ten tasks, and do not invent customer facts.";
 
     private static string FlowHiveBatchUserInstruction(string userInstruction) =>
         userInstruction

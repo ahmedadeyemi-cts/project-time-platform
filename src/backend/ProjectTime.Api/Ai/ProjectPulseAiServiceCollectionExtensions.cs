@@ -272,7 +272,10 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
     // Do not run it through the long SOW primary+recovery transport sequence:
     // that sequence can consume the planner's entire ten-minute batch window
     // before the FlowHive worker can classify or persist a result.
-    private const int FlowHiveMaximumOutputTokens = 1_536;
+    // Keep the transport envelope aligned with the live planner assembler.
+    // The installed Test candidate used 1,536 tokens and exhausted the
+    // single-slot Celar runtime's ten-minute window before returning JSON.
+    private const int FlowHiveMaximumOutputTokens = 1_280;
     private const int MaximumBufferedResponseBytes = 1_000_000;
     private const int MaximumStreamedResponseBytes = 2_000_000;
     private const int MaximumSseLineBytes = 256_000;

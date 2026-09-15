@@ -35,6 +35,7 @@ scripts/release-test/run-flowhive-psa-live-uat.py
 scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
 scripts/release-test/validate-protected-test-controller-branches.sh
 scripts/release-test/verify-flowhive-installed-identity.py
+src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
 src/backend/ProjectTime.Api/Assets/Fonts/NotoSansCJK-LICENSE.txt
 src/backend/ProjectTime.Api/Assets/Fonts/NotoSansCJKsc-Regular.otf
@@ -103,6 +104,7 @@ src/frontend/project-time-web/src/role-journeys/role-journeys.js
 src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js
 src/frontend/project-time-web/tests/role-journeys.test.mjs
 src/frontend/project-time-web/vite.config.js
+tests/CelarAiOracleExternalRuntimeTests/Program.cs
 tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj
 tests/FlowHiveDetailedPlannerTests/Program.cs
 tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj
