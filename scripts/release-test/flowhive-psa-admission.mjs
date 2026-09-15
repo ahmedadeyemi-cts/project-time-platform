@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged FlowHive portfolio database-alias repair PR1039.
+// successor is the reviewed, merged FlowHive live-completion repair PR1041.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 1039;
-export const candidateBranch = 'fix/flowhive-portfolio-db-alias-20260915';
-export const candidateSourceBranch = 'fix/flowhive-portfolio-db-alias-20260915';
+export const candidatePullRequest = 1041;
+export const candidateBranch = 'fix/flowhive-planner-live-completion-20260915';
+export const candidateSourceBranch = 'fix/flowhive-planner-live-completion-20260915';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = 'd6539ae1bf02f5b7a3d5d6386cac827ec63dd785';
+export const candidateMergeCommit = '4b4e0bbec528ebacbc2bc272ada3e3ea21831952';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -38,11 +38,14 @@ const requiredWorkflows = [
   '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
   '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
   '.github/workflows/deepseek-v4-provider-ci.yml',
+  '.github/workflows/flowhive-detailed-planner-ci.yml',
   '.github/workflows/flowhive-enterprise-psa-ci.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/project-planning-collaboration-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
+  '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
   '.github/workflows/pulse-ai-system-intelligence-ci.yml',
+  '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
   '.github/workflows/security-posture-ci.yml',
   '.github/workflows/shared-project-document-planning-ci.yml',
   '.github/workflows/systemwide-enterprise-reliability-ci.yml'
@@ -111,53 +114,27 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1039's six-file database-alias repair did not touch the three workflows
-// below. GitHub therefore correctly omitted them from the exact candidate
-// pull_request check set. Keep each omission explicit and bound to the actual
-// PR1039 base bytes and candidate file inventory; these are not generic
-// missing-check exemptions.
-export const workflowPathOmissions = Object.freeze([
-  {
-    workflow: '.github/workflows/flowhive-detailed-planner-ci.yml',
-    reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'c9a3f98fdc76a0a59918af29bb1163e6911a9013',
-    baseWorkflowSha256: 'e301e8a92678bc4f1c5256d48e166f6f038836ce13bced3925a0769876226414',
-    candidateChangedFilesSha256: 'e5b92fa6ca52a0df9d2dbed3376026895b685b4b13fc12f0494fd5467e2321cb',
-    candidateChangedFilesCount: 6
-  },
-  {
-    workflow: '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
-    reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'c9a3f98fdc76a0a59918af29bb1163e6911a9013',
-    baseWorkflowSha256: '06b03a1d62af2b7e259f00e2ff8e0aaf5b82d585e3f05db383085c67ede31d82',
-    candidateChangedFilesSha256: 'e5b92fa6ca52a0df9d2dbed3376026895b685b4b13fc12f0494fd5467e2321cb',
-    candidateChangedFilesCount: 6
-  },
-  {
-    workflow: '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
-    reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'c9a3f98fdc76a0a59918af29bb1163e6911a9013',
-    baseWorkflowSha256: '5860a56ca4bb5f7b383feef575b556699b48dd3c1966b34d0b1ab6bb947c1fe2',
-    candidateChangedFilesSha256: 'e5b92fa6ca52a0df9d2dbed3376026895b685b4b13fc12f0494fd5467e2321cb',
-    candidateChangedFilesCount: 6
-  },
-]);
+// PR1041 changes the planner service and its test path, so all three workflows
+// that were cryptographically recorded as omissions for PR1039 ran on this
+// exact successor head. The active approval therefore has no path omissions;
+// PR1039's omission evidence remains preserved in the merged control history.
+export const workflowPathOmissions = Object.freeze([]);
 export const workflowDispatchChecks = Object.freeze([]);
 
 export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
   assert.deepEqual(binding?.candidate, {
+    pullRequest: 1041,
+    branch: 'fix/flowhive-planner-live-completion-20260915',
+    headSha: '95ba5e1e0fd66398a7db548fbff57fdafdc709be',
+    baseSha: '038c658a45a7f1fa3b1aa695b0bed554fdf1f1aa'
+  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
+  assert.deepEqual(binding?.supersedes, {
     pullRequest: 1039,
     branch: 'fix/flowhive-portfolio-db-alias-20260915',
     headSha: '4b0c5d838eabbb8a15f29bab62d891442eb2e148',
-    baseSha: 'c9a3f98fdc76a0a59918af29bb1163e6911a9013'
-  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
-  assert.deepEqual(binding?.supersedes, {
-    pullRequest: 1037,
-    branch: 'fix/flowhive-planner-live-capacity-repair-20260915',
-    headSha: '3c1230e422b55a746a2dde2b534ec94c9dd6678b',
-    installedAcceptanceRunId: 34947291372,
+    installedAcceptanceRunId: 34988294166,
     installedAcceptanceConclusion: 'failure'
   }, 'SUCCESSOR_CHECK_BINDING_SUPERSEDED_RUN');
   assert.deepEqual(binding?.requiredChecks, supersededCheckWorkflows, 'SUCCESSOR_CHECK_BINDING_CHECK_SET');
