@@ -267,6 +267,15 @@ internal static class ReleaseRuntimeBehavior
                 && mixedEvidence.EquivalentSources.Contains("PTP_DB_*", StringComparer.Ordinal),
                 "equivalent full alias and PTP_DB_* deployment contracts are accepted together");
 
+            Set("PTP_DB_PASSWORD", null);
+            var partiallyMaterializedEvidence = ProjectPulseAiDatabaseConnection.ResolveEvidence();
+            Require(
+                partiallyMaterializedEvidence.Configured
+                && partiallyMaterializedEvidence.Source == "PROJECTPULSE_CONNECTION_STRING"
+                && !partiallyMaterializedEvidence.EquivalentSources.Contains("PTP_DB_*", StringComparer.Ordinal),
+                "a valid full alias remains usable while its optional component secret mirror is incomplete");
+            Set("PTP_DB_PASSWORD", parsed.Password);
+
             Set("PTP_DB_PASSWORD", parsed.Password + "-conflict");
             conflictRejected = false;
             try { _ = ProjectPulseAiDatabaseConnection.ResolveEvidence(); }

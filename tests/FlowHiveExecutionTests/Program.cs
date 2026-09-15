@@ -16,6 +16,21 @@ Environment.SetEnvironmentVariable("PTP_DB_PORT", config.Port.ToString());
 Environment.SetEnvironmentVariable("PTP_DB_NAME", config.Database);
 Environment.SetEnvironmentVariable("PTP_DB_USER", config.Username);
 Environment.SetEnvironmentVariable("PTP_DB_PASSWORD", config.Password);
+var flowHiveConfigType = typeof(ProjectFlowHiveExecutionPolicy).Assembly
+    .GetType("ProjectTime.Api.Modules.ProjectFlowHiveDatabaseConfig")!;
+var flowHiveConfigFactory = flowHiveConfigType.GetMethod("FromEnvironment", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
+var flowHiveConnection = flowHiveConfigType.GetProperty("ConnectionString")!;
+var flowHiveMissing = flowHiveConfigType.GetProperty("Missing")!;
+var previousAlias = Environment.GetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING");
+Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING", cs);
+Environment.SetEnvironmentVariable("PTP_DB_PASSWORD", null);
+var aliasConfig = flowHiveConfigFactory.Invoke(null, null)!;
+Check((string)flowHiveConnection.GetValue(aliasConfig)! == new NpgsqlConnectionStringBuilder(cs).ConnectionString,
+    "FlowHive accepts the existing full database connection-string alias when component secrets are not yet materialized");
+Check(((IReadOnlyList<string>)flowHiveMissing.GetValue(aliasConfig)!).Count == 0,
+    "FlowHive does not report configuration missing when the canonical full alias is available");
+Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING", previousAlias);
+Environment.SetEnvironmentVariable("PTP_DB_PASSWORD", config.Password);
 async Task<object?> Sql(string sql, params (string Name, object Value)[] parameters)
 {
     await using var c = new NpgsqlConnection(cs); await c.OpenAsync();

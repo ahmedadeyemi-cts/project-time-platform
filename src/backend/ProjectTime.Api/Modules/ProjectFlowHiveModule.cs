@@ -1,4 +1,5 @@
 using Npgsql;
+using ProjectTime.Api.Ai;
 
 namespace ProjectTime.Api.Modules;
 
@@ -1229,55 +1230,25 @@ internal sealed record ProjectFlowHiveAssignment(
     decimal AssignedHours);
 
 internal sealed record ProjectFlowHiveDatabaseConfig(
-    string? Host,
-    string? Port,
-    string? Database,
-    string? Username,
-    string? Password,
+    string ConnectionString,
     IReadOnlyList<string> Missing)
 {
-    public string ConnectionString
-    {
-        get
-        {
-            var builder = new NpgsqlConnectionStringBuilder
-            {
-                Host = Host,
-                Port = int.TryParse(Port, out var parsedPort) ? parsedPort : 5432,
-                Database = Database,
-                Username = Username,
-                Password = Password,
-                IncludeErrorDetail = false,
-                Pooling = true,
-                MinPoolSize = 0,
-                MaxPoolSize = 5
-            };
-
-            return builder.ConnectionString;
-        }
-    }
-
     public static ProjectFlowHiveDatabaseConfig FromEnvironment()
     {
-        var host = Environment.GetEnvironmentVariable("PTP_DB_HOST");
-        var port = Environment.GetEnvironmentVariable("PTP_DB_PORT");
-        var database = Environment.GetEnvironmentVariable("PTP_DB_NAME");
-        var username = Environment.GetEnvironmentVariable("PTP_DB_USER");
-        var password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
-        var missing = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(host)) missing.Add("PTP_DB_HOST");
-        if (string.IsNullOrWhiteSpace(port)) missing.Add("PTP_DB_PORT");
-        if (string.IsNullOrWhiteSpace(database)) missing.Add("PTP_DB_NAME");
-        if (string.IsNullOrWhiteSpace(username)) missing.Add("PTP_DB_USER");
-        if (string.IsNullOrWhiteSpace(password)) missing.Add("PTP_DB_PASSWORD");
-
-        return new ProjectFlowHiveDatabaseConfig(
-            host,
-            port,
-            database,
-            username,
-            password,
-            missing);
+        try
+        {
+            // Protected Container Apps retain the existing full connection-string
+            // aliases alongside the component contract. Use the same canonical
+            // resolver as the rest of the API so a partially materialized secret
+            // reference cannot make FlowHive return a false configuration 503.
+            var evidence = ProjectPulseAiDatabaseConnection.ResolveEvidence();
+            return evidence.Configured
+                ? new ProjectFlowHiveDatabaseConfig(evidence.ConnectionString!, [])
+                : new ProjectFlowHiveDatabaseConfig(string.Empty, ["PROJECTPULSE_DATABASE_CONNECTION"]);
+        }
+        catch (InvalidOperationException)
+        {
+            return new ProjectFlowHiveDatabaseConfig(string.Empty, ["PROJECTPULSE_DATABASE_CONFIGURATION_INVALID"]);
+        }
     }
 }

@@ -58,24 +58,32 @@ public static class ProjectPulseAiDatabaseConnection
             var missing = new[] { "PTP_DB_HOST", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" }
                 .Where(name => components[name].Length == 0)
                 .ToArray();
-            if (missing.Length > 0)
+            // A protected deployment may materialize a Key Vault-backed
+            // component after process startup. A valid full alias is already
+            // an authoritative connection contract, so do not reject it merely
+            // because the optional component mirror is incomplete. If no full
+            // alias exists, retain the fail-closed behavior below.
+            if (missing.Length > 0 && directCandidates.Count == 0)
                 throw new InvalidOperationException(
                     $"The PTP_DB_* database contract is incomplete; missing {string.Join(", ", missing)}.");
-            if (components["PTP_DB_PORT"].Length > 0
+            if (missing.Length == 0 && components["PTP_DB_PORT"].Length > 0
                 && (!int.TryParse(components["PTP_DB_PORT"], out var parsedPort)
                     || parsedPort is < 1 or > 65535))
             {
                 throw new InvalidOperationException("PTP_DB_PORT must be an integer from 1 through 65535.");
             }
 
-            componentCandidate = ("PTP_DB_*", Harden(new NpgsqlConnectionStringBuilder
+            if (missing.Length == 0)
             {
-                Host = components["PTP_DB_HOST"],
-                Port = int.TryParse(components["PTP_DB_PORT"], out var port) ? port : 5432,
-                Database = components["PTP_DB_NAME"],
-                Username = components["PTP_DB_USER"],
-                Password = components["PTP_DB_PASSWORD"]
-            }));
+                componentCandidate = ("PTP_DB_*", Harden(new NpgsqlConnectionStringBuilder
+                {
+                    Host = components["PTP_DB_HOST"],
+                    Port = int.TryParse(components["PTP_DB_PORT"], out var port) ? port : 5432,
+                    Database = components["PTP_DB_NAME"],
+                    Username = components["PTP_DB_USER"],
+                    Password = components["PTP_DB_PASSWORD"]
+                }));
+            }
         }
 
         if (directCandidates.Count == 0 && componentCandidate is null)
