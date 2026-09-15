@@ -13,7 +13,7 @@ repository owner must post this exact command as a comment on PR #887's
 issue thread (not on the candidate PR or another issue):
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 4b0c5d838eabbb8a15f29bab62d891442eb2e148
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 95ba5e1e0fd66398a7db548fbff57fdafdc709be
 ```
 
 The admission workflow executes main-owned code only. It checks the exact merged PR #1039,
@@ -23,10 +23,10 @@ candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
 feature branch is not renamed or implicitly approved by a prefix match.
 
-This successor is PR1039, merged to trusted main as `d6539ae1bf02f5b7a3d5d6386cac827ec63dd785`,
-and carries the FlowHive portfolio database-alias correction at application commit
-`4b0c5d838eabbb8a15f29bab62d891442eb2e148`. Its reviewed application source base is
-`c9a3f98fdc76a0a59918af29bb1163e6911a9013`;
+This successor is PR1041, merged to trusted main as `4b4e0bbec528ebacbc2bc272ada3e3ea21831952`,
+and carries the FlowHive planner live-completion correction at application commit
+`95ba5e1e0fd66398a7db548fbff57fdafdc709be`. Its reviewed application source base is
+`038c658a45a7f1fa3b1aa695b0bed554fdf1f1aa`;
 migrations 103/104/105/106/107 retain their reviewed SHA-256 values. PR891, PR947 and the
 existing FlowHive/SOW application scope remain in the merged ancestry.
 
@@ -58,10 +58,10 @@ and the live assessment. Run `34495606530` uses controller
 queued with zero jobs, no pending deployment, no approval and no artifacts. Their
 raw GitHub status remains visible and distinct from the repository's protected
 nonterminal disposition. The prior PR1037 candidate remains preserved as historical
-evidence. This refreshed approval records the thirteen exact successful `pull_request`
-workflows for PR1039 and three explicit cryptographically bound path-filter omissions:
-detailed planner, private RAG orchestration, and runtime navigation/work register. It
-remains inactive until its current-head control
+evidence. The prior PR1039 approval remains preserved in merged control history with its
+three cryptographically bound path omissions. This successor records all sixteen exact
+successful `pull_request` workflows on PR1041's final head and has no active path omission.
+It remains inactive until its current-head control
 review, native Test approval, and one-time admission are complete, followed by the existing native Test
 deployment approval. When that
 activation is reviewed, the maintained entrypoint performs one guarded
@@ -201,7 +201,7 @@ the reviewed PR880 control merge integrated into PR872.
 The approved `sourceBase` is `4871d47fbeaad0fd5c08ddca27f193d682a0ea92`, the
 reviewed PR880 main merge already contained in the candidate. The PR874 merge
 remains an ancestor and is retained as historical repair evidence. Current main
-`50317992e55349c52bef56f26383f105152f7f5d` is the trusted main snapshot containing
+`4b4e0bbec528ebacbc2bc272ada3e3ea21831952` is the trusted main snapshot containing
 the merged planner correction and this candidate refresh is the only later control
 delta. PR872 and its frozen candidate remain historical reference material; PR887 is
 merged and remains in the maintained application ancestry. Required exact-source CI now also includes
