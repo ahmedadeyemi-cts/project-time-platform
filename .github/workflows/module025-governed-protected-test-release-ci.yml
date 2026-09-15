@@ -186,6 +186,7 @@ jobs:
               'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
               'tests/CelarAiOracleExternalRuntimeTests/Program.cs' \
               'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
               'tests/flowhive-psa-scope.mjs' \
               'tests/validate-systemwide-image-build-controller.mjs' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-budget-files"

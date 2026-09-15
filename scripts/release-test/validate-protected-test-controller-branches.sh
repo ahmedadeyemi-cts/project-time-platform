@@ -144,6 +144,7 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-budget-main-20260915'
     'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
     'tests/CelarAiOracleExternalRuntimeTests/Program.cs' \
     'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+    'tests/flowhive-psa-admission.test.mjs' \
     'tests/flowhive-psa-scope.mjs' \
     'tests/validate-systemwide-image-build-controller.mjs' \
     | LC_ALL=C sort -u > "$expected"

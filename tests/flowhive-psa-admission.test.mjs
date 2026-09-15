@@ -25,6 +25,7 @@ const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915'
   || process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-compact-phase-20260915';
 const plannerLiveCelarAcceptanceRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-live-celar-acceptance-20260915';
+const plannerLiveCelarBudgetRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-live-celar-budget-main-20260915';
 const plannerCelarApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-celar-approval-20260915';
 const plannerCelarRequiredCheckRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-celar-required-check-refresh-20260915';
 const plannerCandidateApprovalRefresh = plannerLiveCelarAcceptanceRepair
@@ -435,6 +436,31 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (plannerLiveCelarBudgetRepair) {
+    const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
+    const candidateHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const changedFiles = execFileSync('git', ['diff', '--name-only', `${currentMain}...${candidateHead}`], { encoding: 'utf8' })
+      .split(/\r?\n/).filter(Boolean).sort();
+    assert.match(currentMain, /^[0-9a-f]{40}$/);
+    assert.match(candidateHead, /^[0-9a-f]{40}$/);
+    assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', currentMain, candidateHead], { stdio: 'ignore' }));
+    assert.throws(() => execFileSync('git', ['merge-base', '--is-ancestor', candidateHead, currentMain], { stdio: 'ignore' }));
+    assert.notEqual(candidateHead, approval.sha, 'The application follow-up must not reuse the prior approved candidate.');
+    assert.deepEqual(changedFiles, [
+      '.github/flowhive-enterprise-psa-release-files.txt',
+      '.github/workflows/flowhive-psa-release-control-ci.yml',
+      '.github/workflows/module025-governed-protected-test-release-ci.yml',
+      'scripts/release-test/validate-protected-test-controller-branches.sh',
+      'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs',
+      'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
+      'tests/CelarAiOracleExternalRuntimeTests/Program.cs',
+      'tests/FlowHiveDetailedPlannerTests/Program.cs',
+      'tests/flowhive-psa-admission.test.mjs',
+      'tests/flowhive-psa-scope.mjs',
+      'tests/validate-systemwide-image-build-controller.mjs'
+    ]);
+    return;
+  }
   if (plannerLiveCelarAcceptanceRepair) {
     const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
     const candidateHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -594,7 +620,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     ? approval.mergeCommit
     : process.env.GITHUB_HEAD_REF
       ? '50317992e55349c52bef56f26383f105152f7f5d'
-      : '46097cb87db57c73d218910f9dfbe393ecd487fe');
+    : 'f7ee256fb851cbdeb083c2ff6fe8ad650ee4d203');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
   assert.notEqual(approval.sourceBase, approval.sha);
@@ -672,6 +698,7 @@ test('successor approval enumerates only the workflows that ran for the exact se
     '.github/workflows/shared-project-document-planning-ci.yml',
     '.github/workflows/systemwide-enterprise-reliability-ci.yml'
   ] : [
+    '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
     '.github/workflows/celar-ai-production-hardening-ci.yml',
     '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
     '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
@@ -679,6 +706,8 @@ test('successor approval enumerates only the workflows that ran for the exact se
     '.github/workflows/flowhive-detailed-planner-ci.yml',
     '.github/workflows/flowhive-enterprise-psa-ci.yml',
     '.github/workflows/flowhive-psa-release-control-ci.yml',
+    '.github/workflows/module025-governed-protected-test-release-ci.yml',
+    '.github/workflows/project-planning-collaboration-ci.yml',
     '.github/workflows/projectpulse-ci.yml',
     '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
     '.github/workflows/pulse-ai-system-intelligence-ci.yml',
@@ -699,7 +728,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
     plannerCelarApprovalRefresh || plannerCelarRequiredCheckRefresh ? 35021148203 : plannerCandidateApprovalRefresh || plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? 34988294166 : portfolioDbAliasCandidateRefresh || plannerLiveCompletionRepair ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
       : module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
-      : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
+      : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 35021148203);
 });
 test('workflow-dispatch evidence is candidate-bound and cannot substitute another run', () => {
   if (workflowDispatchChecks.length === 0) {
@@ -712,7 +741,7 @@ test('workflow-dispatch evidence is candidate-bound and cannot substitute anothe
     }]), /Unbound workflow-dispatch run/);
     return;
   }
-  assert.equal(workflowDispatchChecks.length, plannerCelarRequiredCheckRefresh ? 3 : plannerCelarApprovalRefresh || plannerCandidateApprovalRefresh ? 2 : 1);
+  assert.equal(workflowDispatchChecks.length, plannerCelarRequiredCheckRefresh ? 3 : plannerCelarApprovalRefresh || plannerCandidateApprovalRefresh ? 2 : 3);
   assert.deepEqual(dispatchRuns.map(run => run.id).sort((a, b) => a - b), workflowDispatchChecks.map(binding => binding.runId).sort((a, b) => a - b));
   assert.equal(workflowDispatchNonRequiredEvidence.length, 1);
   assert.doesNotThrow(() => verifyWorkflowDispatchNonRequiredEvidence(
