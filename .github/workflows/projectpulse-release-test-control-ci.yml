@@ -424,6 +424,7 @@ jobs:
               'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
               'tests/FlowHiveDetailedPlannerTests/Program.cs' \
               'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
               | LC_ALL=C sort -u > "$CIT/flowhive-planner-live-completion-files"
             cmp -s "$CIT/diff" "$CIT/flowhive-planner-live-completion-files" || {
               echo 'FlowHive live-completion repair contains an unreviewed file.' >&2

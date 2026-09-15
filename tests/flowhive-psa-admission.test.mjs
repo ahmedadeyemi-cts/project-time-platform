@@ -443,7 +443,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       '.github/workflows/projectpulse-release-test-control-ci.yml',
       'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
       'tests/FlowHiveDetailedPlannerTests/Program.cs',
-      'tests/flowhive-psa-admission.test.mjs'
+      'tests/flowhive-psa-admission.test.mjs',
+      'tests/flowhive-psa-release-control.mjs'
     ]);
     return;
   }

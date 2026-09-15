@@ -361,6 +361,7 @@ jobs:
               'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
               'tests/FlowHiveDetailedPlannerTests/Program.cs' \
               'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-completion-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-completion-actual"
             cmp -s "$RUNNER_TEMP/flowhive-planner-live-completion-files" "$RUNNER_TEMP/flowhive-planner-live-completion-actual" || {
