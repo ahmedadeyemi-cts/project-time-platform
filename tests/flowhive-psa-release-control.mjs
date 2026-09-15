@@ -468,7 +468,8 @@ export const plannerCandidateApprovalRefreshFiles = [
   'scripts/release-test/flowhive-psa-admission.mjs',
   'scripts/release-test/validate-protected-test-controller-branches.sh',
   'tests/flowhive-psa-admission.test.mjs',
-  'tests/flowhive-psa-release-control.mjs'
+  'tests/flowhive-psa-release-control.mjs',
+  'tests/flowhive-psa-release-workflow.test.py'
 ].sort();
 export const plannerAdmissionManifestRefreshBase = '7e4f943ca5e42ea9d3daa7c38bf9d7c206152edc';
 export const plannerAdmissionManifestRefreshBranch = 'control/flowhive-planner-admission-manifest-refresh-20260915';
