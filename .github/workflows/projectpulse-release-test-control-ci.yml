@@ -253,6 +253,18 @@ jobs:
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/validate-flowhive-planner-output-budget-scope.mjs
+          elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-celar-transport-20260915' ]]; then
+            MANIFEST='.github/flowhive-planner-output-budget-release-files.txt'
+            test -s "$MANIFEST" || fail 'FlowHive planner transport manifest is missing.'
+            grep -Ev '^[[:space:]]*(#|$)' "$MANIFEST" | LC_ALL=C sort -u > "$CIT/flowhive-planner-transport-files"
+            cmp -s "$MANIFEST" "$CIT/flowhive-planner-transport-files" || fail 'FlowHive planner transport manifest must be sorted, unique, and comment-free.'
+            cmp -s "$CIT/diff" "$CIT/flowhive-planner-transport-files" || {
+              echo 'FlowHive planner transport change differs from its exact governed release set.' >&2
+              diff -u "$CIT/flowhive-planner-transport-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
+            BASE_SHA="$CURRENT_BASE_SHA" node tests/validate-flowhive-planner-output-budget-scope.mjs
+            node tests/validate-systemwide-image-build-controller.mjs
           elif [[ "$HEAD_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
             node tests/flowhive-psa-scope.mjs
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then

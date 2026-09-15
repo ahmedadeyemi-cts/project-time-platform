@@ -127,12 +127,30 @@ try
         catch (TimeoutException) when (cancelUpstream) { }
         return transport.Attempts;
     }
+    async Task<int> CountFlowHiveAttempts(Uri endpoint)
+    {
+        var transport = new SowTestTransport(cancelUpstream: false);
+        var handler = (DelegatingHandler)Activator.CreateInstance(handlerType, nonPublic: true)!;
+        handler.InnerHandler = transport;
+        using var invoker = new HttpMessageInvoker(handler);
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent("""{"model":"gemma3:4b","max_tokens":1536,"messages":[],"response_format":{"type":"json_object"}}""")
+        };
+        request.Headers.Add("X-Pulse-AI-Feature", CelarAiCapabilityCatalog.ProjectFlowHivePlan);
+        using var response = await invoker.SendAsync(request, CancellationToken.None);
+        Require(response.StatusCode == HttpStatusCode.GatewayTimeout,
+            "FlowHive upstream failure remains visible without a transport recovery call");
+        return transport.Attempts;
+    }
     Require(await CountSowAttempts(inference) == 1,
         "Oracle fallback exhaustion is not followed by a duplicate model chain");
     Require(await CountSowAttempts(inference, cancelUpstream: true) == 1,
         "an Oracle timeout does not launch a second orphaned generation");
     Require(await CountSowAttempts(new Uri("https://private.example/v1/chat/completions")) == 2,
         "other private providers retain their existing bounded recovery");
+    Require(await CountFlowHiveAttempts(new Uri("https://private.example/v1/chat/completions")) == 1,
+        "FlowHive uses one compact transport attempt and leaves retry ownership to the durable planner");
 
     Require(PulseAiExternalHttpsRuntimePolicy.CompletionBudget(inference, 12000) == 8192,
         "SOW requests fit the Oracle gateway output limit");
