@@ -24,6 +24,7 @@ const privateRagServicePath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagS
 const privateRagRepositoryPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs';
 const privateModelClientPath = 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs';
 const aiServicesPath = 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs';
+const oracleRuntimeTestsPath = 'tests/CelarAiOracleExternalRuntimeTests/Program.cs';
 const webProxyPath = 'deployment/containers/web/default.conf.template';
 const module033WorkflowPath = '.github/workflows/module033-project-forge-ci.yml';
 const deepIntelligenceWorkflowPath = '.github/workflows/deep-intelligence-read-contract-ci.yml';
@@ -55,6 +56,7 @@ const privateRagService = fs.readFileSync(privateRagServicePath, 'utf8');
 const privateRagRepository = fs.readFileSync(privateRagRepositoryPath, 'utf8');
 const privateModelClient = fs.readFileSync(privateModelClientPath, 'utf8');
 const aiServices = fs.readFileSync(aiServicesPath, 'utf8');
+const oracleRuntimeTests = fs.readFileSync(oracleRuntimeTestsPath, 'utf8');
 const webProxy = fs.readFileSync(webProxyPath, 'utf8');
 const module033Workflow = fs.readFileSync(module033WorkflowPath, 'utf8');
 const deepIntelligenceWorkflow = fs.readFileSync(deepIntelligenceWorkflowPath, 'utf8');
@@ -310,6 +312,16 @@ assert.match(aiServices, /if \(content\.Length == 0\) return true;/,
 assert.match(privateModelClient, /CelarAiCapabilityCatalog\.SowGsdPlanning[\s\S]*?"PulseAiPrivateSowInference"/);
 assert.match(privateModelClient, /private_model_output_truncated/);
 assert.match(privateModelClient, /ReadFinishReason/);
+assert.match(
+  aiServices,
+  /FlowHiveMaximumOutputTokens = 1_536[\s\S]*?IsFlowHivePlannerRequest[\s\S]*?SendFlowHivePlannerAsync/,
+  'FlowHive must use one compact transport attempt instead of the long SOW recovery sequence'
+);
+assert.match(
+  oracleRuntimeTests,
+  /CountFlowHiveAttempts[\s\S]*?FlowHive uses one compact transport attempt/,
+  'the Oracle transport regression must cover the actual FlowHive feature header path'
+);
 assert.match(module025Module, /CompositionDiagnosticCode/);
 assert.match(module025Module, /private_sow_work_packages_missing/);
 assert.match(module025Module, /private_sow_phase_coverage_incomplete/);

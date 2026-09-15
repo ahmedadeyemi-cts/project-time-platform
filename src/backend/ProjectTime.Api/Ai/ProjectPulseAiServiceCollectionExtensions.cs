@@ -268,6 +268,11 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         throwOnInvalidBytes: true);
     private const int PrimaryMaximumOutputTokens = 12_000;
     private const int RecoveryMaximumOutputTokens = 10_000;
+    // FlowHive already owns a single compact, retry-bounded planner request.
+    // Do not run it through the long SOW primary+recovery transport sequence:
+    // that sequence can consume the planner's entire ten-minute batch window
+    // before the FlowHive worker can classify or persist a result.
+    private const int FlowHiveMaximumOutputTokens = 1_536;
     private const int MaximumBufferedResponseBytes = 1_000_000;
     private const int MaximumStreamedResponseBytes = 2_000_000;
     private const int MaximumSseLineBytes = 256_000;
@@ -289,6 +294,11 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         if (string.IsNullOrWhiteSpace(originalBody))
         {
             return await base.SendAsync(request, cancellationToken);
+        }
+
+        if (IsFlowHivePlannerRequest(request))
+        {
+            return await SendFlowHivePlannerAsync(request, originalBody, cancellationToken);
         }
 
         using var overallCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -353,6 +363,31 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException("The bounded private SOW inference stream timed out.");
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendFlowHivePlannerAsync(
+        HttpRequestMessage request,
+        string originalBody,
+        CancellationToken cancellationToken)
+    {
+        using var plannerCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        plannerCancellation.CancelAfter(TimeSpan.FromMinutes(10));
+        try
+        {
+            // The durable FlowHive worker owns its one bounded retry at the
+            // logical generation boundary. This transport attempt must not
+            // start the long SOW recovery request or duplicate a model call.
+            using var plannerRequest = CloneWithBudget(
+                request,
+                originalBody,
+                FlowHiveMaximumOutputTokens,
+                recoveryAttempt: false);
+            return await SendBoundedAttemptAsync(plannerRequest, plannerCancellation.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("The bounded FlowHive planner inference stream timed out.");
         }
     }
 
@@ -765,6 +800,13 @@ internal sealed class PulseAiPrivateSowInferenceBudgetHandler : DelegatingHandle
         clone.Headers.TryAddWithoutValidation("Accept", "application/json");
         return clone;
     }
+
+    private static bool IsFlowHivePlannerRequest(HttpRequestMessage request) =>
+        request.Headers.TryGetValues("X-Pulse-AI-Feature", out var features)
+        && features.Any(feature => string.Equals(
+            feature,
+            CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+            StringComparison.OrdinalIgnoreCase));
 
     private static bool IsTransientGatewayFailure(HttpStatusCode statusCode) =>
         statusCode is HttpStatusCode.BadGateway
