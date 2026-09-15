@@ -33,7 +33,9 @@ scripts/release-test/resolve-flowhive-installed-deployment.py
 scripts/release-test/run-flowhive-my-role-browser.py
 scripts/release-test/run-flowhive-psa-live-uat.py
 scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+scripts/release-test/validate-protected-test-controller-branches.sh
 scripts/release-test/verify-flowhive-installed-identity.py
+src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
 src/backend/ProjectTime.Api/Assets/Fonts/NotoSansCJK-LICENSE.txt
 src/backend/ProjectTime.Api/Assets/Fonts/NotoSansCJKsc-Regular.otf
 src/backend/ProjectTime.Api/Directory.Build.targets
@@ -107,6 +109,7 @@ tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj
 tests/FlowHiveExecutablePlanTests/Program.cs
 tests/FlowHiveExecutionTests/FlowHiveExecutionTests.csproj
 tests/FlowHiveExecutionTests/Program.cs
+tests/flowhive-psa-admission.test.mjs
 tests/flowhive-psa-browser-bundle.mjs
 tests/flowhive-psa-financial-readback.test.mjs
 tests/flowhive-psa-installed-acceptance.test.py

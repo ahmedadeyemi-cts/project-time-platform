@@ -24,7 +24,9 @@ const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915'
   || process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-compact-phase-20260915';
-const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915'
+const plannerLiveCelarAcceptanceRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-live-celar-acceptance-20260915';
+const plannerCandidateApprovalRefresh = plannerLiveCelarAcceptanceRepair
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-pr1044-dispatch-evidence-20260915'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-pr1044-source-drift-boundary-20260915';
 const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
@@ -425,6 +427,28 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (plannerLiveCelarAcceptanceRepair) {
+    const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
+    const candidateHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const changedFiles = execFileSync('git', ['diff', '--name-only', `${currentMain}...${candidateHead}`], { encoding: 'utf8' })
+      .split(/\r?\n/).filter(Boolean).sort();
+    assert.match(currentMain, /^[0-9a-f]{40}$/);
+    assert.match(candidateHead, /^[0-9a-f]{40}$/);
+    assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', currentMain, candidateHead], { stdio: 'ignore' }));
+    assert.throws(() => execFileSync('git', ['merge-base', '--is-ancestor', candidateHead, currentMain], { stdio: 'ignore' }));
+    assert.notEqual(candidateHead, approval.sha, 'The application follow-up must not reuse the prior approved candidate.');
+    assert.deepEqual(changedFiles, [
+      '.github/flowhive-enterprise-psa-release-files.txt',
+      '.github/workflows/flowhive-psa-release-control-ci.yml',
+      '.github/workflows/module025-governed-protected-test-release-ci.yml',
+      'scripts/release-test/validate-protected-test-controller-branches.sh',
+      'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
+      'tests/FlowHiveDetailedPlannerTests/Program.cs',
+      'tests/flowhive-psa-admission.test.mjs',
+      'tests/flowhive-psa-scope.mjs'
+    ]);
+    return;
+  }
   if (process.env.GITHUB_HEAD_REF === 'fix/flowhive-portfolio-db-alias-20260915') {
     const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
     const candidateHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();

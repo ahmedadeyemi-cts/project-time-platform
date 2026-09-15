@@ -388,6 +388,24 @@ jobs:
               diff -u "$RUNNER_TEMP/flowhive-planner-live-completion-files" "$RUNNER_TEMP/flowhive-planner-live-completion-actual" >&2 || true
               exit 1
             }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-live-celar-acceptance-20260915' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-enterprise-psa-release-files.txt' \
+              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-scope.mjs' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-files" "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-actual" || {
+              echo 'FlowHive Celar live-acceptance repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-files" "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-actual" >&2 || true
+              exit 1
+            }
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
           else
             node tests/flowhive-psa-release-control.mjs
           fi

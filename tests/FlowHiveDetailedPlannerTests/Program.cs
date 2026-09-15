@@ -71,6 +71,12 @@ Assert(
 Assert(
     PulseAiPrivateRagService.ShouldGenerateBoundedPhasePlan(flowHive: false, hasAuthoritativeScope: true),
     "module025_authoritative_scope_uses_bounded_phase_generation");
+Assert(
+    PulseAiPrivateRagService.ShouldUseFlowHiveBatchGeneration(flowHive: true),
+    "flowhive_authoritative_sow_keeps_single_batch_transport");
+Assert(
+    !PulseAiPrivateRagService.ShouldUseFlowHiveBatchGeneration(flowHive: false),
+    "module025_authoritative_sow_keeps_phase_transport");
 
 var flowHiveInstructionFactory = typeof(PulseAiPrivateRagService).GetMethod(
     "FlowHiveSystemInstruction",

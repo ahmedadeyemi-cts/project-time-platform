@@ -12,6 +12,7 @@ const validationFiles = new Set([
   module025ManifestPath,
   '.github/workflows/flowhive-enterprise-psa-ci.yml',
   '.github/workflows/flowhive-psa-installed-acceptance.yml',
+  '.github/workflows/module025-governed-protected-test-release-ci.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/celar-ai-production-platform-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
@@ -22,6 +23,7 @@ const validationFiles = new Set([
   'scripts/release-test/prepare-protected-test-scope-manifests.sh',
   'scripts/release-test/resolve-flowhive-installed-deployment.py',
   'scripts/release-test/verify-flowhive-installed-identity.py',
+  'scripts/release-test/validate-protected-test-controller-branches.sh',
   'scripts/release-test/reconcile-flowhive-planner.py',
   'scripts/release-test/run-flowhive-my-role-browser.py',
   'scripts/release-test/run-flowhive-psa-live-uat.py',
@@ -57,6 +59,7 @@ const roleJourneyPaths = new Set([
 ]);
 const componentPaths = [
   /^src\/backend\/ProjectTime\.Api\/Assets\/Fonts\/[A-Za-z0-9._-]+$/,
+  /^src\/backend\/ProjectTime\.Api\/Ai\/PulseAiPrivateRagService\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/(?:ProjectFlowHive[A-Za-z0-9]+|Module025SowGsdModule)\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/ProjectPlanning(AiOrchestrator|DocumentResolver)\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/CelarAiProductionPlatformModule\.cs$/,
