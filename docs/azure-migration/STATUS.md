@@ -126,8 +126,8 @@ The final multi-region hostname will be `phd-test.onenecklab.com` and will use a
 - Registry: `acrphdtest7825cc`
 - SKU: Premium
 - Primary location: West US 3
-- Geo-replica: East US
-- Zone redundancy: enabled in both regions
+- Geo-replica: none (East US replica removed 2026-09-14, cost review — no Container Apps environment exists in East US to consume it)
+- Zone redundancy: enabled in West US 3
 - Admin user: disabled
 - Public access: temporarily enabled for image build and migration
 - West private endpoint: `pe-phd-test-acr-westus3`
@@ -213,7 +213,7 @@ The generated West Container Apps zone contains a wildcard A record pointing to 
 - Database: `project_health_dashboard`
 - Public network access: disabled
 - Private delegated subnet: `vnet-phd-test-westus3/snet-postgresql`
-- High availability: SameZone, healthy, with both instances in zone 1 due regional capacity
+- High availability: **Disabled** (2026-09-14, cost review). Was SameZone HA, both instances in zone 1 due to regional capacity. Disabling removes the standby instance only; no data loss. Re-enabling is a single online operation (`az postgres flexible-server update --high-availability SameZone`), no rebuild required.
 - Initial source export restore and validation: passed
 
 The East US PostgreSQL read replica is deferred because Azure reports a subscription-level regional provisioning restriction. No replica resource exists and no replica billing has started.
@@ -261,6 +261,21 @@ The first AZ-06B validation displayed `LOCATION_MATCH=no` because Azure returned
 4. AZ-05A completed without corrective action. The change-feed retention argument produced a preview warning only.
 5. AZ-06B initially treated the display location `West US 3` as different from canonical location `westus3`; normalization was added and no resource repair was required.
 6. Do not rerun completed creation scripts unless the script is explicitly idempotent and the reason for rerunning is documented.
+
+## Cost review changes (2026-09-14)
+
+The test-subscription budget is $200/month (`project-health-dashboard-test-monthly-200`); actual spend was running ~$838/month. A cost review of the deployed resources against that budget produced these changes:
+
+| Change | Est. monthly savings | Status |
+|---|---:|---|
+| Deleted completed database-migration VM, disk, and NIC (`rg-project-health-dashboard-test-migration-eastus`) | ~$5 | Done |
+| Removed unused ACR East US geo-replication (no Container Apps environment exists there to consume it) | ~$49 | Done |
+| Disabled PostgreSQL Same-Zone HA on `pg-phd-test-w3-7825cc` | ~$126 | Done |
+
+Two further items are proposed but not yet decided, since both involve a functional trade-off rather than pure cleanup:
+
+- **East US network/monitoring stack** (NAT Gateways, public IPs, VNets, Log Analytics, App Insights) is fully provisioned with no workload — the Postgres replica that would justify it is deferred indefinitely on the regional provisioning restriction noted above. Est. ~$60-110/month idle.
+- **Application Gateway WAF_v2** (`agw-phd-test-westus3`) is the only public ingress path into the (internal-only) Container Apps environment — not just a WAF add-on. Its WAF policy currently runs in Detection mode, not Prevention, so it isn't actively blocking anything today. Downgrading to Standard_v2 (keep the gateway, drop the WAF ruleset) is estimated at ~$126/month savings (~$284 → ~$158/month).
 
 ## Next action
 
