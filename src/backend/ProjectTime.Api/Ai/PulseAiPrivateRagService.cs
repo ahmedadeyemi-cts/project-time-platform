@@ -15,18 +15,23 @@ public sealed class PulseAiPrivateRagService
     // sufficient and materially reduces the chance that a slow private model
     // spends the entire acceptance window on one phase. FlowHive uses the same
     // compact per-phase response budget: the server assembles cross-phase
-    // identity and fills repetitive review fields after parsing.
+    // identity and fills repetitive review fields after parsing. FlowHive's
+    // ordinary path uses one bounded five-phase response below because its
+    // provider may have only one inference slot.
     private const int Module025PhaseMaximumOutputTokens = 1_280;
     private const int FlowHivePhaseMaximumOutputTokens = 1_280;
-    // Generate one small, source-grounded response per delivery phase. A single
-    // ten-task response was observed to finish transport successfully while
-    // returning too few task objects for the contract. Per-phase requests keep
-    // the model's JSON bounded and let the server own the cross-phase WBS and
-    // predecessor assembly.
-    // A saved Service Overview can be much larger than the phase prompt needs.
-    // Keep each concurrent request small enough for the private runtime to
-    // execute without queueing the five requests behind one another, while
-    // retaining the original source hash and citation identity for review.
+    // The FlowHive provider may expose only one inference slot. Keep the live
+    // planner to one bounded request instead of queueing five phase requests
+    // behind that slot. The response is still validated as five phases with
+    // two work packages per phase before anything can become a draft.
+    private const int FlowHiveBatchMaximumOutputTokens = 4_096;
+    // Module 025 uses one small, source-grounded response per delivery phase.
+    // FlowHive uses one bounded five-phase response because the live Celar AI
+    // runtime can expose only one inference slot; five concurrent requests
+    // otherwise serialize in the provider and exhaust the acceptance window.
+    // A saved Service Overview can be much larger than the prompt needs. Keep
+    // the bounded source compact while retaining the original source hash and
+    // citation identity for review.
     private const int Module025PhaseSourceMaximumCharacters = 8_000;
     private const int FlowHivePlanMaximumOutputTokens = 12_000;
     private const int FlowHivePlanMaximumAnswerCharacters = 96_000;
@@ -629,13 +634,20 @@ public sealed class PulseAiPrivateRagService
                 CorrelationId: query.CorrelationId);
             var boundedPhasePlan = ShouldGenerateBoundedPhasePlan(flowHive, authoritativeSource is not null);
             var model = usePrivateModelWhenAvailable && boundedPhasePlan
-                ? await GenerateModule025PhasesCoreAsync(modelRequest, retrieval,
-                    (phaseRequest, token) => _model.GenerateAsync(phaseRequest,
-                        options with { MaximumAnswerCharacters = Module025SowMaximumAnswerCharacters }, token),
-                    cancellationToken,
-                    authoritativeSource is null ? FlowHiveGenerationTimeout : Module025AuthoritativeGenerationTimeout,
-                    authoritativeSource is null ? FlowHivePhaseTimeout : Module025AuthoritativePhaseTimeout,
-                    _logger)
+                ? flowHive && authoritativeSource is null
+                    ? await GenerateFlowHiveBatchCoreAsync(modelRequest, retrieval,
+                        (batchRequest, token) => _model.GenerateAsync(batchRequest,
+                            options with { MaximumAnswerCharacters = FlowHivePlanMaximumAnswerCharacters }, token),
+                        cancellationToken,
+                        FlowHivePhaseTimeout,
+                        _logger)
+                    : await GenerateModule025PhasesCoreAsync(modelRequest, retrieval,
+                        (phaseRequest, token) => _model.GenerateAsync(phaseRequest,
+                            options with { MaximumAnswerCharacters = Module025SowMaximumAnswerCharacters }, token),
+                        cancellationToken,
+                        Module025AuthoritativeGenerationTimeout,
+                        Module025AuthoritativePhaseTimeout,
+                        _logger)
                 : usePrivateModelWhenAvailable
                 ? await _model.GenerateAsync(
                     modelRequest,
@@ -1608,12 +1620,11 @@ public sealed class PulseAiPrivateRagService
         return Math.Clamp(ceiling, 0m, 0.95m);
     }
 
-    // Generate bounded phase responses instead of asking a small private model to
-    // fit the entire detailed contract into one completion. The five independent
-    // phase requests run together so one slow provider request cannot consume the
-    // durable operation's entire inference window before later phases begin.
-    // Nothing is persisted as review-ready until every phase and the assembled
-    // plan pass the same gate.
+    // Generate bounded phase responses for the authoritative Module 025 path.
+    // The ordinary FlowHive path uses GenerateFlowHiveBatchCoreAsync above so a
+    // one-slot provider cannot turn five application tasks into five serial
+    // inference waits. Nothing is persisted as review-ready until every phase
+    // and the assembled plan pass the same gate.
     private static Task<PulseAiPrivateModelResult> GenerateModule025PhasesAsync(
         PulseAiPrivateModelRequest request,
         PulseAiPrivateRetrievalResult retrieval,
@@ -1621,6 +1632,183 @@ public sealed class PulseAiPrivateRagService
         CancellationToken cancellationToken) =>
         GenerateModule025PhasesCoreAsync(request, retrieval, generate, cancellationToken,
             FlowHiveGenerationTimeout, FlowHivePhaseTimeout, null);
+
+    private static async Task<PulseAiPrivateModelResult> GenerateFlowHiveBatchCoreAsync(
+        PulseAiPrivateModelRequest request,
+        PulseAiPrivateRetrievalResult retrieval,
+        Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> generate,
+        CancellationToken cancellationToken,
+        TimeSpan batchTimeout,
+        ILogger? logger)
+    {
+        using var batchDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        batchDeadline.CancelAfter(batchTimeout);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var boundedRetrieval = BoundModule025BatchRetrieval(retrieval);
+        PulseAiPrivateModelResult? last = null;
+        try
+        {
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                batchDeadline.Token.ThrowIfCancellationRequested();
+                var batchRequest = request with
+                {
+                    MaximumOutputTokens = FlowHiveBatchMaximumOutputTokens,
+                    Sources = boundedRetrieval.Chunks,
+                    SystemInstruction = FlowHiveBatchSystemInstruction(request.SystemInstruction),
+                    UserInstruction = FlowHiveBatchUserInstruction(request.UserInstruction)
+                };
+                last = await generate(batchRequest, batchDeadline.Token).WaitAsync(batchDeadline.Token);
+                if (!last.Succeeded)
+                {
+                    if (attempt == 0 && IsTransientModule025ModelFailure(last))
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2), batchDeadline.Token);
+                        continue;
+                    }
+
+                    return last with
+                    {
+                        Content = string.Empty,
+                        DiagnosticCode = $"{last.DiagnosticCode}_batch"
+                    };
+                }
+
+                try
+                {
+                    var parsed = ParseModule025PlanContent(
+                        last.Content,
+                        boundedRetrieval,
+                        Module025DeliveryPhases,
+                        allowCompactTaskFields: true);
+                    var assembled = AssembleModule025SinglePlan(parsed);
+                    var content = JsonSerializer.Serialize(assembled);
+                    if (content.Length > FlowHivePlanMaximumAnswerCharacters)
+                    {
+                        return last with
+                        {
+                            Status = "private_model_failed",
+                            Content = string.Empty,
+                            DiagnosticCode = "private_flowhive_assembled_plan_limit_exceeded"
+                        };
+                    }
+
+                    // Reparse the assembled result so the final server-owned
+                    // WBS/dependency normalization is held to the same gate as
+                    // the provider response. No partial plan is returned.
+                    _ = ParseModule025DetailedPlan(content, boundedRetrieval);
+                    return last with
+                    {
+                        Content = content,
+                        InputCharacters = last.InputCharacters,
+                        OutputCharacters = content.Length,
+                        CompletedAt = DateTimeOffset.UtcNow
+                    };
+                }
+                catch (JsonException exception)
+                {
+                    return last with
+                    {
+                        Status = "private_model_failed",
+                        Content = string.Empty,
+                        DiagnosticCode = $"{Module025DetailedPlanDiagnosticCode(exception)}_batch"
+                    };
+                }
+            }
+
+            return last ?? new PulseAiPrivateModelResult(
+                "private_model_failed", "celar_ai", string.Empty, string.Empty, 0, 0,
+                "private_flowhive_batch_failed", DateTimeOffset.UtcNow);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new PulseAiPrivateModelResult(
+                "private_model_failed", "celar_ai", string.Empty, string.Empty,
+                last?.InputCharacters ?? 0, 0,
+                batchDeadline.IsCancellationRequested
+                    ? "private_flowhive_batch_deadline_exceeded"
+                    : "private_flowhive_batch_cancelled",
+                DateTimeOffset.UtcNow);
+        }
+        finally
+        {
+            logger?.LogInformation(
+                "FlowHive batch generation attempt ended. CorrelationId={CorrelationId} ElapsedSeconds={ElapsedSeconds}",
+                request.CorrelationId,
+                (int)elapsed.Elapsed.TotalSeconds);
+        }
+    }
+
+    private static string FlowHiveBatchSystemInstruction(string systemInstruction) =>
+        systemInstruction
+            .Replace(
+                "normally 10 to 20 tasks, with multiple tasks per phase where the work requires them",
+                "exactly two detailed tasks for each of five phases",
+                StringComparison.Ordinal)
+            .Replace(
+                "Return at least two tasks for every phase and at least ten tasks total.",
+                "Return exactly ten distinct tasks: two for each requested phase.",
+                StringComparison.Ordinal)
+            + "\nThis is one bounded FlowHive request. Return ONLY one JSON object with exactly ten tasks: two Plan, two Design, two Implement, two Validate, and two Release. Use WBS 1.1, 1.2 through 5.1, 5.2. Keep each task source-grounded and concise with wbs, phase, name, description, estimatedHours, estimatedDurationDays, requiredRoles, predecessors, and detailedSteps. Include at least two concrete detailedSteps per task and citationId 1. The server fills repetitive review fields only after parsing; it does not invent customer facts. Do not return markdown, phase summaries as tasks, or more than ten tasks.";
+
+    private static string FlowHiveBatchUserInstruction(string userInstruction) =>
+        userInstruction
+        + "\nGenerate the complete five-phase FlowHive proposal in this single bounded response. Return exactly two distinct work packages for each phase, preserving the authorized SOW-specific technology, outcomes, dependencies, and open questions. Do not omit a phase to save space.";
+
+    private static PulseAiPrivateRetrievalResult BoundModule025BatchRetrieval(
+        PulseAiPrivateRetrievalResult retrieval)
+    {
+        if (retrieval.Chunks.Count == 0
+            || retrieval.Chunks.Sum(chunk => chunk.Text.Length) <= Module025PhaseSourceMaximumCharacters)
+            return retrieval;
+
+        const int maximumCharacters = Module025PhaseSourceMaximumCharacters;
+        var keywords = new[]
+        {
+            "scope", "requirement", "objective", "deliverable", "dependency", "acceptance",
+            "design", "architecture", "topology", "integration", "interface", "security",
+            "implement", "configure", "install", "migrate", "deploy", "build",
+            "test", "validate", "verify", "failover", "performance",
+            "release", "handoff", "document", "training", "support", "closeout"
+        };
+        var remaining = maximumCharacters;
+        var boundedChunks = new List<PulseAiPrivateRetrievedChunk>();
+        foreach (var chunk in retrieval.Chunks)
+        {
+            if (remaining <= 0) break;
+            var normalized = chunk.Text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+            if (normalized.Length == 0) continue;
+            var units = Regex.Split(normalized, @"(?<=[.!?])\s+|\n{2,}")
+                .Select(value => value.Trim())
+                .Where(value => value.Length > 0)
+                .Select((unit, index) => new
+                {
+                    Unit = unit,
+                    Index = index,
+                    Score = keywords.Count(keyword => unit.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                })
+                .OrderByDescending(value => value.Score)
+                .ThenBy(value => value.Index)
+                .ToArray();
+            var selected = new List<string>();
+            var length = 0;
+            foreach (var unit in units)
+            {
+                var separator = selected.Count == 0 ? 0 : 1;
+                if (length + separator + unit.Unit.Length > remaining) continue;
+                selected.Add(unit.Unit);
+                length += separator + unit.Unit.Length;
+            }
+            if (selected.Count == 0)
+            {
+                selected.Add(normalized[..Math.Min(remaining, normalized.Length)]);
+                length = selected[0].Length;
+            }
+            boundedChunks.Add(chunk with { Text = string.Join("\n", selected) });
+            remaining -= length;
+        }
+        return retrieval with { Chunks = boundedChunks.ToArray() };
+    }
 
     private static async Task<PulseAiPrivateModelResult> GenerateModule025PhasesCoreAsync(
         PulseAiPrivateModelRequest request,
@@ -1960,6 +2148,31 @@ public sealed class PulseAiPrivateRagService
             Conflicts = phasePlans.SelectMany(plan => plan.Conflicts).Distinct().ToArray(),
             Confidence = phasePlans.Min(plan => plan.Confidence)
         };
+    }
+
+    private static PulseAiPrivateFlowHivePlan AssembleModule025SinglePlan(
+        PulseAiPrivateFlowHivePlan plan)
+    {
+        var phasePlans = Module025DeliveryPhases
+            .Select(phase => plan with
+            {
+                Tasks = plan.Tasks
+                    .Where(task => string.Equals(task.Phase, phase, StringComparison.Ordinal))
+                    .ToArray(),
+                // The single response already contains the aggregate metadata.
+                // Keep it on one phase only so milestones and review questions
+                // are not duplicated during the shared assembler pass.
+                Milestones = phase == Module025DeliveryPhases[0] ? plan.Milestones : [],
+                Dependencies = phase == Module025DeliveryPhases[0] ? plan.Dependencies : [],
+                RequiredRoles = phase == Module025DeliveryPhases[0] ? plan.RequiredRoles : [],
+                Assumptions = phase == Module025DeliveryPhases[0] ? plan.Assumptions : [],
+                Risks = phase == Module025DeliveryPhases[0] ? plan.Risks : [],
+                OutOfScopeItems = phase == Module025DeliveryPhases[0] ? plan.OutOfScopeItems : [],
+                OpenQuestions = phase == Module025DeliveryPhases[0] ? plan.OpenQuestions : [],
+                Conflicts = phase == Module025DeliveryPhases[0] ? plan.Conflicts : []
+            })
+            .ToArray();
+        return AssembleModule025PhasePlans(phasePlans);
     }
 
     private static string Module025PhaseSystemInstruction(

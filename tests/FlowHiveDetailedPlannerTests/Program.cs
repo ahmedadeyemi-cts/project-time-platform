@@ -453,6 +453,109 @@ var deadlineResult = await RunPhases((request, token) =>
 });
 Assert(deadlineResult.Succeeded && deadlineCalls == 6,
     "module025_provider_deadline_has_one_phase_retry_without_unbounded_loop");
+
+// The installed candidate proved that Task.WhenAll is not enough: the Celar AI
+// runtime serialized five concurrent HTTP requests behind one provider slot.
+// FlowHive therefore uses one bounded five-phase response and keeps the same
+// server-owned validation/assembly gate. This test models a one-slot provider,
+// verifies there is exactly one model call, and rejects an incomplete response
+// without publishing a partial plan.
+var flowHiveBatchGenerator = typeof(PulseAiPrivateRagService).GetMethod(
+    "GenerateFlowHiveBatchCoreAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+var flowHiveBatchRequest = phaseRequest with
+{
+    FeatureCode = CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+    PurposeCode = "flowhive_detailed_plan",
+    SystemInstruction = "Return at least two tasks for every phase and at least ten tasks total.",
+    UserInstruction = "Create a detailed FlowHive plan from the authorized SOW.",
+    MaximumOutputTokens = 12_000,
+    CorrelationId = "flowhive-batch-capacity-test"
+};
+var flowHiveBatchPayload = JsonSerializer.Serialize(new
+{
+    objective = parsedModule025.Objective,
+    tasks = parsedModule025.Tasks.Select((task, index) => new
+    {
+        wbs = $"{index / 2 + 1}.{index % 2 + 1}",
+        phase = task.Phase,
+        name = task.Name,
+        description = task.Description,
+        estimatedHours = task.EstimatedHours,
+        estimatedDurationDays = task.EstimatedDurationDays,
+        requiredRoles = task.RequiredRoles,
+        predecessors = task.Predecessors,
+        detailedSteps = task.DetailedSteps
+    }),
+    assumptions = parsedModule025.Assumptions,
+    risks = parsedModule025.Risks,
+    questions = parsedModule025.OpenQuestions,
+    confidence = parsedModule025.Confidence,
+    confidenceExplanation = parsedModule025.ConfidenceExplanation
+});
+var flowHiveBatchCalls = 0;
+var flowHiveBatchActive = 0;
+var flowHiveBatchMaximum = 0;
+async Task<PulseAiPrivateModelResult> RunFlowHiveBatch(
+    Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> model,
+    TimeSpan timeout = default)
+{
+    var effectiveTimeout = timeout == default ? TimeSpan.FromSeconds(5) : timeout;
+    return await (Task<PulseAiPrivateModelResult>)flowHiveBatchGenerator.Invoke(null,
+        new object?[] { flowHiveBatchRequest, module025Retrieval, model, CancellationToken.None, effectiveTimeout, null })!;
+}
+var flowHiveBatchResult = await RunFlowHiveBatch(async (request, token) =>
+{
+    var active = Interlocked.Increment(ref flowHiveBatchActive);
+    flowHiveBatchCalls++;
+    flowHiveBatchMaximum = Math.Max(flowHiveBatchMaximum, active);
+    Assert(request.MaximumOutputTokens == 4_096, "flowhive_single_batch_output_budget_is_bounded");
+    Assert(!request.SystemInstruction.Contains("ONLY Plan tasks", StringComparison.Ordinal),
+        "flowhive_single_batch_does_not_scope_to_one_phase");
+    Assert(request.UserInstruction.Contains("single bounded response", StringComparison.Ordinal),
+        "flowhive_single_batch_prompt_is_explicit");
+    Assert(request.Sources.Single() == module025Source, "flowhive_single_batch_source_authority_preserved");
+    await Task.Yield();
+    Interlocked.Decrement(ref flowHiveBatchActive);
+    return new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+        flowHiveBatchPayload, 100, flowHiveBatchPayload.Length, "", DateTimeOffset.UtcNow);
+});
+Assert(flowHiveBatchResult.Succeeded && flowHiveBatchCalls == 1 && flowHiveBatchMaximum == 1,
+    "flowhive_one_slot_provider_uses_one_model_request");
+var flowHiveBatchPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(
+    null, new object[] { flowHiveBatchResult.Content, module025Retrieval })!;
+Assert(flowHiveBatchPlan.Tasks.Count == 10
+       && flowHiveBatchPlan.Tasks.Select(task => task.Wbs).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 10,
+    "flowhive_single_batch_assembles_ten_unique_work_packages");
+Assert(flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Plan") == 2
+       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Design") == 2
+       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Implement") == 2
+       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Validate") == 2
+       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Release") == 2,
+    "flowhive_single_batch_preserves_all_five_phases");
+var flowHiveInvalidBatchCalls = 0;
+var flowHiveInvalidBatch = await RunFlowHiveBatch((request, token) =>
+{
+    flowHiveInvalidBatchCalls++;
+    return Task.FromResult(new PulseAiPrivateModelResult(
+        "private_model_completed", "celar_ai", "test-model", "{\"tasks\":[]}",
+        100, 12, "", DateTimeOffset.UtcNow));
+});
+Assert(!flowHiveInvalidBatch.Succeeded && flowHiveInvalidBatchCalls == 1
+        && flowHiveInvalidBatch.Content.Length == 0
+        && flowHiveInvalidBatch.DiagnosticCode.EndsWith("_batch", StringComparison.Ordinal),
+    "flowhive_invalid_single_batch_has_no_partial_draft_or_parse_loop");
+var flowHiveRetryCalls = 0;
+var flowHiveRetry = await RunFlowHiveBatch((request, token) =>
+{
+    flowHiveRetryCalls++;
+    return Task.FromResult(flowHiveRetryCalls == 1
+        ? new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model", "", 100, 0,
+            "provider_deadline_exceeded", DateTimeOffset.UtcNow)
+        : new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+            flowHiveBatchPayload, 100, flowHiveBatchPayload.Length, "", DateTimeOffset.UtcNow));
+});
+Assert(flowHiveRetry.Succeeded && flowHiveRetryCalls == 2,
+    "flowhive_transient_batch_retry_is_single_and_bounded");
 Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("provider_deadline_exceeded"),
     "flowhive_provider_deadline_is_retryable_at_orchestrator_boundary");
 Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("private_module025_phase_deadline_exceeded_phase_design"),
@@ -466,6 +569,32 @@ async Task<PulseAiPrivateModelResult> RunBoundedPhases(
     TimeSpan total, TimeSpan phase, CancellationToken token = default) =>
     await (Task<PulseAiPrivateModelResult>)phaseCore.Invoke(null,
         new object?[] { phaseRequest, module025Retrieval, model, token, total, phase, null })!;
+using (var oneSlotProvider = new SemaphoreSlim(1, 1))
+{
+    var serializedProviderCalls = 0;
+    var serializedProviderMaximum = 0;
+    var serializedLegacyResult = await RunBoundedPhases(async (request, token) =>
+    {
+        Interlocked.Increment(ref serializedProviderCalls);
+        await oneSlotProvider.WaitAsync(token);
+        try
+        {
+            var active = 1;
+            serializedProviderMaximum = Math.Max(serializedProviderMaximum, active);
+            await Task.Delay(TimeSpan.FromMilliseconds(75), token);
+            return new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+                phasePayloads[PhaseFromRequest(request)], 100, 100, "", DateTimeOffset.UtcNow);
+        }
+        finally
+        {
+            oneSlotProvider.Release();
+        }
+    }, TimeSpan.FromMilliseconds(150), TimeSpan.FromSeconds(5));
+    Assert(!serializedLegacyResult.Succeeded && serializedProviderCalls >= 2
+        && serializedProviderMaximum == 1
+        && serializedLegacyResult.Content.Length == 0,
+        "legacy_five_request_fanout_exhausts_one_slot_provider_without_draft");
+}
 // A non-cooperative provider must not hold the worker or publish a partial plan.
 var blockedCalls = 0;
 var observedPhaseToken = CancellationToken.None;
