@@ -21,7 +21,8 @@ const plannerProviderDeadlineCandidateRefresh = process.env.GITHUB_HEAD_REF === 
 const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-approval-20260914'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-base-correction-20260914'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914'
-  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915'
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
 const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
@@ -447,6 +448,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const postMergeControlChanges = execFileSync('git', ['diff', '--name-only', `${approval.mergeCommit}..HEAD`], { encoding: 'utf8' })
     .split(/\r?\n/).filter(Boolean).sort();
   verifySourceDrift(postMergeControlChanges, sourceDriftFiles);
+  assert.ok(sourceDriftFiles.includes('.github/workflows/celar-ai-enterprise-api-diagnostics.yml'));
   verifySourceDrift(plannerTimeBudgetApprovalFiles, sourceDriftFiles);
   for (const unrelated of [
     'src/backend/ProjectTime.Api/Program.cs',
