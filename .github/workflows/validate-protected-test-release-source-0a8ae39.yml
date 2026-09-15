@@ -1,0 +1,146 @@
+name: Isolate Protected-Test Release 0a8ae39 Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/validate-protected-test-release-source-0a8ae39.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolate-protected-test-release-0a8ae39-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Isolate each source-validation command
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out exact application release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 0a8ae393393a2c22990a25ac905053030bb98c4e
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Guard immutable application source
+        id: guard
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == '0a8ae393393a2c22990a25ac905053030bb98c4e' ]]
+          git diff --check
+
+      - name: Validate Module 001A, View-As, and Module 013
+        id: module001a
+        continue-on-error: true
+        run: node tests/validate-module001a-viewas-module013-operations.mjs
+
+      - name: Validate Celar AI public-question resilience
+        id: public_question
+        continue-on-error: true
+        run: node tests/validate-celar-ai-public-question-resilience.mjs
+
+      - name: Validate consolidated Celar AI PR 630 contract
+        id: consolidated
+        continue-on-error: true
+        run: node tests/validate-celar-ai-pr630-consolidated.mjs
+
+      - name: Validate Celar AI external de-identification
+        id: deidentification
+        continue-on-error: true
+        run: node src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
+
+      - name: Validate Module 083 autonomous control plane
+        id: module083_control
+        continue-on-error: true
+        run: node src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs
+
+      - name: Validate Module 083 autonomous orchestration
+        id: module083_orchestration
+        continue-on-error: true
+        run: node src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs
+
+      - name: Build complete API
+        id: api_build
+        continue-on-error: true
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Run API startup contract
+        id: api_startup
+        continue-on-error: true
+        shell: bash
+        run: bash tests/test-projectpulse-api-startup.sh
+
+      - name: Install frontend dependencies
+        id: npm_ci
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Publish exact outcomes and fail on any validation error
+        if: always()
+        shell: bash
+        env:
+          GUARD: ${{ steps.guard.outcome }}
+          MODULE001A: ${{ steps.module001a.outcome }}
+          PUBLIC_QUESTION: ${{ steps.public_question.outcome }}
+          CONSOLIDATED: ${{ steps.consolidated.outcome }}
+          DEIDENTIFICATION: ${{ steps.deidentification.outcome }}
+          MODULE083_CONTROL: ${{ steps.module083_control.outcome }}
+          MODULE083_ORCHESTRATION: ${{ steps.module083_orchestration.outcome }}
+          API_BUILD: ${{ steps.api_build.outcome }}
+          API_STARTUP: ${{ steps.api_startup.outcome }}
+          NPM_CI: ${{ steps.npm_ci.outcome }}
+          FRONTEND_BUILD: ${{ steps.frontend_build.outcome }}
+        run: |
+          set -Eeuo pipefail
+          printf '%s\n' \
+            "GUARD=$GUARD" \
+            "MODULE001A=$MODULE001A" \
+            "PUBLIC_QUESTION=$PUBLIC_QUESTION" \
+            "CONSOLIDATED=$CONSOLIDATED" \
+            "DEIDENTIFICATION=$DEIDENTIFICATION" \
+            "MODULE083_CONTROL=$MODULE083_CONTROL" \
+            "MODULE083_ORCHESTRATION=$MODULE083_ORCHESTRATION" \
+            "API_BUILD=$API_BUILD" \
+            "API_STARTUP=$API_STARTUP" \
+            "NPM_CI=$NPM_CI" \
+            "FRONTEND_BUILD=$FRONTEND_BUILD"
+
+          failed=0
+          for outcome in \
+            "$GUARD" "$MODULE001A" "$PUBLIC_QUESTION" "$CONSOLIDATED" \
+            "$DEIDENTIFICATION" "$MODULE083_CONTROL" "$MODULE083_ORCHESTRATION" \
+            "$API_BUILD" "$API_STARTUP" "$NPM_CI" "$FRONTEND_BUILD"; do
+            [[ "$outcome" == success ]] || failed=1
+          done
+          [[ "$failed" == 0 ]]
+
+          echo 'PROTECTED_TEST_RELEASE_0A8AE39_SOURCE_VALIDATION=PASS'
+          echo 'ENVIRONMENT_MUTATION=NONE'
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'ORACLE_RUNTIME_MUTATION=NONE'
