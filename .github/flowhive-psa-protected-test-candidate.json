@@ -37,7 +37,17 @@
   ],
   "workflowExceptions": [],
   "workflowPathOmissions": [],
-  "workflowDispatchChecks": [],
+  "workflowDispatchChecks": [
+    {
+      "workflow": ".github/workflows/project-planning-collaboration-ci.yml",
+      "runId": 34999675283,
+      "runAttempt": 1,
+      "event": "workflow_dispatch",
+      "headSha": "95ba5e1e0fd66398a7db548fbff57fdafdc709be",
+      "headBranch": "fix/flowhive-planner-live-completion-20260915",
+      "conclusion": "success"
+    }
+  ],
   "successorCheckBinding": {
     "status": "review-only",
     "deploymentEligible": false,
