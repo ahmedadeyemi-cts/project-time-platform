@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-test-candidate-v2",
   "repository": "ahmedadeyemi-cts/project-time-platform",
-  "pullRequest": 1037,
-  "branch": "fix/flowhive-planner-live-capacity-repair-20260915",
-  "sourceBranch": "fix/flowhive-planner-live-capacity-repair-20260915",
-  "sha": "3c1230e422b55a746a2dde2b534ec94c9dd6678b",
-  "mergeCommit": "1d11b029ca7c63551af71a098b7a7f4618ce290b",
-  "sourceBase": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987",
+  "pullRequest": 1039,
+  "branch": "fix/flowhive-portfolio-db-alias-20260915",
+  "sourceBranch": "fix/flowhive-portfolio-db-alias-20260915",
+  "sha": "4b0c5d838eabbb8a15f29bab62d891442eb2e148",
+  "mergeCommit": "d6539ae1bf02f5b7a3d5d6386cac827ec63dd785",
+  "sourceBase": "c9a3f98fdc76a0a59918af29bb1163e6911a9013",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -15,17 +15,16 @@
   "allowCustomerPublication": false,
   "allowCanonicalTaskAdoption": false,
   "requiredWorkflows": [
+    ".github/workflows/celar-ai-enterprise-api-diagnostics.yml",
     ".github/workflows/celar-ai-production-hardening-ci.yml",
     ".github/workflows/celar-ai-enterprise-retrieval-ci.yml",
     ".github/workflows/celar-ai-runtime-rebrand-ci.yml",
     ".github/workflows/deepseek-v4-provider-ci.yml",
-    ".github/workflows/flowhive-detailed-planner-ci.yml",
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
     ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/project-planning-collaboration-ci.yml",
     ".github/workflows/projectpulse-ci.yml",
-    ".github/workflows/pulse-ai-private-rag-orchestration-ci.yml",
     ".github/workflows/pulse-ai-system-intelligence-ci.yml",
-    ".github/workflows/runtime-navigation-work-register-responsive-ci.yml",
     ".github/workflows/security-posture-ci.yml",
     ".github/workflows/shared-project-document-planning-ci.yml",
     ".github/workflows/systemwide-enterprise-reliability-ci.yml"
@@ -36,20 +35,28 @@
   "workflowExceptions": [],
   "workflowPathOmissions": [
     {
-      "workflow": ".github/workflows/enterprise-experience-system-ci.yml",
+      "workflow": ".github/workflows/flowhive-detailed-planner-ci.yml",
       "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987",
-      "baseWorkflowSha256": "2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c",
-      "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
-      "candidateChangedFilesCount": 5
+      "baseCommit": "c9a3f98fdc76a0a59918af29bb1163e6911a9013",
+      "baseWorkflowSha256": "e301e8a92678bc4f1c5256d48e166f6f038836ce13bced3925a0769876226414",
+      "candidateChangedFilesSha256": "e5b92fa6ca52a0df9d2dbed3376026895b685b4b13fc12f0494fd5467e2321cb",
+      "candidateChangedFilesCount": 6
     },
     {
-      "workflow": ".github/workflows/celar-ai-enterprise-api-diagnostics.yml",
+      "workflow": ".github/workflows/pulse-ai-private-rag-orchestration-ci.yml",
       "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987",
-      "baseWorkflowSha256": "d3fb31f6495c8e8b65d7962e796cac472170b5957c41f50f694c517e04ebef5b",
-      "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
-      "candidateChangedFilesCount": 5
+      "baseCommit": "c9a3f98fdc76a0a59918af29bb1163e6911a9013",
+      "baseWorkflowSha256": "06b03a1d62af2b7e259f00e2ff8e0aaf5b82d585e3f05db383085c67ede31d82",
+      "candidateChangedFilesSha256": "e5b92fa6ca52a0df9d2dbed3376026895b685b4b13fc12f0494fd5467e2321cb",
+      "candidateChangedFilesCount": 6
+    },
+    {
+      "workflow": ".github/workflows/runtime-navigation-work-register-responsive-ci.yml",
+      "reasonCode": "pull-request-path-filter-no-match",
+      "baseCommit": "c9a3f98fdc76a0a59918af29bb1163e6911a9013",
+      "baseWorkflowSha256": "5860a56ca4bb5f7b383feef575b556699b48dd3c1966b34d0b1ab6bb947c1fe2",
+      "candidateChangedFilesSha256": "e5b92fa6ca52a0df9d2dbed3376026895b685b4b13fc12f0494fd5467e2321cb",
+      "candidateChangedFilesCount": 6
     }
   ],
   "workflowDispatchChecks": [],
@@ -57,16 +64,16 @@
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
+      "pullRequest": 1039,
+      "branch": "fix/flowhive-portfolio-db-alias-20260915",
+      "headSha": "4b0c5d838eabbb8a15f29bab62d891442eb2e148",
+      "baseSha": "c9a3f98fdc76a0a59918af29bb1163e6911a9013"
+    },
+    "supersedes": {
       "pullRequest": 1037,
       "branch": "fix/flowhive-planner-live-capacity-repair-20260915",
       "headSha": "3c1230e422b55a746a2dde2b534ec94c9dd6678b",
-      "baseSha": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987"
-    },
-    "supersedes": {
-      "pullRequest": 1035,
-      "branch": "fix/flowhive-planner-capacity-safe-20260915",
-      "headSha": "55bb358942bd2a0c7befa7b54d04579ec4a96677",
-      "installedAcceptanceRunId": 34939610524,
+      "installedAcceptanceRunId": 34947291372,
       "installedAcceptanceConclusion": "failure"
     },
     "requiredChecks": [
@@ -77,6 +84,47 @@
       {
         "workflow": ".github/workflows/projectpulse-release-test-control-ci.yml",
         "check": "Validate governed Test controller, exact scope, and rollback boundaries"
+      }
+    ]
+  },
+  "historicalCandidateEvidence": {
+    "pullRequest": 1037,
+    "branch": "fix/flowhive-planner-live-capacity-repair-20260915",
+    "sha": "3c1230e422b55a746a2dde2b534ec94c9dd6678b",
+    "mergeCommit": "1d11b029ca7c63551af71a098b7a7f4618ce290b",
+    "sourceBase": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987",
+    "requiredWorkflows": [
+      ".github/workflows/celar-ai-production-hardening-ci.yml",
+      ".github/workflows/celar-ai-enterprise-retrieval-ci.yml",
+      ".github/workflows/celar-ai-runtime-rebrand-ci.yml",
+      ".github/workflows/deepseek-v4-provider-ci.yml",
+      ".github/workflows/flowhive-detailed-planner-ci.yml",
+      ".github/workflows/flowhive-enterprise-psa-ci.yml",
+      ".github/workflows/flowhive-psa-release-control-ci.yml",
+      ".github/workflows/projectpulse-ci.yml",
+      ".github/workflows/pulse-ai-private-rag-orchestration-ci.yml",
+      ".github/workflows/pulse-ai-system-intelligence-ci.yml",
+      ".github/workflows/runtime-navigation-work-register-responsive-ci.yml",
+      ".github/workflows/security-posture-ci.yml",
+      ".github/workflows/shared-project-document-planning-ci.yml",
+      ".github/workflows/systemwide-enterprise-reliability-ci.yml"
+    ],
+    "workflowPathOmissions": [
+      {
+        "workflow": ".github/workflows/enterprise-experience-system-ci.yml",
+        "reasonCode": "pull-request-path-filter-no-match",
+        "baseCommit": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987",
+        "baseWorkflowSha256": "2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c",
+        "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
+        "candidateChangedFilesCount": 5
+      },
+      {
+        "workflow": ".github/workflows/celar-ai-enterprise-api-diagnostics.yml",
+        "reasonCode": "pull-request-path-filter-no-match",
+        "baseCommit": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987",
+        "baseWorkflowSha256": "d3fb31f6495c8e8b65d7962e796cac472170b5957c41f50f694c517e04ebef5b",
+        "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
+        "candidateChangedFilesCount": 5
       }
     ]
   },
