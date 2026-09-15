@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, verifyWorkflowDispatchCheck, workflowPathOmissions, workflowDispatchChecks, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, plannerCandidateApprovalRefreshFiles, plannerCompactPhaseFixFiles, plannerCompactPhaseCandidateRefreshFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, plannerCandidateApprovalRefreshFiles, plannerCompactPhaseFixFiles, plannerParallelPhaseFixFiles, plannerCompactPhaseCandidateRefreshFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   'scripts/release-test/run-module025-installed-sa-uat.py',
@@ -28,7 +28,8 @@ const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control
 const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
 const plannerCompactPhaseCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-candidate-refresh-20260915';
 const plannerCompactPhaseNativeGate = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-native-gate-20260915';
-const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate;
+const plannerParallelPhaseFix = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-parallel-phases-20260915';
+const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate || plannerParallelPhaseFix;
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
 const plannerCompactPhaseFix = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-compact-phase-20260915';
@@ -408,7 +409,9 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const admissionManifestOrder = process.env.GITHUB_HEAD_REF === 'control/module025-admission-manifest-order-20260914';
   const plannerControlPathCoverage = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914';
   const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
-  const sourceDriftFiles = plannerProviderDeadlineCandidateRefresh
+  const sourceDriftFiles = plannerParallelPhaseFix
+    ? [...new Set([...files, ...plannerCompactPhaseCandidateRefreshFiles, ...plannerParallelPhaseFixFiles])].sort()
+    : plannerProviderDeadlineCandidateRefresh
     ? [...new Set([...files, ...plannerProviderDeadlineCandidateRefreshFiles])].sort()
     : plannerCompactPhaseFix
     ? [...new Set([...files, ...plannerCompactPhaseFixFiles])].sort()

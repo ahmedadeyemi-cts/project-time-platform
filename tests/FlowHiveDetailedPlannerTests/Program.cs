@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -290,8 +291,10 @@ Assert(parsedModule025.Milestones[0].CitationIds.SequenceEqual(new[] { 1 }), "mo
 Assert(parsedModule025.Milestones[0].Name.Contains("CUCM", StringComparison.Ordinal), "module025_milestone_content_preserved");
 
 // Exercise the live-shaped orchestration with one bounded provider request per
-// phase. Each response contains exactly two tasks; the server validates every
-// phase and owns deterministic WBS assembly.
+// phase. The five independent requests must run concurrently so a slow private
+// provider phase cannot queue the remaining phases behind the durable deadline.
+// Each response contains exactly two tasks; the server validates every phase and
+// owns deterministic WBS assembly.
 var phaseGenerator = typeof(PulseAiPrivateRagService).GetMethod(
     "GenerateModule025PhasesAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
 var phaseRequest = new PulseAiPrivateModelRequest(CelarAiCapabilityCatalog.SowGsdPlanning,
@@ -324,7 +327,7 @@ string PhaseFromRequest(PulseAiPrivateModelRequest request) =>
     phaseNames.Single(phase => request.SystemInstruction.Contains($"ONLY {phase} tasks", StringComparison.Ordinal));
 Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> phaseModel = (request, token) =>
 {
-    phaseCalls++;
+    Interlocked.Increment(ref phaseCalls);
     var phase = PhaseFromRequest(request);
     Assert(request.MaximumOutputTokens == 1_280, "module025_phase_completion_bounded");
     Assert(request.SystemInstruction.Contains($"This is phase {Array.IndexOf(phaseNames, phase) + 1} of five", StringComparison.Ordinal),
@@ -343,6 +346,32 @@ var phasedResult = await RunPhases(phaseModel);
 Assert(phasedResult.Succeeded && phaseCalls == 5, "module025_five_validated_phases_complete_in_bounded_provider_requests");
 var phasedPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(null, new object[] { phasedResult.Content, module025Retrieval })!;
 Assert(phasedPlan.Tasks.Count == 10, "module025_assembled_contract_passes");
+var parallelStarted = 0;
+var parallelActive = 0;
+var parallelMaximum = 0;
+var parallelRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+var parallelResult = await RunPhases(async (request, token) =>
+{
+    var active = Interlocked.Increment(ref parallelActive);
+    while (true)
+    {
+        var observed = Volatile.Read(ref parallelMaximum);
+        if (observed >= active || Interlocked.CompareExchange(ref parallelMaximum, active, observed) == observed) break;
+    }
+    if (Interlocked.Increment(ref parallelStarted) == phaseNames.Length) parallelRelease.TrySetResult(true);
+    try
+    {
+        await parallelRelease.Task.WaitAsync(token);
+        return new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+            phasePayloads[PhaseFromRequest(request)], 100, 100, "", DateTimeOffset.UtcNow);
+    }
+    finally
+    {
+        Interlocked.Decrement(ref parallelActive);
+    }
+});
+Assert(parallelResult.Succeeded && parallelStarted == 5 && parallelMaximum == 5,
+    "module025_phases_execute_concurrently_with_bounded_fanout");
 var compactBatchResult = await RunPhases((request, token) =>
 {
     var phase = PhaseFromRequest(request);
@@ -387,7 +416,7 @@ var invalidResult = await RunPhases((request, token) =>
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
         "{\"tasks\":[]}", 100, 12, "", DateTimeOffset.UtcNow));
 });
-Assert(!invalidResult.Succeeded && invalidCalls == 2 && invalidResult.Content.Length == 0,
+Assert(!invalidResult.Succeeded && invalidCalls == 10 && invalidResult.Content.Length == 0,
     "module025_invalid_phase_has_no_draft_or_unbounded_retry_loop");
 var refusalCalls = 0;
 var refusalResult = await RunPhases((request, token) =>
@@ -396,17 +425,24 @@ var refusalResult = await RunPhases((request, token) =>
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_refused", "celar_ai", "test-model",
         "", 100, 0, "private_model_safety_refusal", DateTimeOffset.UtcNow));
 });
-Assert(!refusalResult.Succeeded && refusalCalls == 1 && refusalResult.Status == "private_model_refused",
+Assert(!refusalResult.Succeeded && refusalCalls == 5 && refusalResult.Status == "private_model_refused",
     "module025_refusal_batch_terminal");
 var transientCalls = 0;
+var transientAttempts = new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
 var transientResult = await RunPhases((request, token) =>
 {
-    transientCalls++;
-    return Task.FromResult(new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model",
-        "", 100, 0, "private_model_http_502", DateTimeOffset.UtcNow));
+    Interlocked.Increment(ref transientCalls);
+    var phase = PhaseFromRequest(request);
+    var attempt = transientAttempts.AddOrUpdate(phase, 1, (_, count) => count + 1);
+    return Task.FromResult(attempt == 1
+        ? new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model",
+            "", 100, 0, "private_model_http_502", DateTimeOffset.UtcNow)
+        : new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+            phasePayloads[phase], 100, 100, "", DateTimeOffset.UtcNow));
 });
-Assert(!transientResult.Succeeded && transientCalls == 2 && transientResult.DiagnosticCode.StartsWith("private_model_http_502", StringComparison.Ordinal),
-    "module025_transient_phase_failure_has_one_bounded_retry");
+Assert(transientResult.Succeeded && transientCalls == 10
+        && transientAttempts.Values.All(attempts => attempts == 2),
+    "module025_transient_phase_failure_has_one_bounded_retry_per_phase");
 var deadlineCalls = 0;
 var deadlineResult = await RunPhases((request, token) =>
 {
@@ -438,7 +474,7 @@ var phaseTimeoutResult = await RunBoundedPhases((request, token) => {
     observedPhaseToken = token;
     return new TaskCompletionSource<PulseAiPrivateModelResult>().Task;
 }, TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(5));
-Assert(blockedCalls == 1 && observedPhaseToken.IsCancellationRequested
+Assert(blockedCalls == 5 && observedPhaseToken.IsCancellationRequested
     && phaseTimeoutResult.DiagnosticCode == "private_module025_generation_deadline_exceeded_phase_batch"
     && phaseTimeoutResult.Content.Length == 0, "module025_hung_batch_cancelled_no_partial_draft");
 var totalTimeoutResult = await RunBoundedPhases((request, token) =>
@@ -453,7 +489,7 @@ var repairDeadlineResult = await RunBoundedPhases(async (request, token) => {
     return new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
         phasePayloads["Plan"], 100, phasePayloads["Plan"].Length, "", DateTimeOffset.UtcNow);
 }, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(50));
-Assert(repairDeadlineCalls == 1 && repairDeadlineResult.DiagnosticCode == "private_module025_phase_deadline_exceeded",
+Assert(repairDeadlineCalls == 5 && repairDeadlineResult.DiagnosticCode == "private_module025_phase_deadline_exceeded",
     "module025_phase_generation_obeys_phase_deadline");
 using (var shutdown = new CancellationTokenSource())
 {
@@ -477,7 +513,7 @@ var unauthorized = await RunPhases((request, token) =>
     return Task.FromResult(new PulseAiPrivateModelResult("private_model_failed", "celar_ai", "test-model",
         "", 100, 0, "private_model_http_401", DateTimeOffset.UtcNow));
 });
-Assert(!unauthorized.Succeeded && unauthorizedCalls == 1, "module025_authentication_failure_not_retried_per_batch");
+Assert(!unauthorized.Succeeded && unauthorizedCalls == 5, "module025_authentication_failure_not_retried_per_phase");
 var generationFailure = typeof(Module025SowGsdModule).GetMethod("GenerationFailureOutcome", BindingFlags.NonPublic | BindingFlags.Static)!;
 foreach (var (diagnostic, expectedHttp) in new[] {
     ("private_model_http_502_private_runtime_unavailable_phase_design", 503),
