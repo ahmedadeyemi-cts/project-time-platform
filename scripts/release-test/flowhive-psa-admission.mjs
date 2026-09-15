@@ -43,7 +43,6 @@ const requiredWorkflows = [
   '.github/workflows/projectpulse-ci.yml',
   '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
   '.github/workflows/pulse-ai-system-intelligence-ci.yml',
-  '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
   '.github/workflows/security-posture-ci.yml',
   '.github/workflows/shared-project-document-planning-ci.yml',
   '.github/workflows/systemwide-enterprise-reliability-ci.yml'
@@ -75,9 +74,10 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1032 did not touch the enterprise-experience or Celar API diagnostics
-// workflow path filters. GitHub therefore correctly omitted those optional
-// workflows for the exact candidate SHA. Keep the omissions explicit and
+// PR1032 did not touch the enterprise-experience, Celar API diagnostics, or
+// runtime-navigation workflow path filters. GitHub therefore correctly
+// omitted those optional workflows for the exact candidate SHA. Keep the
+// omissions explicit and
 // bound to the reviewed base bytes and candidate file inventory; they are not
 // generic missing-check exemptions.
 export const workflowPathOmissions = Object.freeze([
@@ -94,6 +94,14 @@ export const workflowPathOmissions = Object.freeze([
     reasonCode: 'pull-request-path-filter-no-match',
     baseCommit: 'e3ddf7a3b8807a98becfa36be949e20c97f1c4a3',
     baseWorkflowSha256: 'd3fb31f6495c8e8b65d7962e796cac472170b5957c41f50f694c517e04ebef5b',
+    candidateChangedFilesSha256: '256ecceb20ab82a0e9f106b25af5d7286ebab6f8dd055121e5b399bff7f5ccb3',
+    candidateChangedFilesCount: 7
+  },
+  {
+    workflow: '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
+    reasonCode: 'pull-request-path-filter-no-match',
+    baseCommit: 'e3ddf7a3b8807a98becfa36be949e20c97f1c4a3',
+    baseWorkflowSha256: '5860a56ca4bb5f7b383feef575b556699b48dd3c1966b34d0b1ab6bb947c1fe2',
     candidateChangedFilesSha256: '256ecceb20ab82a0e9f106b25af5d7286ebab6f8dd055121e5b399bff7f5ccb3',
     candidateChangedFilesCount: 7
   },
