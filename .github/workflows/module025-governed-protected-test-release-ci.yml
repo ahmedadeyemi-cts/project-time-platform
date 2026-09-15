@@ -116,6 +116,10 @@ jobs:
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'FLOWHIVE_PLANNER_ADMISSION_MANIFEST_REFRESH_SCOPE=PASSED'
             exit 0
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-celar-approval-20260915' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'FLOWHIVE_PLANNER_CELAR_APPROVAL_REFRESH_SCOPE=PASSED'
+            exit 0
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-pr1044-source-drift-boundary-20260915' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'FLOWHIVE_PLANNER_SOURCE_DRIFT_BOUNDARY_SCOPE=PASSED'

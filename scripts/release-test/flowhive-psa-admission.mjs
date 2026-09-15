@@ -7,19 +7,19 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged FlowHive planner-transport candidate PR1044.
+// successor is the reviewed, merged FlowHive Celar transport candidate PR1048.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 1044;
-export const candidateBranch = 'fix/flowhive-planner-celar-transport-20260915';
-export const candidateSourceBranch = 'fix/flowhive-planner-celar-transport-20260915';
+export const candidatePullRequest = 1048;
+export const candidateBranch = 'fix/flowhive-planner-live-celar-acceptance-20260915';
+export const candidateSourceBranch = 'fix/flowhive-planner-live-celar-acceptance-20260915';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = 'e15e6dcd872fe6e5eae790d2213dd0b8347e94f6';
-export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
+export const candidateMergeCommit = 'f7ee256fb851cbdeb083c2ff6fe8ad650ee4d203';
+export const controlBranch = 'control/flowhive-planner-celar-approval-20260915';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
 export const origin = 'https://phd-west-test.onenecklab.com';
@@ -39,6 +39,9 @@ const requiredWorkflows = [
   '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
   '.github/workflows/deepseek-v4-provider-ci.yml',
   '.github/workflows/flowhive-detailed-planner-ci.yml',
+  '.github/workflows/flowhive-enterprise-psa-ci.yml',
+  '.github/workflows/flowhive-psa-release-control-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-ci.yml',
   '.github/workflows/project-planning-collaboration-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
   '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
@@ -112,46 +115,29 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1044 changes AI transport, oracle tests, and release-validation metadata,
+// PR1048 changes AI transport, oracle tests, and release-validation metadata,
 // not the source paths watched by the enterprise PSA or PSA controller
 // workflows. Their omission is explicit and bound to the reviewed base bytes
 // and exact candidate file inventory; it is not a generic missing-check
 // exemption. Historical PR1037/1039 evidence remains immutable below.
-export const workflowPathOmissions = Object.freeze([
-  {
-    workflow: '.github/workflows/flowhive-enterprise-psa-ci.yml',
-    reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: '080ba681e7aa65a289772e8d00843d7dffa88e23',
-    baseWorkflowSha256: '587218617d2114887c3c66547e930560ccf5e17c2336dac9d642d62e926189ca',
-    candidateChangedFilesSha256: '534b32811730bdceefc18643fd0f2e8eb011689c439387385166d28b2daec4f0',
-    candidateChangedFilesCount: 7
-  },
-  {
-    workflow: '.github/workflows/flowhive-psa-release-control-ci.yml',
-    reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: '080ba681e7aa65a289772e8d00843d7dffa88e23',
-    baseWorkflowSha256: '21c2cb1624a64072601f3124e5f7694947ff9f68ad600ef918188aa85163b584',
-    candidateChangedFilesSha256: '534b32811730bdceefc18643fd0f2e8eb011689c439387385166d28b2daec4f0',
-    candidateChangedFilesCount: 7
-  }
-]);
+export const workflowPathOmissions = Object.freeze([]);
 export const workflowDispatchChecks = Object.freeze([
   {
     workflow: '.github/workflows/flowhive-detailed-planner-ci.yml',
-    runId: 35009048838,
+    runId: 35027356673,
     runAttempt: 1,
     event: 'workflow_dispatch',
-    headSha: 'e8a25259e8335233815cb9153f24caf4b4e519e4',
-    headBranch: 'fix/flowhive-planner-celar-transport-20260915',
+    headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
+    headBranch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
     conclusion: 'success'
   },
   {
     workflow: '.github/workflows/project-planning-collaboration-ci.yml',
-    runId: 35009054006,
+    runId: 35027383582,
     runAttempt: 1,
     event: 'workflow_dispatch',
-    headSha: 'e8a25259e8335233815cb9153f24caf4b4e519e4',
-    headBranch: 'fix/flowhive-planner-celar-transport-20260915',
+    headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
+    headBranch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
     conclusion: 'success'
   }
 ]);
@@ -178,16 +164,16 @@ export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
   assert.deepEqual(binding?.candidate, {
+    pullRequest: 1048,
+    branch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
+    headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
+    baseSha: 'b4cdb8779a08ea786678eaf901679d95f27f7b31'
+  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
+  assert.deepEqual(binding?.supersedes, {
     pullRequest: 1044,
     branch: 'fix/flowhive-planner-celar-transport-20260915',
     headSha: 'e8a25259e8335233815cb9153f24caf4b4e519e4',
-    baseSha: '080ba681e7aa65a289772e8d00843d7dffa88e23'
-  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
-  assert.deepEqual(binding?.supersedes, {
-    pullRequest: 1039,
-    branch: 'fix/flowhive-portfolio-db-alias-20260915',
-    headSha: '4b0c5d838eabbb8a15f29bab62d891442eb2e148',
-    installedAcceptanceRunId: 34988294166,
+    installedAcceptanceRunId: 35021148203,
     installedAcceptanceConclusion: 'failure'
   }, 'SUCCESSOR_CHECK_BINDING_SUPERSEDED_RUN');
   assert.deepEqual(binding?.requiredChecks, supersededCheckWorkflows, 'SUCCESSOR_CHECK_BINDING_CHECK_SET');
@@ -288,8 +274,13 @@ export function verifyWorkflowDispatchCheck(binding, run, approval) {
 export function verifyWorkflowDispatchNonRequiredEvidence(evidence, run, approval) {
   assert.deepEqual(evidence, workflowDispatchNonRequiredEvidence.find(item => item.workflow === evidence?.workflow),
     'Non-required workflow-dispatch evidence must match the reviewed exact-run record.');
-  assert.ok(!approval.requiredWorkflows.includes(evidence.workflow),
-    'Non-required workflow-dispatch evidence cannot remove an applicable required check.');
+  if (run.head_sha === approval.sha) {
+    assert.ok(!approval.requiredWorkflows.includes(evidence.workflow),
+      'Current-candidate non-required workflow-dispatch evidence cannot remove an applicable required check.');
+  } else {
+    assert.equal(evidence.disposition, 'non-required-evidence-only',
+      'Superseded workflow-dispatch evidence must remain explicitly non-authorizing.');
+  }
   assert.equal(evidence.satisfiesRequiredCheck, false,
     'Non-required workflow-dispatch evidence cannot satisfy a required check.');
   assert.equal(evidence.deploymentEligible, false,
@@ -298,7 +289,15 @@ export function verifyWorkflowDispatchNonRequiredEvidence(evidence, run, approva
   assert.equal(run.run_attempt, evidence.runAttempt, 'Non-required workflow-dispatch attempt changed.');
   assert.equal(run.event, evidence.event, 'Non-required workflow-dispatch event changed.');
   assert.equal(run.head_sha, evidence.headSha, 'Non-required workflow-dispatch candidate changed.');
-  assert.equal(run.head_sha, approval.sha, 'Non-required workflow-dispatch run is not attached to the approved candidate.');
+  if (run.head_sha !== approval.sha) {
+    assert.equal(evidence.disposition, 'non-required-evidence-only',
+      'Historical non-required evidence must remain explicitly non-authorizing.');
+    assert.notEqual(evidence.headSha, approval.sha,
+      'Historical non-required evidence must not be presented as current-candidate evidence.');
+  } else {
+    assert.equal(run.head_sha, approval.sha,
+      'Non-required workflow-dispatch run is not attached to the approved candidate.');
+  }
   assert.equal(run.head_branch, evidence.headBranch, 'Non-required workflow-dispatch branch changed.');
   assert.equal(String(run.path || '').split('@')[0], evidence.workflow,
     'Non-required workflow-dispatch workflow changed.');

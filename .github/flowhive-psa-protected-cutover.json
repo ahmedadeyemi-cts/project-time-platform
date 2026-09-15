@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
   "enabled": true,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-CELAR-TRANSPORT-01",
-  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-COMPLETION-01",
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-CELAR-ACCEPTANCE-01",
+  "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-CELAR-TRANSPORT-01",
   "candidate": {
-    "pullRequest": 1044,
-    "branch": "fix/flowhive-planner-celar-transport-20260915",
-    "sha": "e8a25259e8335233815cb9153f24caf4b4e519e4"
+    "pullRequest": 1048,
+    "branch": "fix/flowhive-planner-live-celar-acceptance-20260915",
+    "sha": "8f90f79d9ed281bb3a4038fc1502d75540e5fa32"
   },
   "workflow": {
     "id": 315562561,
@@ -121,16 +121,16 @@
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
+      "pullRequest": 1048,
+      "branch": "fix/flowhive-planner-live-celar-acceptance-20260915",
+      "headSha": "8f90f79d9ed281bb3a4038fc1502d75540e5fa32",
+      "baseSha": "b4cdb8779a08ea786678eaf901679d95f27f7b31"
+    },
+    "supersedes": {
       "pullRequest": 1044,
       "branch": "fix/flowhive-planner-celar-transport-20260915",
       "headSha": "e8a25259e8335233815cb9153f24caf4b4e519e4",
-      "baseSha": "080ba681e7aa65a289772e8d00843d7dffa88e23"
-    },
-    "supersedes": {
-      "pullRequest": 1039,
-      "branch": "fix/flowhive-portfolio-db-alias-20260915",
-      "headSha": "4b0c5d838eabbb8a15f29bab62d891442eb2e148",
-      "installedAcceptanceRunId": 34988294166,
+      "installedAcceptanceRunId": 35021148203,
       "installedAcceptanceConclusion": "failure"
     },
     "requiredChecks": [
