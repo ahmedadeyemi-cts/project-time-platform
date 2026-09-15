@@ -29,7 +29,13 @@ public sealed class PulseAiPrivateRagService
     // acceptance. Keep the provider response to source-grounded identity,
     // outcome, effort, and dependency fields; the server completes repetitive
     // review fields after parsing without inventing customer facts.
-    private const int FlowHiveBatchMaximumOutputTokens = 2_048;
+    // The protected Test Gemma runtime is throughput-bound rather than
+    // context-bound. The previous 2,048-token ceiling was observed to consume
+    // the entire ten-minute durable inference window before returning JSON.
+    // 1,536 tokens still cover ten compact source-grounded tasks because the
+    // server supplies the repetitive review fields after parsing, while
+    // leaving deterministic validation and persistence time in the same run.
+    private const int FlowHiveBatchMaximumOutputTokens = 1_536;
     private const int FlowHiveBatchSourceMaximumCharacters = 4_000;
     // Module 025 uses one small, source-grounded response per delivery phase.
     // FlowHive uses one bounded five-phase response because the live Celar AI
@@ -1768,7 +1774,7 @@ public sealed class PulseAiPrivateRagService
         int maximumCharacters = Module025PhaseSourceMaximumCharacters)
     {
         if (retrieval.Chunks.Count == 0
-            || retrieval.Chunks.Sum(chunk => chunk.Text.Length) <= Module025PhaseSourceMaximumCharacters)
+            || retrieval.Chunks.Sum(chunk => chunk.Text.Length) <= maximumCharacters)
             return retrieval;
 
         var keywords = new[]

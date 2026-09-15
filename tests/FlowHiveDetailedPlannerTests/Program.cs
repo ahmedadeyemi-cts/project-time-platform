@@ -50,7 +50,7 @@ var flowHiveBatchOutputTokens = (int)ragServiceType
     .GetField("FlowHiveBatchMaximumOutputTokens", BindingFlags.NonPublic | BindingFlags.Static)!
     .GetValue(null)!;
 Assert(
-    flowHiveBatchOutputTokens == 2_048,
+    flowHiveBatchOutputTokens == 1_536,
     "flowhive_single_batch_response_budget_is_safe_for_single_slot_runtime");
 Assert(
     PulseAiPrivateRagService.MaximumOutputTokensForPlanning(
@@ -194,6 +194,19 @@ Assert(flowHiveBatchRetrieval.Chunks.Sum(chunk => chunk.Text.Length) <= 4_000,
 Assert(flowHiveBatchRetrieval.Chunks.Single().SourceSha256 == longModule025Source.SourceSha256
        && flowHiveBatchRetrieval.Chunks.Single().TextSha256 == longModule025Source.TextSha256,
     "flowhive_single_batch_source_hashes_remain_bound_to_full_scope");
+var mediumFlowHiveSource = longModule025Source with
+{
+    Text = string.Join(
+        "\n\n",
+        Enumerable.Range(0, 90).Select(index =>
+            $"Scope item {index}: the authorized customer delivery requires architecture, integration, implementation, validation, and release evidence."))
+};
+var mediumFlowHiveRetrieval = longModule025Retrieval with { Chunks = [mediumFlowHiveSource] };
+var boundedMediumFlowHiveRetrieval = (PulseAiPrivateRetrievalResult)flowHiveBatchSourceFactory.Invoke(
+    null,
+    [mediumFlowHiveRetrieval, 4_000])!;
+Assert(boundedMediumFlowHiveRetrieval.Chunks.Sum(chunk => chunk.Text.Length) <= 4_000,
+    "flowhive_single_batch_bounds_sources_between_phase_and_full_document_limits");
 
 var module025Phases = new[] { "Planning", "Architecture and Design", "Implementation", "Testing and Validation", "Operational Handoff" };
 var module025Payload = JsonSerializer.Serialize(new
@@ -525,7 +538,7 @@ var flowHiveBatchResult = await RunFlowHiveBatch(async (request, token) =>
     var active = Interlocked.Increment(ref flowHiveBatchActive);
     flowHiveBatchCalls++;
     flowHiveBatchMaximum = Math.Max(flowHiveBatchMaximum, active);
-    Assert(request.MaximumOutputTokens == 2_048, "flowhive_single_batch_output_budget_is_bounded");
+    Assert(request.MaximumOutputTokens == 1_536, "flowhive_single_batch_output_budget_is_bounded");
     Assert(!request.SystemInstruction.Contains("ONLY Plan tasks", StringComparison.Ordinal),
         "flowhive_single_batch_does_not_scope_to_one_phase");
     Assert(request.UserInstruction.Contains("single compact response", StringComparison.Ordinal),

@@ -164,7 +164,7 @@ jobs:
           p='control/flowhive-planner-'
           is_planner_release_control_branch() {
             case "$HEAD_BRANCH" in
-              'fix/module025-sow-role-live-acceptance-20260914'|'control/module025-sow-role-candidate-refresh-1009-20260914'|'control/module025-sow-role-candidate-refresh-1014-20260914'|"$p"provider-deadline-candidate-refresh-20260914|"$p"control-path-omissions-20260914|"$p"candidate-approval-refresh-20260915|"$p"admission-manifest-refresh-20260915|"$p"compact-phase-native-gate-20260915|"$p"parallel-phase-candidate-refresh-20260915|'fix/flowhive-planner-capacity-safe-20260915'|'fix/flowhive-planner-live-capacity-repair-20260915'|"$p"live-capacity-candidate-refresh-20260915|"$p"capacity-safe-candidate-refresh-20260915) return 0 ;;
+              'control/module025-sow-role-candidate-refresh-1009-20260914'|'control/module025-sow-role-candidate-refresh-1014-20260914'|"$p"provider-deadline-candidate-refresh-20260914|"$p"control-path-omissions-20260914|"$p"candidate-approval-refresh-20260915|"$p"admission-manifest-refresh-20260915|"$p"compact-phase-native-gate-20260915|"$p"parallel-phase-candidate-refresh-20260915|'fix/flowhive-planner-capacity-safe-20260915'|'fix/flowhive-planner-live-capacity-repair-20260915'|'fix/flowhive-planner-live-completion-20260915'|"$p"live-capacity-candidate-refresh-20260915|"$p"capacity-safe-candidate-refresh-20260915) return 0 ;;
               *) return 1 ;;
             esac
           }
