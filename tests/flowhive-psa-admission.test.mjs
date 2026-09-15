@@ -36,6 +36,7 @@ const plannerLiveCapacityRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-
 const plannerCapacitySafeCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-capacity-safe-candidate-refresh-20260915';
 const plannerLiveCapacityCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-capacity-candidate-refresh-20260915'
   || process.env.GITHUB_HEAD_REF === 'fix/flowhive-portfolio-db-alias-20260915';
+const plannerLiveCompletionRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-live-completion-20260915';
 const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate || plannerParallelPhaseFix || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe || plannerCapacitySafeCandidateRefresh || plannerLiveCapacityCandidateRefresh;
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
@@ -421,6 +422,24 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     assert.ok(!changedFiles.includes('src/backend/ProjectTime.Api/Program.cs'));
     return;
   }
+  if (plannerLiveCompletionRepair) {
+    const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
+    const candidateHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const changedFiles = execFileSync('git', ['diff', '--name-only', `${currentMain}...${candidateHead}`], { encoding: 'utf8' })
+      .split(/\r?\n/).filter(Boolean).sort();
+    assert.match(currentMain, /^[0-9a-f]{40}$/);
+    assert.match(candidateHead, /^[0-9a-f]{40}$/);
+    assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', currentMain, candidateHead], { stdio: 'ignore' }));
+    assert.throws(() => execFileSync('git', ['merge-base', '--is-ancestor', candidateHead, currentMain], { stdio: 'ignore' }));
+    assert.notEqual(candidateHead, approval.sha, 'The application follow-up must not reuse the prior approved candidate.');
+    assert.deepEqual(changedFiles, [
+      '.github/workflows/flowhive-psa-release-control-ci.yml',
+      'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
+      'tests/FlowHiveDetailedPlannerTests/Program.cs',
+      'tests/flowhive-psa-admission.test.mjs'
+    ]);
+    return;
+  }
   const reviewedMain = approval.sourceBase;
   const candidate = approval.sha;
   const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
@@ -532,7 +551,21 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], sourceDriftFiles));
 });
 test('successor approval enumerates only the workflows that ran for the exact selected application head', () => {
-  assert.deepEqual(approval.requiredWorkflows, [
+  const expectedRequiredWorkflows = plannerLiveCompletionRepair ? [
+    '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
+    '.github/workflows/celar-ai-production-hardening-ci.yml',
+    '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
+    '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+    '.github/workflows/deepseek-v4-provider-ci.yml',
+    '.github/workflows/flowhive-enterprise-psa-ci.yml',
+    '.github/workflows/flowhive-psa-release-control-ci.yml',
+    '.github/workflows/project-planning-collaboration-ci.yml',
+    '.github/workflows/projectpulse-ci.yml',
+    '.github/workflows/pulse-ai-system-intelligence-ci.yml',
+    '.github/workflows/security-posture-ci.yml',
+    '.github/workflows/shared-project-document-planning-ci.yml',
+    '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+  ] : [
     '.github/workflows/celar-ai-production-hardening-ci.yml',
     '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
     '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
@@ -547,7 +580,8 @@ test('successor approval enumerates only the workflows that ran for the exact se
     '.github/workflows/security-posture-ci.yml',
     '.github/workflows/shared-project-document-planning-ci.yml',
     '.github/workflows/systemwide-enterprise-reliability-ci.yml'
-  ]);
+  ];
+  assert.deepEqual(approval.requiredWorkflows, expectedRequiredWorkflows);
   assert.equal(verifyRuns(approval, [...runs, ...dispatchRuns]).length,
     approval.requiredWorkflows.length + workflowDispatchChecks.length);
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
@@ -557,7 +591,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
+    plannerLiveCompletionRepair ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
       : module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
 });
