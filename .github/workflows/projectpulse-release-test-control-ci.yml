@@ -104,7 +104,7 @@ jobs:
           SOURCE_BRANCH="$(jq -r '.sourceBranch' "$APPROVAL")"
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Malformed approved candidate SHA.' >&2; exit 1; }
           [[ "$SOURCE_BASE" =~ ^[0-9a-f]{40}$ ]] || { echo 'Malformed approved candidate base SHA.' >&2; exit 1; }
-          [[ "$SOURCE_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' ]] || { echo 'Unexpected approved candidate branch.' >&2; exit 1; }
+          [[ "$SOURCE_BRANCH" == 'fix/flowhive-planner-parallel-phases-20260915' ]] || { echo 'Unexpected approved candidate branch.' >&2; exit 1; }
           [[ "$CANDIDATE_SHA" == "$GITHUB_SHA" ]] || { echo 'The workflow ref is not the approved candidate.' >&2; exit 1; }
           {
             echo "BASE_SHA=$SOURCE_BASE"
@@ -127,7 +127,7 @@ jobs:
           GITHUB_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -Eeuo pipefail
-          CIT="$RUNNER_TEMP"
+          CIT=$RUNNER_TEMP
           fail() { echo "ERROR: $*" >&2; exit 1; }
           if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
             BASE_SHA="$(jq -r '.sourceBase' .github/flowhive-psa-protected-test-candidate.json)"
@@ -319,7 +319,7 @@ jobs:
               diff -u "$CIT/module025-my-role-celar-repair-files" "$CIT/diff" >&2 || true
               exit 1
             }
-          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-control-path-omissions-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-candidate-approval-refresh-20260915' || "$HEAD_BRANCH" == 'control/flowhive-planner-admission-manifest-refresh-20260915' || "$HEAD_BRANCH" == 'control/flowhive-planner-compact-phase-native-gate-20260915' ]]; then
+          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-control-path-omissions-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-candidate-approval-refresh-20260915' || "$HEAD_BRANCH" == 'control/flowhive-planner-admission-manifest-refresh-20260915' || "$HEAD_BRANCH" == 'control/flowhive-planner-compact-phase-native-gate-20260915' || "$HEAD_BRANCH" == 'control/flowhive-planner-parallel-phase-candidate-refresh-20260915' ]]; then
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-release-trigger-coverage-20260914' ]]; then
             printf '%s\n' \

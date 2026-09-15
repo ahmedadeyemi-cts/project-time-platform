@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-test-candidate-v2",
   "repository": "ahmedadeyemi-cts/project-time-platform",
-  "pullRequest": 1029,
-  "branch": "fix/flowhive-planner-compact-phase-20260915",
-  "sourceBranch": "fix/flowhive-planner-compact-phase-20260915",
-  "sha": "8d124cd6b0f1c0dc261c8b7eb938c70a86b8ebf3",
-  "mergeCommit": "b37398b13b222cc60acc70ac2b5cbb7ac56fecef",
-  "sourceBase": "aacebde419c0a325a28c5aaaf0b11f5707be2935",
+  "pullRequest": 1032,
+  "branch": "fix/flowhive-planner-parallel-phases-20260915",
+  "sourceBranch": "fix/flowhive-planner-parallel-phases-20260915",
+  "sha": "e1efb08668eba35b49b4fd9ee9f228efb7e44bfe",
+  "mergeCommit": "4bb7ae0b2411eb9120db82b9268737080908105c",
+  "sourceBase": "e3ddf7a3b8807a98becfa36be949e20c97f1c4a3",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -38,18 +38,18 @@
     {
       "workflow": ".github/workflows/enterprise-experience-system-ci.yml",
       "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "aacebde419c0a325a28c5aaaf0b11f5707be2935",
+      "baseCommit": "e3ddf7a3b8807a98becfa36be949e20c97f1c4a3",
       "baseWorkflowSha256": "2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c",
-      "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
-      "candidateChangedFilesCount": 5
+      "candidateChangedFilesSha256": "256ecceb20ab82a0e9f106b25af5d7286ebab6f8dd055121e5b399bff7f5ccb3",
+      "candidateChangedFilesCount": 7
     },
     {
       "workflow": ".github/workflows/celar-ai-enterprise-api-diagnostics.yml",
       "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "aacebde419c0a325a28c5aaaf0b11f5707be2935",
+      "baseCommit": "e3ddf7a3b8807a98becfa36be949e20c97f1c4a3",
       "baseWorkflowSha256": "d3fb31f6495c8e8b65d7962e796cac472170b5957c41f50f694c517e04ebef5b",
-      "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
-      "candidateChangedFilesCount": 5
+      "candidateChangedFilesSha256": "256ecceb20ab82a0e9f106b25af5d7286ebab6f8dd055121e5b399bff7f5ccb3",
+      "candidateChangedFilesCount": 7
     }
   ],
   "workflowDispatchChecks": [],
@@ -57,16 +57,16 @@
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
+      "pullRequest": 1032,
+      "branch": "fix/flowhive-planner-parallel-phases-20260915",
+      "headSha": "e1efb08668eba35b49b4fd9ee9f228efb7e44bfe",
+      "baseSha": "e3ddf7a3b8807a98becfa36be949e20c97f1c4a3"
+    },
+    "supersedes": {
       "pullRequest": 1029,
       "branch": "fix/flowhive-planner-compact-phase-20260915",
       "headSha": "8d124cd6b0f1c0dc261c8b7eb938c70a86b8ebf3",
-      "baseSha": "aacebde419c0a325a28c5aaaf0b11f5707be2935"
-    },
-    "supersedes": {
-      "pullRequest": 1020,
-      "branch": "control/flowhive-planner-provider-deadline-candidate-refresh-20260914",
-      "headSha": "6604bc45d46ef6a0fcded90fc88aa4eba30b180b",
-      "installedAcceptanceRunId": 34920855999,
+      "installedAcceptanceRunId": 34927190194,
       "installedAcceptanceConclusion": "failure"
     },
     "requiredChecks": [
