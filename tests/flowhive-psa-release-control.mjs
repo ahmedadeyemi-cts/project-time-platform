@@ -485,7 +485,9 @@ export const plannerCandidateSourceDriftBoundaryBase = 'e70a3bd5ede89f935cd92740
 export const plannerCandidateSourceDriftBoundaryBranch = 'control/flowhive-pr1044-source-drift-boundary-20260915';
 export const plannerCandidateSourceDriftBoundaryFiles = [
   '.github/flowhive-psa-release-control-files.txt',
+  '.github/workflows/module025-governed-protected-test-release-ci.yml',
   'scripts/release-test/validate-protected-test-controller-branches.sh',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const plannerAdmissionManifestRefreshBase = '7e4f943ca5e42ea9d3daa7c38bf9d7c206152edc';
