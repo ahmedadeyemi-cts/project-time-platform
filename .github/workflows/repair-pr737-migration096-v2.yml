@@ -1,0 +1,163 @@
+name: Repair PR 737 Migration 096 database function
+
+on:
+  push:
+    branches:
+      - ops/pr737-protected-uat-observer-20260823
+    paths:
+      - .github/workflows/repair-pr737-migration096-v2.yml
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: repair-pr737-migration096-v2
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair exact failing database function and publish candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      ORIGINAL_HEAD: d8441ae42f5acfa5efc89996e49e2cf041246820
+      FAILED_JOB_ID: '97293868836'
+      API_ROOT: https://api.github.com/repos/${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      REPORT_DIR: /tmp/pr737-migration096-v2
+
+    steps:
+      - name: Check out repair tooling
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ops/pr737-protected-uat-observer-20260823
+          path: tooling
+          persist-credentials: false
+
+      - name: Resolve and check out current PR candidate
+        id: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pr="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API_ROOT/pulls/737")"
+          head="$(jq -r '.head.sha' <<<"$pr")"
+          branch="$(jq -r '.head.ref' <<<"$pr")"
+          [[ "$branch" == "$TARGET_BRANCH" ]]
+          [[ "$head" =~ ^[0-9a-f]{40}$ ]]
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          echo "already_advanced=$([[ "$head" != "$ORIGINAL_HEAD" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact PR source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ steps.source.outputs.head }}
+          path: release
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Stop when another permanent repair already advanced the PR
+        if: steps.source.outputs.already_advanced == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "PR_737_ALREADY_ADVANCED=${{ steps.source.outputs.head }}"
+          echo 'MIGRATION_096_V2_REPAIR=NOT_NEEDED'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Download exact failed deployment job log
+        if: steps.source.outputs.already_advanced != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0700 "$REPORT_DIR"
+          curl --fail-with-body --silent --show-error --location \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API_ROOT/actions/jobs/$FAILED_JOB_ID/logs" \
+            --output "$REPORT_DIR/job-log.download"
+          if file "$REPORT_DIR/job-log.download" | grep -qi 'zip archive'; then
+            unzip -p "$REPORT_DIR/job-log.download" > "$REPORT_DIR/job.log"
+          else
+            cp "$REPORT_DIR/job-log.download" "$REPORT_DIR/job.log"
+          fi
+          grep -Fq 'column u.is_active does not exist' "$REPORT_DIR/job.log"
+          echo 'MIGRATION_096_FAILED_LOG=VERIFIED'
+
+      - name: Generate exact permanent Migration 096 correction
+        if: steps.source.outputs.already_advanced != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 tooling/tools/repair_pr737_migration096_v2.py \
+            release \
+            "$REPORT_DIR/job.log" \
+            "$REPORT_DIR/repair-report.json" \
+            "$ORIGINAL_HEAD"
+          git -C release diff --check
+
+      - name: Run Migration 095 and 096 executable regressions
+        if: steps.source.outputs.already_advanced != 'true'
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          echo 'MIGRATION_095_096_REGRESSIONS=PASSED'
+
+      - name: Run shared planning release validators
+        if: steps.source.outputs.already_advanced != 'true'
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          git diff --check
+          echo 'SHARED_PLANNING_RELEASE_VALIDATION=PASSED'
+
+      - name: Publish permanent repair to PR 737
+        if: steps.source.outputs.already_advanced != 'true'
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          [[ "$remote_head" == "$ORIGINAL_HEAD" ]] || {
+            echo "ERROR: PR #737 moved during repair: $remote_head" >&2
+            exit 1
+          }
+          mapfile -t changed < <(git diff --name-only)
+          expected=(
+            database/migrations/096_project_planning_document_authority.sql
+            tests/test-project-planning-document-authority-migration-096.sh
+          )
+          [[ "${changed[*]}" == "${expected[*]}" ]] || {
+            printf 'Unexpected paths: %s\n' "${changed[*]}" >&2
+            exit 1
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "${expected[@]}"
+          git diff --cached --check
+          git commit -m 'Fix Migration 096 historical identity predicate'
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "MIGRATION_096_REPAIR_COMMIT=$(git rev-parse HEAD)"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Upload repair evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr737-migration096-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/pr737-migration096-v2
+          if-no-files-found: warn
+          retention-days: 7

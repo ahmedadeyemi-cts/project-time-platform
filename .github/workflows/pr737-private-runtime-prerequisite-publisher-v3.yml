@@ -1,0 +1,237 @@
+name: Publish PR 737 private-runtime prerequisite repair v3
+
+on:
+  push:
+    branches:
+      - ops/pr737-protected-uat-observer-20260823
+    paths:
+      - '.github/workflows/pr737-private-runtime-prerequisite-publisher-v3.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr737-private-runtime-prerequisite-publisher-v3
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+    steps:
+      - name: Check out current PR 737 branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/shared-project-document-planning-20260819
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply idempotent permanent repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          START_HEAD="$(git rev-parse HEAD)"
+          echo "START_HEAD=$START_HEAD" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          drift = """-- Older Protected-Test databases can predate the canonical app_users active flag.
+-- Restore that canonical column before any server-owned identity query uses it.
+ALTER TABLE app_users
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN;
+UPDATE app_users
+   SET is_active = TRUE
+ WHERE is_active IS NULL;
+ALTER TABLE app_users
+    ALTER COLUMN is_active SET DEFAULT TRUE;
+ALTER TABLE app_users
+    ALTER COLUMN is_active SET NOT NULL;
+
+"""
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+          def ensure_after(path, marker, addition):
+              text = read(path)
+              if 'ADD COLUMN IF NOT EXISTS is_active BOOLEAN' in text:
+                  return
+              index = text.find(marker)
+              if index < 0:
+                  raise SystemExit(f'Missing insertion marker in {path}: {marker}')
+              index += len(marker)
+              write(path, text[:index] + '\n\n' + addition + text[index:].lstrip('\n'))
+          def ensure_replace(path, old, new, already):
+              text = read(path)
+              if already in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f'Missing replacement marker in {path}: {old[:120]}')
+              write(path, text.replace(old, new, 1))
+
+          ensure_after(
+              'database/migrations/080_celar_ai_internal_data_intelligence.sql',
+              '$celar_ai_internal_data_prerequisites$;',
+              drift,
+          )
+          ensure_after(
+              'database/migrations/081_celar_ai_private_runtime_activation.sql',
+              '$celar_ai_private_runtime_prerequisites$;',
+              drift,
+          )
+
+          for test_path in (
+              'tests/test-celar-ai-internal-data-migration-080.sh',
+              'tests/test-celar-ai-private-runtime-activation-migration-081.sh',
+          ):
+              text = read(test_path)
+              start = text.index('CREATE TABLE app_users (')
+              end = text.index(');', start)
+              table = text[start:end]
+              if 'is_active BOOLEAN NOT NULL DEFAULT TRUE' in table:
+                  table = re.sub(
+                      r'^\s*is_active BOOLEAN NOT NULL DEFAULT TRUE,\n',
+                      '',
+                      table,
+                      count=1,
+                      flags=re.MULTILINE,
+                  )
+                  text = text[:start] + table + text[end:]
+              assertion_marker = 'app_users_active_column_restored'
+              if assertion_marker not in text:
+                  migration_call = 'psql_exec -f "$MIGRATION_CONTAINER" >/dev/null\n'
+                  assertions = (
+                      'assert_eq is_active "$(value "SELECT column_name FROM information_schema.columns '
+                      "WHERE table_schema='public' AND table_name='app_users' AND column_name='is_active';")" '
+                      'app_users_active_column_restored\n'
+                      'assert_eq 0 "$(value "SELECT COUNT(*) FROM app_users WHERE is_active IS DISTINCT FROM TRUE;")" '
+                      'app_users_active_values_backfilled\n'
+                  )
+                  if migration_call not in text:
+                      raise SystemExit(f'Migration invocation missing in {test_path}.')
+                  text = text.replace(migration_call, migration_call + assertions, 1)
+              write(test_path, text)
+
+          builder = 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'
+          ensure_replace(
+              builder,
+              'MIGRATION_FILE="$ROOT/database/migrations/094_flowhive_canonical_sow_authority.sql"\n',
+              'MIGRATION_080_FILE="$ROOT/database/migrations/080_celar_ai_internal_data_intelligence.sql"\n'
+              'MIGRATION_081_FILE="$ROOT/database/migrations/081_celar_ai_private_runtime_activation.sql"\n'
+              'MIGRATION_FILE="$ROOT/database/migrations/094_flowhive_canonical_sow_authority.sql"\n',
+              'MIGRATION_080_FILE=',
+          )
+          ensure_replace(
+              builder,
+              '[[ -s "$MIGRATION_FILE" ]] || fail "Migration 094 source is missing."\n',
+              '[[ -s "$MIGRATION_080_FILE" ]] || fail "Migration 080 source is missing."\n'
+              '[[ -s "$MIGRATION_081_FILE" ]] || fail "Migration 081 source is missing."\n'
+              '[[ -s "$MIGRATION_FILE" ]] || fail "Migration 094 source is missing."\n',
+              'Migration 080 source is missing.',
+          )
+          ensure_replace(
+              builder,
+              'install -m 0444 "$MIGRATION_FILE" "$CONTEXT/database/migrations/094_flowhive_canonical_sow_authority.sql"\n',
+              'install -m 0444 "$MIGRATION_080_FILE" "$CONTEXT/database/migrations/080_celar_ai_internal_data_intelligence.sql"\n'
+              'install -m 0444 "$MIGRATION_081_FILE" "$CONTEXT/database/migrations/081_celar_ai_private_runtime_activation.sql"\n'
+              'install -m 0444 "$MIGRATION_FILE" "$CONTEXT/database/migrations/094_flowhive_canonical_sow_authority.sql"\n',
+              '$CONTEXT/database/migrations/080_celar_ai_internal_data_intelligence.sql',
+          )
+          ensure_replace(
+              builder,
+              'psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/094_flowhive_canonical_sow_authority.sql"\n',
+              'psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/080_celar_ai_internal_data_intelligence.sql"\n'
+              'psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/081_celar_ai_private_runtime_activation.sql"\n'
+              'psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/094_flowhive_canonical_sow_authority.sql"\n',
+              'psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/080_celar_ai_internal_data_intelligence.sql"',
+          )
+          ensure_replace(
+              builder,
+              "SELECT\n  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='094_flowhive_canonical_sow_authority')::text || '|' ||\n",
+              "SELECT\n  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='080_celar_ai_internal_data_intelligence')::text || '|' ||\n"
+              "  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='081_celar_ai_private_runtime_activation')::text || '|' ||\n"
+              "  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='094_flowhive_canonical_sow_authority')::text || '|' ||\n",
+              "migration_id='080_celar_ai_internal_data_intelligence'",
+          )
+          ensure_replace(
+              builder,
+              "[[ \"$verification\" == 'true|true|true' ]] || {",
+              "[[ \"$verification\" == 'true|true|true|true|true' ]] || {",
+              "[[ \"$verification\" == 'true|true|true|true|true' ]]",
+          )
+
+          validator_path = 'tests/validate-systemwide-image-build-controller.mjs'
+          validator = read(validator_path)
+          if 'const privateRuntimeMigrations = [' not in validator:
+              marker = 'const bashScript = ['
+              addition = r"""const privateRuntimeMigrations = [
+  'database/migrations/080_celar_ai_internal_data_intelligence.sql',
+  'database/migrations/081_celar_ai_private_runtime_activation.sql'
+];
+for (const migrationPath of privateRuntimeMigrations) {
+  const migration = fs.readFileSync(migrationPath, 'utf8');
+  assert.match(migration, /ALTER TABLE app_users[\s\S]*ADD COLUMN IF NOT EXISTS is_active BOOLEAN/);
+  assert.match(migration, /UPDATE app_users[\s\S]*SET is_active = TRUE[\s\S]*WHERE is_active IS NULL/);
+  assert.match(migration, /ALTER COLUMN is_active SET NOT NULL/);
+}
+const flowHiveAuthorityBuilder = fs.readFileSync(
+  'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh',
+  'utf8'
+);
+assert.match(flowHiveAuthorityBuilder, /080_celar_ai_internal_data_intelligence\.sql/);
+assert.match(flowHiveAuthorityBuilder, /081_celar_ai_private_runtime_activation\.sql/);
+
+"""
+              if marker not in validator:
+                  raise SystemExit('Image-controller validator insertion marker missing.')
+              write(validator_path, validator.replace(marker, addition + marker, 1))
+
+          manifest = Path('.github/shared-project-document-planning-governed-release-files.txt')
+          entries = {x.strip() for x in manifest.read_text(encoding='utf-8').splitlines() if x.strip()}
+          entries.update({
+              'database/migrations/080_celar_ai_internal_data_intelligence.sql',
+              'database/migrations/081_celar_ai_private_runtime_activation.sql',
+              'tests/test-celar-ai-internal-data-migration-080.sh',
+              'tests/test-celar-ai-private-runtime-activation-migration-081.sh',
+          })
+          manifest.write_text('\n'.join(sorted(entries)) + '\n', encoding='utf-8')
+          PY
+          bash -n scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
+          node --check tests/validate-systemwide-image-build-controller.mjs
+          git diff --check
+      - name: Commit current permanent delta
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if git diff --quiet; then
+            echo "PERMANENT_REPAIR_ALREADY_PRESENT=$(git rev-parse HEAD)"
+            exit 0
+          fi
+          mapfile -t actual < <(git diff --name-only | sort)
+          expected=(
+            .github/shared-project-document-planning-governed-release-files.txt
+            database/migrations/080_celar_ai_internal_data_intelligence.sql
+            database/migrations/081_celar_ai_private_runtime_activation.sql
+            scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
+            tests/test-celar-ai-internal-data-migration-080.sh
+            tests/test-celar-ai-private-runtime-activation-migration-081.sh
+            tests/validate-systemwide-image-build-controller.mjs
+          )
+          [[ "${actual[*]}" == "${expected[*]}" ]] || {
+            printf 'Unexpected paths:\n%s\n' "${actual[*]}" >&2
+            exit 1
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "${expected[@]}"
+          git diff --cached --check
+          git commit -m 'Repair Celar private-runtime prerequisites for FlowHive release'
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          [[ "$(git rev-parse "origin/$TARGET_BRANCH")" == "$START_HEAD" ]]
+          git push --force-with-lease="refs/heads/$TARGET_BRANCH:$START_HEAD" \
+            origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "PERMANENT_REPAIR_COMMIT=$(git rev-parse HEAD)"
+          echo 'PRODUCTION_MUTATION=NONE'
