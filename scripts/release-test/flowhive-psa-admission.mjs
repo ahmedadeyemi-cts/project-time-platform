@@ -139,6 +139,15 @@ export const workflowDispatchChecks = Object.freeze([
     headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
     headBranch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
     conclusion: 'success'
+  },
+  {
+    workflow: '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
+    runId: 35030113366,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
+    headBranch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
+    conclusion: 'success'
   }
 ]);
 export const workflowDispatchNonRequiredEvidence = Object.freeze([
