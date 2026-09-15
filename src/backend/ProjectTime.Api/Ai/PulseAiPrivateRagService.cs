@@ -24,7 +24,13 @@ public sealed class PulseAiPrivateRagService
     // planner to one bounded request instead of queueing five phase requests
     // behind that slot. The response is still validated as five phases with
     // two work packages per phase before anything can become a draft.
-    private const int FlowHiveBatchMaximumOutputTokens = 4_096;
+    // Celar AI's Test runtime is a single-slot local model. A 4096-token
+    // detail-heavy response consumed the full ten-minute batch budget in live
+    // acceptance. Keep the provider response to source-grounded identity,
+    // outcome, effort, and dependency fields; the server completes repetitive
+    // review fields after parsing without inventing customer facts.
+    private const int FlowHiveBatchMaximumOutputTokens = 2_048;
+    private const int FlowHiveBatchSourceMaximumCharacters = 4_000;
     // Module 025 uses one small, source-grounded response per delivery phase.
     // FlowHive uses one bounded five-phase response because the live Celar AI
     // runtime can expose only one inference slot; five concurrent requests
@@ -1644,7 +1650,9 @@ public sealed class PulseAiPrivateRagService
         using var batchDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         batchDeadline.CancelAfter(batchTimeout);
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        var boundedRetrieval = BoundModule025BatchRetrieval(retrieval);
+        var boundedRetrieval = BoundModule025BatchRetrieval(
+            retrieval,
+            FlowHiveBatchSourceMaximumCharacters);
         PulseAiPrivateModelResult? last = null;
         try
         {
@@ -1749,20 +1757,20 @@ public sealed class PulseAiPrivateRagService
                 "Return at least two tasks for every phase and at least ten tasks total.",
                 "Return exactly ten distinct tasks: two for each requested phase.",
                 StringComparison.Ordinal)
-            + "\nThis is one bounded FlowHive request. Return ONLY one JSON object with exactly ten tasks: two Plan, two Design, two Implement, two Validate, and two Release. Use WBS 1.1, 1.2 through 5.1, 5.2. Keep each task source-grounded and concise with wbs, phase, name, description, estimatedHours, estimatedDurationDays, requiredRoles, predecessors, and detailedSteps. Include at least two concrete detailedSteps per task and citationId 1. The server fills repetitive review fields only after parsing; it does not invent customer facts. Do not return markdown, phase summaries as tasks, or more than ten tasks.";
+            + "\nThis is one compact bounded FlowHive request. Return ONLY one JSON object with exactly ten tasks: two Plan, two Design, two Implement, two Validate, and two Release. Use WBS 1.1, 1.2 through 5.1, 5.2. For each task return only wbs, phase, name, a source-grounded description of at least 80 characters, estimatedHours, estimatedDurationDays, requiredRoles, predecessors, and citationId 1. Do not return detailedSteps, inputs, outputs, acceptance, validation, responsibilities, prerequisites, or risks; the server fills those task-derived review fields after parsing. Do not return markdown, phase summaries as tasks, or more than ten tasks, and do not invent customer facts.";
 
     private static string FlowHiveBatchUserInstruction(string userInstruction) =>
         userInstruction
-        + "\nGenerate the complete five-phase FlowHive proposal in this single bounded response. Return exactly two distinct work packages for each phase, preserving the authorized SOW-specific technology, outcomes, dependencies, and open questions. Do not omit a phase to save space.";
+        + "\nGenerate the complete five-phase FlowHive proposal in this single compact response. Return exactly two distinct source-grounded work packages for each phase, preserving the authorized SOW-specific technology, outcomes, and dependencies. Keep each task concise so all five phases fit in the bounded response; do not omit a phase.";
 
     private static PulseAiPrivateRetrievalResult BoundModule025BatchRetrieval(
-        PulseAiPrivateRetrievalResult retrieval)
+        PulseAiPrivateRetrievalResult retrieval,
+        int maximumCharacters = Module025PhaseSourceMaximumCharacters)
     {
         if (retrieval.Chunks.Count == 0
             || retrieval.Chunks.Sum(chunk => chunk.Text.Length) <= Module025PhaseSourceMaximumCharacters)
             return retrieval;
 
-        const int maximumCharacters = Module025PhaseSourceMaximumCharacters;
         var keywords = new[]
         {
             "scope", "requirement", "objective", "deliverable", "dependency", "acceptance",

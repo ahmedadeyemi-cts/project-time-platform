@@ -46,6 +46,12 @@ var flowHivePhaseOutputTokens = (int)ragServiceType
 Assert(
     flowHivePhaseOutputTokens == 1_280,
     "flowhive_phase_response_budget_matches_compact_two_task_contract");
+var flowHiveBatchOutputTokens = (int)ragServiceType
+    .GetField("FlowHiveBatchMaximumOutputTokens", BindingFlags.NonPublic | BindingFlags.Static)!
+    .GetValue(null)!;
+Assert(
+    flowHiveBatchOutputTokens == 2_048,
+    "flowhive_single_batch_response_budget_is_safe_for_single_slot_runtime");
 Assert(
     PulseAiPrivateRagService.MaximumOutputTokensForPlanning(
         CelarAiCapabilityCatalog.ProjectFlowHivePlan,
@@ -177,6 +183,17 @@ Assert(boundedMultiRetrieval.Chunks.Sum(chunk => chunk.Text.Length) <= 8_000,
     "module025_multi_source_phase_budget_is_aggregate");
 Assert(boundedMultiRetrieval.Chunks.Any(chunk => chunk.RankOrder == 1),
     "module025_multi_source_phase_keeps_primary_citation");
+var flowHiveBatchSourceFactory = typeof(PulseAiPrivateRagService).GetMethod(
+    "BoundModule025BatchRetrieval", BindingFlags.NonPublic | BindingFlags.Static);
+Assert(flowHiveBatchSourceFactory is not null, "flowhive_single_batch_source_bounding_available");
+var flowHiveBatchRetrieval = (PulseAiPrivateRetrievalResult)flowHiveBatchSourceFactory!.Invoke(
+    null,
+    [longModule025Retrieval, 4_000])!;
+Assert(flowHiveBatchRetrieval.Chunks.Sum(chunk => chunk.Text.Length) <= 4_000,
+    "flowhive_single_batch_source_budget_is_compact");
+Assert(flowHiveBatchRetrieval.Chunks.Single().SourceSha256 == longModule025Source.SourceSha256
+       && flowHiveBatchRetrieval.Chunks.Single().TextSha256 == longModule025Source.TextSha256,
+    "flowhive_single_batch_source_hashes_remain_bound_to_full_scope");
 
 var module025Phases = new[] { "Planning", "Architecture and Design", "Implementation", "Testing and Validation", "Operational Handoff" };
 var module025Payload = JsonSerializer.Serialize(new
@@ -484,7 +501,7 @@ var flowHiveBatchPayload = JsonSerializer.Serialize(new
         estimatedDurationDays = task.EstimatedDurationDays,
         requiredRoles = task.RequiredRoles,
         predecessors = task.Predecessors,
-        detailedSteps = task.DetailedSteps
+        citationId = 1
     }),
     assumptions = parsedModule025.Assumptions,
     risks = parsedModule025.Risks,
@@ -508,11 +525,13 @@ var flowHiveBatchResult = await RunFlowHiveBatch(async (request, token) =>
     var active = Interlocked.Increment(ref flowHiveBatchActive);
     flowHiveBatchCalls++;
     flowHiveBatchMaximum = Math.Max(flowHiveBatchMaximum, active);
-    Assert(request.MaximumOutputTokens == 4_096, "flowhive_single_batch_output_budget_is_bounded");
+    Assert(request.MaximumOutputTokens == 2_048, "flowhive_single_batch_output_budget_is_bounded");
     Assert(!request.SystemInstruction.Contains("ONLY Plan tasks", StringComparison.Ordinal),
         "flowhive_single_batch_does_not_scope_to_one_phase");
-    Assert(request.UserInstruction.Contains("single bounded response", StringComparison.Ordinal),
+    Assert(request.UserInstruction.Contains("single compact response", StringComparison.Ordinal),
         "flowhive_single_batch_prompt_is_explicit");
+    Assert(request.SystemInstruction.Contains("Do not return detailedSteps", StringComparison.Ordinal),
+        "flowhive_single_batch_provider_contract_omits_server_completed_fields");
     Assert(request.Sources.Single() == module025Source, "flowhive_single_batch_source_authority_preserved");
     await Task.Yield();
     Interlocked.Decrement(ref flowHiveBatchActive);
