@@ -220,9 +220,13 @@ class WorkflowContract(unittest.TestCase):
             verify_ci_script_limits(doc)
             step=next(s for s in doc['jobs']['validate']['steps'] if s.get('name')=='Validate governed protected-Test controller')
             self.assertEqual(step['env']['PR_NUMBER'], '${{ github.event.pull_request.number }}')
-            self.assertEqual(step['run'].count('"$PR_NUMBER"'), 2)
-            self.assertNotIn('${{', step['run'])
-            subprocess.run(['bash','-n'], input=step['run'], text=True, check=True, capture_output=True)
+            controller_script=step['run']
+            branch_script=ROOT/'scripts/release-test/validate-protected-test-controller-branches.sh'
+            if 'source scripts/release-test/validate-protected-test-controller-branches.sh' in controller_script:
+                controller_script += '\n' + branch_script.read_text()
+            self.assertEqual(controller_script.count('"$PR_NUMBER"'), 2)
+            self.assertNotIn('${{', controller_script)
+            subprocess.run(['bash','-n'], input=controller_script, text=True, check=True, capture_output=True)
         for body in ['x'*21001, 'x'*19000+'${{ github.event.pull_request.number }}']:
             with self.assertRaises(AssertionError):
                 verify_ci_script_limits({'jobs':{'fixture':{'steps':[{'run':body}]}}})

@@ -51,7 +51,7 @@ const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
   merge_commit_sha: approval.mergeCommit,
   head: { ref: approval.sourceBranch, sha: approval.sha, repo: { full_name: repository } },
-  base: { ref: 'main', sha: plannerControlCandidateApproval || plannerCandidateApprovalRefresh ? '90d2ee572329cf55b29cd87579ad5232a875ef78' : approval.sourceBase, repo: { full_name: repository } } };
+  base: { ref: 'main', sha: plannerCandidateApprovalRefresh ? approval.sourceBase : plannerControlCandidateApproval ? '90d2ee572329cf55b29cd87579ad5232a875ef78' : approval.sourceBase, repo: { full_name: repository } } };
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));
@@ -223,6 +223,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
     : plannerCandidateRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-COMPLETION-01'
+    : plannerCandidateApprovalRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-CELAR-TRANSPORT-01'
     : portfolioDbAliasCandidateRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PORTFOLIO-DB-ALIAS-01'
     : plannerLiveCapacityCandidateRefresh
@@ -256,6 +258,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-COMPACT-BATCH-ACTIVATION-RENEWAL-02'
     : plannerCandidateRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PORTFOLIO-DB-ALIAS-01'
+    : plannerCandidateApprovalRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-COMPLETION-01'
     : portfolioDbAliasCandidateRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-CAPACITY-REPAIR-01'
     : plannerLiveCapacityCandidateRefresh
@@ -520,7 +524,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, plannerCandidateRefresh || plannerAdmissionEvidenceCorrection || portfolioDbAliasCandidateRefresh || plannerLiveCapacityCandidateRefresh || plannerLiveCapacityRepair || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafeCandidateRefresh || plannerCapacitySafe
+  assert.equal(approval.mergeCommit, plannerCandidateApprovalRefresh ? 'e15e6dcd872fe6e5eae790d2213dd0b8347e94f6' : plannerCandidateRefresh || plannerAdmissionEvidenceCorrection || portfolioDbAliasCandidateRefresh || plannerLiveCapacityCandidateRefresh || plannerLiveCapacityRepair || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafeCandidateRefresh || plannerCapacitySafe
     ? (plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? '4b4e0bbec528ebacbc2bc272ada3e3ea21831952' : portfolioDbAliasCandidateRefresh ? 'd6539ae1bf02f5b7a3d5d6386cac827ec63dd785' : plannerLiveCapacityCandidateRefresh ? '1d11b029ca7c63551af71a098b7a7f4618ce290b' : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? '45c4fa52ca33c7c60876c08fb800b6f938cb6ddd' : '4bb7ae0b2411eb9120db82b9268737080908105c')
     : plannerCompactPhaseControl
     ? 'b37398b13b222cc60acc70ac2b5cbb7ac56fecef'
@@ -567,7 +571,22 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], sourceDriftFiles));
 });
 test('successor approval enumerates only the workflows that ran for the exact selected application head', () => {
-  const expectedRequiredWorkflows = plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? [
+  const expectedRequiredWorkflows = plannerCandidateApprovalRefresh ? [
+    '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
+    '.github/workflows/celar-ai-production-hardening-ci.yml',
+    '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
+    '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+    '.github/workflows/deepseek-v4-provider-ci.yml',
+    '.github/workflows/flowhive-detailed-planner-ci.yml',
+    '.github/workflows/project-planning-collaboration-ci.yml',
+    '.github/workflows/projectpulse-ci.yml',
+    '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
+    '.github/workflows/pulse-ai-system-intelligence-ci.yml',
+    '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
+    '.github/workflows/security-posture-ci.yml',
+    '.github/workflows/shared-project-document-planning-ci.yml',
+    '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+  ] : plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? [
     '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
     '.github/workflows/celar-ai-production-hardening-ci.yml',
     '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
@@ -624,7 +643,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? 34988294166 : portfolioDbAliasCandidateRefresh || plannerLiveCompletionRepair ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
+    plannerCandidateApprovalRefresh || plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? 34988294166 : portfolioDbAliasCandidateRefresh || plannerLiveCompletionRepair ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
       : module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
 });
@@ -639,7 +658,7 @@ test('workflow-dispatch evidence is candidate-bound and cannot substitute anothe
     }]), /Unbound workflow-dispatch run/);
     return;
   }
-  assert.equal(workflowDispatchChecks.length, 1);
+  assert.equal(workflowDispatchChecks.length, plannerCandidateApprovalRefresh ? 2 : 1);
   assert.deepEqual(dispatchRuns.map(run => run.id).sort((a, b) => a - b), workflowDispatchChecks.map(binding => binding.runId).sort((a, b) => a - b));
   assert.throws(() => verifyRuns(approval, [...runs, ...dispatchRuns, {
     id: 39999999999, path: '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
@@ -661,7 +680,9 @@ test('path-filtered workflow omission is bound to the candidate inventory and ba
   }
   const workflow = approval.workflowPathOmissions[0].workflow;
   const source = sources.get(workflow);
-  const pathMatchedFile = workflow === '.github/workflows/enterprise-experience-system-ci.yml'
+  const pathMatchedFile = workflow === '.github/workflows/flowhive-enterprise-psa-ci.yml'
+    ? '.github/workflows/flowhive-enterprise-psa-ci.yml'
+    : workflow === '.github/workflows/enterprise-experience-system-ci.yml'
     ? 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'
     : workflow === '.github/workflows/flowhive-detailed-planner-ci.yml'
       ? 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
