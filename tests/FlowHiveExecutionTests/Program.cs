@@ -11,25 +11,36 @@ var root = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? Directory.G
 var cs = Environment.GetEnvironmentVariable("FLOWHIVE_TEST_DB") ?? throw new Exception("FLOWHIVE_TEST_DB is required; tests never connect to an application database implicitly.");
 var config = new NpgsqlConnectionStringBuilder(cs);
 if (!(config.Database ?? "").StartsWith("flowhive_execution_test", StringComparison.Ordinal)) throw new Exception("Refusing a non-test database.");
-Environment.SetEnvironmentVariable("PTP_DB_HOST", config.Host);
-Environment.SetEnvironmentVariable("PTP_DB_PORT", config.Port.ToString());
-Environment.SetEnvironmentVariable("PTP_DB_NAME", config.Database);
-Environment.SetEnvironmentVariable("PTP_DB_USER", config.Username);
-Environment.SetEnvironmentVariable("PTP_DB_PASSWORD", config.Password);
 var flowHiveConfigType = typeof(ProjectFlowHiveExecutionPolicy).Assembly
     .GetType("ProjectTime.Api.Modules.ProjectFlowHiveDatabaseConfig")!;
 var flowHiveConfigFactory = flowHiveConfigType.GetMethod("FromEnvironment", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
 var flowHiveConnection = flowHiveConfigType.GetProperty("ConnectionString")!;
 var flowHiveMissing = flowHiveConfigType.GetProperty("Missing")!;
-var previousAlias = Environment.GetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING");
-Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING", cs);
-Environment.SetEnvironmentVariable("PTP_DB_PASSWORD", null);
-var aliasConfig = flowHiveConfigFactory.Invoke(null, null)!;
-Check((string)flowHiveConnection.GetValue(aliasConfig)! == new NpgsqlConnectionStringBuilder(cs).ConnectionString,
-    "FlowHive accepts the existing full database connection-string alias when component secrets are not yet materialized");
-Check(((IReadOnlyList<string>)flowHiveMissing.GetValue(aliasConfig)!).Count == 0,
-    "FlowHive does not report configuration missing when the canonical full alias is available");
-Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING", previousAlias);
+var databaseEnvironmentNames = new[]
+{
+    "ConnectionStrings__DefaultConnection", "ConnectionStrings__ProjectPulse", "ConnectionStrings__ProjectTime",
+    "PROJECTPULSE_CONNECTION_STRING", "PROJECTTIME_DATABASE_CONNECTION", "PROJECTPULSE_DB_CONNECTION", "PROJECTTIME_DB_CONNECTION",
+    "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD"
+};
+var previousDatabaseEnvironment = databaseEnvironmentNames.ToDictionary(name => name, Environment.GetEnvironmentVariable, StringComparer.Ordinal);
+try
+{
+    foreach (var name in databaseEnvironmentNames) Environment.SetEnvironmentVariable(name, null);
+    Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING", cs);
+    var aliasConfig = flowHiveConfigFactory.Invoke(null, null)!;
+    Check((string)flowHiveConnection.GetValue(aliasConfig)! == new NpgsqlConnectionStringBuilder(cs).ConnectionString,
+        "FlowHive accepts the existing full database connection-string alias when component secrets are not yet materialized");
+    Check(((IReadOnlyList<string>)flowHiveMissing.GetValue(aliasConfig)!).Count == 0,
+        "FlowHive does not report configuration missing when the canonical full alias is available");
+}
+finally
+{
+    foreach (var (name, value) in previousDatabaseEnvironment) Environment.SetEnvironmentVariable(name, value);
+}
+Environment.SetEnvironmentVariable("PTP_DB_HOST", config.Host);
+Environment.SetEnvironmentVariable("PTP_DB_PORT", config.Port.ToString());
+Environment.SetEnvironmentVariable("PTP_DB_NAME", config.Database);
+Environment.SetEnvironmentVariable("PTP_DB_USER", config.Username);
 Environment.SetEnvironmentVariable("PTP_DB_PASSWORD", config.Password);
 async Task<object?> Sql(string sql, params (string Name, object Value)[] parameters)
 {
