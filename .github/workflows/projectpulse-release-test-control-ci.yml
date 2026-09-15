@@ -104,7 +104,7 @@ jobs:
           SOURCE_BRANCH="$(jq -r '.sourceBranch' "$APPROVAL")"
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Malformed approved candidate SHA.' >&2; exit 1; }
           [[ "$SOURCE_BASE" =~ ^[0-9a-f]{40}$ ]] || { echo 'Malformed approved candidate base SHA.' >&2; exit 1; }
-          [[ "$SOURCE_BRANCH" == 'fix/flowhive-planner-capacity-safe-20260915' ]] || { echo 'Unexpected approved candidate branch.' >&2; exit 1; }
+          [[ "$SOURCE_BRANCH" == 'fix/flowhive-planner-live-capacity-repair-20260915' ]] || { echo 'Unexpected approved candidate branch.' >&2; exit 1; }
           [[ "$CANDIDATE_SHA" == "$GITHUB_SHA" ]] || { echo 'The workflow ref is not the approved candidate.' >&2; exit 1; }
           {
             echo "BASE_SHA=$SOURCE_BASE"
@@ -149,14 +149,14 @@ jobs:
           SHARED_PLANNING_MANIFEST='.github/shared-project-document-planning-governed-release-files.txt'
           HEAD_BRANCH="${PR_HEAD_REF:-${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}}"
 
-          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
-          git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Pull-request base SHA missing.'
+          git cat-file -e "$BASE_SHA^{commit}" || fail 'Pull-request base commit missing.'
 
           bash scripts/release-test/prepare-protected-test-scope-manifests.sh "$CIT"
 
           git fetch --no-tags origin main
           CURRENT_BASE_SHA="$(git merge-base origin/main HEAD)"
-          [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base is unavailable.'
+          [[ "$CURRENT_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Current main merge-base missing.'
           git diff --name-only "$CURRENT_BASE_SHA...HEAD" | LC_ALL=C sort -u > "$CIT/diff"
           run_release_control() {
             BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
@@ -164,7 +164,7 @@ jobs:
           p='control/flowhive-planner-'
           is_planner_release_control_branch() {
             case "$HEAD_BRANCH" in
-              'fix/module025-sow-role-live-acceptance-20260914'|'control/module025-sow-role-candidate-refresh-1009-20260914'|'control/module025-sow-role-candidate-refresh-1014-20260914'|"$p"provider-deadline-candidate-refresh-20260914|"$p"control-path-omissions-20260914|"$p"candidate-approval-refresh-20260915|"$p"admission-manifest-refresh-20260915|"$p"compact-phase-native-gate-20260915|"$p"parallel-phase-candidate-refresh-20260915|'fix/flowhive-planner-capacity-safe-20260915'|'fix/flowhive-planner-live-capacity-repair-20260915'|"$p"capacity-safe-candidate-refresh-20260915) return 0 ;;
+              'fix/module025-sow-role-live-acceptance-20260914'|'control/module025-sow-role-candidate-refresh-1009-20260914'|'control/module025-sow-role-candidate-refresh-1014-20260914'|"$p"provider-deadline-candidate-refresh-20260914|"$p"control-path-omissions-20260914|"$p"candidate-approval-refresh-20260915|"$p"admission-manifest-refresh-20260915|"$p"compact-phase-native-gate-20260915|"$p"parallel-phase-candidate-refresh-20260915|'fix/flowhive-planner-capacity-safe-20260915'|'fix/flowhive-planner-live-capacity-repair-20260915'|"$p"live-capacity-candidate-refresh-20260915|"$p"capacity-safe-candidate-refresh-20260915) return 0 ;;
               *) return 1 ;;
             esac
           }

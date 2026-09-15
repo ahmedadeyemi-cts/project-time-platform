@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-test-candidate-v2",
   "repository": "ahmedadeyemi-cts/project-time-platform",
-  "pullRequest": 1035,
-  "branch": "fix/flowhive-planner-capacity-safe-20260915",
-  "sourceBranch": "fix/flowhive-planner-capacity-safe-20260915",
-  "sha": "55bb358942bd2a0c7befa7b54d04579ec4a96677",
-  "mergeCommit": "45c4fa52ca33c7c60876c08fb800b6f938cb6ddd",
-  "sourceBase": "e0122c6631aeb9f235ea04eee773724c21acb569",
+  "pullRequest": 1037,
+  "branch": "fix/flowhive-planner-live-capacity-repair-20260915",
+  "sourceBranch": "fix/flowhive-planner-live-capacity-repair-20260915",
+  "sha": "3c1230e422b55a746a2dde2b534ec94c9dd6678b",
+  "mergeCommit": "1d11b029ca7c63551af71a098b7a7f4618ce290b",
+  "sourceBase": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -38,7 +38,7 @@
     {
       "workflow": ".github/workflows/enterprise-experience-system-ci.yml",
       "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "e0122c6631aeb9f235ea04eee773724c21acb569",
+      "baseCommit": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987",
       "baseWorkflowSha256": "2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c",
       "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
       "candidateChangedFilesCount": 5
@@ -46,7 +46,7 @@
     {
       "workflow": ".github/workflows/celar-ai-enterprise-api-diagnostics.yml",
       "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "e0122c6631aeb9f235ea04eee773724c21acb569",
+      "baseCommit": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987",
       "baseWorkflowSha256": "d3fb31f6495c8e8b65d7962e796cac472170b5957c41f50f694c517e04ebef5b",
       "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
       "candidateChangedFilesCount": 5
@@ -57,16 +57,16 @@
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
+      "pullRequest": 1037,
+      "branch": "fix/flowhive-planner-live-capacity-repair-20260915",
+      "headSha": "3c1230e422b55a746a2dde2b534ec94c9dd6678b",
+      "baseSha": "34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987"
+    },
+    "supersedes": {
       "pullRequest": 1035,
       "branch": "fix/flowhive-planner-capacity-safe-20260915",
       "headSha": "55bb358942bd2a0c7befa7b54d04579ec4a96677",
-      "baseSha": "e0122c6631aeb9f235ea04eee773724c21acb569"
-    },
-    "supersedes": {
-      "pullRequest": 1032,
-      "branch": "fix/flowhive-planner-parallel-phases-20260915",
-      "headSha": "e1efb08668eba35b49b4fd9ee9f228efb7e44bfe",
-      "installedAcceptanceRunId": 34933208336,
+      "installedAcceptanceRunId": 34939610524,
       "installedAcceptanceConclusion": "failure"
     },
     "requiredChecks": [
