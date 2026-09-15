@@ -361,6 +361,19 @@ jobs:
               exit 1
             }
             run_release_control
+          elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-compact-phase-20260915' ]]; then
+            printf '%s\n' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$CIT/flowhive-planner-compact-phase-fix-files"
+            cmp -s "$CIT/diff" "$CIT/flowhive-planner-compact-phase-fix-files" || {
+              echo 'FlowHive compact planner phase fix contains an unreviewed file.' >&2
+              diff -u "$CIT/flowhive-planner-compact-phase-fix-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
+            run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-final-20260914' ]]; then
             printf '%s\n' \
               '.github/flowhive-psa-protected-cutover.json' \

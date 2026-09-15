@@ -499,6 +499,7 @@ export const plannerProviderDeadlineRetryFiles = [
 export const plannerCompactPhaseFixBase = 'aacebde419c0a325a28c5aaaf0b11f5707be2935';
 export const plannerCompactPhaseFixBranch = 'fix/flowhive-planner-compact-phase-20260915';
 export const plannerCompactPhaseFixFiles = [
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
   'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
   'tests/FlowHiveDetailedPlannerTests/Program.cs',
   'tests/flowhive-psa-release-control.mjs'
