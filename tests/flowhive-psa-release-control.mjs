@@ -474,6 +474,7 @@ export const plannerAdmissionManifestRefreshFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   '.github/workflows/module025-governed-protected-test-release-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
+  'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
