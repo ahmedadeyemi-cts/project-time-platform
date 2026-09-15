@@ -34,6 +34,7 @@ const plannerRuntimeCheckOmission = process.env.GITHUB_HEAD_REF === 'control/flo
 const plannerCapacitySafe = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-capacity-safe-20260915';
 const plannerLiveCapacityRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-live-capacity-repair-20260915';
 const plannerCapacitySafeCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-capacity-safe-candidate-refresh-20260915';
+const portfolioDbAliasCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-portfolio-db-alias-candidate-refresh-20260915';
 const plannerLiveCapacityCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-capacity-candidate-refresh-20260915'
   || process.env.GITHUB_HEAD_REF === 'fix/flowhive-portfolio-db-alias-20260915';
 const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate || plannerParallelPhaseFix || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe || plannerCapacitySafeCandidateRefresh || plannerLiveCapacityCandidateRefresh;
@@ -206,6 +207,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const liveProviderOutputRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-provider-output-refresh-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
+  const portfolioDbAliasCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-portfolio-db-alias-candidate-refresh-20260915';
   const plannerLiveCapacityCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-capacity-candidate-refresh-20260915'
     || process.env.GITHUB_HEAD_REF === 'fix/flowhive-portfolio-db-alias-20260915';
   assert.equal(authorization.approvalReference, providerContractRefresh
@@ -216,6 +218,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04'
     : liveRepairRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
+    : portfolioDbAliasCandidateRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PORTFOLIO-DB-ALIAS-01'
     : plannerLiveCapacityCandidateRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-CAPACITY-REPAIR-01'
     : activation
@@ -245,6 +249,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
     : liveRepairRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-COMPACT-BATCH-ACTIVATION-RENEWAL-02'
+    : portfolioDbAliasCandidateRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-CAPACITY-REPAIR-01'
     : plannerLiveCapacityCandidateRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-CAPACITY-SAFE-CANDIDATE-01'
     : activation
@@ -444,7 +450,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const admissionManifestOrder = process.env.GITHUB_HEAD_REF === 'control/module025-admission-manifest-order-20260914';
   const plannerControlPathCoverage = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914';
   const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
-  const sourceDriftFiles = plannerLiveCapacityCandidateRefresh
+  const sourceDriftFiles = portfolioDbAliasCandidateRefresh || plannerLiveCapacityCandidateRefresh
     ? [...new Set([...files, ...plannerLiveCapacityCandidateRefreshFiles])].sort()
     : plannerLiveCapacityRepair
     ? [...new Set([...files, ...plannerLiveCapacityRepairFiles])].sort()
@@ -485,8 +491,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, plannerLiveCapacityCandidateRefresh || plannerLiveCapacityRepair || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafeCandidateRefresh || plannerCapacitySafe
-    ? (plannerLiveCapacityCandidateRefresh ? '1d11b029ca7c63551af71a098b7a7f4618ce290b' : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? '45c4fa52ca33c7c60876c08fb800b6f938cb6ddd' : '4bb7ae0b2411eb9120db82b9268737080908105c')
+  assert.equal(approval.mergeCommit, portfolioDbAliasCandidateRefresh || plannerLiveCapacityCandidateRefresh || plannerLiveCapacityRepair || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafeCandidateRefresh || plannerCapacitySafe
+    ? (portfolioDbAliasCandidateRefresh ? 'd6539ae1bf02f5b7a3d5d6386cac827ec63dd785' : plannerLiveCapacityCandidateRefresh ? '1d11b029ca7c63551af71a098b7a7f4618ce290b' : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? '45c4fa52ca33c7c60876c08fb800b6f938cb6ddd' : '4bb7ae0b2411eb9120db82b9268737080908105c')
     : plannerCompactPhaseControl
     ? 'b37398b13b222cc60acc70ac2b5cbb7ac56fecef'
     : plannerControlCandidateApproval || plannerAdmissionManifestRefresh
@@ -532,7 +538,21 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   ]) assert.throws(() => verifySourceDrift([...plannerTimeBudgetApprovalFiles, unrelated], sourceDriftFiles));
 });
 test('successor approval enumerates only the workflows that ran for the exact selected application head', () => {
-  assert.deepEqual(approval.requiredWorkflows, [
+  assert.deepEqual(approval.requiredWorkflows, portfolioDbAliasCandidateRefresh ? [
+    '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
+    '.github/workflows/celar-ai-production-hardening-ci.yml',
+    '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
+    '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
+    '.github/workflows/deepseek-v4-provider-ci.yml',
+    '.github/workflows/flowhive-enterprise-psa-ci.yml',
+    '.github/workflows/flowhive-psa-release-control-ci.yml',
+    '.github/workflows/project-planning-collaboration-ci.yml',
+    '.github/workflows/projectpulse-ci.yml',
+    '.github/workflows/pulse-ai-system-intelligence-ci.yml',
+    '.github/workflows/security-posture-ci.yml',
+    '.github/workflows/shared-project-document-planning-ci.yml',
+    '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+  ] : [
     '.github/workflows/celar-ai-production-hardening-ci.yml',
     '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
     '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
@@ -557,7 +577,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
+    portfolioDbAliasCandidateRefresh ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
       : module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
 });
@@ -590,7 +610,14 @@ test('path-filtered workflow omission is bound to the candidate inventory and ba
     approval.workflowPathOmissions.map(omission => omission.workflow));
   const workflow = approval.workflowPathOmissions[0].workflow;
   const source = sources.get(workflow);
-  const pathMatched = [...changed.slice(1), 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'].sort();
+  const pathMatchedFile = workflow === '.github/workflows/enterprise-experience-system-ci.yml'
+    ? 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'
+    : workflow === '.github/workflows/flowhive-detailed-planner-ci.yml'
+      ? 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
+      : workflow === '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml'
+        ? 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
+        : 'src/frontend/project-time-web/src/App.jsx';
+  const pathMatched = [...changed.slice(1), pathMatchedFile].sort();
   const pathMatchedDigest = crypto.createHash('sha256').update(`${pathMatched.join('\n')}\n`).digest('hex');
   const pathMatchedOmission = [{ ...approval.workflowPathOmissions[0],
     candidateChangedFilesSha256: pathMatchedDigest, candidateChangedFilesCount: pathMatched.length }];
@@ -599,7 +626,7 @@ test('path-filtered workflow omission is bound to the candidate inventory and ba
   assert.throws(() => verifyWorkflowPathOmissions(approval.workflowPathOmissions,
     { ...pr, base: { ...pr.base, sha: 'b'.repeat(40) } }, changed, source), /actual candidate base/);
   assert.throws(() => verifyWorkflowPathOmission(approval.workflowPathOmissions[0], pr, changed,
-    source.replace('src/frontend/project-time-web/src/EnterpriseExperienceController.jsx', 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx\n      - \'src/frontend/project-time-web/src/Unreviewed.jsx\'')),
+    source.replace(pathMatchedFile, `${pathMatchedFile}\n      - 'src/frontend/project-time-web/src/Unreviewed.jsx'`)),
     /base workflow bytes/);
 });
 test('historical controller exception cannot absorb another failure or rerun', () => {

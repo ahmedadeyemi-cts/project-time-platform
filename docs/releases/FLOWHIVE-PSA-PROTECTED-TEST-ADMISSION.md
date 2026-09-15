@@ -13,20 +13,20 @@ repository owner must post this exact command as a comment on PR #887's
 issue thread (not on the candidate PR or another issue):
 
 ```
-DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 3c1230e422b55a746a2dde2b534ec94c9dd6678b
+DEPLOY FLOWHIVE PSA PROTECTED TEST SHA 4b0c5d838eabbb8a15f29bab62d891442eb2e148
 ```
 
-The admission workflow executes main-owned code only. It checks the exact merged PR #1037,
+The admission workflow executes main-owned code only. It checks the exact merged PR #1039,
 repository, successor branch, candidate SHA, the required successful exact-SHA PR workflows,
 current main control SHA and application-source freshness. Main changes after the
 candidate's source base may contain only the reviewed control-only manifest; any
 new application changes require a refreshed candidate and approval. The current
 feature branch is not renamed or implicitly approved by a prefix match.
 
-This successor is PR1037, merged to trusted main as `1d11b029ca7c63551af71a098b7a7f4618ce290b`,
-and carries the live-capacity FlowHive planner correction at application commit
-`3c1230e422b55a746a2dde2b534ec94c9dd6678b`. Its reviewed application source base is
-`34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987`;
+This successor is PR1039, merged to trusted main as `d6539ae1bf02f5b7a3d5d6386cac827ec63dd785`,
+and carries the FlowHive portfolio database-alias correction at application commit
+`4b0c5d838eabbb8a15f29bab62d891442eb2e148`. Its reviewed application source base is
+`c9a3f98fdc76a0a59918af29bb1163e6911a9013`;
 migrations 103/104/105/106/107 retain their reviewed SHA-256 values. PR891, PR947 and the
 existing FlowHive/SOW application scope remain in the merged ancestry.
 
@@ -57,10 +57,11 @@ and the live assessment. Run `34495606530` uses controller
 `9f30078c2c407d4d3576ccefd663a145be50c6c4`; all three are required to remain
 queued with zero jobs, no pending deployment, no approval and no artifacts. Their
 raw GitHub status remains visible and distinct from the repository's protected
-nonterminal disposition. The prior PR949 activation attempt was rejected before its
-deployment POST because its approval listed workflows that did not run for PR949;
-the reviewed check-set refresh records only the six actual successful `pull_request`
-workflows. This refreshed approval remains inactive until its current-head control
+nonterminal disposition. The prior PR1037 candidate remains preserved as historical
+evidence. This refreshed approval records the thirteen exact successful `pull_request`
+workflows for PR1039 and three explicit cryptographically bound path-filter omissions:
+detailed planner, private RAG orchestration, and runtime navigation/work register. It
+remains inactive until its current-head control
 review, native Test approval, and one-time admission are complete, followed by the existing native Test
 deployment approval. When that
 activation is reviewed, the maintained entrypoint performs one guarded
