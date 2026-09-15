@@ -155,6 +155,24 @@ export const workflowDispatchChecks = Object.freeze([
     conclusion: 'success'
   }
 ]);
+export const workflowDispatchNonRequiredEvidence = Object.freeze([
+  {
+    workflow: '.github/workflows/flowhive-enterprise-psa-ci.yml',
+    runId: 35009051752,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: 'e8a25259e8335233815cb9153f24caf4b4e519e4',
+    headBranch: 'fix/flowhive-planner-celar-transport-20260915',
+    status: 'completed',
+    conclusion: 'failure',
+    reasonCode: 'non-required-manual-validation-failure',
+    failedStep: 'Test resumable observation, identity fencing and bounded network requests',
+    failedAssertionCount: 3,
+    satisfiesRequiredCheck: false,
+    deploymentEligible: false,
+    disposition: 'non-required-evidence-only'
+  }
+]);
 
 export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
@@ -212,6 +230,8 @@ export function verifyApproval(approval, requestedSha) {
     'A path-filtered workflow omission must be explicit and cryptographically bound.');
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks,
     'Workflow-dispatch evidence must be exact, reviewed, and candidate-bound.');
+  assert.deepEqual(approval.workflowDispatchNonRequiredEvidence, workflowDispatchNonRequiredEvidence,
+    'Non-required workflow-dispatch evidence must be exact and immutable.');
   assert.deepEqual(approval.historicalCandidateEvidence, {
     pullRequest: 1037,
     branch: 'fix/flowhive-planner-live-capacity-repair-20260915',
@@ -265,9 +285,33 @@ export function verifyWorkflowDispatchCheck(binding, run, approval) {
   return run;
 }
 
+export function verifyWorkflowDispatchNonRequiredEvidence(evidence, run, approval) {
+  assert.deepEqual(evidence, workflowDispatchNonRequiredEvidence.find(item => item.workflow === evidence?.workflow),
+    'Non-required workflow-dispatch evidence must match the reviewed exact-run record.');
+  assert.ok(!approval.requiredWorkflows.includes(evidence.workflow),
+    'Non-required workflow-dispatch evidence cannot remove an applicable required check.');
+  assert.equal(evidence.satisfiesRequiredCheck, false,
+    'Non-required workflow-dispatch evidence cannot satisfy a required check.');
+  assert.equal(evidence.deploymentEligible, false,
+    'Non-required workflow-dispatch evidence cannot authorize deployment.');
+  assert.equal(run.id, evidence.runId, 'Non-required workflow-dispatch run identity changed.');
+  assert.equal(run.run_attempt, evidence.runAttempt, 'Non-required workflow-dispatch attempt changed.');
+  assert.equal(run.event, evidence.event, 'Non-required workflow-dispatch event changed.');
+  assert.equal(run.head_sha, evidence.headSha, 'Non-required workflow-dispatch candidate changed.');
+  assert.equal(run.head_sha, approval.sha, 'Non-required workflow-dispatch run is not attached to the approved candidate.');
+  assert.equal(run.head_branch, evidence.headBranch, 'Non-required workflow-dispatch branch changed.');
+  assert.equal(String(run.path || '').split('@')[0], evidence.workflow,
+    'Non-required workflow-dispatch workflow changed.');
+  assert.equal(run.status, evidence.status, 'Non-required workflow-dispatch run is not terminal.');
+  assert.equal(run.conclusion, evidence.conclusion,
+    'Non-required workflow-dispatch evidence must remain a recorded failure.');
+  return run;
+}
+
 export function verifyRuns(approval, runs, allowedMissing = []) {
   const exceptions = new Map((approval.workflowExceptions || []).map(exception => [exception.workflow, exception]));
   const dispatchBindings = new Map((approval.workflowDispatchChecks || []).map(binding => [binding.workflow, binding]));
+  const dispatchNonRequiredEvidence = new Map((approval.workflowDispatchNonRequiredEvidence || []).map(evidence => [evidence.workflow, evidence]));
   const latest = new Map();
   const dispatchRuns = new Map();
   for (const run of runs) {
@@ -317,8 +361,12 @@ export function verifyRuns(approval, runs, allowedMissing = []) {
   }
   for (const [workflow, run] of dispatchRuns) {
     const binding = dispatchBindings.get(workflow);
-    assert.ok(binding, `Unbound workflow-dispatch run is not admissible: ${workflow}`);
-    verifyWorkflowDispatchCheck(binding, run, approval);
+    if (binding) verifyWorkflowDispatchCheck(binding, run, approval);
+    else {
+      const evidence = dispatchNonRequiredEvidence.get(workflow);
+      assert.ok(evidence, `Unbound workflow-dispatch run is not admissible: ${workflow}`);
+      verifyWorkflowDispatchNonRequiredEvidence(evidence, run, approval);
+    }
   }
   return [
     ...latest.values(),
