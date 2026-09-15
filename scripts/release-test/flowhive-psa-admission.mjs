@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged FlowHive planner capacity-safe candidate PR1035.
+// successor is the reviewed, merged FlowHive planner live-capacity repair PR1037.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 1035;
-export const candidateBranch = 'fix/flowhive-planner-capacity-safe-20260915';
-export const candidateSourceBranch = 'fix/flowhive-planner-capacity-safe-20260915';
+export const candidatePullRequest = 1037;
+export const candidateBranch = 'fix/flowhive-planner-live-capacity-repair-20260915';
+export const candidateSourceBranch = 'fix/flowhive-planner-live-capacity-repair-20260915';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '45c4fa52ca33c7c60876c08fb800b6f938cb6ddd';
+export const candidateMergeCommit = '1d11b029ca7c63551af71a098b7a7f4618ce290b';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -75,7 +75,7 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1035 did not touch the enterprise-experience or Celar API diagnostics
+// PR1037 did not touch the enterprise-experience or Celar API diagnostics
 // workflow path filters. GitHub therefore correctly
 // omitted those optional workflows for the exact candidate SHA. Keep the
 // omissions explicit and
@@ -85,7 +85,7 @@ export const workflowPathOmissions = Object.freeze([
   {
     workflow: '.github/workflows/enterprise-experience-system-ci.yml',
     reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'e0122c6631aeb9f235ea04eee773724c21acb569',
+    baseCommit: '34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987',
     baseWorkflowSha256: '2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c',
     candidateChangedFilesSha256: 'b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43',
     candidateChangedFilesCount: 5
@@ -93,7 +93,7 @@ export const workflowPathOmissions = Object.freeze([
   {
     workflow: '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
     reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'e0122c6631aeb9f235ea04eee773724c21acb569',
+    baseCommit: '34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987',
     baseWorkflowSha256: 'd3fb31f6495c8e8b65d7962e796cac472170b5957c41f50f694c517e04ebef5b',
     candidateChangedFilesSha256: 'b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43',
     candidateChangedFilesCount: 5
@@ -105,16 +105,16 @@ export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
   assert.deepEqual(binding?.candidate, {
+    pullRequest: 1037,
+    branch: 'fix/flowhive-planner-live-capacity-repair-20260915',
+    headSha: '3c1230e422b55a746a2dde2b534ec94c9dd6678b',
+    baseSha: '34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987'
+  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
+  assert.deepEqual(binding?.supersedes, {
     pullRequest: 1035,
     branch: 'fix/flowhive-planner-capacity-safe-20260915',
     headSha: '55bb358942bd2a0c7befa7b54d04579ec4a96677',
-    baseSha: 'e0122c6631aeb9f235ea04eee773724c21acb569'
-  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
-  assert.deepEqual(binding?.supersedes, {
-    pullRequest: 1032,
-    branch: 'fix/flowhive-planner-parallel-phases-20260915',
-    headSha: 'e1efb08668eba35b49b4fd9ee9f228efb7e44bfe',
-    installedAcceptanceRunId: 34933208336,
+    installedAcceptanceRunId: 34939610524,
     installedAcceptanceConclusion: 'failure'
   }, 'SUCCESSOR_CHECK_BINDING_SUPERSEDED_RUN');
   assert.deepEqual(binding?.requiredChecks, supersededCheckWorkflows, 'SUCCESSOR_CHECK_BINDING_CHECK_SET');

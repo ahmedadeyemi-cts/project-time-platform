@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, verifyWorkflowDispatchCheck, workflowPathOmissions, workflowDispatchChecks, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, plannerCandidateApprovalRefreshFiles, plannerCompactPhaseFixFiles, plannerParallelPhaseFixFiles, plannerCompactPhaseCandidateRefreshFiles, plannerParallelPhaseCandidateRefreshFiles, plannerRuntimeCheckOmissionFiles, plannerCapacitySafeFiles, plannerLiveCapacityRepairFiles, plannerCapacitySafeCandidateRefreshFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, plannerCandidateApprovalRefreshFiles, plannerCompactPhaseFixFiles, plannerParallelPhaseFixFiles, plannerCompactPhaseCandidateRefreshFiles, plannerParallelPhaseCandidateRefreshFiles, plannerRuntimeCheckOmissionFiles, plannerCapacitySafeFiles, plannerLiveCapacityRepairFiles, plannerCapacitySafeCandidateRefreshFiles, plannerLiveCapacityCandidateRefreshFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   'scripts/release-test/run-module025-installed-sa-uat.py',
@@ -34,7 +34,8 @@ const plannerRuntimeCheckOmission = process.env.GITHUB_HEAD_REF === 'control/flo
 const plannerCapacitySafe = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-capacity-safe-20260915';
 const plannerLiveCapacityRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-live-capacity-repair-20260915';
 const plannerCapacitySafeCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-capacity-safe-candidate-refresh-20260915';
-const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate || plannerParallelPhaseFix || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe || plannerCapacitySafeCandidateRefresh;
+const plannerLiveCapacityCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-capacity-candidate-refresh-20260915';
+const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate || plannerParallelPhaseFix || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe || plannerCapacitySafeCandidateRefresh || plannerLiveCapacityCandidateRefresh;
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
 const plannerCompactPhaseFix = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-compact-phase-20260915';
@@ -204,6 +205,7 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const liveProviderOutputRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-provider-output-refresh-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
+  const plannerLiveCapacityCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-capacity-candidate-refresh-20260915';
   assert.equal(authorization.approvalReference, providerContractRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-PROVIDER-CONTRACT-REFRESH-06'
     : finalRefresh
@@ -212,6 +214,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-NATIVE-TEST-RENEWAL-04'
     : liveRepairRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
+    : plannerLiveCapacityCandidateRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-CAPACITY-REPAIR-01'
     : activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-ACTIVATION'
     : candidateRefresh
@@ -239,6 +243,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-LIVE-REPAIR-RENEWAL-03'
     : liveRepairRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-COMPACT-BATCH-ACTIVATION-RENEWAL-02'
+    : plannerLiveCapacityCandidateRefresh
+    ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-CAPACITY-SAFE-CANDIDATE-01'
     : activation
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260912-LIVE-PLANNER-RELEASE'
     : candidateRefresh
@@ -415,7 +421,9 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const admissionManifestOrder = process.env.GITHUB_HEAD_REF === 'control/module025-admission-manifest-order-20260914';
   const plannerControlPathCoverage = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914';
   const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
-  const sourceDriftFiles = plannerLiveCapacityRepair
+  const sourceDriftFiles = plannerLiveCapacityCandidateRefresh
+    ? [...new Set([...files, ...plannerLiveCapacityCandidateRefreshFiles])].sort()
+    : plannerLiveCapacityRepair
     ? [...new Set([...files, ...plannerLiveCapacityRepairFiles])].sort()
     : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe || plannerCapacitySafeCandidateRefresh
     ? [...new Set([...files, ...(plannerCapacitySafeCandidateRefresh ? plannerCapacitySafeCandidateRefreshFiles : plannerCapacitySafe ? plannerCapacitySafeFiles : plannerRuntimeCheckOmission ? plannerRuntimeCheckOmissionFiles : plannerParallelPhaseCandidateRefreshFiles)])].sort()
@@ -454,8 +462,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, plannerLiveCapacityRepair || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafeCandidateRefresh || plannerCapacitySafe
-    ? (plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? '45c4fa52ca33c7c60876c08fb800b6f938cb6ddd' : '4bb7ae0b2411eb9120db82b9268737080908105c')
+  assert.equal(approval.mergeCommit, plannerLiveCapacityCandidateRefresh || plannerLiveCapacityRepair || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafeCandidateRefresh || plannerCapacitySafe
+    ? (plannerLiveCapacityCandidateRefresh ? '1d11b029ca7c63551af71a098b7a7f4618ce290b' : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? '45c4fa52ca33c7c60876c08fb800b6f938cb6ddd' : '4bb7ae0b2411eb9120db82b9268737080908105c')
     : plannerCompactPhaseControl
     ? 'b37398b13b222cc60acc70ac2b5cbb7ac56fecef'
     : plannerControlCandidateApproval || plannerAdmissionManifestRefresh
@@ -526,7 +534,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
+    plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
       : module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
 });
