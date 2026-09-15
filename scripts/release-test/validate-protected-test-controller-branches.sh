@@ -20,6 +20,10 @@ elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-candidate-approval-refresh-2
   [[ "$CURRENT_BASE_SHA" == 'e15e6dcd872fe6e5eae790d2213dd0b8347e94f6' ]] \
     || fail 'Planner candidate approval refresh is not based on the current trusted main after PR1044.'
   run_release_control
+elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-celar-approval-20260915' ]]; then
+  [[ "$CURRENT_BASE_SHA" == 'f7ee256fb851cbdeb083c2ff6fe8ad650ee4d203' ]] \
+    || fail 'Planner Celar approval refresh is not based on the merged PR1048 main.'
+  run_release_control
 elif [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
   BASE_SHA="$CURRENT_BASE_SHA" node tests/flowhive-psa-release-control.mjs
 elif [[ "$HEAD_BRANCH" == 'control/flowhive-sow-successor-approval-20260909' ]]; then
