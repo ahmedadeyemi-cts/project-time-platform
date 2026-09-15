@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-test-candidate-v2",
   "repository": "ahmedadeyemi-cts/project-time-platform",
-  "pullRequest": 1020,
-  "branch": "control/flowhive-planner-provider-deadline-candidate-refresh-20260914",
-  "sourceBranch": "control/flowhive-planner-provider-deadline-candidate-refresh-20260914",
-  "sha": "6604bc45d46ef6a0fcded90fc88aa4eba30b180b",
-  "mergeCommit": "f25f41e773b7ea1e0a991cb5589d9e24c2bb3246",
-  "sourceBase": "d6c124e7641ed11ac54440113cd785e54d80ee3b",
+  "pullRequest": 1029,
+  "branch": "fix/flowhive-planner-compact-phase-20260915",
+  "sourceBranch": "fix/flowhive-planner-compact-phase-20260915",
+  "sha": "8d124cd6b0f1c0dc261c8b7eb938c70a86b8ebf3",
+  "mergeCommit": "b37398b13b222cc60acc70ac2b5cbb7ac56fecef",
+  "sourceBase": "aacebde419c0a325a28c5aaaf0b11f5707be2935",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -38,89 +38,35 @@
     {
       "workflow": ".github/workflows/enterprise-experience-system-ci.yml",
       "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "90d2ee572329cf55b29cd87579ad5232a875ef78",
+      "baseCommit": "aacebde419c0a325a28c5aaaf0b11f5707be2935",
       "baseWorkflowSha256": "2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c",
-      "candidateChangedFilesSha256": "631242a97af20f609cf1239ec8f42689acfeb2435d57837121118303213f8886",
+      "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
       "candidateChangedFilesCount": 5
     },
     {
       "workflow": ".github/workflows/celar-ai-enterprise-api-diagnostics.yml",
       "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "90d2ee572329cf55b29cd87579ad5232a875ef78",
-      "baseWorkflowSha256": "ab47defc9a75fe66080056fcd4a5cdee7e32d33f67319c10ce884352f6b1ddfa",
-      "candidateChangedFilesSha256": "631242a97af20f609cf1239ec8f42689acfeb2435d57837121118303213f8886",
-      "candidateChangedFilesCount": 5
-    },
-    {
-      "workflow": ".github/workflows/projectpulse-release-test-control-ci.yml",
-      "reasonCode": "pull-request-path-filter-no-match",
-      "baseCommit": "90d2ee572329cf55b29cd87579ad5232a875ef78",
-      "baseWorkflowSha256": "800aab5b60c10eac36d6b972464c6ac7f65509f10b700f0d385b42926da7726b",
-      "candidateChangedFilesSha256": "631242a97af20f609cf1239ec8f42689acfeb2435d57837121118303213f8886",
+      "baseCommit": "aacebde419c0a325a28c5aaaf0b11f5707be2935",
+      "baseWorkflowSha256": "d3fb31f6495c8e8b65d7962e796cac472170b5957c41f50f694c517e04ebef5b",
+      "candidateChangedFilesSha256": "b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43",
       "candidateChangedFilesCount": 5
     }
   ],
-  "workflowDispatchChecks": [
-    {
-      "workflow": ".github/workflows/celar-ai-enterprise-retrieval-ci.yml",
-      "runId": 34916643494,
-      "runAttempt": 1,
-      "event": "workflow_dispatch",
-      "headSha": "6604bc45d46ef6a0fcded90fc88aa4eba30b180b",
-      "headBranch": "control/flowhive-planner-provider-deadline-candidate-refresh-20260914",
-      "conclusion": "success"
-    },
-    {
-      "workflow": ".github/workflows/flowhive-detailed-planner-ci.yml",
-      "runId": 34918167486,
-      "runAttempt": 1,
-      "event": "workflow_dispatch",
-      "headSha": "6604bc45d46ef6a0fcded90fc88aa4eba30b180b",
-      "headBranch": "control/flowhive-planner-provider-deadline-candidate-refresh-20260914",
-      "conclusion": "success"
-    },
-    {
-      "workflow": ".github/workflows/runtime-navigation-work-register-responsive-ci.yml",
-      "runId": 34918175382,
-      "runAttempt": 1,
-      "event": "workflow_dispatch",
-      "headSha": "6604bc45d46ef6a0fcded90fc88aa4eba30b180b",
-      "headBranch": "control/flowhive-planner-provider-deadline-candidate-refresh-20260914",
-      "conclusion": "success"
-    },
-    {
-      "workflow": ".github/workflows/shared-project-document-planning-ci.yml",
-      "runId": 34918187621,
-      "runAttempt": 1,
-      "event": "workflow_dispatch",
-      "headSha": "6604bc45d46ef6a0fcded90fc88aa4eba30b180b",
-      "headBranch": "control/flowhive-planner-provider-deadline-candidate-refresh-20260914",
-      "conclusion": "success"
-    },
-    {
-      "workflow": ".github/workflows/systemwide-enterprise-reliability-ci.yml",
-      "runId": 34918200119,
-      "runAttempt": 1,
-      "event": "workflow_dispatch",
-      "headSha": "6604bc45d46ef6a0fcded90fc88aa4eba30b180b",
-      "headBranch": "control/flowhive-planner-provider-deadline-candidate-refresh-20260914",
-      "conclusion": "success"
-    }
-  ],
+  "workflowDispatchChecks": [],
   "successorCheckBinding": {
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
+      "pullRequest": 1029,
+      "branch": "fix/flowhive-planner-compact-phase-20260915",
+      "headSha": "8d124cd6b0f1c0dc261c8b7eb938c70a86b8ebf3",
+      "baseSha": "aacebde419c0a325a28c5aaaf0b11f5707be2935"
+    },
+    "supersedes": {
       "pullRequest": 1020,
       "branch": "control/flowhive-planner-provider-deadline-candidate-refresh-20260914",
       "headSha": "6604bc45d46ef6a0fcded90fc88aa4eba30b180b",
-      "baseSha": "d6c124e7641ed11ac54440113cd785e54d80ee3b"
-    },
-    "supersedes": {
-      "pullRequest": 1014,
-      "branch": "fix/module025-sow-provider-deadline-20260914",
-      "headSha": "874e903d131660f0b5796d2388e007fd94f20f5c",
-      "installedAcceptanceRunId": 34895217042,
+      "installedAcceptanceRunId": 34920855999,
       "installedAcceptanceConclusion": "failure"
     },
     "requiredChecks": [
