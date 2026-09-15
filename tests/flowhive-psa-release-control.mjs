@@ -560,6 +560,7 @@ export const plannerParallelPhaseFixFiles = [
 export const plannerCapacitySafeBase = 'e0122c6631aeb9f235ea04eee773724c21acb569';
 export const plannerCapacitySafeBranch = 'fix/flowhive-planner-capacity-safe-20260915';
 export const plannerCapacitySafeFiles = [
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
   'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
   'tests/FlowHiveDetailedPlannerTests/Program.cs',
   'tests/flowhive-psa-admission.test.mjs',
