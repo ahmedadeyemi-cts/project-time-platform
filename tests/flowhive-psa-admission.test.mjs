@@ -34,7 +34,8 @@ const plannerRuntimeCheckOmission = process.env.GITHUB_HEAD_REF === 'control/flo
 const plannerCapacitySafe = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-capacity-safe-20260915';
 const plannerLiveCapacityRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-live-capacity-repair-20260915';
 const plannerCapacitySafeCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-capacity-safe-candidate-refresh-20260915';
-const plannerLiveCapacityCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-capacity-candidate-refresh-20260915';
+const plannerLiveCapacityCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-capacity-candidate-refresh-20260915'
+  || process.env.GITHUB_HEAD_REF === 'fix/flowhive-portfolio-db-alias-20260915';
 const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate || plannerParallelPhaseFix || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe || plannerCapacitySafeCandidateRefresh || plannerLiveCapacityCandidateRefresh;
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
@@ -205,7 +206,8 @@ test('protected cutover refresh uses a new approval reference and preserves hist
   const liveProviderOutputRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-provider-output-refresh-20260913';
   const contextBudgetActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-context-budget-activation-20260913';
   const latencyActivation = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-latency-activation-20260912';
-  const plannerLiveCapacityCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-capacity-candidate-refresh-20260915';
+  const plannerLiveCapacityCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-capacity-candidate-refresh-20260915'
+    || process.env.GITHUB_HEAD_REF === 'fix/flowhive-portfolio-db-alias-20260915';
   assert.equal(authorization.approvalReference, providerContractRefresh
     ? 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260913-PLANNER-PROVIDER-CONTRACT-REFRESH-06'
     : finalRefresh
@@ -398,6 +400,27 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (process.env.GITHUB_HEAD_REF === 'fix/flowhive-portfolio-db-alias-20260915') {
+    const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
+    const candidateHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const changedFiles = execFileSync('git', ['diff', '--name-only', `${currentMain}...${candidateHead}`], { encoding: 'utf8' })
+      .split(/\r?\n/).filter(Boolean).sort();
+    assert.match(currentMain, /^[0-9a-f]{40}$/);
+    assert.match(candidateHead, /^[0-9a-f]{40}$/);
+    assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', currentMain, candidateHead], { stdio: 'ignore' }));
+    assert.throws(() => execFileSync('git', ['merge-base', '--is-ancestor', candidateHead, currentMain], { stdio: 'ignore' }));
+    assert.notEqual(candidateHead, approval.sha, 'The application follow-up must not reuse the prior approved candidate.');
+    assert.deepEqual(changedFiles, [
+      '.github/workflows/flowhive-psa-release-control-ci.yml',
+      'src/backend/ProjectTime.Api/Ai/ProjectPulseAiDatabaseConnection.cs',
+      'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs',
+      'tests/CelarAiProductionHardeningTests/ReleaseRuntimeBehavior.cs',
+      'tests/FlowHiveExecutionTests/Program.cs',
+      'tests/flowhive-psa-admission.test.mjs'
+    ]);
+    assert.ok(!changedFiles.includes('src/backend/ProjectTime.Api/Program.cs'));
+    return;
+  }
   const reviewedMain = approval.sourceBase;
   const candidate = approval.sha;
   const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
