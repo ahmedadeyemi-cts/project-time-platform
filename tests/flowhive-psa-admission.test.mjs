@@ -21,7 +21,8 @@ const plannerProviderDeadlineCandidateRefresh = process.env.GITHUB_HEAD_REF === 
 const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-approval-20260914'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-base-correction-20260914'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914'
-  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915'
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
 const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
 const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
