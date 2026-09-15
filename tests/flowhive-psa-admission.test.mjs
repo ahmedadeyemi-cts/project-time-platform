@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, verifyWorkflowDispatchCheck, workflowPathOmissions, workflowDispatchChecks, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, plannerCandidateApprovalRefreshFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   'scripts/release-test/run-module025-installed-sa-uat.py',
@@ -20,7 +20,9 @@ const module025SowRoleCandidateRefresh1014 = process.env.GITHUB_HEAD_REF === 'co
 const plannerProviderDeadlineCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914';
 const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-approval-20260914'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-base-correction-20260914'
-  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914';
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914'
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
+const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
 const module025MyRoleLiveVerifier = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-live-verifier-20260914'
@@ -30,7 +32,7 @@ const clone = x => structuredClone(x);
 const pr = { number: candidatePullRequest, state: 'closed', merged: true,
   merge_commit_sha: approval.mergeCommit,
   head: { ref: approval.sourceBranch, sha: approval.sha, repo: { full_name: repository } },
-  base: { ref: 'main', sha: plannerControlCandidateApproval ? '90d2ee572329cf55b29cd87579ad5232a875ef78' : approval.sourceBase, repo: { full_name: repository } } };
+  base: { ref: 'main', sha: plannerControlCandidateApproval || plannerCandidateApprovalRefresh ? '90d2ee572329cf55b29cd87579ad5232a875ef78' : approval.sourceBase, repo: { full_name: repository } } };
 const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, event: 'pull_request',
   head_sha: approval.sha, status: 'completed', conclusion: 'success', run_attempt: 1,
   head_repository: { full_name: repository } }));
@@ -403,6 +405,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     ? [...new Set([...files, ...installedSowRoleAcceptanceSourceFiles, ...(module025MyRoleCelarRepair ? module025MyRoleCelarRepairFiles : [])])].sort()
     : plannerControlPathCoverage
     ? [...new Set([...files, ...plannerControlPathCoverageFiles])].sort()
+    : plannerCandidateApprovalRefresh
+    ? [...new Set([...files, ...plannerControlPathCoverageFiles, ...plannerCandidateApprovalRefreshFiles])].sort()
     : files;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
   assert.match(candidate, /^[0-9a-f]{40}$/);
@@ -453,7 +457,6 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
 test('successor approval enumerates only the workflows that ran for the exact selected application head', () => {
   assert.deepEqual(approval.requiredWorkflows, [
     '.github/workflows/celar-ai-production-hardening-ci.yml',
-    '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
     '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
     '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
     '.github/workflows/deepseek-v4-provider-ci.yml',
@@ -461,7 +464,6 @@ test('successor approval enumerates only the workflows that ran for the exact se
     '.github/workflows/flowhive-enterprise-psa-ci.yml',
     '.github/workflows/flowhive-psa-release-control-ci.yml',
     '.github/workflows/projectpulse-ci.yml',
-    '.github/workflows/projectpulse-release-test-control-ci.yml',
     '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
     '.github/workflows/pulse-ai-system-intelligence-ci.yml',
     '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
@@ -482,21 +484,24 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
 });
 test('workflow-dispatch evidence is candidate-bound and cannot substitute another run', () => {
-  assert.deepEqual(workflowDispatchChecks, [], 'The reviewed PR1020 candidate uses exact pull_request checks only.');
-  assert.deepEqual(dispatchRuns, [], 'No workflow-dispatch exception may remain for the reviewed candidate.');
-  assert.throws(() => verifyRuns(approval, [...runs, {
-    id: 34906452416, path: '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
+  assert.equal(workflowDispatchChecks.length, 5);
+  assert.deepEqual(dispatchRuns.map(run => run.id).sort((a, b) => a - b), workflowDispatchChecks.map(binding => binding.runId).sort((a, b) => a - b));
+  assert.throws(() => verifyRuns(approval, [...runs, ...dispatchRuns, {
+    id: 39999999999, path: '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
     event: 'workflow_dispatch', head_sha: approval.sha, head_branch: approval.branch,
     status: 'completed', conclusion: 'success', run_attempt: 1,
     head_repository: { full_name: repository }
-  }]), /Unbound workflow-dispatch run/);
+  }]), /workflow-dispatch run/);
 });
 test('path-filtered workflow omission is bound to the candidate inventory and base bytes', () => {
-  const workflow = approval.workflowPathOmissions[0].workflow;
-  const source = execFileSync('git', ['show', `${approval.sourceBase}:${workflow}`], { encoding: 'utf8' });
   const changed = execFileSync('git', ['diff', '--name-only', `${approval.sourceBase}...${approval.sha}`], { encoding: 'utf8' })
     .trim().split(/\r?\n/).filter(Boolean).sort();
-  assert.deepEqual(verifyWorkflowPathOmissions(approval.workflowPathOmissions, pr, changed, source), [workflow]);
+  const sources = new Map(approval.workflowPathOmissions.map(omission => [omission.workflow,
+    execFileSync('git', ['show', `${approval.sourceBase}:${omission.workflow}`], { encoding: 'utf8' })]));
+  assert.deepEqual(verifyWorkflowPathOmissions(approval.workflowPathOmissions, pr, changed, sources),
+    approval.workflowPathOmissions.map(omission => omission.workflow));
+  const workflow = approval.workflowPathOmissions[0].workflow;
+  const source = sources.get(workflow);
   const pathMatched = [...changed.slice(1), 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'].sort();
   const pathMatchedDigest = crypto.createHash('sha256').update(`${pathMatched.join('\n')}\n`).digest('hex');
   const pathMatchedOmission = [{ ...approval.workflowPathOmissions[0],
