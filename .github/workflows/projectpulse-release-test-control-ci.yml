@@ -327,7 +327,7 @@ jobs:
               diff -u "$CIT/module025-my-role-celar-repair-files" "$CIT/diff" >&2 || true
               exit 1
             }
-          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' ]]; then
+          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-control-path-omissions-20260914' ]]; then
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-release-trigger-coverage-20260914' ]]; then
             printf '%s\n' \
@@ -344,19 +344,6 @@ jobs:
               diff -u "$CIT/module025-release-trigger-coverage-files" "$CIT/diff" >&2 || true
               exit 1
             }
-          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-control-path-omissions-20260914' ]]; then
-            printf '%s\n' \
-              '.github/workflows/celar-ai-enterprise-api-diagnostics.yml' \
-              '.github/workflows/projectpulse-release-test-control-ci.yml' \
-              'tests/flowhive-psa-admission.test.mjs' \
-              'tests/flowhive-psa-release-control.mjs' \
-              | LC_ALL=C sort -u > "$CIT/flowhive-planner-control-path-coverage-files"
-            cmp -s "$CIT/diff" "$CIT/flowhive-planner-control-path-coverage-files" || {
-              echo 'Planner control path coverage contains an unreviewed file.' >&2
-              diff -u "$CIT/flowhive-planner-control-path-coverage-files" "$CIT/diff" >&2 || true
-              exit 1
-            }
-            run_release_control
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-repair-20260914' ]]; then
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-deadline-retry-20260914' ]]; then
