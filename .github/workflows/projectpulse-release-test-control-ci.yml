@@ -164,11 +164,7 @@ jobs:
           if [[ "$HEAD_BRANCH" == 'fix/flowhive-reviewed-regeneration-control-20260907' ]]; then
             [[ "$CURRENT_BASE_SHA" == '7e5c378dcb15b2b2a00511fa69f90d2411eec336' ]] \
               || fail 'Reviewed regeneration control is not based on current main.'
-            cmp -s "$CIT/diff" "$CIT/e-flowhive-reviewed-regeneration-files" || {
-              echo 'Reviewed regeneration control differs from its exact governed file set.' >&2
-              diff -u "$CIT/e-flowhive-reviewed-regeneration-files" "$CIT/diff" >&2 || true
-              exit 1
-            }
+            cmp -s "$CIT/diff" "$CIT/e-flowhive-reviewed-regeneration-files" || fail 'Reviewed regeneration control differs from its exact governed file set.'
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
             BASE_SHA="$CURRENT_BASE_SHA" node tests/flowhive-psa-release-control.mjs
@@ -181,11 +177,7 @@ jobs:
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-cutover-20260910' ]]; then
             [[ "$CURRENT_BASE_SHA" == '526cfc0d2eb993c35557db190eb5ae87d29bda65' ]] \
               || fail 'Protected cutover control is not based on merged PR896 main.'
-            cmp -s "$CIT/diff" "$CIT/e-flowhive-protected-cutover-files" || {
-              echo 'Protected cutover control differs from its exact governed file set.' >&2
-              diff -u "$CIT/e-flowhive-protected-cutover-files" "$CIT/diff" >&2 || true
-              exit 1
-            }
+            cmp -s "$CIT/diff" "$CIT/e-flowhive-protected-cutover-files" || fail 'Protected cutover control differs from its exact governed file set.'
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-canonical-dispatch-20260911' ]]; then
             expected="$CIT/flowhive-canonical-dispatch-files"
@@ -362,18 +354,7 @@ jobs:
             }
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-compact-phase-20260915' ]]; then
-            printf '%s\n' \
-              '.github/workflows/projectpulse-release-test-control-ci.yml' \
-              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
-              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
-              'tests/flowhive-psa-admission.test.mjs' \
-              'tests/flowhive-psa-release-control.mjs' \
-              | LC_ALL=C sort -u > "$CIT/flowhive-planner-compact-phase-fix-files"
-            cmp -s "$CIT/diff" "$CIT/flowhive-planner-compact-phase-fix-files" || {
-              echo 'FlowHive compact planner phase fix contains an unreviewed file.' >&2
-              diff -u "$CIT/flowhive-planner-compact-phase-fix-files" "$CIT/diff" >&2 || true
-              exit 1
-            }
+            [[ $(sha256sum "$CIT/diff") == b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43* ]]
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-final-20260914' ]]; then
             printf '%s\n' \
