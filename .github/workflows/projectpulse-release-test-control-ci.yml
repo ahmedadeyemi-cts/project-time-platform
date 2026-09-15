@@ -70,6 +70,8 @@ on:
       - 'tests/validate-flowhive-sow-evidence-autoadmission.mjs'
       - 'tests/validate-module-management-owner-drawer.mjs'
 
+  workflow_dispatch:
+
 permissions:
   contents: read
 
@@ -87,9 +89,29 @@ jobs:
       - name: Check out exact proposed release controls
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Bind manual validation to the reviewed candidate manifest
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APPROVAL='.github/flowhive-psa-protected-test-candidate.json'
+          CANDIDATE_SHA="$(jq -r '.sha' "$APPROVAL")"
+          SOURCE_BASE="$(jq -r '.sourceBase' "$APPROVAL")"
+          SOURCE_BRANCH="$(jq -r '.sourceBranch' "$APPROVAL")"
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Malformed approved candidate SHA.' >&2; exit 1; }
+          [[ "$SOURCE_BASE" =~ ^[0-9a-f]{40}$ ]] || { echo 'Malformed approved candidate base SHA.' >&2; exit 1; }
+          [[ "$SOURCE_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' ]] || { echo 'Unexpected approved candidate branch.' >&2; exit 1; }
+          [[ "$CANDIDATE_SHA" == "$GITHUB_SHA" ]] || { echo 'The workflow ref is not the approved candidate.' >&2; exit 1; }
+          {
+            echo "BASE_SHA=$SOURCE_BASE"
+            echo "PR_NUMBER=$(jq -r '.pullRequest' "$APPROVAL")"
+            echo "PR_HEAD_REF=$SOURCE_BRANCH"
+            echo "GITHUB_HEAD_REF=$SOURCE_BRANCH"
+          } >> "$GITHUB_ENV"
 
       - name: Set up Node.js 22
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
@@ -107,6 +129,11 @@ jobs:
           set -Eeuo pipefail
           CIT="$RUNNER_TEMP"
           fail() { echo "ERROR: $*" >&2; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
+            BASE_SHA="$(jq -r '.sourceBase' .github/flowhive-psa-protected-test-candidate.json)"
+            PR_NUMBER="$(jq -r '.pullRequest' .github/flowhive-psa-protected-test-candidate.json)"
+            PR_HEAD_REF="$(jq -r '.sourceBranch' .github/flowhive-psa-protected-test-candidate.json)"
+          fi
 
           CTL='.github/workflows/projectpulse-deploy-test.yml'
           MODULE025_SUPERVISOR='.github/workflows/module025-protected-uat-control.yml'
@@ -300,7 +327,7 @@ jobs:
               diff -u "$CIT/module025-my-role-celar-repair-files" "$CIT/diff" >&2 || true
               exit 1
             }
-          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' ]]; then
+          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-control-path-omissions-20260914' ]]; then
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-release-trigger-coverage-20260914' ]]; then
             printf '%s\n' \
@@ -440,6 +467,10 @@ jobs:
           set -Eeuo pipefail
           CIT="$RUNNER_TEMP"
           fail() { echo "ERROR: $*" >&2; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
+            BASE_SHA="$(jq -r '.sourceBase' .github/flowhive-psa-protected-test-candidate.json)"
+            PR_HEAD_REF="$(jq -r '.sourceBranch' .github/flowhive-psa-protected-test-candidate.json)"
+          fi
 
           CTL='.github/workflows/projectpulse-deploy-test.yml'
           MODULE025_SUPERVISOR='.github/workflows/module025-protected-uat-control.yml'
@@ -706,6 +737,10 @@ jobs:
           PR_HEAD_REF: ${{ github.head_ref }}
         run: |
           set -Eeuo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
+            BASE_SHA="$(jq -r '.sourceBase' .github/flowhive-psa-protected-test-candidate.json)"
+            PR_HEAD_REF="$(jq -r '.sourceBranch' .github/flowhive-psa-protected-test-candidate.json)"
+          fi
           CTL='.github/workflows/projectpulse-deploy-test.yml'
           MODULE025_SUPERVISOR='.github/workflows/module025-protected-uat-control.yml'
           UTIL_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'

@@ -11,6 +11,7 @@ on:
     paths:
       - '.github/workflows/celar-ai-enterprise-api-diagnostics.yml'
       - 'src/backend/ProjectTime.Api/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
