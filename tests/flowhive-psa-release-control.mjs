@@ -467,13 +467,10 @@ export const plannerCandidateApprovalRefreshFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const plannerAdmissionManifestRefreshBase = 'ed59c3c8e1876c9d6a0b9bba7fc8f561dfc70b18';
+export const plannerAdmissionManifestRefreshBase = '7e4f943ca5e42ea9d3daa7c38bf9d7c206152edc';
 export const plannerAdmissionManifestRefreshBranch = 'control/flowhive-planner-admission-manifest-refresh-20260915';
 export const plannerAdmissionManifestRefreshFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
-  '.github/flowhive-psa-release-control-files.txt',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
-  '.github/workflows/projectpulse-release-test-control-ci.yml',
   'scripts/release-test/flowhive-psa-admission.mjs',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
