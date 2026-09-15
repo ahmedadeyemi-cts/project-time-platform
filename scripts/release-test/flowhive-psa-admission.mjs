@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged FlowHive live-completion repair PR1041.
+// successor is the reviewed, merged FlowHive planner-transport candidate PR1044.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 1041;
-export const candidateBranch = 'fix/flowhive-planner-live-completion-20260915';
-export const candidateSourceBranch = 'fix/flowhive-planner-live-completion-20260915';
+export const candidatePullRequest = 1044;
+export const candidateBranch = 'fix/flowhive-planner-celar-transport-20260915';
+export const candidateSourceBranch = 'fix/flowhive-planner-celar-transport-20260915';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '4b4e0bbec528ebacbc2bc272ada3e3ea21831952';
+export const candidateMergeCommit = 'e15e6dcd872fe6e5eae790d2213dd0b8347e94f6';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -39,8 +39,6 @@ const requiredWorkflows = [
   '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
   '.github/workflows/deepseek-v4-provider-ci.yml',
   '.github/workflows/flowhive-detailed-planner-ci.yml',
-  '.github/workflows/flowhive-enterprise-psa-ci.yml',
-  '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/project-planning-collaboration-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
   '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
@@ -114,19 +112,46 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1041 does not touch the project-planning path filter, so its required
-// workflow is satisfied by one explicit candidate-bound workflow_dispatch
-// run. Historical PR1037/1039 omission evidence remains immutable in
-// historicalCandidateEvidence.
-export const workflowPathOmissions = Object.freeze([]);
+// PR1044 changes AI transport, oracle tests, and release-validation metadata,
+// not the source paths watched by the enterprise PSA or PSA controller
+// workflows. Their omission is explicit and bound to the reviewed base bytes
+// and exact candidate file inventory; it is not a generic missing-check
+// exemption. Historical PR1037/1039 evidence remains immutable below.
+export const workflowPathOmissions = Object.freeze([
+  {
+    workflow: '.github/workflows/flowhive-enterprise-psa-ci.yml',
+    reasonCode: 'pull-request-path-filter-no-match',
+    baseCommit: '080ba681e7aa65a289772e8d00843d7dffa88e23',
+    baseWorkflowSha256: '587218617d2114887c3c66547e930560ccf5e17c2336dac9d642d62e926189ca',
+    candidateChangedFilesSha256: '534b32811730bdceefc18643fd0f2e8eb011689c439387385166d28b2daec4f0',
+    candidateChangedFilesCount: 7
+  },
+  {
+    workflow: '.github/workflows/flowhive-psa-release-control-ci.yml',
+    reasonCode: 'pull-request-path-filter-no-match',
+    baseCommit: '080ba681e7aa65a289772e8d00843d7dffa88e23',
+    baseWorkflowSha256: '21c2cb1624a64072601f3124e5f7694947ff9f68ad600ef918188aa85163b584',
+    candidateChangedFilesSha256: '534b32811730bdceefc18643fd0f2e8eb011689c439387385166d28b2daec4f0',
+    candidateChangedFilesCount: 7
+  }
+]);
 export const workflowDispatchChecks = Object.freeze([
   {
-    workflow: '.github/workflows/project-planning-collaboration-ci.yml',
-    runId: 34999675283,
+    workflow: '.github/workflows/flowhive-detailed-planner-ci.yml',
+    runId: 35009048838,
     runAttempt: 1,
     event: 'workflow_dispatch',
-    headSha: '95ba5e1e0fd66398a7db548fbff57fdafdc709be',
-    headBranch: 'fix/flowhive-planner-live-completion-20260915',
+    headSha: 'e8a25259e8335233815cb9153f24caf4b4e519e4',
+    headBranch: 'fix/flowhive-planner-celar-transport-20260915',
+    conclusion: 'success'
+  },
+  {
+    workflow: '.github/workflows/project-planning-collaboration-ci.yml',
+    runId: 35009054006,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: 'e8a25259e8335233815cb9153f24caf4b4e519e4',
+    headBranch: 'fix/flowhive-planner-celar-transport-20260915',
     conclusion: 'success'
   }
 ]);
@@ -135,10 +160,10 @@ export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
   assert.deepEqual(binding?.candidate, {
-    pullRequest: 1041,
-    branch: 'fix/flowhive-planner-live-completion-20260915',
-    headSha: '95ba5e1e0fd66398a7db548fbff57fdafdc709be',
-    baseSha: '038c658a45a7f1fa3b1aa695b0bed554fdf1f1aa'
+    pullRequest: 1044,
+    branch: 'fix/flowhive-planner-celar-transport-20260915',
+    headSha: 'e8a25259e8335233815cb9153f24caf4b4e519e4',
+    baseSha: '080ba681e7aa65a289772e8d00843d7dffa88e23'
   }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
   assert.deepEqual(binding?.supersedes, {
     pullRequest: 1039,
@@ -349,7 +374,7 @@ export function verifyWorkflowPathOmission(omission, pullRequest, changedFiles, 
   assert.equal(digestLines(changedFiles), omission.candidateChangedFilesSha256,
     'Path-filter omission must bind to the actual candidate file inventory.');
   assert.equal(changedFiles.length, omission.candidateChangedFilesCount);
-  const pathsBlock = baseWorkflowContent.match(/\n\s+paths:\s*\n([\s\S]*?)\n\s+(?:workflow_dispatch:|permissions:)/);
+  const pathsBlock = baseWorkflowContent.match(/\n[ \t]+paths:\s*\n([\s\S]*?)\n[ \t]*(?:workflow_dispatch:|permissions:)/);
   assert.ok(pathsBlock, 'The omitted workflow must expose a pull-request path filter.');
   const pathFilters = [...pathsBlock[1].matchAll(/^\s*-\s*["']([^"']+)["']\s*$/gm)].map(match => match[1]);
   assert.ok(pathFilters.length > 0, 'The omitted workflow path filter must not be empty.');

@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-test-candidate-v2",
   "repository": "ahmedadeyemi-cts/project-time-platform",
-  "pullRequest": 1041,
-  "branch": "fix/flowhive-planner-live-completion-20260915",
-  "sourceBranch": "fix/flowhive-planner-live-completion-20260915",
-  "sha": "95ba5e1e0fd66398a7db548fbff57fdafdc709be",
-  "mergeCommit": "4b4e0bbec528ebacbc2bc272ada3e3ea21831952",
-  "sourceBase": "038c658a45a7f1fa3b1aa695b0bed554fdf1f1aa",
+  "pullRequest": 1044,
+  "branch": "fix/flowhive-planner-celar-transport-20260915",
+  "sourceBranch": "fix/flowhive-planner-celar-transport-20260915",
+  "sha": "e8a25259e8335233815cb9153f24caf4b4e519e4",
+  "mergeCommit": "e15e6dcd872fe6e5eae790d2213dd0b8347e94f6",
+  "sourceBase": "080ba681e7aa65a289772e8d00843d7dffa88e23",
   "environment": "test",
   "publicOrigin": "https://phd-west-test.onenecklab.com",
   "projectId": "0ea25cb8-1a7f-4baf-ba7b-2dd76215be49",
@@ -21,8 +21,6 @@
     ".github/workflows/celar-ai-runtime-rebrand-ci.yml",
     ".github/workflows/deepseek-v4-provider-ci.yml",
     ".github/workflows/flowhive-detailed-planner-ci.yml",
-    ".github/workflows/flowhive-enterprise-psa-ci.yml",
-    ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/project-planning-collaboration-ci.yml",
     ".github/workflows/projectpulse-ci.yml",
     ".github/workflows/pulse-ai-private-rag-orchestration-ci.yml",
@@ -36,15 +34,41 @@
     ".github/workflows/projectpulse-release-test-control-ci-reregistered.yml"
   ],
   "workflowExceptions": [],
-  "workflowPathOmissions": [],
+  "workflowPathOmissions": [
+    {
+      "workflow": ".github/workflows/flowhive-enterprise-psa-ci.yml",
+      "reasonCode": "pull-request-path-filter-no-match",
+      "baseCommit": "080ba681e7aa65a289772e8d00843d7dffa88e23",
+      "baseWorkflowSha256": "587218617d2114887c3c66547e930560ccf5e17c2336dac9d642d62e926189ca",
+      "candidateChangedFilesSha256": "534b32811730bdceefc18643fd0f2e8eb011689c439387385166d28b2daec4f0",
+      "candidateChangedFilesCount": 7
+    },
+    {
+      "workflow": ".github/workflows/flowhive-psa-release-control-ci.yml",
+      "reasonCode": "pull-request-path-filter-no-match",
+      "baseCommit": "080ba681e7aa65a289772e8d00843d7dffa88e23",
+      "baseWorkflowSha256": "21c2cb1624a64072601f3124e5f7694947ff9f68ad600ef918188aa85163b584",
+      "candidateChangedFilesSha256": "534b32811730bdceefc18643fd0f2e8eb011689c439387385166d28b2daec4f0",
+      "candidateChangedFilesCount": 7
+    }
+  ],
   "workflowDispatchChecks": [
     {
-      "workflow": ".github/workflows/project-planning-collaboration-ci.yml",
-      "runId": 34999675283,
+      "workflow": ".github/workflows/flowhive-detailed-planner-ci.yml",
+      "runId": 35009048838,
       "runAttempt": 1,
       "event": "workflow_dispatch",
-      "headSha": "95ba5e1e0fd66398a7db548fbff57fdafdc709be",
-      "headBranch": "fix/flowhive-planner-live-completion-20260915",
+      "headSha": "e8a25259e8335233815cb9153f24caf4b4e519e4",
+      "headBranch": "fix/flowhive-planner-celar-transport-20260915",
+      "conclusion": "success"
+    },
+    {
+      "workflow": ".github/workflows/project-planning-collaboration-ci.yml",
+      "runId": 35009054006,
+      "runAttempt": 1,
+      "event": "workflow_dispatch",
+      "headSha": "e8a25259e8335233815cb9153f24caf4b4e519e4",
+      "headBranch": "fix/flowhive-planner-celar-transport-20260915",
       "conclusion": "success"
     }
   ],
@@ -52,10 +76,10 @@
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
-      "pullRequest": 1041,
-      "branch": "fix/flowhive-planner-live-completion-20260915",
-      "headSha": "95ba5e1e0fd66398a7db548fbff57fdafdc709be",
-      "baseSha": "038c658a45a7f1fa3b1aa695b0bed554fdf1f1aa"
+      "pullRequest": 1044,
+      "branch": "fix/flowhive-planner-celar-transport-20260915",
+      "headSha": "e8a25259e8335233815cb9153f24caf4b4e519e4",
+      "baseSha": "080ba681e7aa65a289772e8d00843d7dffa88e23"
     },
     "supersedes": {
       "pullRequest": 1039,

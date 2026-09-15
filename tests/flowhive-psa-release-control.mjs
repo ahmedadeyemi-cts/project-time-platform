@@ -458,12 +458,15 @@ export const plannerControlPathCoverageFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const plannerCandidateApprovalRefreshBase = '345d455578668493d23302713daa945f82e97d5d';
+export const plannerCandidateApprovalRefreshBase = 'e15e6dcd872fe6e5eae790d2213dd0b8347e94f6';
 export const plannerCandidateApprovalRefreshBranch = 'control/flowhive-planner-candidate-approval-refresh-20260915';
 export const plannerCandidateApprovalRefreshFiles = [
+  '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
+  'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
+  'scripts/release-test/validate-protected-test-controller-branches.sh',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
@@ -1436,7 +1439,7 @@ export function verifyFiles(changed, manifest, mode = 'initial', context = null)
     assert.equal(context?.branch, plannerControlPathCoverageBranch, 'Wrong planner control path coverage branch.');
   }
   if (mode === 'planner-candidate-approval-refresh') {
-    assert.equal(context?.base, plannerCandidateApprovalRefreshBase, 'Planner candidate approval refresh must be based on merged PR1023 main.');
+    assert.equal(context?.base, plannerCandidateApprovalRefreshBase, 'Planner candidate approval refresh must be based on the current trusted main after PR1044.');
     assert.equal(context?.branch, plannerCandidateApprovalRefreshBranch, 'Wrong planner candidate approval refresh branch.');
   }
   if (mode === 'planner-admission-manifest-refresh') {
