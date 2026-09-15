@@ -19,7 +19,8 @@ const module025SowRoleCandidateRefresh1014 = process.env.GITHUB_HEAD_REF === 'co
   || process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914';
 const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-approval-20260914'
-  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-base-correction-20260914';
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-candidate-base-correction-20260914'
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914';
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
 const module025MyRoleLiveVerifier = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-live-verifier-20260914'
