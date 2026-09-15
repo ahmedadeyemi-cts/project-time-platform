@@ -34,7 +34,6 @@ const migrations = [
 ];
 const requiredWorkflows = [
   '.github/workflows/celar-ai-production-hardening-ci.yml',
-  '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
   '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
   '.github/workflows/celar-ai-runtime-rebrand-ci.yml',
   '.github/workflows/deepseek-v4-provider-ci.yml',
@@ -42,7 +41,6 @@ const requiredWorkflows = [
   '.github/workflows/flowhive-enterprise-psa-ci.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
-  '.github/workflows/projectpulse-release-test-control-ci.yml',
   '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
   '.github/workflows/pulse-ai-system-intelligence-ci.yml',
   '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
@@ -90,9 +88,71 @@ export const workflowPathOmissions = Object.freeze([
     baseWorkflowSha256: '2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c',
     candidateChangedFilesSha256: '631242a97af20f609cf1239ec8f42689acfeb2435d57837121118303213f8886',
     candidateChangedFilesCount: 5
+  },
+  {
+    workflow: '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
+    reasonCode: 'pull-request-path-filter-no-match',
+    baseCommit: '90d2ee572329cf55b29cd87579ad5232a875ef78',
+    baseWorkflowSha256: 'ab47defc9a75fe66080056fcd4a5cdee7e32d33f67319c10ce884352f6b1ddfa',
+    candidateChangedFilesSha256: '631242a97af20f609cf1239ec8f42689acfeb2435d57837121118303213f8886',
+    candidateChangedFilesCount: 5
+  },
+  {
+    workflow: '.github/workflows/projectpulse-release-test-control-ci.yml',
+    reasonCode: 'pull-request-path-filter-no-match',
+    baseCommit: '90d2ee572329cf55b29cd87579ad5232a875ef78',
+    baseWorkflowSha256: '800aab5b60c10eac36d6b972464c6ac7f65509f10b700f0d385b42926da7726b',
+    candidateChangedFilesSha256: '631242a97af20f609cf1239ec8f42689acfeb2435d57837121118303213f8886',
+    candidateChangedFilesCount: 5
   }
 ]);
-export const workflowDispatchChecks = Object.freeze([]);
+export const workflowDispatchChecks = Object.freeze([
+  {
+    workflow: '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
+    runId: 34916643494,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: '6604bc45d46ef6a0fcded90fc88aa4eba30b180b',
+    headBranch: 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914',
+    conclusion: 'success'
+  },
+  {
+    workflow: '.github/workflows/flowhive-detailed-planner-ci.yml',
+    runId: 34918167486,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: '6604bc45d46ef6a0fcded90fc88aa4eba30b180b',
+    headBranch: 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914',
+    conclusion: 'success'
+  },
+  {
+    workflow: '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
+    runId: 34918175382,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: '6604bc45d46ef6a0fcded90fc88aa4eba30b180b',
+    headBranch: 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914',
+    conclusion: 'success'
+  },
+  {
+    workflow: '.github/workflows/shared-project-document-planning-ci.yml',
+    runId: 34918187621,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: '6604bc45d46ef6a0fcded90fc88aa4eba30b180b',
+    headBranch: 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914',
+    conclusion: 'success'
+  },
+  {
+    workflow: '.github/workflows/systemwide-enterprise-reliability-ci.yml',
+    runId: 34918200119,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: '6604bc45d46ef6a0fcded90fc88aa4eba30b180b',
+    headBranch: 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914',
+    conclusion: 'success'
+  }
+]);
 
 export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
@@ -303,7 +363,7 @@ export function verifyWorkflowPathOmission(omission, pullRequest, changedFiles, 
   assert.equal(digestLines(changedFiles), omission.candidateChangedFilesSha256,
     'Path-filter omission must bind to the actual candidate file inventory.');
   assert.equal(changedFiles.length, omission.candidateChangedFilesCount);
-  const pathsBlock = baseWorkflowContent.match(/\n\s+paths:\s*\n([\s\S]*?)\n\s+workflow_dispatch:/);
+  const pathsBlock = baseWorkflowContent.match(/\n\s+paths:\s*\n([\s\S]*?)\n\s+(?:workflow_dispatch:|permissions:)/);
   assert.ok(pathsBlock, 'The omitted workflow must expose a pull-request path filter.');
   const pathFilters = [...pathsBlock[1].matchAll(/^\s*-\s*["']([^"']+)["']\s*$/gm)].map(match => match[1]);
   assert.ok(pathFilters.length > 0, 'The omitted workflow path filter must not be empty.');
