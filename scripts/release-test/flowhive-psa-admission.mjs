@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged FlowHive planner compact-phase candidate PR1029.
+// successor is the reviewed, merged FlowHive planner parallel-phase candidate PR1032.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 1029;
-export const candidateBranch = 'fix/flowhive-planner-compact-phase-20260915';
-export const candidateSourceBranch = 'fix/flowhive-planner-compact-phase-20260915';
+export const candidatePullRequest = 1032;
+export const candidateBranch = 'fix/flowhive-planner-parallel-phases-20260915';
+export const candidateSourceBranch = 'fix/flowhive-planner-parallel-phases-20260915';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = 'b37398b13b222cc60acc70ac2b5cbb7ac56fecef';
+export const candidateMergeCommit = '4bb7ae0b2411eb9120db82b9268737080908105c';
 export const controlBranch = 'release/flowhive-psa-protected-test-admission-20260906';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
@@ -75,7 +75,7 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1029 did not touch the enterprise-experience or Celar API diagnostics
+// PR1032 did not touch the enterprise-experience or Celar API diagnostics
 // workflow path filters. GitHub therefore correctly omitted those optional
 // workflows for the exact candidate SHA. Keep the omissions explicit and
 // bound to the reviewed base bytes and candidate file inventory; they are not
@@ -84,18 +84,18 @@ export const workflowPathOmissions = Object.freeze([
   {
     workflow: '.github/workflows/enterprise-experience-system-ci.yml',
     reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'aacebde419c0a325a28c5aaaf0b11f5707be2935',
+    baseCommit: 'e3ddf7a3b8807a98becfa36be949e20c97f1c4a3',
     baseWorkflowSha256: '2ca0b78a5d3d5fa6cacfd58f0a4fbdefd944a1ace08adbf936bf5624c69e748c',
-    candidateChangedFilesSha256: 'b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43',
-    candidateChangedFilesCount: 5
+    candidateChangedFilesSha256: '256ecceb20ab82a0e9f106b25af5d7286ebab6f8dd055121e5b399bff7f5ccb3',
+    candidateChangedFilesCount: 7
   },
   {
     workflow: '.github/workflows/celar-ai-enterprise-api-diagnostics.yml',
     reasonCode: 'pull-request-path-filter-no-match',
-    baseCommit: 'aacebde419c0a325a28c5aaaf0b11f5707be2935',
+    baseCommit: 'e3ddf7a3b8807a98becfa36be949e20c97f1c4a3',
     baseWorkflowSha256: 'd3fb31f6495c8e8b65d7962e796cac472170b5957c41f50f694c517e04ebef5b',
-    candidateChangedFilesSha256: 'b4587a3c24dab20a92234efefdd21ef0906173eaab553c6ce993008aec374b43',
-    candidateChangedFilesCount: 5
+    candidateChangedFilesSha256: '256ecceb20ab82a0e9f106b25af5d7286ebab6f8dd055121e5b399bff7f5ccb3',
+    candidateChangedFilesCount: 7
   },
 ]);
 export const workflowDispatchChecks = Object.freeze([]);
@@ -104,16 +104,16 @@ export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
   assert.deepEqual(binding?.candidate, {
+    pullRequest: 1032,
+    branch: 'fix/flowhive-planner-parallel-phases-20260915',
+    headSha: 'e1efb08668eba35b49b4fd9ee9f228efb7e44bfe',
+    baseSha: 'e3ddf7a3b8807a98becfa36be949e20c97f1c4a3'
+  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
+  assert.deepEqual(binding?.supersedes, {
     pullRequest: 1029,
     branch: 'fix/flowhive-planner-compact-phase-20260915',
     headSha: '8d124cd6b0f1c0dc261c8b7eb938c70a86b8ebf3',
-    baseSha: 'aacebde419c0a325a28c5aaaf0b11f5707be2935'
-  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
-  assert.deepEqual(binding?.supersedes, {
-    pullRequest: 1020,
-    branch: 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914',
-    headSha: '6604bc45d46ef6a0fcded90fc88aa4eba30b180b',
-    installedAcceptanceRunId: 34920855999,
+    installedAcceptanceRunId: 34927190194,
     installedAcceptanceConclusion: 'failure'
   }, 'SUCCESSOR_CHECK_BINDING_SUPERSEDED_RUN');
   assert.deepEqual(binding?.requiredChecks, supersededCheckWorkflows, 'SUCCESSOR_CHECK_BINDING_CHECK_SET');
