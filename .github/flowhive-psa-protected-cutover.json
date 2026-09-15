@@ -1,12 +1,12 @@
 {
   "contract": "flowhive-psa-protected-cutover-v1",
   "enabled": true,
-  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-PARALLEL-PHASE-CANDIDATE-01",
+  "approvalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-CAPACITY-SAFE-CANDIDATE-01",
   "supersedesApprovalReference": "FLOWHIVE-PSA-PROTECTED-CUTOVER-20260914-MODULE025-SOW-ROLE-LIVE-NATIVE-ACTIVE-03",
   "candidate": {
-    "pullRequest": 1032,
-    "branch": "fix/flowhive-planner-parallel-phases-20260915",
-    "sha": "e1efb08668eba35b49b4fd9ee9f228efb7e44bfe"
+    "pullRequest": 1035,
+    "branch": "fix/flowhive-planner-capacity-safe-20260915",
+    "sha": "55bb358942bd2a0c7befa7b54d04579ec4a96677"
   },
   "workflow": {
     "id": 315562561,
@@ -121,16 +121,16 @@
     "status": "review-only",
     "deploymentEligible": false,
     "candidate": {
+      "pullRequest": 1035,
+      "branch": "fix/flowhive-planner-capacity-safe-20260915",
+      "headSha": "55bb358942bd2a0c7befa7b54d04579ec4a96677",
+      "baseSha": "e0122c6631aeb9f235ea04eee773724c21acb569"
+    },
+    "supersedes": {
       "pullRequest": 1032,
       "branch": "fix/flowhive-planner-parallel-phases-20260915",
       "headSha": "e1efb08668eba35b49b4fd9ee9f228efb7e44bfe",
-      "baseSha": "e3ddf7a3b8807a98becfa36be949e20c97f1c4a3"
-    },
-    "supersedes": {
-      "pullRequest": 1029,
-      "branch": "fix/flowhive-planner-compact-phase-20260915",
-      "headSha": "8d124cd6b0f1c0dc261c8b7eb938c70a86b8ebf3",
-      "installedAcceptanceRunId": 34927190194,
+      "installedAcceptanceRunId": 34933208336,
       "installedAcceptanceConclusion": "failure"
     },
     "requiredChecks": [
