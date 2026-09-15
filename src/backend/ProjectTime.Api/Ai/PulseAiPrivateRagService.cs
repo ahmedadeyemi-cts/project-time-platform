@@ -111,6 +111,12 @@ public sealed class PulseAiPrivateRagService
     internal static bool ShouldGenerateBoundedPhasePlan(bool flowHive, bool hasAuthoritativeScope) =>
         flowHive || hasAuthoritativeScope;
 
+    // An authoritative SOW changes the evidence source, not the FlowHive
+    // transport contract. FlowHive still uses one compact request because the
+    // protected Celar runtime has one inference slot; Module 025 retains its
+    // independent per-phase path.
+    internal static bool ShouldUseFlowHiveBatchGeneration(bool flowHive) => flowHive;
+
     public async Task<object> GetReadinessAsync(CancellationToken cancellationToken = default)
     {
         var options = Options();
@@ -646,7 +652,7 @@ public sealed class PulseAiPrivateRagService
                 CorrelationId: query.CorrelationId);
             var boundedPhasePlan = ShouldGenerateBoundedPhasePlan(flowHive, authoritativeSource is not null);
             var model = usePrivateModelWhenAvailable && boundedPhasePlan
-                ? flowHive && authoritativeSource is null
+                ? ShouldUseFlowHiveBatchGeneration(flowHive)
                     ? await GenerateFlowHiveBatchCoreAsync(modelRequest, retrieval,
                         (batchRequest, token) => _model.GenerateAsync(batchRequest,
                             options with { MaximumAnswerCharacters = FlowHivePlanMaximumAnswerCharacters }, token),

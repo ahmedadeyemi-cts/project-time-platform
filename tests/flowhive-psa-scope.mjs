@@ -57,6 +57,7 @@ const roleJourneyPaths = new Set([
 ]);
 const componentPaths = [
   /^src\/backend\/ProjectTime\.Api\/Assets\/Fonts\/[A-Za-z0-9._-]+$/,
+  /^src\/backend\/ProjectTime\.Api\/Ai\/PulseAiPrivateRagService\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/(?:ProjectFlowHive[A-Za-z0-9]+|Module025SowGsdModule)\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/ProjectPlanning(AiOrchestrator|DocumentResolver)\.cs$/,
   /^src\/backend\/ProjectTime\.Api\/Modules\/CelarAiProductionPlatformModule\.cs$/,
