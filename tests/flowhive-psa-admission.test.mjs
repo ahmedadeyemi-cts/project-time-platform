@@ -440,6 +440,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     assert.notEqual(candidateHead, approval.sha, 'The application follow-up must not reuse the prior approved candidate.');
     assert.deepEqual(changedFiles, [
       '.github/workflows/flowhive-psa-release-control-ci.yml',
+      '.github/workflows/projectpulse-release-test-control-ci.yml',
       'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
       'tests/FlowHiveDetailedPlannerTests/Program.cs',
       'tests/flowhive-psa-admission.test.mjs'

@@ -357,6 +357,7 @@ jobs:
           elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-live-completion-20260915' ]]; then
             printf '%s\n' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
               'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
               'tests/FlowHiveDetailedPlannerTests/Program.cs' \
               'tests/flowhive-psa-admission.test.mjs' \

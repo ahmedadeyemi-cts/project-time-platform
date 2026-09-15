@@ -417,6 +417,19 @@ jobs:
             }
           elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
             run_release_control
+          elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-completion-20260915' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$CIT/flowhive-planner-live-completion-files"
+            cmp -s "$CIT/diff" "$CIT/flowhive-planner-live-completion-files" || {
+              echo 'FlowHive live-completion repair contains an unreviewed file.' >&2
+              diff -u "$CIT/flowhive-planner-live-completion-files" "$CIT/diff" >&2 || true
+              exit 1
+            }
           elif [[ "$HEAD_BRANCH" == 'control/module025-admission-manifest-order-20260914' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
           elif [[ "$PR_NUMBER" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then
