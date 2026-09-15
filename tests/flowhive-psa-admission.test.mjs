@@ -440,6 +440,8 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     assert.deepEqual(changedFiles, [
       '.github/flowhive-enterprise-psa-release-files.txt',
       '.github/workflows/flowhive-psa-release-control-ci.yml',
+      '.github/workflows/module025-governed-protected-test-release-ci.yml',
+      'scripts/release-test/validate-protected-test-controller-branches.sh',
       'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
       'tests/FlowHiveDetailedPlannerTests/Program.cs',
       'tests/flowhive-psa-admission.test.mjs',
