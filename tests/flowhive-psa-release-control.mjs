@@ -471,6 +471,7 @@ export const plannerAdmissionManifestRefreshBase = 'ed59c3c8e1876c9d6a0b9bba7fc8
 export const plannerAdmissionManifestRefreshBranch = 'control/flowhive-planner-admission-manifest-refresh-20260915';
 export const plannerAdmissionManifestRefreshFiles = [
   '.github/flowhive-psa-release-control-files.txt',
+  '.github/workflows/module025-governed-protected-test-release-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
