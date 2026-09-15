@@ -327,7 +327,9 @@ export function verifyProtectedCutoverAuthorization(authorization, now = new Dat
       'Inactive protected cutover must not contain approval data.');
     return { approved: false, reason: 'not-approved' };
   }
-  assert.equal(authorization.activationDecision, 'approved', 'PROTECTED_CUTOVER_DECISION');
+  const nativeTestApprovalRequired = authorization?.approval?.mode === 'native-test-environment';
+  assert.equal(authorization.activationDecision, nativeTestApprovalRequired ? 'native-test-required' : 'approved',
+    'PROTECTED_CUTOVER_DECISION');
   assert.ok(authorization.workflow.allowControllerActivation === true || authorization.workflow.allowControllerActivation === false,
     'Active protected cutover must explicitly declare whether controller activation is required.');
   if (authorization.approval?.mode === 'native-test-environment') {

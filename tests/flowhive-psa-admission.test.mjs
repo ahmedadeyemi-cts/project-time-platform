@@ -27,6 +27,8 @@ const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control
 const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
 const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
 const plannerCompactPhaseCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-candidate-refresh-20260915';
+const plannerCompactPhaseNativeGate = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-native-gate-20260915';
+const plannerCompactPhaseControl = plannerCompactPhaseCandidateRefresh || plannerCompactPhaseNativeGate;
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
 const plannerCompactPhaseFix = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-compact-phase-20260915';
@@ -262,7 +264,7 @@ test('live planner candidate activation is bounded and otherwise remains inactiv
   const finalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-final-refresh-20260913';
   assert.equal(authorization.enabled, activation);
   assert.equal(authorization.activationDecision, activation
-    ? plannerCompactPhaseCandidateRefresh ? 'native-test-required' : 'approved'
+    ? plannerCompactPhaseControl ? 'native-test-required' : 'approved'
     : 'hold');
   assert.equal(authorization.workflow.allowControllerActivation, nativeCutoverActivation);
   if (activation) {
@@ -355,6 +357,18 @@ test('superseded dispatch receipt remains audit evidence and is not current-cand
   assert.doesNotThrow(() => verifyProtectedCutoverAuthorization(authorization, new Date(authorization.approval.approvedAt)));
 });
 
+test('active native-gated cutover accepts only the explicit native-test-required marker', () => {
+  const authorization = readProtectedCutoverAuthorization();
+  assert.equal(authorization.enabled, true);
+  assert.equal(authorization.activationDecision, 'native-test-required');
+  assert.deepEqual(authorization.approval, {
+    mode: 'native-test-environment', status: 'native-required', approvedBy: null, approvedAt: null, expiresAt: null
+  });
+  const result = verifyProtectedCutoverAuthorization(authorization, new Date('2026-09-15T03:39:00Z'));
+  assert.equal(result.approved, true);
+  assert.equal(result.nativeApprovalRequired, true);
+});
+
 test('successor check binding is exact, review-only, and tied to the failed installed acceptance', () => {
   const candidate = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
   const cutover = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-cutover.json', import.meta.url), 'utf8'));
@@ -417,7 +431,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     ? [...new Set([...files, ...plannerControlPathCoverageFiles])].sort()
     : plannerCandidateApprovalRefresh
     ? [...new Set([...files, ...plannerControlPathCoverageFiles, ...plannerCandidateApprovalRefreshFiles])].sort()
-    : plannerCompactPhaseCandidateRefresh
+    : plannerCompactPhaseControl
     ? [...new Set([...files, ...plannerCompactPhaseCandidateRefreshFiles])].sort()
     : files;
   assert.match(reviewedMain, /^[0-9a-f]{40}$/);
@@ -425,7 +439,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, plannerCompactPhaseCandidateRefresh
+  assert.equal(approval.mergeCommit, plannerCompactPhaseControl
     ? 'b37398b13b222cc60acc70ac2b5cbb7ac56fecef'
     : plannerControlCandidateApproval || plannerAdmissionManifestRefresh
     ? 'f25f41e773b7ea1e0a991cb5589d9e24c2bb3246'
@@ -495,7 +509,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    plannerCompactPhaseCandidateRefresh ? 34920855999
+    plannerCompactPhaseControl ? 34920855999
       : module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
 });

@@ -319,7 +319,7 @@ jobs:
               diff -u "$CIT/module025-my-role-celar-repair-files" "$CIT/diff" >&2 || true
               exit 1
             }
-          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-control-path-omissions-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-candidate-approval-refresh-20260915' || "$HEAD_BRANCH" == 'control/flowhive-planner-admission-manifest-refresh-20260915' || "$HEAD_BRANCH" == 'control/flowhive-planner-compact-phase-candidate-refresh-20260915' ]]; then
+          elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-acceptance-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1009-20260914' || "$HEAD_BRANCH" == 'control/module025-sow-role-candidate-refresh-1014-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-control-path-omissions-20260914' || "$HEAD_BRANCH" == 'control/flowhive-planner-candidate-approval-refresh-20260915' || "$HEAD_BRANCH" == 'control/flowhive-planner-admission-manifest-refresh-20260915' || "$HEAD_BRANCH" == 'control/flowhive-planner-compact-phase-native-gate-20260915' ]]; then
             run_release_control
           elif [[ "$HEAD_BRANCH" == 'control/module025-release-trigger-coverage-20260914' ]]; then
             printf '%s\n' \
