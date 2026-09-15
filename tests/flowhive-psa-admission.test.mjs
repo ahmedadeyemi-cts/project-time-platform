@@ -25,7 +25,8 @@ const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915'
   || process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-compact-phase-20260915';
 const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915'
-  || process.env.GITHUB_HEAD_REF === 'control/flowhive-pr1044-dispatch-evidence-20260915';
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-pr1044-dispatch-evidence-20260915'
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-pr1044-source-drift-boundary-20260915';
 const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
 const plannerCompactPhaseCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-candidate-refresh-20260915';
 const plannerCompactPhaseNativeGate = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-native-gate-20260915';
