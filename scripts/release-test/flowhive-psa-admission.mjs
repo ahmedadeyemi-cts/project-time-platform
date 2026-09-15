@@ -114,12 +114,22 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1041 changes the planner service and its test path, so all three workflows
-// that were cryptographically recorded as omissions for PR1039 ran on this
-// exact successor head. The active approval therefore has no path omissions;
-// PR1039's omission evidence remains preserved in the merged control history.
+// PR1041 does not touch the project-planning path filter, so its required
+// workflow is satisfied by one explicit candidate-bound workflow_dispatch
+// run. Historical PR1037/1039 omission evidence remains immutable in
+// historicalCandidateEvidence.
 export const workflowPathOmissions = Object.freeze([]);
-export const workflowDispatchChecks = Object.freeze([]);
+export const workflowDispatchChecks = Object.freeze([
+  {
+    workflow: '.github/workflows/project-planning-collaboration-ci.yml',
+    runId: 34999675283,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: '95ba5e1e0fd66398a7db548fbff57fdafdc709be',
+    headBranch: 'fix/flowhive-planner-live-completion-20260915',
+    conclusion: 'success'
+  }
+]);
 
 export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
