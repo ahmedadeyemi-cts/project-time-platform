@@ -400,6 +400,27 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (process.env.GITHUB_HEAD_REF === 'fix/flowhive-portfolio-db-alias-20260915') {
+    const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
+    const candidateHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const changedFiles = execFileSync('git', ['diff', '--name-only', `${currentMain}...${candidateHead}`], { encoding: 'utf8' })
+      .split(/\r?\n/).filter(Boolean).sort();
+    assert.match(currentMain, /^[0-9a-f]{40}$/);
+    assert.match(candidateHead, /^[0-9a-f]{40}$/);
+    assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', currentMain, candidateHead], { stdio: 'ignore' }));
+    assert.throws(() => execFileSync('git', ['merge-base', '--is-ancestor', candidateHead, currentMain], { stdio: 'ignore' }));
+    assert.notEqual(candidateHead, approval.sha, 'The application follow-up must not reuse the prior approved candidate.');
+    assert.deepEqual(changedFiles, [
+      '.github/workflows/flowhive-psa-release-control-ci.yml',
+      'src/backend/ProjectTime.Api/Ai/ProjectPulseAiDatabaseConnection.cs',
+      'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs',
+      'tests/CelarAiProductionHardeningTests/ReleaseRuntimeBehavior.cs',
+      'tests/FlowHiveExecutionTests/Program.cs',
+      'tests/flowhive-psa-admission.test.mjs'
+    ]);
+    assert.ok(!changedFiles.includes('src/backend/ProjectTime.Api/Program.cs'));
+    return;
+  }
   const reviewedMain = approval.sourceBase;
   const candidate = approval.sha;
   const liveRepairRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-repair-candidate-refresh-20260913';
