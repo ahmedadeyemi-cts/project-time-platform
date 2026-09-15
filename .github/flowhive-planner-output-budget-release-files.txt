@@ -3,4 +3,5 @@
 .github/workflows/projectpulse-release-test-control-ci.yml
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
 tests/CelarAiOracleExternalRuntimeTests/Program.cs
+tests/validate-celar-ai-oracle-test-runtime.mjs
 tests/validate-systemwide-image-build-controller.mjs
