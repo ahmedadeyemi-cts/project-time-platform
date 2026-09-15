@@ -135,7 +135,7 @@ try
         using var invoker = new HttpMessageInvoker(handler);
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
-            Content = new StringContent("""{"model":"gemma3:4b","max_tokens":1536,"messages":[],"response_format":{"type":"json_object"}}""")
+            Content = new StringContent("""{"model":"gemma3:4b","max_tokens":1280,"messages":[],"response_format":{"type":"json_object"}}""")
         };
         request.Headers.Add("X-Pulse-AI-Feature", CelarAiCapabilityCatalog.ProjectFlowHivePlan);
         using var response = await invoker.SendAsync(request, CancellationToken.None);
