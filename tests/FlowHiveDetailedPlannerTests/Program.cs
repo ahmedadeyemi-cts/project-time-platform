@@ -38,7 +38,13 @@ Assert(
 Assert(
     privateTimeout("FlowHiveGenerationTimeout") == TimeSpan.FromMinutes(40)
         && privateTimeout("FlowHivePhaseTimeout") == TimeSpan.FromMinutes(10),
-    "flowhive_planner_budget_remains_unchanged_by_module025_sow_fix");
+    "flowhive_planner_phase_timeout_remains_bounded");
+var flowHivePhaseOutputTokens = (int)ragServiceType
+    .GetField("FlowHivePhaseMaximumOutputTokens", BindingFlags.NonPublic | BindingFlags.Static)!
+    .GetValue(null)!;
+Assert(
+    flowHivePhaseOutputTokens == 1_280,
+    "flowhive_phase_response_budget_matches_compact_two_task_contract");
 Assert(
     PulseAiPrivateRagService.MaximumOutputTokensForPlanning(
         CelarAiCapabilityCatalog.ProjectFlowHivePlan,

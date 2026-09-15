@@ -13,10 +13,11 @@ public sealed class PulseAiPrivateRagService
     // provider path is independently bounded from FlowHive: the server fills
     // repetitive review fields after parsing, so a 1280-token SOW response is
     // sufficient and materially reduces the chance that a slow private model
-    // spends the entire acceptance window on one phase. FlowHive retains its
-    // larger budget because it owns a different live planner contract.
+    // spends the entire acceptance window on one phase. FlowHive uses the same
+    // compact per-phase response budget: the server assembles cross-phase
+    // identity and fills repetitive review fields after parsing.
     private const int Module025PhaseMaximumOutputTokens = 1_280;
-    private const int FlowHivePhaseMaximumOutputTokens = 2_048;
+    private const int FlowHivePhaseMaximumOutputTokens = 1_280;
     // Generate one small, source-grounded response per delivery phase. A single
     // ten-task response was observed to finish transport successfully while
     // returning too few task objects for the contract. Per-phase requests keep
