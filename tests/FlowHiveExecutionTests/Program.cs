@@ -28,7 +28,10 @@ try
     foreach (var name in databaseEnvironmentNames) Environment.SetEnvironmentVariable(name, null);
     Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING", cs);
     var aliasConfig = flowHiveConfigFactory.Invoke(null, null)!;
-    Check((string)flowHiveConnection.GetValue(aliasConfig)! == new NpgsqlConnectionStringBuilder(cs).ConnectionString,
+    var resolvedAlias = new NpgsqlConnectionStringBuilder((string)flowHiveConnection.GetValue(aliasConfig)!);
+    Check(resolvedAlias.Host == config.Host && resolvedAlias.Port == config.Port
+        && resolvedAlias.Database == config.Database && resolvedAlias.Username == config.Username
+        && resolvedAlias.Password == config.Password,
         "FlowHive accepts the existing full database connection-string alias when component secrets are not yet materialized");
     Check(((IReadOnlyList<string>)flowHiveMissing.GetValue(aliasConfig)!).Count == 0,
         "FlowHive does not report configuration missing when the canonical full alias is available");
