@@ -472,6 +472,7 @@ export const plannerAdmissionManifestRefreshBranch = 'control/flowhive-planner-a
 export const plannerAdmissionManifestRefreshFiles = [
   '.github/flowhive-psa-protected-test-candidate.json',
   'scripts/release-test/flowhive-psa-admission.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
 export const triggerCoverageBase = '0b2f3a41b24e1fcb8699379d2d5ceb55093467d3';
