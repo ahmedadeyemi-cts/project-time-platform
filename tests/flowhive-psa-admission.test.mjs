@@ -23,6 +23,7 @@ const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
 const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
+const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
 const triggerCoverage = process.env.GITHUB_HEAD_REF === 'control/module025-release-trigger-coverage-20260914';
 const plannerProviderDeadlineRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-provider-deadline-retry-20260914';
 const module025MyRoleLiveVerifier = process.env.GITHUB_HEAD_REF === 'fix/module025-my-role-live-verifier-20260914'
@@ -386,6 +387,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const module025SowRoleCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-20260914';
   const admissionManifestOrder = process.env.GITHUB_HEAD_REF === 'control/module025-admission-manifest-order-20260914';
   const plannerControlPathCoverage = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-control-path-omissions-20260914';
+  const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
   const sourceDriftFiles = plannerProviderDeadlineCandidateRefresh
     ? [...new Set([...files, ...plannerProviderDeadlineCandidateRefreshFiles])].sort()
     : plannerProviderDeadlineRetry
@@ -413,7 +415,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, plannerControlCandidateApproval
+  assert.equal(approval.mergeCommit, plannerControlCandidateApproval || plannerAdmissionManifestRefresh
     ? 'f25f41e773b7ea1e0a991cb5589d9e24c2bb3246'
     : plannerProviderDeadlineCandidateRefresh
     ? '832576a4b8dae1da94bc31c689381b6f38ad151f'
@@ -447,6 +449,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   const postMergeControlChanges = execFileSync('git', ['diff', '--name-only', `${approval.mergeCommit}..HEAD`], { encoding: 'utf8' })
     .split(/\r?\n/).filter(Boolean).sort();
   verifySourceDrift(postMergeControlChanges, sourceDriftFiles);
+  assert.ok(sourceDriftFiles.includes('.github/workflows/celar-ai-enterprise-api-diagnostics.yml'));
   verifySourceDrift(plannerTimeBudgetApprovalFiles, sourceDriftFiles);
   for (const unrelated of [
     'src/backend/ProjectTime.Api/Program.cs',
@@ -480,7 +483,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval ? 34895217042
+    module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 34861784220);
 });
 test('workflow-dispatch evidence is candidate-bound and cannot substitute another run', () => {
