@@ -569,6 +569,7 @@ export const plannerCapacitySafeFiles = [
 export const plannerLiveCapacityRepairBase = '34a0f8fbbe7e79447cdf022d55ba8fb1bdf9c987';
 export const plannerLiveCapacityRepairBranch = 'fix/flowhive-planner-live-capacity-repair-20260915';
 export const plannerLiveCapacityRepairFiles = [
+  '.github/workflows/projectpulse-release-test-control-ci.yml',
   'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
   'tests/FlowHiveDetailedPlannerTests/Program.cs',
   'tests/flowhive-psa-admission.test.mjs',
