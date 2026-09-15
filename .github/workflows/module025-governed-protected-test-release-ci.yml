@@ -116,6 +116,22 @@ jobs:
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'FLOWHIVE_PLANNER_ADMISSION_MANIFEST_REFRESH_SCOPE=PASSED'
             exit 0
+          elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-parallel-phases-20260915' ]]; then
+            MANIFEST='.github/flowhive-planner-parallel-phases-release-files.txt'
+            test -s "$MANIFEST" || fail 'FlowHive planner parallel-phase manifest is missing.'
+            grep -Ev '^[[:space:]]*(#|$)' "$MANIFEST" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-parallel-files"
+            cmp -s "$MANIFEST" "$RUNNER_TEMP/flowhive-planner-parallel-files" || fail 'FlowHive planner parallel-phase manifest must be sorted, unique, and comment-free.'
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-parallel-actual"
+            cmp -s "$MANIFEST" "$RUNNER_TEMP/flowhive-planner-parallel-actual" || {
+              echo 'PR differs from the exact governed FlowHive planner parallel-phase release set.' >&2
+              diff -u "$MANIFEST" "$RUNNER_TEMP/flowhive-planner-parallel-actual" >&2 || true
+              exit 1
+            }
+            git diff --check "$BASE_SHA...HEAD"
+            node tests/validate-systemwide-enterprise-reliability.mjs
+            node tests/validate-systemwide-image-build-controller.mjs
+            echo 'FLOWHIVE_PLANNER_PARALLEL_PHASES_SCOPE=PASSED'
+            exit 0
           elif [[ "$HEAD_BRANCH" == 'feat/module025-sow-sell-versioned-register-20260908' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' || "$HEAD_BRANCH" == 'fix/flowhive-planner-output-budget-20260912' || "$HEAD_BRANCH" == 'fix/flowhive-planner-time-budget-20260912' ]]; then
             if [[ "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BRANCH" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
               MANIFEST='.github/flowhive-enterprise-psa-release-files.txt'

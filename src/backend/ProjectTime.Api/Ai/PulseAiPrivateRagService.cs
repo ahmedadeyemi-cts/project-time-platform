@@ -1609,8 +1609,11 @@ public sealed class PulseAiPrivateRagService
     }
 
     // Generate bounded phase responses instead of asking a small private model to
-    // fit the entire detailed contract into one completion. Nothing is persisted
-    // as review-ready until every phase and the assembled plan pass the same gate.
+    // fit the entire detailed contract into one completion. The five independent
+    // phase requests run together so one slow provider request cannot consume the
+    // durable operation's entire inference window before later phases begin.
+    // Nothing is persisted as review-ready until every phase and the assembled
+    // plan pass the same gate.
     private static Task<PulseAiPrivateModelResult> GenerateModule025PhasesAsync(
         PulseAiPrivateModelRequest request,
         PulseAiPrivateRetrievalResult retrieval,
@@ -1631,12 +1634,9 @@ public sealed class PulseAiPrivateRagService
         var inputCharacters = 0;
         try
         {
-            var phaseResults = new List<Module025PhaseResult>(Module025DeliveryPhases.Length);
-            for (var index = 0; index < Module025DeliveryPhases.Length; index++)
-            {
-                generationDeadline.Token.ThrowIfCancellationRequested();
-                var phase = Module025DeliveryPhases[index];
-                var phaseResult = await GenerateModule025PhaseAsync(
+            generationDeadline.Token.ThrowIfCancellationRequested();
+            var phaseTasks = Module025DeliveryPhases
+                .Select((phase, index) => GenerateModule025PhaseAsync(
                     request,
                     BoundModule025PhaseRetrieval(retrieval, phase, index),
                     generate,
@@ -1647,8 +1647,11 @@ public sealed class PulseAiPrivateRagService
                         ? Module025PhaseMaximumOutputTokens
                         : FlowHivePhaseMaximumOutputTokens,
                     generationDeadline.Token,
-                    logger);
-                phaseResults.Add(phaseResult);
+                    logger))
+                .ToArray();
+            var phaseResults = await Task.WhenAll(phaseTasks);
+            foreach (var phaseResult in phaseResults.OrderBy(result => result.Index))
+            {
                 inputCharacters += phaseResult.InputCharacters;
                 if (phaseResult.Plan is null)
                     return phaseResult.Result with { InputCharacters = inputCharacters, Content = string.Empty };
@@ -1705,7 +1708,7 @@ public sealed class PulseAiPrivateRagService
             phaseToken.ThrowIfCancellationRequested();
             var phaseRequest = request with
             {
-                MaximumOutputTokens = Module025PhaseMaximumOutputTokens,
+                MaximumOutputTokens = maximumOutputTokens,
                 Sources = retrieval.Chunks,
                 SystemInstruction = Module025PhaseSystemInstruction(
                     request.SystemInstruction,
