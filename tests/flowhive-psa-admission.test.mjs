@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, verifyWorkflowDispatchCheck, workflowPathOmissions, workflowDispatchChecks, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
+import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, verifyWorkflowDispatchCheck, verifyWorkflowDispatchNonRequiredEvidence, workflowPathOmissions, workflowDispatchChecks, workflowDispatchNonRequiredEvidence, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, plannerCandidateApprovalRefreshFiles, plannerCompactPhaseFixFiles, plannerParallelPhaseFixFiles, plannerCompactPhaseCandidateRefreshFiles, plannerParallelPhaseCandidateRefreshFiles, plannerRuntimeCheckOmissionFiles, plannerCapacitySafeFiles, plannerLiveCapacityRepairFiles, plannerCapacitySafeCandidateRefreshFiles, plannerLiveCapacityCandidateRefreshFiles, plannerCandidateRefreshFiles, plannerAdmissionEvidenceCorrectionFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
@@ -24,7 +24,8 @@ const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915'
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915'
   || process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-compact-phase-20260915';
-const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915';
+const plannerCandidateApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915'
+  || process.env.GITHUB_HEAD_REF === 'control/flowhive-pr1044-dispatch-evidence-20260915';
 const plannerAdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-admission-manifest-refresh-20260915';
 const plannerCompactPhaseCandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-candidate-refresh-20260915';
 const plannerCompactPhaseNativeGate = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-compact-phase-native-gate-20260915';
@@ -58,6 +59,11 @@ const runs = approval.requiredWorkflows.map((path, i) => ({ id: i + 1, path, eve
 const dispatchRuns = workflowDispatchChecks.map(binding => ({ id: binding.runId, path: binding.workflow,
   event: binding.event, head_sha: binding.headSha, head_branch: binding.headBranch, status: 'completed',
   conclusion: binding.conclusion, run_attempt: binding.runAttempt, head_repository: { full_name: repository } }));
+const nonRequiredDispatchRuns = workflowDispatchNonRequiredEvidence.map(evidence => ({
+  id: evidence.runId, path: evidence.workflow, event: evidence.event, head_sha: evidence.headSha,
+  head_branch: evidence.headBranch, status: evidence.status, conclusion: evidence.conclusion,
+  run_attempt: evidence.runAttempt, head_repository: { full_name: repository }
+}));
 const historicalFence = readHistoricalFenceSources();
 const nativeEnvironmentProtection = {
   name: 'test', can_admins_bypass: false,
@@ -181,7 +187,8 @@ function protectedCutoverApi({ fourthRun = false, approvalHistory = [], jobCount
   return { request, calls, control, runs, comments };
 }
 test('approved current draft candidate is admissible without merging', () => {
-  verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr); verifyRuns(approval, [...runs, ...dispatchRuns]);
+  verifyApproval(approval, approval.sha); verifyPullRequest(approval, pr);
+  verifyRuns(approval, [...runs, ...dispatchRuns, ...nonRequiredDispatchRuns]);
 });
 test('merged candidate remains bound after normal source-branch deletion', () => {
   const calls = [];
@@ -634,7 +641,7 @@ test('successor approval enumerates only the workflows that ran for the exact se
     '.github/workflows/systemwide-enterprise-reliability-ci.yml'
   ];
   assert.deepEqual(approval.requiredWorkflows, expectedRequiredWorkflows);
-  assert.equal(verifyRuns(approval, [...runs, ...dispatchRuns]).length,
+  assert.equal(verifyRuns(approval, [...runs, ...dispatchRuns, ...nonRequiredDispatchRuns]).length,
     approval.requiredWorkflows.length + workflowDispatchChecks.length);
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
@@ -660,7 +667,13 @@ test('workflow-dispatch evidence is candidate-bound and cannot substitute anothe
   }
   assert.equal(workflowDispatchChecks.length, plannerCandidateApprovalRefresh ? 2 : 1);
   assert.deepEqual(dispatchRuns.map(run => run.id).sort((a, b) => a - b), workflowDispatchChecks.map(binding => binding.runId).sort((a, b) => a - b));
-  assert.throws(() => verifyRuns(approval, [...runs, ...dispatchRuns, {
+  assert.equal(workflowDispatchNonRequiredEvidence.length, 1);
+  assert.doesNotThrow(() => verifyWorkflowDispatchNonRequiredEvidence(
+    workflowDispatchNonRequiredEvidence[0], nonRequiredDispatchRuns[0], approval));
+  assert.throws(() => verifyWorkflowDispatchNonRequiredEvidence(
+    workflowDispatchNonRequiredEvidence[0], { ...nonRequiredDispatchRuns[0], conclusion: 'success' }, approval),
+  /recorded failure/);
+  assert.throws(() => verifyRuns(approval, [...runs, ...dispatchRuns, ...nonRequiredDispatchRuns, {
     id: 39999999999, path: '.github/workflows/celar-ai-enterprise-retrieval-ci.yml',
     event: 'workflow_dispatch', head_sha: approval.sha, head_branch: approval.branch,
     status: 'completed', conclusion: 'success', run_attempt: 1,

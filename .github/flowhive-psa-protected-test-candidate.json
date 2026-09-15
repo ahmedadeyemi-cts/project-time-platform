@@ -72,6 +72,24 @@
       "conclusion": "success"
     }
   ],
+  "workflowDispatchNonRequiredEvidence": [
+    {
+      "workflow": ".github/workflows/flowhive-enterprise-psa-ci.yml",
+      "runId": 35009051752,
+      "runAttempt": 1,
+      "event": "workflow_dispatch",
+      "headSha": "e8a25259e8335233815cb9153f24caf4b4e519e4",
+      "headBranch": "fix/flowhive-planner-celar-transport-20260915",
+      "status": "completed",
+      "conclusion": "failure",
+      "reasonCode": "non-required-manual-validation-failure",
+      "failedStep": "Test resumable observation, identity fencing and bounded network requests",
+      "failedAssertionCount": 3,
+      "satisfiesRequiredCheck": false,
+      "deploymentEligible": false,
+      "disposition": "non-required-evidence-only"
+    }
+  ],
   "successorCheckBinding": {
     "status": "review-only",
     "deploymentEligible": false,
