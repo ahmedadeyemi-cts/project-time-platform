@@ -59,6 +59,18 @@ jobs:
           python -m pip install PyYAML==6.0.3
           if [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pm-acceptance-contract' ]]; then
             node tests/validate-flowhive-pm-acceptance-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sa-review-confirm-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-review-confirm-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-review-confirm-actual"
+            cmp -s "$RUNNER_TEMP/module025-review-confirm-files" "$RUNNER_TEMP/module025-review-confirm-actual" || {
+              echo 'Module 025 verifier correction differs from its exact file scope.' >&2
+              diff -u "$RUNNER_TEMP/module025-review-confirm-files" "$RUNNER_TEMP/module025-review-confirm-actual" >&2 || true
+              exit 1
+            }
           elif [[ "$GITHUB_HEAD_REF" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
             node tests/validate-sow-generation-uat-scope.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pr914-followup-20260911' ]]; then
