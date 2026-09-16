@@ -191,7 +191,9 @@ if (flowHiveEnterprisePsaMode) {
   const { verifyRepositoryScope } = await import('./flowhive-psa-scope.mjs');
   verifyRepositoryScope();
 }
-const scopedCompatibilityMode = flowHivePsaControlMode || flowHiveEnterprisePsaMode || sowPhaseMode || customerPublicAnswerMode || flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const module025EngineMode = branchName === 'fix/module025-durable-engine-20260916';
+if (module025EngineMode) (await import('./module025-engine-scope.mjs')).verifyModule025EngineScope();
+const scopedCompatibilityMode = module025EngineMode || flowHivePsaControlMode || flowHiveEnterprisePsaMode || sowPhaseMode || customerPublicAnswerMode || flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

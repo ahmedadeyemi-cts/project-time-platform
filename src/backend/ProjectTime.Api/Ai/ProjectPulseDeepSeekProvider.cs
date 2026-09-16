@@ -62,8 +62,8 @@ public sealed class ProjectPulseDeepSeekProvider(
                     new { role = "system", content = request.SystemPrompt },
                     new { role = "user", content = request.UserPrompt }
                 },
-                // Consumer budgets describe final prose. DeepSeek reasoning
-                // shares max_tokens and must not consume that entire allowance.
+                // Module 025 owns the total completion budget, including reasoning.
+                // Other consumers retain their existing reasoning allowance.
                 max_tokens = CompletionBudget(request.MaxOutputTokens, request.Feature),
                 stream = false
             }), Encoding.UTF8, "application/json");
@@ -116,10 +116,14 @@ public sealed class ProjectPulseDeepSeekProvider(
 
     internal static int CompletionBudget(int finalOutputTokens, string feature)
     {
-        // Structured planning needs room for reasoning and the cited JSON plan.
+        // SOW generation publishes and persists its own attempt ceiling. DeepSeek
+        // counts reasoning and final JSON together, so never expand that ceiling.
+        if (feature == CelarAiCapabilityCatalog.SowGsdPlanning)
+            return Math.Clamp(finalOutputTokens, 1, 16_384);
+
+        // Other structured planning needs room for reasoning and the cited JSON plan.
         // Keep interactive requests small and never accept a length-truncated result.
-        var planning = feature is CelarAiCapabilityCatalog.SowGsdPlanning
-            or CelarAiCapabilityCatalog.ProjectFlowHivePlan
+        var planning = feature is CelarAiCapabilityCatalog.ProjectFlowHivePlan
             or CelarAiCapabilityCatalog.ProjectForgePlanEstimate;
         return (int)Math.Clamp(
             (long)finalOutputTokens + (planning ? 8_192 : 2_048),

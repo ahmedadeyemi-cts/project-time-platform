@@ -554,7 +554,9 @@ public sealed record CelarAiCapabilityExecutionContext(
     IReadOnlyList<string>? ExternalFactCodes = null,
     string? ExternalProblemStatement = null,
     bool PublicGeneralQuestion = false,
-    string? PublicQuestion = null);
+    string? PublicQuestion = null,
+    bool StructuredSowPhase = false,
+    Func<string, CancellationToken, Task<bool>>? BeforeStructuredSowAttempt = null);
 
 public sealed class CelarAiConfigurationConflictException(string message) : InvalidOperationException(message);
 
@@ -2610,6 +2612,20 @@ public sealed class CelarAiCapabilityRouter
         foreach (var target in orderedTargets)
         {
             var targetTimeout = target == CelarAiCapabilityTargets.Local ? null : attemptBudget.NextTimeout(remainingTargets--);
+            if (execution.StructuredSowPhase)
+            {
+                if (feature != CelarAiCapabilityCatalog.SowGsdPlanning)
+                    throw new InvalidOperationException("structured_sow_capability_mismatch");
+                // Cloud/local routes currently return generic assistance, not the
+                // source-grounded full SOW contract. Do not spend on that path.
+                if (target is not (CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi))
+                {
+                    skipped.Add(target);
+                    decisions.Add(new(target, "skipped", "structured_sow_adapter_unavailable"));
+                    continue;
+                }
+                targetTimeout = TimeSpan.FromSeconds(Module025GenerationEngine.ProviderTimeoutSeconds);
+            }
             cancellationToken.ThrowIfCancellationRequested();
             if (skipPrivateTarget
                 && !requirePrivateTargetBeforeExternal
@@ -2682,6 +2698,14 @@ public sealed class CelarAiCapabilityRouter
                 {
                     skipped.Add(target);
                     decisions.Add(new(target, "skipped", "private_synthesis_disabled_by_feature"));
+                    continue;
+                }
+                if (execution.StructuredSowPhase
+                    && (execution.BeforeStructuredSowAttempt is null
+                        || !await execution.BeforeStructuredSowAttempt(target, cancellationToken)))
+                {
+                    skipped.Add(target);
+                    decisions.Add(new(target, "skipped", "module025_phase_attempt_budget_exhausted"));
                     continue;
                 }
                 attempted.Add(target);
@@ -2975,6 +2999,11 @@ public sealed class CelarAiCapabilityRouter
             failed.Add(target);
             decisions.Add(new(target, "failed", DecisionCode(result.Code, "provider_unavailable")));
         }
+
+        if (execution.StructuredSowPhase)
+            return new ProjectPulseAiRouteResult(string.Empty, string.Empty, ProjectPulseAiOutcomes.Unavailable,
+                "No configured provider completed the detailed SOW phase contract within its budget.",
+                attempted, skipped, null, null, decisions);
 
         var fallback = localFallback();
         _health.RecordSuccess(CelarAiCapabilityTargets.Local, null, null, "local_fallback");

@@ -88,7 +88,6 @@ Check(Budget(520) > 520, "Short timesheet requests must reserve tokens for reaso
 Check(Budget(12_000) >= 12_000 && Budget(int.MaxValue) == 16_384,
     "Detailed scope retains its requested budget and oversized inputs remain bounded without integer overflow.");
 foreach (var planningFeature in new[] {
-    CelarAiCapabilityCatalog.SowGsdPlanning,
     CelarAiCapabilityCatalog.ProjectFlowHivePlan,
     CelarAiCapabilityCatalog.ProjectForgePlanEstimate })
 {
@@ -99,6 +98,12 @@ foreach (var planningFeature in new[] {
     Check(Budget(int.MaxValue, planningFeature) == 16_384,
         "Planning token arithmetic cannot overflow the bounded window.");
 }
+Check(Budget(6_144, CelarAiCapabilityCatalog.SowGsdPlanning) == 6_144,
+    "Module 025's total completion ceiling must include DeepSeek reasoning and final JSON.");
+Check(Budget(1_024, CelarAiCapabilityCatalog.SowGsdPlanning) == 1_024
+    && Budget(0, CelarAiCapabilityCatalog.SowGsdPlanning) == 1
+    && Budget(int.MaxValue, CelarAiCapabilityCatalog.SowGsdPlanning) == 16_384,
+    "SOW budgets stay positive and bounded without an added reasoning allowance.");
 Check(Budget(520, "help_assistant") == 2_568,
     "Interactive requests retain the existing small completion budget.");
 var readinessConfig = new ProjectPulseAiConfiguration();

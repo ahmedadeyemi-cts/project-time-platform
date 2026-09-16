@@ -40,6 +40,18 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    services:
+      module025-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: module025_test
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: module025_engine_test
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U module025_test -d module025_engine_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
 
     steps:
       - name: Checkout pull-request source
@@ -164,6 +176,8 @@ jobs:
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
       - name: Execute detailed five-phase and legacy Word regressions
+        env:
+          MODULE025_TEST_DATABASE: Host=localhost;Port=${{ job.services.module025-postgres.ports[5432] }};Username=module025_test;Password=disposable-ci-only;Database=module025_engine_test
         run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
 
       - name: Execute project-scoped SOW freshness regressions

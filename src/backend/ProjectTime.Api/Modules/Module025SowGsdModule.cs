@@ -487,10 +487,17 @@ public static class Module025SowGsdModule
         var latest = events[^1];
         var terminal = latest.EventType is "ai_generation_completed" or "ai_generation_failed" or "ai_generation_obsolete";
         var completed = latest.EventType == "ai_generation_completed";
+        var started = events.Any(item => item.EventType == "ai_generation_started");
+        var progress = events.Where(item => item.EventType == "ai_generation_progress")
+            .Select(item => item.Evidence.GetProperty("progress").Deserialize<Module025GenerationProgress>())
+            .Where(item => item is not null).Select(item => item!).ToArray();
+        var completedPhases = progress.Where(item => item.Stage is "phase_completed" or "phase_resumed")
+            .Select(item => item.Phase).Distinct().ToArray();
+        var currentProgress = progress.LastOrDefault();
         var apiStatus = JsonString(latest.Evidence, "apiStatus");
         var status = terminal && apiStatus.Length > 0
             ? apiStatus
-            : latest.EventType == "ai_generation_started"
+            : started
                 ? "module025_detailed_scope_generation_running"
                 : "module025_detailed_scope_generation_queued";
         var message = JsonString(latest.Evidence, "message");
@@ -500,11 +507,15 @@ public static class Module025SowGsdModule
                 ? completed
                     ? "Detailed P/D/I/V/R scope is ready for Solution Architect review."
                     : "Detailed scope generation did not complete. The existing SOW/GSD draft was preserved."
-                : latest.EventType == "ai_generation_started"
+                : started
                     ? "Celar AI is preparing the detailed P/D/I/V/R review draft."
                     : "Detailed scope generation is waiting for the governed background worker.";
         }
 
+        if (!terminal && currentProgress is not null)
+            message = $"{completedPhases.Length}/5 phases saved. Preparing {currentProgress.Phase}.";
+        if (terminal && !completed && completedPhases.Length > 0)
+            message += $" {completedPhases.Length}/5 validated phases are saved; retry generation to resume the remaining work.";
         var correlationId = JsonString(latest.Evidence, "correlationId");
         if (correlationId.Length == 0) correlationId = JsonString(first.Evidence, "correlationId");
         var diagnosticCode = terminal ? JsonString(latest.Evidence, "diagnosticCode") : string.Empty;
@@ -514,7 +525,7 @@ public static class Module025SowGsdModule
             status,
             generationId,
             engagementId,
-            phase = latest.EventType == "ai_generation_started" ? "generating" : completed ? "completed" : terminal ? "failed" : "queued",
+            phase = completed ? "completed" : terminal ? "failed" : started ? "generating" : "queued",
             terminal,
             stateChanged = completed,
             revision = latest.Revision,
@@ -524,6 +535,18 @@ public static class Module025SowGsdModule
             targetDecisions = JsonArray(latest.Evidence, "targetDecisions").ToArray(),
             failureStage,
             message,
+            completedPhases,
+            currentPhase = currentProgress?.Phase ?? string.Empty,
+            currentProvider = progress.LastOrDefault(item => item.Provider.Length > 0)?.Provider ?? string.Empty,
+            deadlineAt = first.CreatedAt.AddSeconds(Module025GenerationEngine.DeadlineSeconds),
+            maximumProviderAttempts = Module025GenerationEngine.AttemptsPerPhase * 5,
+            maximumOutputTokensPerAttempt = Module025GenerationEngine.MaximumOutputTokens,
+            progress = progress.Select(item => new
+            {
+                item.Stage, item.Phase, item.Provider, item.Attempt, item.DiagnosticCode,
+                item.Model, item.InputCharacters, item.OutputCharacters, item.ElapsedMilliseconds,
+                item.TargetDecisions
+            }).ToArray(),
             queuedAt = first.CreatedAt,
             updatedAt = latest.CreatedAt
         });
@@ -620,35 +643,63 @@ public static class Module025SowGsdModule
                 exception.GetType().Name.ToLowerInvariant());
         }
 
+        async Task<bool> HasCurrentGenerationAuthorityAsync(CancellationToken token)
+        {
+            var currentAccess = await context.RequestServices.GetRequiredService<PulseAiPrivateRagRepository>()
+                .LoadAccessAsync(access.EffectiveUserId, token);
+            return currentAccess.IsActive && currentAccess.CanSowPlanning
+                && (currentAccess.RoleCodes.Overlaps(SolutionArchitectRoles)
+                    || currentAccess.RoleCodes.Overlaps(AdministratorRoles)
+                    || (access.IsProtectedTestUatRoleFixture && currentAccess.RoleCodes.Contains("MANAGER")
+                        && Environment.GetEnvironmentVariable(Module025ProtectedTestUatAccess.EnabledVariable) == "true"
+                        && long.TryParse(Environment.GetEnvironmentVariable(Module025ProtectedTestUatAccess.ExpiresAtVariable), out var fixtureExpiry)
+                        && fixtureExpiry > DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+        }
+
         CelarAiComposeResult composition;
         using var generationDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        generationDeadline.CancelAfter(TimeSpan.FromMinutes(40));
+        var deadlineAt = context.Items["Module025Deadline"] is DateTimeOffset deadline
+            ? deadline : DateTimeOffset.UtcNow.AddSeconds(Module025GenerationEngine.DeadlineSeconds);
+        var remaining = deadlineAt - DateTimeOffset.UtcNow;
+        if (remaining <= TimeSpan.Zero)
+            return new(StatusCodes.Status504GatewayTimeout, "module025_ai_temporarily_unavailable",
+                "The generation deadline expired. Validated phases remain available for an explicit retry.",
+                queueCorrelationId, false, "module025_generation_deadline_exceeded");
+        generationDeadline.CancelAfter(remaining);
         try
         {
             var enterprise = context.RequestServices.GetRequiredService<CelarAiEnterprisePlatformService>();
-            composition = await enterprise.ComposeModule025SowAsync(
+            var evidence = new CelarAiAuthoritativeScopeEvidence(
+                current.EngagementId, current.Revision, current.EngagementNumber,
+                current.CustomerName, current.ServiceOverview, current.UpdatedAt);
+            var source = PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(evidence)
+                ?? throw new InvalidOperationException("module025_source_invalid");
+            var journal = new Module025GenerationJournal(BuildConnectionString()!, engagementId,
+                access.ActualUserId, expectedRevision, generationId, source.SourceSha256);
+            var saved = await journal.LoadAsync(generationDeadline.Token);
+            composition = await Module025GenerationEngine.RunAsync(evidence, saved.Checkpoints, saved.Attempts,
+                (phaseEvidence, phaseToken) => enterprise.ComposeModule025SowAsync(
                 access.ActualUserId,
                 access.EffectiveUserId,
                 new CelarAiComposeRequest(
-                    Mode: "sow_draft",
-                    ProjectCode: current.EngagementNumber,
-                    ProjectName: current.CustomerName,
-                    StartDate: null,
-                    RequestedOutcome: BuildGenerationPrompt(current),
-                    DetailLevel: "comprehensive",
-                    DiagramType: "flowchart",
-                    AllowSanitizedExternalFallback: false,
-                    ProjectId: null,
-                    CapabilityCode: CelarAiCapabilityCatalog.SowGsdPlanning),
-                new CelarAiAuthoritativeScopeEvidence(
-                    current.EngagementId,
-                    current.Revision,
-                    current.EngagementNumber,
-                    current.CustomerName,
-                    current.ServiceOverview,
-                    current.UpdatedAt),
-                context,
+                    Mode: "sow_draft", ProjectCode: current.EngagementNumber,
+                    ProjectName: current.CustomerName, StartDate: null,
+                    RequestedOutcome: BuildGenerationPrompt(current), DetailLevel: "comprehensive",
+                    DiagramType: "flowchart", AllowSanitizedExternalFallback: false,
+                    ProjectId: null, CapabilityCode: CelarAiCapabilityCatalog.SowGsdPlanning),
+                phaseEvidence, context, phaseToken), async (progress, token) =>
+                {
+                    if (!await HasCurrentGenerationAuthorityAsync(token))
+                        throw new UnauthorizedAccessException("module025_generation_authority_revoked");
+                    await journal.PersistAsync(progress, token);
+                },
                 generationDeadline.Token).WaitAsync(generationDeadline.Token);
+        }
+        catch (Module025GenerationSourceChangedException)
+        {
+            return new(StatusCodes.Status409Conflict, "module025_generation_obsolete",
+                "The saved scope changed or was archived. This generation stopped without changing the draft.",
+                queueCorrelationId, false, "module025_generation_source_changed");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) when (generationDeadline.IsCancellationRequested)
@@ -668,6 +719,14 @@ public static class Module025SowGsdModule
                 false,
                 exception.GetType().Name.ToLowerInvariant());
         }
+
+        if (!await HasCurrentGenerationAuthorityAsync(cancellationToken))
+            return new(StatusCodes.Status403Forbidden, "module025_forbidden",
+                "Generation authority changed. The saved draft was preserved.", queueCorrelationId, false);
+        if (generationDeadline.IsCancellationRequested)
+            return new(StatusCodes.Status504GatewayTimeout, "module025_ai_temporarily_unavailable",
+                "The generation deadline expired before publication. Validated phases remain saved.",
+                queueCorrelationId, false, "module025_generation_deadline_exceeded");
 
         if (composition.SowDraft is null)
             return GenerationFailureOutcome(CompositionDiagnosticCode(composition), Clean(composition.CorrelationId, 160))
@@ -1438,6 +1497,11 @@ public static class Module025SowGsdModule
                     RequestServices = services,
                     TraceIdentifier = correlationId
                 };
+                // Use the original durable queue time, including after a restart.
+                var hasQueuedAt = DateTimeOffset.TryParse(JsonString(candidate.Evidence, "queuedAt"), out var queuedAt);
+                workerContext.Items["Module025Deadline"] = hasQueuedAt
+                    ? queuedAt.AddSeconds(Module025GenerationEngine.DeadlineSeconds)
+                    : DateTimeOffset.MinValue;
                 workerContext.Request.Scheme = "https";
                 workerContext.Request.Host = new HostString("module025-background-worker");
                 var outcome = await ExecuteGenerationAsync(

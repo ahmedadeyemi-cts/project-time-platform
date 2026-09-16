@@ -37,9 +37,10 @@ assert '"$SA_SESSION" "$GENERATION_POLL_TIMEOUT"' in script
 assert 'GENERATION_REMAINING_SECONDS' in script
 assert 'terminal state within 42 minutes' in script
 module = (root / 'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs').read_text()
-assert 'generationDeadline.CancelAfter(TimeSpan.FromMinutes(40))' in module
+assert 'generationDeadline.CancelAfter(remaining)' in module
+assert 'queuedAt.AddSeconds(Module025GenerationEngine.DeadlineSeconds)' in module
 assert 'generationDeadline.Token).WaitAsync(generationDeadline.Token)' in module
-assert 40 * 60 < 42 * 60 < 2700
+assert 20 * 60 < 25 * 60 < 42 * 60 < 2700
 print('SOW_UAT_INDEPENDENT_GATES_AND_CLEANUP_RESERVE=PASS')
 
 # Execute the real Bash functions with a deterministic clock and transport.

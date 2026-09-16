@@ -165,6 +165,35 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
     exit 1
   }
   node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+elif [[ "$HEAD_BRANCH" == 'fix/module025-durable-engine-20260916' ]]; then
+  expected="$CIT/module025-engine-files"
+  printf '%s\n' \
+    '.github/workflows/flowhive-detailed-planner-ci.yml' \
+    '.github/workflows/flowhive-psa-release-control-ci.yml' \
+    'scripts/release-test/run-module025-installed-sa-uat.py' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs' \
+    'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs' \
+    'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs' \
+    'src/backend/ProjectTime.Api/Ai/Module025GenerationEngine.cs' \
+    'src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs' \
+    'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+    'src/backend/ProjectTime.Api/Modules/Module025GenerationJournal.cs' \
+    'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs' \
+    'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs' \
+    'src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx' \
+    'tests/DeepSeekProviderTests/Program.cs' \
+    'tests/FlowHiveDetailedPlannerTests/Module025GenerationEngineTests.cs' \
+    'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+    'tests/flowhive-psa-admission.test.mjs' \
+    'tests/flowhive-psa-installed-acceptance.test.py' \
+    'tests/module025-engine-scope.mjs' \
+    'tests/test-sow-uat-isolation.py' \
+    'tests/validate-celar-ai-pr630-consolidated.mjs' \
+    | LC_ALL=C sort -u > "$expected"
+  cmp -s "$CIT/diff" "$expected" || fail 'Module 025 engine redesign differs from its exact file set.'
+  node tests/module025-engine-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/module025-scoped-test-deploy-20260916' ]]; then
   expected="$CIT/module025-scoped-deploy-files"
   printf '%s\n' \
