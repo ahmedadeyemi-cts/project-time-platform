@@ -36,6 +36,7 @@ concurrency:
 
 jobs:
   validate:
+    if: github.event_name != 'workflow_dispatch'
     name: Validate Module 025 exact release scope and Protected-Test controls
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -338,4 +339,47 @@ jobs:
           echo 'MODULE025_LIVE_WORKSPACE_ROUTE=PASSED'
           echo 'MIGRATIONS_098_099_PROTECTED_TEST=REQUIRED'
           echo 'AUTHENTICATED_ASSIGNED_WORK_UTILIZATION_UAT=REQUIRED'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+  manual_validate:
+    if: github.event_name == 'workflow_dispatch'
+    name: Validate exact candidate Module 025 contracts and controls
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the exact requested candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Validate exact candidate ancestry and Module 025 controls
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Manual release SHA is unavailable.'
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Manual base SHA is unavailable.'
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]] || fail 'Manual validation did not check out the requested candidate SHA.'
+          git cat-file -e "$BASE_SHA^{commit}" || fail 'Manual validation base commit is unavailable.'
+          git merge-base --is-ancestor "$BASE_SHA" HEAD || fail 'Manual validation base is not an ancestor of the candidate.'
+          node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+          bash tests/test-module025-sow-sell-register-migration-106.sh
+          node src/frontend/project-time-web/scripts/validate-group-6-enterprise-presentation.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check "$BASE_SHA...HEAD"
+          echo 'MODULE025_MANUAL_EXACT_CANDIDATE_VALIDATION=PASSED'
           echo 'PRODUCTION_MUTATION=NONE'
