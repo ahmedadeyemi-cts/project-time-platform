@@ -65,7 +65,8 @@ def verify(doc):
     assert 'database/rollback/107_module_066_operation_authorization_and_raid_actor_rollback.sql' in release_guard['run']
     assert byid['psa_live_uat']['working-directory']=='control'
     assert byid['psa_live_uat']['timeout-minutes']=='20'
-    assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true'"
+    assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role'"
+    assert byid['sow_role_uat']['if']=="inputs.acceptance_scope == 'sow_role'"
     assert byid['module025_fixture']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.uat.outcome == 'success' }}"
     assert byid['module025_uat']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.module025_fixture.outcome == 'success' }}"
     for key in ['assigned_work_uat','utilization_uat']:
@@ -373,7 +374,7 @@ class WorkflowContract(unittest.TestCase):
     def test_controller_identity_guard_fences_supported_routes_without_mutation(self):
         guard=next(step for step in self.doc['jobs']['deploy']['steps']
                    if step.get('name')=='Verify admitted controller identity before deployment mutations')['run']
-        def run_guard(event,branch,expected):
+        def run_guard(event,branch,expected,scope='full'):
             with tempfile.TemporaryDirectory() as temp:
                 control=Path(temp)/'control';control.mkdir()
                 subprocess.run(['git','init','-q',str(control)],check=True)
@@ -382,7 +383,7 @@ class WorkflowContract(unittest.TestCase):
                 actual=subprocess.check_output(['git','-C',str(control),'rev-parse','HEAD'],text=True).strip()
                 env={**os.environ,'GITHUB_REF':'refs/heads/main','GITHUB_SHA':actual,
                      'GITHUB_EVENT_NAME':event,'RELEASE_BRANCH_INPUT':branch,
-                     'EXPECTED_CONTROLLER_SHA':expected}
+                     'EXPECTED_CONTROLLER_SHA':expected,'ACCEPTANCE_SCOPE':scope}
                 result=subprocess.run(['bash','-euo','pipefail','-c',guard],cwd=temp,env=env,text=True,capture_output=True)
                 self.assertEqual(list(Path(temp).iterdir()),[control])
                 return result,actual
@@ -397,6 +398,12 @@ class WorkflowContract(unittest.TestCase):
         result,_=run_guard('push','','')
         self.assertNotEqual(result.returncode,0)
         result,_=run_guard('workflow_dispatch','unsupported','')
+        self.assertNotEqual(result.returncode,0)
+        result,_=run_guard('workflow_dispatch','main','','sow_role')
+        self.assertEqual(result.returncode,0)
+        result,_=run_guard('workflow_dispatch','release/flowhive-sow-successor-20260908',actual,'sow_role')
+        self.assertNotEqual(result.returncode,0)
+        result,_=run_guard('workflow_dispatch','main','','unsupported_scope')
         self.assertNotEqual(result.returncode,0)
     def test_historical_source_identity_and_conditions_are_real(self):
         historical_text=git_show(HISTORICAL_CONTROLLER,CONTROLLER)
@@ -463,6 +470,11 @@ class WorkflowContract(unittest.TestCase):
         successor_release = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-successor-approval-20260911'
         # No controller changes are permitted in the exact seven-file digest repair.
         if old==self.doc:
+            return
+        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-scoped-test-deploy-20260916':
+            # Dedicated delta tests compare every infrastructure step, native
+            # protection and rollback command against the unchanged base.
+            subprocess.run(['python3', str(ROOT/'tests/module025-scoped-deploy.test.py')], check=True)
             return
         if os.environ.get('GITHUB_HEAD_REF') == PM_ACCEPTANCE_BRANCH:
             verify_pm_acceptance_delta(old,self.doc)

@@ -22,6 +22,15 @@ class ScopedDeploymentTests(unittest.TestCase):
         for key in ('if', 'environment', 'runs-on', 'timeout-minutes'):
             self.assertEqual(JOB[key], PREVIOUS['jobs']['deploy'][key])
         self.assertEqual(JOB['environment'], 'test')
+        self.assertEqual(len(JOB['steps']), len(PREVIOUS['jobs']['deploy']['steps']) + 1)
+        environment = dict(JOB['env'])
+        self.assertEqual(environment.pop('ACCEPTANCE_SCOPE'), "${{ inputs.acceptance_scope || 'full' }}")
+        self.assertEqual(environment, PREVIOUS['jobs']['deploy']['env'])
+        triggers = dict(CURRENT[True])
+        inputs = dict(triggers['workflow_dispatch']['inputs'])
+        inputs.pop('acceptance_scope')
+        self.assertEqual(inputs, PREVIOUS[True]['workflow_dispatch']['inputs'])
+        self.assertEqual(set(triggers), {'workflow_dispatch'})
         changed = {
             'Verify admitted controller identity before deployment mutations',
             'Install isolated live-browser acceptance dependencies',
