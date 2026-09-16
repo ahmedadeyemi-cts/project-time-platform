@@ -487,8 +487,8 @@ export const plannerCelarApprovalRefreshFiles = [
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-export const plannerLiveCelarBudgetApprovalBase = '451432ac7e1dc922e699293d4f2e0ad1dfaa7f88';
-export const plannerLiveCelarBudgetApprovalBranch = 'control/flowhive-planner-live-celar-budget-approval-20260916';
+export const plannerLiveCelarBudgetApprovalBase = 'd54698e35b9ee8f3db61fd8d6c5bf150c4651267';
+export const plannerLiveCelarBudgetApprovalBranch = 'control/flowhive-planner-live-celar-budget-branch-correction-20260916';
 export const plannerLiveCelarBudgetApprovalFiles = plannerCelarApprovalRefreshFiles;
 export const plannerCandidateDispatchEvidenceBase = 'b3aaf81ff48f8bf022a1aa514ac48f7a54009dbf';
 export const plannerCandidateDispatchEvidenceBranch = 'control/flowhive-pr1044-dispatch-evidence-20260915';
