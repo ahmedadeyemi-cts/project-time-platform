@@ -25,6 +25,7 @@ const expected = [
   "src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs",
   "src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs",
   "src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs",
+  "src/frontend/project-time-web/scripts/validate-module-001-ai-task-grounding.mjs",
   "tests/FlowHiveDetailedPlannerTests/Module025ExternalSowTests.cs",
   "tests/FlowHiveDetailedPlannerTests/Module025ProviderQualification.cs",
   "tests/FlowHiveDetailedPlannerTests/Program.cs",

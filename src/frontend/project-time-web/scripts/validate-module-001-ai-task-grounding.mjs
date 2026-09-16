@@ -394,7 +394,10 @@ check(
     && containsAll(centralRoute, [
       'var route = await _store.LoadRouteAsync(',
       'privatePolicyProfile?.RequirePrivateModelForDocuments == true',
-      'var orderedTargets = requirePrivateTargetBeforeExternal',
+      'var externalSowReady = execution.StructuredSowPhase && execution.ExternalSow is not null',
+      '&& Module025ExternalSowAdapter.PolicyEnabled;',
+      'var orderedTargets = externalSowReady',
+      ': requirePrivateTargetBeforeExternal',
       'route.Targets.Where(IsPrivateTarget)',
       'route.Targets.Where(target => !IsPrivateTarget(target))',
       'CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi'
