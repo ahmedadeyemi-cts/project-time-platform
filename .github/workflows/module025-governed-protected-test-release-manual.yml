@@ -25,7 +25,7 @@ on:
       - '.github/flowhive-enterprise-psa-release-files.txt'
       - '.github/flowhive-planner-output-budget-release-files.txt'
       - '.github/flowhive-psa-release-control-files.txt'
-      - '.github/workflows/module025-governed-protected-test-release-ci.yml'
+      - '.github/workflows/module025-governed-protected-test-release-manual.yml'
 
 permissions:
   contents: read
@@ -71,7 +71,7 @@ jobs:
           if [[ "$HEAD_BRANCH" == 'control/flowhive-module025-manual-check-trigger-20260916' || "$HEAD_BRANCH" == 'control/flowhive-module025-manual-trigger-registration-20260916' ]]; then
             printf '%s\n' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
-              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-check-trigger-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-check-trigger-actual"
             cmp -s "$RUNNER_TEMP/module025-manual-check-trigger-files" "$RUNNER_TEMP/module025-manual-check-trigger-actual" || {
@@ -80,6 +80,30 @@ jobs:
               exit 1
             }
             echo 'MODULE025_MANUAL_CHECK_TRIGGER_SCOPE=PASSED'
+            exit 0
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-module025-manual-trigger-exact-candidate-20260916' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-enterprise-psa-release-files.txt' \
+              '.github/flowhive-planner-output-budget-release-files.txt' \
+              '.github/flowhive-planner-parallel-phases-release-files.txt' \
+              '.github/flowhive-psa-protected-test-candidate.json' \
+              '.github/flowhive-psa-release-control-files.txt' \
+              '.github/module025-sow-sell-governed-release-files.txt' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
+              'scripts/release-test/flowhive-psa-admission.mjs' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              'tests/flowhive-psa-scope.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-actual"
+            cmp -s "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-files" "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-actual" || {
+              echo 'Module 025 exact-candidate registration contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-files" "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-actual" >&2 || true
+              exit 1
+            }
+            echo 'MODULE025_MANUAL_TRIGGER_EXACT_CANDIDATE_SCOPE=PASSED'
             exit 0
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-live-planner-candidate-refresh-20260912' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
@@ -109,7 +133,7 @@ jobs:
             printf '%s\n' \
               '.github/flowhive-psa-release-control-files.txt' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
-              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
               'scripts/release-test/resolve-flowhive-installed-deployment.py' \
               'tests/flowhive-installed-resolution.test.py' \
               'tests/flowhive-psa-admission.test.mjs' \
@@ -195,7 +219,7 @@ jobs:
             printf '%s\n' \
               '.github/flowhive-enterprise-psa-release-files.txt' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
-              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
               'scripts/release-test/validate-protected-test-controller-branches.sh' \
               'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
               'tests/FlowHiveDetailedPlannerTests/Program.cs' \
@@ -214,7 +238,7 @@ jobs:
             printf '%s\n' \
               '.github/flowhive-enterprise-psa-release-files.txt' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
-              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
               'scripts/release-test/validate-protected-test-controller-branches.sh' \
               'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs' \
               'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \

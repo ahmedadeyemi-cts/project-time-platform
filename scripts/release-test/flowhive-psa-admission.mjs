@@ -41,7 +41,7 @@ const requiredWorkflows = [
   '.github/workflows/flowhive-detailed-planner-ci.yml',
   '.github/workflows/flowhive-enterprise-psa-ci.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/project-planning-collaboration-ci.yml',
   '.github/workflows/projectpulse-ci.yml',
   '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml',
@@ -394,7 +394,7 @@ export function verifyWorkflowException(approval, pullRequest, changedFiles, bas
       'The historical controller exception must remain exact and singular.');
     return [];
   }
-  assert.equal(exception.workflow, '.github/workflows/module025-governed-protected-test-release-ci.yml');
+  assert.equal(exception.workflow, '.github/workflows/module025-governed-protected-test-release-manual.yml');
   assert.equal(exception.reasonCode, 'pull-request-path-filter-no-match');
   assert.equal(exception.baseCommit, pullRequest.base?.sha, 'Path-filter evidence must bind to the actual PR base.');
   assert.equal(crypto.createHash('sha256').update(baseWorkflowContent).digest('hex'), exception.baseWorkflowSha256,

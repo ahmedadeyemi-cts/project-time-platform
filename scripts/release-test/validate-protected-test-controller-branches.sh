@@ -128,7 +128,7 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-acceptance-20260915' 
   printf '%s\n' \
     '.github/flowhive-enterprise-psa-release-files.txt' \
     '.github/workflows/flowhive-psa-release-control-ci.yml' \
-    '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+    '.github/workflows/module025-governed-protected-test-release-manual.yml' \
     'scripts/release-test/validate-protected-test-controller-branches.sh' \
     'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
     'tests/FlowHiveDetailedPlannerTests/Program.cs' \
@@ -161,7 +161,7 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-budget-main-20260915'
   printf '%s\n' \
     '.github/flowhive-enterprise-psa-release-files.txt' \
     '.github/workflows/flowhive-psa-release-control-ci.yml' \
-    '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+    '.github/workflows/module025-governed-protected-test-release-manual.yml' \
     'scripts/release-test/validate-protected-test-controller-branches.sh' \
     'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs' \
     'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \

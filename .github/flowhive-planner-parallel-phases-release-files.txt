@@ -1,5 +1,5 @@
 .github/flowhive-planner-parallel-phases-release-files.txt
-.github/workflows/module025-governed-protected-test-release-ci.yml
+.github/workflows/module025-governed-protected-test-release-manual.yml
 scripts/release-test/prepare-protected-test-scope-manifests.sh
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
 tests/FlowHiveDetailedPlannerTests/Program.cs

@@ -13,7 +13,7 @@ export const files = [
   '.github/flowhive-psa-release-control-files.txt',
   '.github/workflows/flowhive-psa-protected-test-admission.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/projectpulse-deploy-test.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
@@ -479,7 +479,7 @@ export const plannerCelarApprovalRefreshFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'scripts/release-test/dispatch-flowhive-psa-test.mjs',
   'scripts/release-test/flowhive-psa-admission.mjs',
@@ -503,7 +503,7 @@ export const plannerCandidateSourceDriftBoundaryBase = 'e70a3bd5ede89f935cd92740
 export const plannerCandidateSourceDriftBoundaryBranch = 'control/flowhive-pr1044-source-drift-boundary-20260915';
 export const plannerCandidateSourceDriftBoundaryFiles = [
   '.github/flowhive-psa-release-control-files.txt',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   'scripts/release-test/validate-protected-test-controller-branches.sh',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
@@ -600,7 +600,7 @@ export const plannerParallelPhaseFixBase = 'e3ddf7a3b8807a98becfa36be949e20c97f1
 export const plannerParallelPhaseFixBranch = 'fix/flowhive-planner-parallel-phases-20260915';
 export const plannerParallelPhaseFixFiles = [
   '.github/flowhive-planner-parallel-phases-release-files.txt',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   'scripts/release-test/prepare-protected-test-scope-manifests.sh',
   'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
   'tests/FlowHiveDetailedPlannerTests/Program.cs',
@@ -773,7 +773,7 @@ export const admissionManifestOrderBranch = 'control/module025-admission-manifes
 export const admissionManifestOrderFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'tests/flowhive-psa-admission.test.mjs',
@@ -831,7 +831,7 @@ export const livePlannerCandidateRefreshFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
   '.github/flowhive-psa-release-control-files.txt',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
@@ -845,7 +845,7 @@ export const plannerLatencyCandidateRefreshBranch = 'control/flowhive-planner-la
 export const plannerLatencyCandidateRefreshFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
@@ -859,7 +859,7 @@ export const plannerContextBudgetCandidateRefreshBranch = 'control/flowhive-plan
 export const plannerContextBudgetCandidateRefreshFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
@@ -873,7 +873,7 @@ export const plannerSingleBatchCandidateRefreshBranch = 'control/flowhive-planne
 export const plannerSingleBatchCandidateRefreshFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
@@ -887,7 +887,7 @@ export const plannerCompactBatchCandidateRefreshBranch = 'control/flowhive-plann
 export const plannerCompactBatchCandidateRefreshFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
@@ -1072,7 +1072,7 @@ export const plannerOutputBudgetCandidateRefreshBranch = 'control/flowhive-plann
 export const plannerOutputBudgetCandidateRefreshFiles = [
   '.github/flowhive-psa-protected-cutover.json',
   '.github/flowhive-psa-protected-test-candidate.json',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',
   'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md',
@@ -2021,7 +2021,7 @@ export function validate() {
   verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));
   const supervisor = fs.readFileSync('.github/workflows/flowhive-psa-protected-test-admission.yml', 'utf8');
   const admissionGuide = fs.readFileSync('docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md', 'utf8');
-  const module025Workflow = fs.readFileSync('.github/workflows/module025-governed-protected-test-release-ci.yml', 'utf8');
+  const module025Workflow = fs.readFileSync('.github/workflows/module025-governed-protected-test-release-manual.yml', 'utf8');
   assert.ok(!/azure\/login|id-token:|environment:|contents:\s*write/.test(supervisor), 'Admission cannot mutate a cloud environment or source.');
   assert.ok(supervisor.includes('github.event.issue.number == 887') && supervisor.includes("github.actor == 'ahmedadeyemi-cts'"));
   assert.match(admissionGuide, /exact command as a comment on PR #887's\s+issue thread/);
