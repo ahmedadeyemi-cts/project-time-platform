@@ -66,7 +66,7 @@ jobs:
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
           if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
-            [[ "${GITHUB_SHA:-}" == "${{ inputs.release_sha }}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
+            [[ "$(git rev-parse HEAD)" == "${{ inputs.release_sha }}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
           fi
           if [[ "$HEAD_BRANCH" == 'control/flowhive-module025-manual-check-trigger-20260916' || "$HEAD_BRANCH" == 'control/flowhive-module025-manual-trigger-registration-20260916' ]]; then
             printf '%s\n' \
