@@ -165,6 +165,21 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
     exit 1
   }
   node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+elif [[ "$HEAD_BRANCH" == 'fix/module025-generation-path-20260916' ]]; then
+  expected="$CIT/module025-generation-files"
+  printf '%s\n' \
+    '.github/workflows/flowhive-psa-release-control-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+    'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+    'tests/flowhive-psa-admission.test.mjs' \
+    | LC_ALL=C sort -u > "$expected"
+  cmp -s "$CIT/diff" "$expected" || {
+    echo 'Module 025 generation correction contains an unreviewed file.' >&2
+    diff -u "$expected" "$CIT/diff" >&2 || true
+    exit 1
+  }
+  node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-celar-response-contract-20260916' ]]; then
   expected="$CIT/flowhive-planner-celar-response-contract-files"
   printf '%s\n' \
