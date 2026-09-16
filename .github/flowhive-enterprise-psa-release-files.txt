@@ -4,7 +4,7 @@
 .github/workflows/flowhive-enterprise-psa-ci.yml
 .github/workflows/flowhive-psa-installed-acceptance.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
-.github/workflows/module025-governed-protected-test-release-ci.yml
+.github/workflows/module025-governed-protected-test-release-manual.yml
 .github/workflows/module033-project-forge-ci.yml
 .github/workflows/projectpulse-release-test-control-ci-reregistered.yml
 .github/workflows/projectpulse-release-test-control-ci.yml

@@ -12,7 +12,7 @@ const validationFiles = new Set([
   module025ManifestPath,
   '.github/workflows/flowhive-enterprise-psa-ci.yml',
   '.github/workflows/flowhive-psa-installed-acceptance.yml',
-  '.github/workflows/module025-governed-protected-test-release-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   '.github/workflows/flowhive-psa-release-control-ci.yml',
   '.github/workflows/celar-ai-production-platform-ci.yml',
   '.github/workflows/projectpulse-release-test-control-ci.yml',

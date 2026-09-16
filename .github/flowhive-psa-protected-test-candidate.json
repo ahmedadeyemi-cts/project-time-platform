@@ -23,7 +23,7 @@
     ".github/workflows/flowhive-detailed-planner-ci.yml",
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
     ".github/workflows/flowhive-psa-release-control-ci.yml",
-    ".github/workflows/module025-governed-protected-test-release-ci.yml",
+    ".github/workflows/module025-governed-protected-test-release-manual.yml",
     ".github/workflows/project-planning-collaboration-ci.yml",
     ".github/workflows/projectpulse-ci.yml",
     ".github/workflows/pulse-ai-private-rag-orchestration-ci.yml",

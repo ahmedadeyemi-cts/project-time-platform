@@ -1,5 +1,5 @@
 .github/flowhive-planner-output-budget-release-files.txt
-.github/workflows/module025-governed-protected-test-release-ci.yml
+.github/workflows/module025-governed-protected-test-release-manual.yml
 .github/workflows/projectpulse-release-test-control-ci.yml
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
 tests/CelarAiOracleExternalRuntimeTests/Program.cs
