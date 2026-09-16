@@ -1421,4 +1421,5 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
         Console.WriteLine($"PDF_EVIDENCE_{artifactKind}={Path.Combine(evidenceDirectory, $"{artifactKind}.pdf")}");
 }
 
+await Module025GenerationEngineTests.RunAsync(parsedModule025);
 Console.WriteLine("FLOWHIVE_DETAILED_PLANNER_TESTS=PASS");

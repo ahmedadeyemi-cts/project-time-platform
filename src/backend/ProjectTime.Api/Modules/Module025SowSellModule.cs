@@ -251,7 +251,9 @@ public static partial class Module025SowGsdModule
         if (!await SowSellSchemaReadyAsync(connection, cancellationToken)) return SowSellMigrationRequired();
         await using var command = new NpgsqlCommand("""
             SELECT jsonb_build_object('eventId',e.event_id,'eventType',e.event_type,'actorUserId',e.actor_user_id,
-                'revision',e.engagement_revision,'summary',e.summary,'evidence',e.evidence_json,'createdAt',e.created_at,
+                'revision',e.engagement_revision,'summary',e.summary,'evidence',
+                CASE WHEN e.event_type='ai_generation_progress' THEN e.evidence_json #- '{progress,Result}'
+                     ELSE e.evidence_json END,'createdAt',e.created_at,
                 'generationSnapshotSha256',g.source_sha256)::text, e.event_id
             FROM module025_sow_gsd_events e LEFT JOIN module025_sow_gsd_generation_snapshots g USING(event_id)
             WHERE e.engagement_id=@id AND e.event_id < @before ORDER BY e.event_id DESC LIMIT 101;

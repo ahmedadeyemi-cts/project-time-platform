@@ -9,15 +9,8 @@ public sealed class PulseAiPrivateRagService
 {
     private const int Module025SowMaximumOutputTokens = 12_000;
     private const int Module025SowMaximumAnswerCharacters = 96_000;
-    // Each phase returns exactly two compact work packages. Module 025's
-    // provider path is independently bounded from FlowHive: the server fills
-    // repetitive review fields after parsing, so a 1280-token SOW response is
-    // sufficient and materially reduces the chance that a slow private model
-    // spends the entire acceptance window on one phase. FlowHive uses the same
-    // compact per-phase response budget: the server assembles cross-phase
-    // identity and fills repetitive review fields after parsing. FlowHive's
-    // ordinary path uses one bounded five-phase response below because its
-    // provider may have only one inference slot.
+    // Legacy compact planner helpers retain their transport contract. Module 025's
+    // durable engine uses the full-detail schema and budgets in Module025GenerationEngine.
     private const int Module025PhaseMaximumOutputTokens = 1_280;
     private const int FlowHivePhaseMaximumOutputTokens = 1_280;
     // The FlowHive provider may expose only one inference slot. Keep the live
@@ -51,11 +44,8 @@ public sealed class PulseAiPrivateRagService
     private const int Module025PhaseSourceMaximumCharacters = 8_000;
     private const int FlowHivePlanMaximumOutputTokens = 12_000;
     private const int FlowHivePlanMaximumAnswerCharacters = 96_000;
-    // Module 025's authoritative SOW path must tolerate the real private
-    // provider's bounded phase latency without changing FlowHive's separate
-    // planner budget. The outer SOW request has the same 40-minute ceiling;
-    // each of its five phases receives an eight-minute slice so a slow phase
-    // is still cancelled before it can consume the whole operation.
+    // Legacy callers without durable phase context retain their existing timeout.
+    // The Module 025 workspace uses a persisted 20-minute job deadline instead.
     private static readonly TimeSpan Module025AuthoritativeGenerationTimeout = TimeSpan.FromMinutes(40);
     private static readonly TimeSpan Module025AuthoritativePhaseTimeout = TimeSpan.FromMinutes(8);
     private static readonly TimeSpan FlowHiveGenerationTimeout = TimeSpan.FromMinutes(40);
@@ -528,7 +518,8 @@ public sealed class PulseAiPrivateRagService
             retrieveAuthorizedDocuments: true,
             usePrivateModelWhenAvailable: usePrivateModelWhenAvailable,
             cancellationToken,
-            authoritativeSource);
+            authoritativeSource,
+            phaseExecution: authoritativeScopeEvidence?.PhaseExecution);
     }
 
     public async Task<bool> SaveFeedbackAsync(
@@ -571,7 +562,8 @@ public sealed class PulseAiPrivateRagService
         bool usePrivateModelWhenAvailable,
         CancellationToken cancellationToken,
         PulseAiPrivateRetrievedChunk? authoritativeSource = null,
-        string? structuredContext = null)
+        string? structuredContext = null,
+        Module025PhaseExecution? phaseExecution = null)
     {
         var options = Options();
         if (!string.IsNullOrEmpty(structuredContext))
@@ -656,7 +648,11 @@ public sealed class PulseAiPrivateRagService
                     : flowHive ? 0.15m : query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature ? 0.05m : 0.10m,
                 CorrelationId: query.CorrelationId);
             var boundedPhasePlan = ShouldGenerateBoundedPhasePlan(flowHive, authoritativeSource is not null);
-            var model = usePrivateModelWhenAvailable && boundedPhasePlan
+            var model = usePrivateModelWhenAvailable && phaseExecution is not null
+                ? await GenerateModule025SinglePhaseAsync(modelRequest, retrieval, phaseExecution,
+                    (phaseRequest, token) => _model.GenerateAsync(phaseRequest,
+                        options with { MaximumAnswerCharacters = Module025SowMaximumAnswerCharacters }, token), cancellationToken)
+                : usePrivateModelWhenAvailable && boundedPhasePlan
                 ? ShouldUseFlowHiveBatchGeneration(flowHive, query.FeatureCode)
                     ? await GenerateFlowHiveBatchCoreAsync(modelRequest, retrieval,
                         (batchRequest, token) => _model.GenerateAsync(batchRequest,
@@ -693,7 +689,8 @@ public sealed class PulseAiPrivateRagService
                         retrieval,
                         model,
                         options,
-                        validateModule025DetailedPlan: authoritativeSource is not null || flowHive)
+                        validateModule025DetailedPlan: authoritativeSource is not null || flowHive,
+                        module025Phase: phaseExecution?.Phase)
                     : ParseDetailedAnswer(answerRunId, query, retrieval, model, options);
             }
             else if ((flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode))
@@ -746,6 +743,10 @@ public sealed class PulseAiPrivateRagService
             if (!completionSaved)
                 return AttachmentInvalidated(answerRunId, query);
             return answer;
+        }
+        catch (OperationCanceledException) when (phaseExecution is not null && cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -867,14 +868,17 @@ public sealed class PulseAiPrivateRagService
         PulseAiPrivateRetrievalResult retrieval,
         PulseAiPrivateModelResult model,
         PulseAiPrivateRagOptions options,
-        bool validateModule025DetailedPlan = false)
+        bool validateModule025DetailedPlan = false,
+        string? module025Phase = null)
     {
         try
         {
             PulseAiPrivateFlowHivePlan plan;
             if (validateModule025DetailedPlan)
             {
-                plan = ParseModule025DetailedPlan(model.Content, retrieval);
+                plan = module025Phase is null
+                    ? ParseModule025DetailedPlan(model.Content, retrieval)
+                    : ParseModule025PlanContent(model.Content, retrieval, [module025Phase]);
             }
             else
             {
@@ -1877,6 +1881,33 @@ public sealed class PulseAiPrivateRagService
         return retrieval with { Chunks = boundedChunks.ToArray() };
     }
 
+    internal static PulseAiPrivateFlowHivePlan ValidateModule025Phase(
+        PulseAiPrivateFlowHivePlan? plan, string? phase, CelarAiAuthoritativeScopeEvidence evidence)
+    {
+        if (plan is null) throw new JsonException("module025_phase_plan_missing");
+        var source = CreateModule025AuthoritativeScopeSource(evidence)
+            ?? throw new JsonException("module025_phase_source_invalid");
+        var retrieval = Module025AuthoritativeScopeRetrieval(null!, source);
+        return ParseModule025PlanContent(JsonSerializer.Serialize(plan), retrieval,
+            phase is null ? Module025DeliveryPhases : [phase]);
+    }
+
+    private static async Task<PulseAiPrivateModelResult> GenerateModule025SinglePhaseAsync(
+        PulseAiPrivateModelRequest request, PulseAiPrivateRetrievalResult retrieval,
+        Module025PhaseExecution execution,
+        Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> generate,
+        CancellationToken token)
+    {
+        var index = Array.IndexOf(Module025DeliveryPhases, execution.Phase);
+        if (index < 0) throw new ArgumentException("module025_phase_invalid");
+        var result = await GenerateModule025PhaseAsync(request,
+            BoundModule025PhaseRetrieval(retrieval, execution.Phase, index), generate,
+            execution.Phase, index, TimeSpan.FromSeconds(Module025GenerationEngine.ProviderTimeoutSeconds),
+            Module025GenerationEngine.MaximumOutputTokens, token, null, fullDetail: true, maximumAttempts: 1);
+        await execution.ObserveAsync(result.Result, token);
+        return result.Plan is null ? result.Result : result.Result with { Content = JsonSerializer.Serialize(result.Plan) };
+    }
+
     private static async Task<PulseAiPrivateModelResult> GenerateModule025DetailedPhasesAsync(
         PulseAiPrivateModelRequest request,
         PulseAiPrivateRetrievalResult retrieval,
@@ -2005,7 +2036,8 @@ public sealed class PulseAiPrivateRagService
         int maximumOutputTokens,
         CancellationToken generationToken,
         ILogger? logger,
-        bool fullDetail = false)
+        bool fullDetail = false,
+        int maximumAttempts = 2)
     {
         using var phaseDeadline = CancellationTokenSource.CreateLinkedTokenSource(generationToken);
         phaseDeadline.CancelAfter(phaseTimeout);
@@ -2015,7 +2047,7 @@ public sealed class PulseAiPrivateRagService
         var feedback = string.Empty;
         var validationDiagnostic = string.Empty;
         PulseAiPrivateModelResult? last = null;
-        for (var attempt = 0; attempt < 2; attempt++)
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
         {
             phaseToken.ThrowIfCancellationRequested();
             var phaseRequest = request with
@@ -2038,7 +2070,7 @@ public sealed class PulseAiPrivateRagService
             last = await generate(phaseRequest, phaseToken).WaitAsync(phaseToken);
             if (!last.Succeeded)
             {
-                if (attempt == 0 && IsTransientModule025ModelFailure(last))
+                if (attempt + 1 < maximumAttempts && IsTransientModule025ModelFailure(last))
                 {
                     await Task.Delay(TimeSpan.FromSeconds(2), phaseToken);
                     continue;

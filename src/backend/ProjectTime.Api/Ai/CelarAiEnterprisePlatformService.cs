@@ -161,7 +161,10 @@ public sealed class CelarAiEnterprisePlatformService
                             : "011/066",
                     CorrelationId: correlationId,
                     IdentityTerms: identityTerms,
-                    ExternalCapsulePurpose: externalCapsulePurpose),
+                    ExternalCapsulePurpose: externalCapsulePurpose,
+                    StructuredSowPhase: authoritativeScopeEvidence?.PhaseExecution is not null,
+                    BeforeStructuredSowAttempt: authoritativeScopeEvidence?.PhaseExecution is { } phaseExecution
+                        ? phaseExecution.BeforeAttemptAsync : null),
                 async privateCancellationToken =>
                 {
                     privateResult = await ExecutePrivateComposeAsync(
@@ -569,6 +572,11 @@ public sealed class CelarAiEnterprisePlatformService
     {
         var plan = result.FlowHivePlan;
         if (plan is null) return null;
+        return BuildSowDraftFromPlan(plan, projectCode, projectName);
+    }
+
+    internal static CelarAiSowDraft BuildSowDraftFromPlan(PulseAiPrivateFlowHivePlan plan, string projectCode, string projectName)
+    {
         var titleProject = projectName.Length > 0 ? projectName : projectCode.Length > 0 ? projectCode : "Authorized Project";
         var workPackages = plan.Tasks.Select(task => new CelarAiSowWorkPackage(
             Wbs: task.Wbs,

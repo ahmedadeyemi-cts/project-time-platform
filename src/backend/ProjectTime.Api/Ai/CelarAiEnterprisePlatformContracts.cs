@@ -58,7 +58,8 @@ internal sealed record CelarAiAuthoritativeScopeEvidence(
     string EngagementNumber,
     string CustomerName,
     string ServiceOverview,
-    DateTimeOffset SavedAt);
+    DateTimeOffset SavedAt,
+    Module025PhaseExecution? PhaseExecution = null);
 
 public sealed record CelarAiTimelineItem(
     string Id,

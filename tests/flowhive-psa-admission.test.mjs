@@ -13,11 +13,12 @@ const installedSowRoleAcceptanceSourceFiles = [
   'src/frontend/project-time-web/tests/role-journeys.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+const module025EngineRedesign = process.env.GITHUB_HEAD_REF === 'fix/module025-durable-engine-20260916';
 const module025ScopedDeployment = process.env.GITHUB_HEAD_REF === 'fix/module025-scoped-test-deploy-20260916';
 const module025GenerationCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-generation-path-20260916';
 const module025VerifierCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-sa-review-confirm-20260916'
-  || module025GenerationCorrection || module025ScopedDeployment;
-const module025VerifierBase = '2062979f3e95b17cf187642ec2e9eadb4f610758';
+  || module025GenerationCorrection || module025ScopedDeployment || module025EngineRedesign;
+const module025VerifierBase = module025EngineRedesign ? '37dfd1554d50a7b45b25982faf9baa68603a0e43' : '2062979f3e95b17cf187642ec2e9eadb4f610758';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1009-20260914';
 const module025SowRoleCandidateRefresh1014 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1014-20260914'

@@ -38,7 +38,8 @@ async function requestJson(url, options = {}) {
 }
 
 const GENERATION_POLL_INTERVAL_MS = 5000;
-const GENERATION_POLL_ATTEMPTS = 780;
+// Allow two minutes for the worker to report its persisted 20-minute deadline.
+const GENERATION_POLL_ATTEMPTS = 264;
 
 async function waitForDetailedScopeGeneration(engagementId, generationId, onProgress) {
   for (let attempt = 1; attempt <= GENERATION_POLL_ATTEMPTS; attempt += 1) {

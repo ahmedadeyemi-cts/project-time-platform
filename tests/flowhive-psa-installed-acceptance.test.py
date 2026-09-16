@@ -468,7 +468,7 @@ class AcceptanceInputTests(unittest.TestCase):
 class SowReviewConfirmationTests(unittest.TestCase):
     """Exercise the verifier against source invalidation, not permissive HTTP stubs."""
 
-    def run_lifecycle(self, invalidate_review=False):
+    def run_lifecycle(self, invalidate_review=False, generation_timeout=False):
         spec = importlib.util.spec_from_file_location("sow_review_test", MODULE025_SA)
         runner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(runner)
@@ -507,6 +507,12 @@ class SowReviewConfirmationTests(unittest.TestCase):
                     phase["objective"] = "Review generated technology scope"
                     phase["acceptanceCriteria"] = ["Verify configured service"]
                 return 202, {"generationId": uid}, {}
+            if "/generations/" in path and generation_timeout:
+                return 200, {"terminal": False, "status": "module025_detailed_scope_generation_running",
+                    "currentPhase": "Design", "currentProvider": "deepseek", "completedPhases": ["Plan"],
+                    "serviceOverview": "PRIVATE_SOURCE_SHOULD_NOT_ESCAPE",
+                    "progress": [{"stage": "provider_started", "phase": "Design", "attempt": 1,
+                                  "result": {"rawDraft": "PRIVATE_DRAFT_SHOULD_NOT_ESCAPE"}}]}, {}
             if "/generations/" in path:
                 return 200, {"terminal": True, "status": "module025_detailed_scope_generated"}, {}
             if path.endswith("/confirm"):
@@ -529,6 +535,7 @@ class SowReviewConfirmationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "EVIDENCE_DIR": directory, "TARGET_RELEASE_COMMIT": "a" * 40,
+            "MODULE025_GENERATION_TIMEOUT_SECONDS": "-1" if generation_timeout else "1500",
             "PROJECTPULSE_M025_SA_EMAIL": "sa@example.local",
             "PROJECTPULSE_M025_SA_PASSWORD": "unit-test-only-password",
         }), patch.object(runner, "login", return_value={"sessionToken": "test-session"}), \
@@ -549,6 +556,18 @@ class SowReviewConfirmationTests(unittest.TestCase):
         self.assertTrue(any("Browser reload acceptance marker" in a for a in plan["acceptanceCriteria"]))
         self.assertEqual(sum(path.endswith("/generate") for path, method in calls), 1)
         self.assertIn("MODULE025_INSTALLED_SA_UAT=PASS", output)
+
+    def test_generation_timeout_retains_identifiers_and_safe_last_phase(self):
+        result, report, _, calls, _ = self.run_lifecycle(generation_timeout=True)
+        self.assertEqual(result, 1)
+        self.assertEqual(report["diagnosticCode"], "module025_generation_deadline_exceeded")
+        self.assertTrue(report["engagementId"] and report["generationId"])
+        self.assertEqual(report["lastGenerationState"]["currentPhase"], "Design")
+        self.assertEqual(report["lastGenerationState"]["completedPhases"], ["Plan"])
+        self.assertEqual(report["lastGenerationState"]["progress"][0]["attempt"], 1)
+        self.assertNotIn("PRIVATE_", json.dumps(report))
+        self.assertEqual(sum(path.endswith("/generate") for path, _ in calls), 1)
+        self.assertFalse(any(path.endswith("/confirm") for path, _ in calls))
 
     def test_invalidated_generation_still_fails_before_confirmation(self):
         result, report, reviewed, calls, output = self.run_lifecycle(invalidate_review=True)

@@ -176,6 +176,18 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
             await browser.close()
 
 
+def generation_diagnostics(generation):
+    result = {key: generation[key] for key in (
+        "status", "phase", "terminal", "diagnosticCode", "failureStage", "targetDecisions",
+        "completedPhases", "currentPhase", "currentProvider", "deadlineAt", "updatedAt",
+    ) if key in generation}
+    result["progress"] = [{key: item[key] for key in (
+        "stage", "phase", "provider", "attempt", "diagnosticCode", "model",
+        "inputCharacters", "outputCharacters", "elapsedMilliseconds", "targetDecisions",
+    ) if key in item} for item in generation.get("progress", []) if isinstance(item, dict)]
+    return result
+
+
 async def main() -> int:
     evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "/tmp/flowhive-psa-evidence"))
     evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -244,6 +256,7 @@ async def main() -> int:
         require(status == 201 and isinstance(created, dict), "module025_create_http_" + str(status))
         engagement = created.get("engagement") or {}
         engagement_id = str(engagement.get("engagementId") or "")
+        report["engagementId"] = engagement_id
         engagement_number = str(engagement.get("engagementNumber") or "")
         require(re.fullmatch(r"[0-9a-fA-F-]{36}", engagement_id) is not None, "module025_engagement_id_missing")
         require(engagement_number, "module025_engagement_number_missing")
@@ -278,11 +291,15 @@ async def main() -> int:
         report["generationPosts"] = 1
         require(status in (200, 202) and isinstance(queued, dict), "module025_generation_start_http_" + str(status))
         generation_id = str(queued.get("generationId") or "")
+        report["generationId"] = generation_id
         require(re.fullmatch(r"[0-9a-fA-F-]{36}", generation_id) is not None, "module025_generation_id_missing")
         deadline = time.monotonic() + int(os.environ.get("MODULE025_GENERATION_TIMEOUT_SECONDS", "1500"))
         while True:
             status, generation, _ = http(f"/api/module025/sow-gsd/{engagement_id}/generations/{generation_id}", token=token)
             require(status == 200 and isinstance(generation, dict), "module025_generation_poll_http_" + str(status))
+            # Preserve the final observed state even when the polling deadline expires.
+            # The API's progress projection contains diagnostics, never source or draft text.
+            report["lastGenerationState"] = generation_diagnostics(generation)
             if generation.get("terminal") is True:
                 report["generationTerminal"] = {
                     key: generation.get(key)
