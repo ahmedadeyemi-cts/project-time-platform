@@ -7,6 +7,8 @@ installed release.
 from __future__ import annotations
 
 import ast
+import asyncio
+import copy
 import json
 import importlib.util
 import io
@@ -461,6 +463,108 @@ class AcceptanceInputTests(unittest.TestCase):
             self.assertTrue(report["inputContractVerified"])
             self.assertEqual(report["generationPosts"], 0)
             self.assertNotIn("authenticatedPmAndReadySow", report)
+
+
+class SowReviewConfirmationTests(unittest.TestCase):
+    """Exercise the verifier against source invalidation, not permissive HTTP stubs."""
+
+    def run_lifecycle(self, invalidate_review=False):
+        spec = importlib.util.spec_from_file_location("sow_review_test", MODULE025_SA)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        uid = "00000000-0000-4000-8000-000000000001"
+        engagement = {"engagementId": uid, "engagementNumber": "SOW-TEST", "revision": 1,
+                      "status": "draft", "lastGeneratedAt": None}
+        calls = []
+        reviewed = []
+
+        def http(path, method="GET", payload=None, token=""):
+            calls.append((path, method))
+            if path.endswith("/bootstrap"):
+                return 200, {"access": {"isSolutionArchitect": True,
+                    "protectedTestUatRoleFixture": False, "canCreate": True,
+                    "canEditOwn": True, "isViewAs": False}, "currentUser": {"userId": uid},
+                    "accountExecutives": [{"userId": uid}],
+                    "insideSalesRepresentatives": [{"userId": "second-user"}]}, {}
+            if path == "/api/module025/sow-gsd" and method == "POST":
+                engagement.update(copy.deepcopy(payload))
+                engagement["phases"] = [{"phaseCode": c, "objective": "Initial", "finalHours": 1,
+                                         "acceptanceCriteria": []} for c in runner.PHASE_CODES]
+                return 201, {"engagement": copy.deepcopy(engagement)}, {}
+            if method == "PUT":
+                source_changed = payload["serviceOverview"] != engagement["serviceOverview"]
+                after_generation = bool(engagement["lastGeneratedAt"])
+                if after_generation:
+                    reviewed.append(copy.deepcopy(payload))
+                engagement.update(copy.deepcopy(payload))
+                engagement["revision"] += 1
+                if source_changed or (invalidate_review and after_generation):
+                    engagement.update(status="draft", lastGeneratedAt=None)
+                return 200, {"engagement": copy.deepcopy(engagement)}, {}
+            if path.endswith("/generate"):
+                engagement.update(status="review_ready", lastGeneratedAt="2026-09-16T15:40:21Z")
+                for phase in engagement["phases"]:
+                    phase["objective"] = "Review generated technology scope"
+                    phase["acceptanceCriteria"] = ["Verify configured service"]
+                return 202, {"generationId": uid}, {}
+            if "/generations/" in path:
+                return 200, {"terminal": True, "status": "module025_detailed_scope_generated"}, {}
+            if path.endswith("/confirm"):
+                if engagement["lastGeneratedAt"] is None:
+                    return 409, {"status": "generation_required"}, {}
+                engagement["status"] = "confirmed"
+                return 200, {}, {}
+            if path.endswith("/archive"):
+                engagement["status"] = "archived"
+                return 200, {}, {}
+            if path.endswith("/logout"):
+                return 200, {}, {}
+            return 200, {"engagement": copy.deepcopy(engagement)}, {}
+
+        async def browser(session, number, marker, report, evidence):
+            # Browser journey is independently tested live. Emulate only its
+            # resulting source edit after downloading and reopening here.
+            self.assertEqual(engagement["status"], "confirmed")
+            engagement.update(status="draft", lastGeneratedAt=None)
+
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
+            "EVIDENCE_DIR": directory, "TARGET_RELEASE_COMMIT": "a" * 40,
+            "PROJECTPULSE_M025_SA_EMAIL": "sa@example.local",
+            "PROJECTPULSE_M025_SA_PASSWORD": "unit-test-only-password",
+        }), patch.object(runner, "login", return_value={"sessionToken": "test-session"}), \
+                patch.object(runner, "http", side_effect=http), \
+                patch.object(runner, "browser_lifecycle", side_effect=browser), \
+                patch("sys.stdout", new_callable=io.StringIO) as output:
+            result = asyncio.run(runner.main())
+            report = json.loads((Path(directory) / "module025-installed-sa-uat.json").read_text())
+            return result, report, reviewed, calls, output.getvalue()
+
+    def test_generated_scope_review_confirms_without_changing_source_or_regenerating(self):
+        result, report, reviewed, calls, output = self.run_lifecycle()
+        self.assertEqual(result, 0, report)
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(len(reviewed), 1)
+        self.assertNotIn("Browser reload acceptance marker", reviewed[0]["serviceOverview"])
+        plan = next(p for p in reviewed[0]["phases"] if p["phaseCode"] == "plan")
+        self.assertTrue(any("Browser reload acceptance marker" in a for a in plan["acceptanceCriteria"]))
+        self.assertEqual(sum(path.endswith("/generate") for path, method in calls), 1)
+        self.assertIn("MODULE025_INSTALLED_SA_UAT=PASS", output)
+
+    def test_invalidated_generation_still_fails_before_confirmation(self):
+        result, report, reviewed, calls, output = self.run_lifecycle(invalidate_review=True)
+        self.assertEqual(result, 1)
+        self.assertEqual(report["diagnosticCode"], "module025_review_generation_invalidated")
+        self.assertFalse(any(path.endswith("/confirm") for path, method in calls))
+        self.assertIn("MODULE025_INSTALLED_SA_DIAGNOSTIC=module025_review_generation_invalidated", output)
+        self.assertNotIn("unit-test-only-password", output)
+
+    def test_browser_reopen_waits_for_review_ready_before_source_edit(self):
+        source = MODULE025_SA.read_text()
+        reopen = source.index('name="Reopen for editing"')
+        ready = source.index('.m025-status-pill--review_ready', reopen)
+        edit = source.index('await service.fill', reopen)
+        self.assertLess(ready, edit)
+        self.assertNotIn('.m025-status-pill--draft', source[reopen:edit])
 
 
 if __name__ == "__main__":

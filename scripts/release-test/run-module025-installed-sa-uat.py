@@ -160,7 +160,7 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
                 downloads[label] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "path": str(target)}
 
             await editor.get_by_role("button", name="Reopen for editing", exact=True).click()
-            await editor.locator(".m025-status-pill--draft").wait_for(state="visible")
+            await editor.locator(".m025-status-pill--review_ready").wait_for(state="visible")
             service = editor.locator("textarea.m025-service-overview")
             await service.fill((await service.input_value()) + " " + edit_marker)
             await page.wait_for_timeout(2_000)
@@ -302,7 +302,13 @@ async def main() -> int:
         report["generation"] = {"providerBacked": True, "generationId": generation_id, "phaseDetailCounts": counts, "lastGeneratedAt": current.get("lastGeneratedAt")}
 
         edit_marker = f"Browser reload acceptance marker {suffix}"
-        edited_overview = str(current.get("serviceOverview") or "") + " " + edit_marker
+        # Review the generated output; changing its source overview deliberately
+        # invalidates LastGeneratedAt and must continue to block confirmation.
+        reviewed_source = current.get("serviceOverview")
+        reviewed_generation = current.get("lastGeneratedAt")
+        reviewed_phases = [phase_payload(phase) for phase in (current.get("phases") or [])]
+        plan = next(phase for phase in reviewed_phases if phase["phaseCode"] == "plan")
+        plan["acceptanceCriteria"] = [*(plan.get("acceptanceCriteria") or []), edit_marker]
         save_payload = {
             "expectedRevision": current.get("revision"),
             "customerId": current.get("customerId"),
@@ -312,14 +318,19 @@ async def main() -> int:
             "customerProgram": current.get("customerProgram"),
             "accountExecutiveUserId": current.get("accountExecutiveUserId"),
             "resaleUserId": current.get("resaleUserId"),
-            "serviceOverview": edited_overview,
-            "phases": [phase_payload(phase) for phase in (current.get("phases") or [])],
+            "serviceOverview": reviewed_source,
+            "phases": reviewed_phases,
         }
         status, saved, _ = http(f"/api/module025/sow-gsd/{engagement_id}", "PUT", save_payload, token)
         require(status == 200 and isinstance(saved, dict), "module025_review_edit_save_http_" + str(status))
         status, detail, _ = http(f"/api/module025/sow-gsd/{engagement_id}", token=token)
         current = (detail or {}).get("engagement") or {}
-        require(status == 200 and edit_marker in str(current.get("serviceOverview") or ""), "module025_review_edit_readback_failed")
+        require(status == 200 and any(
+            edit_marker in (phase.get("acceptanceCriteria") or [])
+            for phase in (current.get("phases") or []) if phase.get("phaseCode") == "plan"
+        ), "module025_review_edit_readback_failed")
+        require(current.get("serviceOverview") == reviewed_source, "module025_review_source_changed")
+        require(current.get("lastGeneratedAt") == reviewed_generation, "module025_review_generation_invalidated")
 
         status, confirmed, _ = http(f"/api/module025/sow-gsd/{engagement_id}/confirm", "POST", token=token)
         require(status == 200 and isinstance(confirmed, dict), "module025_confirm_http_" + str(status))
@@ -356,6 +367,11 @@ async def main() -> int:
             except Exception:
                 report["logout"] = "not_verified"
         (evidence_dir / "module025-installed-sa-uat.json").write_text(json.dumps(report, indent=2) + "\n")
+    # Only locally constructed diagnostic codes are logged; never emit response
+    # bodies, provider text, customer content, or credentials into Actions logs.
+    diagnostic = report.get("diagnosticCode", "")
+    if re.fullmatch(r"[A-Za-z0-9_]{1,160}", diagnostic):
+        print("MODULE025_INSTALLED_SA_DIAGNOSTIC=" + diagnostic)
     print("MODULE025_INSTALLED_SA_UAT=" + ("PASS" if report["status"] == "passed" else "BLOCKED/FAIL"))
     return 0 if report["status"] == "passed" else 1
 
