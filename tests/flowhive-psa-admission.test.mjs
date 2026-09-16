@@ -27,7 +27,7 @@ const plannerControlCandidateApproval = process.env.GITHUB_HEAD_REF === 'control
 const plannerLiveCelarAcceptanceRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-live-celar-acceptance-20260915';
 const plannerLiveCelarBudgetRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-live-celar-budget-main-20260915';
 const plannerCelarApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-celar-approval-20260915';
-const plannerLiveCelarBudgetApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-celar-budget-approval-20260916';
+const plannerLiveCelarBudgetApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-celar-budget-branch-correction-20260916';
 const plannerCelarRequiredCheckRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-celar-required-check-refresh-20260915';
 const plannerCandidateApprovalRefresh = plannerLiveCelarAcceptanceRepair
   || process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-candidate-approval-refresh-20260915'

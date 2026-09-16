@@ -325,6 +325,8 @@ jobs:
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-live-celar-budget-approval-20260916' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-live-celar-budget-branch-correction-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-celar-required-check-refresh-20260915' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-live-completion-candidate-refresh-20260915' ]]; then

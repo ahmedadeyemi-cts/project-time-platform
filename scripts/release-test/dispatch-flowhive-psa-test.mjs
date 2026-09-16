@@ -7,6 +7,8 @@ import { authorize, repository, admissionIssueNumber, candidateBranch, candidate
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
+const reviewedCandidateSourceBranch = 'fix/flowhive-planner-live-celar-budget-main-20260915';
+assert.equal(candidateBranch, reviewedCandidateSourceBranch, 'PROTECTED_CUTOVER_CANDIDATE_SOURCE_BRANCH');
 const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-CELAR-ACCEPTANCE-01';
 const historicalRecoveryApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911';
 const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260916-FLOWHIVE-PLANNER-LIVE-CELAR-BUDGET-01';
