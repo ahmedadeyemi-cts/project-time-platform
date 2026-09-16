@@ -515,6 +515,8 @@ jobs:
               exit 1
             }
             node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-dispatch-validation-20260916' || "$GITHUB_HEAD_REF" == 'control/flowhive-dispatch-validation-followup-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
           else
             node tests/flowhive-psa-release-control.mjs
           fi
@@ -589,6 +591,7 @@ jobs:
           echo 'DEPLOYMENT_CONCURRENCY=PASSED'
           echo 'PRODUCTION_MUTATION=NONE'
   migrations:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:

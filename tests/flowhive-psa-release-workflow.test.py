@@ -267,6 +267,7 @@ class WorkflowContract(unittest.TestCase):
 
         contracts = workflow['jobs']['contracts']
         self.assertEqual(contracts['if'], "github.event_name == 'pull_request'")
+        self.assertEqual(workflow['jobs']['migrations']['if'], "github.event_name == 'pull_request'")
         manual = workflow['jobs']['manual_validate']
         self.assertEqual(manual['if'], "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'")
         checkout = next(step for step in manual['steps'] if step.get('name') == 'Check out the exact requested candidate')
@@ -289,6 +290,9 @@ class WorkflowContract(unittest.TestCase):
         self.assertNotIn('azure/login', manual)
         self.assertNotIn('id-token: write', manual)
         subprocess.run(['bash', '-n'], input=body, text=True, check=True, capture_output=True)
+
+        contracts_body = next(step for step in contracts['steps'] if step.get('name', '').startswith('Exact control-only scope'))['run']
+        self.assertIn("control/flowhive-dispatch-validation-followup-20260916", contracts_body)
 
     def test_ci_databases_use_masked_ephemeral_credentials_and_loopback_only(self):
         # The control-only branch intentionally has no FlowHive feature CI.
