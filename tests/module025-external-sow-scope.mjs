@@ -8,9 +8,11 @@ const base = 'e632c8d24549339a8476b9b50a8411b4d253ff02';
 const expected = [
   ".github/workflows/celar-ai-oracle-gitops-ci.yml",
   ".github/workflows/flowhive-psa-release-control-ci.yml",
+  ".github/workflows/module033-project-forge-ci.yml",
   "deployment/oracle-celar/gateway/wsgi.py",
   "deployment/oracle-celar/release.json",
   "docs/releases/2026-09-16-module025-external-sow-and-celar-deadline.md",
+  "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
   "scripts/release-test/collect-celar-runtime-evidence.py",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs",
