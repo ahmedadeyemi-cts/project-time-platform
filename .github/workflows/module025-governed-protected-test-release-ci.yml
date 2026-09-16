@@ -1,6 +1,16 @@
 name: Validate Module 025 Governed Protected-Test Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Exact reviewed candidate commit to validate'
+        required: true
+        type: string
+      base_sha:
+        description: 'Exact candidate pull-request base commit'
+        required: true
+        type: string
   pull_request:
     branches: [main]
     paths:
@@ -16,16 +26,6 @@ on:
       - '.github/flowhive-planner-output-budget-release-files.txt'
       - '.github/flowhive-psa-release-control-files.txt'
       - '.github/workflows/module025-governed-protected-test-release-ci.yml'
-  workflow_dispatch:
-    inputs:
-      release_sha:
-        description: 'Exact reviewed candidate commit to validate'
-        required: true
-        type: string
-      base_sha:
-        description: 'Exact candidate pull-request base commit'
-        required: true
-        type: string
 
 permissions:
   contents: read
