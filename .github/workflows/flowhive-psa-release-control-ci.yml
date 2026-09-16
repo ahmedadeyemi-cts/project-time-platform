@@ -66,6 +66,8 @@ jobs:
               'scripts/release-test/validate-protected-test-controller-branches.sh' \
               'tests/flowhive-psa-admission.test.mjs' \
               'tests/flowhive-psa-release-workflow.test.py' \
+              'scripts/release-test/resolve-flowhive-installed-deployment.py' \
+              'tests/flowhive-installed-resolution.test.py' \
               'tests/module025-scoped-deploy.test.py' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-scoped-deploy-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-scoped-deploy-actual"

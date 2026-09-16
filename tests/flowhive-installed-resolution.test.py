@@ -141,6 +141,54 @@ class ResolutionTests(unittest.TestCase):
         self.assertEqual(context["deploymentConclusion"], "failure")
         self.assertEqual(context["failedAcceptanceSteps"], ["Verify PSA candidate health and the live SOW-to-WBS lifecycle"])
 
+    def scoped_main_case(self, conclusion="failure"):
+        data = standard_main_case()
+        data[0]["conclusion"] = conclusion
+        data[1][0]["conclusion"] = conclusion
+        steps = data[1][0]["steps"]
+        for step in steps:
+            if step["name"] == "Verify PSA candidate health and the live SOW-to-WBS lifecycle":
+                step["conclusion"] = "skipped"
+            if step["name"] == resolver.BROWSER_SETUP_STEP:
+                step["conclusion"] = "success"
+        steps.extend([
+            {"name": "Run protected-Test authenticated functional UAT", "status": "completed", "conclusion": "skipped"},
+            {"name": resolver.SCOPED_SOW_STEP, "status": "completed", "conclusion": conclusion},
+        ])
+        return data
+
+    def test_scoped_main_acceptance_failure_preserves_verified_installation(self):
+        context = validate(self.scoped_main_case())
+        self.assertTrue(context["installationVerified"])
+        self.assertFalse(context["businessWritesPermitted"])
+        self.assertEqual(context["failedAcceptanceSteps"], [resolver.SCOPED_SOW_STEP])
+        self.assertFalse(context["functionalAcceptanceVerified"])
+
+    def test_scoped_main_success_remains_verifiable(self):
+        context = validate(self.scoped_main_case("success"))
+        self.assertEqual(context["failedAcceptanceSteps"], [])
+        self.assertTrue(context["liveIdentityRequired"])
+
+    def test_scoped_main_requires_browser_setup_and_no_full_uat(self):
+        for name, value, diagnostic in [
+            (resolver.BROWSER_SETUP_STEP, "skipped", "main_path_step_not_skipped"),
+            ("Run protected-Test authenticated functional UAT", "success", "scoped_sow_full_acceptance_not_skipped"),
+        ]:
+            data = self.scoped_main_case()
+            next(step for step in data[1][0]["steps"] if step["name"] == name)["conclusion"] = value
+            with self.assertRaisesRegex(resolver.ResolutionError, diagnostic):
+                validate(data)
+
+    def test_scoped_main_still_rejects_failed_installation_and_rollback(self):
+        for name, value, diagnostic in [
+            ("Deploy immutable Test API image", "failure", "installation_step_not_successful"),
+            (resolver.ROLLBACK_STEPS[0], "success", "rollback_not_excluded"),
+        ]:
+            data = self.scoped_main_case()
+            next(step for step in data[1][0]["steps"] if step["name"] == name)["conclusion"] = value
+            with self.assertRaisesRegex(resolver.ResolutionError, diagnostic):
+                validate(data)
+
     def test_standard_main_release_rejects_active_candidate_path_or_mismatched_identity(self):
         data = standard_main_case()
         next(step for step in data[1][0]["steps"] if step["name"] == resolver.MAIN_PATH_SKIPPED_STEPS[0])["conclusion"] = "success"

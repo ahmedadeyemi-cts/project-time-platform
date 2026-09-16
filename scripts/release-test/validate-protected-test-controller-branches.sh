@@ -173,6 +173,8 @@ elif [[ "$HEAD_BRANCH" == 'fix/module025-scoped-test-deploy-20260916' ]]; then
     'scripts/release-test/validate-protected-test-controller-branches.sh' \
     'tests/flowhive-psa-admission.test.mjs' \
     'tests/flowhive-psa-release-workflow.test.py' \
+    'scripts/release-test/resolve-flowhive-installed-deployment.py' \
+    'tests/flowhive-installed-resolution.test.py' \
     'tests/module025-scoped-deploy.test.py' \
     | LC_ALL=C sort -u > "$expected"
   cmp -s "$CIT/diff" "$expected" || fail 'Module 025 scoped deployment differs from its exact file set.'
