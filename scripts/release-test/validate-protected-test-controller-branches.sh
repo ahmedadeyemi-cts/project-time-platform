@@ -165,6 +165,20 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
     exit 1
   }
   node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+elif [[ "$HEAD_BRANCH" == 'fix/module025-scoped-test-deploy-20260916' ]]; then
+  expected="$CIT/module025-scoped-deploy-files"
+  printf '%s\n' \
+    '.github/workflows/flowhive-psa-release-control-ci.yml' \
+    '.github/workflows/projectpulse-deploy-test.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'tests/flowhive-psa-admission.test.mjs' \
+    'tests/module025-scoped-deploy.test.py' \
+    | LC_ALL=C sort -u > "$expected"
+  cmp -s "$CIT/diff" "$expected" || fail 'Module 025 scoped deployment differs from its exact file set.'
+  python3 -m pip install PyYAML==6.0.3
+  python3 tests/module025-scoped-deploy.test.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  node tests/validate-systemwide-enterprise-reliability.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/module025-generation-path-20260916' ]]; then
   expected="$CIT/module025-generation-files"
   printf '%s\n' \

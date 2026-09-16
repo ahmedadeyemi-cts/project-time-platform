@@ -59,6 +59,21 @@ jobs:
           python -m pip install PyYAML==6.0.3
           if [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pm-acceptance-contract' ]]; then
             node tests/validate-flowhive-pm-acceptance-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-scoped-test-deploy-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-deploy-test.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/module025-scoped-deploy.test.py' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-scoped-deploy-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-scoped-deploy-actual"
+            cmp -s "$RUNNER_TEMP/module025-scoped-deploy-files" "$RUNNER_TEMP/module025-scoped-deploy-actual" || {
+              echo 'Module 025 deployment correction differs from its exact file scope.' >&2
+              diff -u "$RUNNER_TEMP/module025-scoped-deploy-files" "$RUNNER_TEMP/module025-scoped-deploy-actual" >&2 || true
+              exit 1
+            }
+            python tests/module025-scoped-deploy.test.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-generation-path-20260916' ]]; then
             printf '%s\n' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
