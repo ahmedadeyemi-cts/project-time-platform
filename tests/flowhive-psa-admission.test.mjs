@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, verifyWorkflowDispatchCheck, verifyWorkflowDispatchNonRequiredEvidence, workflowPathOmissions, workflowDispatchChecks, workflowDispatchNonRequiredEvidence, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
-import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, plannerCandidateApprovalRefreshFiles, plannerCelarApprovalRefreshFiles, plannerLiveCelarBudgetApprovalFiles, module025CandidateRefreshFiles, plannerCompactPhaseFixFiles, plannerParallelPhaseFixFiles, plannerCompactPhaseCandidateRefreshFiles, plannerParallelPhaseCandidateRefreshFiles, plannerRuntimeCheckOmissionFiles, plannerCapacitySafeFiles, plannerLiveCapacityRepairFiles, plannerCapacitySafeCandidateRefreshFiles, plannerLiveCapacityCandidateRefreshFiles, plannerCandidateRefreshFiles, plannerAdmissionEvidenceCorrectionFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, plannerCandidateApprovalRefreshFiles, plannerCelarApprovalRefreshFiles, plannerLiveCelarBudgetApprovalFiles, module025CandidateRefreshFiles, module025AdmissionManifestRefreshFiles, plannerCompactPhaseFixFiles, plannerParallelPhaseFixFiles, plannerCompactPhaseCandidateRefreshFiles, plannerParallelPhaseCandidateRefreshFiles, plannerRuntimeCheckOmissionFiles, plannerCapacitySafeFiles, plannerLiveCapacityRepairFiles, plannerCapacitySafeCandidateRefreshFiles, plannerLiveCapacityCandidateRefreshFiles, plannerCandidateRefreshFiles, plannerAdmissionEvidenceCorrectionFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
 const installedSowRoleAcceptanceSourceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   'scripts/release-test/run-module025-installed-sa-uat.py',
@@ -30,6 +30,7 @@ const plannerLiveCelarCompactPromptRepair = process.env.GITHUB_HEAD_REF === 'fix
 const plannerCelarApprovalRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-celar-approval-20260915';
 const plannerLiveCelarBudgetApproval = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-live-celar-budget-branch-correction-20260916';
 const module025CandidateRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-module025-candidate-refresh-20260916';
+const module025AdmissionManifestRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-admission-manifest-refresh-20260916';
 const module025ManualTriggerExactCandidate = process.env.GITHUB_HEAD_REF === 'control/flowhive-module025-manual-trigger-exact-candidate-20260916';
 const plannerCelarRequiredCheckRefresh = process.env.GITHUB_HEAD_REF === 'control/flowhive-planner-celar-required-check-refresh-20260915';
 const plannerCandidateApprovalRefresh = plannerLiveCelarAcceptanceRepair
@@ -408,6 +409,21 @@ test('the checked-in control manifest is sorted before trusted-main admission', 
     .trim().split(/\r?\n/);
   assert.deepEqual(manifest, [...new Set(manifest)].sort());
 });
+test('trusted-main source drift starts at the approved application merge and rejects the old PR-base boundary', () => {
+  const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
+  const manifest = fs.readFileSync(new URL('../.github/flowhive-psa-release-control-files.txt', import.meta.url), 'utf8')
+    .trim().split(/\r?\n/);
+  assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', approval.mergeCommit, currentMain], { stdio: 'ignore' }));
+  const mergeBoundaryChanges = execFileSync('git', ['diff', '--name-only', `${approval.mergeCommit}..${currentMain}`], { encoding: 'utf8' })
+    .split(/\r?\n/).filter(Boolean);
+  assert.ok(mergeBoundaryChanges.includes('.github/flowhive-enterprise-psa-release-files.txt'));
+  assert.doesNotThrow(() => verifySourceDrift(mergeBoundaryChanges, manifest));
+  assert.throws(() => verifySourceDrift([...mergeBoundaryChanges, 'src/backend/ProjectTime.Api/Program.cs'], manifest));
+  const oldPrBaseChanges = execFileSync('git', ['diff', '--name-only', `${approval.sourceBase}..${currentMain}`], { encoding: 'utf8' })
+    .split(/\r?\n/).filter(Boolean);
+  assert.ok(oldPrBaseChanges.includes('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'));
+  assert.throws(() => verifySourceDrift(oldPrBaseChanges, manifest));
+});
 test('superseded dispatch receipt remains audit evidence and is not current-candidate recovery', () => {
   const authorization = protectedCutoverAuthorization();
   assert.notEqual(authorization.reservationRecovery.candidateSha, approval.sha);
@@ -469,6 +485,19 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       'tests/flowhive-psa-release-control.mjs',
       'tests/flowhive-psa-scope.mjs'
     ]);
+    return;
+  }
+  if (module025AdmissionManifestRefresh) {
+    const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
+    const candidateHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const changedFiles = execFileSync('git', ['diff', '--name-only', `${currentMain}...${candidateHead}`], { encoding: 'utf8' })
+      .split(/\r?\n/).filter(Boolean).sort();
+    assert.equal(currentMain, '557e32aaf2c6be34557990becc6d3dea092efc3a');
+    assert.match(candidateHead, /^[0-9a-f]{40}$/);
+    assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', currentMain, candidateHead], { stdio: 'ignore' }));
+    assert.throws(() => execFileSync('git', ['merge-base', '--is-ancestor', candidateHead, currentMain], { stdio: 'ignore' }));
+    assert.notEqual(candidateHead, approval.sha, 'The manifest correction must not replace the application candidate.');
+    assert.deepEqual(changedFiles, module025AdmissionManifestRefreshFiles);
     return;
   }
   if (module025CandidateRefresh) {
@@ -663,7 +692,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   assert.equal(approval.pullRequest, candidatePullRequest);
   assert.equal(approval.branch, candidateBranch);
   assert.equal(approval.sourceBranch, candidateBranch);
-  assert.equal(approval.mergeCommit, module025CandidateRefresh ? 'b82bea8ad3874e58ab8d42f01017942fa9d8765e' : plannerLiveCelarBudgetApproval || plannerLiveCelarCompactPromptRepair || module025ManualTriggerExactCandidate ? '451432ac7e1dc922e699293d4f2e0ad1dfaa7f88' : plannerCelarApprovalRefresh || plannerCelarRequiredCheckRefresh ? 'f7ee256fb851cbdeb083c2ff6fe8ad650ee4d203' : plannerCandidateApprovalRefresh ? 'e15e6dcd872fe6e5eae790d2213dd0b8347e94f6' : plannerCandidateRefresh || plannerAdmissionEvidenceCorrection || portfolioDbAliasCandidateRefresh || plannerLiveCapacityCandidateRefresh || plannerLiveCapacityRepair || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafeCandidateRefresh || plannerCapacitySafe
+  assert.equal(approval.mergeCommit, module025AdmissionManifestRefresh || module025CandidateRefresh ? 'b82bea8ad3874e58ab8d42f01017942fa9d8765e' : plannerLiveCelarBudgetApproval || plannerLiveCelarCompactPromptRepair || module025ManualTriggerExactCandidate ? '451432ac7e1dc922e699293d4f2e0ad1dfaa7f88' : plannerCelarApprovalRefresh || plannerCelarRequiredCheckRefresh ? 'f7ee256fb851cbdeb083c2ff6fe8ad650ee4d203' : plannerCandidateApprovalRefresh ? 'e15e6dcd872fe6e5eae790d2213dd0b8347e94f6' : plannerCandidateRefresh || plannerAdmissionEvidenceCorrection || portfolioDbAliasCandidateRefresh || plannerLiveCapacityCandidateRefresh || plannerLiveCapacityRepair || plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafeCandidateRefresh || plannerCapacitySafe
     ? (plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? '4b4e0bbec528ebacbc2bc272ada3e3ea21831952' : portfolioDbAliasCandidateRefresh ? 'd6539ae1bf02f5b7a3d5d6386cac827ec63dd785' : plannerLiveCapacityCandidateRefresh ? '1d11b029ca7c63551af71a098b7a7f4618ce290b' : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? '45c4fa52ca33c7c60876c08fb800b6f938cb6ddd' : '4bb7ae0b2411eb9120db82b9268737080908105c')
     : plannerCompactPhaseControl
     ? 'b37398b13b222cc60acc70ac2b5cbb7ac56fecef'
@@ -797,7 +826,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    module025CandidateRefresh ? 35043700143 : plannerLiveCelarBudgetApproval || plannerLiveCelarCompactPromptRepair || module025ManualTriggerExactCandidate ? 35031315112 : plannerCelarApprovalRefresh || plannerCelarRequiredCheckRefresh ? 35021148203 : plannerCandidateApprovalRefresh || plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? 34988294166 : portfolioDbAliasCandidateRefresh || plannerLiveCompletionRepair ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
+    module025AdmissionManifestRefresh || module025CandidateRefresh ? 35043700143 : plannerLiveCelarBudgetApproval || plannerLiveCelarCompactPromptRepair || module025ManualTriggerExactCandidate ? 35031315112 : plannerCelarApprovalRefresh || plannerCelarRequiredCheckRefresh ? 35021148203 : plannerCandidateApprovalRefresh || plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? 34988294166 : portfolioDbAliasCandidateRefresh || plannerLiveCompletionRepair ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
       : module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 35021148203);
 });
@@ -812,7 +841,7 @@ test('workflow-dispatch evidence is candidate-bound and cannot substitute anothe
     }]), /Unbound workflow-dispatch run/);
     return;
   }
-  assert.equal(workflowDispatchChecks.length, module025CandidateRefresh ? 3 : plannerLiveCelarBudgetApproval || plannerLiveCelarCompactPromptRepair || module025ManualTriggerExactCandidate || plannerCelarRequiredCheckRefresh ? 2 : plannerCelarApprovalRefresh || plannerCandidateApprovalRefresh ? 2 : 3);
+  assert.equal(workflowDispatchChecks.length, module025AdmissionManifestRefresh || module025CandidateRefresh ? 3 : plannerLiveCelarBudgetApproval || plannerLiveCelarCompactPromptRepair || module025ManualTriggerExactCandidate || plannerCelarRequiredCheckRefresh ? 2 : plannerCelarApprovalRefresh || plannerCandidateApprovalRefresh ? 2 : 3);
   assert.deepEqual(dispatchRuns.map(run => run.id).sort((a, b) => a - b), workflowDispatchChecks.map(binding => binding.runId).sort((a, b) => a - b));
   assert.equal(workflowDispatchNonRequiredEvidence.length, 1);
   assert.doesNotThrow(() => verifyWorkflowDispatchNonRequiredEvidence(
