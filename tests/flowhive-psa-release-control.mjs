@@ -618,6 +618,7 @@ export const dispatchValidationFollowupBase = 'b9dac833a28fa37cd86f78067990becb8
 export const dispatchValidationFollowupBranch = 'control/flowhive-dispatch-validation-followup-20260916';
 export const dispatchValidationFollowupFiles = [
   '.github/workflows/flowhive-psa-release-control-ci.yml',
+  'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-release-control.mjs',
   'tests/flowhive-psa-release-workflow.test.py'
 ].sort();
