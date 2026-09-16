@@ -257,6 +257,39 @@ class WorkflowContract(unittest.TestCase):
             self.assertIn(expected, admission_paths)
             self.assertIn(expected, runtime_paths)
 
+    def test_flowhive_release_control_dispatch_validation_is_separate_from_pull_request_contracts(self):
+        workflow = load((ROOT/'.github/workflows/flowhive-psa-release-control-ci.yml').read_text())
+        dispatch = workflow['on']['workflow_dispatch']
+        self.assertEqual(dispatch['inputs']['release_sha']['required'], 'true')
+        self.assertEqual(dispatch['inputs']['release_sha']['type'], 'string')
+        self.assertEqual(dispatch['inputs']['base_sha']['required'], 'true')
+        self.assertEqual(dispatch['inputs']['base_sha']['type'], 'string')
+
+        contracts = workflow['jobs']['contracts']
+        self.assertEqual(contracts['if'], "github.event_name == 'pull_request'")
+        manual = workflow['jobs']['manual_validate']
+        self.assertEqual(manual['if'], "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'")
+        checkout = next(step for step in manual['steps'] if step.get('name') == 'Check out the exact requested candidate')
+        self.assertEqual(checkout['with']['ref'], '${{ inputs.release_sha }}')
+        self.assertEqual(checkout['with']['fetch-depth'], '0')
+        validation = next(step for step in manual['steps'] if step.get('name', '').startswith('Validate requested candidate'))
+        body = validation['run']
+        for required in [
+            'GITHUB_REF', 'GITHUB_SHA', 'RELEASE_SHA', 'BASE_SHA',
+            'git rev-parse HEAD', 'git merge-base --is-ancestor',
+            'validate-module025-sow-register.mjs',
+            'test-module025-sow-sell-register-migration-106.sh',
+            'validate-systemwide-enterprise-reliability.mjs',
+            'validate-systemwide-image-build-controller.mjs',
+            'validate-deployment-concurrency-governance.mjs',
+            'validate-repository-security-posture.py',
+            'FLOWHIVE_DISPATCH_EXACT_CANDIDATE_VALIDATION=PASSED'
+        ]:
+            self.assertIn(required, body)
+        self.assertNotIn('azure/login', manual)
+        self.assertNotIn('id-token: write', manual)
+        subprocess.run(['bash', '-n'], input=body, text=True, check=True, capture_output=True)
+
     def test_ci_databases_use_masked_ephemeral_credentials_and_loopback_only(self):
         # The control-only branch intentionally has no FlowHive feature CI.
         # Both changed fixture jobs are exercised on the feature candidate itself.
