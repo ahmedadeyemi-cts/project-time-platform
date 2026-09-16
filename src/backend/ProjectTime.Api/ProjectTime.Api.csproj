@@ -37,7 +37,7 @@
     <PackageReference Include="PdfPig" Version="0.1.10" />
     <PackageReference Include="SkiaSharp" Version="4.151.2" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.151.2" />
-    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="4.151.2" />
+    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="4.152.0" />
   </ItemGroup>
 
   <ItemGroup>
