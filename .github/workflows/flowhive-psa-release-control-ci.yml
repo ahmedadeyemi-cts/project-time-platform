@@ -589,6 +589,7 @@ jobs:
           echo 'DEPLOYMENT_CONCURRENCY=PASSED'
           echo 'PRODUCTION_MUTATION=NONE'
   migrations:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:

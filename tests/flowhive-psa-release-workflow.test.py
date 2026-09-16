@@ -267,6 +267,7 @@ class WorkflowContract(unittest.TestCase):
 
         contracts = workflow['jobs']['contracts']
         self.assertEqual(contracts['if'], "github.event_name == 'pull_request'")
+        self.assertEqual(workflow['jobs']['migrations']['if'], "github.event_name == 'pull_request'")
         manual = workflow['jobs']['manual_validate']
         self.assertEqual(manual['if'], "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'")
         checkout = next(step for step in manual['steps'] if step.get('name') == 'Check out the exact requested candidate')
