@@ -48,7 +48,10 @@ REQUIRED_STEPS = (
     "Deploy immutable Test web image",
     "Seal server-confirmed deployment identity",
 )
+SCOPED_SOW_STEP = "Verify Module 025 scoped deployment identity and lifecycle"
+BROWSER_SETUP_STEP = "Install isolated live-browser acceptance dependencies"
 ACCEPTANCE_STEPS = {
+    SCOPED_SOW_STEP,
     "Verify PSA candidate health and the live SOW-to-WBS lifecycle",
     "Run protected-Test authenticated functional UAT",
     "Run protected-Test Module 025 SOW/GSD generation lifecycle UAT",
@@ -153,9 +156,16 @@ def installation_steps(run: dict, jobs: list[dict], application_branch: str) -> 
     require(all(isinstance(name, str) and name for name in names) and len(set(names)) == len(names), "deployment_steps_ambiguous")
     steps = {row["name"]: row for row in rows}
     required_steps = REQUIRED_STEPS
+    scoped_sow = steps.get(SCOPED_SOW_STEP, {}).get("conclusion") in {"success", "failure"}
+    if scoped_sow:
+        require(application_branch == "main", "scoped_sow_requires_main")
+        for name in ("Verify PSA candidate health and the live SOW-to-WBS lifecycle",
+                     "Run protected-Test authenticated functional UAT"):
+            require(steps.get(name, {}).get("conclusion") == "skipped", "scoped_sow_full_acceptance_not_skipped")
     if application_branch == "main":
         for name in MAIN_PATH_SKIPPED_STEPS:
-            require(steps.get(name, {}).get("conclusion") == "skipped", "main_path_step_not_skipped")
+            expected = "success" if scoped_sow and name == BROWSER_SETUP_STEP else "skipped"
+            require(steps.get(name, {}).get("conclusion") == expected, "main_path_step_not_skipped")
         required_steps = tuple(name for name in required_steps if name not in MAIN_PATH_SKIPPED_STEPS)
     for name in required_steps:
         require(steps.get(name, {}).get("conclusion") == "success", "installation_step_not_successful")

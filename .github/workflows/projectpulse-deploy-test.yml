@@ -5,6 +5,14 @@ run-name: Protected Test ${{ github.event_name == 'workflow_dispatch' && inputs.
 on:
   workflow_dispatch:
     inputs:
+      acceptance_scope:
+        description: 'full runs system-wide UAT; sow_role runs normal SA SOW/GSD and My Role without FlowHive generation'
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - sow_role
       recover_private_runtime:
         description: Run authenticated Oracle Test recovery before deployment
         required: false
@@ -47,6 +55,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
+      ACCEPTANCE_SCOPE: ${{ inputs.acceptance_scope || 'full' }}
       TARGET_RELEASE_COMMIT: ${{ inputs.release_sha }}
       TARGET_RELEASE_BRANCH: ${{ inputs.release_branch }}
       EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
@@ -94,6 +103,13 @@ jobs:
           if [[ -d control/.git ]]; then
             [[ "$(git -C control rev-parse HEAD)" == "$GITHUB_SHA" ]] || fail 'Trusted control checkout does not match the executing controller.'
           fi
+          case "$ACCEPTANCE_SCOPE" in
+            full) ;;
+            sow_role)
+              [[ "$RELEASE_BRANCH_INPUT" == main ]] || fail 'Scoped Module 025 deployment requires exact merged main.'
+              ;;
+            *) fail 'Unsupported deployment acceptance scope.' ;;
+          esac
           case "$GITHUB_EVENT_NAME:$RELEASE_BRANCH_INPUT" in
             workflow_dispatch:release/flowhive-sow-successor-20260908)
               [[ "$EXPECTED_CONTROLLER_SHA" == "$GITHUB_SHA" ]] || fail 'PSA admission controller identity changed before deployment.'
@@ -154,7 +170,7 @@ jobs:
         run: python3 scripts/release-test/check-flowhive-acceptance-inputs.py --read-only
 
       - name: Install isolated live-browser acceptance dependencies
-        if: steps.psa_admission.outputs.authorized == 'true'
+        if: steps.psa_admission.outputs.authorized == 'true' || inputs.acceptance_scope == 'sow_role'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -1008,9 +1024,57 @@ jobs:
           jq -n --arg source "$TARGET_RELEASE_COMMIT" '{deploymentHealthVerified:true,sourceCommit:$source,productionMutation:false}' > "$EVIDENCE_DIR/deployment-health-verified.json"
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-psa-live-uat.py
 
+      - name: Verify Module 025 scoped deployment identity and lifecycle
+        id: sow_role_uat
+        if: inputs.acceptance_scope == 'sow_role'
+        timeout-minutes: 35
+        shell: bash
+        working-directory: release
+        env:
+          BASE: ${{ steps.contract.outputs.base }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+          EXPECTED_API_IMAGE: ${{ steps.build.outputs.api_image }}
+          EXPECTED_WEB_IMAGE: ${{ steps.build.outputs.web_image }}
+          INSTALLED_RELEASE_CONTEXT: /tmp/systemwide-enterprise-reliability-test-evidence/deployment-identity.json
+          PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
+          PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
+          PROJECTPULSE_M025_SA_EMAIL: ${{ secrets.PROJECTPULSE_M025_SA_EMAIL }}
+          PROJECTPULSE_M025_SA_PASSWORD: ${{ secrets.PROJECTPULSE_M025_SA_PASSWORD }}
+          PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
+          PROJECTPULSE_M025_PM_PASSWORD: ${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}
+          MODULE025_GENERATION_TIMEOUT_SECONDS: '1500'
+        run: |
+          set -Eeuo pipefail
+          [[ "$BASE" == 'https://phd-west-test.onenecklab.com' && "$TARGET_RELEASE_BRANCH" == main ]]
+          API_JSON="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" -o json --only-show-errors)"
+          jq -e --arg image "$EXPECTED_API_IMAGE" --arg source "$TARGET_RELEASE_COMMIT" '
+            .tags.environment == "test" and .properties.template.containers[0].image == $image
+            and ([.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value] == [$source])
+          ' <<<"$API_JSON" >/dev/null
+          jq -e --arg image "$EXPECTED_WEB_IMAGE" '.tags.environment == "test" and .properties.template.containers[0].image == $image' <<<"$WEB_JSON" >/dev/null
+          unset API_JSON WEB_JSON
+          ready=false
+          for attempt in $(seq 1 42); do
+            if curl -fsS --max-time 15 --proto '=https' -H 'Cache-Control: no-cache' "$BASE/health" | jq -e '.status == "healthy"' >/dev/null; then ready=true; break; fi
+            sleep 5
+          done
+          [[ "$ready" == true ]]
+          echo 'deployment_health_verified=true' >> "$GITHUB_OUTPUT"
+          jq -n --arg source "$TARGET_RELEASE_COMMIT" '{deploymentHealthVerified:true,sourceCommit:$source,productionMutation:false}' > "$EVIDENCE_DIR/deployment-health-verified.json"
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/verify-flowhive-installed-identity.py
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-my-role-browser.py
+          jq -e '.status == "passed"' "$EVIDENCE_DIR/module025-installed-sa-uat.json" >/dev/null
+          jq -e '.status == "passed"' "$EVIDENCE_DIR/flowhive-my-role-browser.json" >/dev/null
+          echo 'MODULE025_SCOPED_DEPLOYMENT_ACCEPTANCE=PASSED'
+
       - name: Run protected-Test authenticated functional UAT
         id: uat
-        if: steps.psa_admission.outputs.authorized != 'true'
+        if: steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role'
         shell: bash
         env:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
@@ -1771,7 +1835,7 @@ jobs:
           echo "MODULE025_PROTECTED_TEST_UAT_FIXTURE=disabled revision=$API_REVISION"
 
       - name: Restore exact prior Test images after application failure
-        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' }}
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' && steps.sow_role_uat.outputs.deployment_health_verified != 'true' }}
         shell: bash
         working-directory: release
         run: |
@@ -1859,6 +1923,14 @@ jobs:
               echo '- Full enterprise PSA feature acceptance: incomplete; this is not a release-completion claim'
             fi
             echo '- Target: https://phd-west-test.onenecklab.com'
+            if [[ "$ACCEPTANCE_SCOPE" == sow_role ]]; then
+              echo '- Acceptance scope: Module 025 SOW/GSD and My Role; FlowHive generation was not invoked'
+              if [[ '${{ steps.sow_role_uat.outcome }}' == success ]]; then
+                echo '- Normal Solution Architect SOW/GSD lifecycle and My Role: passed'
+              else
+                echo '- Normal Solution Architect SOW/GSD lifecycle and My Role: failed or not completed'
+              fi
+            fi
             [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, and 093 through 100: applied and verified' || echo '- Migrations 086, 088, and 093 through 100: not completed'
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: passed' || echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: not completed'
             [[ -f "$EVIDENCE_DIR/module025-sow-gsd-protected-test-uat.json" ]] && echo '- Module 025 authorized Solution Architect generation, review-ready P/D/I/V/R readback, and archive cleanup UAT: passed' || echo '- Module 025 SOW/GSD generation lifecycle UAT: not completed'
