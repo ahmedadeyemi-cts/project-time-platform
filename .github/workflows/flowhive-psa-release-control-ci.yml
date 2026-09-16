@@ -1,5 +1,15 @@
 name: Validate FlowHive PSA Protected Test admission
 on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Exact candidate commit to validate'
+        required: true
+        type: string
+      base_sha:
+        description: 'Trusted main commit that must be an ancestor of the candidate'
+        required: true
+        type: string
   pull_request:
     paths:
       - '.github/flowhive-psa-*'
@@ -24,6 +34,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   contracts:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -525,6 +536,58 @@ jobs:
       # Live readiness is deliberately not a source-only PR result. The
       # owner-authorized admission workflow acquires the lock, rechecks the
       # live controller, and fails closed immediately before dispatch.
+  manual_validate:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    name: Validate exact dispatched FlowHive candidate and release controls
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the exact requested candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Validate requested candidate, Module 025, systemwide, security, and concurrency controls
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$GITHUB_REF" == 'refs/heads/main' ]] || fail 'Manual validation must execute from trusted main.'
+          [[ "$GITHUB_SHA" == "$BASE_SHA" ]] || fail 'Manual validation controller SHA does not match the requested trusted-main base.'
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Requested release SHA is not a complete lowercase commit SHA.'
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Requested base SHA is not a complete lowercase commit SHA.'
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]] || fail 'Manual validation did not check out the requested candidate SHA.'
+          git cat-file -e "$BASE_SHA^{commit}" || fail 'Requested trusted-main base commit is unavailable.'
+          git merge-base --is-ancestor "$BASE_SHA" HEAD || fail 'Requested trusted-main base is not an ancestor of the candidate.'
+
+          node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+          bash tests/test-module025-sow-sell-register-migration-106.sh
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check "$BASE_SHA...HEAD"
+
+          echo "FLOWHIVE_DISPATCH_CANDIDATE_SHA=$RELEASE_SHA"
+          echo "FLOWHIVE_DISPATCH_BASE_SHA=$BASE_SHA"
+          echo 'FLOWHIVE_DISPATCH_EXACT_CANDIDATE_VALIDATION=PASSED'
+          echo 'MODULE025_SOW_MIGRATION_106=PASSED'
+          echo 'SYSTEMWIDE_RELEASE_CONTROLS=PASSED'
+          echo 'SECURITY_POSTURE=PASSED'
+          echo 'DEPLOYMENT_CONCURRENCY=PASSED'
+          echo 'PRODUCTION_MUTATION=NONE'
   migrations:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
