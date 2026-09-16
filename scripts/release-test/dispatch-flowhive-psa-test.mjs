@@ -7,11 +7,11 @@ import { authorize, repository, admissionIssueNumber, candidateBranch, candidate
 
 const workflowId = 315562561;
 const workflowPath = '.github/workflows/projectpulse-deploy-test.yml';
-const reviewedCandidateSourceBranch = 'fix/flowhive-planner-live-celar-budget-main-20260915';
+const reviewedCandidateSourceBranch = 'fix/flowhive-planner-live-celar-compact-prompt-20260916';
 assert.equal(candidateBranch, reviewedCandidateSourceBranch, 'PROTECTED_CUTOVER_CANDIDATE_SOURCE_BRANCH');
-const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260915-FLOWHIVE-PLANNER-LIVE-CELAR-ACCEPTANCE-01';
+const previousProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260916-FLOWHIVE-PLANNER-LIVE-CELAR-BUDGET-01';
 const historicalRecoveryApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260911';
-const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260916-FLOWHIVE-PLANNER-LIVE-CELAR-BUDGET-01';
+const currentProtectedCutoverApprovalReference = 'FLOWHIVE-PSA-PROTECTED-CUTOVER-20260916-FLOWHIVE-PLANNER-LIVE-CELAR-COMPACT-PROMPT-01';
 const historicalRecoveryCandidateSha = '86c9be03b87e588eeec47492e35131177716263b';
 // This is the protected-Test lane selector, not the candidate's source ref.
 // The candidate source branch and SHA remain bound by flowhive-psa-admission;
