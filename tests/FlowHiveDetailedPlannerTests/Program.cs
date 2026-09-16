@@ -510,7 +510,8 @@ var compactFlowHiveSystemInstruction = (string)flowHiveBatchInstructionFactory.I
     null, ["The prior full planner instruction must not be copied into the live batch."])!;
 Assert(compactFlowHiveSystemInstruction.Length <= 1_800,
     "flowhive_live_batch_system_prompt_is_compact");
-Assert(compactFlowHiveSystemInstruction.Contains("exactly ten distinct executable tasks", StringComparison.Ordinal)
+Assert(compactFlowHiveSystemInstruction.Contains("exactly these ten slots", StringComparison.Ordinal)
+       && compactFlowHiveSystemInstruction.Contains("Never omit a slot", StringComparison.Ordinal)
        && compactFlowHiveSystemInstruction.Contains("untrusted data", StringComparison.Ordinal)
        && compactFlowHiveSystemInstruction.Contains("citationId", StringComparison.Ordinal),
     "flowhive_live_batch_system_prompt_keeps_source_safety_and_task_contract");
@@ -523,6 +524,18 @@ var compactFlowHiveUserInstruction = (string)flowHiveBatchUserInstructionFactory
     null, [new string('x', 8_000)])!;
 Assert(compactFlowHiveUserInstruction.Length <= 320,
     "flowhive_live_batch_user_prompt_is_compact_and_does_not_duplicate_scope_instructions");
+var flowHiveBatchRepairInstructionFactory = typeof(PulseAiPrivateRagService).GetMethod(
+    "FlowHiveBatchRepairSystemInstruction", BindingFlags.NonPublic | BindingFlags.Static)!;
+var compactFlowHiveRepairInstruction = (string)flowHiveBatchRepairInstructionFactory.Invoke(null, [])!;
+Assert(compactFlowHiveRepairInstruction.Contains("exactly ten objects", StringComparison.Ordinal)
+       && compactFlowHiveRepairInstruction.Contains("1.1 Plan", StringComparison.Ordinal)
+       && compactFlowHiveRepairInstruction.Contains("5.2 Release", StringComparison.Ordinal)
+       && compactFlowHiveRepairInstruction.Contains("shorten text rather than omit", StringComparison.Ordinal),
+    "flowhive_batch_structural_repair_preserves_all_slots");
+var flowHiveBatchRepairUserFactory = typeof(PulseAiPrivateRagService).GetMethod(
+    "FlowHiveBatchRepairUserInstruction", BindingFlags.NonPublic | BindingFlags.Static)!;
+Assert(((string)flowHiveBatchRepairUserFactory.Invoke(null, [])!).Length <= 220,
+    "flowhive_batch_structural_repair_user_prompt_is_bounded");
 var flowHiveBatchRequest = phaseRequest with
 {
     FeatureCode = CelarAiCapabilityCatalog.ProjectFlowHivePlan,
@@ -606,10 +619,22 @@ var flowHiveInvalidBatch = await RunFlowHiveBatch((request, token) =>
         "private_model_completed", "celar_ai", "test-model", "{\"tasks\":[]}",
         100, 12, "", DateTimeOffset.UtcNow));
 });
-Assert(!flowHiveInvalidBatch.Succeeded && flowHiveInvalidBatchCalls == 1
+Assert(!flowHiveInvalidBatch.Succeeded && flowHiveInvalidBatchCalls == 2
         && flowHiveInvalidBatch.Content.Length == 0
         && flowHiveInvalidBatch.DiagnosticCode.EndsWith("_batch", StringComparison.Ordinal),
-    "flowhive_invalid_single_batch_has_no_partial_draft_or_parse_loop");
+    "flowhive_invalid_single_batch_has_no_partial_draft_or_unbounded_parse_loop");
+var flowHiveStructuralRepairCalls = 0;
+var flowHiveStructuralRepair = await RunFlowHiveBatch((request, token) =>
+{
+    flowHiveStructuralRepairCalls++;
+    return Task.FromResult(flowHiveStructuralRepairCalls == 1
+        ? new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model", "{\"tasks\":[]}",
+            100, 12, "", DateTimeOffset.UtcNow)
+        : new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+            flowHiveBatchPayload, 100, flowHiveBatchPayload.Length, "", DateTimeOffset.UtcNow));
+});
+Assert(flowHiveStructuralRepair.Succeeded && flowHiveStructuralRepairCalls == 2,
+    "flowhive_structural_repair_recovers_one_validated_missing-slot_response");
 var flowHiveRetryCalls = 0;
 var flowHiveRetry = await RunFlowHiveBatch((request, token) =>
 {
