@@ -384,6 +384,55 @@ async Task<PulseAiPrivateModelResult> RunPhases(Func<PulseAiPrivateModelRequest,
     PulseAiPrivateModelRequest? requestToRun = null,
     PulseAiPrivateRetrievalResult? retrievalToRun = null) => await (Task<PulseAiPrivateModelResult>)phaseGenerator.Invoke(null,
         new object[] { requestToRun ?? phaseRequest, retrievalToRun ?? module025Retrieval, model, token })!;
+// The Module025 production path uses full fields and sequential validation;
+// retain the compact-path fixtures below to protect existing FlowHive behavior.
+Assert(!PulseAiPrivateRagService.ShouldUseFlowHiveBatchGeneration(true, CelarAiCapabilityCatalog.SowGsdPlanning),
+    "module025_never_routes_to_compact_flowhive_batch");
+var detailedGenerator = typeof(PulseAiPrivateRagService).GetMethod(
+    "GenerateModule025DetailedPhasesAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+async Task<PulseAiPrivateModelResult> RunDetailedPhases(
+    Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> model) =>
+    await (Task<PulseAiPrivateModelResult>)detailedGenerator.Invoke(null,
+        new object[] { phaseRequest, module025Retrieval, model, CancellationToken.None,
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10), null! })!;
+var detailedCalls = new List<string>();
+var activeDetailedCalls = 0;
+var detailedResult = await RunDetailedPhases(async (request, token) =>
+{
+    Assert(Interlocked.Increment(ref activeDetailedCalls) == 1, "module025_provider_requests_do_not_overlap");
+    var phase = PhaseFromRequest(request);
+    detailedCalls.Add(phase);
+    Assert(request.MaximumOutputTokens == 6144, "module025_detail_has_bounded_sufficient_output_budget");
+    Assert(!request.SystemInstruction.Contains("exactly two", StringComparison.OrdinalIgnoreCase),
+        "module025_scope_is_not_capped_at_two_tasks");
+    await Task.Delay(1, token);
+    var tasks = parsedModule025.Tasks.Where(task => task.Phase == phase).ToList();
+    // A third substantive work package must survive the entire assembly path.
+    tasks.Add(tasks[0] with { Wbs = $"{Array.IndexOf(phaseNames, phase) + 1}.3",
+        Name = $"Additional {phase} technical handoff", Description =
+        $"Verify the additional {phase} CUCM technical handoff against the authorized interface inventory and record the agreed evidence and ownership." });
+    var payload = JsonSerializer.Serialize(new { objective = "Deliver authorized CUCM scope", tasks });
+    Interlocked.Decrement(ref activeDetailedCalls);
+    return new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+        payload, 100, payload.Length, "", DateTimeOffset.UtcNow);
+});
+Assert(detailedResult.Succeeded && detailedCalls.SequenceEqual(phaseNames), "module025_full_phases_validate_in_order");
+var detailedPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(null,
+    new object[] { detailedResult.Content, module025Retrieval })!;
+Assert(detailedPlan.Tasks.Count == 15, "module025_more_than_two_tasks_per_phase_preserved");
+Assert(detailedPlan.Tasks[0].AcceptanceCriteria!.SequenceEqual(parsedModule025.Tasks[0].AcceptanceCriteria!),
+    "module025_authored_acceptance_preserved_without_generic_filler");
+var incompleteCalls = 0;
+var incompleteResult = await RunDetailedPhases((request, token) =>
+{
+    incompleteCalls++;
+    var payload = phasePayloads[PhaseFromRequest(request)];
+    return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+        payload, 100, payload.Length, "", DateTimeOffset.UtcNow));
+});
+Assert(!incompleteResult.Succeeded && incompleteCalls == 2 && incompleteResult.Content.Length == 0,
+    "module025_missing_detail_repaired_once_then_stops_without_spending_on_later_phases");
+
 var phasedResult = await RunPhases(phaseModel);
 Assert(phasedResult.Succeeded && phaseCalls == 5, "module025_five_validated_phases_complete_in_bounded_provider_requests");
 var phasedPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(null, new object[] { phasedResult.Content, module025Retrieval })!;

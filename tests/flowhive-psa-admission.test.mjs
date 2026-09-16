@@ -13,7 +13,9 @@ const installedSowRoleAcceptanceSourceFiles = [
   'src/frontend/project-time-web/tests/role-journeys.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
-const module025VerifierCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-sa-review-confirm-20260916';
+const module025GenerationCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-generation-path-20260916';
+const module025VerifierCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-sa-review-confirm-20260916'
+  || module025GenerationCorrection;
 const module025VerifierBase = '2062979f3e95b17cf187642ec2e9eadb4f610758';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1009-20260914';

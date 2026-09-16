@@ -119,7 +119,8 @@ public sealed class PulseAiPrivateRagService
     // transport contract. FlowHive still uses one compact request because the
     // protected Celar runtime has one inference slot; Module 025 retains its
     // independent per-phase path.
-    internal static bool ShouldUseFlowHiveBatchGeneration(bool flowHive) => flowHive;
+    internal static bool ShouldUseFlowHiveBatchGeneration(bool flowHive, string? featureCode = null) =>
+        flowHive && featureCode != CelarAiCapabilityCatalog.SowGsdPlanning;
 
     public async Task<object> GetReadinessAsync(CancellationToken cancellationToken = default)
     {
@@ -656,14 +657,14 @@ public sealed class PulseAiPrivateRagService
                 CorrelationId: query.CorrelationId);
             var boundedPhasePlan = ShouldGenerateBoundedPhasePlan(flowHive, authoritativeSource is not null);
             var model = usePrivateModelWhenAvailable && boundedPhasePlan
-                ? ShouldUseFlowHiveBatchGeneration(flowHive)
+                ? ShouldUseFlowHiveBatchGeneration(flowHive, query.FeatureCode)
                     ? await GenerateFlowHiveBatchCoreAsync(modelRequest, retrieval,
                         (batchRequest, token) => _model.GenerateAsync(batchRequest,
                             options with { MaximumAnswerCharacters = FlowHivePlanMaximumAnswerCharacters }, token),
                         cancellationToken,
                         FlowHivePhaseTimeout,
                         _logger)
-                    : await GenerateModule025PhasesCoreAsync(modelRequest, retrieval,
+                    : await GenerateModule025DetailedPhasesAsync(modelRequest, retrieval,
                         (phaseRequest, token) => _model.GenerateAsync(phaseRequest,
                             options with { MaximumAnswerCharacters = Module025SowMaximumAnswerCharacters }, token),
                         cancellationToken,
@@ -1876,6 +1877,62 @@ public sealed class PulseAiPrivateRagService
         return retrieval with { Chunks = boundedChunks.ToArray() };
     }
 
+    private static async Task<PulseAiPrivateModelResult> GenerateModule025DetailedPhasesAsync(
+        PulseAiPrivateModelRequest request,
+        PulseAiPrivateRetrievalResult retrieval,
+        Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> generate,
+        CancellationToken cancellationToken, TimeSpan generationTimeout, TimeSpan phaseTimeout, ILogger? logger)
+    {
+        using var generationDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        generationDeadline.CancelAfter(generationTimeout);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var inputCharacters = 0;
+        try
+        {
+            generationDeadline.Token.ThrowIfCancellationRequested();
+            // Private providers may have only one inference slot. Validate each phase
+            // before spending inference on the next; never synthesize missing detail.
+            var phaseResults = new List<Module025PhaseResult>();
+            for (var index = 0; index < Module025DeliveryPhases.Length; index++)
+            {
+                var phase = Module025DeliveryPhases[index];
+                var phaseResult = await GenerateModule025PhaseAsync(
+                    request, BoundModule025PhaseRetrieval(retrieval, phase, index), generate,
+                    phase, index, phaseTimeout, 6_144, generationDeadline.Token, logger,
+                    fullDetail: true);
+                inputCharacters += phaseResult.InputCharacters;
+                if (phaseResult.Plan is null)
+                    return phaseResult.Result with { InputCharacters = inputCharacters, Content = string.Empty };
+                phaseResults.Add(phaseResult);
+            }
+
+            var baseResult = phaseResults[^1].Result;
+            var combined = AssembleModule025PhasePlans(
+                phaseResults.Select(result => result.Plan!).ToArray());
+            var content = JsonSerializer.Serialize(combined);
+            if (content.Length > Module025SowMaximumAnswerCharacters || combined.Tasks.Count > 100)
+                return baseResult with { Status = "private_model_failed", Content = string.Empty,
+                    DiagnosticCode = "private_module025_assembled_plan_limit_exceeded", InputCharacters = inputCharacters };
+            _ = ParseModule025DetailedPlan(content, retrieval);
+            return baseResult with { Content = content, InputCharacters = inputCharacters,
+                OutputCharacters = content.Length, CompletedAt = DateTimeOffset.UtcNow };
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new PulseAiPrivateModelResult("private_model_failed", "celar_ai", string.Empty,
+                string.Empty, inputCharacters, 0,
+                generationDeadline.IsCancellationRequested
+                    ? "private_module025_generation_deadline_exceeded_phase_batch"
+                    : "private_module025_phase_deadline_exceeded",
+                DateTimeOffset.UtcNow);
+        }
+        finally
+        {
+            logger?.LogInformation("Module025 generation attempt ended. CorrelationId={CorrelationId} ElapsedSeconds={ElapsedSeconds}",
+                request.CorrelationId, (int)elapsed.Elapsed.TotalSeconds);
+        }
+    }
+
     private static async Task<PulseAiPrivateModelResult> GenerateModule025PhasesCoreAsync(
         PulseAiPrivateModelRequest request,
         PulseAiPrivateRetrievalResult retrieval,
@@ -1947,7 +2004,8 @@ public sealed class PulseAiPrivateRagService
         TimeSpan phaseTimeout,
         int maximumOutputTokens,
         CancellationToken generationToken,
-        ILogger? logger)
+        ILogger? logger,
+        bool fullDetail = false)
     {
         using var phaseDeadline = CancellationTokenSource.CreateLinkedTokenSource(generationToken);
         phaseDeadline.CancelAfter(phaseTimeout);
@@ -1964,14 +2022,18 @@ public sealed class PulseAiPrivateRagService
             {
                 MaximumOutputTokens = maximumOutputTokens,
                 Sources = retrieval.Chunks,
-                SystemInstruction = Module025PhaseSystemInstruction(
+                SystemInstruction = fullDetail
+                    ? Module025DetailedPhaseInstruction(request.SystemInstruction, phase, index, feedback)
+                    : Module025PhaseSystemInstruction(
                     request.SystemInstruction,
                     phase,
                     index,
                     "[]",
                     feedback,
                     maximumOutputTokens),
-                UserInstruction = $"Expand only the {phase} phase of the saved Service Overview. Return exactly two complete technology-specific work packages. Keep every required field concise: two detailed steps, one input, one output, one measurable acceptance criterion, one validation step, one customer responsibility, one US Signal responsibility, one prerequisite, one risk, one required role, positive effort, and citationId 1. Cross-phase dependencies are assembled deterministically after all phases. {feedback}"
+                UserInstruction = fullDetail
+                    ? $"Expand ONLY {phase} tasks from the authorized Service Overview. Provide the complete task schema, technology-specific execution steps, measurable acceptance and validation, responsibilities, inputs, outputs, prerequisites, risks, dependencies, and justified effort estimates. Capture missing facts as open questions. {feedback}"
+                    : $"Expand only the {phase} phase of the saved Service Overview. Return exactly two complete technology-specific work packages. Keep every required field concise: two detailed steps, one input, one output, one measurable acceptance criterion, one validation step, one customer responsibility, one US Signal responsibility, one prerequisite, one risk, one required role, positive effort, and citationId 1. Cross-phase dependencies are assembled deterministically after all phases. {feedback}"
             };
             last = await generate(phaseRequest, phaseToken).WaitAsync(phaseToken);
             if (!last.Succeeded)
@@ -1993,7 +2055,7 @@ public sealed class PulseAiPrivateRagService
                     last.Content,
                     retrieval,
                     [phase],
-                    allowCompactTaskFields: true);
+                    allowCompactTaskFields: !fullDetail);
                 logger?.LogInformation("Module025 phase validated. CorrelationId={CorrelationId} Phase={Phase} WorkPackages={WorkPackages} ElapsedSeconds={ElapsedSeconds}",
                     request.CorrelationId, phase, accepted.Tasks.Count, 0);
                 return new Module025PhaseResult(index, accepted, last.InputCharacters, last);
@@ -2001,7 +2063,7 @@ public sealed class PulseAiPrivateRagService
             catch (JsonException exception)
             {
                 validationDiagnostic = Module025DetailedPlanDiagnosticCode(exception);
-                feedback = $"The prior response failed validation ({validationDiagnostic}). Regenerate this phase with all required fields and two complete, distinct tasks using concise strings.";
+                feedback = $"The prior response failed validation ({validationDiagnostic}). Regenerate this phase with all required fields and complete, distinct tasks using concise strings.";
             }
         }
 
@@ -2240,6 +2302,19 @@ public sealed class PulseAiPrivateRagService
             .ToArray();
         return AssembleModule025PhasePlans(phasePlans);
     }
+
+    private static string Module025DetailedPhaseInstruction(
+        string systemInstruction, string phase, int phaseIndex, string feedback) =>
+        systemInstruction
+            .Replace("normally 10 to 20 tasks, with multiple tasks per phase where the work requires them",
+                "multiple substantive tasks for this phase, sized to the actual authorized scope", StringComparison.Ordinal)
+            .Replace("Return at least two tasks for every phase and at least ten tasks total.",
+                "Return at least two distinct tasks for the requested phase only; add tasks where the scope requires them.", StringComparison.Ordinal)
+            + $"\nThis is phase {phaseIndex + 1} of five. Return ONLY {phase} tasks. Use WBS {phaseIndex + 1}.1 onward. "
+            + "Return the FULL task contract, including task-specific review fields; do not omit fields expecting server-generated filler. "
+            + "Include actionable technical steps and the reason for effort estimates in each description. Preserve supplied products, versions, quantities and integration requirements; never invent missing values. "
+            + "Include explicit assumptions, exclusions, risks and open questions. Return one complete JSON object within 6144 output tokens. "
+            + feedback;
 
     private static string Module025PhaseSystemInstruction(
         string systemInstruction,

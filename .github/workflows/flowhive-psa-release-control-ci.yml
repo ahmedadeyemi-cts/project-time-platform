@@ -59,6 +59,20 @@ jobs:
           python -m pip install PyYAML==6.0.3
           if [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pm-acceptance-contract' ]]; then
             node tests/validate-flowhive-pm-acceptance-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-generation-path-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-generation-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-generation-actual"
+            cmp -s "$RUNNER_TEMP/module025-generation-files" "$RUNNER_TEMP/module025-generation-actual" || {
+              echo 'Module 025 generation correction differs from its exact file scope.' >&2
+              diff -u "$RUNNER_TEMP/module025-generation-files" "$RUNNER_TEMP/module025-generation-actual" >&2 || true
+              exit 1
+            }
           elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sa-review-confirm-20260916' ]]; then
             printf '%s\n' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
