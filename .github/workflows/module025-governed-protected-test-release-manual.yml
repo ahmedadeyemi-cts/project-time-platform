@@ -183,6 +183,10 @@ jobs:
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'MODULE025_CANDIDATE_REFRESH_SCOPE=PASSED'
             exit 0
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-admission-manifest-refresh-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'MODULE025_ADMISSION_MANIFEST_REFRESH_SCOPE=PASSED'
+            exit 0
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-pr1044-source-drift-boundary-20260915' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'FLOWHIVE_PLANNER_SOURCE_DRIFT_BOUNDARY_SCOPE=PASSED'

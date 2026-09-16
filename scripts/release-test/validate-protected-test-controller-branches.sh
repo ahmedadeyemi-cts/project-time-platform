@@ -8,7 +8,7 @@ d='20260915'
 is_planner_release_control_branch() {
   case "$HEAD_BRANCH" in
     'control/module025-sow-role-candidate-refresh-1009-20260914'|'control/module025-sow-role-candidate-refresh-1014-20260914'|'control/flowhive-pr1044-dispatch-evidence-20260915'|'control/flowhive-pr1044-source-drift-boundary-20260915'|"$p"provider-deadline-candidate-refresh-20260914|"$p"control-path-omissions-20260914|"$p"candidate-approval-refresh-$d|"$p"admission-manifest-refresh-$d|"$p"live-completion-admission-evidence-$d|"$p"compact-phase-native-gate-$d|"$p"parallel-phase-candidate-refresh-$d|"$p"live-celar-budget-approval-20260916|"$p"live-celar-budget-branch-correction-20260916|'fix/flowhive-planner-capacity-safe-'"$d"|'fix/flowhive-planner-live-capacity-repair-'"$d"|"$p"live-capacity-candidate-refresh-$d|"$p"capacity-safe-candidate-refresh-$d|"$p"live-completion-candidate-refresh-$d) return 0 ;;
-    'control/flowhive-module025-candidate-refresh-20260916') return 0 ;;
+    'control/flowhive-module025-candidate-refresh-20260916'|'control/flowhive-admission-manifest-refresh-20260916') return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -36,6 +36,10 @@ elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-live-celar-budget-branch-cor
 elif [[ "$HEAD_BRANCH" == 'control/flowhive-module025-candidate-refresh-20260916' ]]; then
   [[ "$CURRENT_BASE_SHA" == '6bad29fab087f62337bb1515a53e319941bcf190' ]] \
     || fail 'Module025 candidate refresh is not based on the merged manual-validation registration.'
+  run_release_control
+elif [[ "$HEAD_BRANCH" == 'control/flowhive-admission-manifest-refresh-20260916' ]]; then
+  [[ "$CURRENT_BASE_SHA" == '557e32aaf2c6be34557990becc6d3dea092efc3a' ]] \
+    || fail 'Module025 admission manifest refresh is not based on the reviewed candidate approval main.'
   run_release_control
 elif [[ "$HEAD_BRANCH" == 'release/flowhive-psa-protected-test-admission-20260906' ]]; then
   BASE_SHA="$CURRENT_BASE_SHA" node tests/flowhive-psa-release-control.mjs
