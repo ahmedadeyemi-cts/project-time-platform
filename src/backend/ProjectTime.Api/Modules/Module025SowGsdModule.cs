@@ -545,6 +545,7 @@ public static class Module025SowGsdModule
             {
                 item.Stage, item.Phase, item.Provider, item.Attempt, item.DiagnosticCode,
                 item.Model, item.InputCharacters, item.OutputCharacters, item.ElapsedMilliseconds,
+                item.InputTokens, item.OutputTokens, item.RequestedModel,
                 item.TargetDecisions
             }).ToArray(),
             queuedAt = first.CreatedAt,
@@ -1794,7 +1795,7 @@ public static class Module025SowGsdModule
         // real closed diagnostic and the unchanged draft, without masking it as 422.
         var runtimeFailure = new[] {
             "private_model_http_500", "private_model_http_502", "private_model_http_503", "private_model_http_504",
-            "private_model_timeout", "private_model_transport_failure",
+            "private_model_timeout", "private_model_transport_failure", "provider_deadline_exceeded", "provider_timeout", "provider_network_error",
             "deepseek_timeout", "deepseek_connection_failed", "deepseek_queue_busy",
             "deepseek_queue_unavailable", "deepseek_http_429", "deepseek_http_500", "deepseek_http_502",
             "deepseek_http_503", "deepseek_http_504",
@@ -1817,9 +1818,11 @@ public static class Module025SowGsdModule
 
     private static string PrivateGenerationDiagnostic(IReadOnlyList<ProjectPulseAiTargetDecision> decisions, string status)
     {
-        // Report the last actual private failure, regardless of provider. A
-        // refusal is terminal and must never be masked by a transport failure.
-        var privateDecisions = decisions.Where(decision => CelarAiCapabilityTargets.IsPrivate(decision.Target));
+        // Report the last actual generation failure, including structured cloud
+        // adapters. A refusal is terminal and must not be masked by fallback.
+        var privateDecisions = decisions.Where(decision => CelarAiCapabilityTargets.IsPrivate(decision.Target)
+            || (decision.Target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                && decision.ReasonCode.StartsWith("module025_", StringComparison.Ordinal)));
         var decision = privateDecisions.LastOrDefault(value => value.Outcome == "refused")
             ?? privateDecisions.LastOrDefault(value => value.Outcome == "failed");
         return Clean(string.IsNullOrWhiteSpace(decision?.ReasonCode) ? status : decision.ReasonCode, 160);

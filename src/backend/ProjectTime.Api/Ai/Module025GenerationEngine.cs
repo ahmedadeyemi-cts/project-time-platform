@@ -69,7 +69,8 @@ internal sealed record Module025GenerationProgress(
     string DiagnosticCode = "", string Model = "", int InputCharacters = 0,
     int OutputCharacters = 0, long ElapsedMilliseconds = 0,
     CelarAiComposeResult? Result = null,
-    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null);
+    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null,
+    long? InputTokens = null, long? OutputTokens = null, string RequestedModel = "");
 
 internal sealed class Module025PhaseExecution(
     string phase, int attempts,
@@ -91,6 +92,13 @@ internal sealed class Module025PhaseExecution(
         _elapsed = System.Diagnostics.Stopwatch.StartNew();
         return true;
     }
+
+    internal Task ObserveProviderAsync(ProjectPulseAiProviderResult result, string requestedModel, CancellationToken token) =>
+        persist(new("provider_finished", Phase, _provider, _attempts,
+            result.Code ?? (result.IsSuccess ? "phase_contract_completed" : "provider_failed"),
+            ElapsedMilliseconds: _elapsed?.ElapsedMilliseconds ?? 0,
+            OutputCharacters: result.Content?.Length ?? 0,
+            InputTokens: result.Usage?.InputTokens, OutputTokens: result.Usage?.OutputTokens, RequestedModel: requestedModel), token);
 
     internal Task ObserveAsync(PulseAiPrivateModelResult result, CancellationToken token) =>
         persist(new("provider_completed", Phase, _provider, _attempts,

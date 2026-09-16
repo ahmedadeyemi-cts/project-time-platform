@@ -43,7 +43,11 @@ public sealed record ProjectPulseAiGenerationRequest(
     string SystemPrompt,
     string UserPrompt,
     int MaxOutputTokens,
-    double Temperature);
+    double Temperature)
+{
+    // Internal capability: public request JSON cannot opt into larger budgets.
+    internal bool StructuredSowPhase { get; init; }
+}
 
 public sealed record ProjectPulseAiUsage(
     long? InputTokens,

@@ -33,7 +33,9 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
         var payload = JsonSerializer.Serialize(new
         {
             model = Provider.Model,
-            max_tokens = Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens),
+            max_tokens = request.StructuredSowPhase
+                ? Math.Min(request.MaxOutputTokens, Module025GenerationEngine.MaximumOutputTokens)
+                : Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens),
             system = request.SystemPrompt,
             messages = new[] { new { role = "user", content = request.UserPrompt } }
         });
@@ -42,7 +44,7 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
             _httpClientFactory,
             _configuration,
             () => CreateRequest(HttpMethod.Post, "/messages", payload),
-            cancellationToken);
+            cancellationToken, request.StructuredSowPhase);
 
         if (response.ExceptionCode is not null)
         {
@@ -76,8 +78,12 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
             var root = document.RootElement;
             var usage = ProjectPulseAiHttp.ClaudeUsage(root);
             var stopReason = ProjectPulseAiHttp.String(root, "stop_reason");
-
-            if (string.Equals(stopReason, "refusal", StringComparison.OrdinalIgnoreCase))
+            // Refusal is terminal even when a response is also truncated.
+            var containsRefusal = root.TryGetProperty("content", out var refusalContent)
+                && refusalContent.ValueKind == JsonValueKind.Array
+                && refusalContent.EnumerateArray().Any(item =>
+                    string.Equals(ProjectPulseAiHttp.String(item, "type"), "refusal", StringComparison.OrdinalIgnoreCase));
+            if (containsRefusal || string.Equals(stopReason, "refusal", StringComparison.OrdinalIgnoreCase))
             {
                 return new ProjectPulseAiProviderResult(
                     Code,
@@ -90,6 +96,9 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
                     (int)httpResponse.StatusCode,
                     rateLimits);
             }
+
+            if (request.StructuredSowPhase && stopReason == "max_tokens")
+                return new(Code, ProjectPulseAiOutcomes.Failure, null, "structured_sow_output_truncated", null, requestId, usage, (int)httpResponse.StatusCode);
 
             if (root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
             {
@@ -241,14 +250,17 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
             model = Provider.Model,
             instructions = request.SystemPrompt,
             input = request.UserPrompt,
-            max_output_tokens = Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens)
+            store = false,
+            max_output_tokens = request.StructuredSowPhase
+                ? Math.Min(request.MaxOutputTokens, Module025GenerationEngine.MaximumOutputTokens)
+                : Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens)
         });
 
         var response = await ProjectPulseAiHttp.SendWithRetryAsync(
             _httpClientFactory,
             _configuration,
             () => CreateRequest(HttpMethod.Post, "/responses", payload),
-            cancellationToken);
+            cancellationToken, request.StructuredSowPhase);
 
         if (response.ExceptionCode is not null)
         {
@@ -281,6 +293,15 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
             var usage = ProjectPulseAiHttp.OpenAiUsage(root);
+            // Inspect all content before selecting text or considering fallback.
+            if (root.TryGetProperty("output", out var refusalOutput) && refusalOutput.ValueKind == JsonValueKind.Array
+                && refusalOutput.EnumerateArray().Any(item => item.TryGetProperty("content", out var parts)
+                    && parts.ValueKind == JsonValueKind.Array && parts.EnumerateArray().Any(part =>
+                        string.Equals(ProjectPulseAiHttp.String(part, "type"), "refusal", StringComparison.OrdinalIgnoreCase))))
+                return new(Code, ProjectPulseAiOutcomes.Refusal, null, "openai_safety_refusal",
+                    "OpenAI declined this request under its safety controls.", requestId, usage, (int)httpResponse.StatusCode, rateLimits);
+            if (request.StructuredSowPhase && ProjectPulseAiHttp.String(root, "status") != "completed")
+                return new(Code, ProjectPulseAiOutcomes.Failure, null, "structured_sow_response_incomplete", null, requestId, usage, (int)httpResponse.StatusCode);
 
             if (root.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
             {
@@ -435,19 +456,24 @@ internal static class ProjectPulseAiHttp
         IHttpClientFactory httpClientFactory,
         ProjectPulseAiConfiguration configuration,
         Func<HttpRequestMessage> requestFactory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool structuredSowPhase = false)
     {
-        for (var attempt = 0; attempt <= configuration.RetryCount; attempt++)
+        // The durable engine owns attempts. A transport retry must not silently
+        // issue additional billable requests inside one reserved SOW attempt.
+        var retryCount = structuredSowPhase ? 0 : configuration.RetryCount;
+        for (var attempt = 0; attempt <= retryCount; attempt++)
         {
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(configuration.RequestTimeoutSeconds));
+                timeout.CancelAfter(TimeSpan.FromSeconds(structuredSowPhase ? Module025GenerationEngine.ProviderTimeoutSeconds : configuration.RequestTimeoutSeconds));
                 var client = httpClientFactory.CreateClient("ProjectPulseAi");
+                if (structuredSowPhase) client.Timeout = Timeout.InfiniteTimeSpan;
                 using var request = requestFactory();
                 var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
 
-                if (!IsTransient(response.StatusCode) || attempt >= configuration.RetryCount)
+                if (!IsTransient(response.StatusCode) || attempt >= retryCount)
                 {
                     return (response, null);
                 }
@@ -456,11 +482,11 @@ internal static class ProjectPulseAiHttp
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                if (attempt >= configuration.RetryCount) return (null, "provider_timeout");
+                if (attempt >= retryCount) return (null, "provider_timeout");
             }
             catch (HttpRequestException)
             {
-                if (attempt >= configuration.RetryCount) return (null, "provider_network_error");
+                if (attempt >= retryCount) return (null, "provider_network_error");
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(250 * Math.Pow(2, attempt)), cancellationToken);

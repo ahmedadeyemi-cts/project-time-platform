@@ -218,6 +218,12 @@ public sealed class PulseAiPrivateModelClient
             }
             httpRequest.Headers.Add("X-Pulse-AI-Privacy-Boundary", PulseAiPrivateRagPolicy.PrivacyBoundary);
             httpRequest.Headers.Add("X-Pulse-AI-Feature", request.FeatureCode);
+            if (request.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
+                && request.OutputSchemaName == "module025_detailed_phase")
+            {
+                httpRequest.Headers.Add("X-Pulse-AI-Workload", "module025_phase_v3");
+                httpRequest.Headers.Add("X-Pulse-AI-Deadline-Seconds", "110");
+            }
             httpRequest.Headers.Add("X-Pulse-AI-Correlation-Id", request.CorrelationId);
             httpRequest.Headers.Add("X-Pulse-AI-External-Escalation", "false");
 

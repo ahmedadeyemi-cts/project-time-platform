@@ -96,3 +96,20 @@ gate = controller.split('      - name: Verify the matching Oracle SOW runtime be
 assert '\n        if:' not in gate
 assert 'verify-oracle-sow-runtime.py' in gate
 assert controller.index('Verify the matching Oracle SOW runtime') < controller.index('Build immutable API')
+
+# Durable Module 025 respects the caller's smaller budget and never starts
+# the gateway's 3000-second nested model chain.
+clock[0] = 0
+attempts.clear()
+gateway._ollama_post = post
+gateway.app = SimpleNamespace(logger=SimpleNamespace(info=lambda *args: None))
+request.headers = {'X-Pulse-AI-Feature':'sow_gsd_planning',
+    'X-Pulse-AI-Workload':'module025_phase_v3', 'X-Pulse-AI-Deadline-Seconds':'110'}
+response, status = ns['_local_chat_completions']()
+assert status == 504 and attempts == [('gemma3:4b', 110)], attempts
+for invalid in ('', '0', '111', '3600', '-1', 'abc', '١٠'):
+    attempts.clear()
+    request.headers['X-Pulse-AI-Deadline-Seconds'] = invalid
+    _, status = ns['_local_chat_completions']()
+    assert status == 400 and attempts == [], (invalid, status, attempts)
+print('MODULE025_CELAR_CALLER_DEADLINE=PASS')

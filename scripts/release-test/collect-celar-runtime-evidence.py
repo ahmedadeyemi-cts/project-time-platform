@@ -44,6 +44,7 @@ def journal_summary(raw):
     inference_statuses = Counter()
     lines = raw.splitlines()
     invalid = 0
+    phase_calls = []
     for line in lines:
         try:
             entry = json.loads(line)
@@ -55,6 +56,12 @@ def journal_summary(raw):
                 status = re.search(r'\|\s*(200|400|401|403|422|429|500|502|503|504)\s*\|', message)
                 if status:
                     inference_statuses[status.group(1)] += 1
+            phase = re.search(r'module025_phase model=(gemma3:4b|qwen3:4b-instruct|llama3.2:3b) status=(200|400|401|403|422|429|500|502|503|504) budget_seconds=(\d{1,3}) metrics=(\{[^}]{0,1024}\})', message)
+            if phase:
+                metrics = {key: int(value) for key, value in re.findall(
+                    r"'(load_duration|prompt_eval_count|prompt_eval_duration|eval_count|eval_duration|total_duration)': (\d{1,20})(?=[,}])", phase.group(4))}
+                phase_calls.append({'model':phase.group(1), 'httpStatus':int(phase.group(2)),
+                                    'budgetSeconds':int(phase.group(3)), 'metrics':metrics})
             for code, pattern in SIGNALS.items():
                 if re.search(pattern, message, re.I):
                     counts[code] += 1
@@ -63,7 +70,7 @@ def journal_summary(raw):
     return {'status': 'incomplete' if invalid or len(lines) >= 5000 else 'complete',
             'entriesExamined': len(lines), 'invalidEntries': invalid,
             'signals': {key: counts[key] for key in SIGNALS},
-            'inferenceHttpStatuses': dict(inference_statuses)}
+            'inferenceHttpStatuses': dict(inference_statuses), 'module025PhaseCalls': phase_calls[-20:]}
 
 
 def service_summary(raw):
