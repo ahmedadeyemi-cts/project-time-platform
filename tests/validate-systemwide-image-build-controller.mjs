@@ -314,7 +314,7 @@ assert.match(privateModelClient, /private_model_output_truncated/);
 assert.match(privateModelClient, /ReadFinishReason/);
 assert.match(
   aiServices,
-  /FlowHiveMaximumOutputTokens = 1_536[\s\S]*?IsFlowHivePlannerRequest[\s\S]*?SendFlowHivePlannerAsync/,
+  /FlowHiveMaximumOutputTokens = 1_280[\s\S]*?IsFlowHivePlannerRequest[\s\S]*?SendFlowHivePlannerAsync/,
   'FlowHive must use one compact transport attempt instead of the long SOW recovery sequence'
 );
 assert.match(

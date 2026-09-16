@@ -133,6 +133,28 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-acceptance-20260915' 
     exit 1
   }
   node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-budget-main-20260915' ]]; then
+  expected="$CIT/flowhive-planner-live-celar-budget-files"
+  printf '%s\n' \
+    '.github/flowhive-enterprise-psa-release-files.txt' \
+    '.github/workflows/flowhive-psa-release-control-ci.yml' \
+    '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs' \
+    'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+    'tests/CelarAiOracleExternalRuntimeTests/Program.cs' \
+    'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+    'tests/flowhive-psa-admission.test.mjs' \
+    'tests/flowhive-psa-scope.mjs' \
+    'tests/validate-systemwide-image-build-controller.mjs' \
+    | LC_ALL=C sort -u > "$expected"
+  cmp -s "$CIT/diff" "$expected" || {
+    echo 'FlowHive Celar planner budget repair contains an unreviewed file.' >&2
+    diff -u "$expected" "$CIT/diff" >&2 || true
+    exit 1
+  }
+  node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
   node tests/flowhive-psa-scope.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
