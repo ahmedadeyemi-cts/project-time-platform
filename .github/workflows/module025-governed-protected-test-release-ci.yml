@@ -120,6 +120,14 @@ jobs:
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'FLOWHIVE_PLANNER_CELAR_APPROVAL_REFRESH_SCOPE=PASSED'
             exit 0
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-live-celar-budget-approval-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'FLOWHIVE_PLANNER_LIVE_CELAR_BUDGET_APPROVAL_SCOPE=PASSED'
+            exit 0
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-planner-live-celar-budget-branch-correction-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
+            echo 'FLOWHIVE_PLANNER_LIVE_CELAR_BUDGET_BRANCH_CORRECTION_SCOPE=PASSED'
+            exit 0
           elif [[ "$HEAD_BRANCH" == 'control/flowhive-pr1044-source-drift-boundary-20260915' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'FLOWHIVE_PLANNER_SOURCE_DRIFT_BOUNDARY_SCOPE=PASSED'

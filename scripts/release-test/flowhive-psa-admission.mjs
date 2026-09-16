@@ -7,19 +7,19 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged FlowHive Celar transport candidate PR1048.
+// successor is the reviewed, merged FlowHive Celar budget candidate PR1051.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 1048;
-export const candidateBranch = 'fix/flowhive-planner-live-celar-acceptance-20260915';
-export const candidateSourceBranch = 'fix/flowhive-planner-live-celar-acceptance-20260915';
+export const candidatePullRequest = 1051;
+export const candidateBranch = 'fix/flowhive-planner-live-celar-budget-main-20260915';
+export const candidateSourceBranch = 'fix/flowhive-planner-live-celar-budget-main-20260915';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = 'f7ee256fb851cbdeb083c2ff6fe8ad650ee4d203';
-export const controlBranch = 'control/flowhive-planner-celar-approval-20260915';
+export const candidateMergeCommit = '451432ac7e1dc922e699293d4f2e0ad1dfaa7f88';
+export const controlBranch = 'control/flowhive-planner-live-celar-budget-branch-correction-20260916';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
 export const origin = 'https://phd-west-test.onenecklab.com';
@@ -115,7 +115,8 @@ export const supersededCheckWorkflows = Object.freeze([
   }
 ]);
 
-// PR1048 changes AI transport, oracle tests, and release-validation metadata,
+// PR1051 changes the bounded Celar planner envelope, oracle tests, and
+// release-validation metadata,
 // not the source paths watched by the enterprise PSA or PSA controller
 // workflows. Their omission is explicit and bound to the reviewed base bytes
 // and exact candidate file inventory; it is not a generic missing-check
@@ -123,30 +124,21 @@ export const supersededCheckWorkflows = Object.freeze([
 export const workflowPathOmissions = Object.freeze([]);
 export const workflowDispatchChecks = Object.freeze([
   {
-    workflow: '.github/workflows/flowhive-detailed-planner-ci.yml',
-    runId: 35027356673,
-    runAttempt: 1,
-    event: 'workflow_dispatch',
-    headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
-    headBranch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
-    conclusion: 'success'
-  },
-  {
     workflow: '.github/workflows/project-planning-collaboration-ci.yml',
-    runId: 35027383582,
+    runId: 35041756021,
     runAttempt: 1,
     event: 'workflow_dispatch',
-    headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
-    headBranch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
+    headSha: '93e1359f1631bbcf7026fd59f1620b1f908701db',
+    headBranch: 'fix/flowhive-planner-live-celar-budget-main-20260915',
     conclusion: 'success'
   },
   {
     workflow: '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
-    runId: 35030113366,
+    runId: 35041757684,
     runAttempt: 1,
     event: 'workflow_dispatch',
-    headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
-    headBranch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
+    headSha: '93e1359f1631bbcf7026fd59f1620b1f908701db',
+    headBranch: 'fix/flowhive-planner-live-celar-budget-main-20260915',
     conclusion: 'success'
   }
 ]);
@@ -173,16 +165,16 @@ export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
   assert.deepEqual(binding?.candidate, {
+    pullRequest: 1051,
+    branch: 'fix/flowhive-planner-live-celar-budget-main-20260915',
+    headSha: '93e1359f1631bbcf7026fd59f1620b1f908701db',
+    baseSha: '41cebfbe2c6e03f4b00221c4a2d95348a36c80d0'
+  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
+  assert.deepEqual(binding?.supersedes, {
     pullRequest: 1048,
     branch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
     headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
-    baseSha: 'b4cdb8779a08ea786678eaf901679d95f27f7b31'
-  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
-  assert.deepEqual(binding?.supersedes, {
-    pullRequest: 1044,
-    branch: 'fix/flowhive-planner-celar-transport-20260915',
-    headSha: 'e8a25259e8335233815cb9153f24caf4b4e519e4',
-    installedAcceptanceRunId: 35021148203,
+    installedAcceptanceRunId: 35031315112,
     installedAcceptanceConclusion: 'failure'
   }, 'SUCCESSOR_CHECK_BINDING_SUPERSEDED_RUN');
   assert.deepEqual(binding?.requiredChecks, supersededCheckWorkflows, 'SUCCESSOR_CHECK_BINDING_CHECK_SET');
