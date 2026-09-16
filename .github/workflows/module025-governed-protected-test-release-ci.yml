@@ -68,7 +68,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
             [[ "${GITHUB_SHA:-}" == "${{ inputs.release_sha }}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
           fi
-          if [[ "$HEAD_BRANCH" == 'control/flowhive-module025-manual-check-trigger-20260916' ]]; then
+          if [[ "$HEAD_BRANCH" == 'control/flowhive-module025-manual-check-trigger-20260916' || "$HEAD_BRANCH" == 'control/flowhive-module025-manual-trigger-registration-20260916' ]]; then
             printf '%s\n' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
               '.github/workflows/module025-governed-protected-test-release-ci.yml' \
