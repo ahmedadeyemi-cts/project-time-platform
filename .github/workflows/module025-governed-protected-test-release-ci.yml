@@ -16,6 +16,16 @@ on:
       - '.github/flowhive-planner-output-budget-release-files.txt'
       - '.github/flowhive-psa-release-control-files.txt'
       - '.github/workflows/module025-governed-protected-test-release-ci.yml'
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Exact reviewed candidate commit to validate'
+        required: true
+        type: string
+      base_sha:
+        description: 'Exact candidate pull-request base commit'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -34,7 +44,7 @@ jobs:
       - name: Check out exact proposed Module 025 release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ inputs.release_sha || github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -46,7 +56,7 @@ jobs:
       - name: Validate exact Module 025 release boundary
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ inputs.base_sha || github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -55,7 +65,23 @@ jobs:
           git cat-file -e "$BASE_SHA^{commit}" || fail 'Exact pull-request base commit is unavailable.'
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
-          if [[ "$HEAD_BRANCH" == 'control/flowhive-live-planner-candidate-refresh-20260912' ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
+            [[ "${GITHUB_SHA:-}" == "${{ inputs.release_sha }}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
+          fi
+          if [[ "$HEAD_BRANCH" == 'control/flowhive-module025-manual-check-trigger-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-ci.yml' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-check-trigger-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-check-trigger-actual"
+            cmp -s "$RUNNER_TEMP/module025-manual-check-trigger-files" "$RUNNER_TEMP/module025-manual-check-trigger-actual" || {
+              echo 'Module 025 manual-check trigger contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-manual-check-trigger-files" "$RUNNER_TEMP/module025-manual-check-trigger-actual" >&2 || true
+              exit 1
+            }
+            echo 'MODULE025_MANUAL_CHECK_TRIGGER_SCOPE=PASSED'
+            exit 0
+          elif [[ "$HEAD_BRANCH" == 'control/flowhive-live-planner-candidate-refresh-20260912' ]]; then
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" node tests/flowhive-psa-release-control.mjs
             echo 'FLOWHIVE_LIVE_PLANNER_CANDIDATE_REFRESH_SCOPE=PASSED'
             exit 0
