@@ -102,8 +102,11 @@ jobs:
           CANDIDATE_SHA="$(jq -r '.sha' "$APPROVAL")"
           SOURCE_BASE="$(jq -r '.sourceBase' "$APPROVAL")"
           SOURCE_BRANCH="$(jq -r '.sourceBranch' "$APPROVAL")"
+          CANDIDATE_PR="$(jq -r '.pullRequest' "$APPROVAL")"
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Malformed approved candidate SHA.' >&2; exit 1; }
           [[ "$SOURCE_BASE" =~ ^[0-9a-f]{40}$ ]] || { echo 'Malformed approved candidate base SHA.' >&2; exit 1; }
+          [[ "$CANDIDATE_PR" == '1051' ]] || { echo 'Unexpected approved candidate pull request.' >&2; exit 1; }
+          [[ "$CANDIDATE_SHA" == '93e1359f1631bbcf7026fd59f1620b1f908701db' ]] || { echo 'Unexpected approved candidate SHA.' >&2; exit 1; }
           [[ "$SOURCE_BRANCH" == 'fix/flowhive-planner-live-celar-acceptance-20260915' ]] || { echo 'Unexpected approved candidate branch.' >&2; exit 1; }
           [[ "$CANDIDATE_SHA" == "$GITHUB_SHA" ]] || { echo 'The workflow ref is not the approved candidate.' >&2; exit 1; }
           {
