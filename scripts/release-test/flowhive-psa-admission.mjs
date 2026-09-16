@@ -7,19 +7,19 @@ import { fileURLToPath } from 'node:url';
 
 export const repository = 'ahmedadeyemi-cts/project-time-platform';
 // PR887 remains the maintained release-coordination thread. The selected
-// successor is the reviewed, merged FlowHive Celar budget candidate PR1051.
+// successor is the reviewed, merged FlowHive Celar compact-prompt candidate PR1054.
 export const admissionIssueNumber = 887;
-export const candidatePullRequest = 1051;
-export const candidateBranch = 'fix/flowhive-planner-live-celar-budget-main-20260915';
-export const candidateSourceBranch = 'fix/flowhive-planner-live-celar-budget-main-20260915';
+export const candidatePullRequest = 1054;
+export const candidateBranch = 'fix/flowhive-planner-live-celar-compact-prompt-20260916';
+export const candidateSourceBranch = 'fix/flowhive-planner-live-celar-compact-prompt-20260916';
 // The deployment controller intentionally checks out trusted main, while its
 // protected PSA lane is named independently from the candidate source branch.
 // Keep both values explicit and bounded; arbitrary workflow-dispatch refs are
 // never valid for this admission path.
 export const protectedTestReleaseLane = 'release/flowhive-sow-successor-20260908';
 export const authorizedReleaseBranches = Object.freeze([candidateBranch, protectedTestReleaseLane]);
-export const candidateMergeCommit = '451432ac7e1dc922e699293d4f2e0ad1dfaa7f88';
-export const controlBranch = 'control/flowhive-planner-live-celar-budget-branch-correction-20260916';
+export const candidateMergeCommit = 'b82bea8ad3874e58ab8d42f01017942fa9d8765e';
+export const controlBranch = 'control/flowhive-module025-candidate-refresh-20260916';
 export const approvalPath = '.github/flowhive-psa-protected-test-candidate.json';
 export const controlManifest = '.github/flowhive-psa-release-control-files.txt';
 export const origin = 'https://phd-west-test.onenecklab.com';
@@ -125,20 +125,37 @@ export const workflowPathOmissions = Object.freeze([]);
 export const workflowDispatchChecks = Object.freeze([
   {
     workflow: '.github/workflows/project-planning-collaboration-ci.yml',
-    runId: 35041756021,
+    runId: 35048021541,
     runAttempt: 1,
     event: 'workflow_dispatch',
-    headSha: '93e1359f1631bbcf7026fd59f1620b1f908701db',
-    headBranch: 'fix/flowhive-planner-live-celar-budget-main-20260915',
+    headSha: '52fe65566669273c2f377a0367d0b404af18c48a',
+    headBranch: 'fix/flowhive-planner-live-celar-compact-prompt-20260916',
     conclusion: 'success'
   },
   {
     workflow: '.github/workflows/runtime-navigation-work-register-responsive-ci.yml',
-    runId: 35041757684,
+    runId: 35048021415,
     runAttempt: 1,
     event: 'workflow_dispatch',
-    headSha: '93e1359f1631bbcf7026fd59f1620b1f908701db',
-    headBranch: 'fix/flowhive-planner-live-celar-budget-main-20260915',
+    headSha: '52fe65566669273c2f377a0367d0b404af18c48a',
+    headBranch: 'fix/flowhive-planner-live-celar-compact-prompt-20260916',
+    conclusion: 'success'
+  },
+  {
+    workflow: '.github/workflows/module025-governed-protected-test-release-manual.yml',
+    workflowId: 359327006,
+    runId: 35060353001,
+    runAttempt: 1,
+    event: 'workflow_dispatch',
+    headSha: '6bad29fab087f62337bb1515a53e319941bcf190',
+    headBranch: 'main',
+    controllerSha: '6bad29fab087f62337bb1515a53e319941bcf190',
+    controllerBranch: 'main',
+    validationMode: 'exact-input-candidate',
+    requestedReleaseSha: '52fe65566669273c2f377a0367d0b404af18c48a',
+    baseSha: '42022bbc543659abe2f137ca57d0609b42a5f9f1',
+    validationJobId: 104679175005,
+    successMarker: 'MODULE025_MANUAL_EXACT_CANDIDATE_VALIDATION=PASSED',
     conclusion: 'success'
   }
 ]);
@@ -165,16 +182,16 @@ export function verifySupersededCheckBinding(binding) {
   assert.equal(binding?.status, 'review-only', 'SUCCESSOR_CHECK_BINDING_STATUS');
   assert.equal(binding?.deploymentEligible, false, 'SUCCESSOR_CHECK_BINDING_MUST_NOT_AUTHORIZE_DEPLOYMENT');
   assert.deepEqual(binding?.candidate, {
+    pullRequest: 1054,
+    branch: 'fix/flowhive-planner-live-celar-compact-prompt-20260916',
+    headSha: '52fe65566669273c2f377a0367d0b404af18c48a',
+    baseSha: '42022bbc543659abe2f137ca57d0609b42a5f9f1'
+  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
+  assert.deepEqual(binding?.supersedes, {
     pullRequest: 1051,
     branch: 'fix/flowhive-planner-live-celar-budget-main-20260915',
     headSha: '93e1359f1631bbcf7026fd59f1620b1f908701db',
-    baseSha: '41cebfbe2c6e03f4b00221c4a2d95348a36c80d0'
-  }, 'SUCCESSOR_CHECK_BINDING_CANDIDATE');
-  assert.deepEqual(binding?.supersedes, {
-    pullRequest: 1048,
-    branch: 'fix/flowhive-planner-live-celar-acceptance-20260915',
-    headSha: '8f90f79d9ed281bb3a4038fc1502d75540e5fa32',
-    installedAcceptanceRunId: 35031315112,
+    installedAcceptanceRunId: 35043700143,
     installedAcceptanceConclusion: 'failure'
   }, 'SUCCESSOR_CHECK_BINDING_SUPERSEDED_RUN');
   assert.deepEqual(binding?.requiredChecks, supersededCheckWorkflows, 'SUCCESSOR_CHECK_BINDING_CHECK_SET');
@@ -263,9 +280,21 @@ export function verifyWorkflowDispatchCheck(binding, run, approval) {
   assert.equal(run.id, binding.runId, 'The workflow-dispatch run identity changed.');
   assert.equal(run.run_attempt, binding.runAttempt, 'The workflow-dispatch attempt changed.');
   assert.equal(run.event, binding.event, 'The workflow-dispatch event changed.');
-  assert.equal(run.head_sha, binding.headSha, 'The workflow-dispatch candidate changed.');
-  assert.equal(run.head_sha, approval.sha, 'The workflow-dispatch run is not attached to the approved candidate.');
-  assert.equal(run.head_branch, binding.headBranch, 'The workflow-dispatch branch changed.');
+  if (binding.validationMode === 'exact-input-candidate') {
+    assert.equal(run.workflow_id, binding.workflowId, 'The manual validation workflow identity changed.');
+    assert.equal(run.head_sha, binding.controllerSha, 'The manual validation controller changed.');
+    assert.equal(run.head_branch, binding.controllerBranch, 'The manual validation controller branch changed.');
+    assert.equal(binding.requestedReleaseSha, approval.sha, 'The manual validation candidate changed.');
+    assert.equal(binding.baseSha, approval.sourceBase, 'The manual validation base changed.');
+    assert.match(binding.successMarker, /^MODULE025_MANUAL_EXACT_CANDIDATE_VALIDATION=PASSED$/,
+      'The manual validation success marker is not the reviewed marker.');
+    assert.ok(Number.isSafeInteger(binding.validationJobId) && binding.validationJobId > 0,
+      'The manual validation job identity is required.');
+  } else {
+    assert.equal(run.head_sha, binding.headSha, 'The workflow-dispatch candidate changed.');
+    assert.equal(run.head_sha, approval.sha, 'The workflow-dispatch run is not attached to the approved candidate.');
+    assert.equal(run.head_branch, binding.headBranch, 'The workflow-dispatch branch changed.');
+  }
   assert.equal(String(run.path || '').split('@')[0], binding.workflow, 'The workflow-dispatch workflow changed.');
   assert.equal(run.status, 'completed', 'The workflow-dispatch check has not finished.');
   assert.equal(run.conclusion, binding.conclusion, 'The workflow-dispatch check did not pass.');
@@ -315,15 +344,21 @@ export function verifyRuns(approval, runs, allowedMissing = []) {
   const latest = new Map();
   const dispatchRuns = new Map();
   for (const run of runs) {
-    if (run.head_sha !== approval.sha) continue;
     const workflow = String(run.path || '').split('@')[0];
     if (run.event === 'workflow_dispatch') {
+      const dispatchBinding = dispatchBindings.get(workflow);
+      if (dispatchBinding?.validationMode === 'exact-input-candidate') {
+        assert.equal(run.id, dispatchBinding.runId, 'The manual validation run identity changed.');
+      } else if (run.head_sha !== approval.sha) {
+        continue;
+      }
       assert.equal(run.head_repository?.full_name, repository, 'CI must run against the same repository.');
       const prior = dispatchRuns.get(workflow);
       if (!prior || Number(run.id) > Number(prior.id) ||
         (run.id === prior.id && Number(run.run_attempt) > Number(prior.run_attempt))) dispatchRuns.set(workflow, run);
       continue;
     }
+    if (run.head_sha !== approval.sha) continue;
     if (run.event !== 'pull_request') continue;
     assert.equal(run.head_repository?.full_name, repository, 'CI must run against the same repository.');
     const prior = latest.get(workflow);
@@ -529,6 +564,10 @@ export async function authorize() {
     runs.push(...result.workflow_runs);
     if (result.workflow_runs.length < 100) break;
     assert.ok(page < 10, 'Workflow-dispatch CI pagination exceeded the bounded admission limit.');
+  }
+  for (const binding of workflowDispatchChecks.filter(item => item.validationMode === 'exact-input-candidate')) {
+    const run = await github(`/repos/${repository}/actions/runs/${binding.runId}`);
+    runs.push(run);
   }
   const checks = verifyRuns(approval, runs, workflowExceptions);
   assert.equal(git('rev-parse', 'HEAD'), main.object.sha);
