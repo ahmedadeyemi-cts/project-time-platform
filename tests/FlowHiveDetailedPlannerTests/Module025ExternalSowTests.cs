@@ -11,11 +11,13 @@ internal static class Module025ExternalSowTests
         static void Check(bool condition, string label)
         { if (!condition) throw new InvalidOperationException("ASSERTION_FAILED " + label); Console.WriteLine("ASSERTION_PASSED " + label); }
         var previous = Environment.GetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION");
+        var previousFallback = Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED");
         var priorDb = Environment.GetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION");
         try
         {
             Environment.SetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION", null);
             Environment.SetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", "true");
+            Environment.SetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED", "true");
             var events = new List<Module025GenerationProgress>();
             Task Persist(Module025GenerationProgress value, CancellationToken token) { events.Add(value); return Task.CompletedTask; }
             var phase = new Module025PhaseExecution("Plan", 0, Persist);
@@ -38,6 +40,10 @@ internal static class Module025ExternalSowTests
             Check(adapter.Prepare(sanitizer, out var policy) is null && policy == "sanitized_external_policy_disabled",
                 "external_sow_runtime_privacy_policy_still_required");
             Environment.SetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", "true");
+            Environment.SetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED", "false");
+            Check(adapter.Prepare(sanitizer, out var fallbackPolicy) is null && fallbackPolicy == "sanitized_external_policy_disabled",
+                "external_sow_both_runtime_privacy_flags_are_required");
+            Environment.SetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED", "true");
             var phasePlan = fixture with { Tasks = fixture.Tasks.Where(task => task.Phase == "Plan").ToArray() };
             var json = JsonSerializer.Serialize(phasePlan);
             Check(adapter.Validate(json, "claude", "test", sanitizer, out var proseCode),
@@ -109,6 +115,7 @@ internal static class Module025ExternalSowTests
         finally
         {
             Environment.SetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", previous);
+            Environment.SetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED", previousFallback);
             Environment.SetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION", priorDb);
         }
     }

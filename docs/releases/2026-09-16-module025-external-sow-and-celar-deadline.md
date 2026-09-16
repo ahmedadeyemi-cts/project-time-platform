@@ -10,8 +10,8 @@ or another host condition caused the latency.
 ## Implementation
 
 - Only server-loaded Module 025 evidence, after effective-user permission checks,
-  can create the new cloud capsule. The existing sanitized-external policy must
-  be enabled and each provider must be registered, configured, enabled and healthy.
+  can create the new cloud capsule. Both existing flags (`PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION`
+  and `PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED`) must be enabled and each provider must be registered, configured, enabled and healthy.
 - Cloud input consists of closed public technology names and operation categories.
   A narrow numeric grammar preserves an unambiguous version transition and common
   quantities for a single technology. Raw overview prose, files, customer names,

@@ -51,7 +51,9 @@ internal sealed class Module025ExternalSowAdapter
     { _evidence = evidence; _technologies = technologies; _operations = operations; _facts = facts; }
 
     internal static bool PolicyEnabled => bool.TryParse(
-        Environment.GetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION"), out var enabled) && enabled;
+        Environment.GetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION"), out var enabled) && enabled
+        && bool.TryParse(Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"),
+            out var fallbackEnabled) && fallbackEnabled;
 
     internal static Module025ExternalSowAdapter? TryCreate(CelarAiAuthoritativeScopeEvidence evidence)
     {
