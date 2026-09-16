@@ -176,11 +176,13 @@ elif [[ "$HEAD_BRANCH" == 'fix/module025-durable-engine-20260916' ]]; then
     'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs' \
     'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs' \
     'src/backend/ProjectTime.Api/Ai/Module025GenerationEngine.cs' \
+    'src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs' \
     'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
     'src/backend/ProjectTime.Api/Modules/Module025GenerationJournal.cs' \
     'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs' \
     'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs' \
     'src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx' \
+    'tests/DeepSeekProviderTests/Program.cs' \
     'tests/FlowHiveDetailedPlannerTests/Module025GenerationEngineTests.cs' \
     'tests/FlowHiveDetailedPlannerTests/Program.cs' \
     'tests/flowhive-psa-admission.test.mjs' \

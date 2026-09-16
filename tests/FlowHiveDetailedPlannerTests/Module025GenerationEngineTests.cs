@@ -91,6 +91,30 @@ internal static class Module025GenerationEngineTests
             Console.WriteLine("MODULE025_JOURNAL_DATABASE_TESTS=NOT_RUN (requires disposable PostgreSQL; CI supplies it)");
             return;
         }
+        // Capture the actual private-client -> DeepSeek HTTP payload while using
+        // the real PostgreSQL queue lock. No inference endpoint is contacted.
+        var priorConnection = Environment.GetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION");
+        try
+        {
+            Environment.SetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION", connectionString);
+            var configuration = new ProjectPulseAiConfiguration();
+            configuration.ApplyStoredSecret(ProjectPulseAiProviders.DeepSeek, "synthetic-test-only", "test", DateTimeOffset.UtcNow);
+            configuration.ApplyStoredEnabled(ProjectPulseAiProviders.DeepSeek, true);
+            var transport = new CaptureCompletionTransport(JsonSerializer.Serialize(Result("Plan").FlowHivePlan));
+            var client = new PulseAiPrivateModelClient(transport,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<PulseAiPrivateModelClient>.Instance,
+                new ProjectPulseDeepSeekProvider(transport, configuration));
+            var request = new PulseAiPrivateModelRequest(CelarAiCapabilityCatalog.SowGsdPlanning,
+                "sow_draft", "comprehensive", "Return the detailed Plan phase.", evidence.ServiceOverview,
+                [], "module025_detailed_phase", Module025GenerationEngine.MaximumOutputTokens, 0.1m, "module025-budget-test");
+            var response = await ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(CelarAiCapabilityTargets.DeepSeek,
+                token => client.GenerateAsync(request, PulseAiPrivateRagOptions.FromEnvironment() with { Enabled = true }, token),
+                CancellationToken.None);
+            Check(response.Succeeded && transport.RequestCount == 1 && transport.MaximumTokens == 6_144,
+                "module025_private_client_deepseek_http_request_obeys_total_6144_token_ceiling");
+        }
+        finally { Environment.SetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION", priorConnection); }
+
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         foreach (var migration in new[] { "001_initial_schema.sql", "099_module025_sow_gsd_workspace.sql", "106_module025_sow_sell_register.sql" })
@@ -143,4 +167,24 @@ internal static class Module025GenerationEngineTests
         }
         Console.WriteLine("MODULE025_JOURNAL_DATABASE_TESTS=PASS");
     }
+    private sealed class CaptureCompletionTransport(string plan) : HttpMessageHandler, IHttpClientFactory
+    {
+        internal int MaximumTokens { get; private set; }
+        internal int RequestCount { get; private set; }
+        public HttpClient CreateClient(string name) => new(this, disposeHandler: false);
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+            MaximumTokens = payload.RootElement.GetProperty("max_tokens").GetInt32();
+            RequestCount++;
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    choices = new[] { new { finish_reason = "stop", message = new { content = plan } } }
+                }))
+            };
+        }
+    }
+
 }
