@@ -504,6 +504,25 @@ Assert(deadlineResult.Succeeded && deadlineCalls == 6,
 // without publishing a partial plan.
 var flowHiveBatchGenerator = typeof(PulseAiPrivateRagService).GetMethod(
     "GenerateFlowHiveBatchCoreAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+var flowHiveBatchInstructionFactory = typeof(PulseAiPrivateRagService).GetMethod(
+    "FlowHiveBatchSystemInstruction", BindingFlags.NonPublic | BindingFlags.Static)!;
+var compactFlowHiveSystemInstruction = (string)flowHiveBatchInstructionFactory.Invoke(
+    null, ["The prior full planner instruction must not be copied into the live batch."])!;
+Assert(compactFlowHiveSystemInstruction.Length <= 1_800,
+    "flowhive_live_batch_system_prompt_is_compact");
+Assert(compactFlowHiveSystemInstruction.Contains("exactly ten distinct executable tasks", StringComparison.Ordinal)
+       && compactFlowHiveSystemInstruction.Contains("untrusted data", StringComparison.Ordinal)
+       && compactFlowHiveSystemInstruction.Contains("citationId", StringComparison.Ordinal),
+    "flowhive_live_batch_system_prompt_keeps_source_safety_and_task_contract");
+Assert(!compactFlowHiveSystemInstruction.Contains("Automatically populate every task field", StringComparison.Ordinal)
+       && !compactFlowHiveSystemInstruction.Contains("normally 10 to 20 tasks", StringComparison.Ordinal),
+    "flowhive_live_batch_system_prompt_does_not_forward_full_planner_instructions");
+var flowHiveBatchUserInstructionFactory = typeof(PulseAiPrivateRagService).GetMethod(
+    "FlowHiveBatchUserInstruction", BindingFlags.NonPublic | BindingFlags.Static)!;
+var compactFlowHiveUserInstruction = (string)flowHiveBatchUserInstructionFactory.Invoke(
+    null, [new string('x', 8_000)])!;
+Assert(compactFlowHiveUserInstruction.Length <= 320,
+    "flowhive_live_batch_user_prompt_is_compact_and_does_not_duplicate_scope_instructions");
 var flowHiveBatchRequest = phaseRequest with
 {
     FeatureCode = CelarAiCapabilityCatalog.ProjectFlowHivePlan,
@@ -553,9 +572,10 @@ var flowHiveBatchResult = await RunFlowHiveBatch(async (request, token) =>
     Assert(request.MaximumOutputTokens == 1_280, "flowhive_single_batch_output_budget_is_bounded");
     Assert(!request.SystemInstruction.Contains("ONLY Plan tasks", StringComparison.Ordinal),
         "flowhive_single_batch_does_not_scope_to_one_phase");
-    Assert(request.UserInstruction.Contains("single compact response", StringComparison.Ordinal),
+    Assert(request.UserInstruction.Contains("exactly two distinct source-grounded work packages per phase", StringComparison.Ordinal),
         "flowhive_single_batch_prompt_is_explicit");
-    Assert(request.SystemInstruction.Contains("Do not return detailedSteps", StringComparison.Ordinal),
+    Assert(!request.SystemInstruction.Contains("detailedSteps", StringComparison.Ordinal)
+           && request.SystemInstruction.Contains("only these compact fields", StringComparison.Ordinal),
         "flowhive_single_batch_provider_contract_omits_server_completed_fields");
     Assert(request.Sources.Single().Text.Length <= 3_000,
         "flowhive_single_batch_source_is_bounded_for_live_provider_window");
