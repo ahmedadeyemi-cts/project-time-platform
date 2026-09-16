@@ -10,6 +10,7 @@ current authoritative evidence from the application layer when freshness matters
 from __future__ import annotations
 
 import fcntl
+import logging
 import os
 import subprocess
 import tempfile
@@ -357,6 +358,20 @@ def _sow_completion(payload: dict[str, Any], timeout: int) -> tuple[dict[str, An
         {"index": 0, "message": completion, "finish_reason": reason}], "celar_metrics": metrics}, 200
 
 
+def _record_module025_timing(model: str, status: int, budget: int, metrics: dict[str, Any]) -> None:
+    # Flask's default WARNING threshold would silently discard INFO records.
+    # A dedicated stderr logger is collected by systemd without enabling raw
+    # HTTP or prompt debug logging anywhere else.
+    logger = logging.getLogger("celar.module025")
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        logger.addHandler(logging.StreamHandler())
+    logger.propagate = False
+    safe_metrics = {key: metrics[key] for key in ("load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration", "total_duration")
+                    if type(metrics.get(key)) is int and metrics[key] >= 0}
+    logger.info("module025_phase model=%s status=%s budget_seconds=%s metrics=%s", model, status, budget, safe_metrics)
+
+
 def _local_chat_completions() -> Any:
     """Route to local specialists inside one bounded end-to-end deadline.
 
@@ -455,8 +470,7 @@ def _local_chat_completions() -> Any:
         if phase_request:
             # Closed operational fields only; never prompt, response, identity,
             # credentials or arbitrary upstream error text.
-            gateway.app.logger.info("module025_phase model=%s status=%s budget_seconds=%s metrics=%s",
-                candidate, status, attempt_timeout, body.get("celar_metrics", {}))
+            _record_module025_timing(candidate, status, attempt_timeout, body.get("celar_metrics", {}))
         if status == 200:
             response = jsonify(body)
             response.headers["X-Celar-Local-Model"] = candidate
