@@ -64,6 +64,7 @@ jobs:
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
               'scripts/release-test/run-module025-installed-sa-uat.py' \
               'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-admission.test.mjs' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-review-confirm-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-review-confirm-actual"
             cmp -s "$RUNNER_TEMP/module025-review-confirm-files" "$RUNNER_TEMP/module025-review-confirm-actual" || {

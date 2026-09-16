@@ -13,6 +13,8 @@ const installedSowRoleAcceptanceSourceFiles = [
   'src/frontend/project-time-web/tests/role-journeys.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+const module025VerifierCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-sa-review-confirm-20260916';
+const module025VerifierBase = '2062979f3e95b17cf187642ec2e9eadb4f610758';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1009-20260914';
 const module025SowRoleCandidateRefresh1014 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1014-20260914'
@@ -413,7 +415,10 @@ test('the checked-in control manifest is sorted before trusted-main admission', 
   assert.deepEqual(manifest, [...new Set(manifest)].sort());
 });
 test('trusted-main source drift starts at the approved application merge and rejects the old PR-base boundary', () => {
-  const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
+  // This is a historical control-only drift fixture, not an assertion that
+  // arbitrary future main commits are approved for the pinned application.
+  const currentMain = module025VerifierCorrection ? '0a19c055b90dee41899d65b811ef142b3c5662ae'
+    : execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
   const manifest = fs.readFileSync(new URL('../.github/flowhive-psa-release-control-files.txt', import.meta.url), 'utf8')
     .trim().split(/\r?\n/);
   assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', approval.mergeCommit, currentMain], { stdio: 'ignore' }));
@@ -463,6 +468,30 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (module025VerifierCorrection) {
+    const protectedPaths = [
+      '.github/flowhive-psa-protected-test-candidate.json',
+      '.github/flowhive-psa-release-control-files.txt',
+      '.github/workflows/projectpulse-deploy-test.yml',
+      '.github/workflows/flowhive-psa-installed-acceptance.yml',
+      'scripts/release-test/flowhive-psa-admission.mjs'
+    ];
+    for (const path of protectedPaths) {
+      const baseBytes = execFileSync('git', ['show', `${module025VerifierBase}:${path}`]);
+      assert.deepEqual(fs.readFileSync(new URL(`../${path}`, import.meta.url)), baseBytes,
+        `Verifier repair must preserve existing release authorization: ${path}`);
+    }
+    const manifest = fs.readFileSync(new URL('../.github/flowhive-psa-release-control-files.txt', import.meta.url), 'utf8')
+      .trim().split(/\r?\n/);
+    const unapprovedChanges = execFileSync('git', ['diff', '--name-only', `${approval.mergeCommit}..${module025VerifierBase}`], { encoding: 'utf8' })
+      .split(/\r?\n/).filter(Boolean);
+    assert.ok(unapprovedChanges.includes('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'));
+    assert.throws(() => verifySourceDrift(unapprovedChanges, manifest), /Main has a source change absent from this candidate/);
+    // The verifier correction must not silently approve the newer provider code.
+    assert.equal(approval.mergeCommit, 'b82bea8ad3874e58ab8d42f01017942fa9d8765e');
+    return;
+  }
+
   if (plannerCelarResponseContractRepair) {
     const currentMain = execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
     const candidateHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -848,7 +877,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);
   assert.deepEqual(approval.workflowDispatchChecks, workflowDispatchChecks);
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
-    plannerCelarResponseContractRepair ? approval.successorCheckBinding.supersedes.installedAcceptanceRunId : module025AdmissionManifestRefresh || module025CandidateRefresh || dispatchValidation ? 35043700143 : plannerLiveCelarBudgetApproval || plannerLiveCelarCompactPromptRepair || module025ManualTriggerExactCandidate ? 35031315112 : plannerCelarApprovalRefresh || plannerCelarRequiredCheckRefresh ? 35021148203 : plannerCandidateApprovalRefresh || plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? 34988294166 : portfolioDbAliasCandidateRefresh || plannerLiveCompletionRepair ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
+    module025VerifierCorrection ? 35043700143 : plannerCelarResponseContractRepair ? approval.successorCheckBinding.supersedes.installedAcceptanceRunId : module025AdmissionManifestRefresh || module025CandidateRefresh || dispatchValidation ? 35043700143 : plannerLiveCelarBudgetApproval || plannerLiveCelarCompactPromptRepair || module025ManualTriggerExactCandidate ? 35031315112 : plannerCelarApprovalRefresh || plannerCelarRequiredCheckRefresh ? 35021148203 : plannerCandidateApprovalRefresh || plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? 34988294166 : portfolioDbAliasCandidateRefresh || plannerLiveCompletionRepair ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
       : module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
       : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 35021148203);
 });
