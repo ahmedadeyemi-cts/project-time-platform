@@ -185,10 +185,12 @@ elif [[ "$HEAD_BRANCH" == 'fix/module025-durable-engine-20260916' ]]; then
     'tests/FlowHiveDetailedPlannerTests/Program.cs' \
     'tests/flowhive-psa-admission.test.mjs' \
     'tests/flowhive-psa-installed-acceptance.test.py' \
+    'tests/module025-engine-scope.mjs' \
     'tests/test-sow-uat-isolation.py' \
+    'tests/validate-celar-ai-pr630-consolidated.mjs' \
     | LC_ALL=C sort -u > "$expected"
   cmp -s "$CIT/diff" "$expected" || fail 'Module 025 engine redesign differs from its exact file set.'
-  node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+  node tests/module025-engine-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/module025-scoped-test-deploy-20260916' ]]; then
   expected="$CIT/module025-scoped-deploy-files"

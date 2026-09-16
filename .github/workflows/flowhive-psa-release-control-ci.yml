@@ -78,7 +78,9 @@ jobs:
               'tests/FlowHiveDetailedPlannerTests/Program.cs' \
               'tests/flowhive-psa-admission.test.mjs' \
               'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/module025-engine-scope.mjs' \
               'tests/test-sow-uat-isolation.py' \
+              'tests/validate-celar-ai-pr630-consolidated.mjs' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-engine-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-engine-actual"
             cmp -s "$RUNNER_TEMP/module025-engine-files" "$RUNNER_TEMP/module025-engine-actual" || {
