@@ -57,6 +57,24 @@ class QualificationTest(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
+    def test_contract_failures_print_only_closed_rules_and_schema_fields(self):
+        report = {'SowDiagnostics': {'OutputValidationCategory': 'task_detail',
+            'OutputValidationField': '$.tasks[0].acceptanceCriteria'}}
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output): module.print_contract_diagnostic(report)
+        self.assertIn('MODULE025_OUTPUT_VALIDATION_CATEGORY=task_detail', output.getvalue())
+        self.assertIn('MODULE025_OUTPUT_VALIDATION_FIELD=$.tasks[0].acceptanceCriteria', output.getvalue())
+        for category, field in [('private@example.invalid', '$.tasks'),
+            ('task_detail', '$.tasks[0].PrivateCustomer'), ('task_detail', '$.tasks\nPRIVATE_DATA'),
+            ('task_detail', '$.tasks[0].inputs=private@example.invalid')]:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                module.print_contract_diagnostic({'SowDiagnostics': {
+                    'OutputValidationCategory': category, 'OutputValidationField': field}})
+            self.assertNotIn('MODULE025_OUTPUT_VALIDATION_FIELD', output.getvalue())
+            self.assertNotIn('private@example.invalid', output.getvalue())
+            self.assertNotIn('PrivateCustomer', output.getvalue())
+
     def test_only_chosen_configuration_and_referenced_secrets_are_copied(self):
         api = api_fixture()
         secrets = [{'name': 'database', 'value': 'synthetic-db'}, {'name': 'encryption', 'value': 'synthetic-key'}, {'name': 'mail', 'value': 'must-not-copy'}]

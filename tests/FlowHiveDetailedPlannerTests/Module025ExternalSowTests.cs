@@ -49,6 +49,7 @@ internal static class Module025ExternalSowTests
             Environment.SetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED", "true");
             var phasePlan = fixture with { Tasks = fixture.Tasks.Where(task => task.Phase == "Plan").ToArray() };
             var json = JsonSerializer.Serialize(phasePlan);
+            Module025StructuredContractTests.Run(fixture, evidence, sanitizer);
             Check(adapter.Validate(json, "claude", "test", sanitizer, out var proseCode),
                 "external_sow_natural_capitalization_retains_technical_detail_" + proseCode + "_" + adapter.ValidationCategory + "_" + adapter.ValidationField);
             Check(adapter.Validate(json, "claude", "test", sanitizer, out var validCode), "external_sow_valid_full_contract_accepted_" + validCode);
@@ -133,6 +134,15 @@ internal static class Module025ExternalSowTests
             var openai = new ProjectPulseOpenAiProvider(openaiTransport, configuration);
             Check(!(await openai.GenerateAsync(request, CancellationToken.None)).IsSuccess && openaiTransport.TokenLimit == 12288,
                 "openai_sow_budget_and_incomplete_response_guard");
+            var format = openaiTransport.LastPayload.GetProperty("text").GetProperty("format");
+            Check(format.GetProperty("type").GetString() == "json_schema" && format.GetProperty("strict").GetBoolean()
+                && format.GetProperty("name").GetString() == Module025PhaseOutputContract.Name
+                && JsonNode.DeepEquals(JsonNode.Parse(format.GetProperty("schema").GetRawText()), Module025PhaseOutputContract.Schema("Plan")),
+                "openai_wire_request_enforces_complete_server_selected_phase_schema");
+            var callsBeforeInvalidPhase = openaiTransport.Requests;
+            var invalidPhaseRequest = await openai.GenerateAsync(request with { SowPhase = null }, CancellationToken.None);
+            Check(!invalidPhaseRequest.IsSuccess && invalidPhaseRequest.Code == "module025_phase_request_invalid"
+                && openaiTransport.Requests == callsBeforeInvalidPhase, "openai_invalid_server_phase_rejected_before_spending");
             await openai.GenerateAsync(request with { MaxOutputTokens = int.MaxValue }, CancellationToken.None);
             Check(openaiTransport.TokenLimit == 12288, "openai_sow_cannot_exceed_bounded_cloud_allowance");
             openaiTransport.Body = """
@@ -163,7 +173,8 @@ internal static class Module025ExternalSowTests
             Check((await openai.GenerateAsync(request, CancellationToken.None)).IsSuccess,
                 "openai_completed_structured_response_reaches_contract_validation");
             await openai.GenerateAsync(request with { StructuredSowPhase = false }, CancellationToken.None);
-            Check(openaiTransport.TokenLimit == configuration.MaxOutputTokens, "non_sow_transport_budget_unchanged");
+            Check(openaiTransport.TokenLimit == configuration.MaxOutputTokens
+                && !openaiTransport.LastPayload.TryGetProperty("text", out _), "non_sow_transport_budget_and_format_unchanged");
 
             // Exercise the real router with synthetic providers. First contract
             // failure must continue to OpenAI without exposing raw source.
@@ -215,12 +226,14 @@ internal static class Module025ExternalSowTests
     }
     private sealed class CaptureTransport(string body) : HttpMessageHandler, IHttpClientFactory
     {
+        internal JsonElement LastPayload;
         internal string Body = body; internal int Requests; internal int TokenLimit; internal HttpStatusCode Status = HttpStatusCode.OK;
         public HttpClient CreateClient(string name) => new(this, false) { Timeout = Timeout.InfiniteTimeSpan };
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             Requests++;
             using var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+            LastPayload = json.RootElement.Clone();
             TokenLimit = json.RootElement.TryGetProperty("max_tokens", out var limit) ? limit.GetInt32() : json.RootElement.GetProperty("max_output_tokens").GetInt32();
             return new(Status) { Content = new StringContent(Body, Encoding.UTF8, "application/json") };
         }

@@ -95,7 +95,7 @@ internal sealed class Module025ExternalSowAdapter
             PulseAiPrivateRagService.Module025PhaseInstruction(_evidence.PhaseExecution!.Phase)
             + "\nOnly the closed technical specification below is available. Do not infer customer identities, documents, locations, environment topology, commercial values or completion. "
             + "Use generic customer and delivery-team role names. Keep unknown requirements as explicit open questions. Any implementation detail and effort estimate is a proposed plan requiring review.",
-            capsule, Module025GenerationEngine.MaximumExternalOutputTokens, 0.1) { StructuredSowPhase = true };
+            capsule, Module025GenerationEngine.MaximumExternalOutputTokens, 0.1) { StructuredSowPhase = true, SowPhase = _evidence.PhaseExecution.Phase };
     }
 
     internal bool Validate(string content, string provider, string correlationId,
@@ -142,7 +142,25 @@ internal sealed class Module025ExternalSowAdapter
             diagnostic = "module025_external_phase_validated";
             return true;
         }
-        catch (JsonException) { ValidationCategory = "phase_contract_or_json"; diagnostic = "module025_external_phase_contract_invalid"; return false; }
+        catch (Module025PhaseContractException exception)
+        {
+            ValidationCategory = exception.Rule; ValidationField = exception.Field;
+            diagnostic = "module025_external_phase_contract_invalid"; return false;
+        }
+        catch (JsonException)
+        {
+            // Syntax errors and typed-list errors are separate from semantic
+            // rejections. Never forward exception messages or provider values.
+            try
+            {
+                using var rejected = JsonDocument.Parse(content, new JsonDocumentOptions { MaxDepth = 32 });
+                var violation = Module025PhaseOutputContract.Diagnose(rejected.RootElement, _evidence.PhaseExecution!.Phase);
+                ValidationCategory = violation?.Rule ?? "phase_contract_invalid";
+                ValidationField = violation?.Field ?? "$";
+            }
+            catch (JsonException) { ValidationCategory = "invalid_json"; ValidationField = "$"; }
+            diagnostic = "module025_external_phase_contract_invalid"; return false;
+        }
     }
 
     internal ProjectPulseAiProviderResult ValidateResult(ProjectPulseAiProviderResult result,

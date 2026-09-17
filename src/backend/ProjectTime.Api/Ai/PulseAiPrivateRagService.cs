@@ -1894,7 +1894,13 @@ public sealed class PulseAiPrivateRagService
 
     internal static string Module025PhaseInstruction(string phase) =>
         Module025DetailedPhaseInstruction(FlowHiveSystemInstruction(CelarAiCapabilityCatalog.SowGsdPlanning, true),
-            phase, Array.IndexOf(Module025DeliveryPhases, phase), string.Empty, Module025GenerationEngine.MaximumExternalOutputTokens);
+            phase, Array.IndexOf(Module025DeliveryPhases, phase), string.Empty, Module025GenerationEngine.MaximumExternalOutputTokens)
+        .Replace("JSON list fields must be arrays of strings", "String-list fields must be arrays of strings; tasks and milestones must be arrays of objects", StringComparison.Ordinal)
+        + "\nThe following complete JSON Schema defines every field and type. Include every listed property. "
+        + "Use [] for optional collections with no supported content, including milestones if none are useful; never invent facts to fill them. "
+        + "Descriptions must meet the schema length and explain effort. Across this phase, provide at least two distinct descriptions, four distinct execution steps and two distinct deliverables. "
+        + "Milestones require name, description of at least 40 characters, proposedTiming, acceptanceEvidence, citationIds and isAssumption. Schema: "
+        + Module025PhaseOutputContract.Schema(phase).ToJsonString();
 
     internal static PulseAiPrivateRagAnswer Module025ExternalAnswer(
         string content, CelarAiAuthoritativeScopeEvidence evidence, string provider, string correlationId)
@@ -2427,15 +2433,15 @@ public sealed class PulseAiPrivateRagService
         var characterLimit = requiredPhases.Count == 1
             ? Module025GenerationEngine.MaximumPhaseCharacters : Module025GenerationEngine.MaximumDocumentCharacters;
         if (content.Length > characterLimit)
-            throw new JsonException(requiredPhases.Count == 1
+            throw new Module025PhaseContractException("response_size_limit", "$", requiredPhases.Count == 1
                 ? "module025_phase_size_limit_exceeded" : "module025_assembled_plan_limit_exceeded");
         if (retrieval.Chunks.Count == 0)
-            throw new JsonException("A detailed phase plan requires at least one server-authorized source citation.");
+            throw new Module025PhaseContractException("source_authority", "$.citationIds", "A detailed phase plan requires at least one server-authorized source citation.");
 
         using var document = JsonDocument.Parse(content, new JsonDocumentOptions { MaxDepth = 128 });
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object)
-            throw new JsonException("Module 025 detailed plan must be one JSON object.");
+            throw new Module025PhaseContractException("expected_object", "$", "Module 025 detailed plan must be one JSON object.");
         if (TryModelJsonProperty(root, "plan", out var nestedPlan)
             && nestedPlan.ValueKind == JsonValueKind.Object
             && ModelJsonArrayItems(root, 1, "tasks", "workPackages", "work_packages", "scopeItems").Count == 0
@@ -2462,14 +2468,14 @@ public sealed class PulseAiPrivateRagService
         var tasks = asTasks(parsedTasks, retrieval.Chunks.Count).ToArray();
 
         if (tasks.Length < requiredPhases.Count * 2)
-            throw new JsonException(requiredPhases.Count == 5
+            throw new Module025PhaseContractException("phase_task_count", "$.tasks", requiredPhases.Count == 5
                 ? "Module 025 requires at least ten detailed delivery work packages."
                 : "Module 025 detailed plan requires at least two work packages in the requested phase.");
         if (tasks.Any(task => !requiredPhases.Contains(task.Phase, StringComparer.Ordinal)))
-            throw new JsonException("Module 025 detailed plan includes an unrequested phase.");
+            throw new Module025PhaseContractException("unrequested_phase", $"$.tasks[{Array.FindIndex(tasks, task => !requiredPhases.Contains(task.Phase, StringComparer.Ordinal))}].phase", "Module 025 detailed plan includes an unrequested phase.");
         if (!allowDuplicateWbs
             && tasks.Select(task => task.Wbs).Distinct(StringComparer.OrdinalIgnoreCase).Count() != tasks.Length)
-            throw new JsonException("Module 025 work-package WBS values must be unique.");
+            throw new Module025PhaseContractException("duplicate_wbs", "$.tasks", "Module 025 work-package WBS values must be unique.");
 
         foreach (var phase in requiredPhases)
         {
@@ -2477,61 +2483,59 @@ public sealed class PulseAiPrivateRagService
                 .Where(task => string.Equals(task.Phase, phase, StringComparison.Ordinal))
                 .ToArray();
             if (phaseTasks.Length < 2)
-                throw new JsonException($"Module 025 detailed plan requires at least two work packages in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_task_count", "$.tasks", $"Module 025 detailed plan requires at least two work packages in the {phase} phase.");
             if (phaseTasks
                     .Select(task => task.Description)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count() < 2)
-                throw new JsonException($"Module 025 detailed plan requires distinct customer-ready outcomes in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_distinct_descriptions", "$.tasks", $"Module 025 detailed plan requires distinct customer-ready outcomes in the {phase} phase.");
             if (phaseTasks
                     .SelectMany(task => task.DetailedSteps ?? [])
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count() < 4)
-                throw new JsonException($"Module 025 detailed plan requires at least four distinct execution steps in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_distinct_steps", "$.tasks", $"Module 025 detailed plan requires at least four distinct execution steps in the {phase} phase.");
             if (phaseTasks
                     .SelectMany(task => task.Outputs ?? [])
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count() < 2)
-                throw new JsonException($"Module 025 detailed plan requires at least two distinct deliverables in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_distinct_outputs", "$.tasks", $"Module 025 detailed plan requires at least two distinct deliverables in the {phase} phase.");
             if (!phaseTasks.SelectMany(task => task.CustomerResponsibilities ?? []).Any())
-                throw new JsonException($"Module 025 detailed plan requires customer responsibilities in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_customer_responsibility", "$.tasks", $"Module 025 detailed plan requires customer responsibilities in the {phase} phase.");
             if (!phaseTasks.SelectMany(task => task.UsSignalResponsibilities ?? []).Any())
-                throw new JsonException($"Module 025 detailed plan requires US Signal responsibilities in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_provider_responsibility", "$.tasks", $"Module 025 detailed plan requires US Signal responsibilities in the {phase} phase.");
             if (!phaseTasks.SelectMany(task => task.Prerequisites ?? []).Any())
-                throw new JsonException($"Module 025 detailed plan requires prerequisites in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_prerequisite", "$.tasks", $"Module 025 detailed plan requires prerequisites in the {phase} phase.");
             if (!phaseTasks.SelectMany(task => task.AcceptanceCriteria ?? []).Any())
-                throw new JsonException($"Module 025 detailed plan requires measurable acceptance criteria in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_acceptance", "$.tasks", $"Module 025 detailed plan requires measurable acceptance criteria in the {phase} phase.");
             if (!phaseTasks.SelectMany(task => task.ValidationSteps ?? []).Any())
-                throw new JsonException($"Module 025 detailed plan requires validation steps in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_validation", "$.tasks", $"Module 025 detailed plan requires validation steps in the {phase} phase.");
             if (!phaseTasks.SelectMany(task => task.Risks ?? []).Any())
-                throw new JsonException($"Module 025 detailed plan requires delivery risks in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_risk", "$.tasks", $"Module 025 detailed plan requires delivery risks in the {phase} phase.");
             if (phaseTasks.Sum(task => task.EstimatedHours ?? 0m) <= 0m)
-                throw new JsonException($"Module 025 detailed plan requires positive estimated effort in the {phase} phase.");
+                throw new Module025PhaseContractException("phase_effort", "$.tasks", $"Module 025 detailed plan requires positive estimated effort in the {phase} phase.");
         }
 
-        foreach (var task in tasks)
+        for (var index = 0; index < tasks.Length; index++)
         {
-            if (task.Phase.Length == 0
-                || task.CitationIds.Count != 1
-                || task.CitationIds[0] != 1
-                || task.Description.Length < 80
-                || (task.DetailedSteps?.Count ?? 0) < 2
-                || (task.Inputs?.Count ?? 0) == 0
-                || (task.Outputs?.Count ?? 0) == 0
-                || (task.AcceptanceCriteria?.Count ?? 0) == 0
-                || (task.ValidationSteps?.Count ?? 0) == 0
-                || (task.CustomerResponsibilities?.Count ?? 0) == 0
-                || (task.UsSignalResponsibilities?.Count ?? 0) == 0
-                || (task.Prerequisites?.Count ?? 0) == 0
-                || (task.Risks?.Count ?? 0) == 0
-                || task.RequiredRoles.Count == 0
-                || task.EstimatedHours is null
-                || task.EstimatedHours <= 0m
-                || TaskContainsCannedModule025ScopeLanguage(task))
-            {
-                throw new JsonException(
+            var task = tasks[index];
+            string? field = task.Phase.Length == 0 ? "phase"
+                : task.CitationIds.Count != 1 || task.CitationIds[0] != 1 ? "citationIds"
+                : task.Description.Length < 80 ? "description"
+                : (task.DetailedSteps?.Count ?? 0) < 2 ? "detailedSteps"
+                : (task.Inputs?.Count ?? 0) == 0 ? "inputs"
+                : (task.Outputs?.Count ?? 0) == 0 ? "outputs"
+                : (task.AcceptanceCriteria?.Count ?? 0) == 0 ? "acceptanceCriteria"
+                : (task.ValidationSteps?.Count ?? 0) == 0 ? "validationSteps"
+                : (task.CustomerResponsibilities?.Count ?? 0) == 0 ? "customerResponsibilities"
+                : (task.UsSignalResponsibilities?.Count ?? 0) == 0 ? "usSignalResponsibilities"
+                : (task.Prerequisites?.Count ?? 0) == 0 ? "prerequisites"
+                : (task.Risks?.Count ?? 0) == 0 ? "risks"
+                : task.RequiredRoles.Count == 0 ? "requiredRoles"
+                : task.EstimatedHours is null or <= 0m ? "estimatedHours" : null;
+            if (field is not null || TaskContainsCannedModule025ScopeLanguage(task))
+                throw new Module025PhaseContractException(field is null ? "prohibited_boilerplate" : "task_detail",
+                    $"$.tasks[{index}]" + (field is null ? "" : "." + field),
                     $"Module 025 work package {task.Wbs} did not meet the customer-ready detail contract.");
-            }
         }
 
         var objective = ModelJsonString(root, "objective", "executiveSummary", "summary");
@@ -2546,7 +2550,7 @@ public sealed class PulseAiPrivateRagService
                 string.Empty);
         }
         if (objective.Length < 120 || ContainsCannedModule025ScopeLanguage(objective))
-            throw new JsonException("Module 025 detailed plan used prohibited generic scope boilerplate.");
+            throw new Module025PhaseContractException("prohibited_boilerplate", "$.objective", "Module 025 detailed plan used prohibited generic scope boilerplate.");
 
         var requiredRoles = topLevelRoles
             .Concat(tasks.SelectMany(task => task.RequiredRoles))
@@ -2925,7 +2929,9 @@ public sealed class PulseAiPrivateRagService
                 || ContainsCannedModule025ScopeLanguage(proposedTiming)
                 || acceptanceEvidence.Any(ContainsCannedModule025ScopeLanguage))
             {
-                throw new JsonException(
+                throw new Module025PhaseContractException("milestone_detail", $"$.milestones[{milestones.Count}]." +
+                    (name.Length == 0 ? "name" : description.Length < 40 ? "description" : proposedTiming.Length == 0 ? "proposedTiming"
+                        : acceptanceEvidence.Count == 0 ? "acceptanceEvidence" : "content"),
                     "Module 025 detailed-plan milestone did not meet the customer-ready evidence contract.");
             }
             milestones.Add(new PulseAiPrivateFlowHiveMilestone(
