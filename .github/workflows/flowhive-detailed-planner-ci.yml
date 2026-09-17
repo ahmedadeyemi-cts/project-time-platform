@@ -193,6 +193,9 @@ jobs:
       - name: Validate module availability contracts
         run: node src/frontend/project-time-web/scripts/validate-module-availability.mjs
 
+      - name: Verify Module 025 generation progress and stale-result messages
+        run: node --test tests/module025-generation-feedback.test.mjs
+
       - name: Build complete frontend
         working-directory: src/frontend/project-time-web
         run: npm run build

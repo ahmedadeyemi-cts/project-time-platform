@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using ProjectTime.Api.Ai;
+using ProjectTime.Api.Modules;
 
 internal static class Module025ExternalSowTests
 {
@@ -29,6 +30,42 @@ internal static class Module025ExternalSowTests
             var adapter = Module025ExternalSowAdapter.TryCreate(evidence)!;
             var sanitizer = new PulseAiEscalationSanitizer();
             var request = adapter.Prepare(sanitizer, out _)!;
+            var reportedScope = Module025ExternalSowAdapter.TryCreate(evidence with {
+                ServiceOverview = "Upgrading Cisco Call manager from version 14.0 to 15.0"
+            });
+            Check(reportedScope is not null, "reported_call_manager_upgrading_scope_reaches_external_adapter");
+            var reportedRequest = reportedScope!.Prepare(sanitizer, out _)!;
+            Check(reportedRequest.UserPrompt.Contains("Requested technologies: Cisco Unified Communications Manager.")
+                && reportedRequest.UserPrompt.Contains("Requested operations: upgrade.")
+                && reportedRequest.UserPrompt.Contains("Requested version transition: 14.0 to 15.0."),
+                "reported_scope_preserves_canonical_technology_operation_and_versions");
+            foreach (var verb in new[] { "upgrade", "Upgrading", "upgraded", "upgrades" })
+            foreach (var technology in new[] { "Cisco CallManager", "Cisco Call manager", "CallManager", "CUCM", "Cisco Unified Communications Manager" })
+            {
+                var aliasRequest = Module025ExternalSowAdapter.TryCreate(evidence with {
+                    ServiceOverview = $"{verb} {technology} from version 14.0 to 15.0. Contact private@example.invalid."
+                })!.Prepare(sanitizer, out _)!;
+                Check(aliasRequest.UserPrompt == reportedRequest.UserPrompt,
+                    "aliases_create_identical_closed_capsule_without_copying_source");
+            }
+            foreach (var excluded in new[] { "Do not upgrade", "Upgrading only", "Upgrading without" })
+                Check(Module025ExternalSowAdapter.TryCreate(evidence with {
+                    ServiceOverview = $"{excluded} Cisco Call manager from version 14.0 to 15.0"
+                }) is null, "alias_normalization_preserves_exclusion_privacy_boundary");
+            using var effortPackages = JsonDocument.Parse("""
+                [{"Wbs":"1.1","Phase":"Plan","Name":"Inventory and dependency review","EstimatedHours":4,
+                  "Description":"Review the node inventory and integration dependencies; four labor hours cover evidence collection and a readiness workshop.",
+                  "DetailedSteps":["Record node roles and installed builds.","Identify connected services and decision owners."],
+                  "Prerequisites":["Customer provides current inventory."],"OpenQuestions":["How many clusters require review?"]},
+                 {"Wbs":"2.1","Phase":"Design","Name":"Design package","EstimatedHours":12,"Description":"Design-only estimate."},
+                 {"Wbs":"1.2","Phase":"Plan","Name":"Change and rollback planning","EstimatedHours":6,
+                  "Description":"Six labor hours cover the change workshop, rollback criteria and acceptance planning."}]
+                """);
+            var rationale = Module025SowGsdModule.BuildGeneratedEffortRationale(effortPackages.RootElement.EnumerateArray(), "plan");
+            Check(rationale.Contains("10 hours across 2 work packages") && rationale.Contains("(4 hours)")
+                && rationale.Contains("(6 hours)") && rationale.Contains("four labor hours cover evidence collection")
+                && rationale.Contains("How many clusters require review?") && !rationale.Contains("Design-only")
+                && !rationale.Contains("Celar AI suggested"), "phase_effort_preserves_work_package_basis_and_exact_sum_without_inventing_hours");
             Check(request.MaxOutputTokens == 12288 && request.SystemPrompt.Contains("within 12288 output tokens")
                 && !request.SystemPrompt.Contains("6144 output tokens"), "cloud_sow_prompt_and_transport_share_the_output_budget");
             Check(request.UserPrompt.Contains("14.0 to 15.0") && request.UserPrompt.Contains("3 nodes")

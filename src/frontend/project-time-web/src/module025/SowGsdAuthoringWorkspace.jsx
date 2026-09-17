@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import USSignalLogo from '../enterprise/USSignalLogo.jsx';
 import { downloadProtected } from './protected-download.js';
+import { formatGenerationProgress, formatGenerationFailure, generationConfidence } from './generation-feedback.js';
 import './sow-gsd-workspace.css';
 
 const PHASE_FIELDS = [
@@ -47,7 +48,7 @@ async function waitForDetailedScopeGeneration(engagementId, generationId, onProg
     const payload = await requestJson(`/api/module025/sow-gsd/${engagementId}/generations/${generationId}`);
     if (payload?.terminal === true) {
       if (payload?.status === 'module025_detailed_scope_generated') return payload;
-      const error = new Error(payload?.message || 'Detailed scope generation did not complete. The saved draft was preserved.');
+      const error = new Error(formatGenerationFailure(payload));
       error.payload = payload;
       throw error;
     }
@@ -58,7 +59,7 @@ async function waitForDetailedScopeGeneration(engagementId, generationId, onProg
     }
   }
 
-  throw new Error('Detailed scope generation is still running. It remains safely queued; select Generate detailed scope again to resume checking its status.');
+  throw new Error('Status monitoring reached its time limit. Completion has not been verified; the scope below is the previous saved result. Check the generation status before retrying.');
 }
 
 function toLines(value) {
@@ -248,6 +249,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
   const dirtyRef = useRef(false);
   const editVersion = useRef(0);
   const saveInFlight = useRef(false);
+  const selectedEngagementRef = useRef('');
 
   const loadBootstrap = useCallback(async () => {
     try {
@@ -274,6 +276,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
       const nextRows = Array.isArray(payload?.engagements) ? payload.engagements : [];
       setRows(nextRows);
       if (selectedId && !nextRows.some((row) => row.engagementId === selectedId)) {
+        selectedEngagementRef.current = '';
         setSelectedId('');
         setEngagement(null);
         setAccess(null);
@@ -292,10 +295,12 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
 
   const openEngagement = useCallback(async (engagementId) => {
     if (!engagementId) return;
+    selectedEngagementRef.current = engagementId;
     setDetailLoading(true);
     setActionState({ busy: '', message: '', error: '' });
     try {
       const payload = await requestJson(`/api/module025/sow-gsd/${engagementId}`);
+      if (selectedEngagementRef.current !== engagementId) return;
       setSelectedId(engagementId);
       editVersion.current += 1;
       setEngagement(payload?.engagement || null);
@@ -304,9 +309,10 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
       setDirty(false);
       setSaveState({ state: 'idle', message: '', at: payload?.engagement?.updatedAt || null });
     } catch (error) {
+      if (selectedEngagementRef.current !== engagementId) return;
       setActionState({ busy: '', message: '', error: error?.message || 'The selected SOW/GSD could not be opened.' });
     } finally {
-      setDetailLoading(false);
+      if (selectedEngagementRef.current === engagementId) setDetailLoading(false);
     }
   }, []);
 
@@ -422,6 +428,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
 
   const runAction = async (action, successMessage) => {
     if (!engagement || actionState.busy) return;
+    const actionRecordId = engagement.engagementId;
     setActionState({ busy: action, message: '', error: '' });
     try {
       if (dirtyRef.current && !await saveNow()) {
@@ -436,17 +443,19 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
         payload = await waitForDetailedScopeGeneration(
           engagement.engagementId,
           payload.generationId,
-          (progress) => setActionState({
+          (progress) => selectedEngagementRef.current === actionRecordId && setActionState({
             busy: action,
-            message: progress?.message || 'Celar AI is preparing the detailed P/D/I/V/R review draft.',
+            message: formatGenerationProgress(progress),
             error: ''
           })
         );
       }
+      if (selectedEngagementRef.current !== actionRecordId) return;
       await openEngagement(engagement.engagementId);
       await loadList();
       setActionState({ busy: '', message: payload?.message || successMessage, error: '' });
     } catch (error) {
+      if (selectedEngagementRef.current !== actionRecordId) return;
       setActionState({ busy: '', message: '', error: error?.message || `${action} could not be completed.` });
     }
   };
@@ -483,7 +492,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
     () => (engagement?.phases || []).reduce((sum, phase) => sum + Number(phase.suggestedHours || 0), 0),
     [engagement]
   );
-  const readOnly = !access?.canEdit || engagement?.status === 'confirmed' || engagement?.status === 'archived' || !engagement?.isActive;
+  const readOnly = actionState.busy === 'generate' || !access?.canEdit || engagement?.status === 'confirmed' || engagement?.status === 'archived' || !engagement?.isActive;
   const isSpecialGsd = engagement?.customerProgram === 'toyota' || engagement?.customerProgram === 'hyundai';
   const warnings = Array.isArray(engagement?.aiMetadata?.warnings) ? engagement.aiMetadata.warnings : [];
   const missingEvidence = Array.isArray(engagement?.aiMetadata?.missingEvidence) ? engagement.aiMetadata.missingEvidence : [];
@@ -704,7 +713,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
                 </Field>
                 <div className="m025-ai-meta">
                   <span>Last generated: <strong>{formatTime(engagement.lastGeneratedAt)}</strong></span>
-                  <span>Confidence: <strong>{engagement?.aiMetadata?.confidence != null ? `${Math.round(Number(engagement.aiMetadata.confidence) * 100)}%` : 'Not generated'}</strong></span>
+                  <span>Confidence: <strong>{generationConfidence(engagement)}</strong></span>
                   <span>AI suggested: <strong>{suggestedHours.toFixed(2)}h</strong></span>
                   <span>SA reviewed: <strong>{reviewedHours.toFixed(2)}h</strong></span>
                 </div>
