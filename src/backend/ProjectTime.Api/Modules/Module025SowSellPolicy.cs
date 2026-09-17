@@ -13,14 +13,26 @@ internal sealed record Module025SellRecipient(Guid UserId, string DisplayName, s
 internal sealed record Module025SellReadiness(bool Ready, string DiagnosticCode, string Message);
 internal sealed record Module025SellPackage(
     Guid SubmissionId, Guid EngagementId, Guid VersionId, int VersionNumber,
-    string EngagementNumber, string CustomerName, string RuntimeEnvironment,
+    string EngagementNumber, string CustomerName, string? ProjectName, string RuntimeEnvironment,
     string? ExistingSellRecordId, byte[] SowContent, byte[] GsdContent,
     string SowSha256, string GsdSha256, IReadOnlyList<Module025SellRecipient> Recipients)
 {
     public string RecordKey => $"module025:{RuntimeEnvironment}:{EngagementId:N}";
     public string IdempotencyKey => $"{RecordKey}:{VersionId:N}";
-    public string SowFileName => $"{EngagementNumber}-v{VersionNumber}-SOW.docx";
-    public string GsdFileName => $"{EngagementNumber}-v{VersionNumber}-GSD.xlsx";
+    private string FileStem
+    {
+        get
+        {
+            var number = EngagementNumber.StartsWith("SOW-", StringComparison.OrdinalIgnoreCase) ? EngagementNumber[4..] : EngagementNumber;
+            static string Safe(string value) => string.Join("_", value.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries))
+                .Replace(' ', '_').Trim('_');
+            var project = Safe(ProjectName ?? string.Empty);
+            if (project.Length == 0) project = "Project";
+            return $"SOW#{Safe(number)}_{project}";
+        }
+    }
+    public string SowFileName => $"{FileStem}_SOW.docx";
+    public string GsdFileName => $"{FileStem}_GSD.xlsx";
 }
 internal sealed record Module025SellReceipt(
     Guid SubmissionId, Guid VersionId, string SellRecordId,

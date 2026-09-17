@@ -3,6 +3,7 @@ using System.Text.Json;
 namespace ProjectTime.Api.Modules;
 
 public sealed record Module025SowGsdCreateRequest(
+    string? ProjectName,
     Guid? CustomerId,
     string? CustomerName,
     string? CustomerEntryMode,
@@ -32,6 +33,7 @@ public sealed record Module025SowGsdPhaseSaveRequest(
 
 public sealed record Module025SowGsdSaveRequest(
     int ExpectedRevision,
+    string? ProjectName,
     Guid? CustomerId,
     string? CustomerName,
     string? CustomerEntryMode,
@@ -82,6 +84,7 @@ internal sealed record Module025EngagementRow(
     Guid? ResaleUserId,
     string ResaleName,
     string ServiceOverview,
+    string? ProjectName,
     JsonElement SowSections,
     JsonElement AiMetadata,
     string Status,

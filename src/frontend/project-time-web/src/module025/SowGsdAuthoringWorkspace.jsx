@@ -158,6 +158,7 @@ function WorkList({ rows, selectedId, onSelect, emptyLabel }) {
             <StatusPill value={row.status} />
           </div>
           <strong>{row.customerName || 'Customer not selected'}</strong>
+          <span>{row.projectName || 'Project name not set'}</span>
           <span>{commercialLabel(row.commercialModel)} · {row.finalHours ?? 0} reviewed hour(s)</span>
           <small>SA: {row.ownerDisplayName || 'Unassigned'} · Updated {formatTime(row.updatedAt)}</small>
         </button>
@@ -340,6 +341,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
         method: 'PUT',
         body: JSON.stringify({
           expectedRevision: engagement.revision,
+          projectName: engagement.projectName || '',
           customerId: engagement.customerEntryMode === 'directory' ? engagement.customerId : null,
           customerName: engagement.customerName,
           customerEntryMode: engagement.customerEntryMode,
@@ -409,6 +411,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
       const payload = await requestJson('/api/module025/sow-gsd', {
         method: 'POST',
         body: JSON.stringify({
+          projectName: '',
           customerEntryMode: 'directory',
           commercialModel: 'time_and_materials',
           customerProgram: 'standard',
@@ -507,12 +510,19 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
           ? 'Generate the detailed scope, review it, then confirm to enable both downloads. Generation failure does not remove this record or any earlier retained versions.'
           : 'Review and confirm the current scope to enable both downloads. Previously retained documents remain available in version history.';
 
+  function documentFileName(artifact) {
+    const number = String(engagement?.engagementNumber || '').replace(/^SOW-/i, '');
+    const project = String(engagement?.projectName || 'Project').trim()
+      .replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'Project';
+    return `SOW#${number}_${project}_${artifact === 'sow.docx' ? 'SOW.docx' : 'GSD.xlsx'}`;
+  }
+
   async function downloadDocument(artifact) {
     if (!downloadReady) return;
     setActionState({ busy: 'download', message: '', error: '' });
     try {
       await downloadProtected(`/api/module025/sow-gsd/${engagement.engagementId}/${artifact}`,
-        `${engagement.engagementNumber}-${artifact === 'sow.docx' ? 'SOW.docx' : 'GSD.xlsx'}`);
+        documentFileName(artifact));
       setActionState({ busy: '', message: `${artifact === 'sow.docx' ? 'SOW' : 'GSD'} downloaded.`, error: '' });
     } catch (error) {
       setActionState({ busy: '', message: '', error: error.message });
@@ -582,7 +592,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
             ))}
           </select>
         </Field>
-        <Field label="Search" hint="Customer, Service Overview, or immutable SOW/GSD ID">
+        <Field label="Search" hint="Project Name, Customer, Service Overview, or immutable SOW/GSD ID">
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="SOW-2026-000123 or customer…" />
         </Field>
         <div className="m025-filter-status">{listLoading ? 'Refreshing…' : `${rows.length} record(s)`}</div>
@@ -619,8 +629,8 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
                     <StatusPill value={engagement.status} />
                     {access?.readOnlyManagerView ? <span className="m025-read-only">Manager view · read only</span> : null}
                   </div>
-                  <h2>{engagement.customerName || 'New SOW / GSD'}</h2>
-                  <p>Owned by {engagement.ownerDisplayName} · Revision {engagement.revision}</p>
+                  <h2>{engagement.projectName || engagement.customerName || 'New SOW / GSD'}</h2>
+                  <p>{engagement.customerName || 'Customer not selected'} · Owned by {engagement.ownerDisplayName} · Revision {engagement.revision}</p>
                 </div>
                 <div className={`m025-save-state m025-save-state--${saveState.state}`}>
                   <span>{saveState.state === 'saving' ? '●' : saveState.state === 'error' ? '!' : '✓'}</span>
@@ -637,6 +647,9 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
                   <p>Commercial and ownership metadata flows into both the SOW and GSD.</p>
                 </div>
                 <div className="m025-form-grid m025-form-grid--3">
+                  <Field label="Project Name" hint="Used in SOW/GSD documents, SELL handoff, search, and downloaded filenames.">
+                    <input value={engagement.projectName || ''} disabled={readOnly} maxLength={500} onChange={(event) => updateTopLevel('projectName', event.target.value)} placeholder="CUCM 14 to 15 Upgrade" />
+                  </Field>
                   <Field label="Customer" hint="Use the canonical customer directory or choose Customer not listed.">
                     <select
                       value={selectedCustomerValue}

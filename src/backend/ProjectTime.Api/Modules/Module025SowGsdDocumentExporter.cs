@@ -19,11 +19,14 @@ internal static class Module025SowGsdDocumentExporter
         var body = new StringBuilder();
         BodyParagraph(body, "STATEMENT OF WORK", "Title");
         BodyParagraph(body, engagement.EngagementNumber, "Subtitle");
+        if (!string.IsNullOrWhiteSpace(engagement.ProjectName))
+            BodyParagraph(body, engagement.ProjectName, "Subtitle");
         BodyParagraph(body, engagement.CustomerName.Length > 0 ? engagement.CustomerName : "Customer to be confirmed", "Subtitle");
 
         AppendMetadataTable(body, new[]
         {
             ("SOW/GSD ID", engagement.EngagementNumber),
+            ("Project Name", EmptyAsTbd(engagement.ProjectName)),
             ("Commercial Model", CommercialLabel(engagement.CommercialModel)),
             ("Solution Architect", engagement.OwnerDisplayName),
             ("Account Executive", EmptyAsTbd(engagement.AccountExecutiveName)),
@@ -143,29 +146,31 @@ internal static class Module025SowGsdDocumentExporter
         summary.Range("A2:E2").Merge();
         summary.Cell("A4").Value = "SOW/GSD ID";
         summary.Cell("B4").Value = engagement.EngagementNumber;
-        summary.Cell("A5").Value = "Customer";
-        summary.Cell("B5").Value = engagement.CustomerName;
-        summary.Cell("A6").Value = "Commercial Model";
-        summary.Cell("B6").Value = CommercialLabel(engagement.CommercialModel);
-        summary.Cell("A7").Value = "Solution Architect";
-        summary.Cell("B7").Value = engagement.OwnerDisplayName;
-        summary.Cell("A8").Value = "Account Executive";
-        summary.Cell("B8").Value = engagement.AccountExecutiveName;
-        summary.Cell("A9").Value = "Inside Sales Representative";
-        summary.Cell("B9").Value = engagement.ResaleName;
-        summary.Cell("A10").Value = "GSD Template Profile";
-        summary.Cell("B10").Value = GsdProfileLabel(engagement.GsdTemplateKey);
-        summary.Cell("A11").Value = "Customer Program";
-        summary.Cell("B11").Value = engagement.CustomerProgram.Equals("standard", StringComparison.OrdinalIgnoreCase)
+        summary.Cell("A5").Value = "Project Name";
+        summary.Cell("B5").Value = engagement.ProjectName ?? string.Empty;
+        summary.Cell("A6").Value = "Customer";
+        summary.Cell("B6").Value = engagement.CustomerName;
+        summary.Cell("A7").Value = "Commercial Model";
+        summary.Cell("B7").Value = CommercialLabel(engagement.CommercialModel);
+        summary.Cell("A8").Value = "Solution Architect";
+        summary.Cell("B8").Value = engagement.OwnerDisplayName;
+        summary.Cell("A9").Value = "Account Executive";
+        summary.Cell("B9").Value = engagement.AccountExecutiveName;
+        summary.Cell("A10").Value = "Inside Sales Representative";
+        summary.Cell("B10").Value = engagement.ResaleName;
+        summary.Cell("A11").Value = "GSD Template Profile";
+        summary.Cell("B11").Value = GsdProfileLabel(engagement.GsdTemplateKey);
+        summary.Cell("A12").Value = "Customer Program";
+        summary.Cell("B12").Value = engagement.CustomerProgram.Equals("standard", StringComparison.OrdinalIgnoreCase)
             ? "Standard"
             : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(engagement.CustomerProgram);
 
-        summary.Cell("A13").Value = "Phase";
-        summary.Cell("B13").Value = "AI Suggested Hours";
-        summary.Cell("C13").Value = "SA Final Hours";
-        summary.Cell("D13").Value = "Variance";
-        summary.Cell("E13").Value = "Level-of-Effort Rationale";
-        var row = 14;
+        summary.Cell("A14").Value = "Phase";
+        summary.Cell("B14").Value = "AI Suggested Hours";
+        summary.Cell("C14").Value = "SA Final Hours";
+        summary.Cell("D14").Value = "Variance";
+        summary.Cell("E14").Value = "Level-of-Effort Rationale";
+        var row = 15;
         foreach (var phase in model.Phases.OrderBy(item => item.SortOrder))
         {
             summary.Cell(row, 1).Value = PhaseLabel(phase.PhaseCode);
@@ -176,12 +181,12 @@ internal static class Module025SowGsdDocumentExporter
             row += 1;
         }
         summary.Cell(row, 1).Value = "Total";
-        summary.Cell(row, 2).FormulaA1 = $"=SUM(B14:B{row - 1})";
-        summary.Cell(row, 3).FormulaA1 = $"=SUM(C14:C{row - 1})";
+        summary.Cell(row, 2).FormulaA1 = $"=SUM(B15:B{row - 1})";
+        summary.Cell(row, 3).FormulaA1 = $"=SUM(C15:C{row - 1})";
         summary.Cell(row, 4).FormulaA1 = $"=C{row}-B{row}";
-        summary.Range(13, 1, row, 5).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-        summary.Range(13, 1, row, 5).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-        summary.Row(13).Style.Font.Bold = true;
+        summary.Range(14, 1, row, 5).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        summary.Range(14, 1, row, 5).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        summary.Row(14).Style.Font.Bold = true;
         summary.Row(row).Style.Font.Bold = true;
         summary.Column(1).Width = 22;
         summary.Column(2).Width = 20;

@@ -156,8 +156,10 @@ export default function SowRegister({ initialEngagementId = '' }) {
     setActionBusy(key);
     setNotice(null);
     try {
+      const number = String(detail.engagementNumber || '').replace(/^SOW-/i, '');
+      const project = String(detail.projectName || 'Project').trim().replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'Project';
       const extension = artifact === 'sow.docx' ? 'SOW.docx' : 'GSD.xlsx';
-      await downloadProtected(`/api/module025/sow-gsd/${detail.engagementId}/versions/${version.versionId}/${artifact}`, `${detail.engagementNumber}-v${version.versionNumber}-${extension}`);
+      await downloadProtected(`/api/module025/sow-gsd/${detail.engagementId}/versions/${version.versionId}/${artifact}`, `SOW#${number}_${project}_${extension}`);
       setNotice({ tone: 'info', text: `Retained ${artifact === 'sow.docx' ? 'SOW' : 'GSD'} v${version.versionNumber} downloaded.` });
     } catch (error) {
       setNotice({ tone: 'warning', text: error.message });
@@ -199,7 +201,7 @@ export default function SowRegister({ initialEngagementId = '' }) {
           <option value="">All permitted Solution Architects</option>
           {(bootstrap?.solutionArchitects || []).map((person) => <option key={person.userId} value={person.userId}>{person.displayName}</option>)}
         </select></label>
-        <label className="m025-field"><span>Customer or SOW number</span><input value={filters.search} onChange={(event) => changeFilter('search', event.target.value)} placeholder="Search retained records" /></label>
+        <label className="m025-field"><span>Project, customer, or SOW number</span><input value={filters.search} onChange={(event) => changeFilter('search', event.target.value)} placeholder="Search retained records" /></label>
         <label className="m025-field"><span>From date (UTC)</span><input type="date" value={filters.fromDate} onChange={(event) => changeFilter('fromDate', event.target.value)} /></label>
         <label className="m025-field"><span>Through date (UTC, inclusive)</span><input type="date" value={filters.toDate} onChange={(event) => changeFilter('toDate', event.target.value)} /></label>
       </section>
@@ -216,10 +218,10 @@ export default function SowRegister({ initialEngagementId = '' }) {
       </div>
       <div className="m025-register-table-wrap" aria-busy={loading}>
         <table className="m025-register-table"><caption>{loading ? 'Refreshing records…' : `${report?.totalRecords ?? 0} matching SOW records · ${report?.runtimeEnvironment || 'governed environment'}`}</caption>
-          <thead><tr><th scope="col">SOW record</th><th scope="col">Customer</th><th scope="col">Solution Architect</th><th scope="col">Working status</th><th scope="col">Latest version</th><th scope="col">SELL status</th></tr></thead>
+          <thead><tr><th scope="col">SOW record</th><th scope="col">Project</th><th scope="col">Customer</th><th scope="col">Solution Architect</th><th scope="col">Working status</th><th scope="col">Latest version</th><th scope="col">SELL status</th></tr></thead>
           <tbody>{(report?.records || []).map((row) => <tr key={row.engagementId} aria-selected={selectedId === row.engagementId}>
             <th scope="row"><button type="button" className="m025-button m025-button--secondary" onClick={() => { setSelectedId(row.engagementId); setVersionPage(1); setNotice(null); }}>{row.engagementNumber}</button></th>
-            <td>{row.customerName || 'Customer not selected'}</td><td>{row.ownerDisplayName}</td><td>{status(row.status)}</td><td>{row.latestVersionNumber ? `v${row.latestVersionNumber}` : 'Not released'}</td><td>{status(row.lastSellStatus)}</td>
+            <td>{row.projectName || 'Project name not set'}</td><td>{row.customerName || 'Customer not selected'}</td><td>{row.ownerDisplayName}</td><td>{status(row.status)}</td><td>{row.latestVersionNumber ? `v${row.latestVersionNumber}` : 'Not released'}</td><td>{status(row.lastSellStatus)}</td>
           </tr>)}</tbody>
         </table>
         {!loading && report && !report.records?.length ? <p>No SOW records match these filters.</p> : null}
@@ -228,7 +230,7 @@ export default function SowRegister({ initialEngagementId = '' }) {
 
       {selectedId && !detail ? <p role="status">Loading retained versions and history…</p> : null}
       {detail ? <section className="m025-section" aria-label="Selected SOW history">
-        <div className="m025-section-heading"><div><h2>{detail.engagementNumber} · {detail.customerName}</h2></div><p>SA: {detail.ownerDisplayName} · Working revision {detail.revision} · {status(detail.status)}</p></div>
+        <div className="m025-section-heading"><div><h2>{detail.engagementNumber} · {detail.projectName || 'Project name not set'}</h2></div><p>SA: {detail.ownerDisplayName} · Working revision {detail.revision} · {status(detail.status)}</p></div>
         <p>Use SOW Authoring to reopen and edit this record. Reconfirmation retains the next changed version; previous versions remain downloadable.</p>
         {!detail.sellReadiness?.ready ? <div className="m025-notice m025-notice--warning" role="status"><strong>Automatic SELL publication is not enabled</strong><p>{detail.sellReadiness?.message}</p><p>You can download the retained SOW and GSD below for manual upload. No automatic SELL upload or success notification has occurred.</p></div> : null}
         {canRelease ? <button type="button" className="m025-button m025-button--primary" disabled={Boolean(actionBusy)} onClick={() => runAction('versions')}>{actionBusy === 'versions' ? 'Retaining files…' : 'Retain confirmed version'}</button> : null}
