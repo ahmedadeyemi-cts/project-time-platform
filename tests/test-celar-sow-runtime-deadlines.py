@@ -1,8 +1,6 @@
 """Exercise the actual gateway route with a clock and failing local models."""
 import ast
 import json
-import io
-import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,7 +8,7 @@ from types import SimpleNamespace
 root = Path(__file__).resolve().parents[1]
 source = root / 'deployment/oracle-celar/gateway/wsgi.py'
 tree = ast.parse(source.read_text())
-selected = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in {'_budgets', '_sow_completion', '_record_module025_timing', '_local_chat_completions'}]
+selected = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in {'_budgets', '_sow_completion', '_local_chat_completions'}]
 manifest = json.loads((root / 'deployment/oracle-celar/release.json').read_text())
 clock = [0.0]
 attempts = []
@@ -28,7 +26,7 @@ payload = {'model': 'gemma3:4b', 'messages': [{'role': 'user', 'content': 'synth
 gateway = SimpleNamespace(CHAT_TIMEOUT_SECONDS=manifest['chatTimeoutSeconds'], MAX_GATEWAY_RESPONSE_BYTES=1000000,
     _bounded_request_json=lambda: payload, _ollama_post=post, _error=lambda code, status: (code, status))
 request = SimpleNamespace(headers={})
-ns = dict(Any=object, os=os, logging=logging, gateway=gateway, request=request, jsonify=Response,
+ns = dict(Any=object, os=os, gateway=gateway, request=request, jsonify=Response,
     time=SimpleNamespace(monotonic=lambda: clock[0]), CONTRACT_MODEL='gemma3:4b',
     STRUCTURED_FEATURES={'sow_gsd_planning', 'project_flowhive_plan', 'project_forge_plan_estimate'},
     STRUCTURED_ORDER=manifest['structuredGenerationOrder'], GENERAL_ORDER=manifest['generalGenerationOrder'],
@@ -98,32 +96,3 @@ gate = controller.split('      - name: Verify the matching Oracle SOW runtime be
 assert '\n        if:' not in gate
 assert 'verify-oracle-sow-runtime.py' in gate
 assert controller.index('Verify the matching Oracle SOW runtime') < controller.index('Build immutable API')
-
-# Durable Module 025 respects the caller's smaller budget and never starts
-# the gateway's 3000-second nested model chain.
-clock[0] = 0
-attempts.clear()
-gateway._ollama_post = post
-timing_log = io.StringIO()
-phase_logger = logging.getLogger("celar.module025")
-phase_logger.handlers = [logging.StreamHandler(timing_log)]
-phase_logger.setLevel(logging.WARNING)
-request.headers = {'X-Pulse-AI-Feature':'sow_gsd_planning',
-    'X-Pulse-AI-Workload':'module025_phase_v3', 'X-Pulse-AI-Deadline-Seconds':'110'}
-response, status = ns['_local_chat_completions']()
-assert status == 504 and attempts == [('gemma3:4b', 110)], attempts
-for invalid in ('', '0', '111', '3600', '-1', 'abc', '١٠'):
-    attempts.clear()
-    request.headers['X-Pulse-AI-Deadline-Seconds'] = invalid
-    _, status = ns['_local_chat_completions']()
-    assert status == 400 and attempts == [], (invalid, status, attempts)
-print('MODULE025_CELAR_CALLER_DEADLINE=PASS')
-
-assert phase_logger.level == logging.INFO
-assert "model=gemma3:4b status=504 budget_seconds=110 metrics={}" in timing_log.getvalue()
-assert "synthetic test" not in timing_log.getvalue()
-ns['_record_module025_timing']('gemma3:4b', 200, 110,
-    {'load_duration':123, 'eval_count':45, 'message':'private prompt', 'eval_duration':-1})
-assert "'load_duration': 123" in timing_log.getvalue() and "'eval_count': 45" in timing_log.getvalue()
-assert 'private prompt' not in timing_log.getvalue() and "'eval_duration': -1" not in timing_log.getvalue()
-print('MODULE025_CELAR_TIMINGS_REACH_SYSTEMD_LOG=PASS')

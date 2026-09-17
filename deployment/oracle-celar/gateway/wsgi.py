@@ -10,7 +10,6 @@ current authoritative evidence from the application layer when freshness matters
 from __future__ import annotations
 
 import fcntl
-import logging
 import os
 import subprocess
 import tempfile
@@ -352,24 +351,8 @@ def _sow_completion(payload: dict[str, Any], timeout: int) -> tuple[dict[str, An
     completion = {"role": "assistant", "content": message["content"]}
     if message.get("refusal"):
         completion["refusal"] = message["refusal"]
-    metrics = {key: body[key] for key in ("load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration", "total_duration")
-               if type(body.get(key)) is int and body[key] >= 0}
     return {"model": body["model"], "choices": [
-        {"index": 0, "message": completion, "finish_reason": reason}], "celar_metrics": metrics}, 200
-
-
-def _record_module025_timing(model: str, status: int, budget: int, metrics: dict[str, Any]) -> None:
-    # Flask's default WARNING threshold would silently discard INFO records.
-    # A dedicated stderr logger is collected by systemd without enabling raw
-    # HTTP or prompt debug logging anywhere else.
-    logger = logging.getLogger("celar.module025")
-    logger.setLevel(logging.INFO)
-    if not logger.handlers:
-        logger.addHandler(logging.StreamHandler())
-    logger.propagate = False
-    safe_metrics = {key: metrics[key] for key in ("load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration", "total_duration")
-                    if type(metrics.get(key)) is int and metrics[key] >= 0}
-    logger.info("module025_phase model=%s status=%s budget_seconds=%s metrics=%s", model, status, budget, safe_metrics)
+        {"index": 0, "message": completion, "finish_reason": reason}]}, 200
 
 
 def _local_chat_completions() -> Any:
@@ -428,19 +411,7 @@ def _local_chat_completions() -> Any:
         if name in payload:
             base_payload[name] = payload[name]
 
-    workload = request.headers.get("X-Pulse-AI-Workload", "")
-    phase_request = feature == "sow_gsd_planning" and workload == "module025_phase_v3"
-    deadline_seconds = SOW_TIMEOUT_SECONDS if sow else gateway.CHAT_TIMEOUT_SECONDS
-    if phase_request:
-        supplied_budget = request.headers.get("X-Pulse-AI-Deadline-Seconds", "")
-        if not supplied_budget.isascii() or not supplied_budget.isdigit() or not 10 <= int(supplied_budget) <= 110:
-            return gateway._error("module025_deadline_invalid", 400)
-        deadline_seconds = int(supplied_budget)
-        # One selected local model per durable phase attempt. The application,
-        # not this gateway, owns fallback and the persisted spending budget.
-        candidates = candidates[:1]
-        attempt_budgets = [deadline_seconds]
-    deadline = time.monotonic() + deadline_seconds
+    deadline = time.monotonic() + (SOW_TIMEOUT_SECONDS if sow else gateway.CHAT_TIMEOUT_SECONDS)
     last_body: dict[str, Any] = {"error": {"code": "private_runtime_unavailable"}}
     last_status = 502
     attempted: list[str] = []
@@ -467,10 +438,6 @@ def _local_chat_completions() -> Any:
                 "/v1/chat/completions", candidate_payload, attempt_timeout,
                 gateway.MAX_GATEWAY_RESPONSE_BYTES,
             )
-        if phase_request:
-            # Closed operational fields only; never prompt, response, identity,
-            # credentials or arbitrary upstream error text.
-            _record_module025_timing(candidate, status, attempt_timeout, body.get("celar_metrics", {}))
         if status == 200:
             response = jsonify(body)
             response.headers["X-Celar-Local-Model"] = candidate

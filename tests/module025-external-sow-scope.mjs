@@ -6,11 +6,8 @@ import path from 'node:path';
 import { verifyReadOnlyWorkflow } from './flowhive-psa-scope.mjs';
 const base = 'e632c8d24549339a8476b9b50a8411b4d253ff02';
 const expected = [
-  ".github/workflows/celar-ai-oracle-gitops-ci.yml",
   ".github/workflows/flowhive-psa-release-control-ci.yml",
   ".github/workflows/module033-project-forge-ci.yml",
-  "deployment/oracle-celar/gateway/wsgi.py",
-  "deployment/oracle-celar/release.json",
   "docs/releases/2026-09-16-module025-external-sow-and-celar-deadline.md",
   "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
   "scripts/release-test/collect-celar-runtime-evidence.py",
@@ -21,7 +18,6 @@ const expected = [
   "src/backend/ProjectTime.Api/Ai/Module025GenerationEngine.cs",
   "src/backend/ProjectTime.Api/Ai/ProjectPulseAiContracts.cs",
   "src/backend/ProjectTime.Api/Ai/ProjectPulseAiRemoteProviders.cs",
-  "src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs",
   "src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs",
   "src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs",
   "src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs",
@@ -32,7 +28,6 @@ const expected = [
   "tests/flowhive-psa-admission.test.mjs",
   "tests/module025-external-sow-scope.mjs",
   "tests/test-celar-runtime-evidence.py",
-  "tests/test-celar-sow-runtime-deadlines.py",
   "tests/validate-celar-ai-pr630-consolidated.mjs"
 ];
 function verifyPaths(actual) { assert.deepEqual([...actual].sort(), expected); }
@@ -51,6 +46,10 @@ export function verifyModule025ExternalScope() {
     'scripts/release-test/flowhive-psa-admission.mjs'])
     assert.deepEqual(fs.readFileSync(name), execFileSync('git', ['show', `${base}:${name}`]),
       `External SOW adapters cannot change deployment authority: ${name}`);
-  console.log('MODULE025_EXTERNAL_SOW_EXACT_SCOPE=PASS deployment_authority=unchanged');
+  for (const name of ['deployment/oracle-celar', 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs'])
+    assert.equal(execFileSync('git', ['rev-parse', `HEAD:${name}`], {encoding:'utf8'}).trim(),
+      execFileSync('git', ['rev-parse', `${base}:${name}`], {encoding:'utf8'}).trim(),
+      `Cloud SOW release must not deploy or change the deferred Celar runtime: ${name}`);
+  console.log('MODULE025_EXTERNAL_SOW_EXACT_SCOPE=PASS deployment_authority=unchanged celar_runtime=unchanged');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) verifyModule025ExternalScope();
