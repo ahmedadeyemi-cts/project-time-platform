@@ -169,11 +169,12 @@ public static class Module025SowGsdModule
                    account_executive_name, resale_name, status, is_active, revision,
                    last_generated_at, confirmed_at, archived_at, created_at, updated_at,
                    COALESCE((SELECT sum(final_hours) FROM module025_sow_gsd_phases phase WHERE phase.engagement_id=engagement.engagement_id),0),
-                   COALESCE((SELECT sum(suggested_hours) FROM module025_sow_gsd_phases phase WHERE phase.engagement_id=engagement.engagement_id),0)
+                   COALESCE((SELECT sum(suggested_hours) FROM module025_sow_gsd_phases phase WHERE phase.engagement_id=engagement.engagement_id),0),
+                   project_name
             FROM module025_sow_gsd_engagements engagement
             WHERE owner_user_id=@owner_user_id
               AND is_active=@is_active
-              AND (@search='' OR engagement_number ILIKE '%' || @search || '%' OR customer_name ILIKE '%' || @search || '%' OR service_overview ILIKE '%' || @search || '%')
+              AND (@search='' OR engagement_number ILIKE '%' || @search || '%' OR customer_name ILIKE '%' || @search || '%' OR project_name ILIKE '%' || @search || '%' OR service_overview ILIKE '%' || @search || '%')
             ORDER BY updated_at DESC
             LIMIT 300;
             """;
@@ -206,7 +207,8 @@ public static class Module025SowGsdModule
                 createdAt = reader.GetFieldValue<DateTimeOffset>(16),
                 updatedAt = reader.GetFieldValue<DateTimeOffset>(17),
                 finalHours = reader.GetDecimal(18),
-                suggestedHours = reader.GetDecimal(19)
+                suggestedHours = reader.GetDecimal(19),
+                projectName = reader.GetString(20)
             });
         }
         return Results.Ok(new { status = "module025_engagements_loaded", state = archived ? "archived" : "active", ownerUserId = selectedOwner, count = rows.Count, engagements = rows, stateChanged = false });
@@ -240,9 +242,9 @@ public static class Module025SowGsdModule
             INSERT INTO module025_sow_gsd_engagements(
                 engagement_id, owner_user_id, owner_display_name, owner_department_name, owner_team_name,
                 customer_id, customer_name, customer_entry_mode, commercial_model, customer_program, gsd_template_key,
-                account_executive_user_id, account_executive_name, resale_user_id, resale_name, service_overview)
+                account_executive_user_id, account_executive_name, resale_user_id, resale_name, service_overview, project_name)
             VALUES(@engagement_id,@owner_user_id,@owner_display_name,@department_name,@team_name,@customer_id,@customer_name,@customer_entry_mode,
-                @commercial_model,@customer_program,@gsd_template_key,@account_executive_user_id,@account_executive_name,@resale_user_id,@resale_name,@service_overview)
+                @commercial_model,@customer_program,@gsd_template_key,@account_executive_user_id,@account_executive_name,@resale_user_id,@resale_name,@service_overview,@project_name)
             RETURNING engagement_number;
             """;
         string engagementNumber;
@@ -264,6 +266,7 @@ public static class Module025SowGsdModule
             AddNullableGuid(command, "resale_user_id", resale.UserId);
             command.Parameters.AddWithValue("resale_name", resale.DisplayName);
             command.Parameters.AddWithValue("service_overview", Clean(request.ServiceOverview, 30_000));
+            command.Parameters.AddWithValue("project_name", Clean(request.ProjectName, 500));
             engagementNumber = Convert.ToString(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) ?? string.Empty;
         }
         await InsertEmptyPhasesAsync(connection, transaction, engagementId, cancellationToken);
@@ -311,7 +314,7 @@ public static class Module025SowGsdModule
             SET customer_id=@customer_id, customer_name=@customer_name, customer_entry_mode=@customer_entry_mode,
                 commercial_model=@commercial_model, customer_program=@customer_program, gsd_template_key=@gsd_template_key,
                 account_executive_user_id=@account_executive_user_id, account_executive_name=@account_executive_name,
-                resale_user_id=@resale_user_id, resale_name=@resale_name, service_overview=@service_overview,
+                resale_user_id=@resale_user_id, resale_name=@resale_name, service_overview=@service_overview, project_name=@project_name,
                 status=CASE WHEN service_overview IS DISTINCT FROM @service_overview THEN 'draft' ELSE status END,
                 last_generated_at=CASE WHEN service_overview IS DISTINCT FROM @service_overview THEN NULL ELSE last_generated_at END,
                 revision=revision+1
@@ -334,6 +337,7 @@ public static class Module025SowGsdModule
             AddNullableGuid(command, "resale_user_id", resale.UserId);
             command.Parameters.AddWithValue("resale_name", resale.DisplayName);
             command.Parameters.AddWithValue("service_overview", serviceOverview);
+            command.Parameters.AddWithValue("project_name", Clean(request.ProjectName, 500));
             var result = await command.ExecuteScalarAsync(cancellationToken);
             if (result is null)
             {
@@ -1082,7 +1086,7 @@ public static class Module025SowGsdModule
         await using var connection = readable.Connection!;
         var engagement = readable.Engagement!;
         if (engagement.Status != "confirmed") return StateConflict("confirmation_required", "Confirm the reviewed SOW/GSD before downloading customer documents.");
-        return Results.File(Module025SowGsdDocumentExporter.CreateSowDocx(BuildDocumentModel(engagement)), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", $"{SafeFileName(engagement.EngagementNumber)}-SOW.docx");
+        return Results.File(Module025SowGsdDocumentExporter.CreateSowDocx(BuildDocumentModel(engagement)), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", DocumentFileName(engagement, "SOW", ".docx"));
     }
 
     private static async Task<IResult> DownloadGsdAsync(Guid engagementId, HttpContext context, CancellationToken cancellationToken)
@@ -1092,7 +1096,17 @@ public static class Module025SowGsdModule
         await using var connection = readable.Connection!;
         var engagement = readable.Engagement!;
         if (engagement.Status != "confirmed") return StateConflict("confirmation_required", "Confirm the reviewed SOW/GSD before downloading customer documents.");
-        return Results.File(Module025SowGsdDocumentExporter.CreateGsdXlsx(BuildDocumentModel(engagement)), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"{SafeFileName(engagement.EngagementNumber)}-GSD.xlsx");
+        return Results.File(Module025SowGsdDocumentExporter.CreateGsdXlsx(BuildDocumentModel(engagement)), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", DocumentFileName(engagement, "GSD", ".xlsx"));
+    }
+
+    internal static string DocumentFileName(Module025EngagementRow engagement, string artifact, string extension)
+    {
+        var sowNumber = engagement.EngagementNumber.StartsWith("SOW-", StringComparison.OrdinalIgnoreCase)
+            ? engagement.EngagementNumber[4..]
+            : engagement.EngagementNumber;
+        var project = SafeFileName(engagement.ProjectName);
+        if (project.Length == 0) project = "Project";
+        return $"SOW#{SafeFileName(sowNumber)}_{project}_{artifact}{extension}";
     }
 
     private static Module025DocumentModel BuildDocumentModel(Module025EngagementRow engagement) => new(engagement, engagement.Phases.OrderBy(phase => phase.SortOrder).ToArray(), engagement.Phases.Sum(phase => phase.SuggestedHours), engagement.Phases.Sum(phase => phase.FinalHours));
@@ -1210,7 +1224,7 @@ public static class Module025SowGsdModule
         const string sql = """
             SELECT engagement_id, engagement_number, owner_user_id, owner_display_name, owner_department_name, owner_team_name,
                    customer_id, customer_name, customer_entry_mode, commercial_model, customer_program, gsd_template_key,
-                   account_executive_user_id, account_executive_name, resale_user_id, resale_name, service_overview,
+                   account_executive_user_id, account_executive_name, resale_user_id, resale_name, service_overview, project_name,
                    sow_sections::text, ai_metadata::text, status, is_active, revision, last_generated_at, confirmed_at, archived_at, created_at, updated_at
             FROM module025_sow_gsd_engagements WHERE engagement_id=@engagement_id;
             """;
@@ -1223,9 +1237,9 @@ public static class Module025SowGsdModule
             shell = new Module025EngagementRow(
                 reader.GetGuid(0), reader.GetString(1), reader.GetGuid(2), reader.GetString(3), reader.GetString(4), reader.GetString(5),
                 reader.IsDBNull(6) ? null : reader.GetGuid(6), reader.GetString(7), reader.GetString(8), reader.GetString(9), reader.GetString(10), reader.GetString(11),
-                reader.IsDBNull(12) ? null : reader.GetGuid(12), reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetGuid(14), reader.GetString(15), reader.GetString(16),
-                ParseJson(reader.GetString(17), JsonValueKind.Object), ParseJson(reader.GetString(18), JsonValueKind.Object), reader.GetString(19), reader.GetBoolean(20), reader.GetInt32(21),
-                NullableTimestamp(reader, 22), NullableTimestamp(reader, 23), NullableTimestamp(reader, 24), reader.GetFieldValue<DateTimeOffset>(25), reader.GetFieldValue<DateTimeOffset>(26), Array.Empty<Module025PhaseRow>());
+                reader.IsDBNull(12) ? null : reader.GetGuid(12), reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetGuid(14), reader.GetString(15), reader.GetString(16), reader.GetString(17),
+                ParseJson(reader.GetString(18), JsonValueKind.Object), ParseJson(reader.GetString(19), JsonValueKind.Object), reader.GetString(20), reader.GetBoolean(21), reader.GetInt32(22),
+                NullableTimestamp(reader, 23), NullableTimestamp(reader, 24), NullableTimestamp(reader, 25), reader.GetFieldValue<DateTimeOffset>(26), reader.GetFieldValue<DateTimeOffset>(27), Array.Empty<Module025PhaseRow>());
         }
         var phases = await LoadPhasesAsync(connection, engagementId, cancellationToken, transaction);
         return shell with { Phases = phases };
@@ -1265,7 +1279,7 @@ public static class Module025SowGsdModule
             engagement.EngagementId, engagement.EngagementNumber, engagement.OwnerUserId, engagement.OwnerDisplayName, engagement.OwnerDepartmentName, engagement.OwnerTeamName,
             engagement.CustomerId, engagement.CustomerName, engagement.CustomerEntryMode, engagement.CommercialModel, engagement.CustomerProgram, engagement.GsdTemplateKey,
             gsdTemplate = engagement.GsdTemplateKey == Module025SowGsdDocumentExporter.HaeaGsdTemplateKey ? Module025SowGsdDocumentExporter.HaeaGsdDisplayName : "Standard GSD",
-            engagement.AccountExecutiveUserId, engagement.AccountExecutiveName, engagement.ResaleUserId, engagement.ResaleName, engagement.ServiceOverview,
+            engagement.AccountExecutiveUserId, engagement.AccountExecutiveName, engagement.ResaleUserId, engagement.ResaleName, engagement.ServiceOverview, engagement.ProjectName,
             engagement.SowSections, engagement.AiMetadata, engagement.Status, engagement.IsActive, engagement.Revision, engagement.LastGeneratedAt, engagement.ConfirmedAt,
             engagement.ArchivedAt, engagement.CreatedAt, engagement.UpdatedAt,
             suggestedHours = engagement.Phases.Sum(phase => phase.SuggestedHours), finalHours = engagement.Phases.Sum(phase => phase.FinalHours),
