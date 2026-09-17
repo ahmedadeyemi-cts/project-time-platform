@@ -918,10 +918,8 @@ public static class Module025SowGsdModule
             foreach (var phaseCode in PhaseCodes)
             {
                 var phase = generated[phaseCode];
-                var objective = phase.Objectives.Count > 0 ? string.Join(" ", phase.Objectives) : $"No supported {PhaseLabel(phaseCode)} work package was returned. The Solution Architect must define and validate this phase before confirmation.";
-                var rationale = phase.PackageCount > 0
-                    ? $"Celar AI suggested {phase.SuggestedHours:0.##} hour(s) across {phase.PackageCount} detailed {PhaseLabel(phaseCode)} work package(s). The Solution Architect must validate the estimate against customer readiness, dependencies, access, technical constraints, and the confirmed execution approach before finalizing the GSD."
-                    : "No evidence-supported effort was returned for this phase. The suggested effort remains 0 hours until the Solution Architect defines and validates the missing work.";
+                var objective = string.Join("\n\n", phase.DetailedActivities);
+                var rationale = BuildGeneratedEffortRationale(JsonArray(JsonSerializer.SerializeToElement(composition.SowDraft), "WorkPackages"), phaseCode);
                 await SaveGeneratedPhaseAsync(connection, transaction, engagementId, phase, objective, rationale, cancellationToken);
             }
             const string update = """
@@ -1130,6 +1128,32 @@ public static class Module025SowGsdModule
         command.Parameters.AddWithValue("risks", JsonSerializer.Serialize(CleanList(request.Risks)));
         command.Parameters.AddWithValue("loe_rationale", Clean(request.LoeRationale, 12_000));
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    internal static string BuildGeneratedEffortRationale(IEnumerable<JsonElement> workPackages, string phaseCode)
+    {
+        var packages = workPackages.Where(package => ClassifyPhase(JsonString(package, "Phase"),
+            JsonString(package, "Name"), JsonString(package, "Description")) == phaseCode).ToArray();
+        if (packages.Length == 0) return "No work-package estimate is available for this phase.";
+        var total = packages.Sum(package => Math.Max(0m, JsonDecimal(package, "EstimatedHours") ?? 0m));
+        var parts = new List<string> { $"{PhaseLabel(phaseCode)} estimate: {total.ToString("0.##", CultureInfo.InvariantCulture)} hours across {packages.Length} work packages." };
+        foreach (var package in packages)
+        {
+            var hours = Math.Max(0m, JsonDecimal(package, "EstimatedHours") ?? 0m);
+            // The phase prompt requests the effort basis in Description. Preserve
+            // that explanation alongside the exact hours instead of replacing it
+            // with a generic provider-branded disclaimer or an invented formula.
+            var detail = $"{JsonString(package, "Wbs")} {JsonString(package, "Name")} ({hours.ToString("0.##", CultureInfo.InvariantCulture)} hours): {JsonString(package, "Description")}";
+            var steps = JsonStrings(package, "DetailedSteps");
+            if (steps.Count > 0) detail += "\nIncluded work: " + string.Join("; ", steps);
+            var prerequisites = JsonStrings(package, "Prerequisites");
+            if (prerequisites.Count > 0) detail += "\nPrerequisites: " + string.Join("; ", prerequisites);
+            var questions = JsonStrings(package, "OpenQuestions");
+            if (questions.Count > 0) detail += "\nUnresolved inputs affecting effort: " + string.Join("; ", questions);
+            parts.Add(detail);
+        }
+        parts.Add("These are proposed labor hours, not elapsed duration or a customer commitment. Validate the work-package estimates and unresolved inputs before approving final hours.");
+        return string.Join("\n\n", parts);
     }
 
     private static async Task SaveGeneratedPhaseAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid engagementId, GeneratedPhase phase, string objective, string rationale, CancellationToken cancellationToken)

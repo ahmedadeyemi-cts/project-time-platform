@@ -9,7 +9,7 @@ internal sealed class Module025ExternalSowAdapter
 {
     private static readonly (string Name, string Pattern)[] Technologies =
     [
-        ("Cisco Unified Communications Manager", @"\b(?:Cisco Unified Communications Manager|CUCM)\b"),
+        ("Cisco Unified Communications Manager", @"\b(?:Cisco Unified Communications Manager|Cisco Call\s?Manager|CallManager|CUCM)\b"),
         ("Cisco Unity Connection", @"\b(?:Cisco Unity Connection|Unity Connection)\b"),
         ("Cisco Emergency Responder", @"\bCisco Emergency Responder\b"),
         ("Cisco Expressway", @"\b(?:Cisco )?Expressway\b"),
@@ -30,7 +30,21 @@ internal sealed class Module025ExternalSowAdapter
         ("Palo Alto Networks firewall", @"\bPalo Alto(?: Networks)?\b"),
         ("Fortinet FortiGate", @"\b(?:Fortinet|FortiGate)\b")
     ];
-    private static readonly string[] Operations = ["upgrade", "migration", "migrate", "implement", "deploy", "install", "configure", "integrate", "assessment", "assess"];
+    // Normalize a closed set of ordinary inflections into the same approved
+    // operation names. Never send the matching source text to a provider.
+    private static readonly (string Name, string Pattern)[] Operations =
+    [
+        ("upgrade", @"\bupgrad(?:e[ds]?|ing)\b"),
+        ("migration", @"\bmigrations?\b"),
+        ("migrate", @"\bmigrat(?:e[ds]?|ing)\b"),
+        ("implement", @"\bimplement(?:s|ed|ing|ation)?\b"),
+        ("deploy", @"\bdeploy(?:s|ed|ing|ment)?\b"),
+        ("install", @"\binstall(?:s|ed|ing|ation)?\b"),
+        ("configure", @"\bconfigur(?:e[ds]?|ing|ation)\b"),
+        ("integrate", @"\bintegrat(?:e[ds]?|ing|ion)\b"),
+        ("assessment", @"\bassessments?\b"),
+        ("assess", @"\bassess(?:es|ed|ing)?\b")
+    ];
     private static readonly TimeSpan RegexBudget = TimeSpan.FromMilliseconds(200);
     private readonly CelarAiAuthoritativeScopeEvidence _evidence;
     private readonly string[] _technologies;
@@ -62,7 +76,8 @@ internal sealed class Module025ExternalSowAdapter
             RegexOptions.IgnoreCase, RegexBudget)) return null;
         var technologies = Technologies.Where(item => Regex.IsMatch(source, item.Pattern, RegexOptions.IgnoreCase, RegexBudget))
             .Select(item => item.Name).ToArray();
-        var operations = Operations.Where(item => Regex.IsMatch(source, @"\b" + item + @"\b", RegexOptions.IgnoreCase, RegexBudget)).ToArray();
+        var operations = Operations.Where(item => Regex.IsMatch(source, item.Pattern, RegexOptions.IgnoreCase, RegexBudget))
+            .Select(item => item.Name).ToArray();
         if (technologies.Length == 0 || operations.Length == 0) return null;
         // Numeric facts are reconstructed from a closed grammar, never copied
         // from arbitrary prose or identifiers. Ambiguous associations are omitted.
