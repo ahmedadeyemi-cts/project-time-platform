@@ -279,6 +279,46 @@ public sealed class PulseAiEscalationSanitizer
         return true;
     }
 
+    // Only for Module 025's closed public-technology capsule, which never
+    // includes customer prose. Validate concrete sensitive values and explicit
+    // identity labels over the entire field, without the general sanitizer's
+    // 20k preview truncation or capitalization-based identity guesses. A future
+    // technical proposal legitimately contains "NTP", "Baseline" and "from
+    // Version 14". This does not authorize private-source external escalation.
+    internal bool IsClosedTechnicalProposalOutputSafe(string? content, IReadOnlyList<string>? sensitiveTerms,
+        out string decisionCode, out string blockingCategory)
+    {
+        blockingCategory = "none";
+        if (string.IsNullOrWhiteSpace(content)) blockingCategory = "empty_output";
+        else if ((sensitiveTerms ?? []).Any(term => term.Length >= 2 && SensitiveTermExpression(term).IsMatch(content)))
+            blockingCategory = "explicit_sensitive_terms";
+        else if (content.Contains("[REDACTED_", StringComparison.OrdinalIgnoreCase)) blockingCategory = "redaction_marker";
+        else
+        {
+            (Regex Pattern, string Category)[] patterns = [
+                (SecretAssignment, "secrets_and_credentials"), (HighEntropyToken, "high_entropy_tokens"),
+                (Email, "email_addresses"), (Url, "urls_and_external_locations"),
+                (HostName, "hostnames_and_internal_locations"), (Ipv4, "ip_addresses"), (Ipv6, "ip_addresses"),
+                (MacAddress, "network_hardware_identifiers"), (GuidValue, "record_identifiers"),
+                (CurrencyValue, "financial_values"), (Phone, "phone_numbers"), (SocialSecurityNumber, "government_identifiers"),
+                (PostalAddress, "postal_addresses"),
+                (CustomerOrOrganizationLabel, "named_people_and_customers"), (PersonRoleLabel, "named_people_and_customers"),
+                (HonorificName, "named_people_and_customers"), (OrganizationName, "organization_and_customer_names"),
+                (LocationOrFacilityLabel, "locations_and_facilities"), (UserOrAccountIdentifier, "user_and_account_identifiers")
+            ];
+            blockingCategory = patterns.FirstOrDefault(item => item.Pattern.IsMatch(content)).Category ?? "none";
+        }
+        decisionCode = blockingCategory switch {
+            "none" => "external_output_privacy_validated",
+            "empty_output" => "external_output_empty",
+            "redaction_marker" => "external_output_contains_redaction_marker",
+            "explicit_sensitive_terms" or "named_people_and_customers" or "organization_and_customer_names" => "external_output_identity_validation_failed",
+            "secrets_and_credentials" or "high_entropy_tokens" => "external_output_credential_validation_failed",
+            _ => "external_output_privacy_validation_failed"
+        };
+        return blockingCategory == "none";
+    }
+
     /// <summary>
     /// Applies the stricter customer-facing Timesheet claim policy after the
     /// common external-output privacy boundary. Other governed capabilities may

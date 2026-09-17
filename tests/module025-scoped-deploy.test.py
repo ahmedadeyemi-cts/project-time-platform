@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 import yaml
-from module025_qualification_workflow import deployment_projection
+from module025_qualification_workflow import deployment_projection, previous_acceptance_projection
 
 ROOT = Path(__file__).resolve().parents[1]
 PATH = '.github/workflows/projectpulse-deploy-test.yml'
@@ -43,7 +43,8 @@ class ScopedDeploymentTests(unittest.TestCase):
         changed.add(previous_steps[-1]['name'])
         for step in previous_steps:
             if step['name'] not in changed:
-                self.assertEqual(STEPS[step['name']], step, step['name'])
+                projected = {s['name']: s for s in previous_acceptance_projection(yaml.safe_load((ROOT / PATH).read_text()))['jobs']['deploy']['steps']}
+                self.assertEqual(projected[step['name']], step, step['name'])
 
     def test_scoped_run_requires_main_and_supported_input(self):
         inputs = CURRENT[True]['workflow_dispatch']['inputs']

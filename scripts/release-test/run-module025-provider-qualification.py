@@ -6,6 +6,7 @@ cloud provider settings into the job. Never prints secrets, changes the API,
 runs migrations, calls FlowHive, or automatically repeats an inference.
 """
 import base64
+import copy
 import json
 import os
 from pathlib import Path
@@ -148,6 +149,37 @@ def verify_job_ownership(job, payload):
     require(len(containers) == 1, 'qualification_job_container_count_mismatch')
     for key in ['name', 'image']:
         require(containers[0].get(key) == expected['template']['containers'][0][key], 'qualification_job_' + key + '_mismatch')
+
+
+def api_template_contract(template):
+    """Normalize only named environment bindings; all other fields stay exact.
+
+    Azure may reorder bindings or add null value/secretRef keys. Do not hide
+    image, command, resource, probe, scaling, volume or unknown-field changes.
+    """
+    result = copy.deepcopy(template)
+    for container in result.get('containers', []):
+        container['env'] = environment_contract(container.get('env', []))
+    return result
+
+
+def api_template_difference(before, after):
+    """Closed categories only: no environment names, values or secret refs."""
+    first, second = api_template_contract(before), api_template_contract(after)
+    categories = []
+    if first == second:
+        return categories
+    if len(first.get('containers', [])) != len(second.get('containers', [])):
+        categories.append('container_count')
+    for a, b in zip(first.get('containers', []), second.get('containers', [])):
+        for field in sorted(a.keys() | b.keys()):
+            if a.get(field) != b.get(field):
+                categories.append('container_' + field if field in (
+                    'name', 'image', 'command', 'args', 'env', 'resources', 'probes', 'volumeMounts')
+                    else 'container_other')
+    if {k: v for k, v in first.items() if k != 'containers'} != {k: v for k, v in second.items() if k != 'containers'}:
+        categories.append('template_other')
+    return sorted(set(categories)) or ['template_structure']
 
 
 def verify_job(job, payload):
@@ -312,8 +344,10 @@ def main():
             try:
                 after = az('containerapp', 'show', '-g', resource_group, '-n', api_name)
                 revision_matches = after['properties']['latestRevisionName'] == api_before['properties']['latestRevisionName']
-                template_matches = after['properties']['template'] == api_before['properties']['template']
+                differences = api_template_difference(api_before['properties']['template'], after['properties']['template'])
+                template_matches = not differences
                 report['apiDeploymentVerification'] = {'revisionUnchanged': revision_matches, 'templateUnchanged': template_matches}
+                report['apiDeploymentVerification']['changedCategories'] = differences
                 report['apiDeploymentUnchanged'] = revision_matches and template_matches
                 if not report['apiDeploymentUnchanged']:
                     report.update({'passed': False, 'apiDeploymentVerificationDiagnostic':

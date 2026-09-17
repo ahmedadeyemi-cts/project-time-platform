@@ -9,12 +9,14 @@ from __future__ import annotations
 import ast
 import asyncio
 import copy
+import hashlib
 import json
 import importlib.util
 import io
 import os
 import secrets
 import tempfile
+import zipfile
 from unittest.mock import patch
 
 import yaml
@@ -469,7 +471,8 @@ class AcceptanceInputTests(unittest.TestCase):
 class SowReviewConfirmationTests(unittest.TestCase):
     """Exercise the verifier against source invalidation, not permissive HTTP stubs."""
 
-    def run_lifecycle(self, invalidate_review=False, generation_timeout=False):
+    def run_lifecycle(self, invalidate_review=False, generation_timeout=False, missing_schema=False,
+                      corrupt_document=False, changed_version=False):
         spec = importlib.util.spec_from_file_location("sow_review_test", MODULE025_SA)
         runner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(runner)
@@ -478,9 +481,30 @@ class SowReviewConfirmationTests(unittest.TestCase):
                       "status": "draft", "lastGeneratedAt": None}
         calls = []
         reviewed = []
+        documents = {}
+        for label, member in (("sow", "word/document.xml"), ("gsd", "xl/workbook.xml")):
+            stream = io.BytesIO()
+            with zipfile.ZipFile(stream, "w") as archive:
+                archive.writestr(member, '<synthetic>retained document test</synthetic>')
+            documents[label] = stream.getvalue()
+        version = {"versionId": uid, "versionNumber": 1, "sourceRevision": 3,
+                   **{label + "Sha256": hashlib.sha256(data).hexdigest() for label, data in documents.items()}}
 
         def http(path, method="GET", payload=None, token=""):
             calls.append((path, method))
+            if path == "/api/module025/sow-register":
+                return (409, {}, {}) if missing_schema else (200, {"records": []}, {})
+            if path.endswith('/versions'):
+                result_version = dict(version)
+                if changed_version and engagement['status'] == 'draft': result_version['sourceRevision'] = 9
+                return 200, {"versions": [result_version], "latestVersionId": uid, "hasMore": False,
+                    "currentContentReleased": engagement['status'] == 'confirmed',
+                    "sellReadiness": {"ready": False, "diagnosticCode": "SELL_DOCUMENT_WRITE_ADAPTER_REQUIRED"}}, {}
+            if '/versions/' in path:
+                if not token: return 401, {}, {}
+                label = 'sow' if path.endswith('.docx') else 'gsd'
+                return 200, b'corrupt' if corrupt_document else documents[label], {
+                    'x-content-sha256': version[label + 'Sha256'], 'x-sow-version': '1'}
             if path.endswith("/bootstrap"):
                 return 200, {"access": {"isSolutionArchitect": True,
                     "protectedTestUatRoleFixture": False, "canCreate": True,
@@ -562,6 +586,26 @@ class SowReviewConfirmationTests(unittest.TestCase):
         self.assertTrue(any("Browser reload acceptance marker" in a for a in plan["acceptanceCriteria"]))
         self.assertEqual(sum(path.endswith("/generate") for path, method in calls), 1)
         self.assertIn("MODULE025_INSTALLED_SA_UAT=PASS", output)
+        self.assertTrue(report['retentionSchemaReady'])
+        self.assertTrue(report['retainedVersions']['historicalHashesVerified'])
+        self.assertTrue(report['retainedVersions']['unauthorizedDownloadsDenied'])
+        self.assertFalse(report['fullRequestedScopePassed'])
+        self.assertEqual(report['sellAcceptance']['status'], 'blocked')
+
+    def test_missing_retention_schema_stops_before_creation_and_paid_generation(self):
+        result, report, _, calls, _ = self.run_lifecycle(missing_schema=True)
+        self.assertEqual(result, 1)
+        self.assertEqual(report['diagnosticCode'], 'module025_register_prerequisite_http_409')
+        self.assertFalse(any(method == 'POST' and not path.endswith('/logout') for path, method in calls))
+        self.assertEqual(report['generationPosts'], 0)
+
+    def test_corrupt_documents_and_mutated_retained_versions_fail_acceptance(self):
+        for kwargs, diagnostic in [({'corrupt_document': True}, 'sow_download_empty'),
+            ({'changed_version': True}, 'module025_retained_version_changed_sourceRevision')]:
+            with self.subTest(kwargs=kwargs):
+                result, report, _, _, _ = self.run_lifecycle(**kwargs)
+                self.assertEqual(result, 1)
+                self.assertEqual(report['diagnosticCode'], diagnostic)
 
     def test_generation_timeout_retains_identifiers_and_safe_last_phase(self):
         result, report, _, calls, _ = self.run_lifecycle(generation_timeout=True)

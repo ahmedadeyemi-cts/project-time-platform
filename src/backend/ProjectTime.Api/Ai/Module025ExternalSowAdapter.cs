@@ -32,16 +32,6 @@ internal sealed class Module025ExternalSowAdapter
     ];
     private static readonly string[] Operations = ["upgrade", "migration", "migrate", "implement", "deploy", "install", "configure", "integrate", "assessment", "assess"];
     private static readonly TimeSpan RegexBudget = TimeSpan.FromMilliseconds(200);
-    private static readonly string[] DeliveryVocabulary = ["Plan", "Design", "Implement", "Validate", "Release",
-        "Discover", "Assess", "Review", "Verify", "Confirm", "Document", "Define", "Establish", "Identify", "Collect",
-        "Prepare", "Perform", "Configure", "Install", "Upgrade", "Migrate", "Execute", "Test", "Validate", "Record",
-        "Provide", "Ensure", "Check", "Compare", "Capture", "Create", "Develop", "Determine", "Schedule", "Obtain",
-        "Maintain", "Resolve", "Coordinate", "Evaluate", "Deliver", "Complete", "Monitor", "Restore", "Approve",
-        "Back", "Backup", "Rollback", "Backups", "Readiness", "Compatibility", "Licensing", "Inventory", "Assessment",
-        "Solution", "Architect", "Collaboration", "Network", "Security", "Administrator", "Manager", "Lead", "Delivery",
-        "Operations", "Service", "Support", "Change", "Technical", "Business", "Acceptance", "Validation", "Discovery",
-        "Inspect", "Approved", "Required", "Unsupported", "What", "Which", "Planning", "Overview", "Assumptions", "Estimate", "Estimated",
-        "Handoff", "Documentation", "Customer", "Engineering", "Engineer", "Telephony", "Voice", "Unified", "Communications"];
     private readonly CelarAiAuthoritativeScopeEvidence _evidence;
     private readonly string[] _technologies;
     private readonly string[] _operations;
@@ -127,6 +117,11 @@ internal sealed class Module025ExternalSowAdapter
                 if (new[] { _evidence.CustomerName, _evidence.EngagementNumber }.Any(term =>
                     term.Length >= 2 && value.Contains(term, StringComparison.OrdinalIgnoreCase)))
                 { diagnostic = "external_output_identity_validation_failed"; ValidationCategory = "explicit_sensitive_terms"; ValidationField = field; return false; }
+                // Inspect explicit identity labels before normalizing generic
+                // schema roles below; "Engineer: Jane Doe" is not a role name.
+                if (Regex.IsMatch(value, @"\b(?:customer|client|tenant|company|owner|engineer|manager|contact|user|project)(?: name)?[ \t]*[:=][ \t]*[\p{L}\p{N}]",
+                    RegexOptions.IgnoreCase, RegexBudget))
+                { diagnostic = "external_output_identity_validation_failed"; ValidationCategory = "named_people_and_customers"; ValidationField = field; return false; }
                 var inspect = value;
                 foreach (var technology in Technologies.Where(item => _technologies.Contains(item.Name)))
                 {
@@ -135,13 +130,11 @@ internal sealed class Module025ExternalSowAdapter
                 }
                 inspect = inspect.Replace("US Signal", "delivery team", StringComparison.Ordinal);
                 // These are fixed role categories in the task schema, not a
-                // named person. Known identities were rejected before this step;
-                // unknown proper nouns still face the common output validator.
+                // named person. Known identities and explicit identity labels
+                // were rejected before this normalization.
                 inspect = Regex.Replace(inspect, @"\b(customer|client|engineer|manager|owner|contact|user|project)\b",
                     "party", RegexOptions.IgnoreCase, RegexBudget);
-                foreach (var word in DeliveryVocabulary)
-                    inspect = Regex.Replace(inspect, @"\b" + word + @"\b", word.ToLowerInvariant(), RegexOptions.None, RegexBudget);
-                if (!sanitizer.IsExternalOutputSafe(inspect, [_evidence.CustomerName, _evidence.EngagementNumber], out diagnostic, out var category))
+                if (!sanitizer.IsClosedTechnicalProposalOutputSafe(inspect, [_evidence.CustomerName, _evidence.EngagementNumber], out diagnostic, out var category))
                 { ValidationCategory = category; ValidationField = field; return false; }
             }
             AcceptedAnswer = PulseAiPrivateRagService.Module025ExternalAnswer(content, _evidence, provider, correlationId);

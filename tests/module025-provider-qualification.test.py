@@ -11,7 +11,7 @@ from pathlib import Path
 import tempfile
 import subprocess
 import yaml
-from module025_qualification_workflow import deployment_projection, GATE, NAMES, SHARED
+from module025_qualification_workflow import deployment_projection, previous_acceptance_projection, GATE, NAMES, SHARED
 import unittest
 from unittest.mock import patch
 
@@ -112,6 +112,28 @@ class QualificationTest(unittest.TestCase):
             for name in dependencies:
                 self.assertEqual(values[name], {'name': name, 'value': 'true'})
             module.require_existing_external_policy(env)
+
+    def test_api_comparison_normalizes_only_environment_representation(self):
+        before = api_fixture()['properties']['template']
+        after = copy.deepcopy(before)
+        after['containers'][0]['env'].reverse()
+        for binding in after['containers'][0]['env']:
+            binding.setdefault('value', None)
+            binding.setdefault('secretRef', None)
+        self.assertEqual(module.api_template_difference(before, after), [])
+        for field, value, category in [('image', 'different', 'container_image'),
+            ('command', ['changed'], 'container_command'), ('resources', {'cpu': 2}, 'container_resources'),
+            ('unknown-secret-name', 'private-secret-value', 'container_other')]:
+            changed = copy.deepcopy(after)
+            changed['containers'][0][field] = value
+            self.assertEqual(module.api_template_difference(before, changed), [category])
+        changed = copy.deepcopy(after)
+        changed['containers'][0]['env'][0]['value'] = 'private-secret-value'
+        changed['containers'][0]['env'][0].pop('secretRef', None)
+        self.assertEqual(module.api_template_difference(before, changed), ['container_env'])
+        self.assertNotIn('private-secret-value', json.dumps(module.api_template_difference(before, changed)))
+        changed['scale'] = {'minReplicas': 2}
+        self.assertIn('template_other', module.api_template_difference(before, changed))
 
     def exercise(self, *, passed=True, fail_start=False, wrong_owner=False, drift=None, policy=None, api_after=None):
         calls, job = [], None
@@ -264,7 +286,7 @@ class QualificationTest(unittest.TestCase):
             'dd6403e4ba89a8d15fa6308b85a0d20994d6cd13:.github/workflows/projectpulse-deploy-test.yml'], cwd=ROOT, text=True))
         # Exact equality proves every original deployment command, condition,
         # approval, concurrency and rollback is preserved in normal deploy mode.
-        self.assertEqual(deployment_projection(doc), base)
+        self.assertEqual(previous_acceptance_projection(doc), base)
         self.assertEqual(doc[True]['workflow_dispatch']['inputs']['qualification_provider'], {
             'description': 'none deploys normally; claude/openai qualifies one Plan phase WITHOUT application deployment',
             'required': False, 'default': 'none', 'type': 'choice', 'options': ['none', 'claude', 'openai']})
