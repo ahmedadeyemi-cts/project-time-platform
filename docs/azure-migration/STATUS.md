@@ -272,10 +272,9 @@ The test-subscription budget is $200/month (`project-health-dashboard-test-month
 | Removed unused ACR East US geo-replication (no Container Apps environment exists there to consume it) | ~$49 | Done |
 | Disabled PostgreSQL Same-Zone HA on `pg-phd-test-w3-7825cc` | ~$126 | Done |
 | Removed idle East US network/monitoring stack: NAT Gateway `nat-phd-test-aca-eastus`, public IPs `pip-phd-test-ingress-eastus`/`pip-phd-test-egress-eastus`, Log Analytics workspace `log-phd-test-eastus`, Application Insights `appi-phd-test-eastus` (with its Failure Anomalies alert rule), and the unused managed identity `id-phd-test-app-eastus` | ~$60-110 | Done (2026-09-16) |
+| Downgraded `agw-phd-test-westus3` from WAF_v2 to Standard_v2 (~$284 → ~$158/month); WAF policy `waf-phd-test-westus3` was detached, not deleted, so re-attaching WAF_v2 is a single reversible SKU update | ~$126 | Done (2026-09-16) |
 
-One further item is proposed but not yet decided, since it involves a functional trade-off rather than pure cleanup:
-
-- **Application Gateway WAF_v2** (`agw-phd-test-westus3`) is the only public ingress path into the (internal-only) Container Apps environment — not just a WAF add-on. Its WAF policy currently runs in Detection mode, not Prevention, so it isn't actively blocking anything today. Downgrading to Standard_v2 (keep the gateway, drop the WAF ruleset) is estimated at ~$126/month savings (~$284 → ~$158/month).
+All items from the cost review are now resolved.
 
 The East US VNet, NSGs, route tables, private endpoints (ACR/KV/Blob), and Key Vault `kv-phd-t-eus-7825cc` were deliberately left in place — removing them would mean tearing down the East US DR posture entirely, which is a separate decision from clearing idle compute/monitoring spend.
 
