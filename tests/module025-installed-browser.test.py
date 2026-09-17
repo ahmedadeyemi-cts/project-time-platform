@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import zipfile
 from unittest.mock import patch
@@ -35,7 +36,13 @@ async def main():
     server = subprocess.Popen(['node', 'tests/module025-installed-browser-harness.mjs'], cwd=ROOT, env=environment,
         stdout=subprocess.PIPE, text=True)
     try:
-        runner.ORIGIN = json.loads(server.stdout.readline())['origin']
+        for line in server.stdout:
+            if line.startswith('MODULE025_HARNESS_READY='):
+                runner.ORIGIN = json.loads(line.split('=', 1)[1])['origin']
+                break
+            print(line.rstrip(), file=sys.stderr)
+        else:
+            raise RuntimeError('Local browser fixture exited before readiness')
         report = {'confirmedVersion': {label + 'Sha256': hashlib.sha256(data).hexdigest() for label, data in documents.items()}}
         def state():
             with urlopen(runner.ORIGIN + '/__state') as response:

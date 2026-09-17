@@ -62,5 +62,8 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
     });
   }}], server: { host: '127.0.0.1', port: 0 } });
 await server.listen();
-console.log(JSON.stringify({ origin: `http://127.0.0.1:${server.httpServer.address().port}` }));
+// Vite may log dependency optimization before listening, especially after the
+// separate document-actions fixture. Readiness must have its own marker.
+console.log('MODULE025_HARNESS_STARTUP: synthetic log before readiness');
+console.log('MODULE025_HARNESS_READY=' + JSON.stringify({ origin: `http://127.0.0.1:${server.httpServer.address().port}` }));
 process.on('SIGTERM', async () => { await server.close(); process.exit(0); });
