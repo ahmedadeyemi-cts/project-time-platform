@@ -472,7 +472,7 @@ class SowReviewConfirmationTests(unittest.TestCase):
     """Exercise the verifier against source invalidation, not permissive HTTP stubs."""
 
     def run_lifecycle(self, invalidate_review=False, generation_timeout=False, missing_schema=False,
-                      corrupt_document=False, changed_version=False):
+                      corrupt_document=False, changed_version=False, browser_preflight_failure=False):
         spec = importlib.util.spec_from_file_location("sow_review_test", MODULE025_SA)
         runner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(runner)
@@ -557,8 +557,16 @@ class SowReviewConfirmationTests(unittest.TestCase):
                 return 200, {}, {}
             return 200, {"engagement": copy.deepcopy(engagement)}, {}
 
-        async def browser(session, number, marker, report, evidence):
-            # Browser journey is independently tested live. Emulate only its
+        async def browser(session, number, marker, report, evidence, *, preflight=False):
+            # The real browser journey also runs against the React fixture in CI.
+            if preflight:
+                self.assertFalse(any(path.endswith("/generate") for path, method in calls))
+                if browser_preflight_failure:
+                    report["browserPreflight"] = {"status": "failed", "stage": "select_record"}
+                    raise runner.AcceptanceError("module025_browser_timeout_select_record")
+                report["browserPreflight"] = {"status": "passed"}
+                return
+            # Emulate only its
             # resulting source edit after downloading and reopening here.
             self.assertEqual(engagement["status"], "confirmed")
             engagement.update(status="draft", lastGeneratedAt=None)
@@ -639,6 +647,15 @@ class SowReviewConfirmationTests(unittest.TestCase):
         edit = source.index('await service.fill', reopen)
         self.assertLess(ready, edit)
         self.assertNotIn('.m025-status-pill--draft', source[reopen:edit])
+
+    def test_browser_preflight_failure_stops_before_any_provider_request(self):
+        result, report, _, calls, output = self.run_lifecycle(browser_preflight_failure=True)
+        self.assertEqual(result, 1)
+        self.assertEqual(report["generationPosts"], 0)
+        self.assertEqual(report["browserPreflight"]["stage"], "select_record")
+        self.assertFalse(any(path.endswith("/generate") or path.endswith("/confirm") for path, method in calls))
+        self.assertTrue(any(path.endswith("/archive") for path, method in calls))
+        self.assertIn("MODULE025_INSTALLED_SA_DIAGNOSTIC=module025_browser_timeout_select_record", output)
 
 
 if __name__ == "__main__":
