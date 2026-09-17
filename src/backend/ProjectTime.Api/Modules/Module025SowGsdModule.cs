@@ -1104,7 +1104,7 @@ public static class Module025SowGsdModule
         var sowNumber = engagement.EngagementNumber.StartsWith("SOW-", StringComparison.OrdinalIgnoreCase)
             ? engagement.EngagementNumber[4..]
             : engagement.EngagementNumber;
-        var project = SafeFileName(engagement.ProjectName);
+        var project = SafeFileName(engagement.ProjectName ?? string.Empty);
         if (project.Length == 0) project = "Project";
         return $"SOW#{SafeFileName(sowNumber)}_{project}_{artifact}{extension}";
     }
