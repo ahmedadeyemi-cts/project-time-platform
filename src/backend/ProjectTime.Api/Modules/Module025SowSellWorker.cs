@@ -156,7 +156,7 @@ public static partial class Module025SowGsdModule
             ?? throw new InvalidOperationException("The retained document source is invalid.");
         var recipients = JsonSerializer.Deserialize<Module025SellRecipient[]>(reader.GetString(4), Module025SowSellPolicy.Json) ?? [];
         return new(new Module025SellPackage(submissionId, reader.GetGuid(0), reader.GetGuid(1), reader.GetInt32(5),
-            source.EngagementNumber, source.CustomerName, reader.GetString(2), reader.IsDBNull(12) ? null : reader.GetString(12),
+            source.EngagementNumber, source.CustomerName, source.ProjectName, reader.GetString(2), reader.IsDBNull(12) ? null : reader.GetString(12),
             reader.GetFieldValue<byte[]>(8), reader.GetFieldValue<byte[]>(9), reader.GetString(10), reader.GetString(11), recipients),
             reader.GetGuid(3), reader.GetInt32(6));
     }
