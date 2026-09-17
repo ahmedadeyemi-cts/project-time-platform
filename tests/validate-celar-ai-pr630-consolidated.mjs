@@ -191,6 +191,8 @@ if (flowHiveEnterprisePsaMode) {
   const { verifyRepositoryScope } = await import('./flowhive-psa-scope.mjs');
   verifyRepositoryScope();
 }
+const module025WorkspaceEntryMode = branchName === 'fix/module025-workspace-entry-20260917';
+if (module025WorkspaceEntryMode) (await import('./module025-workspace-entry-scope.mjs')).verifyModule025WorkspaceEntryScope();
 const module025BrowserVerifierMode = branchName === 'fix/module025-browser-verifier-20260917';
 if (module025BrowserVerifierMode) (await import('./module025-browser-verifier-scope.mjs')).verifyModule025BrowserVerifierScope();
 const module025AssemblyPredecessorsMode = branchName === 'fix/module025-assembly-predecessors-20260917';
@@ -213,7 +215,7 @@ const module025ExternalMode = branchName === 'fix/module025-external-sow-2026091
 if (module025ExternalMode) (await import('./module025-external-sow-scope.mjs')).verifyModule025ExternalScope();
 const module025EngineMode = branchName === 'fix/module025-durable-engine-20260916';
 if (module025EngineMode) (await import('./module025-engine-scope.mjs')).verifyModule025EngineScope();
-const scopedCompatibilityMode = module025BrowserVerifierMode || module025AssemblyPredecessorsMode || module025VersionFactsMode || module025StructuredContractMode || module025OutputBudgetPreflightMode || module025CompleteAcceptanceMode || module025QualificationPolicyMode || module025QualificationMode || module025DiagnosticsMode || module025ExternalMode || module025EngineMode || flowHivePsaControlMode || flowHiveEnterprisePsaMode || sowPhaseMode || customerPublicAnswerMode || flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const scopedCompatibilityMode = module025WorkspaceEntryMode || module025BrowserVerifierMode || module025AssemblyPredecessorsMode || module025VersionFactsMode || module025StructuredContractMode || module025OutputBudgetPreflightMode || module025CompleteAcceptanceMode || module025QualificationPolicyMode || module025QualificationMode || module025DiagnosticsMode || module025ExternalMode || module025EngineMode || flowHivePsaControlMode || flowHiveEnterprisePsaMode || sowPhaseMode || customerPublicAnswerMode || flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

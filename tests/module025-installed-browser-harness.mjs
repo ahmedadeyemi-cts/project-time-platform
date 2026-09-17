@@ -1,6 +1,7 @@
 import { createServer } from '../src/frontend/project-time-web/node_modules/vite/dist/node/index.js';
 import react from '../src/frontend/project-time-web/node_modules/@vitejs/plugin-react/dist/index.js';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const engagement = {
@@ -10,24 +11,31 @@ const engagement = {
   customerProgram: 'standard', phases: [], lastGeneratedAt: '2026-09-17T00:00:00Z'
 };
 const requests = [];
-const html = `<div id="root"></div><script type="module">
-import React from 'react'; import {createRoot} from 'react-dom/client';
-import Workspace from '/src/module025/SowGsdWorkspace.jsx';
-createRoot(document.getElementById('root')).render(React.createElement(Workspace));</script>`;
+const dist = path.join(root, 'src/frontend/project-time-web/dist');
+if (!fs.existsSync(path.join(dist, 'index.html'))) throw new Error('Build the complete application before the installed browser test.');
+const user = { userId: 'sa', username: 'synthetic.local', displayName: 'Test SA', roles: [{ roleCode: 'SOLUTION_ARCHITECT' }], permissions: ['VIEW_SOW_GENERATOR', 'MANAGE_SOW_GENERATOR'] };
+let denyModule = false;
 const server = await createServer({ configFile: false, root: path.join(root, 'src/frontend/project-time-web'),
   plugins: [react(), { name: 'installed-browser-regression', configureServer(vite) {
     vite.middlewares.use(async (req, res, next) => {
       const url = new URL(req.url, 'http://127.0.0.1');
       if (url.pathname === '/') {
         res.setHeader('Content-Type', 'text/html');
-        res.end(await vite.transformIndexHtml('/', html)); return;
+        res.end(fs.readFileSync(path.join(dist, 'index.html'))); return;
+      }
+      if (url.pathname.startsWith('/assets/')) {
+        const asset = path.resolve(dist, '.' + url.pathname);
+        if (!asset.startsWith(dist + path.sep) || !fs.existsSync(asset)) { res.statusCode = 404; res.end(); return; }
+        res.setHeader('Content-Type', asset.endsWith('.js') ? 'text/javascript' : asset.endsWith('.css') ? 'text/css' : 'application/octet-stream');
+        res.end(fs.readFileSync(asset)); return;
       }
       if (url.pathname === '/__state') {
         res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ engagement, requests })); return;
       }
       if (url.pathname === '/__reset' && req.method === 'POST') {
         const chunks = []; for await (const chunk of req) chunks.push(chunk);
-        const { status, denyDownload } = JSON.parse(Buffer.concat(chunks).toString());
+        const { status, denyDownload, deniedModule } = JSON.parse(Buffer.concat(chunks).toString());
+        denyModule = deniedModule === true;
         engagement.status = status; engagement.serviceOverview = 'Synthetic CUCM upgrade.';
         requests.length = 0; process.env.MODULE025_TEST_DENY_DOWNLOAD = denyDownload || '';
         res.end('{}'); return;
@@ -35,7 +43,7 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       if (!url.pathname.startsWith('/api/')) { next(); return; }
       requests.push({ method: req.method, path: url.pathname });
       let body;
-      if (url.pathname.endsWith('/bootstrap')) body = { currentUser: { userId: 'sa' }, access: { canCreate: true, isSolutionArchitect: true },
+      if (url.pathname === '/api/module025/sow-gsd/bootstrap') body = { currentUser: { userId: 'sa' }, access: { canCreate: true, isSolutionArchitect: true },
         solutionArchitects: [{ userId: 'sa', displayName: 'Test SA' }], commercialModels: [], customerPrograms: [] };
       else if (/\/(sow\.docx|gsd\.xlsx)$/.test(url.pathname)) {
         if (process.env.MODULE025_TEST_DENY_DOWNLOAD === 'true' || req.headers.authorization !== 'Bearer synthetic-session-only' || req.headers['x-projectpulse-session'] !== 'synthetic-session-only') {
@@ -57,7 +65,15 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       }
       else if (url.pathname.endsWith('/fixture-025')) body = { engagement, access: { canEdit: true, canArchive: true } };
       else if (url.pathname.endsWith('/sow-gsd')) body = { engagements: [engagement] };
-      else { res.statusCode = 500; body = { message: 'Unexpected test request' }; }
+      else if (['/api/users/me', '/api/security/me'].includes(url.pathname)) body = { ...user, isViewAs: false };
+      else if (url.pathname.startsWith('/api/rbac/v1/')) body = { roles: user.roles,
+        modules: [{ moduleCode: '025', moduleNumber: '025', isActive: true }], actor: { roleCodes: ['SOLUTION_ARCHITECT'] },
+        grants: denyModule ? [{ moduleCode: '025', roleCode: 'SOLUTION_ARCHITECT', actionCode: 'MODULE_ACCESS', grantEffect: 'DENY' }] : [], legacyFallback: [] };
+      else if (url.pathname === '/api/module-availability/overrides') body = { states: [], access: {} };
+      else if (url.pathname === '/api/module-availability') body = { modules: [] };
+      else if (url.pathname.startsWith('/api/module025/')) { res.statusCode = 500; body = { message: 'Unexpected Module 025 test request' }; }
+      else body = {}; // Unrelated read-only shell widgets use empty synthetic data.
+
       res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body));
     });
   }}], server: { host: '127.0.0.1', port: 0 } });
