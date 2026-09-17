@@ -147,7 +147,7 @@ internal static class Module025SowGsdDocumentExporter
         summary.Cell("A4").Value = "SOW/GSD ID";
         summary.Cell("B4").Value = engagement.EngagementNumber;
         summary.Cell("A5").Value = "Project Name";
-        summary.Cell("B5").Value = engagement.ProjectName;
+        summary.Cell("B5").Value = engagement.ProjectName ?? string.Empty;
         summary.Cell("A6").Value = "Customer";
         summary.Cell("B6").Value = engagement.CustomerName;
         summary.Cell("A7").Value = "Commercial Model";
