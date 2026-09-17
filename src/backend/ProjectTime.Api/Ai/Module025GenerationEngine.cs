@@ -56,11 +56,15 @@ internal static class Module025GenerationEngine
                 Result: result, TargetDecisions: result.TargetDecisions), cancellationToken);
             results.Add(result);
         }
+        // Keep post-provider failures distinguishable from a failed phase in
+        // the existing sanitized progress evidence. Do not expose draft text.
+        await persist(new("assembly_started", "assembly",
+            DiagnosticCode: "module025_assembly_started"), cancellationToken);
         var plan = PulseAiPrivateRagService.AssembleModule025PhasePlans(results.Select(result => result.FlowHivePlan!).ToArray());
         PulseAiPrivateRagService.ValidateModule025Phase(plan, null, evidence);
         if (JsonSerializer.Serialize(plan).Length > MaximumDocumentCharacters)
             throw new JsonException("module025_assembled_plan_limit_exceeded");
-        return results[^1] with
+        var assembled = results[^1] with
         {
             FlowHivePlan = plan,
             SowDraft = CelarAiEnterprisePlatformService.BuildSowDraftFromPlan(plan, evidence.EngagementNumber, evidence.CustomerName),
@@ -68,6 +72,9 @@ internal static class Module025GenerationEngine
             SkippedTargets = results.SelectMany(result => result.SkippedTargets ?? []).Distinct().ToArray(),
             TargetDecisions = results.SelectMany(result => result.TargetDecisions ?? []).Distinct().ToArray()
         };
+        await persist(new("assembly_completed", "assembly",
+            DiagnosticCode: "module025_assembly_completed"), cancellationToken);
+        return assembled;
     }
 }
 
