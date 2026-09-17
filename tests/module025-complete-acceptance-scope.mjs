@@ -20,6 +20,7 @@ const expected = [
   'tests/FlowHiveDetailedPlannerTests/Module025ExternalSowTests.cs',
   'tests/flowhive-psa-admission.test.mjs',
   'tests/flowhive-psa-installed-acceptance.test.py',
+  'tests/flowhive-psa-release-workflow.test.py',
   'tests/module025-complete-acceptance-scope.mjs',
   'tests/module025-complete-acceptance.test.py',
   'tests/module025-provider-qualification.test.py',
