@@ -21,6 +21,9 @@ DB_NAMES = {'ConnectionStrings__DefaultConnection', 'ConnectionStrings__ProjectP
     'PTP_DB_HOST', 'PTP_DB_PORT', 'PTP_DB_NAME', 'PTP_DB_USER', 'PTP_DB_PASSWORD'}
 KEY_NAMES = {'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY', 'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_ID',
     'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_RING'}
+# Run 35172706135 stopped before job/start; recover only this exact owned job.
+PRIOR_SCOPE = '35172706135-1'
+PRIOR_SOURCE = '0c1b3503759c27495476e06f1f285174e8dfb23b'
 
 
 def require(condition, code):
@@ -56,6 +59,7 @@ def selected_environment(api, provider):
     require(any(item['name'] in DB_NAMES for item in result), 'test_database_configuration_missing')
     require(any(item['name'] in KEY_NAMES - {'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_ID'} for item in result), 'module064_encryption_configuration_missing')
     result.append({'name': 'MODULE025_QUALIFICATION_LOG_CHUNKS', 'value': 'true'})
+    environment_contract(result)
     return result
 
 
@@ -97,16 +101,75 @@ def build_payload(api, provider, image, name, scope, secrets):
                 'env': env, 'resources': {'cpu': 0.5, 'memory': '1Gi'}}]}}}
 
 
-def verify_job(job, payload):
+def environment_contract(entries):
+    """Compare runtime bindings, not Azure's optional null fields or list order.
+
+    Secret references remain distinct from literal values. Duplicate names,
+    unknown populated fields and order-dependent variable expansion fail closed.
+    """
+    require(isinstance(entries, list), 'qualification_job_env_invalid')
+    result = {}
+    for item in entries:
+        name = item.get('name')
+        require(isinstance(name, str) and name and name not in result, 'qualification_job_env_names_invalid')
+        require(not any(value is not None for key, value in item.items()
+            if key not in ('name', 'value', 'secretRef')), 'qualification_job_env_fields_invalid')
+        ref, value = item.get('secretRef'), item.get('value')
+        if ref:
+            require(isinstance(ref, str) and value in (None, ''), 'qualification_job_env_binding_invalid')
+            result[name] = ('secretRef', ref)
+        else:
+            require(ref in (None, '') and (value is None or isinstance(value, str)), 'qualification_job_env_binding_invalid')
+            require('$(' not in (value or ''), 'qualification_job_env_expansion_unsupported')
+            result[name] = ('value', value or '')
+    return result
+
+
+def verify_job_ownership(job, payload):
     require(job.get('tags') == payload['tags'], 'qualification_job_ownership_mismatch')
     actual, expected = job['properties'], payload['properties']
     require(actual['environmentId'].lower() == expected['environmentId'].lower(), 'qualification_job_environment_mismatch')
+    containers = actual['template']['containers']
+    require(len(containers) == 1, 'qualification_job_container_count_mismatch')
+    for key in ['name', 'image']:
+        require(containers[0].get(key) == expected['template']['containers'][0][key], 'qualification_job_' + key + '_mismatch')
+
+
+def verify_job(job, payload):
+    verify_job_ownership(job, payload)
+    actual, expected = job['properties'], payload['properties']
     for key in ['triggerType', 'replicaRetryLimit', 'replicaTimeout', 'manualTriggerConfig']:
         require(actual['configuration'].get(key) == expected['configuration'][key], 'qualification_job_execution_contract_mismatch')
-    containers = actual['template']['containers']
-    require(len(containers) == 1, 'qualification_job_container_mismatch')
-    for key in ['name', 'image', 'command', 'args', 'env']:
-        require(containers[0].get(key) == expected['template']['containers'][0][key], 'qualification_job_container_mismatch')
+    container, wanted = actual['template']['containers'][0], expected['template']['containers'][0]
+    for key in ['command', 'args']:
+        require(container.get(key) == wanted[key], 'qualification_job_' + key + '_mismatch')
+    env, wanted_env = environment_contract(container.get('env')), environment_contract(wanted['env'])
+    require(env.keys() == wanted_env.keys(), 'qualification_job_env_names_mismatch')
+    require(env == wanted_env, 'qualification_job_env_bindings_mismatch')
+
+
+def cleanup_prior_unstarted_job(api, registry, resource_group):
+    """No inference or broad sweep: remove only the recorded, never-started job."""
+    name = 'm025q-' + PRIOR_SCOPE
+    jobs = az('containerapp', 'job', 'list', '-g', resource_group)
+    if not any(item['name'] == name for item in jobs):
+        return 'already_absent'
+    job = az('containerapp', 'job', 'show', '-g', resource_group, '-n', name)
+    digest = az('acr', 'repository', 'show', '-n', registry,
+        '--image', 'module025-qualification:' + PRIOR_SOURCE + '-' + PRIOR_SCOPE)['digest']
+    expected = {'tags': {'projectpulse-scope': 'module025-one-phase-test',
+        'projectpulse-run': PRIOR_SCOPE, 'projectpulse-source': PRIOR_SOURCE},
+        'properties': {'environmentId': api['properties']['managedEnvironmentId'],
+            'template': {'containers': [{'name': name,
+                'image': registry + '.azurecr.io/module025-qualification@' + digest}]}}}
+    verify_job_ownership(job, expected)
+    require(job['properties']['configuration']['triggerType'] == 'Manual', 'prior_qualification_job_not_manual')
+    require(not az('containerapp', 'job', 'execution', 'list', '-g', resource_group, '-n', name),
+        'prior_qualification_execution_requires_review')
+    az('containerapp', 'job', 'delete', '-g', resource_group, '-n', name, '--yes')
+    require(not any(item['name'] == name for item in az('containerapp', 'job', 'list', '-g', resource_group)),
+        'prior_qualification_cleanup_not_verified')
+    return 'verified'
 
 
 def decode_report(logs):
@@ -140,6 +203,7 @@ def main():
     provider = os.environ.get('QUALIFICATION_PROVIDER', '')
     name = ''
     try:
+        report.update({'stage': 'validate_inputs', 'provider': provider, 'sourceSha': os.environ.get('GITHUB_SHA', '')})
         require(os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch' and os.environ.get('GITHUB_REF') == 'refs/heads/main', 'manual_main_only')
         require(os.environ.get('GITHUB_RUN_ATTEMPT') == '1', 'automatic_repeat_not_allowed')
         require(provider in ('claude', 'openai'), 'unsupported_provider')
@@ -148,14 +212,19 @@ def main():
         scope = os.environ['GITHUB_RUN_ID'] + '-1'
         require(re.fullmatch(r'\d+-1', scope), 'run_identity_required')
         name = 'm025q-' + scope
+        report['stage'] = 'read_test_configuration'
         api_before = az('containerapp', 'show', '-g', resource_group, '-n', api_name)
         selected_environment(api_before, provider)  # Fail before the image build if configuration is absent.
         subscription = az('account', 'show')['id']
         require(api_before['id'].lower().startswith('/subscriptions/' + subscription.lower() + '/resourcegroups/' + resource_group.lower() + '/'), 'exact_test_resource_required')
+        report['stage'] = 'cleanup_recorded_prior_job'
+        report['priorTemporaryJobCleanup'] = cleanup_prior_unstarted_job(api_before, registry, resource_group)
+        report['stage'] = 'build_qualification_image'
         tag = 'module025-qualification:' + os.environ['GITHUB_SHA'] + '-' + scope
         az('acr', 'build', '-r', registry, '-t', tag, '--no-logs', str(Path(os.environ['RUNNER_TEMP']) / 'module025-qualification-image'), timeout=480)
         digest = az('acr', 'repository', 'show', '-n', registry, '--image', tag)['digest']
         image = registry + '.azurecr.io/module025-qualification@' + digest
+        report['stage'] = 'prepare_isolated_configuration'
         secret_response = az('containerapp', 'secret', 'list', '-g', resource_group, '-n', api_name, '--show-values')
         # Azure can put Key Vault references only in the app configuration.
         secret_map = {item['name']: dict(item) for item in api_before['properties']['configuration'].get('secrets', [])}
@@ -167,6 +236,7 @@ def main():
         existing = az('containerapp', 'job', 'list', '-g', resource_group)
         require(not any(item['name'] == name for item in existing), 'qualification_job_already_exists')
         job_uri = f'https://management.azure.com/subscriptions/{subscription}/resourceGroups/{resource_group}/providers/Microsoft.App/jobs/{name}?api-version={API_VERSION}'
+        report['stage'] = 'create_temporary_job'
         with tempfile.TemporaryDirectory(prefix='m025q-', dir=os.environ['RUNNER_TEMP']) as directory:
             file = Path(directory) / 'job.json'
             file.write_text(json.dumps(payload)); file.chmod(0o600)
@@ -174,15 +244,18 @@ def main():
             az('rest', '--method', 'put', '--uri', job_uri, '--body', '@' + str(file))
         # Do not retain plaintext secret values after the job has accepted them.
         payload['properties']['configuration']['secrets'] = []
+        report['stage'] = 'verify_temporary_job'
         deadline = time.monotonic() + 120
         while True:
             job = az('containerapp', 'job', 'show', '-g', resource_group, '-n', name)
-            verify_job(job, payload)
             state = job['properties'].get('provisioningState')
-            if state == 'Succeeded': break
+            if state == 'Succeeded':
+                verify_job(job, payload)
+                break
             require(state not in ('Failed', 'Canceled') and time.monotonic() < deadline, 'qualification_job_not_provisioned')
             time.sleep(5)
         report['called'] = None  # A lost start response does not prove inference was absent.
+        report['stage'] = 'start_qualification'
         execution = az('containerapp', 'job', 'start', '-g', resource_group, '-n', name)['name']
         deadline = time.monotonic() + 300
         while True:
@@ -191,6 +264,7 @@ def main():
             if state in ('Succeeded', 'Failed', 'Stopped'): break
             require(time.monotonic() < deadline, 'qualification_execution_deadline')
             time.sleep(5)
+        report['stage'] = 'collect_provider_evidence'
         logs = az('containerapp', 'job', 'logs', 'show', '-g', resource_group, '-n', name,
             '--execution', execution, '--container', name, '--tail', '300')
         report.update(decode_report(logs))
@@ -203,7 +277,9 @@ def main():
         if attempted:
             try:
                 job = az('containerapp', 'job', 'show', '-g', resource_group, '-n', name)
-                verify_job(job, payload)
+                # A runtime-contract mismatch must block starting the job, but
+                # must not block deleting the exact job this run just created.
+                verify_job_ownership(job, payload)
                 for execution in az('containerapp', 'job', 'execution', 'list', '-g', resource_group, '-n', name):
                     if execution['properties']['status'] not in ('Succeeded', 'Failed', 'Stopped', 'Canceled'):
                         az('containerapp', 'job', 'stop', '-g', resource_group, '-n', name, '--job-execution-name', execution['name'])
@@ -222,6 +298,9 @@ def main():
             except Exception:
                 report.update({'passed': False, 'apiDeploymentUnchanged': 'not_verified'})
         (out / 'qualification.json').write_text(json.dumps(report, indent=2) + '\n')
+        if re.fullmatch(r'[a-z0-9_]{1,100}', str(report.get('diagnostic', ''))):
+            # Only closed codes generated here, never raw Azure errors/values.
+            print('MODULE025_QUALIFICATION_DIAGNOSTIC=' + report['diagnostic'])
         print('MODULE025_ONE_PHASE_QUALIFICATION=' + ('PASS' if report['passed'] else 'BLOCKED/FAIL'))
     return 0 if report['passed'] else 1
 

@@ -85,7 +85,19 @@ class QualificationTest(unittest.TestCase):
         with self.assertRaises(RuntimeError): module.decode_report(logs[:-1])
         with self.assertRaises(RuntimeError): module.decode_report(logs + [{'Log': 'MODULE025_QUALIFICATION_CHUNK:1:999:AA=='}])
 
-    def exercise(self, *, passed=True, fail_start=False, wrong_owner=False):
+    def test_azure_environment_representation_is_not_configuration_drift(self):
+        # Azure EnvironmentVar has optional value and secretRef fields. Null
+        # fields and ordering differ across API/CLI response representations.
+        original = [{'name': 'DB', 'secretRef': 'database'}, {'name': 'MODE', 'value': 'test'}]
+        returned = [{'name': 'MODE', 'value': 'test', 'secretRef': None},
+            {'name': 'DB', 'secretRef': 'database', 'value': ''}]
+        self.assertEqual(module.environment_contract(original), module.environment_contract(returned))
+        for change in [original + [original[0]], [{'name': 'DB', 'secretRef': 'database', 'value': 'plaintext'}],
+            [{'name': 'MODE', 'value': '$(OTHER)'}], [{'name': 'MODE', 'value': 'test', 'unknown': 'populated'}]]:
+            with self.subTest(change=change), self.assertRaises(RuntimeError):
+                module.environment_contract(change)
+
+    def exercise(self, *, passed=True, fail_start=False, wrong_owner=False, drift=None):
         calls, job = [], None
         api = api_fixture()
         result = {'passed': passed, 'called': True, 'provider': 'claude', 'fullLifecyclePassed': False, 'productionMutation': False}
@@ -101,6 +113,12 @@ class QualificationTest(unittest.TestCase):
             if args[0] == 'rest':
                 job = json.loads(Path(args[args.index('--body')+1][1:]).read_text())
                 job['properties']['provisioningState'] = 'Succeeded'
+                container = job['properties']['template']['containers'][0]
+                container['env'] = list(reversed([{'value': None, 'secretRef': None, **x} for x in container['env']]))
+                if drift == 'args': container['args'].append('--unauthorized')
+                if drift == 'value': container['env'][0]['value'] = 'different'
+                if drift == 'secret': next(x for x in container['env'] if x['secretRef'])['secretRef'] = 'different-secret'
+                if drift == 'names': container['env'].append({'name': 'UNAPPROVED', 'value': 'different'})
                 if wrong_owner: job['tags']['projectpulse-run'] = 'someone-else'
                 return {}
             if args[:3] == ('containerapp', 'job', 'show'): return job
@@ -146,6 +164,46 @@ class QualificationTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(report['temporaryJobCleanup'], 'not_verified')
         self.assertFalse(any(x[:3] in [('containerapp', 'job', 'start'), ('containerapp', 'job', 'delete')] for x in calls))
+
+    def test_real_configuration_drift_blocks_inference_but_cleans_owned_job(self):
+        for drift, diagnostic in [('args', 'args'), ('value', 'env_bindings'),
+            ('secret', 'env_bindings'), ('names', 'env_names')]:
+            with self.subTest(drift=drift):
+                code, report, calls = self.exercise(drift=drift)
+                self.assertEqual(code, 1)
+                self.assertFalse(report['called'])
+                self.assertEqual(report['diagnostic'], 'qualification_job_' + diagnostic + '_mismatch')
+                self.assertEqual(report['temporaryJobCleanup'], 'verified')
+                self.assertFalse(any(x[:3] == ('containerapp', 'job', 'start') for x in calls))
+
+    def test_prior_cleanup_is_limited_to_recorded_unstarted_owned_job(self):
+        name = 'm025q-' + module.PRIOR_SCOPE
+        for mutation in [None, 'run', 'source', 'image', 'environment', 'executed']:
+            calls, deleted = [], False
+            job = {'tags': {'projectpulse-scope': 'module025-one-phase-test',
+                'projectpulse-run': module.PRIOR_SCOPE, 'projectpulse-source': module.PRIOR_SOURCE},
+                'properties': {'environmentId': ENV, 'configuration': {'triggerType': 'Manual'},
+                    'template': {'containers': [{'name': name, 'image': IMAGE}]}}}
+            if mutation in ('run', 'source'): job['tags']['projectpulse-' + mutation] = 'unrelated'
+            if mutation == 'image': job['properties']['template']['containers'][0]['image'] = 'other'
+            if mutation == 'environment': job['properties']['environmentId'] = 'production'
+            def az(*args, **kwargs):
+                nonlocal deleted
+                calls.append(args)
+                if args[:3] == ('containerapp', 'job', 'list'): return [] if deleted else [{'name': name}, {'name': 'unrelated'}]
+                if args[:3] == ('containerapp', 'job', 'show'): return job
+                if args[:3] == ('acr', 'repository', 'show'): return {'digest': 'sha256:' + 'a' * 64}
+                if args[:4] == ('containerapp', 'job', 'execution', 'list'): return [{'name': 'ran'}] if mutation == 'executed' else []
+                if args[:3] == ('containerapp', 'job', 'delete'): deleted = True; return None
+                raise AssertionError(args)
+            with self.subTest(mutation=mutation), patch.object(module, 'az', az):
+                if mutation:
+                    with self.assertRaises(RuntimeError): module.cleanup_prior_unstarted_job(api_fixture(), 'testacr', 'test')
+                    self.assertFalse(deleted)
+                else:
+                    self.assertEqual(module.cleanup_prior_unstarted_job(api_fixture(), 'testacr', 'test'), 'verified')
+                    self.assertTrue(deleted)
+                self.assertFalse(any(x[:3] == ('containerapp', 'job', 'start') for x in calls))
 
     def test_workflow_preserves_native_test_gate_and_manual_only_source(self):
         source = (ROOT / '.github/workflows/projectpulse-deploy-test.yml').read_text()
