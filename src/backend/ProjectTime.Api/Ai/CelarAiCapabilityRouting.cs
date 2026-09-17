@@ -556,7 +556,11 @@ public sealed record CelarAiCapabilityExecutionContext(
     bool PublicGeneralQuestion = false,
     string? PublicQuestion = null,
     bool StructuredSowPhase = false,
-    Func<string, CancellationToken, Task<bool>>? BeforeStructuredSowAttempt = null);
+    Func<string, CancellationToken, Task<bool>>? BeforeStructuredSowAttempt = null)
+{
+    internal Module025ExternalSowAdapter? ExternalSow { get; init; }
+    internal Func<ProjectPulseAiProviderResult, string, CancellationToken, Task>? ObserveStructuredSowAttempt { get; init; }
+}
 
 public sealed class CelarAiConfigurationConflictException(string message) : InvalidOperationException(message);
 
@@ -2585,7 +2589,12 @@ public sealed class CelarAiCapabilityRouter
         var privateDocumentTargetMandatory = execution.ContainsPrivateDocuments
             && privatePolicyProfile?.RequirePrivateModelForDocuments == true;
         static bool IsPrivateTarget(string target) => target is CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi;
-        var orderedTargets = requirePrivateTargetBeforeExternal
+        var externalSowReady = execution.StructuredSowPhase && execution.ExternalSow is not null
+            && Module025ExternalSowAdapter.PolicyEnabled;
+        var orderedTargets = externalSowReady
+            ? route.Targets.Where(target => target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi)
+                .Concat(route.Targets.Where(target => target is not (CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi))).ToArray()
+            : requirePrivateTargetBeforeExternal
             ? route.Targets.Where(IsPrivateTarget)
                 .Concat(route.Targets.Where(target => !IsPrivateTarget(target)))
                 .ToArray()
@@ -2594,7 +2603,7 @@ public sealed class CelarAiCapabilityRouter
         var skipped = new List<string>();
         var failed = new List<string>();
         var decisions = new List<ProjectPulseAiTargetDecision>();
-        if (requirePrivateTargetBeforeExternal)
+        if (requirePrivateTargetBeforeExternal && !externalSowReady)
         {
             foreach (var deferredTarget in route.Targets.TakeWhile(target => !IsPrivateTarget(target)))
             {
@@ -2616,9 +2625,11 @@ public sealed class CelarAiCapabilityRouter
             {
                 if (feature != CelarAiCapabilityCatalog.SowGsdPlanning)
                     throw new InvalidOperationException("structured_sow_capability_mismatch");
-                // Cloud/local routes currently return generic assistance, not the
-                // source-grounded full SOW contract. Do not spend on that path.
-                if (target is not (CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi))
+                // A cloud target needs the permission-checked closed SOW capsule.
+                // The generic assistance and local-template paths remain ineligible.
+                if (target == CelarAiCapabilityTargets.Local
+                    || (target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                        && execution.ExternalSow is null))
                 {
                     skipped.Add(target);
                     decisions.Add(new(target, "skipped", "structured_sow_adapter_unavailable"));
@@ -2750,6 +2761,9 @@ public sealed class CelarAiCapabilityRouter
                         null,
                         null);
                 }
+                if (execution.ObserveStructuredSowAttempt is not null)
+                    await execution.ObserveStructuredSowAttempt(privateResult,
+                        target == CelarAiCapabilityTargets.DeepSeek ? _configuration.DeepSeek.Model : privatePolicyProfile?.Model ?? string.Empty, cancellationToken);
                 if (privateResult.IsRefusal)
                 {
                     _health.RecordRefusal(
@@ -2834,7 +2848,10 @@ public sealed class CelarAiCapabilityRouter
                 decisions.Add(new(target, "skipped", "provider_not_registered"));
                 continue;
             }
-            var externalRequest = PrepareExternalRequest(request, execution, out var externalDecisionCode);
+            string externalDecisionCode;
+            var externalRequest = execution.StructuredSowPhase && execution.ExternalSow is not null
+                ? execution.ExternalSow.Prepare(_sanitizer, out externalDecisionCode)
+                : PrepareExternalRequest(request, execution, out externalDecisionCode);
             if (externalRequest is null)
             {
                 skipped.Add(target);
@@ -2849,6 +2866,13 @@ public sealed class CelarAiCapabilityRouter
                 continue;
             }
 
+            if (execution.StructuredSowPhase && (execution.BeforeStructuredSowAttempt is null
+                || !await execution.BeforeStructuredSowAttempt(target, cancellationToken)))
+            {
+                skipped.Add(target);
+                decisions.Add(new(target, "skipped", "module025_phase_attempt_budget_exhausted"));
+                continue;
+            }
             attempted.Add(target);
             ProjectPulseAiProviderResult result;
             try
@@ -2869,6 +2893,18 @@ public sealed class CelarAiCapabilityRouter
                 continue;
             }
 
+            if (execution.StructuredSowPhase && result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
+            {
+                var phaseDiagnostic = "structured_sow_adapter_unavailable";
+                if (execution.ExternalSow is null || !execution.ExternalSow.Validate(result.Content, target,
+                    execution.CorrelationId, _sanitizer, out phaseDiagnostic))
+                    result = result with { Outcome = ProjectPulseAiOutcomes.Failure, Content = null, Code = phaseDiagnostic };
+            }
+            if (execution.StructuredSowPhase && !result.IsSuccess)
+                result = result with { Code = result.Code?.StartsWith("module025_", StringComparison.Ordinal) == true
+                    ? result.Code : "module025_external_" + DecisionCode(result.Code, "provider_failed") };
+            if (execution.ObserveStructuredSowAttempt is not null)
+                await execution.ObserveStructuredSowAttempt(result, _configuration.Provider(target).Model, cancellationToken);
             if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
             {
                 var timesheetExternalOutput = string.Equals(
@@ -2888,7 +2924,9 @@ public sealed class CelarAiCapabilityRouter
                     outputTerms,
                     out _);
                 string outputDecisionCode;
-                var outputSafe = execution.PublicGeneralQuestion
+                var outputSafe = execution.StructuredSowPhase && execution.ExternalSow?.AcceptedAnswer is not null
+                    ? (outputDecisionCode = "module025_external_phase_validated") is not null
+                    : execution.PublicGeneralQuestion
                     ? _sanitizer.IsPublicExternalOutputSafe(
                         result.Content,
                         outputSensitiveTerms,

@@ -130,6 +130,9 @@ public sealed class CelarAiEnterprisePlatformService
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+            var externalSow = authoritativeScopeEvidence?.PhaseExecution is not null
+                ? await _privateRag.PrepareModule025ExternalAsync(actualUserId, effectiveUserId, authoritativeScopeEvidence, cancellationToken)
+                : null;
             PulseAiPrivateRagAnswer? privateResult = null;
             PulseAiPrivateRagAnswer? evidenceGateResult = null;
             var routed = await _router.GenerateWithPrivateTargetAsync(
@@ -164,7 +167,12 @@ public sealed class CelarAiEnterprisePlatformService
                     ExternalCapsulePurpose: externalCapsulePurpose,
                     StructuredSowPhase: authoritativeScopeEvidence?.PhaseExecution is not null,
                     BeforeStructuredSowAttempt: authoritativeScopeEvidence?.PhaseExecution is { } phaseExecution
-                        ? phaseExecution.BeforeAttemptAsync : null),
+                        ? phaseExecution.BeforeAttemptAsync : null)
+                {
+                    ExternalSow = externalSow,
+                    ObserveStructuredSowAttempt = authoritativeScopeEvidence?.PhaseExecution is { } observedPhase
+                        ? observedPhase.ObserveProviderAsync : null
+                },
                 async privateCancellationToken =>
                 {
                     privateResult = await ExecutePrivateComposeAsync(
@@ -181,6 +189,8 @@ public sealed class CelarAiEnterprisePlatformService
                 localFallback: () => LocalEnterpriseFallback(mode),
                 cancellationToken: cancellationToken);
 
+            if (routed.Outcome == ProjectPulseAiOutcomes.Success && externalSow?.AcceptedAnswer is { } externalAnswer)
+                privateResult = externalAnswer;
             if (routed.Outcome == ProjectPulseAiOutcomes.Refusal)
             {
                 // A safety refusal is terminal. Do not return any private RAG
@@ -240,7 +250,7 @@ public sealed class CelarAiEnterprisePlatformService
 
             CelarAiExternalReasoningResult? external = null;
             if (routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
-                && externalCapsuleReady)
+                && externalCapsuleReady && externalSow?.AcceptedAnswer is null)
             {
                 external = ToExternalAssistance(routed);
                 if (!string.IsNullOrWhiteSpace(external.Content))
@@ -258,7 +268,9 @@ public sealed class CelarAiEnterprisePlatformService
                 : privateResult?.Status == "partial"
                     ? "celar_ai_solution_draft_partial"
                     : "celar_ai_solution_draft_evidence_limited";
-            var path = routed.Provider switch
+            var path = externalSow?.AcceptedAnswer is not null
+                ? "module025_closed_technical_capsule_and_private_composer"
+                : routed.Provider switch
                 {
                     CelarAiCapabilityTargets.DeepSeek => "private_deepseek_rag_and_deterministic_composer",
                     CelarAiCapabilityTargets.CelarAi => "private_celar_rag_and_deterministic_composer",

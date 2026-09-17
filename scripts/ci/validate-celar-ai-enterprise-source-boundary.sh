@@ -158,6 +158,12 @@ if [[ -n "$DISALLOWED_DATABASE" ]]; then
 fi
 
 PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED" || true)"
+if [[ "$HEAD_BRANCH" == 'fix/module025-external-sow-20260916' ]]; then
+  node tests/module025-external-sow-scope.mjs
+  for authorized in deployment/oracle-celar/gateway/wsgi.py deployment/oracle-celar/release.json src/backend/ProjectTime.Api/Ai/ProjectPulseAiRemoteProviders.cs; do
+    PROHIBITED="$(grep -Fvx "$authorized" <<<"$PROHIBITED" || true)"
+  done
+fi
 if [[ "$HEAD_BRANCH" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
   # Exact scope permits UAT isolation and the single-model Oracle policy only.
   for authorized in .github/workflows/projectpulse-deploy-test.yml deployment/oracle-celar/deploy.sh deployment/oracle-celar/health-check.sh deployment/oracle-celar/release.json deployment/oracle-celar/verify-ollama-memory-policy.py; do

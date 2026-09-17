@@ -32,3 +32,9 @@ assert module.command([]) == (None, 'read_permission_limited')
 module.subprocess.run = lambda *a, **k: SimpleNamespace(returncode=1, stdout=private, stderr=private)
 assert module.command([]) == (None, 'read_failed')
 print('CELAR_RUNTIME_EVIDENCE_PRIVACY_AND_INCOMPLETENESS=PASS')
+
+phase = module.journal_summary(json.dumps({'MESSAGE': "module025_phase model=gemma3:4b status=200 budget_seconds=110 metrics={'load_duration': 2000000, 'eval_count': 500, 'eval_duration': 5000000000} " + private}))
+assert phase['module025PhaseCalls'] == [{'model':'gemma3:4b', 'httpStatus':200, 'budgetSeconds':110,
+    'metrics':{'load_duration':2000000, 'eval_count':500, 'eval_duration':5000000000}}]
+assert private not in json.dumps(phase)
+print('MODULE025_CELAR_MEASURED_METRICS=PASS')

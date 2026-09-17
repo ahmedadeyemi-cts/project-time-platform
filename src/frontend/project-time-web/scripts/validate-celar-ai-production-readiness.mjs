@@ -498,12 +498,17 @@ assert(
 assert(
   'MODULE064_PERSISTED_ORDER_IS_RUNTIME_AUTHORITY',
   routing.includes('var route = await _store.LoadRouteAsync(feature, cancellationToken);')
-    && routing.includes('var orderedTargets = requirePrivateTargetBeforeExternal')
+    && routing.includes('var externalSowReady = execution.StructuredSowPhase && execution.ExternalSow is not null')
+    && routing.includes('&& Module025ExternalSowAdapter.PolicyEnabled;')
+    && routing.includes('var orderedTargets = externalSowReady')
+    && routing.includes('? route.Targets.Where(target => target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi)')
+    && routing.includes('.Concat(route.Targets.Where(target => target is not (CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi))).ToArray()')
+    && routing.includes(': requirePrivateTargetBeforeExternal')
     && routing.includes(': route.Targets;')
     && routing.includes('foreach (var target in orderedTargets)')
     && routing.includes('var validated = CelarAiCapabilityCatalog.ValidateTargets(targets);')
     && module064.includes('var route = await store.SaveRouteAsync('),
-  'every routed request reloads and executes the saved Module 064 capability order; only documented private-data eligibility rules may defer an otherwise earlier public target'
+  'every request reloads saved Module 064 targets; only a permission-checked, policy-enabled Module 025 technical capsule prefers configured cloud targets, while other requests retain saved order and private-data eligibility rules'
 );
 
 assert(

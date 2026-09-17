@@ -1881,6 +1881,35 @@ public sealed class PulseAiPrivateRagService
         return retrieval with { Chunks = boundedChunks.ToArray() };
     }
 
+    internal async Task<Module025ExternalSowAdapter?> PrepareModule025ExternalAsync(
+        Guid actualUserId, Guid effectiveUserId, CelarAiAuthoritativeScopeEvidence evidence,
+        CancellationToken token)
+    {
+        var access = await _repository.LoadAccessAsync(effectiveUserId, token);
+        if (actualUserId != effectiveUserId || !access.IsActive || !access.CanSowPlanning
+            || !Options().Enabled || CreateModule025AuthoritativeScopeSource(evidence) is null)
+            return null;
+        return Module025ExternalSowAdapter.TryCreate(evidence);
+    }
+
+    internal static string Module025PhaseInstruction(string phase) =>
+        Module025DetailedPhaseInstruction(FlowHiveSystemInstruction(CelarAiCapabilityCatalog.SowGsdPlanning, true),
+            phase, Array.IndexOf(Module025DeliveryPhases, phase), string.Empty);
+
+    internal static PulseAiPrivateRagAnswer Module025ExternalAnswer(
+        string content, CelarAiAuthoritativeScopeEvidence evidence, string provider, string correlationId)
+    {
+        var source = CreateModule025AuthoritativeScopeSource(evidence)
+            ?? throw new JsonException("module025_phase_source_invalid");
+        var retrieval = Module025AuthoritativeScopeRetrieval(null!, source);
+        var plan = ParseModule025PlanContent(content, retrieval, [evidence.PhaseExecution!.Phase]);
+        return new(Guid.NewGuid(), "completed", CelarAiCapabilityCatalog.SowGsdPlanning, "sow_draft",
+            "direct_knowledge", provider, string.Empty, null, evidence.EngagementNumber, evidence.CustomerName,
+            null, plan, Citations([source], [1]),
+            ["Technical work packages were proposed from a closed technology capsule. The saved Service Overview remains authoritative; quantities, versions, customer constraints and all effort estimates require Solution Architect review."],
+            [], plan.Conflicts, 1m, 1m, evidence.SavedAt, correlationId, string.Empty);
+    }
+
     internal static PulseAiPrivateFlowHivePlan ValidateModule025Phase(
         PulseAiPrivateFlowHivePlan? plan, string? phase, CelarAiAuthoritativeScopeEvidence evidence)
     {
@@ -2052,6 +2081,7 @@ public sealed class PulseAiPrivateRagService
             phaseToken.ThrowIfCancellationRequested();
             var phaseRequest = request with
             {
+                OutputSchemaName = fullDetail && maximumAttempts == 1 ? "module025_detailed_phase" : request.OutputSchemaName,
                 MaximumOutputTokens = maximumOutputTokens,
                 Sources = retrieval.Chunks,
                 SystemInstruction = fullDetail

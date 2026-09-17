@@ -8,6 +8,12 @@ using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
 using UglyToad.PdfPig;
 
+if (args.Length == 2 && args[0] == "--qualify-sow-provider")
+{
+    await Module025ProviderQualification.RunAsync(args[1]);
+    return;
+}
+
 static void Assert(bool condition, string label)
 {
     if (!condition) throw new InvalidOperationException($"ASSERTION_FAILED {label}");
@@ -1421,5 +1427,6 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
         Console.WriteLine($"PDF_EVIDENCE_{artifactKind}={Path.Combine(evidenceDirectory, $"{artifactKind}.pdf")}");
 }
 
+await Module025ExternalSowTests.RunAsync(parsedModule025);
 await Module025GenerationEngineTests.RunAsync(parsedModule025);
 Console.WriteLine("FLOWHIVE_DETAILED_PLANNER_TESTS=PASS");
