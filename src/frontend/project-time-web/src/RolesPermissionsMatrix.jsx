@@ -140,7 +140,12 @@ export default function RolesPermissionsMatrix() {
     }
   }
 
-  useEffect(() => { void loadMatrix(); }, []);
+  useEffect(() => {
+    const refresh = () => { void loadMatrix(); };
+    refresh();
+    window.addEventListener('projectpulse:permissions-changed', refresh);
+    return () => window.removeEventListener('projectpulse:permissions-changed', refresh);
+  }, []);
 
   const roles = payload.data?.roles || [];
   const modules = payload.data?.modules || [];
@@ -224,13 +229,13 @@ export default function RolesPermissionsMatrix() {
     {tab === 'matrix' ? <>
       <section className="rpm-summary-grid"><article><span>Policy version</span><strong>v{valueOf(version, 'versionNumber', 'VersionNumber', '—')}</strong><small>{valueOf(version, 'policyStatus', 'PolicyStatus', 'Unknown')}</small></article><article><span>Active modules</span><strong>{modules.length}</strong><small>Dynamic database catalog</small></article><article><span>Active roles</span><strong>{roles.length}</strong><small>Role columns from the role directory</small></article><article><span>No Access</span><strong>{totals['No Access'] || 0}</strong><small>Module hidden for those role/module pairs</small></article></section>
       <section className="rpm-summary-grid"><article><span>Configured pairs</span><strong>{Number(valueOf(summary, 'configuredPairCount', 'ConfiguredPairCount', 0) || 0)}</strong><small>Explicit published decisions</small></article><article><span>Unconfigured pairs</span><strong>{Number(valueOf(summary, 'unconfiguredPairCount', 'UnconfiguredPairCount', 0) || 0)}</strong><small>Existing endpoint authorization remains until configured</small></article><article><span>Catalog mode</span><strong>Dynamic</strong><small>No 70-module requirement</small></article><article><span>Super Admin</span><strong>Full Control</strong><small>Permanent organization-wide invariant</small></article></section>
-      <section className="rpm-toolbar"><label><span>Module</span><select value={moduleCode} onChange={(event) => setModuleCode(event.target.value)}><option value="all">All modules</option>{modules.map((module) => <option value={module.moduleCode} key={module.moduleCode}>{module.moduleName}</option>)}</select></label><label><span>Role</span><select value={roleCode} onChange={(event) => setRoleCode(event.target.value)}><option value="all">All roles</option>{roles.map((role) => <option value={role.roleCode} key={role.roleCode}>{role.roleName}</option>)}</select></label><label><span>Search</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Permission, role, page, TIME_REASSIGN…" /></label></section>
+      <section className="rpm-toolbar"><label><span>Module</span><select value={moduleCode} onChange={(event) => setModuleCode(event.target.value)}><option value="all">All modules</option>{modules.map((module) => <option value={module.moduleCode} key={module.moduleCode}>{module.moduleCode} · {module.moduleName}</option>)}</select></label><label><span>Role</span><select value={roleCode} onChange={(event) => setRoleCode(event.target.value)}><option value="all">All roles</option>{roles.map((role) => <option value={role.roleCode} key={role.roleCode}>{role.roleName}</option>)}</select></label><label><span>Search</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Permission, role, page, TIME_REASSIGN…" /></label></section>
       <div className="rpm-scroll-note"><strong>Matrix viewing tip</strong><span>The Page, Permission, and Description columns stay pinned. Scroll horizontally inside the table to compare roles without losing context.</span></div>
       {message ? <p className="roles-matrix-alert">{message}</p> : null}
       <p className="rpm-count">{rows.length} permission row(s) · {visibleRoles.length} role column(s)</p>
       <div className="rpm-permission-table-wrap"><table className="rpm-permission-table"><thead><tr><th>Page</th><th>Permission</th><th>Description</th>{visibleRoles.map((role) => <th key={role.roleCode} title={`${role.roleName} · ${role.roleCode}`}><span className="rpm-role-heading"><strong>{role.roleName}</strong><small>{role.roleCode}</small></span></th>)}</tr></thead><tbody>{rows.map(({ module, action }) => {
         const moduleGrants = grants.filter((grant) => grant.moduleCode === module.moduleCode);
-        return <tr key={`${module.moduleCode}-${action.actionCode}`}><td><strong>{module.moduleName}</strong><small>{module.routeScope}</small></td><td><strong>{actionLabel(action.actionCode)}</strong><code>{action.actionCode}</code></td><td>{actionDescription(action.actionCode, action.actionDescription)}</td>{visibleRoles.map((role) => {
+        return <tr key={`${module.moduleCode}-${action.actionCode}`}><td><strong>{module.moduleCode} · {module.moduleName}</strong><small>{module.routeScope}</small></td><td><strong>{actionLabel(action.actionCode)}</strong><code>{action.actionCode}</code></td><td>{actionDescription(action.actionCode, action.actionDescription)}</td>{visibleRoles.map((role) => {
           const decision = decisionFor(moduleGrants, role.roleCode, action.actionCode);
           return <td key={role.roleCode} className={decisionCellClass(decision.state)}><button type="button" onClick={() => setSelected({ module, action, role, decision })}><strong>{decision.state === 'ALLOW' ? 'Allow' : decision.state === 'DENY' ? 'No Access' : 'Not Set'}</strong><small>{decision.scope}</small></button></td>;
         })}</tr>;

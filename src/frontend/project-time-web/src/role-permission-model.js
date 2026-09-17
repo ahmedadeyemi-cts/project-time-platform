@@ -383,12 +383,18 @@ export function grantsFor(moduleCode, role, level, scope) {
   });
 }
 
+function canonicalJson(value) {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalJson(value[key])]));
+  return value;
+}
+
 export function stable(grants) {
   return JSON.stringify(arr(grants).map((grant) => ({
     actionCode: grant.actionCode,
     scopeCode: grant.scopeCode,
     effect: grant.effect,
-    conditions: grant.conditions || {},
+    conditions: canonicalJson(grant.conditions || {}),
     delegatedAuthority: !!grant.delegatedAuthority,
     reasonRequired: !!grant.reasonRequired,
     auditRequired: grant.auditRequired !== false,

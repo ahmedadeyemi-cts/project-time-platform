@@ -41,7 +41,7 @@ trap cleanup EXIT INT TERM
 [[ -s "$MODULE025_MIGRATION_FILE" ]] || fail "Module 025 SOW/GSD migration 099 source is missing."
 [[ -s "$MODULE001B_CATALOG_MIGRATION_FILE" ]] || fail "Module 001B catalog migration 100 source is missing."
 [[ -s "$MIGRATION_RUNNER" ]] || fail "Migration 096 private-network runner is missing."
-for command_name in az jq mktemp install chmod; do
+for command_name in az jq mktemp install chmod node; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required."
 done
 
@@ -55,6 +55,7 @@ install -m 0444 "$CUSTOMER_SOURCE_MIGRATION_FILE" "$CONTEXT/database/migrations/
 install -m 0444 "$MODULE025_MIGRATION_FILE" "$CONTEXT/database/migrations/099_module025_sow_gsd_workspace.sql"
 install -m 0444 "$MODULE001B_CATALOG_MIGRATION_FILE" "$CONTEXT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 install -m 0444 "$ROOT/database/migrations/101_deepseek_v4_provider.sql" "$CONTEXT/database/migrations/101_deepseek_v4_provider.sql"
+node "$ROOT/scripts/release-test/reconcile-module-catalog.mjs" "$RELEASE_COMMIT" "$CONTEXT/database/migrations/108_builtin_module_catalog_reconciliation.sql"
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -92,6 +93,7 @@ psql -X -v ON_ERROR_STOP=1 --file "$MODULE001B_CATALOG_MIGRATION"
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/101_deepseek_v4_provider.sql"
 [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='101_deepseek_v4_provider')")" == t ]] || exit 1
 echo 'MIGRATION_101_DEEPSEEK_V4=APPLIED_AND_VERIFIED'
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/108_builtin_module_catalog_reconciliation.sql"
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='096_project_planning_document_authority')::text || '|' ||
