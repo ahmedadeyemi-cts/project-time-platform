@@ -246,16 +246,26 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
     {
         if (!IsModelApproved()) return ModelNotApproved();
 
-        var payload = JsonSerializer.Serialize(new
+        var fields = new Dictionary<string, object?>
         {
-            model = Provider.Model,
-            instructions = request.SystemPrompt,
-            input = request.UserPrompt,
-            store = false,
-            max_output_tokens = request.StructuredSowPhase
+            ["model"] = Provider.Model,
+            ["instructions"] = request.SystemPrompt,
+            ["input"] = request.UserPrompt,
+            ["store"] = false,
+            ["max_output_tokens"] = request.StructuredSowPhase
                 ? Math.Min(request.MaxOutputTokens, Module025GenerationEngine.MaximumExternalOutputTokens)
                 : Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens)
-        });
+        };
+        if (request.StructuredSowPhase)
+        {
+            if (request.SowPhase is null || !Module025GenerationEngine.Phases.Contains(request.SowPhase))
+                return new(Code, ProjectPulseAiOutcomes.Failure, null, "module025_phase_request_invalid", null, null, null, null);
+            fields["text"] = new { format = new {
+                type = "json_schema", name = Module025PhaseOutputContract.Name, strict = true,
+                schema = Module025PhaseOutputContract.Schema(request.SowPhase)
+            } };
+        }
+        var payload = JsonSerializer.Serialize(fields);
 
         var response = await ProjectPulseAiHttp.SendWithRetryAsync(
             _httpClientFactory,

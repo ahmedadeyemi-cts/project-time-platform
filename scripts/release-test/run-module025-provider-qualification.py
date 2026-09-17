@@ -285,6 +285,32 @@ def decode_report(logs):
     return report
 
 
+def print_contract_diagnostic(report):
+    diagnostics = report.get('SowDiagnostics') or {}
+    rules = {'required_field', 'duplicate_field', 'unexpected_field', 'expected_object', 'expected_array',
+        'expected_string', 'expected_boolean', 'expected_number', 'expected_integer', 'minimum_items',
+        'maximum_items', 'minimum_length', 'number_range', 'allowed_value', 'task_detail', 'milestone_detail',
+        'unrequested_phase', 'duplicate_wbs', 'phase_task_count', 'phase_distinct_descriptions',
+        'phase_distinct_steps', 'phase_distinct_outputs', 'phase_customer_responsibility',
+        'phase_provider_responsibility', 'phase_prerequisite', 'phase_acceptance', 'phase_validation',
+        'phase_risk', 'phase_effort', 'prohibited_boilerplate', 'source_authority', 'invalid_json',
+        'phase_contract_invalid', 'response_size_limit'}
+    fields = ('objective tasks milestones dependencies requiredRoles assumptions risks outOfScopeItems '
+        'openQuestions conflicts citationIds confidence confidenceExplanation wbs name description '
+        'estimatedDurationDays estimatedHours predecessors isAssumption phase priority detailedSteps '
+        'inputs outputs acceptanceCriteria validationSteps customerResponsibilities usSignalResponsibilities '
+        'prerequisites products platforms manufacturers models softwareVersions firmwareVersions '
+        'licensingRequirements quantities tools systems interfaces integrationPoints accessRequirements '
+        'rollbackSteps proposedTiming acceptanceEvidence content unknown_field').split()
+    category = diagnostics.get('OutputValidationCategory')
+    field = diagnostics.get('OutputValidationField')
+    if isinstance(category, str) and category in rules:
+        print('MODULE025_OUTPUT_VALIDATION_CATEGORY=' + category)
+        pattern = r'\$(?:(?:\.(?:' + '|'.join(fields) + r'))|(?:\[[0-9]{1,3}\])){0,16}'
+        if isinstance(field, str) and re.fullmatch(pattern, field):
+            print('MODULE025_OUTPUT_VALIDATION_FIELD=' + field)
+
+
 def main():
     out = Path(os.environ['RUNNER_TEMP']) / 'module025-qualification-evidence'
     out.mkdir(mode=0o700, exist_ok=True)
@@ -413,6 +439,7 @@ def main():
             print('MODULE025_QUALIFICATION_DIAGNOSTIC=' + report['diagnostic'])
         if report.get('apiDeploymentVerificationDiagnostic'):
             print('MODULE025_API_DEPLOYMENT_VERIFICATION_DIAGNOSTIC=' + report['apiDeploymentVerificationDiagnostic'])
+        print_contract_diagnostic(report)
         print('MODULE025_ONE_PHASE_QUALIFICATION=' + ('PASS' if report['passed'] else 'BLOCKED/FAIL'))
     return 0 if report['passed'] else 1
 
