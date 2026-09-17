@@ -120,7 +120,7 @@ public static partial class Module025SowGsdModule
         var records = new List<JsonElement>();
         await using (var rows = Query("""
             SELECT jsonb_build_object('engagementId',m.engagement_id,'engagementNumber',m.engagement_number,
-                'ownerUserId',m.owner_user_id,'ownerDisplayName',m.owner_display_name,'customerName',m.customer_name,
+                'ownerUserId',m.owner_user_id,'ownerDisplayName',m.owner_display_name,'projectName',m.project_name,'customerName',m.customer_name,
                 'status',m.status,'revision',m.revision,'createdAt',m.created_at,'updatedAt',m.updated_at,
                 'generationRunsInWindow',m.generated_count,'successfulSubmissionsInWindow',m.sent_count,
                 'latestVersionNumber',(SELECT max(v.version_number) FROM module025_sow_gsd_versions v WHERE v.engagement_id=m.engagement_id),
