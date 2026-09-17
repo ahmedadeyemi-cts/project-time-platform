@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the actual installed browser verifier against the real React workspace.
+"""Exercise the actual installed browser verifier against the complete production-built application.
 
 Only synthetic local HTTP fixtures are used. No model or Test service is called.
 """
@@ -47,10 +47,11 @@ async def main():
         def state():
             with urlopen(runner.ORIGIN + '/__state') as response:
                 return json.load(response)
-        def reset(status, deny=False):
+        def reset(status, deny=False, denied_module=False):
             with urlopen(Request(runner.ORIGIN + '/__reset', method='POST',
-                data=json.dumps({'status': status, 'denyDownload': 'true' if deny else ''}).encode())) as response:
+                data=json.dumps({'status': status, 'denyDownload': 'true' if deny else '', 'deniedModule': denied_module}).encode())) as response:
                 response.read()
+        session = {'sessionToken': 'synthetic-session-only', 'username': 'synthetic.local', 'loginMethod': 'local', 'provider': 'LOCAL', 'expiresAt': '2099-01-01T00:00:00Z', 'mustChangePassword': False}
         with tempfile.TemporaryDirectory() as directory:
             try:
                 launch = BrowserType.launch
@@ -60,28 +61,41 @@ async def main():
                     return await launch(browser_type, **kwargs)
                 with patch.object(BrowserType, 'launch', test_launch):
                     reset('draft')
-                    await runner.browser_lifecycle({'sessionToken': 'synthetic-session-only'}, 'SOW-TEST-025', '', report, Path(directory), preflight=True)
+                    await runner.browser_lifecycle(session, 'SOW-TEST-025', '', report, Path(directory), preflight=True)
                     assert report['browserPreflight']['status'] == 'passed'
-                    assert all(request['method'] == 'GET' for request in state()['requests'])
+                    assert report['browserPreflight']['entryState']['visibleWorkspaces'] == 1
+                    assert report['browserPreflight']['entryState']['route'] == 'sow-generator'
+                    assert all(request['method'] == 'GET' for request in state()['requests'] if request['path'].startswith('/api/module025/'))
                     assert not list(Path(directory).iterdir()), 'Preflight must not download documents or write a record'
                     reset('confirmed')
-                    await runner.browser_lifecycle({'sessionToken': 'synthetic-session-only'}, 'SOW-TEST-025', 'Synthetic reload marker', report, Path(directory))
+                    await runner.browser_lifecycle(session, 'SOW-TEST-025', 'Synthetic reload marker', report, Path(directory))
                     assert report['browser']['status'] == 'passed'
                     assert set(report['browser']['confirmedDownloads']) == {'sow', 'gsd'}
                     assert all(value['repeatBytesVerified'] for value in report['browser']['confirmedDownloads'].values())
                     saved = state()
                     assert 'Synthetic reload marker' in saved['engagement']['serviceOverview']
-                    assert [(r['method'], r['path'].rsplit('/', 1)[-1]) for r in saved['requests'] if r['method'] != 'GET'] == [('POST', 'reopen'), ('PUT', 'fixture-025')]
+                    assert [(r['method'], r['path'].rsplit('/', 1)[-1]) for r in saved['requests'] if r['method'] != 'GET' and r['path'].startswith('/api/module025/')] == [('POST', 'reopen'), ('PUT', 'fixture-025')]
                     reset('confirmed', deny=True)
                     timeout = Page.set_default_timeout
-                    with patch.object(Page, 'set_default_timeout', lambda page, _: timeout(page, 2000)):
+                    expect_download = Page.expect_download
+                    with patch.object(Page, 'expect_download', lambda page: expect_download(page, timeout=2000)):
                         try:
-                            await runner.browser_lifecycle({'sessionToken': 'synthetic-session-only'}, 'SOW-TEST-025', '', report, Path(directory))
+                            await runner.browser_lifecycle(session, 'SOW-TEST-025', '', report, Path(directory))
                             raise AssertionError('Denied document request must fail')
                         except runner.AcceptanceError as error:
                             assert str(error) == 'module025_browser_timeout_download_sow', str(error)
                     assert report['browser']['status'] == 'failed'
                     assert report['browser']['failedResponses'] == [{'endpoint': 'sow_download', 'status': 401}]
+                    reset('draft', denied_module=True)
+                    with patch.object(Page, 'set_default_timeout', lambda page, _: timeout(page, 4000)):
+                        try:
+                            await runner.browser_lifecycle(session, 'SOW-TEST-025', '', report, Path(directory), preflight=True)
+                            raise AssertionError('A denied module must not pass browser preflight')
+                        except runner.AcceptanceError as error:
+                            assert str(error) == 'module025_browser_timeout_workspace', str(error)
+                    assert report['browserPreflight']['entryState']['module025Denied'] is True
+                    assert report['browserPreflight']['entryState']['route'] == 'dashboard'
+                    assert report['browserPreflight']['browserWriteCount'] == 0
                     assert 'synthetic-session-only' not in json.dumps(report)
                     assert not any(r['path'].endswith('/generate') for r in state()['requests'])
             finally:

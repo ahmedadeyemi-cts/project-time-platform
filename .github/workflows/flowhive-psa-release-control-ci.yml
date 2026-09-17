@@ -69,6 +69,9 @@ jobs:
           python -m pip install PyYAML==6.0.3
           if [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pm-acceptance-contract' ]]; then
             node tests/validate-flowhive-pm-acceptance-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-workspace-entry-20260917' ]]; then
+            node tests/module025-workspace-entry-scope.mjs
+            python3 tests/flowhive-psa-installed-acceptance.test.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-browser-verifier-20260917' ]]; then
             node tests/module025-browser-verifier-scope.mjs
             python3 tests/flowhive-psa-installed-acceptance.test.py
@@ -688,8 +691,9 @@ jobs:
       - name: Exercise visible actions and authenticated downloads without live inference
         run: |
           PLAYWRIGHT_MODULE_PATH="$RUNNER_TEMP/module025-browser/node_modules/playwright" node tests/module025-document-actions.test.mjs
-      - name: Exercise the actual installed SA browser verifier against React
+      - name: Exercise the installed SA verifier against the complete production build
         run: |
+          npm run build --prefix src/frontend/project-time-web
           python3 -m venv "$RUNNER_TEMP/module025-python-browser"
           "$RUNNER_TEMP/module025-python-browser/bin/pip" install --disable-pip-version-check playwright==1.57.0
           "$RUNNER_TEMP/module025-python-browser/bin/python" tests/module025-installed-browser.test.py

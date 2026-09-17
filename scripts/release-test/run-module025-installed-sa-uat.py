@@ -164,7 +164,7 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
         browser = await playwright.chromium.launch(headless=True)
         context = await browser.new_context(viewport={"width": 1600, "height": 1000}, accept_downloads=True)
         requests: list[str] = []
-        browser_report = {"status": "running", "stage": "launch", "completedSteps": [], "confirmedDownloads": {}, "failedResponses": []}
+        browser_report = {"status": "running", "stage": "launch", "completedSteps": [], "confirmedDownloads": {}, "failedResponses": [], "bootstrapStatuses": []}
         report["browserPreflight" if preflight else "browser"] = browser_report
 
         def stage(name: str) -> None:
@@ -181,6 +181,8 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
         context.on("request", record_request)
         def record_response(response) -> None:
             path = urlparse(response.url).path
+            if path == "/api/module025/sow-gsd/bootstrap" and len(browser_report["bootstrapStatuses"]) < 10:
+                browser_report["bootstrapStatuses"].append(response.status)
             if response.status < 400 or not path.startswith("/api/module025/"):
                 return
             # Record only fixed endpoint labels and HTTP status, never URLs,
@@ -214,7 +216,10 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
         try:
             stage("navigate")
             await page.goto(ORIGIN + "/#sow-generator", wait_until="domcontentloaded")
-            workspace = page.locator('section[data-module025-sow-gsd-workspace="true"]')
+            # The installed shell also mounts a hidden legacy presentation.
+            # Require exactly one visible workspace; never select its hidden
+            # duplicate or silently accept two visible authoring surfaces.
+            workspace = page.locator('section[data-module025-sow-gsd-workspace="true"]:visible')
             stage("workspace")
             await workspace.wait_for(state="visible")
             stage("heading")
@@ -292,6 +297,30 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
             raise
         finally:
             browser_report.update({"browserWriteCount": len(requests), "pageErrors": len(page_errors)})
+            try:
+                # Closed labels, booleans and counts only. Never retain DOM,
+                # session contents, arbitrary routes or customer/error text.
+                browser_report["entryState"] = await page.evaluate("""() => {
+                    const route = location.hash.replace(/^#/, '').split('?')[0];
+                    const navigation = window.__projectPulseEffectiveNavigation;
+                    const roots = [...document.querySelectorAll('section[data-module025-sow-gsd-workspace="true"]')];
+                    const visible = node => !!node && node.checkVisibility();
+                    return {
+                        route: ['sow-generator', 'dashboard', 'modules'].includes(route) ? route : 'other',
+                        applicationShellVisible: [...document.querySelectorAll('main.app-shell')].some(visible),
+                        workspaceMatches: roots.length,
+                        visibleWorkspaces: roots.filter(visible).length,
+                        loadingWorkspaceVisible: [...document.querySelectorAll('.m025-workspace--loading')].some(visible),
+                        loginPasswordVisible: [...document.querySelectorAll('input[type="password"]')].some(visible),
+                        navigationState: ['ready', 'loading', 'anonymous', 'unavailable'].includes(navigation?.state) ? navigation.state : 'unknown',
+                        module025Denied: Array.isArray(navigation?.deniedModuleNumbers) && navigation.deniedModuleNumbers.includes('025')
+                    };
+                }""")
+            except Exception:
+                browser_report["entryState"] = {"captureAvailable": False}
+            if browser_report["status"] == "failed":
+                print("MODULE025_BROWSER_ENTRY=" + json.dumps(browser_report["entryState"], sort_keys=True), flush=True)
+                print("MODULE025_BROWSER_BOOTSTRAP_HTTP=" + json.dumps(browser_report["bootstrapStatuses"]), flush=True)
             await context.close()
             await browser.close()
 
