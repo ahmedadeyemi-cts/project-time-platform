@@ -13,7 +13,7 @@ internal sealed record Module025SellRecipient(Guid UserId, string DisplayName, s
 internal sealed record Module025SellReadiness(bool Ready, string DiagnosticCode, string Message);
 internal sealed record Module025SellPackage(
     Guid SubmissionId, Guid EngagementId, Guid VersionId, int VersionNumber,
-    string EngagementNumber, string CustomerName, string ProjectName, string RuntimeEnvironment,
+    string EngagementNumber, string CustomerName, string? ProjectName, string RuntimeEnvironment,
     string? ExistingSellRecordId, byte[] SowContent, byte[] GsdContent,
     string SowSha256, string GsdSha256, IReadOnlyList<Module025SellRecipient> Recipients)
 {
@@ -26,7 +26,7 @@ internal sealed record Module025SellPackage(
             var number = EngagementNumber.StartsWith("SOW-", StringComparison.OrdinalIgnoreCase) ? EngagementNumber[4..] : EngagementNumber;
             static string Safe(string value) => string.Join("_", value.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries))
                 .Replace(' ', '_').Trim('_');
-            var project = Safe(ProjectName);
+            var project = Safe(ProjectName ?? string.Empty);
             if (project.Length == 0) project = "Project";
             return $"SOW#{Safe(number)}_{project}";
         }
