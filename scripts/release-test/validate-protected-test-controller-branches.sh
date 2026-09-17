@@ -165,6 +165,9 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
     exit 1
   }
   node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+elif [[ "$HEAD_BRANCH" == 'fix/module025-browser-verifier-20260917' ]]; then
+  node tests/module025-browser-verifier-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/module025-assembly-predecessors-20260917' ]]; then
   node tests/module025-assembly-predecessors-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs

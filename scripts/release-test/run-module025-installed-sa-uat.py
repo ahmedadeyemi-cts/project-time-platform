@@ -21,6 +21,7 @@ import zipfile
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
+from urllib.parse import urlparse
 
 ORIGIN = "https://phd-west-test.onenecklab.com"
 PHASE_CODES = ("plan", "design", "implement", "validate", "release")
@@ -155,7 +156,7 @@ def verify_historical_downloads(engagement_id: str, token: str, expected: dict) 
             "unauthorizedDownloadsDenied": True, "sowSha256": expected["sowSha256"], "gsdSha256": expected["gsdSha256"]}
 
 
-async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: str, report: dict, evidence_dir: Path) -> None:
+async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: str, report: dict, evidence_dir: Path, *, preflight: bool = False) -> None:
     from playwright.async_api import async_playwright
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
@@ -163,12 +164,44 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
         browser = await playwright.chromium.launch(headless=True)
         context = await browser.new_context(viewport={"width": 1600, "height": 1000}, accept_downloads=True)
         requests: list[str] = []
+        browser_report = {"status": "running", "stage": "launch", "completedSteps": [], "confirmedDownloads": {}, "failedResponses": []}
+        report["browserPreflight" if preflight else "browser"] = browser_report
+
+        def stage(name: str) -> None:
+            browser_report["stage"] = name
+            print("MODULE025_BROWSER_STEP=" + ("preflight_" if preflight else "") + name, flush=True)
+
+        def completed(name: str) -> None:
+            browser_report["completedSteps"].append(name)
 
         def record_request(request) -> None:
-            if request.method not in ("GET", "HEAD", "OPTIONS"):
+            if urlparse(request.url).path.startswith("/api/module025/") and request.method not in ("GET", "HEAD", "OPTIONS"):
                 requests.append(request.method + " " + request.url.split("?", 1)[0])
 
         context.on("request", record_request)
+        def record_response(response) -> None:
+            path = urlparse(response.url).path
+            if response.status < 400 or not path.startswith("/api/module025/"):
+                return
+            # Record only fixed endpoint labels and HTTP status, never URLs,
+            # queries, headers, tokens, error bodies or customer-visible text.
+            endpoint = next((name for suffix, name in (
+                ("/bootstrap", "bootstrap"), ("/sow-gsd", "list"),
+                ("/sow.docx", "sow_download"), ("/gsd.xlsx", "gsd_download"),
+                ("/reopen", "reopen"),
+            ) if path.endswith(suffix)), "record")
+            if len(browser_report["failedResponses"]) < 20:
+                browser_report["failedResponses"].append({"endpoint": endpoint, "status": response.status})
+
+        context.on("response", record_response)
+        if preflight:
+            async def prevent_business_writes(route) -> None:
+                request = route.request
+                if urlparse(request.url).path.startswith("/api/module025/") and request.method not in ("GET", "HEAD", "OPTIONS"):
+                    await route.abort()
+                else:
+                    await route.continue_()
+            await context.route("**/*", prevent_business_writes)
         await context.add_init_script(
             "window.localStorage.setItem('projectPulseAuthSession', "
             + json.dumps(json.dumps(session))
@@ -179,23 +212,36 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
         page_errors: list[str] = []
         page.on("pageerror", lambda _: page_errors.append("browser_page_error"))
         try:
+            stage("navigate")
             await page.goto(ORIGIN + "/#sow-generator", wait_until="domcontentloaded")
             workspace = page.locator('section[data-module025-sow-gsd-workspace="true"]')
+            stage("workspace")
             await workspace.wait_for(state="visible")
+            stage("heading")
             await workspace.get_by_role("heading", name="SOW & GSD Workspace", exact=True).wait_for(state="visible")
+            stage("solution_architect")
             await workspace.get_by_text("Solution Architect", exact=True).first.wait_for(state="visible")
             card = workspace.locator(".m025-work-card").filter(has_text=engagement_number).first
+            stage("select_record")
             await card.wait_for(state="visible")
             await card.click()
             editor = workspace.locator(".m025-editor-panel")
             await editor.get_by_text(engagement_number, exact=True).wait_for(state="visible")
+            completed("workspace_and_record")
 
             sow_link = workspace.get_by_role('button', name='Download SOW (.docx)', exact=True).or_(editor.locator('a[href$="/sow.docx"]'))
             gsd_link = workspace.get_by_role('button', name='Download GSD (.xlsx)', exact=True).or_(editor.locator('a[href$="/gsd.xlsx"]'))
+            stage("document_actions")
             await sow_link.wait_for(state="visible")
             await gsd_link.wait_for(state="visible")
-            downloads: dict[str, dict[str, object]] = {}
+            completed("document_actions")
+            if preflight:
+                require(not requests and not page_errors, "module025_browser_preflight_unexpected_write_or_error")
+                browser_report.update({"status": "passed", "browserWriteCount": 0, "pageErrors": 0})
+                return
+            downloads = browser_report["confirmedDownloads"]
             for label, locator, filename in (("sow", sow_link, f"{engagement_number}-SOW.docx"), ("gsd", gsd_link, f"{engagement_number}-GSD.xlsx")):
+                stage("download_" + label)
                 async with page.expect_download() as download_info:
                     await locator.click()
                 download = await download_info.value
@@ -203,6 +249,7 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
                 require(path is not None, label + "_download_path_missing")
                 data = Path(path).read_bytes()
                 verify_document(data, label, report["confirmedVersion"][label + "Sha256"])
+                stage("repeat_download_" + label)
                 async with page.expect_download() as repeated_info:
                     await locator.click()
                 repeated = await repeated_info.value
@@ -213,21 +260,38 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
                 target.write_bytes(data)
                 downloads[label] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
                                     "path": str(target), "repeatBytesVerified": True}
+                completed("download_" + label)
 
+            stage("reopen")
             await editor.get_by_role("button", name="Reopen for editing", exact=True).click()
             await editor.locator(".m025-status-pill--review_ready").wait_for(state="visible")
+            completed("reopen")
             service = editor.locator("textarea.m025-service-overview")
+            stage("save_edit")
             await service.fill((await service.input_value()) + " " + edit_marker)
             await page.wait_for_timeout(2_000)
             await editor.locator(".m025-save-state--saved").wait_for(state="visible")
+            completed("save_edit")
+            stage("reload_select_record")
             await page.reload(wait_until="domcontentloaded")
+            # The workspace intentionally reloads its list with no selection.
+            # Select the same immutable record before inspecting saved content.
+            await card.wait_for(state="visible")
+            await card.click()
+            await editor.get_by_text(engagement_number, exact=True).wait_for(state="visible")
             await workspace.locator("textarea.m025-service-overview").wait_for(state="visible")
             require(edit_marker in await workspace.locator("textarea.m025-service-overview").input_value(), "browser_saved_edit_missing_after_reload")
             require(not page_errors, "module025_browser_page_error")
-            report.update({"browser": {"route": "#sow-generator", "workspaceVisible": True, "confirmedDownloads": downloads, "reopenVerified": True, "savedEditReloadVerified": True, "browserWriteCount": len(requests), "pageErrors": len(page_errors)}})
+            completed("saved_edit_reload")
+            browser_report.update({"status": "passed", "route": "#sow-generator", "workspaceVisible": True, "reopenVerified": True, "savedEditReloadVerified": True})
         except PlaywrightTimeoutError:
-            raise AcceptanceError("module025_browser_timeout") from None
+            browser_report["status"] = "failed"
+            raise AcceptanceError("module025_browser_timeout_" + browser_report["stage"]) from None
+        except AcceptanceError:
+            browser_report["status"] = "failed"
+            raise
         finally:
+            browser_report.update({"browserWriteCount": len(requests), "pageErrors": len(page_errors)})
             await context.close()
             await browser.close()
 
@@ -334,6 +398,9 @@ async def main() -> int:
         current = detail.get("engagement") or {}
         phases = current.get("phases") or []
         phase_skeleton(phases)
+        # Prove this normal SA can reach the real workspace, select the record
+        # and see its document actions before spending any inference tokens.
+        await browser_lifecycle(session, engagement_number, "", report, evidence_dir, preflight=True)
 
         edited_overview = service_overview + " SA review marker: confirm customer change window and rollback owner."
         save_payload = {
