@@ -8,6 +8,9 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import yaml
+from module025_qualification_workflow import deployment_projection, GATE, NAMES, SHARED
 import unittest
 from unittest.mock import patch
 
@@ -145,13 +148,60 @@ class QualificationTest(unittest.TestCase):
         self.assertFalse(any(x[:3] in [('containerapp', 'job', 'start'), ('containerapp', 'job', 'delete')] for x in calls))
 
     def test_workflow_preserves_native_test_gate_and_manual_only_source(self):
-        source = (ROOT / '.github/workflows/module025-provider-qualification.yml').read_text()
-        for marker in ['workflow_dispatch:', 'name: test', 'group: projectpulse-deploy-test', 'cancel-in-progress: false',
-            '"$GITHUB_REF" == refs/heads/main', '"$GITHUB_RUN_ATTEMPT" == 1', 'persist-credentials: false',
-            '"$(git rev-parse origin/main)" == "$GITHUB_SHA"', 'contents: read', 'id-token: write']:
-            self.assertIn(marker, source)
-        for forbidden in ['pull_request:', 'push:', 'schedule:', 'actions: write', 'contents: write', 'environment: production', 'recover_private_runtime']:
-            self.assertNotIn(forbidden, source)
+        source = (ROOT / '.github/workflows/projectpulse-deploy-test.yml').read_text()
+        doc = yaml.safe_load(source)
+        base = yaml.safe_load(subprocess.check_output(['git', 'show',
+            'dd6403e4ba89a8d15fa6308b85a0d20994d6cd13:.github/workflows/projectpulse-deploy-test.yml'], cwd=ROOT, text=True))
+        # Exact equality proves every original deployment command, condition,
+        # approval, concurrency and rollback is preserved in normal deploy mode.
+        self.assertEqual(deployment_projection(doc), base)
+        self.assertEqual(doc[True]['workflow_dispatch']['inputs']['qualification_provider'], {
+            'description': 'none deploys normally; claude/openai qualifies one Plan phase WITHOUT application deployment',
+            'required': False, 'default': 'none', 'type': 'choice', 'options': ['none', 'claude', 'openai']})
+        steps = doc['jobs']['deploy']['steps']
+        self.assertEqual(len(steps), len(base['jobs']['deploy']['steps']) + len(NAMES))
+        for step in steps:
+            if step['name'] not in NAMES | SHARED:
+                self.assertIn(GATE, step['if'], step['name'])
+        guard = next(x for x in steps if x['name'] == 'Validate qualification-only selection')
+        for marker in ['"$GITHUB_REF" == refs/heads/main', '"$GITHUB_RUN_ATTEMPT" == 1',
+            '"$TARGET_RELEASE_BRANCH" == main', '"$TARGET_RELEASE_COMMIT" == "$GITHUB_SHA"',
+            '"$RECOVER_PRIVATE_RUNTIME" != true', '"$ACCEPTANCE_SCOPE" == sow_role',
+            '"$(git rev-parse origin/main)" == "$GITHUB_SHA"']:
+            self.assertIn(marker, guard['run'])
+        self.assertLess(steps.index(guard), next(i for i,x in enumerate(steps) if 'azure/login' in x.get('uses','')))
+        for name in ['Compile the isolated one-phase runner', 'Qualify one phase in the Test private network']:
+            self.assertEqual(next(x for x in steps if x['name'] == name)['if'],
+                "inputs.qualification_provider == 'claude' || inputs.qualification_provider == 'openai'")
+        self.assertFalse((ROOT / '.github/workflows/module025-provider-qualification.yml').exists())
+
+    def test_real_shell_guard_rejects_unapproved_qualification_inputs(self):
+        doc = yaml.safe_load((ROOT / '.github/workflows/projectpulse-deploy-test.yml').read_text())
+        script = next(x['run'] for x in doc['jobs']['deploy']['steps'] if x['name'] == 'Validate qualification-only selection')
+        with tempfile.TemporaryDirectory() as directory:
+            git = Path(directory) / 'git'
+            git.write_text('#!/bin/sh\nif [ "$1" = rev-parse ]; then printf "%s\\n" "$GITHUB_SHA"; fi\n')
+            git.chmod(0o700)
+            environment = dict(os.environ, PATH=directory + ':' + os.environ['PATH'],
+                TARGET_RELEASE_BRANCH='main', TARGET_RELEASE_COMMIT=SOURCE, ACCEPTANCE_SCOPE='sow_role',
+                RECOVER_PRIVATE_RUNTIME='false', EXPECTED_CONTROLLER_SHA='')
+            for changes in [{}, {'QUALIFICATION_PROVIDER': 'openai'}, {'QUALIFICATION_PROVIDER': 'none'},
+                {'TARGET_RELEASE_BRANCH': 'unapproved'}, {'TARGET_RELEASE_COMMIT': 'c' * 40},
+                {'GITHUB_REF': 'refs/heads/feature'}, {'RECOVER_PRIVATE_RUNTIME': 'true'},
+                {'ACCEPTANCE_SCOPE': 'full'}, {'EXPECTED_CONTROLLER_SHA': SOURCE},
+                {'GITHUB_RUN_ATTEMPT': '2'}, {'QUALIFICATION_PROVIDER': 'unknown'}]:
+                result = subprocess.run(['bash', '-c', script], env={**environment, **changes}, capture_output=True)
+                with self.subTest(changes=changes):
+                    self.assertEqual(result.returncode == 0, not changes or changes.get('QUALIFICATION_PROVIDER') in ('openai', 'none'))
+
+    def test_qualification_cannot_accidentally_enter_deployment_steps(self):
+        doc = yaml.safe_load((ROOT / '.github/workflows/projectpulse-deploy-test.yml').read_text())
+        for step in doc['jobs']['deploy']['steps']:
+            if step['name'] not in NAMES | SHARED:
+                # These alternatives are both false for either provider input.
+                for provider in ['claude', 'openai']:
+                    self.assertFalse(provider == '' or provider == 'none')
+                self.assertTrue(step['if'] == GATE or step['if'].startswith('${{ ' + GATE + ' && ('))
 
 
 if __name__ == '__main__': unittest.main()

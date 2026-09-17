@@ -68,10 +68,10 @@ Keep the failure report; do not automatically issue another request. On success,
 review the returned detailed Plan before authorizing the remaining lifecycle.
 A successful single phase is not full SOW/GSD or My Role acceptance.
 
-The connected GitHub app can publish and inspect this change but cannot execute
-this process in the Azure Test environment. Live qualification therefore remains
-an explicit operator action in that credentialed environment. This PR does not
-add a deployment workflow, dispatch one, change Oracle, or invoke a live model.
+The connected GitHub app can publish and inspect this change but cannot dispatch
+a workflow or approve the protected Test environment. The manual qualification
+workflow below runs this process with the existing credentials after native Test
+approval. Authoring this PR does not itself invoke any live model.
 
 
 ## Visible documents and SELL handoff
@@ -93,10 +93,13 @@ still required for that acceptance criterion.
 
 ## Credentialed one-phase qualification in GitHub
 
-After this PR is merged, open **Module 025 one-phase provider qualification**,
-select `main`, choose `claude` (or `openai`), and approve the existing `test`
-environment. The workflow accepts no alternate source or environment and shares
-the deployment concurrency group. Re-running an old run is rejected; each request
+After this PR is merged, open the existing **Protected Test deployment workflow**,
+select `main`, use the exact merged current-main SHA and `release_branch=main`,
+set `acceptance_scope=sow_role`, leave recovery unchecked and controller SHA empty,
+and select `qualification_provider=claude` (or `openai`). Approve its existing
+`test` environment. In this mode, every deployment/migration/acceptance/rollback
+step is skipped. The normal `qualification_provider=none` mode preserves the
+existing deployment behavior. No new privileged workflow is added. Re-running an old run is rejected; each request
 requires a new explicit manual run.
 
 It publishes an isolated runner image and creates one temporary job in the Test

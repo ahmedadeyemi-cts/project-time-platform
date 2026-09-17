@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import unittest
 import yaml
+from module025_qualification_workflow import deployment_projection
 ROOT=Path(__file__).resolve().parents[1]
 CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
 HISTORICAL_CONTROLLER='af5fcb463384096f668345ac7cc9bd00efef0a33'
@@ -29,7 +30,7 @@ class UniqueKeyLoader(yaml.BaseLoader):
             mapping[key]=self.construct_object(value_node,deep=deep)
         return mapping
 
-def load(text):return yaml.load(text,Loader=UniqueKeyLoader)
+def load(text):return deployment_projection(yaml.load(text,Loader=UniqueKeyLoader))
 
 def git_show(revision,path):
     return subprocess.check_output(['git','show',f'{revision}:{path}'],cwd=ROOT,text=True)
