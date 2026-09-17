@@ -13,6 +13,7 @@ const installedSowRoleAcceptanceSourceFiles = [
   'src/frontend/project-time-web/tests/role-journeys.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+const module025QualificationPolicy = process.env.GITHUB_HEAD_REF === 'fix/module025-qualification-policy-20260917';
 const module025QualificationContract = process.env.GITHUB_HEAD_REF === 'fix/module025-qualification-contract-20260917';
 const module025ProviderDiagnostics = process.env.GITHUB_HEAD_REF === 'fix/module025-provider-diagnostics-20260917';
 const module025ExternalAdapter = process.env.GITHUB_HEAD_REF === 'fix/module025-external-sow-20260916';
@@ -20,8 +21,8 @@ const module025EngineRedesign = process.env.GITHUB_HEAD_REF === 'fix/module025-d
 const module025ScopedDeployment = process.env.GITHUB_HEAD_REF === 'fix/module025-scoped-test-deploy-20260916';
 const module025GenerationCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-generation-path-20260916';
 const module025VerifierCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-sa-review-confirm-20260916'
-  || module025GenerationCorrection || module025ScopedDeployment || module025EngineRedesign || module025ExternalAdapter || module025ProviderDiagnostics || module025QualificationContract;
-const module025VerifierBase = module025QualificationContract ? '0c1b3503759c27495476e06f1f285174e8dfb23b' : module025ProviderDiagnostics ? 'dd6403e4ba89a8d15fa6308b85a0d20994d6cd13' : module025ExternalAdapter ? 'e632c8d24549339a8476b9b50a8411b4d253ff02' : module025EngineRedesign ? '37dfd1554d50a7b45b25982faf9baa68603a0e43' : '2062979f3e95b17cf187642ec2e9eadb4f610758';
+  || module025GenerationCorrection || module025ScopedDeployment || module025EngineRedesign || module025ExternalAdapter || module025ProviderDiagnostics || module025QualificationContract || module025QualificationPolicy;
+const module025VerifierBase = module025QualificationPolicy ? 'ee78efea179325e0ee4d8ef784c9415a28028ac0' : module025QualificationContract ? '0c1b3503759c27495476e06f1f285174e8dfb23b' : module025ProviderDiagnostics ? 'dd6403e4ba89a8d15fa6308b85a0d20994d6cd13' : module025ExternalAdapter ? 'e632c8d24549339a8476b9b50a8411b4d253ff02' : module025EngineRedesign ? '37dfd1554d50a7b45b25982faf9baa68603a0e43' : '2062979f3e95b17cf187642ec2e9eadb4f610758';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1009-20260914';
 const module025SowRoleCandidateRefresh1014 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1014-20260914'

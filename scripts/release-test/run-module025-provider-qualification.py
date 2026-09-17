@@ -21,6 +21,8 @@ DB_NAMES = {'ConnectionStrings__DefaultConnection', 'ConnectionStrings__ProjectP
     'PTP_DB_HOST', 'PTP_DB_PORT', 'PTP_DB_NAME', 'PTP_DB_USER', 'PTP_DB_PASSWORD'}
 KEY_NAMES = {'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY', 'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_ID',
     'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_RING'}
+EXTERNAL_POLICY_NAMES = {'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION',
+    'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED'}
 # Run 35172706135 stopped before job/start; recover only this exact owned job.
 PRIOR_SCOPE = '35172706135-1'
 PRIOR_SOURCE = '0c1b3503759c27495476e06f1f285174e8dfb23b'
@@ -53,7 +55,7 @@ def selected_environment(api, provider):
     values = {item['name']: item for item in existing}
     require(values.get('PROJECTPULSE_ENVIRONMENT', {}).get('value') == 'test', 'test_api_environment_required')
     prefix = 'PROJECTPULSE_' + provider.upper() + '_'
-    approved = DB_NAMES | KEY_NAMES | {'PROJECTPULSE_ENVIRONMENT', 'PROJECTPULSE_AI_' + provider.upper() + '_ENABLED'}
+    approved = DB_NAMES | KEY_NAMES | EXTERNAL_POLICY_NAMES | {'PROJECTPULSE_ENVIRONMENT', 'PROJECTPULSE_AI_' + provider.upper() + '_ENABLED'}
     approved |= {prefix + name for name in ['MODEL', 'ENDPOINT', 'API_VERSION', 'APPROVED_MODELS', 'ORGANIZATION', 'PROJECT']}
     result = [dict(item) for item in existing if item['name'] in approved]
     require(any(item['name'] in DB_NAMES for item in result), 'test_database_configuration_missing')
@@ -61,6 +63,19 @@ def selected_environment(api, provider):
     result.append({'name': 'MODULE025_QUALIFICATION_LOG_CHUNKS', 'value': 'true'})
     environment_contract(result)
     return result
+
+
+def require_existing_external_policy(environment):
+    values = {item['name']: item for item in environment}
+    for name in sorted(EXTERNAL_POLICY_NAMES):
+        require(name in values, 'sanitized_external_policy_missing')
+        item = values[name]
+        require(not item.get('secretRef') and isinstance(item.get('value'), str), 'sanitized_external_policy_unverifiable')
+        require(item['value'].strip().lower() == 'true', 'sanitized_external_policy_disabled')
+
+
+def closed_error(error):
+    return str(error) if type(error) is RuntimeError and re.fullmatch(r'[a-z0-9_]{1,100}', str(error)) else 'qualification_infrastructure_' + type(error).__name__
 
 
 def build_payload(api, provider, image, name, scope, secrets):
@@ -214,7 +229,11 @@ def main():
         name = 'm025q-' + scope
         report['stage'] = 'read_test_configuration'
         api_before = az('containerapp', 'show', '-g', resource_group, '-n', api_name)
-        selected_environment(api_before, provider)  # Fail before the image build if configuration is absent.
+        environment = selected_environment(api_before, provider)
+        # Inherit existing permission; never enable it inside the qualifier.
+        # A missing/disabled policy must fail before building or starting a job.
+        require_existing_external_policy(environment)
+        report['externalPolicyInherited'] = True
         subscription = az('account', 'show')['id']
         require(api_before['id'].lower().startswith('/subscriptions/' + subscription.lower() + '/resourcegroups/' + resource_group.lower() + '/'), 'exact_test_resource_required')
         report['stage'] = 'cleanup_recorded_prior_job'
@@ -272,7 +291,7 @@ def main():
         require(report.get('provider') == provider and (not report['passed'] or state == 'Succeeded'), 'qualification_execution_result_mismatch')
     except Exception as error:
         report['passed'] = False
-        report['diagnostic'] = str(error) if type(error) is RuntimeError and re.fullmatch(r'[a-z0-9_]{1,100}', str(error)) else 'qualification_infrastructure_' + type(error).__name__
+        report['diagnostic'] = closed_error(error)
     finally:
         if attempted:
             try:
@@ -292,15 +311,22 @@ def main():
         if api_before:
             try:
                 after = az('containerapp', 'show', '-g', resource_group, '-n', api_name)
-                unchanged = after['properties']['template'] == api_before['properties']['template'] and after['properties']['latestRevisionName'] == api_before['properties']['latestRevisionName']
-                require(unchanged, 'api_revision_changed')
-                report['apiDeploymentUnchanged'] = True
-            except Exception:
-                report.update({'passed': False, 'apiDeploymentUnchanged': 'not_verified'})
+                revision_matches = after['properties']['latestRevisionName'] == api_before['properties']['latestRevisionName']
+                template_matches = after['properties']['template'] == api_before['properties']['template']
+                report['apiDeploymentVerification'] = {'revisionUnchanged': revision_matches, 'templateUnchanged': template_matches}
+                report['apiDeploymentUnchanged'] = revision_matches and template_matches
+                if not report['apiDeploymentUnchanged']:
+                    report.update({'passed': False, 'apiDeploymentVerificationDiagnostic':
+                        'api_revision_changed' if not revision_matches else 'api_template_changed'})
+            except Exception as error:
+                report.update({'passed': False, 'apiDeploymentUnchanged': 'not_verified',
+                    'apiDeploymentVerificationDiagnostic': closed_error(error)})
         (out / 'qualification.json').write_text(json.dumps(report, indent=2) + '\n')
         if re.fullmatch(r'[a-z0-9_]{1,100}', str(report.get('diagnostic', ''))):
             # Only closed codes generated here, never raw Azure errors/values.
             print('MODULE025_QUALIFICATION_DIAGNOSTIC=' + report['diagnostic'])
+        if report.get('apiDeploymentVerificationDiagnostic'):
+            print('MODULE025_API_DEPLOYMENT_VERIFICATION_DIAGNOSTIC=' + report['apiDeploymentVerificationDiagnostic'])
         print('MODULE025_ONE_PHASE_QUALIFICATION=' + ('PASS' if report['passed'] else 'BLOCKED/FAIL'))
     return 0 if report['passed'] else 1
 
