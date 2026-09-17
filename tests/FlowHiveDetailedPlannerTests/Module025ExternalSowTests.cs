@@ -35,6 +35,35 @@ internal static class Module025ExternalSowTests
                 && request.UserPrompt.Contains("Cisco Unified Communications Manager"), "external_sow_preserves_closed_technical_facts");
             Check(new[] { "Secret", "Private", "example.invalid", "10.1.2.3", "20000", "password", "Ignore instructions" }
                 .All(term => !request.UserPrompt.Contains(term)), "external_sow_never_sends_raw_source_identity_secrets_or_money");
+            foreach (var ending in new[] { ".", ". Include readiness and rollback planning.", ", with rollback planning", "; include readiness", "", " on 3 nodes" })
+            {
+                var versionRequest = Module025ExternalSowAdapter.TryCreate(evidence with {
+                    ServiceOverview = "Upgrade Cisco Unified Communications Manager from 14.0 to 15.0" + ending
+                })!.Prepare(sanitizer, out _)!;
+                Check(versionRequest.UserPrompt.Contains("Requested version transition: 14.0 to 15.0."),
+                    "external_sow_version_transition_survives_sentence_punctuation");
+            }
+            var qualificationRequest = Module025ExternalSowAdapter.TryCreate(evidence with {
+                ServiceOverview = Module025ProviderQualification.QualificationServiceOverview
+            })!.Prepare(sanitizer, out _)!;
+            Check(Module025ProviderQualification.PreservesQualificationVersions(qualificationRequest),
+                "exact_live_qualification_input_retains_both_versions_before_inference");
+            Check(!Module025ProviderQualification.PreservesQualificationVersions(qualificationRequest with {
+                UserPrompt = qualificationRequest.UserPrompt.Replace(Module025ProviderQualification.RequiredVersionTransition, "")
+            }), "qualification_rejects_lost_input_versions_before_a_paid_call");
+            foreach (var suffix in new[] { "a", ".private.example.invalid", ".1.2", "_private", "9" })
+            {
+                var unsafeVersion = Module025ExternalSowAdapter.TryCreate(evidence with {
+                    ServiceOverview = "Upgrade Cisco Unified Communications Manager from 14.0 to 15.123" + suffix
+                })!.Prepare(sanitizer, out _)!;
+                Check(!unsafeVersion.UserPrompt.Contains("Requested version transition")
+                    && !unsafeVersion.UserPrompt.Contains("private"), "version_extraction_rejects_identifiers_hostnames_and_four_part_addresses");
+            }
+            var ambiguousVersion = Module025ExternalSowAdapter.TryCreate(evidence with {
+                ServiceOverview = "Upgrade CUCM from 14.0 to 15.0. Also upgrade from 12.0 to 13.0."
+            })!.Prepare(sanitizer, out _)!;
+            Check(!ambiguousVersion.UserPrompt.Contains("Requested version transition"),
+                "multiple_version_transitions_remain_ambiguous_and_are_not_guessed");
             Check(Module025ExternalSowAdapter.TryCreate(evidence with { ServiceOverview = "Implement unknown custom sensitive technology" }) is null,
                 "external_sow_unsupported_technical_scope_fails_closed");
             Check(Module025ExternalSowAdapter.TryCreate(evidence with { ServiceOverview = "Upgrade CUCM; do not upgrade Cisco Unity Connection." }) is null,

@@ -69,8 +69,10 @@ internal sealed class Module025ExternalSowAdapter
         var facts = new List<string>();
         if (technologies.Length == 1)
         {
+            // A sentence-ending period is punctuation, not another version
+            // component. Still reject suffixes, hostnames and four-part IPs.
             var versions = Regex.Matches(source,
-                @"\bfrom\s+(?:version\s+)?(\d{1,2}(?:\.\d{1,3}){0,2})\s+to\s+(?:version\s+)?(\d{1,2}(?:\.\d{1,3}){0,2})(?![\w.])",
+                @"\bfrom\s+(?:version\s+)?(\d{1,2}(?:\.\d{1,3}){0,2})\s+to\s+(?:version\s+)?(\d{1,2}(?:\.\d{1,3}){0,2})(?!\w|\.\w)",
                 RegexOptions.IgnoreCase, RegexBudget);
             if (versions.Count == 1) facts.Add($"Requested version transition: {versions[0].Groups[1].Value} to {versions[0].Groups[2].Value}.");
             foreach (Match count in Regex.Matches(source, @"(?<![\w.])([1-9]\d{0,2}) (nodes|servers|sites|users)\b", RegexOptions.IgnoreCase, RegexBudget))
