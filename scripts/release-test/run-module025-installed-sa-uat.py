@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import json
 import os
 import re
 import sys
 import time
+import zipfile
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
@@ -107,6 +109,52 @@ def phase_quality(phases: object) -> dict:
     return counts
 
 
+def retained_version(engagement_id: str, token: str) -> tuple[dict, dict]:
+    status, body, _ = http(f"/api/module025/sow-gsd/{engagement_id}/versions", token=token)
+    require(status == 200 and isinstance(body, dict), "module025_versions_http_" + str(status))
+    versions = body.get("versions")
+    require(isinstance(versions, list) and len(versions) == 1 and body.get("hasMore") is False,
+            "module025_expected_one_retained_version")
+    version = versions[0]
+    require(version.get("versionNumber") == 1 and body.get("latestVersionId") == version.get("versionId")
+            and re.fullmatch(r"[0-9a-fA-F-]{36}", str(version.get("versionId", ""))) is not None,
+            "module025_retained_version_identity_invalid")
+    for field in ("sowSha256", "gsdSha256"):
+        require(re.fullmatch(r"[0-9a-f]{64}", str(version.get(field, ""))) is not None,
+                "module025_retained_hash_missing_" + field)
+    return version, body
+
+
+def verify_document(data: bytes, label: str, expected_hash: str) -> None:
+    require(isinstance(data, bytes) and len(data) > 100, label + "_download_empty")
+    require(hashlib.sha256(data).hexdigest() == expected_hash, label + "_retained_hash_mismatch")
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as document:
+            required = "word/document.xml" if label == "sow" else "xl/workbook.xml"
+            require(required in document.namelist(), label + "_document_format_invalid")
+            require(document.testzip() is None, label + "_document_corrupt")
+    except zipfile.BadZipFile:
+        raise AcceptanceError(label + "_document_format_invalid") from None
+
+
+def verify_historical_downloads(engagement_id: str, token: str, expected: dict) -> dict:
+    current, _ = retained_version(engagement_id, token)
+    for key in ("versionId", "versionNumber", "sourceRevision", "sowSha256", "gsdSha256"):
+        require(current.get(key) == expected.get(key), "module025_retained_version_changed_" + key)
+    for label, extension in (("sow", "docx"), ("gsd", "xlsx")):
+        path = f"/api/module025/sow-gsd/{engagement_id}/versions/{expected['versionId']}/{label}.{extension}"
+        status, data, headers = http(path, token=token)
+        require(status == 200, label + "_historical_download_http_" + str(status))
+        digest = expected[label + "Sha256"]
+        verify_document(data, label, digest)
+        require(headers.get("x-content-sha256") == digest and headers.get("x-sow-version") == "1",
+                label + "_historical_download_identity_mismatch")
+        unauthenticated, _, _ = http(path)
+        require(unauthenticated in (401, 403), label + "_unauthorized_download_not_denied")
+    return {"versionId": expected["versionId"], "versionCount": 1, "historicalHashesVerified": True,
+            "unauthorizedDownloadsDenied": True, "sowSha256": expected["sowSha256"], "gsdSha256": expected["gsdSha256"]}
+
+
 async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: str, report: dict, evidence_dir: Path) -> None:
     from playwright.async_api import async_playwright
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -154,10 +202,17 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
                 path = await download.path()
                 require(path is not None, label + "_download_path_missing")
                 data = Path(path).read_bytes()
-                require(len(data) > 100, label + "_download_empty")
+                verify_document(data, label, report["confirmedVersion"][label + "Sha256"])
+                async with page.expect_download() as repeated_info:
+                    await locator.click()
+                repeated = await repeated_info.value
+                repeated_path = await repeated.path()
+                require(repeated_path is not None and Path(repeated_path).read_bytes() == data,
+                        label + "_repeated_download_bytes_changed")
                 target = evidence_dir / filename
                 target.write_bytes(data)
-                downloads[label] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "path": str(target)}
+                downloads[label] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+                                    "path": str(target), "repeatBytesVerified": True}
 
             await editor.get_by_role("button", name="Reopen for editing", exact=True).click()
             await editor.locator(".m025-status-pill--review_ready").wait_for(state="visible")
@@ -168,6 +223,7 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
             await page.reload(wait_until="domcontentloaded")
             await workspace.locator("textarea.m025-service-overview").wait_for(state="visible")
             require(edit_marker in await workspace.locator("textarea.m025-service-overview").input_value(), "browser_saved_edit_missing_after_reload")
+            require(not page_errors, "module025_browser_page_error")
             report.update({"browser": {"route": "#sow-generator", "workspaceVisible": True, "confirmedDownloads": downloads, "reopenVerified": True, "savedEditReloadVerified": True, "browserWriteCount": len(requests), "pageErrors": len(page_errors)}})
         except PlaywrightTimeoutError:
             raise AcceptanceError("module025_browser_timeout") from None
@@ -230,6 +286,12 @@ async def main() -> int:
         require(access.get("protectedTestUatRoleFixture") is False, "exceptional_module025_fixture_active")
         require(access.get("canCreate") is True and access.get("canEditOwn") is True, "normal_solution_architect_authority_missing")
         require(access.get("isViewAs") is False, "solution_architect_view_as_not_allowed")
+        # Check the real retained-version schema before creating a record or
+        # spending tokens. Migration 099 alone is insufficient for confirmation.
+        status, register, _ = http("/api/module025/sow-register", token=token)
+        require(status == 200 and isinstance(register, dict) and isinstance(register.get("records"), list),
+                "module025_register_prerequisite_http_" + str(status))
+        report["retentionSchemaReady"] = True
         current_user = bootstrap.get("currentUser") or {}
         require(re.fullmatch(r"[0-9a-fA-F-]{36}", str(current_user.get("userId") or "")) is not None, "solution_architect_user_id_missing")
 
@@ -358,8 +420,18 @@ async def main() -> int:
         require(status == 200 and isinstance(confirmed, dict), "module025_confirm_http_" + str(status))
         status, detail, _ = http(f"/api/module025/sow-gsd/{engagement_id}", token=token)
         require(status == 200 and ((detail or {}).get("engagement") or {}).get("status") == "confirmed", "module025_confirm_readback_failed")
+        version, version_body = retained_version(engagement_id, token)
+        require(version_body.get("currentContentReleased") is True, "module025_confirmation_not_retained")
+        report["confirmedVersion"] = {key: version[key] for key in (
+            "versionId", "versionNumber", "sourceRevision", "sowSha256", "gsdSha256")}
+        readiness = version_body.get("sellReadiness") or {}
+        report["sellAcceptance"] = {"status": "not_exercised" if readiness.get("ready") is True else "blocked",
+            "diagnosticCode": readiness.get("diagnosticCode", "sell_readiness_missing"), "published": False}
+        # A SOW lifecycle pass never claims that document publication occurred.
+        report["fullRequestedScopePassed"] = False
 
         await browser_lifecycle(session, engagement_number, edit_marker, report, evidence_dir)
+        report["retainedVersions"] = verify_historical_downloads(engagement_id, token, report["confirmedVersion"])
 
         status, detail, _ = http(f"/api/module025/sow-gsd/{engagement_id}", token=token)
         require(status == 200 and ((detail or {}).get("engagement") or {}).get("status") == "draft", "module025_reopen_readback_failed")
@@ -369,7 +441,7 @@ async def main() -> int:
         report["status"] = "passed"
         report["normalAuthorizedSolutionArchitect"] = True
         report["reviewedSaveReadback"] = True
-        report["retainedVersions"] = {"confirmed": True, "sowAndGsdDownloaded": True, "reopened": True, "archived": True}
+        report["retainedVersions"].update({"confirmed": True, "sowAndGsdDownloaded": True, "reopened": True, "archived": True})
     except AcceptanceError as error:
         report["diagnosticCode"] = str(error)
     except Exception as error:  # pragma: no cover - safe type-only diagnostic

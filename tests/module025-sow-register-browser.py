@@ -113,13 +113,13 @@ async def run() -> None:
                 'gsd.xlsx': hash_text[1].split(':', 1)[-1].strip(),
             }
             for artifact, button_name in (('sow.docx', 'Download SOW v1'), ('gsd.xlsx', 'Download GSD v1')):
-                with page.expect_download() as download_info:
+                async with page.expect_download() as download_info:
                     await versions.first.get_by_role('button', name=button_name, exact=True).click()
                 download = await download_info.value
                 data = Path(await download.path()).read_bytes()
                 if hashlib.sha256(data).hexdigest() != expected_hashes[artifact]:
                     fail(f'browser_{artifact}_hash_mismatch')
-                with page.expect_download() as repeat_download_info:
+                async with page.expect_download() as repeat_download_info:
                     await versions.first.get_by_role('button', name=button_name, exact=True).click()
                 repeat = await repeat_download_info.value
                 repeat_data = Path(await repeat.path()).read_bytes()

@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 import yaml
-from module025_qualification_workflow import deployment_projection
+from module025_qualification_workflow import deployment_projection, previous_acceptance_projection
 ROOT=Path(__file__).resolve().parents[1]
 CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
 HISTORICAL_CONTROLLER='af5fcb463384096f668345ac7cc9bd00efef0a33'
@@ -466,6 +466,11 @@ class WorkflowContract(unittest.TestCase):
         base=os.environ.get('CONTROL_BASE')
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
+        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-complete-acceptance-20260917':
+            # Only the exact migration-106 invocation and independent SOW/My
+            # Role result collection may differ; compare every other field.
+            self.assertEqual(previous_acceptance_projection(self.doc), old)
+            return
         reviewed = os.environ.get('GITHUB_HEAD_REF') == 'fix/flowhive-reviewed-regeneration-control-20260907'
         successor = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-sow-successor-approval-20260909'
         successor_release = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-successor-approval-20260911'

@@ -915,6 +915,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          if [[ "$ACCEPTANCE_SCOPE" == sow_role ]]; then
+            bash scripts/release-test/build-and-run-module025-retention-migration-106.sh
+          fi
           if [[ "$TARGET_RELEASE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
             [[ "$GITHUB_REF" == 'refs/heads/main' ]] || exit 1
             PROJECTPULSE_RELEASE_ROOT="$PWD" bash "$GITHUB_WORKSPACE/control/scripts/release-test/build-and-run-flowhive-psa-migrations.sh"
@@ -1131,8 +1134,14 @@ jobs:
           echo 'deployment_health_verified=true' >> "$GITHUB_OUTPUT"
           jq -n --arg source "$TARGET_RELEASE_COMMIT" '{deploymentHealthVerified:true,sourceCommit:$source,productionMutation:false}' > "$EVIDENCE_DIR/deployment-health-verified.json"
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/verify-flowhive-installed-identity.py
-          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py
-          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-my-role-browser.py
+          sow_result=0
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py || sow_result=$?
+          if (( sow_result == 130 || sow_result == 143 )); then exit "$sow_result"; fi
+          my_role_result=0
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-my-role-browser.py || my_role_result=$?
+          jq -n --argjson sowExit "$sow_result" --argjson myRoleExit "$my_role_result" \
+            '{sowLifecycleExit:$sowExit,myRoleExit:$myRoleExit,fullRequestedScopePassed:false}' > "$EVIDENCE_DIR/module025-scoped-results.json"
+          (( sow_result == 0 && my_role_result == 0 ))
           jq -e '.status == "passed"' "$EVIDENCE_DIR/module025-installed-sa-uat.json" >/dev/null
           jq -e '.status == "passed"' "$EVIDENCE_DIR/flowhive-my-role-browser.json" >/dev/null
           echo 'MODULE025_SCOPED_DEPLOYMENT_ACCEPTANCE=PASSED'

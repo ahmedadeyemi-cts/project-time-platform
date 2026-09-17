@@ -48,8 +48,37 @@ internal static class Module025ExternalSowTests
             var phasePlan = fixture with { Tasks = fixture.Tasks.Where(task => task.Phase == "Plan").ToArray() };
             var json = JsonSerializer.Serialize(phasePlan);
             Check(adapter.Validate(json, "claude", "test", sanitizer, out var proseCode),
-                "external_sow_natural_capitalization_retains_technical_detail_" + proseCode);
+                "external_sow_natural_capitalization_retains_technical_detail_" + proseCode + "_" + adapter.ValidationCategory + "_" + adapter.ValidationField);
             Check(adapter.Validate(json, "claude", "test", sanitizer, out var validCode), "external_sow_valid_full_contract_accepted_" + validCode);
+            foreach (var objective in new[] {
+                "Baseline the supported upgrade path and dependency readiness.",
+                "Map the current dial plan and trunk dependencies.",
+                "Verify NTP synchronization and DNS resolution before the upgrade.",
+                "Review SIP trunk compatibility and certificate prerequisites.",
+                "Upgrade from Version 14.0 to Version 15.0 after prerequisite review.",
+                "Establish a documented baseline for CUCM readiness, interoperability, rollback and service continuity."
+            })
+            {
+                var naturalPlan = JsonNode.Parse(json)!;
+                naturalPlan["Objective"] = objective;
+                Check(adapter.Validate(naturalPlan.ToJsonString(), "claude", "test", sanitizer, out _),
+                    "external_sow_complete_plan_accepts_ordinary_technical_prose_" + objective.Split(' ')[0]);
+            }
+            Check(!sanitizer.IsExternalOutputSafe("Zyxperson Sentinel", [], out _),
+                "general_external_privacy_boundary_remains_strict");
+            Check(!sanitizer.IsClosedTechnicalProposalOutputSafe(string.Concat(Enumerable.Repeat("technical review ", 1_400)) + "private@example.invalid", [], out _, out var longFieldCategory)
+                && longFieldCategory == "email_addresses",
+                "closed_technical_proposal_inspects_beyond_preview_limit");
+            foreach (var unsafeValue in new[] { "Secret Customer", "SOW-SECRET-42", "Engineer: Zyxperson Sentinel",
+                "private@example.invalid", "https://private.example.invalid", "10.1.2.3", "password=private-sentinel",
+                "$20000", "[REDACTED_IDENTITY]", "Dr. Zyxperson Sentinel" })
+            {
+                var unsafePlan = JsonNode.Parse(json)!;
+                unsafePlan["Objective"] = unsafeValue;
+                Check(!adapter.Validate(unsafePlan.ToJsonString(), "claude", "test", sanitizer, out _),
+                    "closed_technical_proposal_rejects_concrete_sensitive_data");
+            }
+            Check(adapter.Validate(json, "claude", "test", sanitizer, out _), "external_sow_valid_plan_restored_after_negative_tests");
             Check(adapter.AcceptedAnswer!.Citations[0].SourceSha256 == PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(evidence)!.SourceSha256,
                 "external_sow_binds_citation_privately_to_saved_source");
             Check(!adapter.Validate("{\"tasks\":[]}", "claude", "test", sanitizer, out _), "external_sow_rejects_generic_or_empty_tasks");
@@ -59,11 +88,11 @@ internal static class Module025ExternalSowTests
                 "external_sow_checks_unknown_output_fields_for_private_content");
 
             var invalidIdentity = JsonNode.Parse(json)!;
-            invalidIdentity["Tasks"]![0]!["Name"] = "Zyxperson Sentinel";
+            invalidIdentity["Tasks"]![0]!["Name"] = "Engineer: Zyxperson Sentinel";
             var rejected = adapter.ValidateResult(new("claude", "success", invalidIdentity.ToJsonString(), null, null,
                 null, new(20, 600, 620), 200), "test", sanitizer);
             Check(!rejected.IsSuccess && rejected.Content is null
-                && rejected.SowDiagnostics?.OutputValidationCategory == "unapproved_proper_nouns"
+                && rejected.SowDiagnostics?.OutputValidationCategory == "named_people_and_customers"
                 && rejected.SowDiagnostics.OutputValidationField == "$.tasks[0].name"
                 && rejected.SowDiagnostics.OutputTextCharacters > 0,
                 "external_sow_rejection_retains_closed_category_field_and_size");
@@ -157,7 +186,7 @@ internal static class Module025ExternalSowTests
             var failedEvent = events.Single(e => e.Stage == "provider_finished" && e.Provider == "claude");
             var restoredEvent = JsonSerializer.Deserialize<Module025GenerationProgress>(JsonSerializer.Serialize(failedEvent))!;
             Check(restoredEvent.OutputCharacters > 0 && restoredEvent.Model == restoredEvent.RequestedModel
-                && restoredEvent.SowDiagnostics?.OutputValidationCategory == "unapproved_proper_nouns"
+                && restoredEvent.SowDiagnostics?.OutputValidationCategory == "named_people_and_customers"
                 && restoredEvent.SowDiagnostics.OutputValidationField == "$.tasks[0].name",
                 "external_sow_router_and_journal_projection_preserve_failure_metadata");
             Check(!JsonSerializer.Serialize(events).Contains("Zyxperson"), "external_sow_progress_never_retains_rejected_response");

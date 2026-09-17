@@ -11,6 +11,38 @@ NAMES = {'Validate qualification-only selection', 'Compile the isolated one-phas
 SHARED = {'Check out exact authorized release', 'Verify admitted controller identity before deployment mutations',
           'Set up .NET 10', 'Sign in to protected Test subscription'}
 
+# Explicit, separately exercised additions to the normal scoped deployment.
+# Reverse only these exact deltas when comparing the rest of the controller
+# against its immutable baseline; never omit a whole protected step.
+RETENTION_MIGRATION_DELTA = '''if [[ "$ACCEPTANCE_SCOPE" == sow_role ]]; then
+  bash scripts/release-test/build-and-run-module025-retention-migration-106.sh
+fi
+'''
+ORIGINAL_SCOPED_RUN = '''"$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py
+"$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-my-role-browser.py
+'''
+COMPLETE_SCOPED_RUN = '''sow_result=0
+"$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py || sow_result=$?
+if (( sow_result == 130 || sow_result == 143 )); then exit "$sow_result"; fi
+my_role_result=0
+"$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-my-role-browser.py || my_role_result=$?
+jq -n --argjson sowExit "$sow_result" --argjson myRoleExit "$my_role_result" \\
+  '{sowLifecycleExit:$sowExit,myRoleExit:$myRoleExit,fullRequestedScopePassed:false}' > "$EVIDENCE_DIR/module025-scoped-results.json"
+(( sow_result == 0 && my_role_result == 0 ))
+'''
+
+
+def previous_acceptance_projection(doc):
+    doc = deployment_projection(doc)
+    steps = {s['name']: s for s in doc['jobs']['deploy']['steps']}
+    migration = steps['Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network']
+    assert migration['run'].count(RETENTION_MIGRATION_DELTA) == 1
+    migration['run'] = migration['run'].replace(RETENTION_MIGRATION_DELTA, '')
+    scoped = steps['Verify Module 025 scoped deployment identity and lifecycle']
+    assert scoped['run'].count(COMPLETE_SCOPED_RUN) == 1
+    scoped['run'] = scoped['run'].replace(COMPLETE_SCOPED_RUN, ORIGINAL_SCOPED_RUN)
+    return doc
+
 
 def deployment_projection(doc):
     doc = copy.deepcopy(doc)
