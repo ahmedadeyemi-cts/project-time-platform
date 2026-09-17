@@ -5,6 +5,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 internal static class Module025ProviderQualification
 {
+    internal const string QualificationServiceOverview = "Upgrade Cisco Unified Communications Manager from 14.0 to 15.0. Include readiness, compatibility, licensing, backups and rollback planning.";
+    internal const string RequiredVersionTransition = "Requested version transition: 14.0 to 15.0.";
+    internal static bool PreservesQualificationVersions(ProjectPulseAiGenerationRequest request) =>
+        request.UserPrompt.Contains(RequiredVersionTransition, StringComparison.Ordinal);
+
     // Explicit CLI only. CI never calls this path. One synthetic Plan phase,
     // one chosen provider, no private source, DB write, publication or fallback.
     internal static async Task RunAsync(string target, bool useModule064Store = false)
@@ -39,7 +44,7 @@ internal static class Module025ProviderQualification
         { Block(target, "provider_model_not_approved"); return; }
         var phase = new Module025PhaseExecution("Plan", 0, (_, _) => Task.CompletedTask);
         var evidence = new CelarAiAuthoritativeScopeEvidence(Guid.NewGuid(), 1, "SYNTHETIC-QUALIFICATION", "Synthetic Qualification",
-            "Upgrade Cisco Unified Communications Manager from 14.0 to 15.0. Include readiness, compatibility, licensing, backups and rollback planning.",
+            QualificationServiceOverview,
             DateTimeOffset.UtcNow, phase);
         var sanitizer = new PulseAiEscalationSanitizer();
         var adapter = Module025ExternalSowAdapter.TryCreate(evidence)!;
@@ -51,6 +56,8 @@ internal static class Module025ProviderQualification
             Environment.ExitCode = 1;
             return;
         }
+        if (!PreservesQualificationVersions(request))
+        { Block(target, "module025_qualification_input_version_lost"); return; }
         using var factory = new QualificationHttpFactory();
         IProjectPulseAiProvider provider = target == "claude"
             ? new ProjectPulseClaudeProvider(factory, configuration) : new ProjectPulseOpenAiProvider(factory, configuration);
@@ -72,6 +79,8 @@ internal static class Module025ProviderQualification
                 maximumDocumentCharacters = Module025GenerationEngine.MaximumDocumentCharacters,
                 providerDeadlineSeconds = Module025GenerationEngine.ProviderTimeoutSeconds },
             diagnostic = passed ? "module025_plan_phase_qualified" : result.Code ?? diagnostic,
+            requestedVersionTransition = new { from = "14.0", to = "15.0" },
+            inputVersionTransitionPreserved = true,
             phase = "Plan", workPackages = adapter.AcceptedAnswer?.FlowHivePlan?.Tasks.Count ?? 0,
             plan = passed ? adapter.AcceptedAnswer?.FlowHivePlan : null,
             fullLifecyclePassed = false, productionMutation = false

@@ -13,6 +13,7 @@ const installedSowRoleAcceptanceSourceFiles = [
   'src/frontend/project-time-web/tests/role-journeys.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+const module025VersionFacts = process.env.GITHUB_HEAD_REF === 'fix/module025-version-facts-20260917';
 const module025StructuredContract = process.env.GITHUB_HEAD_REF === 'fix/module025-structured-contract-20260917';
 const module025OutputBudgetPreflight = process.env.GITHUB_HEAD_REF === 'fix/module025-output-budget-preflight-20260917';
 const module025CompleteAcceptance = process.env.GITHUB_HEAD_REF === 'fix/module025-complete-acceptance-20260917';
@@ -24,8 +25,8 @@ const module025EngineRedesign = process.env.GITHUB_HEAD_REF === 'fix/module025-d
 const module025ScopedDeployment = process.env.GITHUB_HEAD_REF === 'fix/module025-scoped-test-deploy-20260916';
 const module025GenerationCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-generation-path-20260916';
 const module025VerifierCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-sa-review-confirm-20260916'
-  || module025GenerationCorrection || module025ScopedDeployment || module025EngineRedesign || module025ExternalAdapter || module025ProviderDiagnostics || module025QualificationContract || module025QualificationPolicy || module025CompleteAcceptance || module025OutputBudgetPreflight || module025StructuredContract;
-const module025VerifierBase = module025StructuredContract ? 'f30b4e3a8cc7ba8daba4cad001e5dca84f7140f6' : module025OutputBudgetPreflight ? '5f2f520890309db20d3897f56c09c1ae194a4e33' : module025CompleteAcceptance ? 'd53b9451d7b2eebda686e8bdb84b46d53dc9e7f9' : module025QualificationPolicy ? 'ee78efea179325e0ee4d8ef784c9415a28028ac0' : module025QualificationContract ? '0c1b3503759c27495476e06f1f285174e8dfb23b' : module025ProviderDiagnostics ? 'dd6403e4ba89a8d15fa6308b85a0d20994d6cd13' : module025ExternalAdapter ? 'e632c8d24549339a8476b9b50a8411b4d253ff02' : module025EngineRedesign ? '37dfd1554d50a7b45b25982faf9baa68603a0e43' : '2062979f3e95b17cf187642ec2e9eadb4f610758';
+  || module025GenerationCorrection || module025ScopedDeployment || module025EngineRedesign || module025ExternalAdapter || module025ProviderDiagnostics || module025QualificationContract || module025QualificationPolicy || module025CompleteAcceptance || module025OutputBudgetPreflight || module025StructuredContract || module025VersionFacts;
+const module025VerifierBase = module025VersionFacts ? '8a8673d607554158710b897e888beeaa3188f577' : module025StructuredContract ? 'f30b4e3a8cc7ba8daba4cad001e5dca84f7140f6' : module025OutputBudgetPreflight ? '5f2f520890309db20d3897f56c09c1ae194a4e33' : module025CompleteAcceptance ? 'd53b9451d7b2eebda686e8bdb84b46d53dc9e7f9' : module025QualificationPolicy ? 'ee78efea179325e0ee4d8ef784c9415a28028ac0' : module025QualificationContract ? '0c1b3503759c27495476e06f1f285174e8dfb23b' : module025ProviderDiagnostics ? 'dd6403e4ba89a8d15fa6308b85a0d20994d6cd13' : module025ExternalAdapter ? 'e632c8d24549339a8476b9b50a8411b4d253ff02' : module025EngineRedesign ? '37dfd1554d50a7b45b25982faf9baa68603a0e43' : '2062979f3e95b17cf187642ec2e9eadb4f610758';
 const approval = JSON.parse(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url), 'utf8'));
 const module025SowRoleCandidateRefresh1009 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1009-20260914';
 const module025SowRoleCandidateRefresh1014 = process.env.GITHUB_HEAD_REF === 'control/module025-sow-role-candidate-refresh-1014-20260914'
