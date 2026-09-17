@@ -8,6 +8,7 @@ import { verifyReadOnlyWorkflow } from './flowhive-psa-scope.mjs';
 const base = '5f2f520890309db20d3897f56c09c1ae194a4e33';
 const expected = [
   '.github/workflows/flowhive-psa-release-control-ci.yml',
+  '.github/workflows/module025-governed-protected-test-release-manual.yml',
   'docs/releases/2026-09-17-module025-output-budget-preflight.md',
   'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh',
   'scripts/release-test/run-module025-provider-qualification.py',
@@ -33,7 +34,8 @@ export function verifyModule025OutputBudgetPreflightScope() {
   verify(actual);
   assert.throws(() => verify([...actual, '.github/workflows/projectpulse-deploy-production.yml']));
   assert.throws(() => verify(actual.slice(1)));
-  verifyReadOnlyWorkflow(fs.readFileSync(expected[0], 'utf8'), expected[0]);
+  for (const file of expected.filter(file => file.startsWith('.github/workflows/')))
+    verifyReadOnlyWorkflow(fs.readFileSync(file, 'utf8'), file);
   for (const file of [
     '.github/flowhive-psa-protected-test-candidate.json',
     '.github/flowhive-psa-release-control-files.txt',
