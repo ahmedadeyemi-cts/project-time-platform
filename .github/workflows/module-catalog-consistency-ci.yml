@@ -1,0 +1,56 @@
+name: Module catalog and permission publication
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/module-catalog-consistency-ci.yml'
+      - 'database/migrations/108_builtin_module_catalog_reconciliation.sql'
+      - 'scripts/release-test/reconcile-module-catalog.mjs'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs'
+      - 'src/frontend/project-time-web/src/RoleAdminDirectoryPanel.jsx'
+      - 'src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx'
+      - 'src/frontend/project-time-web/src/role-permission-model.js'
+      - 'src/frontend/project-time-web/src/role-policy-publication.js'
+      - 'tests/module-catalog-*'
+permissions:
+  contents: read
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: module_catalog_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local-ci-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: local-ci-only
+      PGDATABASE: module_catalog_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check all registries and reject mismatched publication readback
+        run: node --test tests/module-catalog-consistency.test.mjs
+      - name: Prove PostgreSQL preservation, default denial, and rollback on conflict
+        run: python3 tests/module-catalog-postgres.test.py
+      - run: npm ci --prefix src/frontend/project-time-web
+      - run: python -m pip install playwright==1.57.0
+      - run: python -m playwright install --with-deps chromium
+      - name: Exercise actual administration UI publishing and verification
+        run: python3 tests/module-catalog-browser.test.py

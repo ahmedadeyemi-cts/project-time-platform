@@ -1,0 +1,15 @@
+# Module catalog consistency and verified policy publication
+
+Role Administration and the permission matrix read the database catalog, while navigation and module availability use application registries. The deployment runner omitted migration 089, leaving Module 025 named “SOW Generator + Claude Review Workflow” in the database while the application calls it “SOW & GSD Workspace”. Both identify module `025` at `sow-generator`; the name discrepancy alone does not explain the effective access denial.
+
+Every Protected Test release now generates reconciliation SQL from the complete frontend registry and first checks the backend registry for identical module IDs, routes, and names. No fixed module count is assumed. CI rejects duplicate identities/routes, missing backend registrations, or different names. Add a module to the frontend and backend application registries; the deployment registers it automatically. Additional manual catalog seed edits are unnecessary.
+
+Reconciliation is transactional and uses the policy publication advisory lock. Existing access decisions, ownership, notes, custom modules and active/retired status are preserved. Only canonical names and explicitly enumerated legacy routes are reconciled. Unknown route changes or route collisions fail atomically and require review. Metadata changes record before/after state, release commit and catalog digest in the existing audit table. An unchanged catalog produces no additional audit or policy versions.
+
+New modules register inactive with an explicit MODULE_ACCESS denial for each ordinary active canonical role, in a new immutable policy that clones all existing grants without changes. Super Administrator retains its existing invariant. Administrators can restore the module and explicitly publish its intended permissions. Registration never implies access.
+
+Role Administration and the matrix display IDs alongside names. Publication success requires readback of the exact returned policy ID/version and submitted grants from both role detail and the matrix. Missing rows, lingering denials, wrong modules, or newer policies produce a persistent review message; the client never retries a possibly committed write automatically. A successful receipt survives detail refresh. Stale role-detail responses cannot overwrite the currently selected role/module. The matrix refreshes on policy-change events.
+
+Validation: Node negative cases for catalog drift and readback mismatch; real PostgreSQL tests for preservation/default denial/idempotence/conflict rollback; local browser tests exercise the actual React publish flow, including a mismatched matrix result. Existing authorization and full application build checks remain required.
+
+This change does not alter providers, spend model tokens, dispatch acceptance, change Production, or invoke FlowHive generation. After Protected Test deployment, verify the canonical catalog and publish/read back the intended Solution Architect/025 policy before another SOW acceptance run. The current live browser denial and SELL document adapter requirement remain separate acceptance blockers until verified in Test.

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { verifyPolicyPublication } from './role-policy-publication.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './role-admin-directory-panel.css';
 import './role-permission-workbench.css';
 import './dynamic-rbac-administration.css';
@@ -145,6 +146,9 @@ const blankModuleForm = () => ({
 });
 
 export default function RoleAdminDirectoryPanel() {
+  const detailSequence = useRef(0);
+  const [publication, setPublication] = useState(null);
+  const [detailKey, setDetailKey] = useState('');
   const [bootstrap, setBootstrap] = useState(null);
   const [versions, setVersions] = useState([]);
   const [roleCode, setRoleCode] = useState('PROJECT_TEAM_COORDINATOR');
@@ -172,6 +176,7 @@ export default function RoleAdminDirectoryPanel() {
   const roles = arr(bootstrap?.roles);
   const modules = arr(bootstrap?.modules);
   const catalog = { actions: arr(bootstrap?.actions), scopes: arr(bootstrap?.scopes), effects: ['GRANT', 'DENY'] };
+  const detailReady = detailKey === `${roleCode}|${moduleCode}`;
   const canWrite = Boolean(bootstrap?.canWritePolicy) && !bootstrap?.isViewAs;
   const canManageMemberships = Boolean(bootstrap?.canManageRoleMemberships) && !bootstrap?.isViewAs;
   const canManageModules = Boolean(bootstrap?.canManageModuleCatalog) && !bootstrap?.isViewAs;
@@ -253,10 +258,14 @@ export default function RoleAdminDirectoryPanel() {
   }
 
   async function loadDetail() {
+    const sequence = ++detailSequence.current;
     if (!bootstrap || !roleCode || !moduleCode) return;
+    setDetailKey('');
     setState((current) => ({ ...current, busy: true, error: '' }));
     try {
       const payload = await api(`/api/rbac/v1/roles/${encodeURIComponent(roleCode)}?moduleCode=${encodeURIComponent(moduleCode)}`);
+      if (sequence !== detailSequence.current) return;
+      setDetailKey(`${roleCode}|${moduleCode}`);
       const grants = arr(pick(payload, 'grants', 'Grants', [])).map(normalizeGrant);
       setDetail({ ...payload, assignedUsers: arr(pick(payload, 'assignedUsers', 'AssignedUsers', [])) });
       setBaseline(grants);
@@ -269,6 +278,7 @@ export default function RoleAdminDirectoryPanel() {
       setValidation(null);
       setState((current) => ({ ...current, busy: false }));
     } catch (error) {
+      if (sequence !== detailSequence.current) return;
       setState((current) => ({ ...current, busy: false, error: error.message || 'Unable to load the selected role and module.' }));
     }
   }
@@ -293,7 +303,7 @@ export default function RoleAdminDirectoryPanel() {
   }
 
   useEffect(() => { void loadFoundation(); }, []);
-  useEffect(() => { void loadDetail(); }, [bootstrap, roleCode, moduleCode]);
+  useEffect(() => { void loadDetail(); return () => { ++detailSequence.current; }; }, [bootstrap, roleCode, moduleCode]);
   useEffect(() => { if (tab === 'members') void loadMembershipDirectory(); }, [tab, userSearch, roleCode]);
   useEffect(() => { if (tab === 'modules') void loadModuleCatalog(); }, [tab]);
 
@@ -367,15 +377,29 @@ export default function RoleAdminDirectoryPanel() {
   }
 
   async function publish() {
-    if (!window.confirm(`Publish the ${selectedRole?.roleName || roleCode} permissions for ${selectedModule?.moduleName || moduleCode} as a new immutable policy version?`)) return;
-    setState((current) => ({ ...current, busy: true, error: '', message: 'Publishing role permissions…' }));
+    if (!detailReady || state.busy) return;
+    if (!window.confirm(`Publish the ${selectedRole?.roleName || roleCode} permissions for ${moduleCode} · ${selectedModule?.moduleName || moduleCode} as a new immutable policy version?`)) return;
+    setPublication(null);
+    setState((current) => ({ ...current, busy: true, error: '', message: 'Publishing and verifying role permissions…' }));
     try {
-      const result = await api('/api/rbac/v1/policies/publish', { method: 'POST', body: JSON.stringify(requestBody()) });
-      setState((current) => ({ ...current, busy: false, message: `Published policy version ${pick(result, 'versionNumber', 'VersionNumber', '—')}. Module 037 will show the same decision after refresh.` }));
+      const submitted = requestBody();
+      const result = await api('/api/rbac/v1/policies/publish', { method: 'POST', body: JSON.stringify(submitted) });
+      // The write may already be committed. Never automatically retry it.
       window.dispatchEvent(new CustomEvent('projectpulse:permissions-changed'));
+      try {
+        const change = submitted.changes[0];
+        const [savedDetail, matrix] = await Promise.all([
+          api(`/api/rbac/v1/roles/${encodeURIComponent(change.roleCode)}?moduleCode=${encodeURIComponent(change.moduleCode)}`),
+          api('/api/rbac/v1/matrix')
+        ]);
+        const verified = verifyPolicyPublication(submitted, result, savedDetail, matrix);
+        setPublication({ verified: true, message: `Verified policy version ${verified.versionNumber}: ${verified.roleCode} / ${verified.moduleCode} · ${selectedModule?.moduleName}. Role Administration and the permission matrix agree.` });
+      } catch (error) {
+        setPublication({ verified: false, message: `The publish request completed, but readback could not be verified. ${error.message} Refresh and inspect the current policy before making another change.` });
+      }
       await loadFoundation();
     } catch (error) {
-      setState((current) => ({ ...current, busy: false, error: error.message || 'Publishing failed.' }));
+      setState((current) => ({ ...current, busy: false, error: error.message || 'Publishing failed.', message: '' }));
     }
   }
 
@@ -468,6 +492,7 @@ export default function RoleAdminDirectoryPanel() {
       <div><strong>Publishing</strong><span>{canWrite ? 'Available' : 'Unavailable in this session'}</span></div>
     </section>
 
+    {publication ? <div className="rpw-banner" role={publication.verified ? 'status' : 'alert'}><strong>{publication.verified ? 'Publication verified' : 'Publication needs review'}</strong><span>{publication.message}</span></div> : null}
     {!canWrite ? <div className="rpw-banner"><strong>Read-only review</strong><span>Publishing, role membership, and module catalog changes require an actual Super Administrator assignment in the administrator’s own session.</span></div> : null}
 
     <nav className="dynamic-rbac-tabs" aria-label="RBAC administration views">
@@ -479,27 +504,27 @@ export default function RoleAdminDirectoryPanel() {
 
     {tab === 'permissions' ? <>
       <section className="rpw-role-first">
-        <label><span>1. Select role</span><select value={roleCode} onChange={(event) => setRoleCode(event.target.value)}>{roles.map((role) => <option key={role.roleCode} value={role.roleCode}>{role.roleName} · {role.activeUserCount} user(s)</option>)}</select></label>
+        <label><span>1. Select role</span><select value={roleCode} disabled={state.busy} onChange={(event) => { setValidation(null); setRoleCode(event.target.value); }}>{roles.map((role) => <option key={role.roleCode} value={role.roleCode}>{role.roleName} · {role.activeUserCount} user(s)</option>)}</select></label>
         <article><p className="eyebrow">Role purpose</p><h2>{roleGuidance.title || selectedRole?.roleName}</h2><p>{roleGuidance.purpose || selectedRole?.description || 'This role inherits the permissions published below.'}</p><strong>Access boundary</strong><span>{roleGuidance.boundary || 'Use the selected data scope to define whose records this role may use.'}</span></article>
         <article className="rpw-role-recommendation"><p className="eyebrow">Recommended starting point</p><h2>{roleGuidance.recommendedLevel || 'View'}</h2><p>{ROLE_SCOPES[roleCode] || 'SELF'} data scope</p></article>
       </section>
 
       <section className="rpw-module-picker">
         <label><span>2. Find module</span><input value={moduleSearch} onChange={(event) => setModuleSearch(event.target.value)} placeholder="Module number, name, or route" /></label>
-        <label><span>3. Select module</span><select value={moduleCode} onChange={(event) => setModuleCode(event.target.value)}>{visibleModules.map((module) => <option key={module.moduleCode} value={module.moduleCode}>{module.moduleName}</option>)}</select></label>
-        <article><strong>{selectedModule?.moduleName}</strong><span>{selectedModule?.permissionNotes || 'No module-specific exception note.'}</span><small>{selectedModule?.routeScope} · {selectedModule?.currentState}</small></article>
+        <label><span>3. Select module</span><select value={moduleCode} disabled={state.busy} onChange={(event) => { setValidation(null); setModuleCode(event.target.value); }}>{visibleModules.map((module) => <option key={module.moduleCode} value={module.moduleCode}>{module.moduleCode} · {module.moduleName}</option>)}</select></label>
+        <article><strong>{moduleCode} · {selectedModule?.moduleName}</strong><span>{selectedModule?.permissionNotes || 'No module-specific exception note.'}</span><small>{selectedModule?.routeScope} · {selectedModule?.currentState}</small></article>
       </section>
 
       {superAdmin ? <div className="rpw-super-admin-invariant"><strong>Super Administrator invariant</strong><p>Permanent <b>Full Control</b> with organization-wide scope for every active module. This value cannot be reduced.</p></div> : null}
 
       <section className="rpw-level-section">
         <header><div><p className="eyebrow">4. Permission template</p><h2>Choose the closest access level</h2><p>The detailed table below shows the exact actions included.</p></div><strong className="rpw-level-badge">{effectiveLevel}</strong></header>
-        <div className="rpw-level-grid">{LEVELS.map(([name, description]) => <button type="button" key={name} className={effectiveLevel === name ? 'selected' : ''} disabled={!canWrite || superAdmin || unavailable(moduleCode, roleCode, name)} onClick={() => choosePreset(name)}><strong>{name}</strong><span>{description}</span></button>)}</div>
+        <div className="rpw-level-grid">{LEVELS.map(([name, description]) => <button type="button" key={name} className={effectiveLevel === name ? 'selected' : ''} disabled={!detailReady || state.busy || !canWrite || superAdmin || unavailable(moduleCode, roleCode, name)} onClick={() => choosePreset(name)}><strong>{name}</strong><span>{description}</span></button>)}</div>
       </section>
 
       <section className="rpw-scope-section">
         <div><p className="eyebrow">5. Data scope</p><h2>Whose information can this role use?</h2><p>Permission and data visibility are separate. A role may edit records only within the selected scope.</p></div>
-        <label><span>Effective scope</span><select value={effectiveScope} disabled={!canWrite || superAdmin || ['No Access', 'Not Set'].includes(effectiveLevel)} onChange={(event) => { setScope(event.target.value); setValidation(null); }}>{catalog.scopes.map((item) => <option key={item.scopeCode} value={item.scopeCode}>{item.scopeCode} · {item.scopeDescription}</option>)}</select></label>
+        <label><span>Effective scope</span><select value={effectiveScope} disabled={!detailReady || state.busy || !canWrite || superAdmin || ['No Access', 'Not Set'].includes(effectiveLevel)} onChange={(event) => { setScope(event.target.value); setValidation(null); }}>{catalog.scopes.map((item) => <option key={item.scopeCode} value={item.scopeCode}>{item.scopeCode} · {item.scopeDescription}</option>)}</select></label>
         <div className="rpw-scope-hint"><strong>Recommended</strong><span>{ROLE_SCOPES[roleCode] || 'SELF'}</span></div>
       </section>
 
@@ -512,8 +537,8 @@ export default function RoleAdminDirectoryPanel() {
           return <tr key={action.actionCode} className={decision === 'GRANT' ? 'allowed' : decision === 'DENY' ? 'denied' : ''}>
             <td><strong>{actionLabel(action.actionCode)}</strong><code>{action.actionCode}</code></td>
             <td>{actionDescription(action.actionCode, action.actionDescription)}</td>
-            <td><select value={decision} disabled={!canWrite || superAdmin || action.isNonBypassable || ptcProtected} onChange={(event) => updateAction(action.actionCode, event.target.value)}><option value="NOT_SET">Not configured</option><option value="GRANT">Allow</option><option value="DENY">Deny</option></select>{ptcProtected ? <small>Protected PTC boundary</small> : null}</td>
-            <td><select value={grant?.scopeCode || effectiveScope} disabled={!canWrite || superAdmin || !grant || decision === 'NOT_SET'} onChange={(event) => updateActionScope(action.actionCode, event.target.value)}>{catalog.scopes.map((item) => <option key={item.scopeCode} value={item.scopeCode}>{item.scopeCode}</option>)}</select></td>
+            <td><select value={decision} disabled={!detailReady || state.busy || !canWrite || superAdmin || action.isNonBypassable || ptcProtected} onChange={(event) => updateAction(action.actionCode, event.target.value)}><option value="NOT_SET">Not configured</option><option value="GRANT">Allow</option><option value="DENY">Deny</option></select>{ptcProtected ? <small>Protected PTC boundary</small> : null}</td>
+            <td><select value={grant?.scopeCode || effectiveScope} disabled={!detailReady || state.busy || !canWrite || superAdmin || !grant || decision === 'NOT_SET'} onChange={(event) => updateActionScope(action.actionCode, event.target.value)}>{catalog.scopes.map((item) => <option key={item.scopeCode} value={item.scopeCode}>{item.scopeCode}</option>)}</select></td>
             <td><div className="rpw-safeguards">{action.isNonBypassable ? <span>Non-bypassable</span> : null}{grant?.delegatedAuthority ? <span>Delegated</span> : null}{grant?.reasonRequired ? <span>Reason required</span> : null}{grant?.auditRequired ? <span>Audited</span> : null}</div></td>
           </tr>;
         })}</tbody></table></div>
@@ -521,15 +546,15 @@ export default function RoleAdminDirectoryPanel() {
 
       <section className="rpw-publish">
         <div><p className="eyebrow">7. Review and publish</p><h2>{pending ? 'Pending role permission change' : 'Matches the published policy'}</h2><p>Module 037 reads this same published policy and updates after refresh.</p></div>
-        <label><span>Change notes</span><textarea value={notes} disabled={!canWrite || superAdmin} onChange={(event) => setNotes(event.target.value)} placeholder="What changed?" /></label>
-        <label><span>Required reason</span><textarea value={reason} disabled={!canWrite || superAdmin} onChange={(event) => setReason(event.target.value)} placeholder="Why is this permission change needed?" /></label>
-        <div className="rpw-publish-actions"><button type="button" disabled={!canWrite || superAdmin || state.busy || !pending} onClick={validate}>Validate changes</button><button type="button" className="primary" disabled={!canWrite || superAdmin || state.busy || !pending || !validation?.valid} onClick={publish}>Publish new policy version</button><button type="button" disabled={!pending} onClick={loadDetail}>Discard</button></div>
+        <label><span>Change notes</span><textarea value={notes} disabled={!detailReady || state.busy || !canWrite || superAdmin} onChange={(event) => setNotes(event.target.value)} placeholder="What changed?" /></label>
+        <label><span>Required reason</span><textarea value={reason} disabled={!detailReady || state.busy || !canWrite || superAdmin} onChange={(event) => setReason(event.target.value)} placeholder="Why is this permission change needed?" /></label>
+        <div className="rpw-publish-actions"><button type="button" disabled={!detailReady || state.busy || !canWrite || superAdmin || state.busy || !pending} onClick={validate}>Validate changes</button><button type="button" className="primary" disabled={!detailReady || state.busy || !canWrite || superAdmin || state.busy || !pending || !validation?.valid} onClick={publish}>Publish new policy version</button><button type="button" disabled={state.busy || !pending} onClick={loadDetail}>Discard</button></div>
         {validation ? <div className={validation.valid ? 'rpw-validation valid' : 'rpw-validation invalid'}><strong>{validation.valid ? 'Validation passed' : 'Validation blocked'}</strong>{validation.errors.map((item) => <span key={item}>{item}</span>)}{validation.warnings.map((item) => <span key={item}>Warning: {item}</span>)}</div> : null}
       </section>
     </> : null}
 
     {tab === 'members' ? <section className="dynamic-rbac-members">
-      <header><div><p className="eyebrow">Role membership</p><h2>{selectedRole?.roleName}</h2><p>Assign this role to an active user. The user immediately receives the role’s published permissions on the next authorized request.</p></div><label><span>Select role</span><select value={roleCode} onChange={(event) => setRoleCode(event.target.value)}>{roles.map((role) => <option key={role.roleCode} value={role.roleCode}>{role.roleName}</option>)}</select></label></header>
+      <header><div><p className="eyebrow">Role membership</p><h2>{selectedRole?.roleName}</h2><p>Assign this role to an active user. The user immediately receives the role’s published permissions on the next authorized request.</p></div><label><span>Select role</span><select value={roleCode} disabled={state.busy} onChange={(event) => { setValidation(null); setRoleCode(event.target.value); }}>{roles.map((role) => <option key={role.roleCode} value={role.roleCode}>{role.roleName}</option>)}</select></label></header>
       <div className="dynamic-rbac-membership-controls">
         <label><span>Find user</span><input type="search" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Name or email" /></label>
         <label><span>User without this role</span><select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}><option value="">Select a user</option>{unassignedUsers.map((user) => <option key={user.userId} value={user.userId}>{user.displayName || user.email} · {user.email}</option>)}</select></label>
@@ -550,7 +575,7 @@ export default function RoleAdminDirectoryPanel() {
         <label className="reason"><span>Required reason</span><input value={moduleForm.reason} onChange={(event) => setModuleForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Why is this module entering the RBAC catalog?" required /></label>
         <button type="submit" className="primary" disabled={!canManageModules || state.busy}>Register module</button>
       </form>
-      <div className="dynamic-rbac-module-list">{visibleCatalogModules.map((module) => <article key={module.moduleCode} className={module.isActive ? 'active' : 'retired'}><div><strong>{module.moduleName}</strong><span>{module.routeScope}</span><small>{module.currentState}{module.permissionNotes ? ` · ${module.permissionNotes}` : ''}</small></div><div><span className="status">{module.isActive ? 'Active' : 'Retired'}</span>{module.isActive ? <button type="button" disabled={!canManageModules || module.protectedGovernanceModule || state.busy} onClick={() => changeModuleLifecycle(module, 'retire')}>Retire</button> : <button type="button" disabled={!canManageModules || state.busy} onClick={() => changeModuleLifecycle(module, 'restore')}>Restore</button>}</div></article>)}</div>
+      <div className="dynamic-rbac-module-list">{visibleCatalogModules.map((module) => <article key={module.moduleCode} className={module.isActive ? 'active' : 'retired'}><div><strong>{module.moduleCode} · {module.moduleName}</strong><span>{module.routeScope}</span><small>{module.currentState}{module.permissionNotes ? ` · ${module.permissionNotes}` : ''}</small></div><div><span className="status">{module.isActive ? 'Active' : 'Retired'}</span>{module.isActive ? <button type="button" disabled={!canManageModules || module.protectedGovernanceModule || state.busy} onClick={() => changeModuleLifecycle(module, 'retire')}>Retire</button> : <button type="button" disabled={!canManageModules || state.busy} onClick={() => changeModuleLifecycle(module, 'restore')}>Restore</button>}</div></article>)}</div>
     </section> : null}
 
     {tab === 'history' ? <section className="dynamic-rbac-history"><header><p className="eyebrow">Immutable policy history</p><h2>Published and retired versions</h2><p>Restoring a version creates a new immutable version; it never rewrites history.</p></header><div>{versions.map((version) => {
