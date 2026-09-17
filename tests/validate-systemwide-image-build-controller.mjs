@@ -210,7 +210,10 @@ assert.doesNotMatch(
   'Module 025 SOW generation must fail closed when the approved private model does not complete'
 );
 assert.match(privateRagService, /Module025SowMaximumOutputTokens = 12_000/);
-assert.match(privateRagService, /Module025SowMaximumAnswerCharacters = 96_000/);
+assert.match(privateRagService, /Module025SowMaximumAnswerCharacters = Module025GenerationEngine\.MaximumDocumentCharacters/);
+const module025Engine = fs.readFileSync('src/backend/ProjectTime.Api/Ai/Module025GenerationEngine.cs', 'utf8');
+assert.match(module025Engine, /MaximumPhaseCharacters = 96_000/);
+assert.match(module025Engine, /MaximumDocumentCharacters = 512_000/);
 assert.match(privateRagService, /FlowHivePlanMaximumOutputTokens = 12_000/);
 assert.match(privateRagService, /FlowHivePlanMaximumAnswerCharacters = 96_000/);
 assert.match(

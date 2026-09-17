@@ -135,7 +135,21 @@ class QualificationTest(unittest.TestCase):
         changed['scale'] = {'minReplicas': 2}
         self.assertIn('template_other', module.api_template_difference(before, changed))
 
-    def exercise(self, *, passed=True, fail_start=False, wrong_owner=False, drift=None, policy=None, api_after=None):
+    def test_api_difference_evidence_identifies_fields_and_types_without_values(self):
+        before = api_fixture()['properties']['template']
+        after = copy.deepcopy(before)
+        after['terminationGracePeriodSeconds'] = None
+        after['containers'][0]['securityContext'] = {'private-name': 'private-value'}
+        after['containers'][0]['private@example.invalid'] = 'private-value'
+        changes = module.api_template_change_details(before, after)
+        self.assertIn({'field': 'template.terminationGracePeriodSeconds', 'beforeType': 'missing', 'afterType': 'null'}, changes)
+        self.assertIn({'field': 'template.containers[0].securityContext', 'beforeType': 'missing', 'afterType': 'object'}, changes)
+        self.assertTrue(any(x['field'].endswith('.unknown_field') for x in changes))
+        self.assertNotIn('private', json.dumps(changes))
+        # Missing/null differences remain blocking; this is evidence, not a waiver.
+        self.assertTrue(module.api_template_difference(before, after))
+
+    def exercise(self, *, passed=True, fail_start=False, wrong_owner=False, drift=None, policy=None, api_after=None, drift_at=4):
         calls, job = [], None
         api = api_fixture()
         if policy:
@@ -150,18 +164,19 @@ class QualificationTest(unittest.TestCase):
             nonlocal job, api_reads
             calls.append(args)
             if args[:2] == ('account', 'show'): return {'id': 'sub'}
-            if args[:2] == ('containerapp', 'show'):
+            if args[:3] == ('rest', '--method', 'get'):
+                self.assertEqual(args[-1], 'https://management.azure.com/subscriptions/sub/resourceGroups/test/providers/Microsoft.App/containerApps/api-test?api-version=2024-03-01')
                 api_reads += 1
-                if api_reads > 1 and api_after == 'error': raise RuntimeError('azure_operation_failed_containerapp')
+                if api_reads >= drift_at and api_after == 'error': raise RuntimeError('azure_operation_failed_rest')
                 response = copy.deepcopy(api)
-                if api_reads > 1 and api_after == 'revision': response['properties']['latestRevisionName'] = 'new-revision'
-                if api_reads > 1 and api_after == 'template': response['properties']['template']['containers'][0]['image'] = 'new-image'
+                if api_reads >= drift_at and api_after == 'revision': response['properties']['latestRevisionName'] = 'new-revision'
+                if api_reads >= drift_at and api_after == 'template': response['properties']['template']['containers'][0]['image'] = 'new-image'
                 return response
             if args[:2] == ('acr', 'build'): return {}
             if args[:3] == ('acr', 'repository', 'show'): return {'digest': 'sha256:' + 'a' * 64}
             if args[:3] == ('containerapp', 'secret', 'list'): return [{'name': 'database', 'value': 'synthetic-db'}, {'name': 'encryption', 'value': 'synthetic-key'}]
             if args[:3] == ('containerapp', 'job', 'list'): return [dict(job, name='m025q-12345-1')] if job else []
-            if args[0] == 'rest':
+            if args[:3] == ('rest', '--method', 'put'):
                 job = json.loads(Path(args[args.index('--body')+1][1:]).read_text())
                 job['properties']['provisioningState'] = 'Succeeded'
                 container = job['properties']['template']['containers'][0]
@@ -196,6 +211,24 @@ class QualificationTest(unittest.TestCase):
         self.assertTrue(report['apiDeploymentUnchanged'])
         self.assertEqual(report['temporaryJobCleanup'], 'verified')
         self.assertFalse(report['fullLifecyclePassed'])
+        self.assertTrue(report['before_build']['templateUnchanged'])
+        self.assertTrue(report['before_inference']['templateUnchanged'])
+        self.assertEqual(report['apiSnapshotProtocol'], {'method': 'GET', 'apiVersion': '2024-03-01'})
+
+    def test_configuration_drift_stops_before_spending_and_preserves_owned_cleanup(self):
+        for stage, read_number in [('before_build', 2), ('before_inference', 3)]:
+            for change in ['revision', 'template', 'error']:
+                with self.subTest(stage=stage, change=change):
+                    code, report, calls = self.exercise(api_after=change, drift_at=read_number)
+                    self.assertEqual(code, 1)
+                    self.assertFalse(report['called'])
+                    self.assertFalse(any(x[:3] == ('containerapp', 'job', 'start') for x in calls))
+                    if stage == 'before_build':
+                        self.assertFalse(any(x[:2] == ('acr', 'build') or x[:3] == ('rest', '--method', 'put') for x in calls))
+                    else:
+                        self.assertEqual(report['temporaryJobCleanup'], 'verified')
+                    expected = 'azure_operation_failed_rest' if change == 'error' else 'api_' + change + '_changed_' + stage
+                    self.assertEqual(report['diagnostic'], expected)
 
     def test_provider_failure_is_retained_without_retry(self):
         code, report, calls = self.exercise(passed=False)
@@ -216,10 +249,10 @@ class QualificationTest(unittest.TestCase):
                     self.assertEqual(report['stage'], 'read_test_configuration')
                     self.assertEqual(report['diagnostic'], 'sanitized_external_policy_missing' if value is None else 'sanitized_external_policy_disabled')
                     self.assertTrue(report['apiDeploymentUnchanged'])
-                    self.assertTrue(all(x[:2] == ('containerapp', 'show') for x in calls))
+                    self.assertTrue(all(x[:2] == ('account', 'show') or x[:3] == ('rest', '--method', 'get') for x in calls))
 
     def test_application_read_failure_is_distinct_from_observed_revision_or_template_change(self):
-        for state, diagnostic in [('error', 'azure_operation_failed_containerapp'),
+        for state, diagnostic in [('error', 'azure_operation_failed_rest'),
             ('revision', 'api_revision_changed'), ('template', 'api_template_changed')]:
             with self.subTest(state=state):
                 code, report, _ = self.exercise(api_after=state)

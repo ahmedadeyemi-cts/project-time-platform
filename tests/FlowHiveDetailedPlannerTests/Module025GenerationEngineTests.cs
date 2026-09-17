@@ -60,6 +60,42 @@ internal static class Module025GenerationEngineTests
             && task.AcceptanceCriteria!.Count > 0 && task.ValidationSteps!.Count > 0
             && task.CustomerResponsibilities!.Count > 0 && task.UsSignalResponsibilities!.Count > 0),
             "module025_resume_preserves_full_detail_contract");
+        // Exercise the real five-phase assembler above the former 96k global
+        // ceiling, with full task detail retained in the SOW work packages.
+        var expanded = fixture with { Tasks = fixture.Tasks.Select(task => task with {
+            DetailedSteps = Enumerable.Range(1, 20).Select(i =>
+                $"{task.Wbs} step {i}: " + string.Concat(Enumerable.Repeat(
+                    "Review the CUCM prerequisite, capture the technical result and verify the completion evidence with the delivery engineer. ", 5))).ToArray()
+        }).ToArray() };
+        var expandedCheckpoints = Module025GenerationEngine.Phases.ToDictionary(phase => phase, phase => {
+            var plan = expanded with { Tasks = expanded.Tasks.Where(task => task.Phase == phase).ToArray() };
+            Check(JsonSerializer.Serialize(plan).Length <= Module025GenerationEngine.MaximumPhaseCharacters,
+                "module025_detailed_phase_fits_its_own_bound_" + phase);
+            return Result(phase) with { FlowHivePlan = plan,
+                SowDraft = CelarAiEnterprisePlatformService.BuildSowDraftFromPlan(plan, evidence.EngagementNumber, evidence.CustomerName) };
+        });
+        var expandedResult = await Module025GenerationEngine.RunAsync(evidence, expandedCheckpoints,
+            new Dictionary<string, int>(), (_, _) => throw new InvalidOperationException("Retained phases must not regenerate."),
+            (_, _) => Task.CompletedTask, CancellationToken.None);
+        Check(JsonSerializer.Serialize(expandedResult.FlowHivePlan).Length > 96_000
+            && expandedResult.SowDraft!.WorkPackages.Count == expanded.Tasks.Count
+            && expandedResult.SowDraft.WorkPackages.Zip(expanded.Tasks).All(pair =>
+                pair.First.DetailedSteps.SequenceEqual(pair.Second.DetailedSteps!)),
+            "module025_full_document_above_96k_preserves_all_detailed_work_packages_without_inference");
+        Check(Module025GenerationEngine.MaximumDocumentCharacters >= Module025GenerationEngine.MaximumPhaseCharacters * 5
+            && Module025GenerationEngine.MaximumOutputTokens == 6144
+            && Module025GenerationEngine.AttemptsPerPhase == 2 && Module025GenerationEngine.DeadlineSeconds == 1200,
+            "module025_cloud_budget_does_not_reset_private_attempt_or_deadline_controls");
+        foreach (var phase in new string?[] { "Plan", null })
+        {
+            try
+            {
+                var bound = phase is null ? Module025GenerationEngine.MaximumDocumentCharacters : Module025GenerationEngine.MaximumPhaseCharacters;
+                PulseAiPrivateRagService.ValidateModule025Phase(fixture with { Objective = new string('x', bound + 1) }, phase, evidence);
+                throw new InvalidOperationException("Oversized plan was accepted.");
+            }
+            catch (JsonException) { Check(true, "module025_rejects_oversized_" + (phase ?? "assembled_document")); }
+        }
         var execution = new Module025PhaseExecution("Plan", 0, Persist);
         Check(await execution.BeforeAttemptAsync("deepseek", CancellationToken.None), "module025_first_attempt_reserved");
         Check(await execution.BeforeAttemptAsync("celar_ai", CancellationToken.None), "module025_second_attempt_reserved");

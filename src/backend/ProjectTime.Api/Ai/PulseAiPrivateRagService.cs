@@ -8,7 +8,7 @@ namespace ProjectTime.Api.Ai;
 public sealed class PulseAiPrivateRagService
 {
     private const int Module025SowMaximumOutputTokens = 12_000;
-    private const int Module025SowMaximumAnswerCharacters = 96_000;
+    private const int Module025SowMaximumAnswerCharacters = Module025GenerationEngine.MaximumDocumentCharacters;
     // Legacy compact planner helpers retain their transport contract. Module 025's
     // durable engine uses the full-detail schema and budgets in Module025GenerationEngine.
     private const int Module025PhaseMaximumOutputTokens = 1_280;
@@ -1894,7 +1894,7 @@ public sealed class PulseAiPrivateRagService
 
     internal static string Module025PhaseInstruction(string phase) =>
         Module025DetailedPhaseInstruction(FlowHiveSystemInstruction(CelarAiCapabilityCatalog.SowGsdPlanning, true),
-            phase, Array.IndexOf(Module025DeliveryPhases, phase), string.Empty);
+            phase, Array.IndexOf(Module025DeliveryPhases, phase), string.Empty, Module025GenerationEngine.MaximumExternalOutputTokens);
 
     internal static PulseAiPrivateRagAnswer Module025ExternalAnswer(
         string content, CelarAiAuthoritativeScopeEvidence evidence, string provider, string correlationId)
@@ -2085,7 +2085,7 @@ public sealed class PulseAiPrivateRagService
                 MaximumOutputTokens = maximumOutputTokens,
                 Sources = retrieval.Chunks,
                 SystemInstruction = fullDetail
-                    ? Module025DetailedPhaseInstruction(request.SystemInstruction, phase, index, feedback)
+                    ? Module025DetailedPhaseInstruction(request.SystemInstruction, phase, index, feedback, maximumOutputTokens)
                     : Module025PhaseSystemInstruction(
                     request.SystemInstruction,
                     phase,
@@ -2366,7 +2366,7 @@ public sealed class PulseAiPrivateRagService
     }
 
     private static string Module025DetailedPhaseInstruction(
-        string systemInstruction, string phase, int phaseIndex, string feedback) =>
+        string systemInstruction, string phase, int phaseIndex, string feedback, int maximumOutputTokens) =>
         systemInstruction
             .Replace("normally 10 to 20 tasks, with multiple tasks per phase where the work requires them",
                 "multiple substantive tasks for this phase, sized to the actual authorized scope", StringComparison.Ordinal)
@@ -2375,7 +2375,8 @@ public sealed class PulseAiPrivateRagService
             + $"\nThis is phase {phaseIndex + 1} of five. Return ONLY {phase} tasks. Use WBS {phaseIndex + 1}.1 onward. "
             + "Return the FULL task contract, including task-specific review fields; do not omit fields expecting server-generated filler. "
             + "Include actionable technical steps and the reason for effort estimates in each description. Preserve supplied products, versions, quantities and integration requirements; never invent missing values. "
-            + "Include explicit assumptions, exclusions, risks and open questions. Return one complete JSON object within 6144 output tokens. "
+            + "Include explicit assumptions, exclusions, risks and open questions. Avoid repeating the same explanation in multiple fields; retain the complete technical detail contract. "
+            + $"Return one complete JSON object within {maximumOutputTokens} output tokens. "
             + feedback;
 
     private static string Module025PhaseSystemInstruction(
@@ -2423,6 +2424,11 @@ public sealed class PulseAiPrivateRagService
         bool allowDuplicateWbs = false,
         bool allowCompactTaskFields = false)
     {
+        var characterLimit = requiredPhases.Count == 1
+            ? Module025GenerationEngine.MaximumPhaseCharacters : Module025GenerationEngine.MaximumDocumentCharacters;
+        if (content.Length > characterLimit)
+            throw new JsonException(requiredPhases.Count == 1
+                ? "module025_phase_size_limit_exceeded" : "module025_assembled_plan_limit_exceeded");
         if (retrieval.Chunks.Count == 0)
             throw new JsonException("A detailed phase plan requires at least one server-authorized source citation.");
 
