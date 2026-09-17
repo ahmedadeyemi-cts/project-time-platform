@@ -84,7 +84,7 @@ internal sealed record Module025EngagementRow(
     Guid? ResaleUserId,
     string ResaleName,
     string ServiceOverview,
-    string ProjectName,
+    string? ProjectName,
     JsonElement SowSections,
     JsonElement AiMetadata,
     string Status,
