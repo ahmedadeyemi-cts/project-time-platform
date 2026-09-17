@@ -1,23 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import USSignalLogo from '../enterprise/USSignalLogo.jsx';
+import { downloadProtected, sessionHeaders } from './protected-download.js';
 import './sow-gsd-workspace.css';
 import './sow-register.css';
-
-function sessionHeaders(extra = {}) {
-  try {
-    const raw = window.localStorage.getItem('projectPulseAuthSession');
-    const session = raw ? JSON.parse(raw) : null;
-    return {
-      ...(session?.sessionToken ? {
-        Authorization: `Bearer ${session.sessionToken}`,
-        'X-ProjectPulse-Session': session.sessionToken
-      } : {}),
-      ...extra
-    };
-  } catch {
-    return extra;
-  }
-}
 
 async function request(url, options = {}) {
   const response = await fetch(url, {
@@ -31,26 +16,6 @@ async function request(url, options = {}) {
     throw error;
   }
   return payload;
-}
-
-function downloadBlob(blob, fileName) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-async function downloadProtected(url, fileName) {
-  const response = await fetch(url, { credentials: 'include', headers: sessionHeaders() });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.message || `Download failed (${response.status}).`);
-  }
-  downloadBlob(await response.blob(), fileName);
 }
 
 function when(value) {
@@ -79,7 +44,7 @@ const reportFields = [
   ['successfulVersionSubmissions', 'Verified version submissions'], ['blockedSubmissions', 'Blocked requests']
 ];
 
-export default function SowRegister() {
+export default function SowRegister({ initialEngagementId = '' }) {
   const [bootstrap, setBootstrap] = useState(null);
   const [filters, setFilters] = useState({ ownerUserId: '', search: '', fromDate: '', toDate: '' });
   const [page, setPage] = useState(1);
@@ -87,7 +52,7 @@ export default function SowRegister() {
   const [loading, setLoading] = useState(false);
   const [readError, setReadError] = useState('');
   const [notice, setNotice] = useState(null);
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(initialEngagementId);
   const [versionPage, setVersionPage] = useState(1);
   const [detail, setDetail] = useState(null);
   const [history, setHistory] = useState(null);
@@ -265,9 +230,9 @@ export default function SowRegister() {
       {detail ? <section className="m025-section" aria-label="Selected SOW history">
         <div className="m025-section-heading"><div><h2>{detail.engagementNumber} · {detail.customerName}</h2></div><p>SA: {detail.ownerDisplayName} · Working revision {detail.revision} · {status(detail.status)}</p></div>
         <p>Use SOW Authoring to reopen and edit this record. Reconfirmation retains the next changed version; previous versions remain downloadable.</p>
-        {!detail.sellReadiness?.ready ? <div className="m025-notice m025-notice--warning" role="status"><strong>Automatic SELL publication is not enabled</strong><p>{detail.sellReadiness?.message}</p><small>{detail.sellReadiness?.diagnosticCode}</small></div> : null}
+        {!detail.sellReadiness?.ready ? <div className="m025-notice m025-notice--warning" role="status"><strong>Automatic SELL publication is not enabled</strong><p>{detail.sellReadiness?.message}</p><p>You can download the retained SOW and GSD below for manual upload. No automatic SELL upload or success notification has occurred.</p></div> : null}
         {canRelease ? <button type="button" className="m025-button m025-button--primary" disabled={Boolean(actionBusy)} onClick={() => runAction('versions')}>{actionBusy === 'versions' ? 'Retaining files…' : 'Retain confirmed version'}</button> : null}
-        {!detail.versions?.length ? <p>This record is tracked. Document versions appear after SA confirmation. Older confirmed records require one explicit retention step; no historical files are invented.</p> : null}
+        {!detail.versions?.length ? <><p>This record is tracked. Review and confirm the detailed scope in SOW Authoring to retain both documents. Older confirmed records require one explicit retention step.</p><div className="m025-review-actions"><button type="button" className="m025-button m025-button--primary" disabled>Download SOW (.docx)</button><button type="button" className="m025-button m025-button--primary" disabled>Download GSD (.xlsx)</button><button type="button" className="m025-button m025-button--secondary" disabled>Send to SELL</button></div></> : null}
         <div className="m025-register-versions">{(detail.versions || []).map((version) => {
           const submissions = (version.submissions || []).filter((item) => item.environment === detail.runtimeEnvironment);
           const published = submissions.some((item) => item.sellStatus === 'published');

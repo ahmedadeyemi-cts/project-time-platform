@@ -1,0 +1,70 @@
+name: Module 025 one-phase provider qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: One provider, one synthetic detailed Plan phase (no full SOW run)
+        required: true
+        default: claude
+        type: choice
+        options: [claude, openai]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: test
+    env:
+      QUALIFICATION_PROVIDER: ${{ inputs.provider }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+      AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the protected current main source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$GITHUB_RUN_ATTEMPT" == 1 ]] || { echo 'A repeat requires a new explicit manual run.'; exit 1; }
+          [[ "$QUALIFICATION_PROVIDER" == claude || "$QUALIFICATION_PROVIDER" == openai ]]
+          git fetch --no-tags origin main
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]]
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile the isolated one-phase runner
+        run: |
+          dotnet publish tests/FlowHiveDetailedPlannerTests --configuration Release --output "$RUNNER_TEMP/module025-qualification-image"
+          cp deployment/module025-qualification/Dockerfile "$RUNNER_TEMP/module025-qualification-image/Dockerfile"
+      - name: Authenticate with the existing protected Test identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Qualify one phase in the Test private network
+        run: python3 scripts/release-test/run-module025-provider-qualification.py
+      - name: Upload bounded provider evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module025-provider-qualification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/module025-qualification-evidence/qualification.json
+          if-no-files-found: warn
+          retention-days: 7

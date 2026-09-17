@@ -7,9 +7,12 @@ import { verifyReadOnlyWorkflow } from './flowhive-psa-scope.mjs';
 const base = 'dd6403e4ba89a8d15fa6308b85a0d20994d6cd13';
 const expected = [
   ".github/workflows/flowhive-psa-release-control-ci.yml",
+  ".github/workflows/module025-provider-qualification.yml",
+  "deployment/module025-qualification/Dockerfile",
   "docs/releases/2026-09-17-module025-provider-diagnostics.md",
   "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
   "scripts/release-test/run-module025-installed-sa-uat.py",
+  "scripts/release-test/run-module025-provider-qualification.py",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs",
   "src/backend/ProjectTime.Api/Ai/Module025ExternalSowAdapter.cs",
@@ -19,12 +22,19 @@ const expected = [
   "src/backend/ProjectTime.Api/Ai/ProjectPulseAiRemoteProviders.cs",
   "src/backend/ProjectTime.Api/Ai/PulseAiEscalationSanitizer.cs",
   "src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs",
+  "src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs",
+  "src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx",
+  "src/frontend/project-time-web/src/module025/SowGsdWorkspace.jsx",
+  "src/frontend/project-time-web/src/module025/SowRegister.jsx",
+  "src/frontend/project-time-web/src/module025/protected-download.js",
   "tests/FlowHiveDetailedPlannerTests/Module025ExternalSowTests.cs",
   "tests/FlowHiveDetailedPlannerTests/Module025ProviderQualification.cs",
   "tests/FlowHiveDetailedPlannerTests/Program.cs",
   "tests/flowhive-psa-admission.test.mjs",
   "tests/flowhive-psa-installed-acceptance.test.py",
+  "tests/module025-document-actions.test.mjs",
   "tests/module025-provider-diagnostics-scope.mjs",
+  "tests/module025-provider-qualification.test.py",
   "tests/validate-celar-ai-pr630-consolidated.mjs"
 ];
 function verifyPaths(actual) { assert.deepEqual([...actual].sort(), expected); }
@@ -34,8 +44,11 @@ export function verifyModule025ProviderDiagnosticsScope() {
   verifyPaths(actual);
   assert.throws(() => verifyPaths([...actual, '.github/workflows/projectpulse-deploy-test.yml']));
   assert.throws(() => verifyPaths(actual.slice(1)));
-  for (const name of expected.filter(name => name.startsWith('.github/workflows/')))
+  for (const name of expected.filter(name => name.startsWith('.github/workflows/') && name !== '.github/workflows/module025-provider-qualification.yml'))
     verifyReadOnlyWorkflow(fs.readFileSync(name, 'utf8'), name);
+  // This isolated qualification is an explicit manual Test operation. It is
+  // separately validated, never treated as privileged PR CI.
+  execFileSync('python3', ['tests/module025-provider-qualification.test.py'], {stdio: 'inherit'});
   for (const name of ['.github/workflows/projectpulse-deploy-test.yml',
     '.github/workflows/flowhive-psa-installed-acceptance.yml',
     '.github/flowhive-psa-protected-test-candidate.json',

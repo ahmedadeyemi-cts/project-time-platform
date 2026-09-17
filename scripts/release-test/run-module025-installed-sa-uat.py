@@ -142,8 +142,8 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
             editor = workspace.locator(".m025-editor-panel")
             await editor.get_by_text(engagement_number, exact=True).wait_for(state="visible")
 
-            sow_link = editor.locator('a[href$="/sow.docx"]')
-            gsd_link = editor.locator('a[href$="/gsd.xlsx"]')
+            sow_link = workspace.get_by_role('button', name='Download SOW (.docx)', exact=True).or_(editor.locator('a[href$="/sow.docx"]'))
+            gsd_link = workspace.get_by_role('button', name='Download GSD (.xlsx)', exact=True).or_(editor.locator('a[href$="/gsd.xlsx"]'))
             await sow_link.wait_for(state="visible")
             await gsd_link.wait_for(state="visible")
             downloads: dict[str, dict[str, object]] = {}

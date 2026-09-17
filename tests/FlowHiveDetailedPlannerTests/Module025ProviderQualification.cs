@@ -46,8 +46,8 @@ internal static class Module025ProviderQualification
         var request = adapter.Prepare(sanitizer, out var diagnostic);
         if (!providerConfiguration.Enabled || !providerConfiguration.Configured || request is null)
         {
-            Console.WriteLine(JsonSerializer.Serialize(new { passed = false, called = false, provider = target,
-                diagnostic = request is null ? diagnostic : "provider_not_enabled_or_configured" }));
+            WriteReport(new { passed = false, called = false, provider = target,
+                diagnostic = request is null ? diagnostic : "provider_not_enabled_or_configured" });
             Environment.ExitCode = 1;
             return;
         }
@@ -62,7 +62,7 @@ internal static class Module025ProviderQualification
         { result = new(target, "unavailable", null, "provider_deadline_exceeded", null, null, null, null); }
         result = adapter.ValidateResult(result, "synthetic-qualification", sanitizer);
         var passed = result.IsSuccess && adapter.AcceptedAnswer is not null;
-        Console.WriteLine(JsonSerializer.Serialize(new
+        WriteReport(new
         {
             passed, called = true, provider = target, requestedModel = providerConfiguration.Model,
             configurationSource = useModule064Store ? "module064_store" : "environment",
@@ -71,13 +71,26 @@ internal static class Module025ProviderQualification
             phase = "Plan", workPackages = adapter.AcceptedAnswer?.FlowHivePlan?.Tasks.Count ?? 0,
             plan = passed ? adapter.AcceptedAnswer?.FlowHivePlan : null,
             fullLifecyclePassed = false, productionMutation = false
-        }));
+        });
         Environment.ExitCode = passed ? 0 : 1;
     }
     private static void Block(string target, string diagnostic)
     {
-        Console.WriteLine(JsonSerializer.Serialize(new { passed = false, called = false, provider = target, diagnostic }));
+        WriteReport(new { passed = false, called = false, provider = target, diagnostic });
         Environment.ExitCode = 1;
+    }
+    private static void WriteReport(object report)
+    {
+        var json = JsonSerializer.Serialize(report);
+        if (Environment.GetEnvironmentVariable("MODULE025_QUALIFICATION_LOG_CHUNKS") != "true")
+        { Console.WriteLine(json); return; }
+        // Bounded lines survive Container Apps log transport. Only the validated
+        // synthetic plan and closed diagnostics enter this report, never keys.
+        var encoded = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json));
+        var total = (encoded.Length + 2399) / 2400;
+        for (var index = 0; index < total; index++)
+            Console.WriteLine($"MODULE025_QUALIFICATION_CHUNK:{index + 1}:{total}:" +
+                encoded.Substring(index * 2400, Math.Min(2400, encoded.Length - index * 2400)));
     }
     private sealed class QualificationHttpFactory : IHttpClientFactory, IDisposable
     {

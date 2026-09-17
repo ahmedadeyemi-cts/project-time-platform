@@ -72,3 +72,46 @@ The connected GitHub app can publish and inspect this change but cannot execute
 this process in the Azure Test environment. Live qualification therefore remains
 an explicit operator action in that credentialed environment. This PR does not
 add a deployment workflow, dispatch one, change Oracle, or invoke a live model.
+
+
+## Visible documents and SELL handoff
+
+The authoring page previously hid its SOW/GSD download links until confirmation
+and required finding the same record again in the Register to see SELL readiness.
+The workspace now displays all four actions (SOW, GSD, SELL, version history)
+from the start, with state-specific prerequisites. Downloads use the authenticated
+session bridge; opening SELL selects this exact record while preserving the editor.
+No unconfirmed draft is mislabeled as a confirmed document. Historical retained
+versions stay accessible after reopening or archiving.
+
+The current SELL publisher is a deliberate non-writing implementation. The
+[public Zendesk Sell Documents API](https://developer.zendesk.com/api-reference/sales-crm/resources/documents/)
+documents retrieval, not document upload. This change does **not** implement or
+claim automatic SELL publication; the blocker and manual-download option remain
+visible. A supported upload integration and verified two-document receipts are
+still required for that acceptance criterion.
+
+## Credentialed one-phase qualification in GitHub
+
+After this PR is merged, open **Module 025 one-phase provider qualification**,
+select `main`, choose `claude` (or `openai`), and approve the existing `test`
+environment. The workflow accepts no alternate source or environment and shares
+the deployment concurrency group. Re-running an old run is rejected; each request
+requires a new explicit manual run.
+
+It publishes an isolated runner image and creates one temporary job in the Test
+API's private Container Apps environment. The runner reads the configured model,
+enabled state, and provider key from the same encrypted Module 064 store. Only the
+required Test DB/encryption and chosen cloud-provider settings are carried into
+the job. Credentials are not printed, returned as artifacts, or requested from
+the owner. The job has one replica, no automatic retries, and a 240-second process
+limit; inference remains bounded to one 120-second, 6,144-token Plan request.
+There are no migrations, API/web deployments, business-record writes, FlowHive
+requests, Celar runtime changes, or Production changes.
+
+`qualification.json` contains the chosen provider/model, elapsed time, available
+usage and closed diagnostics, and the validated synthetic plan only if it passed.
+The script verifies job cleanup and unchanged API deployment identity. A failed
+or incomplete report is not permission to run another request automatically.
+A one-phase pass is qualification only; full SOW/GSD lifecycle and My Role remain
+separate live acceptance requirements.

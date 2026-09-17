@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import USSignalLogo from '../enterprise/USSignalLogo.jsx';
+import { downloadProtected } from './protected-download.js';
 import './sow-gsd-workspace.css';
 
 const PHASE_FIELDS = [
@@ -229,7 +230,7 @@ function PhaseEditor({ phase, readOnly, onChange }) {
   );
 }
 
-export default function SowGsdWorkspace() {
+export default function SowGsdWorkspace({ onOpenRegister }) {
   const [bootstrap, setBootstrap] = useState(null);
   const [bootError, setBootError] = useState('');
   const [activeTab, setActiveTab] = useState('active');
@@ -486,6 +487,28 @@ export default function SowGsdWorkspace() {
   const isSpecialGsd = engagement?.customerProgram === 'toyota' || engagement?.customerProgram === 'hyundai';
   const warnings = Array.isArray(engagement?.aiMetadata?.warnings) ? engagement.aiMetadata.warnings : [];
   const missingEvidence = Array.isArray(engagement?.aiMetadata?.missingEvidence) ? engagement.aiMetadata.missingEvidence : [];
+  const downloadReady = engagement?.status === 'confirmed' && !dirty && !detailLoading && !actionState.busy;
+  const documentReadiness = !engagement
+    ? 'Select a SOW/GSD record to review its documents and SELL handoff.'
+    : engagement.status === 'confirmed'
+      ? 'The confirmed SOW and GSD are ready to download. Review SELL readiness before submitting.'
+      : engagement.status === 'archived'
+        ? 'This record is archived. Open version history to download any previously retained documents.'
+        : !engagement.lastGeneratedAt
+          ? 'Generate the detailed scope, review it, then confirm to enable both downloads. Generation failure does not remove this record or any earlier retained versions.'
+          : 'Review and confirm the current scope to enable both downloads. Previously retained documents remain available in version history.';
+
+  async function downloadDocument(artifact) {
+    if (!downloadReady) return;
+    setActionState({ busy: 'download', message: '', error: '' });
+    try {
+      await downloadProtected(`/api/module025/sow-gsd/${engagement.engagementId}/${artifact}`,
+        `${engagement.engagementNumber}-${artifact === 'sow.docx' ? 'SOW.docx' : 'GSD.xlsx'}`);
+      setActionState({ busy: '', message: `${artifact === 'sow.docx' ? 'SOW' : 'GSD'} downloaded.`, error: '' });
+    } catch (error) {
+      setActionState({ busy: '', message: '', error: error.message });
+    }
+  }
 
   if (bootError) {
     return (
@@ -517,6 +540,18 @@ export default function SowGsdWorkspace() {
           </Button>
         </div>
       </header>
+
+      <section className="m025-section m025-document-actions" aria-label="Documents and SELL">
+        <div className="m025-section-heading"><div><h2>Documents &amp; SELL handoff</h2></div></div>
+        <p id="m025-document-readiness" role="status">{documentReadiness}</p>
+        <div className="m025-review-actions" aria-describedby="m025-document-readiness">
+          <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('sow.docx')}>Download SOW (.docx)</Button>
+          <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('gsd.xlsx')}>Download GSD (.xlsx)</Button>
+          <Button disabled={!engagement || detailLoading || Boolean(actionState.busy) || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Send to SELL</Button>
+          <Button disabled={!engagement || detailLoading || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Version history</Button>
+        </div>
+        <p className="m025-document-help">Send to SELL opens this record’s retained versions and submission readiness. It does not send documents until you confirm an available submission.</p>
+      </section>
 
       <section className="m025-metrics" aria-label="Module 025 summary">
         <Metric label="Your role" value={bootstrap?.access?.isSolutionArchitect ? 'Solution Architect' : bootstrap?.access?.isManager ? 'Manager' : 'Administrator'} detail={bootstrap?.access?.managerScopeReadOnly ? 'Direct-report visibility is read-only' : 'Governed workspace access'} />
@@ -657,7 +692,7 @@ export default function SowGsdWorkspace() {
                     {actionState.busy === 'generate' ? 'Generating detailed scope…' : engagement.lastGeneratedAt ? 'Regenerate detailed scope' : 'Generate detailed scope'}
                   </Button>
                 </div>
-                <Field label="Service Overview" hint="Describe the work in enough detail for Celar AI to produce specific technical execution steps. Unsupported facts are returned as assumptions/open questions rather than invented.">
+                <Field label="Service Overview" hint="Describe the work in enough detail for the configured AI provider to produce specific technical execution steps. Unsupported facts are returned as assumptions/open questions rather than invented.">
                   <textarea
                     className="m025-service-overview"
                     rows={10}
@@ -705,8 +740,7 @@ export default function SowGsdWorkspace() {
                   {engagement.status === 'confirmed' ? (
                     <>
                       <Button onClick={() => runAction('reopen', 'SOW/GSD reopened for editing.') } disabled={!access?.canEdit || Boolean(actionState.busy)}>Reopen for editing</Button>
-                      <a className="m025-button m025-button--primary" href={`/api/module025/sow-gsd/${engagement.engagementId}/sow.docx`}>Download SOW (.docx)</a>
-                      <a className="m025-button m025-button--primary" href={`/api/module025/sow-gsd/${engagement.engagementId}/gsd.xlsx`}>Download GSD (.xlsx)</a>
+                      <p>The confirmed documents are available in Documents &amp; SELL handoff at the top of this workspace.</p>
                     </>
                   ) : engagement.status !== 'archived' ? (
                     <Button kind="primary" onClick={() => runAction('confirm', 'SOW/GSD confirmed and ready for download.')} disabled={readOnly || Boolean(actionState.busy) || !engagement.lastGeneratedAt || reviewedHours <= 0}>

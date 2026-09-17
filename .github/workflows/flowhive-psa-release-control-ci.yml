@@ -635,6 +635,27 @@ jobs:
       # Live readiness is deliberately not a source-only PR result. The
       # owner-authorized admission workflow acquires the lock, rechecks the
       # live controller, and fails closed immediately before dispatch.
+  module025_browser:
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/module025-provider-diagnostics-20260917'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install the existing frontend and isolated browser test dependencies
+        run: |
+          npm ci --prefix src/frontend/project-time-web
+          npm install --prefix "$RUNNER_TEMP/module025-browser" --no-audit --no-fund playwright@1.57.0
+          node "$RUNNER_TEMP/module025-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Exercise visible actions and authenticated downloads without live inference
+        run: |
+          PLAYWRIGHT_MODULE_PATH="$RUNNER_TEMP/module025-browser/node_modules/playwright" node tests/module025-document-actions.test.mjs
+
   manual_validate:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     name: Validate exact dispatched FlowHive candidate and release controls
