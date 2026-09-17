@@ -158,6 +158,10 @@ if [[ -n "$DISALLOWED_DATABASE" ]]; then
 fi
 
 PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED" || true)"
+if [[ "$HEAD_BRANCH" == 'fix/module025-output-budget-preflight-20260917' ]]; then
+  node tests/module025-output-budget-preflight-scope.mjs
+  PROHIBITED="$(grep -Fvx 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiRemoteProviders.cs' <<<"$PROHIBITED" || true)"
+fi
 if [[ "$HEAD_BRANCH" == 'fix/module025-complete-acceptance-20260917' ]]; then
   node tests/module025-complete-acceptance-scope.mjs
   PROHIBITED="$(grep -Fvx '.github/workflows/projectpulse-deploy-test.yml' <<<"$PROHIBITED" || true)"

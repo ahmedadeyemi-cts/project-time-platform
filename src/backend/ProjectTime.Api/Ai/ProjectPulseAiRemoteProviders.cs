@@ -34,7 +34,7 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
         {
             model = Provider.Model,
             max_tokens = request.StructuredSowPhase
-                ? Math.Min(request.MaxOutputTokens, Module025GenerationEngine.MaximumOutputTokens)
+                ? Math.Min(request.MaxOutputTokens, Module025GenerationEngine.MaximumExternalOutputTokens)
                 : Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens),
             system = request.SystemPrompt,
             messages = new[] { new { role = "user", content = request.UserPrompt } }
@@ -253,7 +253,7 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
             input = request.UserPrompt,
             store = false,
             max_output_tokens = request.StructuredSowPhase
-                ? Math.Min(request.MaxOutputTokens, Module025GenerationEngine.MaximumOutputTokens)
+                ? Math.Min(request.MaxOutputTokens, Module025GenerationEngine.MaximumExternalOutputTokens)
                 : Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens)
         });
 

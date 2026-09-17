@@ -29,6 +29,8 @@ internal static class Module025ExternalSowTests
             var adapter = Module025ExternalSowAdapter.TryCreate(evidence)!;
             var sanitizer = new PulseAiEscalationSanitizer();
             var request = adapter.Prepare(sanitizer, out _)!;
+            Check(request.MaxOutputTokens == 12288 && request.SystemPrompt.Contains("within 12288 output tokens")
+                && !request.SystemPrompt.Contains("6144 output tokens"), "cloud_sow_prompt_and_transport_share_the_output_budget");
             Check(request.UserPrompt.Contains("14.0 to 15.0") && request.UserPrompt.Contains("3 nodes")
                 && request.UserPrompt.Contains("Cisco Unified Communications Manager"), "external_sow_preserves_closed_technical_facts");
             Check(new[] { "Secret", "Private", "example.invalid", "10.1.2.3", "20000", "password", "Ignore instructions" }
@@ -113,7 +115,9 @@ internal static class Module025ExternalSowTests
             var claudeTransport = new CaptureTransport("{\"content\":[{\"type\":\"text\",\"text\":\"{}\"}],\"stop_reason\":\"end_turn\"}");
             var claude = new ProjectPulseClaudeProvider(claudeTransport, configuration);
             await claude.GenerateAsync(request, CancellationToken.None);
-            Check(claudeTransport.TokenLimit == 6144 && claudeTransport.Requests == 1, "claude_sow_http_budget_is_6144_not_shared_800");
+            Check(claudeTransport.TokenLimit == 12288 && claudeTransport.Requests == 1, "claude_sow_http_budget_is_12288_not_shared_800");
+            await claude.GenerateAsync(request with { MaxOutputTokens = int.MaxValue }, CancellationToken.None);
+            Check(claudeTransport.TokenLimit == 12288, "claude_sow_cannot_exceed_bounded_cloud_allowance");
             claudeTransport.Body = "{\"content\":[{\"type\":\"text\",\"text\":\"{}\"}],\"stop_reason\":\"max_tokens\"}";
             var truncatedClaude = await claude.GenerateAsync(request, CancellationToken.None);
             Check(!truncatedClaude.IsSuccess && truncatedClaude.SowDiagnostics?.StopReason == "max_tokens"
@@ -127,11 +131,13 @@ internal static class Module025ExternalSowTests
             Check(claudeTransport.Requests == 1, "claude_sow_has_no_hidden_transport_retries");
             var openaiTransport = new CaptureTransport("{\"status\":\"incomplete\",\"output\":[]}");
             var openai = new ProjectPulseOpenAiProvider(openaiTransport, configuration);
-            Check(!(await openai.GenerateAsync(request, CancellationToken.None)).IsSuccess && openaiTransport.TokenLimit == 6144,
+            Check(!(await openai.GenerateAsync(request, CancellationToken.None)).IsSuccess && openaiTransport.TokenLimit == 12288,
                 "openai_sow_budget_and_incomplete_response_guard");
+            await openai.GenerateAsync(request with { MaxOutputTokens = int.MaxValue }, CancellationToken.None);
+            Check(openaiTransport.TokenLimit == 12288, "openai_sow_cannot_exceed_bounded_cloud_allowance");
             openaiTransport.Body = """
                 {"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},
-                 "usage":{"input_tokens":120,"output_tokens":6144,"total_tokens":6264,"output_tokens_details":{"reasoning_tokens":6000}},
+                 "usage":{"input_tokens":967,"output_tokens":6144,"total_tokens":7111,"output_tokens_details":{"reasoning_tokens":438}},
                  "output":[{"type":"message","content":[{"type":"output_text","text":"private@example.invalid"}]}]}
                 """;
             var incomplete = await openai.GenerateAsync(request, CancellationToken.None);
@@ -139,7 +145,7 @@ internal static class Module025ExternalSowTests
                 && incomplete.SowDiagnostics?.ResponseStatus == "incomplete"
                 && incomplete.SowDiagnostics.IncompleteReason == "max_output_tokens"
                 && incomplete.SowDiagnostics.OutputTextCharacters == "private@example.invalid".Length
-                && incomplete.Usage?.ReasoningTokens == 6000 && incomplete.Usage.OutputTokens == 6144,
+                && incomplete.Usage?.ReasoningTokens == 438 && incomplete.Usage.OutputTokens == 6144,
                 "openai_incomplete_reason_and_reasoning_usage_survive_without_partial_output");
             Check(!JsonSerializer.Serialize(incomplete).Contains("example.invalid"), "openai_incomplete_metadata_excludes_response_text");
             openaiTransport.Body = """

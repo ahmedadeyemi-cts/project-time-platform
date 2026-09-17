@@ -11,6 +11,13 @@ internal static class Module025GenerationEngine
     internal const int ProviderTimeoutSeconds = 120;
     internal const int AttemptsPerPhase = 2;
     internal const int MaximumOutputTokens = 6144;
+    // The live OpenAI Plan response exhausted 6144 tokens before completion.
+    // Cloud phases get a separate bounded allowance; private inference, the
+    // persisted deadline and two-attempt ceiling retain their existing limits.
+    internal const int MaximumExternalOutputTokens = 12288;
+    internal const int MaximumPhaseCharacters = 96_000;
+    // Five independently accepted phases plus assembly metadata must fit.
+    internal const int MaximumDocumentCharacters = 512_000;
     internal static readonly string[] Phases = ["Plan", "Design", "Implement", "Validate", "Release"];
 
     internal static async Task<CelarAiComposeResult> RunAsync(
@@ -51,7 +58,7 @@ internal static class Module025GenerationEngine
         }
         var plan = PulseAiPrivateRagService.AssembleModule025PhasePlans(results.Select(result => result.FlowHivePlan!).ToArray());
         PulseAiPrivateRagService.ValidateModule025Phase(plan, null, evidence);
-        if (JsonSerializer.Serialize(plan).Length > 96_000)
+        if (JsonSerializer.Serialize(plan).Length > MaximumDocumentCharacters)
             throw new JsonException("module025_assembled_plan_limit_exceeded");
         return results[^1] with
         {

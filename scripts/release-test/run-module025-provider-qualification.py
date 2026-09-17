@@ -182,6 +182,52 @@ def api_template_difference(before, after):
     return sorted(set(categories)) or ['template_structure']
 
 
+def api_template_change_details(before, after):
+    """Schema field paths and types only; never configuration values or names."""
+    first, second = api_template_contract(before), api_template_contract(after)
+    missing = object()
+    def kind(value):
+        if value is missing: return 'missing'
+        if value is None: return 'null'
+        if isinstance(value, bool): return 'boolean'
+        if isinstance(value, (int, float)): return 'number'
+        if isinstance(value, str): return 'string'
+        if isinstance(value, list): return 'array'
+        return 'object'
+    changes = []
+    def fields(a, b, prefix, known):
+        for field in sorted(a.keys() | b.keys()):
+            old, new = a.get(field, missing), b.get(field, missing)
+            if old != new:
+                changes.append({'field': prefix + (field if field in known else 'unknown_field'),
+                    'beforeType': kind(old), 'afterType': kind(new)})
+    fields({k:v for k,v in first.items() if k != 'containers'},
+           {k:v for k,v in second.items() if k != 'containers'}, 'template.',
+           {'revisionSuffix', 'initContainers', 'scale', 'volumes', 'terminationGracePeriodSeconds', 'serviceBinds'})
+    a, b = first.get('containers', []), second.get('containers', [])
+    if len(a) != len(b):
+        changes.append({'field': 'template.containers', 'beforeType': 'array', 'afterType': 'array', 'countChanged': True})
+    for index, (old, new) in enumerate(zip(a, b)):
+        fields(old, new, f'template.containers[{index}].',
+            {'name', 'image', 'command', 'args', 'env', 'resources', 'probes', 'volumeMounts', 'securityContext'})
+    return changes
+
+
+def compare_api(before, after):
+    first, second = before['properties'], after['properties']
+    categories = api_template_difference(first['template'], second['template'])
+    return {'revisionUnchanged': first['latestRevisionName'] == second['latestRevisionName'],
+        'templateUnchanged': not categories, 'changedCategories': categories,
+        'changes': api_template_change_details(first['template'], second['template'])}
+
+
+def require_stable_api(before, after, report, stage):
+    comparison = compare_api(before, after)
+    report[stage] = comparison
+    require(comparison['revisionUnchanged'], 'api_revision_changed_' + stage)
+    require(comparison['templateUnchanged'], 'api_template_changed_' + stage)
+
+
 def verify_job(job, payload):
     verify_job_ownership(job, payload)
     actual, expected = job['properties'], payload['properties']
@@ -243,7 +289,7 @@ def main():
     out = Path(os.environ['RUNNER_TEMP']) / 'module025-qualification-evidence'
     out.mkdir(mode=0o700, exist_ok=True)
     report = {'passed': False, 'called': False, 'fullLifecyclePassed': False, 'productionMutation': False}
-    payload, attempted, job_uri, api_before = None, False, '', None
+    payload, attempted, job_uri, api_before, api_uri = None, False, '', None, ''
     resource_group = os.environ.get('AZURE_RESOURCE_GROUP', '')
     api_name = os.environ.get('AZURE_API_APP', '')
     registry = os.environ.get('AZURE_ACR_NAME', '')
@@ -260,14 +306,21 @@ def main():
         require(re.fullmatch(r'\d+-1', scope), 'run_identity_required')
         name = 'm025q-' + scope
         report['stage'] = 'read_test_configuration'
-        api_before = az('containerapp', 'show', '-g', resource_group, '-n', api_name)
+        subscription = az('account', 'show')['id']
+        resource_id = f'/subscriptions/{subscription}/resourceGroups/{resource_group}/providers/Microsoft.App/containerApps/{api_name}'
+        api_uri = 'https://management.azure.com' + resource_id + '?api-version=' + API_VERSION
+        # Use the same raw ARM schema before and after the job. CLI extension
+        # projections must not be compared with a different SDK representation.
+        api_before = az('rest', '--method', 'get', '--uri', api_uri)
+        require(api_before['id'].lower() == resource_id.lower(), 'exact_test_resource_required')
+        report['apiSnapshotProtocol'] = {'method': 'GET', 'apiVersion': API_VERSION}
         environment = selected_environment(api_before, provider)
         # Inherit existing permission; never enable it inside the qualifier.
         # A missing/disabled policy must fail before building or starting a job.
         require_existing_external_policy(environment)
         report['externalPolicyInherited'] = True
-        subscription = az('account', 'show')['id']
-        require(api_before['id'].lower().startswith('/subscriptions/' + subscription.lower() + '/resourcegroups/' + resource_group.lower() + '/'), 'exact_test_resource_required')
+        report['stage'] = 'preflight_before_build'
+        require_stable_api(api_before, az('rest', '--method', 'get', '--uri', api_uri), report, 'before_build')
         report['stage'] = 'cleanup_recorded_prior_job'
         report['priorTemporaryJobCleanup'] = cleanup_prior_unstarted_job(api_before, registry, resource_group)
         report['stage'] = 'build_qualification_image'
@@ -305,6 +358,8 @@ def main():
                 break
             require(state not in ('Failed', 'Canceled') and time.monotonic() < deadline, 'qualification_job_not_provisioned')
             time.sleep(5)
+        report['stage'] = 'preflight_before_inference'
+        require_stable_api(api_before, az('rest', '--method', 'get', '--uri', api_uri), report, 'before_inference')
         report['called'] = None  # A lost start response does not prove inference was absent.
         report['stage'] = 'start_qualification'
         execution = az('containerapp', 'job', 'start', '-g', resource_group, '-n', name)['name']
@@ -342,16 +397,13 @@ def main():
                 report.update({'passed': False, 'temporaryJobCleanup': 'not_verified'})
         if api_before:
             try:
-                after = az('containerapp', 'show', '-g', resource_group, '-n', api_name)
-                revision_matches = after['properties']['latestRevisionName'] == api_before['properties']['latestRevisionName']
-                differences = api_template_difference(api_before['properties']['template'], after['properties']['template'])
-                template_matches = not differences
-                report['apiDeploymentVerification'] = {'revisionUnchanged': revision_matches, 'templateUnchanged': template_matches}
-                report['apiDeploymentVerification']['changedCategories'] = differences
-                report['apiDeploymentUnchanged'] = revision_matches and template_matches
+                after = az('rest', '--method', 'get', '--uri', api_uri)
+                comparison = compare_api(api_before, after)
+                report['apiDeploymentVerification'] = comparison
+                report['apiDeploymentUnchanged'] = comparison['revisionUnchanged'] and comparison['templateUnchanged']
                 if not report['apiDeploymentUnchanged']:
                     report.update({'passed': False, 'apiDeploymentVerificationDiagnostic':
-                        'api_revision_changed' if not revision_matches else 'api_template_changed'})
+                        'api_revision_changed' if not comparison['revisionUnchanged'] else 'api_template_changed'})
             except Exception as error:
                 report.update({'passed': False, 'apiDeploymentUnchanged': 'not_verified',
                     'apiDeploymentVerificationDiagnostic': closed_error(error)})

@@ -191,6 +191,8 @@ if (flowHiveEnterprisePsaMode) {
   const { verifyRepositoryScope } = await import('./flowhive-psa-scope.mjs');
   verifyRepositoryScope();
 }
+const module025OutputBudgetPreflightMode = branchName === 'fix/module025-output-budget-preflight-20260917';
+if (module025OutputBudgetPreflightMode) (await import('./module025-output-budget-preflight-scope.mjs')).verifyModule025OutputBudgetPreflightScope();
 const module025CompleteAcceptanceMode = branchName === 'fix/module025-complete-acceptance-20260917';
 if (module025CompleteAcceptanceMode) (await import('./module025-complete-acceptance-scope.mjs')).verifyModule025CompleteAcceptanceScope();
 const module025QualificationPolicyMode = branchName === 'fix/module025-qualification-policy-20260917';
@@ -203,7 +205,7 @@ const module025ExternalMode = branchName === 'fix/module025-external-sow-2026091
 if (module025ExternalMode) (await import('./module025-external-sow-scope.mjs')).verifyModule025ExternalScope();
 const module025EngineMode = branchName === 'fix/module025-durable-engine-20260916';
 if (module025EngineMode) (await import('./module025-engine-scope.mjs')).verifyModule025EngineScope();
-const scopedCompatibilityMode = module025CompleteAcceptanceMode || module025QualificationPolicyMode || module025QualificationMode || module025DiagnosticsMode || module025ExternalMode || module025EngineMode || flowHivePsaControlMode || flowHiveEnterprisePsaMode || sowPhaseMode || customerPublicAnswerMode || flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
+const scopedCompatibilityMode = module025OutputBudgetPreflightMode || module025CompleteAcceptanceMode || module025QualificationPolicyMode || module025QualificationMode || module025DiagnosticsMode || module025ExternalMode || module025EngineMode || flowHivePsaControlMode || flowHiveEnterprisePsaMode || sowPhaseMode || customerPublicAnswerMode || flowHiveRecoveryMode || runtimePreflightMode || sowCpuInferenceMode || sowRuntimeDeadlinesMode || oracleTokenBudgetMode || routedModelReadinessMode || hostnameRecoveryMode || protectedUatRecoveryMode || module064LiveAcceptanceMode || module064DeepSeekAnswerMode || module064PublicGeographyMode || module064SystemwideFailoverMode || plannerLocalEvidenceMode || plannerEvidenceFallbackMode || aiRoutingSowRepairMode || deepSeekProviderMode || systemwideReliabilityMode
   || flowHiveDetailedPlannerCompatibilityMode
   || projectPlanningCollaborationCompatibilityMode
   || sharedProjectDocumentPlanningCompatibilityMode

@@ -95,7 +95,7 @@ internal sealed class Module025ExternalSowAdapter
             PulseAiPrivateRagService.Module025PhaseInstruction(_evidence.PhaseExecution!.Phase)
             + "\nOnly the closed technical specification below is available. Do not infer customer identities, documents, locations, environment topology, commercial values or completion. "
             + "Use generic customer and delivery-team role names. Keep unknown requirements as explicit open questions. Any implementation detail and effort estimate is a proposed plan requiring review.",
-            capsule, Module025GenerationEngine.MaximumOutputTokens, 0.1) { StructuredSowPhase = true };
+            capsule, Module025GenerationEngine.MaximumExternalOutputTokens, 0.1) { StructuredSowPhase = true };
     }
 
     internal bool Validate(string content, string provider, string correlationId,
@@ -105,7 +105,8 @@ internal sealed class Module025ExternalSowAdapter
         ValidationCategory = null;
         ValidationField = null;
         diagnostic = "module025_external_invalid_json";
-        if (content.Length > 96_000) { ValidationCategory = "response_size_limit"; return false; }
+        if (content.Length > Module025GenerationEngine.MaximumPhaseCharacters)
+        { diagnostic = "module025_phase_size_limit_exceeded"; ValidationCategory = "response_size_limit"; return false; }
         try
         {
             using var json = JsonDocument.Parse(content, new JsonDocumentOptions { MaxDepth = 32 });
