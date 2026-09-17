@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using ProjectTime.Api.Ai;
 
@@ -57,6 +58,26 @@ internal static class Module025ExternalSowTests
             Check(!adapter.Validate(json[..^1] + ",\"unexpected\":\"private@example.invalid\"}", "claude", "test", sanitizer, out _),
                 "external_sow_checks_unknown_output_fields_for_private_content");
 
+            var invalidIdentity = JsonNode.Parse(json)!;
+            invalidIdentity["Tasks"]![0]!["Name"] = "Zyxperson Sentinel";
+            var rejected = adapter.ValidateResult(new("claude", "success", invalidIdentity.ToJsonString(), null, null,
+                null, new(20, 600, 620), 200), "test", sanitizer);
+            Check(!rejected.IsSuccess && rejected.Content is null
+                && rejected.SowDiagnostics?.OutputValidationCategory == "unapproved_proper_nouns"
+                && rejected.SowDiagnostics.OutputValidationField == "$.tasks[0].name"
+                && rejected.SowDiagnostics.OutputTextCharacters > 0,
+                "external_sow_rejection_retains_closed_category_field_and_size");
+            Check(!JsonSerializer.Serialize(rejected).Contains("Zyxperson"), "external_sow_diagnostics_never_retain_rejected_text");
+            var unknownField = "{\"private@example.invalid\":\"private@example.invalid\"}";
+            var unknownRejected = adapter.ValidateResult(new("claude", "success", unknownField, null, null, null, null, 200), "test", sanitizer);
+            Check(unknownRejected.SowDiagnostics?.OutputValidationField == "$.unknown_field"
+                && !JsonSerializer.Serialize(unknownRejected).Contains("example.invalid"),
+                "external_sow_diagnostic_path_does_not_echo_unknown_property_names");
+            var knownIdentity = adapter.ValidateResult(new("claude", "success", "{\"Name\":\"Secret Customer\"}",
+                null, null, null, null, 200), "test", sanitizer);
+            Check(knownIdentity.SowDiagnostics?.OutputValidationCategory == "explicit_sensitive_terms",
+                "external_sow_known_identity_is_distinct_from_unknown_proper_noun");
+
             var configuration = new ProjectPulseAiConfiguration();
             foreach (var target in new[] { "claude", "openai" })
             { configuration.ApplyStoredSecret(target, "synthetic-test-only", "test", DateTimeOffset.UtcNow); configuration.ApplyStoredEnabled(target, true); }
@@ -65,7 +86,9 @@ internal static class Module025ExternalSowTests
             await claude.GenerateAsync(request, CancellationToken.None);
             Check(claudeTransport.TokenLimit == 6144 && claudeTransport.Requests == 1, "claude_sow_http_budget_is_6144_not_shared_800");
             claudeTransport.Body = "{\"content\":[{\"type\":\"text\",\"text\":\"{}\"}],\"stop_reason\":\"max_tokens\"}";
-            Check(!(await claude.GenerateAsync(request, CancellationToken.None)).IsSuccess, "claude_truncated_json_cannot_pass");
+            var truncatedClaude = await claude.GenerateAsync(request, CancellationToken.None);
+            Check(!truncatedClaude.IsSuccess && truncatedClaude.SowDiagnostics?.StopReason == "max_tokens"
+                && truncatedClaude.SowDiagnostics.OutputTextCharacters == 2, "claude_truncated_json_cannot_pass");
             claudeTransport.Body = "{\"content\":[{\"type\":\"refusal\"}],\"stop_reason\":\"max_tokens\"}";
             Check((await claude.GenerateAsync(request, CancellationToken.None)).IsRefusal,
                 "claude_refusal_remains_terminal_when_truncated");
@@ -77,6 +100,27 @@ internal static class Module025ExternalSowTests
             var openai = new ProjectPulseOpenAiProvider(openaiTransport, configuration);
             Check(!(await openai.GenerateAsync(request, CancellationToken.None)).IsSuccess && openaiTransport.TokenLimit == 6144,
                 "openai_sow_budget_and_incomplete_response_guard");
+            openaiTransport.Body = """
+                {"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},
+                 "usage":{"input_tokens":120,"output_tokens":6144,"total_tokens":6264,"output_tokens_details":{"reasoning_tokens":6000}},
+                 "output":[{"type":"message","content":[{"type":"output_text","text":"private@example.invalid"}]}]}
+                """;
+            var incomplete = await openai.GenerateAsync(request, CancellationToken.None);
+            Check(!incomplete.IsSuccess && incomplete.Content is null
+                && incomplete.SowDiagnostics?.ResponseStatus == "incomplete"
+                && incomplete.SowDiagnostics.IncompleteReason == "max_output_tokens"
+                && incomplete.SowDiagnostics.OutputTextCharacters == "private@example.invalid".Length
+                && incomplete.Usage?.ReasoningTokens == 6000 && incomplete.Usage.OutputTokens == 6144,
+                "openai_incomplete_reason_and_reasoning_usage_survive_without_partial_output");
+            Check(!JsonSerializer.Serialize(incomplete).Contains("example.invalid"), "openai_incomplete_metadata_excludes_response_text");
+            openaiTransport.Body = """
+                {"status":"private@example.invalid","incomplete_details":{"reason":"private@example.invalid"},
+                 "usage":{"output_tokens_details":{"reasoning_tokens":-1}},"output":[]}
+                """;
+            var unknown = await openai.GenerateAsync(request, CancellationToken.None);
+            Check(unknown.SowDiagnostics?.ResponseStatus == "other" && unknown.SowDiagnostics.IncompleteReason == "other"
+                && unknown.Usage?.ReasoningTokens is null && !JsonSerializer.Serialize(unknown).Contains("example.invalid"),
+                "openai_unknown_protocol_values_are_closed_and_negative_counts_rejected");
             openaiTransport.Body = "{\"status\":\"incomplete\",\"output\":[{\"content\":[{\"type\":\"refusal\"}]}]}";
             Check((await openai.GenerateAsync(request, CancellationToken.None)).IsRefusal,
                 "openai_refusal_remains_terminal_when_incomplete");
@@ -89,7 +133,7 @@ internal static class Module025ExternalSowTests
             // Exercise the real router with synthetic providers. First contract
             // failure must continue to OpenAI without exposing raw source.
             using var store = new CelarAiCapabilityRoutingStore(NullLogger<CelarAiCapabilityRoutingStore>.Instance);
-            var first = new FakeProvider("claude", "{\"tasks\":[]}");
+            var first = new FakeProvider("claude", invalidIdentity.ToJsonString());
             var second = new FakeProvider("openai", json);
             var router = new CelarAiCapabilityRouter(store,
                 new CelarAiPrivateGenerationTarget(openaiTransport, NullLogger<CelarAiPrivateGenerationTarget>.Instance),
@@ -110,6 +154,13 @@ internal static class Module025ExternalSowTests
             Check(events.Where(e => e.Stage == "provider_finished").All(e =>
                     e.InputTokens == 10 && e.OutputTokens == 20 && !string.IsNullOrWhiteSpace(e.RequestedModel)),
                 "external_sow_usage_and_requested_model_are_retained_on_contract_failure_and_success");
+            var failedEvent = events.Single(e => e.Stage == "provider_finished" && e.Provider == "claude");
+            var restoredEvent = JsonSerializer.Deserialize<Module025GenerationProgress>(JsonSerializer.Serialize(failedEvent))!;
+            Check(restoredEvent.OutputCharacters > 0 && restoredEvent.Model == restoredEvent.RequestedModel
+                && restoredEvent.SowDiagnostics?.OutputValidationCategory == "unapproved_proper_nouns"
+                && restoredEvent.SowDiagnostics.OutputValidationField == "$.tasks[0].name",
+                "external_sow_router_and_journal_projection_preserve_failure_metadata");
+            Check(!JsonSerializer.Serialize(events).Contains("Zyxperson"), "external_sow_progress_never_retains_rejected_response");
             Console.WriteLine("MODULE025_EXTERNAL_SOW_TESTS=PASS");
         }
         finally

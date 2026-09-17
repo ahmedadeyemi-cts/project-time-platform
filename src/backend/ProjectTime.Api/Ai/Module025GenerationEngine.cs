@@ -70,7 +70,8 @@ internal sealed record Module025GenerationProgress(
     int OutputCharacters = 0, long ElapsedMilliseconds = 0,
     CelarAiComposeResult? Result = null,
     IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null,
-    long? InputTokens = null, long? OutputTokens = null, string RequestedModel = "");
+    long? InputTokens = null, long? OutputTokens = null, string RequestedModel = "",
+    long? ReasoningTokens = null, Module025ProviderDiagnostics? SowDiagnostics = null);
 
 internal sealed class Module025PhaseExecution(
     string phase, int attempts,
@@ -96,9 +97,10 @@ internal sealed class Module025PhaseExecution(
     internal Task ObserveProviderAsync(ProjectPulseAiProviderResult result, string requestedModel, CancellationToken token) =>
         persist(new("provider_finished", Phase, _provider, _attempts,
             result.Code ?? (result.IsSuccess ? "phase_contract_completed" : "provider_failed"),
-            ElapsedMilliseconds: _elapsed?.ElapsedMilliseconds ?? 0,
-            OutputCharacters: result.Content?.Length ?? 0,
-            InputTokens: result.Usage?.InputTokens, OutputTokens: result.Usage?.OutputTokens, RequestedModel: requestedModel), token);
+            Model: requestedModel, ElapsedMilliseconds: _elapsed?.ElapsedMilliseconds ?? 0,
+            OutputCharacters: result.SowDiagnostics?.OutputTextCharacters ?? result.Content?.Length ?? 0,
+            InputTokens: result.Usage?.InputTokens, OutputTokens: result.Usage?.OutputTokens, RequestedModel: requestedModel,
+            ReasoningTokens: result.Usage?.ReasoningTokens, SowDiagnostics: result.SowDiagnostics), token);
 
     internal Task ObserveAsync(PulseAiPrivateModelResult result, CancellationToken token) =>
         persist(new("provider_completed", Phase, _provider, _attempts,

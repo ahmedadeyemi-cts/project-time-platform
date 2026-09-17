@@ -8,9 +8,11 @@ using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
 using UglyToad.PdfPig;
 
-if (args.Length == 2 && args[0] == "--qualify-sow-provider")
+if (args.Length > 0 && args[0] == "--qualify-sow-provider")
 {
-    await Module025ProviderQualification.RunAsync(args[1]);
+    if (args.Length is < 2 or > 3 || (args.Length == 3 && args[2] != "--use-module064-store"))
+        throw new ArgumentException("Use --qualify-sow-provider claude|openai [--use-module064-store].");
+    await Module025ProviderQualification.RunAsync(args[1], args.Length == 3);
     return;
 }
 

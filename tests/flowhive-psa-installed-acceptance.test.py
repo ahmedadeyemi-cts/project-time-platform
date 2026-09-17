@@ -512,6 +512,11 @@ class SowReviewConfirmationTests(unittest.TestCase):
                     "currentPhase": "Design", "currentProvider": "deepseek", "completedPhases": ["Plan"],
                     "serviceOverview": "PRIVATE_SOURCE_SHOULD_NOT_ESCAPE",
                     "progress": [{"stage": "provider_started", "phase": "Design", "attempt": 1,
+                                  "requestedModel": "approved-test-model", "inputTokens": 120,
+                                  "outputTokens": 6144, "reasoningTokens": 6000,
+                                  "sowDiagnostics": {"responseStatus": "incomplete", "incompleteReason": "max_output_tokens",
+                                      "outputValidationCategory": "unapproved_proper_nouns", "outputValidationField": "$.tasks[0].name",
+                                      "rawResponse": "PRIVATE_RESPONSE_SHOULD_NOT_ESCAPE"},
                                   "result": {"rawDraft": "PRIVATE_DRAFT_SHOULD_NOT_ESCAPE"}}]}, {}
             if "/generations/" in path:
                 return 200, {"terminal": True, "status": "module025_detailed_scope_generated"}, {}
@@ -564,7 +569,12 @@ class SowReviewConfirmationTests(unittest.TestCase):
         self.assertTrue(report["engagementId"] and report["generationId"])
         self.assertEqual(report["lastGenerationState"]["currentPhase"], "Design")
         self.assertEqual(report["lastGenerationState"]["completedPhases"], ["Plan"])
-        self.assertEqual(report["lastGenerationState"]["progress"][0]["attempt"], 1)
+        progress = report["lastGenerationState"]["progress"][0]
+        self.assertEqual(progress["attempt"], 1)
+        self.assertEqual(progress["requestedModel"], "approved-test-model")
+        self.assertEqual((progress["inputTokens"], progress["outputTokens"], progress["reasoningTokens"]), (120, 6144, 6000))
+        self.assertEqual(progress["sowDiagnostics"]["incompleteReason"], "max_output_tokens")
+        self.assertEqual(progress["sowDiagnostics"]["outputValidationField"], "$.tasks[0].name")
         self.assertNotIn("PRIVATE_", json.dumps(report))
         self.assertEqual(sum(path.endswith("/generate") for path, _ in calls), 1)
         self.assertFalse(any(path.endswith("/confirm") for path, _ in calls))

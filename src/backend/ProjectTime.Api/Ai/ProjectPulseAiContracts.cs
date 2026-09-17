@@ -52,7 +52,8 @@ public sealed record ProjectPulseAiGenerationRequest(
 public sealed record ProjectPulseAiUsage(
     long? InputTokens,
     long? OutputTokens,
-    long? TotalTokens);
+    long? TotalTokens,
+    long? ReasoningTokens = null);
 
 public sealed record ProjectPulseAiRateLimits(
     string? RequestsRemaining,
@@ -71,6 +72,8 @@ public sealed record ProjectPulseAiProviderResult(
     int? HttpStatusCode,
     ProjectPulseAiRateLimits? RateLimits = null)
 {
+    public Module025ProviderDiagnostics? SowDiagnostics { get; init; }
+
     public bool IsSuccess =>
         string.Equals(Outcome, ProjectPulseAiOutcomes.Success, StringComparison.Ordinal);
 

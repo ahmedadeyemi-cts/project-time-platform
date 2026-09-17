@@ -184,7 +184,12 @@ def generation_diagnostics(generation):
     result["progress"] = [{key: item[key] for key in (
         "stage", "phase", "provider", "attempt", "diagnosticCode", "model",
         "inputCharacters", "outputCharacters", "elapsedMilliseconds", "targetDecisions",
-    ) if key in item} for item in generation.get("progress", []) if isinstance(item, dict)]
+        "inputTokens", "outputTokens", "reasoningTokens", "requestedModel",
+    ) if key in item} | ({"sowDiagnostics": {key: item["sowDiagnostics"][key] for key in (
+        "responseStatus", "incompleteReason", "stopReason", "outputTextCharacters",
+        "outputValidationCategory", "outputValidationField",
+    ) if key in item["sowDiagnostics"]}} if isinstance(item.get("sowDiagnostics"), dict) else {})
+        for item in generation.get("progress", []) if isinstance(item, dict)]
     return result
 
 

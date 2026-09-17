@@ -47,6 +47,12 @@ internal sealed class Module025ExternalSowAdapter
     private readonly string[] _operations;
     private readonly string[] _facts;
     internal PulseAiPrivateRagAnswer? AcceptedAnswer { get; private set; }
+    internal string? ValidationCategory { get; private set; }
+    internal string? ValidationField { get; private set; }
+    private static readonly IReadOnlyDictionary<string, string> SchemaFields =
+        new[] { typeof(PulseAiPrivateFlowHivePlan), typeof(PulseAiPrivateFlowHiveTask), typeof(PulseAiPrivateFlowHiveMilestone) }
+            .SelectMany(type => type.GetProperties()).Select(property => property.Name).Distinct()
+            .ToDictionary(name => name, name => JsonNamingPolicy.CamelCase.ConvertName(name), StringComparer.OrdinalIgnoreCase);
     private Module025ExternalSowAdapter(CelarAiAuthoritativeScopeEvidence evidence, string[] technologies, string[] operations, string[] facts)
     { _evidence = evidence; _technologies = technologies; _operations = operations; _facts = facts; }
 
@@ -106,19 +112,21 @@ internal sealed class Module025ExternalSowAdapter
         PulseAiEscalationSanitizer sanitizer, out string diagnostic)
     {
         AcceptedAnswer = null;
+        ValidationCategory = null;
+        ValidationField = null;
         diagnostic = "module025_external_invalid_json";
-        if (content.Length > 96_000) return false;
+        if (content.Length > 96_000) { ValidationCategory = "response_size_limit"; return false; }
         try
         {
             using var json = JsonDocument.Parse(content, new JsonDocumentOptions { MaxDepth = 32 });
             // Inspect every string, including unknown properties, before parsing
             // the plan. Inspect values, not JSON field names. Only approved public
             // product terminology is removed from the strict identity check.
-            foreach (var value in Strings(json.RootElement))
+            foreach (var (value, field) in Strings(json.RootElement))
             {
                 if (new[] { _evidence.CustomerName, _evidence.EngagementNumber }.Any(term =>
                     term.Length >= 2 && value.Contains(term, StringComparison.OrdinalIgnoreCase)))
-                { diagnostic = "external_output_identity_validation_failed"; return false; }
+                { diagnostic = "external_output_identity_validation_failed"; ValidationCategory = "explicit_sensitive_terms"; ValidationField = field; return false; }
                 var inspect = value;
                 foreach (var technology in Technologies.Where(item => _technologies.Contains(item.Name)))
                 {
@@ -133,22 +141,45 @@ internal sealed class Module025ExternalSowAdapter
                     "party", RegexOptions.IgnoreCase, RegexBudget);
                 foreach (var word in DeliveryVocabulary)
                     inspect = Regex.Replace(inspect, @"\b" + word + @"\b", word.ToLowerInvariant(), RegexOptions.None, RegexBudget);
-                if (!sanitizer.IsExternalOutputSafe(inspect, [_evidence.CustomerName, _evidence.EngagementNumber], out diagnostic))
-                    return false;
+                if (!sanitizer.IsExternalOutputSafe(inspect, [_evidence.CustomerName, _evidence.EngagementNumber], out diagnostic, out var category))
+                { ValidationCategory = category; ValidationField = field; return false; }
             }
             AcceptedAnswer = PulseAiPrivateRagService.Module025ExternalAnswer(content, _evidence, provider, correlationId);
             diagnostic = "module025_external_phase_validated";
             return true;
         }
-        catch (JsonException) { diagnostic = "module025_external_phase_contract_invalid"; return false; }
+        catch (JsonException) { ValidationCategory = "phase_contract_or_json"; diagnostic = "module025_external_phase_contract_invalid"; return false; }
     }
 
-    private static IEnumerable<string> Strings(JsonElement value)
+    internal ProjectPulseAiProviderResult ValidateResult(ProjectPulseAiProviderResult result,
+        string correlationId, PulseAiEscalationSanitizer sanitizer)
     {
-        if (value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text) yield return text;
-        else if (value.ValueKind == JsonValueKind.Array)
-            foreach (var item in value.EnumerateArray()) foreach (var textValue in Strings(item)) yield return textValue;
-        else if (value.ValueKind == JsonValueKind.Object)
-            foreach (var item in value.EnumerateObject()) foreach (var textValue in Strings(item.Value)) yield return textValue;
+        if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.Content)) return result;
+        if (Validate(result.Content, result.Provider, correlationId, sanitizer, out var diagnostic)) return result;
+        return result with { Outcome = ProjectPulseAiOutcomes.Failure, Content = null, Code = diagnostic,
+            SowDiagnostics = (result.SowDiagnostics ?? new()) with {
+                OutputTextCharacters = result.Content.Length,
+                OutputValidationCategory = ValidationCategory, OutputValidationField = ValidationField } };
     }
+
+    // Paths are reconstructed only from schema names and numeric array indices.
+    // A provider-supplied property name can itself contain private data.
+    private static IEnumerable<(string Value, string Field)> Strings(JsonElement value, string field = "$")
+    {
+        if (value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text) yield return (text, field);
+        else if (value.ValueKind == JsonValueKind.Array)
+        {
+            var index = 0;
+            foreach (var item in value.EnumerateArray())
+            {
+                foreach (var entry in Strings(item, Path(field, $"[{index}]"))) yield return entry;
+                index++;
+            }
+        }
+        else if (value.ValueKind == JsonValueKind.Object)
+            foreach (var item in value.EnumerateObject())
+                foreach (var entry in Strings(item.Value, Path(field,
+                    "." + (SchemaFields.TryGetValue(item.Name, out var name) ? name : "unknown_field")))) yield return entry;
+    }
+    private static string Path(string prefix, string suffix) => prefix.Length + suffix.Length <= 240 ? prefix + suffix : "$.nested_field";
 }

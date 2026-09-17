@@ -2895,10 +2895,9 @@ public sealed class CelarAiCapabilityRouter
 
             if (execution.StructuredSowPhase && result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
             {
-                var phaseDiagnostic = "structured_sow_adapter_unavailable";
-                if (execution.ExternalSow is null || !execution.ExternalSow.Validate(result.Content, target,
-                    execution.CorrelationId, _sanitizer, out phaseDiagnostic))
-                    result = result with { Outcome = ProjectPulseAiOutcomes.Failure, Content = null, Code = phaseDiagnostic };
+                result = execution.ExternalSow is null
+                    ? result with { Outcome = ProjectPulseAiOutcomes.Failure, Content = null, Code = "structured_sow_adapter_unavailable" }
+                    : execution.ExternalSow.ValidateResult(result, execution.CorrelationId, _sanitizer);
             }
             if (execution.StructuredSowPhase && !result.IsSuccess)
                 result = result with { Code = result.Code?.StartsWith("module025_", StringComparison.Ordinal) == true
