@@ -24,7 +24,8 @@ const expected = [
   "tests/FlowHiveDetailedPlannerTests/Program.cs",
   "tests/flowhive-psa-admission.test.mjs",
   "tests/flowhive-psa-installed-acceptance.test.py",
-  "tests/module025-provider-diagnostics-scope.mjs"
+  "tests/module025-provider-diagnostics-scope.mjs",
+  "tests/validate-celar-ai-pr630-consolidated.mjs"
 ];
 function verifyPaths(actual) { assert.deepEqual([...actual].sort(), expected); }
 export function verifyModule025ProviderDiagnosticsScope() {
