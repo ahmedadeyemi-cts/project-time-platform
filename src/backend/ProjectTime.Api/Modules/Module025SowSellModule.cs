@@ -189,7 +189,7 @@ public static partial class Module025SowGsdModule
         context.Response.Headers.CacheControl = "private, no-store";
         context.Response.Headers["X-SOW-Version"] = number.ToString(CultureInfo.InvariantCulture);
         context.Response.Headers["X-Content-SHA256"] = hash;
-        var name = $"{SafeFileName(state.Engagement!.EngagementNumber)}-v{number}-{(sow ? "SOW.docx" : "GSD.xlsx")}";
+        var name = DocumentFileName(state.Engagement!, sow ? "SOW" : "GSD", sow ? ".docx" : ".xlsx");
         return Results.File(bytes, sow ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
     }
@@ -232,7 +232,7 @@ public static partial class Module025SowGsdModule
         var current = state.Engagement!;
         return Results.Ok(new
         {
-            engagementId, current.EngagementNumber, current.CustomerName, current.OwnerDisplayName,
+            engagementId, current.EngagementNumber, current.CustomerName, current.ProjectName, current.OwnerDisplayName,
             current.Revision, current.Status, current.IsActive,
             canWrite = state.Access!.CanWriteOwned(current.OwnerUserId),
             latestVersionId = latest?.VersionId,
