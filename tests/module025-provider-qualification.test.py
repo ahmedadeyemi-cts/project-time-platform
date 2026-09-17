@@ -6,6 +6,7 @@ import io
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import subprocess
@@ -31,6 +32,8 @@ def api_fixture():
         'configuration': {'registries': [{'server': 'testacr.azurecr.io', 'identity': UAMI}], 'secrets': []},
         'template': {'containers': [{'name': 'api', 'image': 'unchanged', 'env': [
             {'name': 'PROJECTPULSE_ENVIRONMENT', 'value': 'test'},
+            {'name': 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION', 'value': 'true'},
+            {'name': 'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED', 'value': 'true'},
             {'name': 'ConnectionStrings__DefaultConnection', 'secretRef': 'database'},
             {'name': 'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY', 'secretRef': 'encryption'},
             {'name': 'PROJECTPULSE_CLAUDE_MODEL', 'value': 'approved-configured-model'},
@@ -97,15 +100,41 @@ class QualificationTest(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(RuntimeError):
                 module.environment_contract(change)
 
-    def exercise(self, *, passed=True, fail_start=False, wrong_owner=False, drift=None):
+    def test_actual_sow_adapter_policy_dependencies_reach_both_provider_jobs(self):
+        adapter = (ROOT / 'src/backend/ProjectTime.Api/Ai/Module025ExternalSowAdapter.cs').read_text()
+        dependencies = set(re.findall(r'Environment.GetEnvironmentVariable\("([A-Z_]+)"\)', adapter))
+        self.assertEqual(dependencies, {
+            'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION',
+            'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED'})
+        for provider in ('claude', 'openai'):
+            env = module.selected_environment(api_fixture(), provider)
+            values = {item['name']: item for item in env}
+            for name in dependencies:
+                self.assertEqual(values[name], {'name': name, 'value': 'true'})
+            module.require_existing_external_policy(env)
+
+    def exercise(self, *, passed=True, fail_start=False, wrong_owner=False, drift=None, policy=None, api_after=None):
         calls, job = [], None
         api = api_fixture()
+        if policy:
+            field, value = policy
+            env = api['properties']['template']['containers'][0]['env']
+            item = next(x for x in env if x['name'] == field)
+            if value is None: env.remove(item)
+            else: item['value'] = value
+        api_reads = 0
         result = {'passed': passed, 'called': True, 'provider': 'claude', 'fullLifecyclePassed': False, 'productionMutation': False}
         def az(*args, **kwargs):
-            nonlocal job
+            nonlocal job, api_reads
             calls.append(args)
             if args[:2] == ('account', 'show'): return {'id': 'sub'}
-            if args[:2] == ('containerapp', 'show'): return copy.deepcopy(api)
+            if args[:2] == ('containerapp', 'show'):
+                api_reads += 1
+                if api_reads > 1 and api_after == 'error': raise RuntimeError('azure_operation_failed_containerapp')
+                response = copy.deepcopy(api)
+                if api_reads > 1 and api_after == 'revision': response['properties']['latestRevisionName'] = 'new-revision'
+                if api_reads > 1 and api_after == 'template': response['properties']['template']['containers'][0]['image'] = 'new-image'
+                return response
             if args[:2] == ('acr', 'build'): return {}
             if args[:3] == ('acr', 'repository', 'show'): return {'digest': 'sha256:' + 'a' * 64}
             if args[:3] == ('containerapp', 'secret', 'list'): return [{'name': 'database', 'value': 'synthetic-db'}, {'name': 'encryption', 'value': 'synthetic-key'}]
@@ -153,6 +182,29 @@ class QualificationTest(unittest.TestCase):
         self.assertEqual(report['executionStatus'], 'Failed')
         self.assertEqual(report['temporaryJobCleanup'], 'verified')
         self.assertEqual(sum(x[:3] == ('containerapp', 'job', 'start') for x in calls), 1)
+
+    def test_missing_or_disabled_inherited_policy_fails_before_any_azure_mutation(self):
+        for name in ('PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION',
+            'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED'):
+            for value in (None, 'false', 'invalid'):
+                with self.subTest(name=name, value=value):
+                    code, report, calls = self.exercise(policy=(name, value))
+                    self.assertEqual(code, 1)
+                    self.assertFalse(report['called'])
+                    self.assertEqual(report['stage'], 'read_test_configuration')
+                    self.assertEqual(report['diagnostic'], 'sanitized_external_policy_missing' if value is None else 'sanitized_external_policy_disabled')
+                    self.assertTrue(report['apiDeploymentUnchanged'])
+                    self.assertTrue(all(x[:2] == ('containerapp', 'show') for x in calls))
+
+    def test_application_read_failure_is_distinct_from_observed_revision_or_template_change(self):
+        for state, diagnostic in [('error', 'azure_operation_failed_containerapp'),
+            ('revision', 'api_revision_changed'), ('template', 'api_template_changed')]:
+            with self.subTest(state=state):
+                code, report, _ = self.exercise(api_after=state)
+                self.assertEqual(code, 1)
+                self.assertEqual(report['apiDeploymentUnchanged'], 'not_verified' if state == 'error' else False)
+                self.assertEqual(report['apiDeploymentVerificationDiagnostic'], diagnostic)
+                self.assertEqual(report['temporaryJobCleanup'], 'verified')
 
     def test_start_failure_cleans_up_without_repeating_start(self):
         code, report, _ = self.exercise(fail_start=True)
