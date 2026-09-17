@@ -60,6 +60,54 @@ internal static class Module025GenerationEngineTests
             && task.AcceptanceCriteria!.Count > 0 && task.ValidationSteps!.Count > 0
             && task.CustomerResponsibilities!.Count > 0 && task.UsSignalResponsibilities!.Count > 0),
             "module025_resume_preserves_full_detail_contract");
+        // Every phase is independently valid, but a provider can reference an
+        // absent, future or self WBS. Replay the persisted phases without any AI
+        // calls: assembly must retain review questions instead of inserting null
+        // into a string array and failing the final JSON contract.
+        var dependencyCheckpoints = Module025GenerationEngine.Phases.Select((phase, index) =>
+        {
+            var result = Result(phase);
+            var plan = result.FlowHivePlan! with { Tasks = result.FlowHivePlan!.Tasks.Select((task, taskIndex) => task with
+            {
+                Wbs = phase == "Design" ? $"D.{taskIndex + 1}" : $"{index + 1}.{taskIndex + 1}",
+                Predecessors = (phase, taskIndex) switch
+                {
+                    ("Plan", 0) => ["1.99", "missing", "1.1", "5.1"],
+                    ("Plan", 1) => ["1.1"],
+                    ("Design", 1) => ["D.1", "1.2"],
+                    ("Implement", 0) => ["D.2"],
+                    _ => []
+                }
+            }).ToArray() };
+            PulseAiPrivateRagService.ValidateModule025Phase(plan, phase, evidence);
+            return new KeyValuePair<string, CelarAiComposeResult>(phase, result with { FlowHivePlan = plan });
+        }).ToDictionary();
+        dependencyCheckpoints = JsonSerializer.Deserialize<Dictionary<string, CelarAiComposeResult>>(
+            JsonSerializer.Serialize(dependencyCheckpoints))!;
+        var dependencyEvents = new List<Module025GenerationProgress>();
+        var dependencyResult = await Module025GenerationEngine.RunAsync(evidence, dependencyCheckpoints,
+            new Dictionary<string, int>(), (_, _) => throw new InvalidOperationException("Retained phases must not regenerate."),
+            (progress, _) => { dependencyEvents.Add(progress); return Task.CompletedTask; }, CancellationToken.None);
+        var dependencyPlan = dependencyResult.FlowHivePlan!;
+        Check(dependencyEvents.Count(progress => progress.Stage == "phase_resumed") == 5
+            && dependencyPlan.Tasks.Count == fixture.Tasks.Count && dependencyResult.SowDraft!.WorkPackages.Count == fixture.Tasks.Count,
+            "module025_dependency_assembly_replays_all_five_checkpoints_without_inference");
+        Check(dependencyEvents.Take(5).All(progress => progress.Stage == "phase_resumed")
+            && dependencyEvents.Skip(5).Select(progress => progress.Stage).SequenceEqual(new[] { "assembly_started", "assembly_completed" })
+            && dependencyEvents.Skip(5).All(progress => progress.Phase == "assembly" && progress.Result is null && progress.Provider.Length == 0),
+            "module025_assembly_progress_distinguishes_finalization_without_exposing_draft_or_claiming_publication");
+        Check(dependencyPlan.Tasks.Single(task => task.Wbs == "1.1").Predecessors.Count == 0
+            && dependencyPlan.OpenQuestions.Count(question => question.Contains("requires PM/Engineering review")) == 4
+            && dependencyPlan.Tasks.All(task => task.Predecessors.All(value => !string.IsNullOrWhiteSpace(value))),
+            "module025_missing_future_and_self_predecessors_become_review_questions_without_nulls");
+        Check(dependencyPlan.Tasks.Single(task => task.Wbs == "1.2").Predecessors.SequenceEqual(new[] { "1.1" })
+            && dependencyPlan.Tasks.Single(task => task.Wbs == "2.2").Predecessors.SequenceEqual(new[] { "2.1", "1.2" })
+            && dependencyPlan.Tasks.Single(task => task.Wbs == "3.1").Predecessors.SequenceEqual(new[] { "2.2" }),
+            "module025_dependency_assembly_preserves_current_fallback_and_prior_phase_references");
+        Check(dependencyPlan.Tasks.Zip(fixture.Tasks).All(pair =>
+            JsonSerializer.Serialize(pair.First with { Wbs = pair.Second.Wbs, Predecessors = pair.Second.Predecessors })
+            == JsonSerializer.Serialize(pair.Second)),
+            "module025_dependency_repair_preserves_all_authored_task_detail");
         // Exercise the real five-phase assembler above the former 96k global
         // ceiling, with full task detail retained in the SOW work packages.
         var expanded = fixture with { Tasks = fixture.Tasks.Select(task => task with {
@@ -181,6 +229,17 @@ internal static class Module025GenerationEngineTests
         var retry = await Journal(Guid.NewGuid()).LoadAsync(CancellationToken.None);
         Check(retry.Checkpoints.ContainsKey("Plan") && retry.Attempts.Count == 0,
             "module025_explicit_retry_reuses_validated_phase_with_new_attempt_budget");
+        foreach (var (phase, checkpoint) in dependencyCheckpoints)
+            await Journal(generationId).PersistAsync(new("phase_completed", phase, "deepseek", Result: checkpoint), CancellationToken.None);
+        var assemblyJournal = Journal(generationId);
+        var assemblyReloaded = await assemblyJournal.LoadAsync(CancellationToken.None);
+        var databaseReplay = await Module025GenerationEngine.RunAsync(evidence, assemblyReloaded.Checkpoints, assemblyReloaded.Attempts,
+            (_, _) => throw new InvalidOperationException("Database checkpoints must not regenerate."),
+            assemblyJournal.PersistAsync, CancellationToken.None);
+        Check(databaseReplay.FlowHivePlan!.Tasks.Count == fixture.Tasks.Count
+            && databaseReplay.FlowHivePlan.Tasks.All(task => task.Predecessors.All(value => !string.IsNullOrWhiteSpace(value)))
+            && (await Journal(generationId).LoadAsync(CancellationToken.None)).Checkpoints.Count == 5,
+            "module025_postgres_replays_all_five_dependency_checkpoints_without_inference_or_losing_saved_phases");
         Check((await Journal(generationId, sourceHash: new string('f', 64)).LoadAsync(CancellationToken.None)).Checkpoints.Count == 0
             && (await Journal(generationId, revision: 2).LoadAsync(CancellationToken.None)).Checkpoints.Count == 0,
             "module025_changed_source_or_revision_cannot_reuse_checkpoint");

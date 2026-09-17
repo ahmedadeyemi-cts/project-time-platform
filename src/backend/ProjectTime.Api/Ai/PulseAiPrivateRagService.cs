@@ -2297,12 +2297,16 @@ public sealed class PulseAiPrivateRagService
                     .ToArray() ?? [];
                 var usesCurrentPhaseConvention = reference.StartsWith(
                     $"{row.PhaseIndex + 1}.", StringComparison.Ordinal);
+                // FirstOrDefault on this value-tuple array returns a non-null
+                // default tuple, even when assigned to a nullable tuple. Test
+                // presence explicitly so missing references reach review and
+                // never become null entries in the final predecessor strings.
                 (PulseAiPrivateFlowHiveTask Task, int PhaseIndex, string SourceWbs, string CanonicalWbs)? target =
                     usesCurrentPhaseConvention
-                        ? currentPhase.FirstOrDefault()
-                        : priorPhases.FirstOrDefault();
+                        ? currentPhase.Length > 0 ? currentPhase[0] : null
+                        : priorPhases.Length > 0 ? priorPhases[0] : null;
                 if (target is null && !usesCurrentPhaseConvention)
-                    target = currentPhase.FirstOrDefault();
+                    target = currentPhase.Length > 0 ? currentPhase[0] : null;
 
                 if (target is null || string.Equals(target.Value.CanonicalWbs, row.CanonicalWbs, StringComparison.Ordinal))
                 {
