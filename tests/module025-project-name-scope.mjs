@@ -22,7 +22,9 @@ const expected = [
   "src/backend/ProjectTime.Api/Modules/Module025SowSellWorker.cs",
   "src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx",
   "src/frontend/project-time-web/src/module025/SowRegister.jsx",
-  "tests/module025-project-name-scope.mjs"
+  "tests/flowhive-psa-admission.test.mjs",
+  "tests/module025-project-name-scope.mjs",
+  "tests/validate-celar-ai-pr630-consolidated.mjs"
 ].sort();
 
 export function verifyModule025ProjectNameScope() {
