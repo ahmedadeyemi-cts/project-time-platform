@@ -5,11 +5,12 @@ import unittest
 from pathlib import Path
 
 import yaml
+from module025_qualification_workflow import deployment_projection
 
 ROOT = Path(__file__).resolve().parents[1]
 PATH = '.github/workflows/projectpulse-deploy-test.yml'
 BASE = 'f1c6451bc1e0681e4338ae57fc06c1bb36b87319'
-CURRENT = yaml.safe_load((ROOT / PATH).read_text())
+CURRENT = deployment_projection(yaml.safe_load((ROOT / PATH).read_text()))
 PREVIOUS = yaml.safe_load(subprocess.check_output(['git', 'show', f'{BASE}:{PATH}'], cwd=ROOT, text=True))
 JOB = CURRENT['jobs']['deploy']
 STEPS = {s['name']: s for s in JOB['steps']}

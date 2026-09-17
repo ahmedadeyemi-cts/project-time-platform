@@ -60,8 +60,8 @@ for (const marker of [
   "action === 'generate'",
   "runAction('confirm'",
   "runAction('reopen'",
-  '/sow.docx',
-  '/gsd.xlsx'
+  "downloadDocument('sow.docx')",
+  "downloadDocument('gsd.xlsx')"
 ]) requireText(editor, marker, `original SOW editor behavior missing: ${marker}`);
 for (const marker of [
   "import SowGsdAuthoringWorkspace from './SowGsdAuthoringWorkspace.jsx';",

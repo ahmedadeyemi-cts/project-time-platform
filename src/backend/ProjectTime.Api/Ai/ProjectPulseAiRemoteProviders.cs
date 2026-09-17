@@ -77,6 +77,7 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
             var usage = ProjectPulseAiHttp.ClaudeUsage(root);
+            var diagnostics = request.StructuredSowPhase ? Module025ProviderDiagnostics.Claude(root) : null;
             var stopReason = ProjectPulseAiHttp.String(root, "stop_reason");
             // Refusal is terminal even when a response is also truncated.
             var containsRefusal = root.TryGetProperty("content", out var refusalContent)
@@ -94,11 +95,11 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
                     requestId,
                     usage,
                     (int)httpResponse.StatusCode,
-                    rateLimits);
+                    rateLimits) { SowDiagnostics = diagnostics };
             }
 
             if (request.StructuredSowPhase && stopReason == "max_tokens")
-                return new(Code, ProjectPulseAiOutcomes.Failure, null, "structured_sow_output_truncated", null, requestId, usage, (int)httpResponse.StatusCode);
+                return new(Code, ProjectPulseAiOutcomes.Failure, null, "structured_sow_output_truncated", null, requestId, usage, (int)httpResponse.StatusCode) { SowDiagnostics = diagnostics };
 
             if (root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
             {
@@ -116,7 +117,7 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
                             requestId,
                             usage,
                             (int)httpResponse.StatusCode,
-                            rateLimits);
+                            rateLimits) { SowDiagnostics = diagnostics };
                     }
 
                     if (string.Equals(type, "text", StringComparison.OrdinalIgnoreCase))
@@ -133,7 +134,7 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
                                 requestId,
                                 usage,
                                 (int)httpResponse.StatusCode,
-                                rateLimits);
+                                rateLimits) { SowDiagnostics = diagnostics };
                         }
                     }
                 }
@@ -147,7 +148,7 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
                 "Claude returned no usable text.",
                 requestId,
                 usage,
-                (int)httpResponse.StatusCode);
+                (int)httpResponse.StatusCode) { SowDiagnostics = diagnostics };
         }
         catch (JsonException)
         {
@@ -293,15 +294,16 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
             var usage = ProjectPulseAiHttp.OpenAiUsage(root);
+            var diagnostics = request.StructuredSowPhase ? Module025ProviderDiagnostics.OpenAi(root) : null;
             // Inspect all content before selecting text or considering fallback.
             if (root.TryGetProperty("output", out var refusalOutput) && refusalOutput.ValueKind == JsonValueKind.Array
                 && refusalOutput.EnumerateArray().Any(item => item.TryGetProperty("content", out var parts)
                     && parts.ValueKind == JsonValueKind.Array && parts.EnumerateArray().Any(part =>
                         string.Equals(ProjectPulseAiHttp.String(part, "type"), "refusal", StringComparison.OrdinalIgnoreCase))))
                 return new(Code, ProjectPulseAiOutcomes.Refusal, null, "openai_safety_refusal",
-                    "OpenAI declined this request under its safety controls.", requestId, usage, (int)httpResponse.StatusCode, rateLimits);
+                    "OpenAI declined this request under its safety controls.", requestId, usage, (int)httpResponse.StatusCode, rateLimits) { SowDiagnostics = diagnostics };
             if (request.StructuredSowPhase && ProjectPulseAiHttp.String(root, "status") != "completed")
-                return new(Code, ProjectPulseAiOutcomes.Failure, null, "structured_sow_response_incomplete", null, requestId, usage, (int)httpResponse.StatusCode);
+                return new(Code, ProjectPulseAiOutcomes.Failure, null, "structured_sow_response_incomplete", null, requestId, usage, (int)httpResponse.StatusCode) { SowDiagnostics = diagnostics };
 
             if (root.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
             {
@@ -323,7 +325,7 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
                                 requestId,
                                 usage,
                                 (int)httpResponse.StatusCode,
-                                rateLimits);
+                                rateLimits) { SowDiagnostics = diagnostics };
                         }
 
                         if (string.Equals(type, "output_text", StringComparison.OrdinalIgnoreCase))
@@ -340,7 +342,7 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
                                     requestId,
                                     usage,
                                     (int)httpResponse.StatusCode,
-                                    rateLimits);
+                                    rateLimits) { SowDiagnostics = diagnostics };
                             }
                         }
                     }
@@ -355,7 +357,7 @@ public sealed class ProjectPulseOpenAiProvider : IProjectPulseAiProvider
                 "OpenAI returned no usable text.",
                 requestId,
                 usage,
-                (int)httpResponse.StatusCode);
+                (int)httpResponse.StatusCode) { SowDiagnostics = diagnostics };
         }
         catch (JsonException)
         {
@@ -577,12 +579,16 @@ internal static class ProjectPulseAiHttp
         var input = Int64(usage, "input_tokens");
         var output = Int64(usage, "output_tokens");
         var total = Int64(usage, "total_tokens") ?? Add(input, output);
-        return new ProjectPulseAiUsage(input, output, total);
+        var reasoning = usage.ValueKind == JsonValueKind.Object
+            && usage.TryGetProperty("output_tokens_details", out var details)
+            ? Int64(details, "reasoning_tokens") : null;
+        return new ProjectPulseAiUsage(input, output, total, reasoning);
     }
 
     private static long? Int64(JsonElement element, string property)
     {
-        return element.TryGetProperty(property, out var value) && value.TryGetInt64(out var result) ? result : null;
+        return element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value)
+            && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var result) && result >= 0 ? result : null;
     }
 
     private static long? Add(long? left, long? right) =>

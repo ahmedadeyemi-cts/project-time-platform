@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""One manually approved Test-only provider call in an isolated temporary job.
+
+Reads the existing API configuration; copies only DB/encryption and the chosen
+cloud provider settings into the job. Never prints secrets, changes the API,
+runs migrations, calls FlowHive, or automatically repeats an inference.
+"""
+import base64
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+import time
+
+API_VERSION = '2024-03-01'
+DB_NAMES = {'ConnectionStrings__DefaultConnection', 'ConnectionStrings__ProjectPulse',
+    'ConnectionStrings__ProjectTime', 'PROJECTPULSE_CONNECTION_STRING', 'PROJECTTIME_DATABASE_CONNECTION',
+    'PROJECTPULSE_DB_CONNECTION', 'PROJECTTIME_DB_CONNECTION',
+    'PTP_DB_HOST', 'PTP_DB_PORT', 'PTP_DB_NAME', 'PTP_DB_USER', 'PTP_DB_PASSWORD'}
+KEY_NAMES = {'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY', 'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_ID',
+    'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_RING'}
+
+
+def require(condition, code):
+    if not condition:
+        raise RuntimeError(code)
+
+
+def az(*args, timeout=90):
+    # Azure diagnostics can contain request payloads. Return only closed errors.
+    result = subprocess.run(['az', *args, '--only-show-errors', '-o', 'json'],
+        capture_output=True, text=True, timeout=timeout, check=False)
+    require(result.returncode == 0, 'azure_operation_failed_' + args[0].replace('-', '_'))
+    if args[:4] == ('containerapp', 'job', 'logs', 'show'):
+        decoder, remaining, entries = json.JSONDecoder(), result.stdout.strip(), []
+        while remaining:
+            value, consumed = decoder.raw_decode(remaining)
+            entries.extend(value if isinstance(value, list) else [value])
+            remaining = remaining[consumed:].lstrip()
+        return entries
+    return json.loads(result.stdout) if result.stdout.strip() else None
+
+
+def selected_environment(api, provider):
+    containers = api['properties']['template']['containers']
+    require(len(containers) == 1, 'single_test_api_container_required')
+    existing = containers[0].get('env', [])
+    values = {item['name']: item for item in existing}
+    require(values.get('PROJECTPULSE_ENVIRONMENT', {}).get('value') == 'test', 'test_api_environment_required')
+    prefix = 'PROJECTPULSE_' + provider.upper() + '_'
+    approved = DB_NAMES | KEY_NAMES | {'PROJECTPULSE_ENVIRONMENT', 'PROJECTPULSE_AI_' + provider.upper() + '_ENABLED'}
+    approved |= {prefix + name for name in ['MODEL', 'ENDPOINT', 'API_VERSION', 'APPROVED_MODELS', 'ORGANIZATION', 'PROJECT']}
+    result = [dict(item) for item in existing if item['name'] in approved]
+    require(any(item['name'] in DB_NAMES for item in result), 'test_database_configuration_missing')
+    require(any(item['name'] in KEY_NAMES - {'PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_ID'} for item in result), 'module064_encryption_configuration_missing')
+    result.append({'name': 'MODULE025_QUALIFICATION_LOG_CHUNKS', 'value': 'true'})
+    return result
+
+
+def build_payload(api, provider, image, name, scope, secrets):
+    env = selected_environment(api, provider)
+    environment_id = api['properties']['managedEnvironmentId']
+    require('/providers/microsoft.app/managedenvironments/' in environment_id.lower(), 'test_network_identity_missing')
+    server = image.split('/')[0]
+    require(re.fullmatch(r'[a-z0-9]+\.azurecr\.io/module025-qualification@sha256:[a-f0-9]{64}', image), 'immutable_qualification_image_required')
+    registries = api['properties']['configuration'].get('registries', [])
+    registry = next((item for item in registries if item.get('server') == server), None)
+    registry_identity = os.environ.get('AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID') or (registry or {}).get('identity', '')
+    require(registry_identity.startswith('/subscriptions/'), 'existing_registry_managed_identity_required')
+    identities = {registry_identity: {}}
+    required_refs = {item['secretRef'] for item in env if item.get('secretRef')}
+    secret_map = {item['name']: item for item in secrets}
+    selected_secrets = []
+    for ref in sorted(required_refs):
+        secret = secret_map.get(ref)
+        require(secret is not None, 'required_test_secret_unavailable')
+        if secret.get('keyVaultUrl') and secret.get('identity', '').startswith('/subscriptions/'):
+            identity = secret.get('identity', '')
+            require(identity.startswith('/subscriptions/'), 'existing_keyvault_managed_identity_required')
+            identities[identity] = {}
+            selected_secrets.append({'name': ref, 'keyVaultUrl': secret['keyVaultUrl'], 'identity': identity})
+        else:
+            require(bool(secret.get('value')), 'required_test_secret_value_unavailable')
+            selected_secrets.append({'name': ref, 'value': secret['value']})
+    existing_ids = {key.lower() for key in api.get('identity', {}).get('userAssignedIdentities', {})}
+    require(all(key.lower() in existing_ids for key in identities), 'identity_must_already_belong_to_test_api')
+    return {'location': api['location'], 'identity': {'type': 'UserAssigned', 'userAssignedIdentities': identities},
+        'tags': {'projectpulse-scope': 'module025-one-phase-test', 'projectpulse-run': scope, 'projectpulse-source': os.environ['GITHUB_SHA']},
+        'properties': {'environmentId': environment_id,
+            'configuration': {'triggerType': 'Manual', 'replicaTimeout': 240, 'replicaRetryLimit': 0,
+                'manualTriggerConfig': {'replicaCompletionCount': 1, 'parallelism': 1},
+                'registries': [{'server': server, 'identity': registry_identity}], 'secrets': selected_secrets},
+            'template': {'containers': [{'name': name, 'image': image,
+                'command': ['dotnet'], 'args': ['FlowHiveDetailedPlannerTests.dll', '--qualify-sow-provider', provider, '--use-module064-store'],
+                'env': env, 'resources': {'cpu': 0.5, 'memory': '1Gi'}}]}}}
+
+
+def verify_job(job, payload):
+    require(job.get('tags') == payload['tags'], 'qualification_job_ownership_mismatch')
+    actual, expected = job['properties'], payload['properties']
+    require(actual['environmentId'].lower() == expected['environmentId'].lower(), 'qualification_job_environment_mismatch')
+    for key in ['triggerType', 'replicaRetryLimit', 'replicaTimeout', 'manualTriggerConfig']:
+        require(actual['configuration'].get(key) == expected['configuration'][key], 'qualification_job_execution_contract_mismatch')
+    containers = actual['template']['containers']
+    require(len(containers) == 1, 'qualification_job_container_mismatch')
+    for key in ['name', 'image', 'command', 'args', 'env']:
+        require(containers[0].get(key) == expected['template']['containers'][0][key], 'qualification_job_container_mismatch')
+
+
+def decode_report(logs):
+    lines = logs if isinstance(logs, list) else [logs]
+    chunks, expected = {}, None
+    for line in lines:
+        message = line.get('Log', line.get('message', '')) if isinstance(line, dict) else str(line)
+        match = re.search(r'MODULE025_QUALIFICATION_CHUNK:(\d+):(\d+):([A-Za-z0-9+/=]+)', message)
+        if not match:
+            continue
+        index, count = int(match[1]), int(match[2])
+        require(1 <= index <= count <= 100, 'invalid_qualification_evidence_size')
+        require(expected is None or expected == count, 'conflicting_qualification_evidence')
+        require(index not in chunks or chunks[index] == match[3], 'conflicting_qualification_chunk')
+        expected = count
+        chunks[index] = match[3]
+    require(expected and len(chunks) == expected, 'qualification_evidence_incomplete')
+    report = json.loads(base64.b64decode(''.join(chunks[i] for i in range(1, expected + 1)), validate=True))
+    require(isinstance(report, dict) and isinstance(report.get('passed'), bool), 'qualification_report_invalid')
+    return report
+
+
+def main():
+    out = Path(os.environ['RUNNER_TEMP']) / 'module025-qualification-evidence'
+    out.mkdir(mode=0o700, exist_ok=True)
+    report = {'passed': False, 'called': False, 'fullLifecyclePassed': False, 'productionMutation': False}
+    payload, attempted, job_uri, api_before = None, False, '', None
+    resource_group = os.environ.get('AZURE_RESOURCE_GROUP', '')
+    api_name = os.environ.get('AZURE_API_APP', '')
+    registry = os.environ.get('AZURE_ACR_NAME', '')
+    provider = os.environ.get('QUALIFICATION_PROVIDER', '')
+    name = ''
+    try:
+        require(os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch' and os.environ.get('GITHUB_REF') == 'refs/heads/main', 'manual_main_only')
+        require(os.environ.get('GITHUB_RUN_ATTEMPT') == '1', 'automatic_repeat_not_allowed')
+        require(provider in ('claude', 'openai'), 'unsupported_provider')
+        require(re.fullmatch(r'[a-zA-Z0-9_-]+', resource_group) and re.fullmatch(r'[a-zA-Z0-9-]+', api_name) and re.fullmatch(r'[a-z0-9]+', registry), 'protected_test_resource_inputs_required')
+        require(re.fullmatch(r'[a-f0-9]{40}', os.environ.get('GITHUB_SHA', '')), 'exact_source_required')
+        scope = os.environ['GITHUB_RUN_ID'] + '-1'
+        require(re.fullmatch(r'\d+-1', scope), 'run_identity_required')
+        name = 'm025q-' + scope
+        api_before = az('containerapp', 'show', '-g', resource_group, '-n', api_name)
+        selected_environment(api_before, provider)  # Fail before the image build if configuration is absent.
+        subscription = az('account', 'show')['id']
+        require(api_before['id'].lower().startswith('/subscriptions/' + subscription.lower() + '/resourcegroups/' + resource_group.lower() + '/'), 'exact_test_resource_required')
+        tag = 'module025-qualification:' + os.environ['GITHUB_SHA'] + '-' + scope
+        az('acr', 'build', '-r', registry, '-t', tag, '--no-logs', str(Path(os.environ['RUNNER_TEMP']) / 'module025-qualification-image'), timeout=480)
+        digest = az('acr', 'repository', 'show', '-n', registry, '--image', tag)['digest']
+        image = registry + '.azurecr.io/module025-qualification@' + digest
+        secret_response = az('containerapp', 'secret', 'list', '-g', resource_group, '-n', api_name, '--show-values')
+        # Azure can put Key Vault references only in the app configuration.
+        secret_map = {item['name']: dict(item) for item in api_before['properties']['configuration'].get('secrets', [])}
+        for item in secret_response:
+            secret_map.setdefault(item['name'], {}).update(item)
+        payload = build_payload(api_before, provider, image, name, scope, list(secret_map.values()))
+        secret_map.clear()
+        secret_response = None
+        existing = az('containerapp', 'job', 'list', '-g', resource_group)
+        require(not any(item['name'] == name for item in existing), 'qualification_job_already_exists')
+        job_uri = f'https://management.azure.com/subscriptions/{subscription}/resourceGroups/{resource_group}/providers/Microsoft.App/jobs/{name}?api-version={API_VERSION}'
+        with tempfile.TemporaryDirectory(prefix='m025q-', dir=os.environ['RUNNER_TEMP']) as directory:
+            file = Path(directory) / 'job.json'
+            file.write_text(json.dumps(payload)); file.chmod(0o600)
+            attempted = True
+            az('rest', '--method', 'put', '--uri', job_uri, '--body', '@' + str(file))
+        # Do not retain plaintext secret values after the job has accepted them.
+        payload['properties']['configuration']['secrets'] = []
+        deadline = time.monotonic() + 120
+        while True:
+            job = az('containerapp', 'job', 'show', '-g', resource_group, '-n', name)
+            verify_job(job, payload)
+            state = job['properties'].get('provisioningState')
+            if state == 'Succeeded': break
+            require(state not in ('Failed', 'Canceled') and time.monotonic() < deadline, 'qualification_job_not_provisioned')
+            time.sleep(5)
+        report['called'] = None  # A lost start response does not prove inference was absent.
+        execution = az('containerapp', 'job', 'start', '-g', resource_group, '-n', name)['name']
+        deadline = time.monotonic() + 300
+        while True:
+            executions = az('containerapp', 'job', 'execution', 'list', '-g', resource_group, '-n', name)
+            state = next((item['properties']['status'] for item in executions if item['name'] == execution), '')
+            if state in ('Succeeded', 'Failed', 'Stopped'): break
+            require(time.monotonic() < deadline, 'qualification_execution_deadline')
+            time.sleep(5)
+        logs = az('containerapp', 'job', 'logs', 'show', '-g', resource_group, '-n', name,
+            '--execution', execution, '--container', name, '--tail', '300')
+        report.update(decode_report(logs))
+        report.update({'sourceSha': os.environ['GITHUB_SHA'], 'qualificationImage': image, 'executionStatus': state})
+        require(report.get('provider') == provider and (not report['passed'] or state == 'Succeeded'), 'qualification_execution_result_mismatch')
+    except Exception as error:
+        report['passed'] = False
+        report['diagnostic'] = str(error) if type(error) is RuntimeError and re.fullmatch(r'[a-z0-9_]{1,100}', str(error)) else 'qualification_infrastructure_' + type(error).__name__
+    finally:
+        if attempted:
+            try:
+                job = az('containerapp', 'job', 'show', '-g', resource_group, '-n', name)
+                verify_job(job, payload)
+                for execution in az('containerapp', 'job', 'execution', 'list', '-g', resource_group, '-n', name):
+                    if execution['properties']['status'] not in ('Succeeded', 'Failed', 'Stopped', 'Canceled'):
+                        az('containerapp', 'job', 'stop', '-g', resource_group, '-n', name, '--job-execution-name', execution['name'])
+                az('containerapp', 'job', 'delete', '-g', resource_group, '-n', name, '--yes')
+                jobs = az('containerapp', 'job', 'list', '-g', resource_group)
+                require(not any(item['name'] == name for item in jobs), 'cleanup_not_verified')
+                report['temporaryJobCleanup'] = 'verified'
+            except Exception:
+                report.update({'passed': False, 'temporaryJobCleanup': 'not_verified'})
+        if api_before:
+            try:
+                after = az('containerapp', 'show', '-g', resource_group, '-n', api_name)
+                unchanged = after['properties']['template'] == api_before['properties']['template'] and after['properties']['latestRevisionName'] == api_before['properties']['latestRevisionName']
+                require(unchanged, 'api_revision_changed')
+                report['apiDeploymentUnchanged'] = True
+            except Exception:
+                report.update({'passed': False, 'apiDeploymentUnchanged': 'not_verified'})
+        (out / 'qualification.json').write_text(json.dumps(report, indent=2) + '\n')
+        print('MODULE025_ONE_PHASE_QUALIFICATION=' + ('PASS' if report['passed'] else 'BLOCKED/FAIL'))
+    return 0 if report['passed'] else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

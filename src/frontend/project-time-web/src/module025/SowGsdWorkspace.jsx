@@ -5,6 +5,12 @@ import './sow-register.css';
 
 export default function SowGsdWorkspace() {
   const [view, setView] = useState('authoring');
+  const [registerEngagementId, setRegisterEngagementId] = useState('');
+  function openRegister(engagementId) {
+    setRegisterEngagementId(engagementId);
+    setView('register');
+    window.requestAnimationFrame(() => document.getElementById('m025-register-tab')?.focus());
+  }
   return (
     <div className="m025-workspace m025-shell">
       <nav className="m025-tabs" aria-label="SOW authoring and retained records" role="tablist">
@@ -16,10 +22,10 @@ export default function SowGsdWorkspace() {
       {/* Keep the existing editor mounted: switching tabs must not discard
           unsaved SA edits or stop its already-running generation status checks. */}
       <div id="m025-authoring-panel" role="tabpanel" aria-labelledby="m025-authoring-tab" hidden={view !== 'authoring'}>
-        <SowGsdAuthoringWorkspace />
+        <SowGsdAuthoringWorkspace onOpenRegister={openRegister} />
       </div>
       <div id="m025-register-panel" role="tabpanel" aria-labelledby="m025-register-tab" hidden={view !== 'register'}>
-        {view === 'register' ? <SowRegister /> : null}
+        {view === 'register' ? <SowRegister initialEngagementId={registerEngagementId} /> : null}
       </div>
     </div>
   );

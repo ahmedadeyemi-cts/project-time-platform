@@ -230,10 +230,15 @@ public sealed class PulseAiEscalationSanitizer
     public bool IsExternalOutputSafe(
         string? content,
         IReadOnlyList<string>? sensitiveTerms,
-        out string decisionCode)
+        out string decisionCode) => IsExternalOutputSafe(content, sensitiveTerms, out decisionCode, out _);
+
+    internal bool IsExternalOutputSafe(string? content, IReadOnlyList<string>? sensitiveTerms,
+        out string decisionCode, out string blockingCategory)
     {
+        blockingCategory = "none";
         if (string.IsNullOrWhiteSpace(content))
         {
+            blockingCategory = "empty_output";
             decisionCode = "external_output_empty";
             return false;
         }
@@ -247,9 +252,9 @@ public sealed class PulseAiEscalationSanitizer
                 AcknowledgePreviewOnly: true),
             executionRequested: false);
 
-        var blockingCategory = inspection.RemovedCategories
-            .FirstOrDefault(OutputBlockingCategories.Contains);
-        if (!string.IsNullOrWhiteSpace(blockingCategory))
+        blockingCategory = inspection.RemovedCategories
+            .FirstOrDefault(OutputBlockingCategories.Contains) ?? "none";
+        if (blockingCategory != "none")
         {
             decisionCode = blockingCategory switch
             {
@@ -265,6 +270,7 @@ public sealed class PulseAiEscalationSanitizer
 
         if (content.Contains("[REDACTED_", StringComparison.OrdinalIgnoreCase))
         {
+            blockingCategory = "redaction_marker";
             decisionCode = "external_output_contains_redaction_marker";
             return false;
         }

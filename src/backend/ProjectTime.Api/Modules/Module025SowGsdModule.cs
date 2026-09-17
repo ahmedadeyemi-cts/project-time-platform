@@ -545,7 +545,7 @@ public static class Module025SowGsdModule
             {
                 item.Stage, item.Phase, item.Provider, item.Attempt, item.DiagnosticCode,
                 item.Model, item.InputCharacters, item.OutputCharacters, item.ElapsedMilliseconds,
-                item.InputTokens, item.OutputTokens, item.RequestedModel,
+                item.InputTokens, item.OutputTokens, item.RequestedModel, item.ReasoningTokens, item.SowDiagnostics,
                 item.TargetDecisions
             }).ToArray(),
             queuedAt = first.CreatedAt,
