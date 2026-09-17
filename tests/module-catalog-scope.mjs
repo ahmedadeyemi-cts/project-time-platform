@@ -9,6 +9,7 @@ const base = '5480149fa33bcd60dd3d9ec30a88667114a301de';
 const expected = [
   ".github/workflows/flowhive-psa-release-control-ci.yml",
   ".github/workflows/module-catalog-consistency-ci.yml",
+  ".github/workflows/module-management-owner-drawer-ci.yml",
   "database/migrations/108_builtin_module_catalog_reconciliation.sql",
   "docs/releases/2026-09-17-module-catalog-consistency.md",
   "scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh",
