@@ -18,6 +18,7 @@ import tempfile
 from unittest.mock import patch
 
 import yaml
+from module025_qualification_workflow import deployment_projection
 from pathlib import Path
 import unittest
 
@@ -50,7 +51,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         cls.planner = PLANNER.read_text()
         cls.resolver = RESOLVER.read_text()
         cls.verification_job = yaml.safe_load(cls.workflow)["jobs"]["verify-installed-release"]
-        cls.deployment_job = yaml.safe_load(cls.deploy)["jobs"]["deploy"]
+        cls.deployment_job = deployment_projection(yaml.safe_load(cls.deploy))["jobs"]["deploy"]
 
     @staticmethod
     def step(job, identifier):

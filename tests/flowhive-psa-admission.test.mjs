@@ -482,6 +482,12 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       '.github/workflows/flowhive-psa-installed-acceptance.yml',
       'scripts/release-test/flowhive-psa-admission.mjs'
     ];
+    if (module025ProviderDiagnostics) {
+      // The qualification-only mode is checked against every original step and
+      // native gate; normal deployment and rollback must remain identical.
+      protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);
+      execFileSync('python3', ['tests/module025-provider-qualification.test.py']);
+    }
     if (module025ScopedDeployment) {
       // Only the acceptance slice changes; dedicated tests enforce native Test
       // protection, exact-main identity, immutable images and fail-closed UAT.
