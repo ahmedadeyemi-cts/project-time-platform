@@ -42,7 +42,7 @@ public static partial class Module025SowGsdModule
                    AND (@until::timestamptz IS NULL OR s.created_at<@until)) AS blocked_count
             FROM module025_sow_gsd_engagements e
             WHERE (@all OR e.owner_user_id=ANY(@owners))
-              AND (@search='' OR e.customer_name ILIKE @pattern OR e.engagement_number ILIKE @pattern OR e.service_overview ILIKE @pattern)
+              AND (@search='' OR e.project_name ILIKE @pattern OR e.customer_name ILIKE @pattern OR e.engagement_number ILIKE @pattern OR e.service_overview ILIKE @pattern)
         ), matched AS (
             SELECT * FROM measured
             WHERE ((@from::timestamptz IS NULL OR created_at>=@from) AND (@until::timestamptz IS NULL OR created_at<@until))
