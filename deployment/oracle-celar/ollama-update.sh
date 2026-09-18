@@ -19,6 +19,7 @@ fail() {
 command -v jq >/dev/null 2>&1 || fail 'jq is required.'
 command -v ollama >/dev/null 2>&1 || fail 'Ollama is not installed.'
 command -v readlink >/dev/null 2>&1 || fail 'readlink is required.'
+command -v tar >/dev/null 2>&1 || fail 'tar is required.'
 [[ -x "$HEALTH_CHECK" ]] || fail 'Celar Oracle health-check.sh is missing.'
 
 LOCK_WAIT_SECONDS="$(jq -r '.runtimeMutationLockWaitSeconds' "$MANIFEST")"
@@ -42,6 +43,15 @@ OLD_VERSION="$(ollama --version 2>/dev/null | awk 'NR == 1 { gsub(/\r/, ""); pri
 ORIGINAL_COMMAND_WAS_SYMLINK=false
 [[ -L "$OLLAMA_COMMAND" ]] && ORIGINAL_COMMAND_WAS_SYMLINK=true
 BACKUP_BINARY="$ROLLBACK_ROOT/ollama-$STAMP"
+BACKUP_RUNTIME="$ROLLBACK_ROOT/ollama-$STAMP.runtime.tar"
+# The upstream Linux installer replaces its libraries and the systemd unit as
+# well as the executable. Preserve both supported installation prefixes and
+# preserve absence, so rollback also removes newly introduced runtime files.
+RUNTIME_PATHS=(
+  /usr/local/lib/ollama
+  /usr/lib/ollama
+  /etc/systemd/system/ollama.service
+)
 declare -A ROLLBACK_ALIAS=()
 ROLLBACK_AVAILABLE=false
 UPDATE_STARTED=false
@@ -115,6 +125,11 @@ rollback() {
       install -m "$OLD_BINARY_MODE" "$BACKUP_BINARY" "$OLLAMA_COMMAND" || rollback_ok=false
     fi
 
+    for runtime_path in "${RUNTIME_PATHS[@]}"; do
+      rm -rf -- "$runtime_path" || rollback_ok=false
+    done
+    tar -xpf "$BACKUP_RUNTIME" -C / || rollback_ok=false
+    systemctl daemon-reload || rollback_ok=false
     systemctl start ollama.service || rollback_ok=false
     sleep 3
     for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
@@ -155,6 +170,18 @@ install -d -m 0700 "$ROLLBACK_ROOT"
 cp --dereference --preserve=mode,timestamps -- "$OLD_BINARY" "$BACKUP_BINARY"
 [[ -f "$BACKUP_BINARY" && ! -L "$BACKUP_BINARY" ]] || fail 'Ollama executable rollback copy is invalid.'
 chmod "$OLD_BINARY_MODE" "$BACKUP_BINARY"
+
+runtime_entries=()
+for runtime_path in "${RUNTIME_PATHS[@]}"; do
+  if [[ -e "$runtime_path" || -L "$runtime_path" ]]; then
+    runtime_entries+=("${runtime_path#/}")
+  fi
+done
+# Do not dereference library/unit symlinks. An empty archive records that none
+# of these paths existed. A failed snapshot exits before the installer runs.
+tar -cpf "$BACKUP_RUNTIME" -C / --files-from /dev/null -- "${runtime_entries[@]}"
+chmod 0600 "$BACKUP_RUNTIME"
+tar -tf "$BACKUP_RUNTIME" >/dev/null
 
 for model in "${GENERATION_MODELS[@]}" "$EMBEDDING_MODEL"; do
   source_name="$(resolve_model_name "$model")"

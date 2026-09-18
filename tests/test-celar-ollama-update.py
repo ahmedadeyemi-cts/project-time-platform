@@ -38,6 +38,12 @@ if command == 'id':
     print('0')
 elif command in ('chown', 'sleep'):
     pass
+elif command == 'tar':
+    if mode == 'runtime_backup_failure' and args[0] == '-cpf':
+        sys.exit(47)
+    if mode == 'runtime_restore_failure' and args[0] == '-xpf':
+        sys.exit(48)
+    os.execv('/usr/bin/tar', ['tar'] + args)
 elif command == 'install':
     clean = []
     while args:
@@ -54,6 +60,9 @@ elif command == 'health-check.sh':
     changed = any(value == 'new' for name, value in read().items() if '-rollback-' not in name)
     if mode == 'health_failure' and changed:
         sys.exit(44)
+    old_engine = '# engine=old' in (root / 'bin/ollama').read_text().splitlines()[-1]
+    if old_engine and (root / 'runtime-state.json').read_text() != json.dumps(runtime_state(), sort_keys=True):
+        sys.exit(49)
 elif command == 'curl':
     if 'https://ollama.com/install.sh' in args:
         if mode == 'download_failure':
@@ -61,10 +70,15 @@ elif command == 'curl':
         destination = Path(args[args.index('--output') + 1])
         installer = ('#!/bin/sh\n'
                      'if [ -L "$CELAR_TEST_ROOT/bin/ollama" ]; then rm "$CELAR_TEST_ROOT/bin/ollama"; fi\n'
-                     'cp "$CELAR_TEST_ROOT/new-engine" "$CELAR_TEST_ROOT/bin/ollama"\n')
+                     'cp "$CELAR_TEST_ROOT/new-engine" "$CELAR_TEST_ROOT/bin/ollama"\n'
+                     'rm -rf "$CELAR_TEST_ROOT/local/lib/ollama" "$CELAR_TEST_ROOT/usr/lib/ollama"\n'
+                     'mkdir -p "$CELAR_TEST_ROOT/local/lib/ollama" "$CELAR_TEST_ROOT/usr/lib/ollama"\n'
+                     'printf new > "$CELAR_TEST_ROOT/local/lib/ollama/libggml.so"\n'
+                     'printf new > "$CELAR_TEST_ROOT/usr/lib/ollama/new-only.so"\n'
+                     'printf new > "$CELAR_TEST_ROOT/systemd/ollama.service"\n')
         if mode == 'term_after_update':
             installer += 'kill -TERM "$PPID"\n'
-        if mode in ('installer_failure', 'rollback_failure', 'rollback_service_failure'):
+        if mode in ('installer_failure', 'rollback_failure', 'rollback_service_failure', 'runtime_restore_failure'):
             installer += 'exit 42\n'
         destination.write_text(installer)
     elif 'http://127.0.0.1:11434/api/version' in args:
@@ -114,14 +128,43 @@ else:
 '''
 
 
+def runtime_state(root):
+    state = {}
+    for relative in ('local/lib/ollama', 'usr/lib/ollama', 'systemd/ollama.service'):
+        path = root / relative
+        if path.is_symlink():
+            state[relative] = {'symlink': os.readlink(path)}
+        elif path.is_file():
+            state[relative] = {'content': path.read_text(), 'mode': path.stat().st_mode & 0o777}
+        elif path.is_dir():
+            state[relative] = {str(p.relative_to(path)): p.read_text() for p in path.rglob('*') if p.is_file()}
+    return state
+
+
+# The mock health probe checks the same runtime files, including preserved absence.
+MOCK = MOCK.replace("if command == 'id':", '''
+def runtime_state():
+    state = {}
+    for relative in ('local/lib/ollama', 'usr/lib/ollama', 'systemd/ollama.service'):
+        path = root / relative
+        if path.is_symlink():
+            state[relative] = {'symlink': os.readlink(path)}
+        elif path.is_file():
+            state[relative] = {'content': path.read_text(), 'mode': path.stat().st_mode & 0o777}
+        elif path.is_dir():
+            state[relative] = {str(p.relative_to(path)): p.read_text() for p in path.rglob('*') if p.is_file()}
+    return state
+if command == 'id':''')
+
+
 class UpdateTransactionTests(unittest.TestCase):
-    def run_update(self, mode='', *, source=None, symlink=False, previous=None):
+    def run_update(self, mode='', *, source=None, symlink=False, previous=None, runtime='present'):
         with tempfile.TemporaryDirectory(prefix='celar-update-test-') as directory:
             root = Path(directory)
             binary_dir = root / 'bin'
             binary_dir.mkdir()
             engine = '#!' + sys.executable + '\n' + MOCK + '\n# engine=old\n'
-            for command in ('ollama', 'id', 'chown', 'sleep', 'install', 'systemctl', 'curl', 'health-check.sh'):
+            for command in ('ollama', 'id', 'chown', 'sleep', 'install', 'systemctl', 'curl', 'health-check.sh', 'tar'):
                 path = binary_dir / command
                 path.write_text(engine)
                 path.chmod(0o755)
@@ -131,6 +174,21 @@ class UpdateTransactionTests(unittest.TestCase):
             new = root / 'new-engine'
             new.write_text(engine.replace('# engine=old', '# engine=new'))
             new.chmod(0o755)
+            (root / 'local/lib').mkdir(parents=True)
+            (root / 'usr/lib').mkdir(parents=True)
+            (root / 'systemd').mkdir()
+            if runtime != 'absent':
+                libraries = root / 'local/lib/ollama'
+                if runtime == 'symlink':
+                    libraries.symlink_to(root / 'original-libraries')
+                    libraries = root / 'original-libraries'
+                libraries.mkdir()
+                (libraries / 'libggml.so').write_text('old')
+                (libraries / 'old-only.so').write_text('old-only')
+                (root / 'systemd/ollama.service').write_text('original service')
+                (root / 'systemd/ollama.service').chmod(0o640)
+            initial_runtime = runtime_state(root)
+            (root / 'runtime-state.json').write_text(json.dumps(initial_runtime, sort_keys=True))
             models = {model: 'old' for model in MODELS}
             if mode == 'missing_model':
                 models.pop('embeddinggemma:latest')
@@ -151,6 +209,9 @@ class UpdateTransactionTests(unittest.TestCase):
                 ('/var/lib/celar-ai', str(root / 'state')),
                 ('/run/celar-runtime-mutation.lock', str(root / 'mutation.lock')),
                 ('/opt/celar-ai/deploy', str(root)),
+                ('/usr/local/lib/ollama', str(root / 'local/lib/ollama')),
+                ('/usr/lib/ollama', str(root / 'usr/lib/ollama')),
+                ('/etc/systemd/system/ollama.service', str(root / 'systemd/ollama.service')),
             ):
                 script = script.replace(old, replacement)
             script_path = root / 'ollama-update.sh'
@@ -166,6 +227,7 @@ class UpdateTransactionTests(unittest.TestCase):
                 'models': json.loads((root / 'models.json').read_text()),
                 'engine_restored': (binary_dir / 'ollama').read_text() == engine,
                 'symlink': (binary_dir / 'ollama').is_symlink(),
+                'runtime_restored': runtime_state(root) == initial_runtime,
                 'output': result.stdout + result.stderr,
             }
 
@@ -192,7 +254,7 @@ class UpdateTransactionTests(unittest.TestCase):
 
     def test_early_failures_are_terminal_without_service_mutation(self):
         for mode, code in (('list_failure', 7), ('copy_failure', 37), ('missing_model', 1),
-                           ('download_failure', 22), ('term_before_update', 143)):
+                           ('download_failure', 22), ('term_before_update', 143), ('runtime_backup_failure', 47)):
             with self.subTest(mode=mode):
                 result = self.run_update(mode)
                 self.assertEqual(result['code'], code, result['output'])
@@ -202,6 +264,7 @@ class UpdateTransactionTests(unittest.TestCase):
                 self.assertFalse(result['status']['rollbackPerformed'])
                 self.assertFalse(any(event[0] == 'systemctl' for event in result['events']))
                 self.assertTrue(result['engine_restored'])
+                self.assertTrue(result['runtime_restored'])
                 self.assertTrue(all(value == 'old' for value in result['models'].values()))
 
     def test_update_failures_restore_engine_models_and_prior_success(self):
@@ -218,11 +281,12 @@ class UpdateTransactionTests(unittest.TestCase):
                     self.assertTrue(result['status']['lastFailedUpdateAt'])
                     self.assertTrue(result['status']['completedAt'])
                     self.assertTrue(result['engine_restored'])
+                    self.assertTrue(result['runtime_restored'])
                     self.assertEqual(result['symlink'], symlink)
                     self.assertTrue(all(result['models'][model] == 'old' for model in MODELS))
 
     def test_failed_rollback_is_not_reported_as_restored(self):
-        for mode in ('rollback_failure', 'rollback_service_failure'):
+        for mode in ('rollback_failure', 'rollback_service_failure', 'runtime_restore_failure'):
             with self.subTest(mode=mode):
                 result = self.run_update(mode)
                 self.assertEqual(result['code'], 42, result['output'])
@@ -230,6 +294,14 @@ class UpdateTransactionTests(unittest.TestCase):
                 self.assertFalse(result['status']['rollbackPerformed'])
                 self.assertTrue(result['status']['completedAt'])
                 self.assertIsNone(result['status']['lastSuccessfulUpdateAt'])
+
+    def test_runtime_restore_preserves_absence_and_library_symlinks(self):
+        for runtime in ('absent', 'symlink'):
+            with self.subTest(runtime=runtime):
+                result = self.run_update('installer_failure', runtime=runtime)
+                self.assertEqual(result['code'], 42, result['output'])
+                self.assertEqual(result['status']['lastResult'], 'rolled_back')
+                self.assertTrue(result['runtime_restored'])
 
 
 if __name__ == '__main__':
