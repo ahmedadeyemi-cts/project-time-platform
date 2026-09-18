@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const base='a82b4c37d13b492e1335798e5fbb1b6f423c6d68';
+const base='3c52a76306a63128dafa777959787b6dedfed5f3';
 const expected=[
   ".github/workflows/module025-protected-uat-control.yml",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
@@ -22,9 +22,12 @@ export function verifyModule025AutoProtectedTestScope(){
   assert.match(supervisor,/acceptance_scope:"sow_role"/);
   assert.match(supervisor,/disabled_manually/);
   assert.match(supervisor,/MODULE025_PROTECTED_UAT_IDLE_ACTIVE_WORKFLOW_RESEALED=true/);
-  assert.match(supervisor,/STALE_ZERO_JOB_RUN/);
-  assert.match(supervisor,/actions\/runs\/\$\{run_id\}\/cancel/);
-  assert.match(supervisor,/queued-zero-job-not-cancelled/);
+  assert.match(supervisor,/QUARANTINED_ZERO_JOB_RUN_ID_2/);
+  assert.match(supervisor,/QUARANTINED_ZERO_JOB_RUN_ID_3/);
+  assert.match(supervisor,/34377182662/);
+  assert.match(supervisor,/34495606530/);
+  assert.match(supervisor,/verify_zero_job_quarantine/);
+  assert.match(supervisor,/MODULE025_PROTECTED_UAT_ZERO_JOB_QUARANTINE/);
   assert.match(supervisor,/Executable Protected-Test deployment already exists/);
   const deploy=fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml','utf8');
   assert.match(deploy,/permissions:\s*[\s\S]*id-token:\s*write[\s\S]*contents:\s*read[\s\S]*actions:\s*read/);
