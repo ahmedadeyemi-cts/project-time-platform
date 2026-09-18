@@ -452,18 +452,36 @@ done
 GENERATION_TOTAL_ELAPSED_SECONDS="$(( $(date +%s) - GENERATION_POLL_STARTED_AT + GENERATE_ELAPSED_SECONDS ))"
 [[ "$GENERATION_TERMINAL" == true ]] \
   || fail 'Module 025 durable generation did not reach a terminal state within 42 minutes or before the authorization cleanup reserve.'
-jq -e --arg id "$GENERATION_ID" '
-  .status == "module025_detailed_scope_generated"
-  and .generationId == $id
-  and .terminal == true
-  and .stateChanged == true
-  and (.targetDecisions | type == "array" and length > 0)
-  and (.targetDecisions[0].Target == "deepseek_v4")
-  and any(.targetDecisions[]; (.Target == "deepseek_v4" or .Target == "celar_ai") and .Outcome == "used" and .ReasonCode == "generation_succeeded")
-  and (.revision | type == "number" and . > 1)
-  and (.correlationId | type == "string" and length > 0)
-' "$GENERATION_RESPONSE" >/dev/null \
-  || fail "Module 025 durable generation finished with status $(jq -r '.status // "not-json"' "$GENERATION_RESPONSE" 2>/dev/null || true): $(jq -r '.message // "no message"' "$GENERATION_RESPONSE" 2>/dev/null || true)"
+# BEGIN MODULE025_TERMINAL_CONTRACT
+# The server owns route eligibility and closed-capsule validation. Its current
+# SOW engine can complete phases with private providers, Claude, or OpenAI.
+# Verify durable phase completion and actual provider use, not an obsolete
+# private-only priority order. Persist only fixed diagnostic codes and providers.
+jq --arg id "$GENERATION_ID" '
+  def allowed_provider: . == "deepseek_v4" or . == "celar_ai" or . == "claude" or . == "openai";
+  def phases: ["Design", "Implement", "Plan", "Release", "Validate"];
+  (.targetDecisions // []) as $decisions
+  | [$decisions[] | select(.Outcome == "used")] as $used
+  | ([$used[] | select((.Target | allowed_provider) and .ReasonCode == "generation_succeeded") | .Target] | unique) as $providers
+  | [.progress[]? | select(.stage == "phase_completed" or .stage == "phase_resumed")] as $completed
+  | {
+      terminal_status: (.status == "module025_detailed_scope_generated"),
+      generation_identity: (.generationId == $id),
+      terminal: (.terminal == true),
+      state_changed: (.stateChanged == true),
+      revision: (.revision | type == "number" and . > 1),
+      correlation: (.correlationId | type == "string" and length > 0),
+      provider_use: (($used | length) > 0 and all($used[]; (.Target | allowed_provider) and .ReasonCode == "generation_succeeded")),
+      completed_phases: ((.completedPhases | type == "array") and ((.completedPhases | sort) == phases)),
+      durable_phases: (([$completed[].phase] | sort) == phases),
+      phase_providers: all($completed[]; .provider as $provider | ($providers | index($provider)) != null)
+    }
+  | {schema:1, passed:all(.[]; . == true), failedChecks:[to_entries[] | select(.value != true) | .key], providers:$providers}
+' "$GENERATION_RESPONSE" > "$EVIDENCE_DIR/module025-generation-contract.json" 2>/dev/null \
+  || fail 'Module 025 terminal evidence is malformed; generation was not accepted.'
+jq -e '.passed == true' "$EVIDENCE_DIR/module025-generation-contract.json" >/dev/null \
+  || fail "Module 025 terminal contract failed: $(jq -r '.failedChecks | join(", ")' "$EVIDENCE_DIR/module025-generation-contract.json")"
+# END MODULE025_TERMINAL_CONTRACT
 GENERATED_REVISION="$(jq -r '.revision' "$GENERATION_RESPONSE")"
 
 READBACK_RESPONSE="$EVIDENCE_DIR/module025-review-ready-readback.json"
@@ -661,6 +679,7 @@ jq -e --arg id "$ENGAGEMENT_ID" '
 
 jq -n \
   --argjson targetDecisions "$(jq -c '.targetDecisions' "$GENERATION_RESPONSE")" \
+  --argjson draftProviders "$(jq -c '.providers' "$EVIDENCE_DIR/module025-generation-contract.json")" \
   --arg identity "$SA_EMAIL" \
   --arg userId "$SA_USER_ID" \
   --arg engagementId "$ENGAGEMENT_ID" \
@@ -693,7 +712,8 @@ jq -n \
     queueStatus:"module025_detailed_scope_generation_queued",
     generateStatus:"module025_detailed_scope_generated",
     targetDecisions:$targetDecisions,
-    draftProvider:([$targetDecisions[] | select((.Target == "deepseek_v4" or .Target == "celar_ai") and .Outcome == "used") | .Target] | first),
+    draftProvider:($draftProviders | first),
+    draftProviders:$draftProviders,
     readbackStatus:"confirmed",
     generatedRevision:$generatedRevision,
     savedEditRevision:$savedEditRevision,

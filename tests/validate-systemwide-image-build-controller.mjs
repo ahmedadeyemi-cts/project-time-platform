@@ -134,6 +134,83 @@ assert.match(module025Uat, /generationQueueElapsedSeconds/);
 assert.match(module025Uat, /generationTotalElapsedSeconds/);
 assert.match(module025Uat, /generationPollAttempts/);
 assert.match(module025Uat, /generationResponseServer/);
+// Execute the exact release gate against the API wire contract. Route changes
+// must not turn a validated external SOW into a false failure, or let a local
+// template, partial document, or failed provider masquerade as generation.
+const terminalGate = module025Uat.split('# BEGIN MODULE025_TERMINAL_CONTRACT\n')[1]
+  ?.split('# END MODULE025_TERMINAL_CONTRACT')[0];
+assert.ok(terminalGate, 'The executable terminal gate must be present');
+const generationId = '11111111-1111-4111-8111-111111111111';
+const phaseNames = ['Plan', 'Design', 'Implement', 'Validate', 'Release'];
+const decision = target => ({Target:target, Outcome:'used', ReasonCode:'generation_succeeded'});
+const terminalResponse = provider => ({
+  status:'module025_detailed_scope_generated', generationId, terminal:true,
+  stateChanged:true, revision:2, correlationId:'synthetic-correlation',
+  targetDecisions:[decision(provider)], completedPhases:phaseNames,
+  progress:phaseNames.map(phase => ({stage:'phase_completed', phase, provider})),
+  message:'PRIVATE_RESPONSE_MUST_NOT_APPEAR_IN_DIAGNOSTICS'
+});
+const terminalDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'module025-terminal-'));
+let terminalScenarios = 0;
+try {
+  function verifyTerminal(response, expectedPass, expectedCheck) {
+    const responsePath = path.join(terminalDirectory, 'response.json');
+    fs.writeFileSync(responsePath, typeof response === 'string' ? response : JSON.stringify(response));
+    const result = spawnSync('bash', ['-c', 'set -Eeuo pipefail\nfail() { echo "ERROR: $*" >&2; exit 1; }\n' + terminalGate], {
+      encoding:'utf8', timeout:5000,
+      env:{PATH:process.env.PATH, GENERATION_ID:generationId,
+        GENERATION_RESPONSE:responsePath, EVIDENCE_DIR:terminalDirectory}
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status === 0, expectedPass, result.stderr);
+    assert.doesNotMatch(result.stderr + result.stdout, /PRIVATE_RESPONSE_MUST_NOT_APPEAR/);
+    if (typeof response !== 'string') {
+      const report = JSON.parse(fs.readFileSync(path.join(terminalDirectory, 'module025-generation-contract.json')));
+      assert.equal(report.passed, expectedPass);
+      if (expectedCheck) assert.ok(report.failedChecks.includes(expectedCheck), JSON.stringify(report));
+      if (expectedPass) assert.deepEqual(report.providers,
+        [...new Set(response.targetDecisions.filter(d => d.Outcome === 'used').map(d => d.Target))].sort());
+    }
+    terminalScenarios++;
+  }
+  for (const provider of ['deepseek_v4', 'celar_ai', 'claude', 'openai'])
+    verifyTerminal(terminalResponse(provider), true);
+  const mixed = terminalResponse('openai');
+  mixed.targetDecisions.unshift({Target:'claude', Outcome:'failed', ReasonCode:'module025_external_phase_contract_invalid'});
+  mixed.targetDecisions.push(decision('celar_ai'));
+  mixed.progress[0] = {stage:'phase_resumed', phase:'Plan', provider:'celar_ai'};
+  verifyTerminal(mixed, true);
+  for (const [check, mutate] of [
+    ['terminal_status', r => {r.status = 'module025_ai_temporarily_unavailable';}],
+    ['generation_identity', r => {r.generationId = 'different-generation';}],
+    ['terminal', r => {r.terminal = false;}],
+    ['state_changed', r => {r.stateChanged = false;}],
+    ['revision', r => {r.revision = 1;}],
+    ['correlation', r => {r.correlationId = '';}],
+    ['provider_use', r => {r.targetDecisions = [];}],
+    ['provider_use', r => {r.targetDecisions[0].Outcome = 'failed';}],
+    ['provider_use', r => {r.targetDecisions[0].ReasonCode = 'local_fallback';}],
+    ['provider_use', r => {r.targetDecisions.push(decision('local'));}],
+    ['provider_use', r => {r.targetDecisions.push(decision('unknown'));}],
+    ['completed_phases', r => {r.completedPhases = phaseNames.slice(0, 4);}],
+    ['completed_phases', r => {r.completedPhases = [...phaseNames, 'Plan'];}],
+    ['durable_phases', r => {r.progress.pop();}],
+    ['durable_phases', r => {r.progress[4].stage = 'phase_failed';}],
+    ['durable_phases', r => {r.progress[4].phase = 'Plan';}],
+    ['phase_providers', r => {r.progress[0].provider = 'local';}],
+    ['phase_providers', r => {r.progress[0].provider = 'claude';}]
+  ]) {
+    const response = terminalResponse('openai');
+    mutate(response);
+    verifyTerminal(response, false, check);
+  }
+  verifyTerminal('{malformed', false);
+} finally {
+  fs.rmSync(terminalDirectory, {recursive:true, force:true});
+}
+assert.match(module025Uat, /draftProvider:\(\$draftProviders \| first\)/);
+assert.match(module025Uat, /draftProviders:\$draftProviders/);
+console.log(`MODULE025_TERMINAL_CONTRACT=PASS scenarios=${terminalScenarios}`);
 assert.match(module025Uat, /seq 1 780/);
 assert.match(module025Uat, /terminal state within 42 minutes/);
 assert.match(module025Uat, /Cisco Unified Communications Manager \(Cisco CallManager \/ CUCM\) from version 14\.0 to version 15\.0/);
