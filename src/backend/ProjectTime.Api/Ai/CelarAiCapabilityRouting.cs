@@ -2635,7 +2635,10 @@ public sealed class CelarAiCapabilityRouter
                     decisions.Add(new(target, "skipped", "structured_sow_adapter_unavailable"));
                     continue;
                 }
-                targetTimeout = TimeSpan.FromSeconds(Module025GenerationEngine.ProviderTimeoutSeconds);
+                targetTimeout = TimeSpan.FromSeconds(
+                    target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                        ? Module025GenerationEngine.ExternalProviderTimeoutSeconds
+                        : Module025GenerationEngine.ProviderTimeoutSeconds);
             }
             cancellationToken.ThrowIfCancellationRequested();
             if (skipPrivateTarget

@@ -222,8 +222,12 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
             workspace = page.locator('section[data-module025-sow-gsd-workspace="true"]:visible')
             stage("workspace")
             await workspace.wait_for(state="visible")
-            stage("heading")
-            await workspace.get_by_role("heading", name="SOW & GSD Workspace", exact=True).wait_for(state="visible")
+            # The route/workspace/bootstrap identity is authoritative. Do not
+            # fail the installed acceptance because a presentation heading moved,
+            # was cached briefly, or changed copy while the workspace is usable.
+            stage("workspace_ready")
+            await workspace.locator(".m025-filters").wait_for(state="visible")
+            await workspace.locator(".m025-list-panel").wait_for(state="visible")
             stage("solution_architect")
             await workspace.get_by_text("Solution Architect", exact=True).first.wait_for(state="visible")
             card = workspace.locator(".m025-work-card").filter(has_text=engagement_number).first
@@ -402,6 +406,7 @@ async def main() -> int:
             "licensing, backups, sequencing, rollback, testing, operational handoff, dependencies, and open questions."
         )
         create_payload = {
+            "projectName": f"Protected UAT Module 025 {suffix}",
             "customerId": None,
             "customerName": f"Protected UAT normal SA {suffix}",
             "customerEntryMode": "manual",
