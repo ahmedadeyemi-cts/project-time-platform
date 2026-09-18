@@ -366,7 +366,12 @@ public static class Module025SowGsdModule
         var current = writable.Engagement!;
         var access = writable.Access!;
         if (current.Status == "confirmed") return StateConflict("confirmed_record", "Reopen this confirmed SOW/GSD before generating a new scope.");
-        if (current.ServiceOverview.Trim().Length < 20) return Results.BadRequest(new { status = "service_overview_required", message = "Enter a meaningful Service Overview before asking Celar AI to build the detailed P/D/I/V/R scope and level of effort." });
+        if (current.CustomerName.Trim().Length == 0) return Results.BadRequest(new { status = "customer_required_for_generation", message = "Select or enter the customer before generating detailed scope." });
+        if (!MeaningfulServiceOverview(current.ServiceOverview)) return Results.BadRequest(new
+        {
+            status = "service_overview_required",
+            message = "Enter a meaningful multi-word Service Overview that identifies the requested technical work, expected outcome, and any known platform/version details before generating scope."
+        });
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using (var generationLock = new NpgsqlCommand(
@@ -626,12 +631,21 @@ public static class Module025SowGsdModule
                         queueCorrelationId,
                         false);
                 }
-                if (current.ServiceOverview.Trim().Length < 20)
+                if (current.CustomerName.Trim().Length == 0)
+                {
+                    return new(
+                        StatusCodes.Status400BadRequest,
+                        "customer_required_for_generation",
+                        "Select or enter the customer before generating detailed scope.",
+                        queueCorrelationId,
+                        false);
+                }
+                if (!MeaningfulServiceOverview(current.ServiceOverview))
                 {
                     return new(
                         StatusCodes.Status400BadRequest,
                         "service_overview_required",
-                        "Enter a meaningful Service Overview before asking Celar AI to build the detailed P/D/I/V/R scope and level of effort.",
+                        "Enter a meaningful multi-word Service Overview that identifies the requested technical work, expected outcome, and any known platform/version details before generating scope.",
                         queueCorrelationId,
                         false);
                 }
@@ -1843,6 +1857,18 @@ public static class Module025SowGsdModule
         var engagement = await LoadEngagementAsync(connection, engagementId, cancellationToken); if (engagement is null) { await connection.DisposeAsync(); return (null, null, null, Results.NotFound(new { status = "module025_engagement_not_found" })); }
         if (!access.CanViewOwned(engagement.OwnerUserId)) { await connection.DisposeAsync(); return (null, null, null, Forbidden("module025_owner_scope")); }
         return (connection, engagement, access, null);
+    }
+
+    private static bool MeaningfulServiceOverview(string? value)
+    {
+        var text = Clean(value, 30_000).Trim();
+        if (text.Length < 20 || !text.Any(char.IsWhiteSpace)) return false;
+        var words = System.Text.RegularExpressions.Regex.Matches(
+            text,
+            @"\b[\p{L}][\p{L}\p{N}/+_.-]{2,}\b",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(200));
+        return words.Count >= 4;
     }
 
     private static string BuildGenerationPrompt(Module025EngagementRow engagement) => $"""
