@@ -165,6 +165,22 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
     exit 1
   }
   node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+elif [[ "$HEAD_BRANCH" == 'fix/module025-register-browser-acceptance-20260918' ]]; then
+  node tests/module025-register-browser-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == 'codex/module019-project-focused-workspace' ]]; then
+  [[ "$PR_NUMBER" == '1090' ]] || fail 'Module 019 scope is registered only for PR #1090.'
+  node tests/module019-release-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == 'fix/module025-fixture-generation-authorization-20260918' ]]; then
+  node tests/module025-worker-authorization-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == 'fix/module025-terminal-provider-evidence-20260918' ]]; then
+  node tests/module025-terminal-provider-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == 'fix/module025-orphan-35374125567-20260918' ]]; then
+  node tests/module025-deployment-startup-recovery.test.mjs --orphan-scope
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/module025-deployment-startup-recovery-20260918' ]]; then
   node tests/module025-deployment-startup-recovery.test.mjs --scope
   node tests/validate-systemwide-image-build-controller.mjs

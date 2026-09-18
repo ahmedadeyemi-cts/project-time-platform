@@ -365,6 +365,10 @@ public static class Module025SowGsdModule
         await using var connection = writable.Connection!;
         var current = writable.Engagement!;
         var access = writable.Access!;
+        var protectedTestUatGrant = access.IsProtectedTestUatRoleFixture
+            ? Module025ProtectedTestUatAccess.CurrentWorkerGrant() : null;
+        if (access.IsProtectedTestUatRoleFixture && protectedTestUatGrant is null)
+            return Forbidden("generate");
         if (current.Status == "confirmed") return StateConflict("confirmed_record", "Reopen this confirmed SOW/GSD before generating a new scope.");
         if (current.CustomerName.Trim().Length == 0) return Results.BadRequest(new { status = "customer_required_for_generation", message = "Select or enter the customer before generating detailed scope." });
         if (!MeaningfulServiceOverview(current.ServiceOverview)) return Results.BadRequest(new
@@ -441,6 +445,7 @@ public static class Module025SowGsdModule
                 access.IsAdministrator,
                 access.IsSolutionArchitect,
                 access.IsProtectedTestUatRoleFixture,
+                protectedTestUatGrant,
                 access.IsManager,
                 expectedRevision = current.Revision,
                 correlationId,
@@ -564,7 +569,19 @@ public static class Module025SowGsdModule
         });
     }
 
-    private static async Task<Module025GenerationExecutionOutcome> ExecuteGenerationAsync(Guid engagementId, int expectedRevision, Guid generationId, Module025AccessContext access, HttpContext context, CancellationToken cancellationToken)
+    internal static bool HasGenerationAuthority(Module025AccessContext access, PulseAiPrivateRagAccess currentAccess,
+        Module025ProtectedTestUatAccess.WorkerGrant? protectedTestUatGrant)
+    {
+        return !access.IsViewAs && access.ActualUserId == access.EffectiveUserId
+                && currentAccess.UserId == access.EffectiveUserId
+                && currentAccess.IsActive && currentAccess.CanSowPlanning
+                && (currentAccess.RoleCodes.Overlaps(SolutionArchitectRoles)
+                    || currentAccess.RoleCodes.Overlaps(AdministratorRoles)
+                    || (access.IsProtectedTestUatRoleFixture && currentAccess.RoleCodes.Contains("MANAGER")
+                        && Module025ProtectedTestUatAccess.MatchesWorkerGrant(protectedTestUatGrant)));
+    }
+
+    private static async Task<Module025GenerationExecutionOutcome> ExecuteGenerationAsync(Guid engagementId, int expectedRevision, Guid generationId, Module025AccessContext access, Module025ProtectedTestUatAccess.WorkerGrant? protectedTestUatGrant, HttpContext context, CancellationToken cancellationToken)
     {
         var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Module025SowGsd");
         var queueCorrelationId = Clean(context.TraceIdentifier, 160);
@@ -668,13 +685,7 @@ public static class Module025SowGsdModule
         {
             var currentAccess = await context.RequestServices.GetRequiredService<PulseAiPrivateRagRepository>()
                 .LoadAccessAsync(access.EffectiveUserId, token);
-            return currentAccess.IsActive && currentAccess.CanSowPlanning
-                && (currentAccess.RoleCodes.Overlaps(SolutionArchitectRoles)
-                    || currentAccess.RoleCodes.Overlaps(AdministratorRoles)
-                    || (access.IsProtectedTestUatRoleFixture && currentAccess.RoleCodes.Contains("MANAGER")
-                        && Environment.GetEnvironmentVariable(Module025ProtectedTestUatAccess.EnabledVariable) == "true"
-                        && long.TryParse(Environment.GetEnvironmentVariable(Module025ProtectedTestUatAccess.ExpiresAtVariable), out var fixtureExpiry)
-                        && fixtureExpiry > DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+            return HasGenerationAuthority(access, currentAccess, protectedTestUatGrant);
         }
 
         CelarAiComposeResult composition;
@@ -722,6 +733,12 @@ public static class Module025SowGsdModule
                 "The saved scope changed or was archived. This generation stopped without changing the draft.",
                 queueCorrelationId, false, "module025_generation_source_changed");
         }
+        catch (UnauthorizedAccessException exception) when (exception.Message == "module025_generation_authority_revoked")
+        {
+            return new(StatusCodes.Status403Forbidden, "module025_forbidden",
+                "Generation authority changed. The saved draft was preserved.",
+                queueCorrelationId, false, "module025_generation_authority_revoked");
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) when (generationDeadline.IsCancellationRequested)
         {
@@ -743,7 +760,8 @@ public static class Module025SowGsdModule
 
         if (!await HasCurrentGenerationAuthorityAsync(cancellationToken))
             return new(StatusCodes.Status403Forbidden, "module025_forbidden",
-                "Generation authority changed. The saved draft was preserved.", queueCorrelationId, false);
+                "Generation authority changed. The saved draft was preserved.", queueCorrelationId, false,
+                "module025_generation_authority_revoked");
         if (generationDeadline.IsCancellationRequested)
             return new(StatusCodes.Status504GatewayTimeout, "module025_ai_temporarily_unavailable",
                 "The generation deadline expired before publication. Validated phases remain saved.",
@@ -1552,6 +1570,25 @@ public static class Module025SowGsdModule
         return value is string displayName ? new PersonSelection(userId, displayName) : new PersonSelection(null, string.Empty);
     }
 
+    internal const string GenerationCandidateSql = """
+            SELECT queued.event_id,queued.engagement_id,queued.actor_user_id,
+                   queued.engagement_revision,queued.evidence_json::text
+            FROM module025_sow_gsd_events queued
+            WHERE queued.event_type='ai_generation_queued'
+              AND (
+                  COALESCE(queued.evidence_json->>'IsProtectedTestUatRoleFixture',
+                           queued.evidence_json->>'isProtectedTestUatRoleFixture','false') <> 'true'
+                  OR (@uat_grant <> 'null' AND queued.evidence_json->'protectedTestUatGrant' = @uat_grant::jsonb))
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM module025_sow_gsd_events terminal
+                  WHERE terminal.engagement_id=queued.engagement_id
+                    AND terminal.event_type IN ('ai_generation_completed','ai_generation_failed','ai_generation_obsolete')
+                    AND terminal.evidence_json->>'generationId'=queued.evidence_json->>'generationId')
+            ORDER BY queued.event_id
+            LIMIT 12;
+            """;
+
     internal static async Task<bool> ProcessNextQueuedGenerationAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         var connectionString = BuildConnectionString();
@@ -1564,24 +1601,13 @@ public static class Module025SowGsdModule
         await lockConnection.OpenAsync(cancellationToken);
         if (!await WorkspaceSchemaReadyAsync(lockConnection, cancellationToken)) return false;
 
-        const string candidateSql = """
-            SELECT queued.event_id,queued.engagement_id,queued.actor_user_id,
-                   queued.engagement_revision,queued.evidence_json::text
-            FROM module025_sow_gsd_events queued
-            WHERE queued.event_type='ai_generation_queued'
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM module025_sow_gsd_events terminal
-                  WHERE terminal.engagement_id=queued.engagement_id
-                    AND terminal.event_type IN ('ai_generation_completed','ai_generation_failed','ai_generation_obsolete')
-                    AND terminal.evidence_json->>'generationId'=queued.evidence_json->>'generationId')
-            ORDER BY queued.event_id
-            LIMIT 12;
-            """;
         var candidates = new List<Module025QueuedGeneration>();
-        await using (var command = new NpgsqlCommand(candidateSql, lockConnection))
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        await using (var command = new NpgsqlCommand(GenerationCandidateSql, lockConnection))
         {
+            // Filter before LIMIT so stale fixture jobs cannot starve ordinary
+            // Solution Architect work on a shared database during revision rollout.
+            command.Parameters.AddWithValue("uat_grant", JsonSerializer.Serialize(Module025ProtectedTestUatAccess.CurrentWorkerGrant()));
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
                 candidates.Add(new Module025QueuedGeneration(
@@ -1595,6 +1621,14 @@ public static class Module025SowGsdModule
 
         foreach (var candidate in candidates)
         {
+            Module025ProtectedTestUatAccess.WorkerGrant? protectedTestUatGrant = null;
+            if (JsonBoolean(candidate.Evidence, "isProtectedTestUatRoleFixture"))
+            {
+                if (!TryJsonProperty(candidate.Evidence, "protectedTestUatGrant", out var grantJson)) continue;
+                try { protectedTestUatGrant = grantJson.Deserialize<Module025ProtectedTestUatAccess.WorkerGrant>(); }
+                catch (JsonException) { continue; }
+                if (!Module025ProtectedTestUatAccess.MatchesWorkerGrant(protectedTestUatGrant)) continue;
+            }
             var generationIdText = JsonString(candidate.Evidence, "generationId");
             if (!Guid.TryParse(generationIdText, out var generationId)) continue;
             if (!await TryLockGenerationAsync(lockConnection, generationId, cancellationToken)) continue;
@@ -1660,6 +1694,7 @@ public static class Module025SowGsdModule
                     candidate.ExpectedRevision,
                     generationId,
                     access,
+                    protectedTestUatGrant,
                     workerContext,
                     cancellationToken);
 
