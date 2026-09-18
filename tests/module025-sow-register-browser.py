@@ -53,6 +53,17 @@ async def verify_report(response, stage: str) -> None:
         fail(f'browser_{stage}_contract_mismatch')
 
 
+async def open_register(page):
+    # The tab is painted before the installed shell has finished loading the
+    # workspace. Use the same real bootstrap-backed readiness as the normal-SA
+    # verifier before selecting it, including after a full page reload.
+    workspace = page.locator('section[data-module025-sow-gsd-workspace="true"]:visible')
+    await workspace.wait_for(state='visible')
+    await workspace.locator('.m025-filters').wait_for(state='visible')
+    await workspace.locator('.m025-list-panel').wait_for(state='visible')
+    await page.get_by_role('tab', name='SOW Register & SELL', exact=True).click()
+
+
 async def run() -> None:
     from playwright.async_api import async_playwright
 
@@ -153,7 +164,7 @@ async def run() -> None:
         page.on('response', observe_response)
         try:
             await page.goto(f'{base}/#sow-generator', wait_until='domcontentloaded', timeout=45_000)
-            await page.get_by_role('tab', name='SOW Register & SELL', exact=True).click()
+            await open_register(page)
             register = page.locator('[data-module025-sow-register="true"]:visible')
             await register.wait_for(state='visible')
             try:
@@ -226,7 +237,7 @@ async def run() -> None:
                 await unauthenticated.dispose()
 
             await page.reload(wait_until='domcontentloaded', timeout=45_000)
-            await page.get_by_role('tab', name='SOW Register & SELL', exact=True).click()
+            await open_register(page)
             await register.get_by_placeholder('Search retained records').fill(engagement_number)
             await register.locator('table').nth(1).get_by_role('button', name=engagement_number, exact=True).click()
             await register.locator('.m025-register-version').first.wait_for(state='visible')

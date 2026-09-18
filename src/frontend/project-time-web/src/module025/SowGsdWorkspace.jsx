@@ -6,6 +6,7 @@ import './sow-register.css';
 export default function SowGsdWorkspace() {
   const [view, setView] = useState('authoring');
   const [registerEngagementId, setRegisterEngagementId] = useState('');
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   function openRegister(engagementId) {
     setRegisterEngagementId(engagementId);
     setView('register');
@@ -17,12 +18,13 @@ export default function SowGsdWorkspace() {
         <button type="button" id="m025-authoring-tab" role="tab" aria-selected={view === 'authoring'} aria-controls="m025-authoring-panel"
           className={view === 'authoring' ? 'is-active' : ''} onClick={() => setView('authoring')}>SOW Authoring</button>
         <button type="button" id="m025-register-tab" role="tab" aria-selected={view === 'register'} aria-controls="m025-register-panel"
+          disabled={!workspaceReady}
           className={view === 'register' ? 'is-active' : ''} onClick={() => setView('register')}>SOW Register &amp; SELL</button>
       </nav>
       {/* Keep the existing editor mounted: switching tabs must not discard
           unsaved SA edits or stop its already-running generation status checks. */}
       <div id="m025-authoring-panel" role="tabpanel" aria-labelledby="m025-authoring-tab" hidden={view !== 'authoring'}>
-        <SowGsdAuthoringWorkspace onOpenRegister={openRegister} />
+        <SowGsdAuthoringWorkspace onOpenRegister={openRegister} onWorkspaceReady={setWorkspaceReady} />
       </div>
       <div id="m025-register-panel" role="tabpanel" aria-labelledby="m025-register-tab" hidden={view !== 'register'}>
         {view === 'register' ? <SowRegister initialEngagementId={registerEngagementId} /> : null}

@@ -246,7 +246,7 @@ function PhaseEditor({ phase, readOnly, onChange }) {
   );
 }
 
-export default function SowGsdWorkspace({ onOpenRegister }) {
+export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   const [bootstrap, setBootstrap] = useState(null);
   const [bootError, setBootError] = useState('');
   const [activeTab, setActiveTab] = useState('active');
@@ -283,6 +283,10 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
   useEffect(() => {
     void loadBootstrap();
   }, [loadBootstrap]);
+
+  useEffect(() => {
+    onWorkspaceReady?.(Boolean(bootstrap));
+  }, [bootstrap, onWorkspaceReady]);
 
   const loadList = useCallback(async () => {
     if (!ownerUserId) return;
