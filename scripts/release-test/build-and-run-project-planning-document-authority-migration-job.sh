@@ -13,7 +13,6 @@ CUSTOMER_SOURCE_MIGRATION_FILE="$ROOT/database/migrations/098_customer_directory
 MODULE025_MIGRATION_FILE="$ROOT/database/migrations/099_module025_sow_gsd_workspace.sql"
 MODULE001B_CATALOG_MIGRATION_FILE="$ROOT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 MODULE025_PROJECT_NAME_MIGRATION_FILE="$ROOT/database/migrations/109_module025_project_name.sql"
-MODULE025_DRAFT_DELETE_MIGRATION_FILE="$ROOT/database/migrations/110_module025_ungenerated_draft_delete.sql"
 MIGRATION_RUNNER="$ROOT/scripts/release-test/run-project-planning-document-authority-migration-job.sh"
 EVIDENCE_ROOT="${EVIDENCE_DIR:-}"
 CONTEXT=""
@@ -43,7 +42,6 @@ trap cleanup EXIT INT TERM
 [[ -s "$MODULE025_MIGRATION_FILE" ]] || fail "Module 025 SOW/GSD migration 099 source is missing."
 [[ -s "$MODULE001B_CATALOG_MIGRATION_FILE" ]] || fail "Module 001B catalog migration 100 source is missing."
 [[ -s "$MODULE025_PROJECT_NAME_MIGRATION_FILE" ]] || fail "Module 025 project name migration 109 source is missing."
-[[ -s "$MODULE025_DRAFT_DELETE_MIGRATION_FILE" ]] || fail "Module 025 draft-delete migration 110 source is missing."
 [[ -s "$MIGRATION_RUNNER" ]] || fail "Migration 096 private-network runner is missing."
 for command_name in az jq mktemp install chmod node; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required."
@@ -61,7 +59,6 @@ install -m 0444 "$MODULE001B_CATALOG_MIGRATION_FILE" "$CONTEXT/database/migratio
 install -m 0444 "$ROOT/database/migrations/101_deepseek_v4_provider.sql" "$CONTEXT/database/migrations/101_deepseek_v4_provider.sql"
 node "$ROOT/scripts/release-test/reconcile-module-catalog.mjs" "$RELEASE_COMMIT" "$CONTEXT/database/migrations/108_builtin_module_catalog_reconciliation.sql"
 install -m 0444 "$MODULE025_PROJECT_NAME_MIGRATION_FILE" "$CONTEXT/database/migrations/109_module025_project_name.sql"
-install -m 0444 "$MODULE025_DRAFT_DELETE_MIGRATION_FILE" "$CONTEXT/database/migrations/110_module025_ungenerated_draft_delete.sql"
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -103,9 +100,6 @@ psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/108_builtin_module_
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/109_module025_project_name.sql"
 [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='module025_sow_gsd_engagements' AND column_name='project_name')")" == t ]] || exit 1
 echo 'MIGRATION_109_MODULE025_PROJECT_NAME=APPLIED_AND_VERIFIED'
-psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/110_module025_ungenerated_draft_delete.sql"
-[[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='110_module025_ungenerated_draft_delete')")" == t ]] || exit 1
-echo 'MIGRATION_110_MODULE025_DRAFT_DELETE=APPLIED_AND_VERIFIED'
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='096_project_planning_document_authority')::text || '|' ||
