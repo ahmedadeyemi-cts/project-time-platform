@@ -30,15 +30,24 @@ public sealed class ProjectPulseClaudeProvider : IProjectPulseAiProvider
         // Claude Sonnet 5 accepts only default sampling behavior. Omitting
         // temperature also keeps the adapter compatible with models that do not
         // expose sampling controls.
-        var payload = JsonSerializer.Serialize(new
+        var fields = new Dictionary<string, object?>
         {
-            model = Provider.Model,
-            max_tokens = request.StructuredSowPhase
+            ["model"] = Provider.Model,
+            ["max_tokens"] = request.StructuredSowPhase
                 ? Math.Min(request.MaxOutputTokens, Module025GenerationEngine.MaximumExternalOutputTokens)
                 : Math.Min(request.MaxOutputTokens, _configuration.MaxOutputTokens),
-            system = request.SystemPrompt,
-            messages = new[] { new { role = "user", content = request.UserPrompt } }
-        });
+            ["system"] = request.SystemPrompt,
+            ["messages"] = new[] { new { role = "user", content = request.UserPrompt } }
+        };
+        if (request.StructuredSowPhase)
+        {
+            if (request.SowPhase is null || !Module025GenerationEngine.Phases.Contains(request.SowPhase))
+                return new(Code, ProjectPulseAiOutcomes.Failure, null, "module025_phase_request_invalid", null, null, null, null);
+            fields["output_config"] = new { format = new {
+                type = "json_schema", schema = Module025PhaseOutputContract.ClaudeSchema(request.SowPhase)
+            } };
+        }
+        var payload = JsonSerializer.Serialize(fields);
 
         var response = await ProjectPulseAiHttp.SendWithRetryAsync(
             _httpClientFactory,

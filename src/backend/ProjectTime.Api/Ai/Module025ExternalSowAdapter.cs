@@ -111,7 +111,9 @@ internal sealed class Module025ExternalSowAdapter
         return new(CelarAiCapabilityCatalog.SowGsdPlanning,
             PulseAiPrivateRagService.Module025PhaseInstruction(_evidence.PhaseExecution!.Phase)
             + "\nOnly the closed technical specification below is available. Do not infer customer identities, documents, locations, environment topology, commercial values or completion. "
-            + "Use generic customer and delivery-team role names. Keep unknown requirements as explicit open questions. Any implementation detail and effort estimate is a proposed plan requiring review.",
+            + "Use generic customer and delivery-team role names. Keep unknown requirements as explicit open questions. Any implementation detail and effort estimate is a proposed plan requiring review. "
+            + "Organize this phase into two to four substantive work packages, grouping related actions into ordered technical steps. Keep each review field concise and task-specific so the complete JSON fits the output budget; do not omit required fields or authorized work. "
+            + "Describe access and integrity prerequisites in ordinary words. Never invent or include actual or sample passwords, keys, tokens, hashes, encoded strings, hostnames, addresses, installation filenames or machine identifiers. Request those values through an approved internal process instead. Avoid long slash-joined or hyphen-joined labels; use normal sentences.",
             capsule, Module025GenerationEngine.MaximumExternalOutputTokens, 0.1) { StructuredSowPhase = true, SowPhase = _evidence.PhaseExecution.Phase };
     }
 

@@ -132,8 +132,8 @@ internal static class Module025GenerationEngineTests
             "module025_full_document_above_96k_preserves_all_detailed_work_packages_without_inference");
         Check(Module025GenerationEngine.MaximumDocumentCharacters >= Module025GenerationEngine.MaximumPhaseCharacters * 5
             && Module025GenerationEngine.MaximumOutputTokens == 6144
-            && Module025GenerationEngine.AttemptsPerPhase == 2 && Module025GenerationEngine.DeadlineSeconds == 1200,
-            "module025_cloud_budget_does_not_reset_private_attempt_or_deadline_controls");
+            && Module025GenerationEngine.AttemptsPerPhase == 4 && Module025GenerationEngine.DeadlineSeconds == 1200,
+            "module025_four_provider_slots_preserve_private_token_and_document_deadline_bounds");
         foreach (var phase in new string?[] { "Plan", null })
         {
             try
@@ -147,7 +147,9 @@ internal static class Module025GenerationEngineTests
         var execution = new Module025PhaseExecution("Plan", 0, Persist);
         Check(await execution.BeforeAttemptAsync("deepseek", CancellationToken.None), "module025_first_attempt_reserved");
         Check(await execution.BeforeAttemptAsync("celar_ai", CancellationToken.None), "module025_second_attempt_reserved");
-        Check(!await execution.BeforeAttemptAsync("deepseek", CancellationToken.None), "module025_attempt_budget_blocks_third_request");
+        Check(await execution.BeforeAttemptAsync("claude", CancellationToken.None), "module025_third_attempt_reserved");
+        Check(await execution.BeforeAttemptAsync("openai", CancellationToken.None), "module025_fourth_attempt_reserved");
+        Check(!await execution.BeforeAttemptAsync("deepseek", CancellationToken.None), "module025_attempt_budget_blocks_fifth_request");
         var restarted = new Module025PhaseExecution("Plan", events.Where(item => item.Stage == "provider_started").Max(item => item.Attempt), Persist);
         Check(!await restarted.BeforeAttemptAsync("deepseek", CancellationToken.None), "module025_restart_cannot_reset_attempt_budget");
 

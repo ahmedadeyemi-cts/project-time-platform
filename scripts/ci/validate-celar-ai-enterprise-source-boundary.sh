@@ -162,6 +162,10 @@ if [[ -n "$DISALLOWED_DATABASE" ]]; then
 fi
 
 PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED" || true)"
+if [[ "$HEAD_BRANCH" == 'fix/module025-phase-provider-recovery-20260918' ]]; then
+  node tests/module025-phase-provider-recovery-scope.mjs
+  PROHIBITED="$(grep -Fvx 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiRemoteProviders.cs' <<<"$PROHIBITED" || true)"
+fi
 if [[ "$HEAD_BRANCH" == 'fix/module025-structured-contract-20260917' ]]; then
   node tests/module025-structured-contract-scope.mjs
   PROHIBITED="$(grep -Fvx 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiRemoteProviders.cs' <<<"$PROHIBITED" || true)"

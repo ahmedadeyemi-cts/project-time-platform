@@ -46,6 +46,33 @@ internal static class Module025PhaseOutputContract
         return Object(plan);
     }
 
+    // Claude's constrained decoder supports the same field/type shape, but
+    // not numeric bounds or array bounds beyond minItems 0/1. Keep the complete
+    // schema in the prompt and enforce every semantic rule after generation.
+    // https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+    internal static JsonObject ClaudeSchema(string phase)
+    {
+        var schema = Schema(phase);
+        Adapt(schema);
+        return schema;
+
+        static void Adapt(JsonObject node)
+        {
+            var descriptions = new List<string>();
+            foreach (var key in new[] { "minimum", "maximum", "exclusiveMinimum", "maxItems", "pattern" })
+                if (node.Remove(key, out var value)) descriptions.Add($"{key}: {value!.ToJsonString()}.");
+            if (node["minItems"] is { } minimum && minimum.GetValue<int>() > 1)
+            {
+                descriptions.Add($"At least {minimum.GetValue<int>()} items are required.");
+                node["minItems"] = 1;
+            }
+            if (descriptions.Count > 0) node["description"] = string.Join(" ", descriptions);
+            if (node["properties"] is JsonObject properties)
+                foreach (var property in properties) Adapt(property.Value!.AsObject());
+            if (node["items"] is JsonObject items) Adapt(items);
+        }
+    }
+
     private static JsonObject Text(int minimum = 1) => new() { ["type"] = "string", ["pattern"] = $"^[\\s\\S]{{{minimum},}}$" };
     private static JsonObject PositiveNumber() => new() { ["type"] = "number", ["exclusiveMinimum"] = 0 };
     private static JsonObject Strings(int minimum = 0) => Array(Text(), minimum);

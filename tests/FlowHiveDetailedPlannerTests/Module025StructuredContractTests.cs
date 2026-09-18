@@ -26,6 +26,26 @@ internal static class Module025StructuredContractTests
                 foreach (var property in task!.AsObject().ToArray())
                     if (property.Value is null) task[property.Key] = new JsonArray();
             var schema = Module025PhaseOutputContract.Schema(phase);
+            var claudeSchema = Module025PhaseOutputContract.ClaudeSchema(phase);
+            Check(SameFields<PulseAiPrivateFlowHivePlan>(claudeSchema)
+                && SameFields<PulseAiPrivateFlowHiveTask>(claudeSchema["properties"]!["tasks"]!["items"]!.AsObject())
+                && SameFields<PulseAiPrivateFlowHiveMilestone>(claudeSchema["properties"]!["milestones"]!["items"]!.AsObject()),
+                "claude_wire_schema_preserves_all_fields_and_types_" + phase);
+            void CheckClaudeConstraints(JsonNode node)
+            {
+                if (node is JsonObject obj)
+                {
+                    Check(!new[] { "minimum", "maximum", "exclusiveMinimum", "maxItems", "pattern" }.Any(obj.ContainsKey)
+                        && (obj["minItems"] is not { } min || min.GetValue<int>() <= 1),
+                        "claude_schema_uses_supported_constraints");
+                    foreach (var child in obj.Select(p => p.Value).Where(v => v is not null)) CheckClaudeConstraints(child!);
+                }
+                else if (node is JsonArray array)
+                    foreach (var child in array.Where(v => v is not null)) CheckClaudeConstraints(child!);
+            }
+            CheckClaudeConstraints(claudeSchema);
+            Check(JsonNode.DeepEquals(schema, Module025PhaseOutputContract.Schema(phase)),
+                "claude_wire_adaptation_does_not_mutate_canonical_validation_schema");
             Check(SameFields<PulseAiPrivateFlowHivePlan>(schema)
                 && SameFields<PulseAiPrivateFlowHiveTask>(schema["properties"]!["tasks"]!["items"]!.AsObject())
                 && SameFields<PulseAiPrivateFlowHiveMilestone>(schema["properties"]!["milestones"]!["items"]!.AsObject()),
