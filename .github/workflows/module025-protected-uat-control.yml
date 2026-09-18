@@ -3,8 +3,20 @@ name: Control Module 025 Protected UAT
 on:
   issue_comment:
     types: [created]
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/module025-protected-uat-control.yml'
+      - '.github/workflows/projectpulse-deploy-test.yml'
+      - 'database/migrations/109_module025_project_name.sql'
+      - 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
+      - 'src/backend/ProjectTime.Api/Modules/Module025*'
+      - 'src/frontend/project-time-web/src/module025/**'
 
-run-name: Deploy and verify Module 025 from PR #${{ github.event.issue.number }}
+run-name: >-
+  ${{ github.event_name == 'push'
+      && format('Auto deploy and verify Module 025 {0}', github.sha)
+      || format('Deploy and verify Module 025 from PR #{0}', github.event.issue.number) }}
 
 permissions:
   actions: write
@@ -19,9 +31,11 @@ concurrency:
 jobs:
   deploy_and_verify:
     if: >-
-      github.event.issue.pull_request &&
-      github.actor == 'ahmedadeyemi-cts' &&
-      startsWith(github.event.comment.body, 'DEPLOY MODULE025 PROTECTED UAT SHA ')
+      github.event_name == 'push' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       github.actor == 'ahmedadeyemi-cts' &&
+       startsWith(github.event.comment.body, 'DEPLOY MODULE025 PROTECTED UAT SHA '))
     runs-on: ubuntu-24.04
     timeout-minutes: 230
     env:
@@ -46,9 +60,13 @@ jobs:
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
-          [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]] \
-            || fail 'The Module 025 deployment command is not exact.'
-          requested_sha="${BASH_REMATCH[1]}"
+          if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
+            requested_sha="$GITHUB_SHA"
+          else
+            [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]] \
+              || fail 'The Module 025 deployment command is not exact.'
+            requested_sha="${BASH_REMATCH[1]}"
+          fi
           actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           [[ "$requested_sha" == "$actual_main" && "$GITHUB_SHA" == "$actual_main" ]] \
             || fail 'The requested release is not exact current main.'
@@ -120,7 +138,14 @@ jobs:
             --arg ref 'main' \
             --arg release_sha "$RELEASE_SHA" \
             --arg release_branch 'main' \
-            '{ref:$ref,inputs:{release_sha:$release_sha,release_branch:$release_branch}}' \
+            '{ref:$ref,inputs:{
+              release_sha:$release_sha,
+              release_branch:$release_branch,
+              acceptance_scope:"sow_role",
+              qualification_provider:"none",
+              recover_private_runtime:"false",
+              admission_controller_sha:""
+            }}' \
             > "$RUNNER_TEMP/module025-protected-uat-dispatch.json"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/dispatches" \
             --input "$RUNNER_TEMP/module025-protected-uat-dispatch.json" >/dev/null
@@ -162,6 +187,7 @@ jobs:
           echo 'PROTECTED_TEST_DEPLOYMENT_WORKFLOW=disabled_manually'
 
       - name: Publish dispatched Protected-Test run
+        if: ${{ github.event_name == 'issue_comment' }}
         shell: bash
         env:
           DEPLOYMENT_RUN_ID: ${{ steps.dispatch.outputs.run_id }}
@@ -229,7 +255,7 @@ jobs:
           echo 'MODULE025_PROTECTED_UAT_FINAL_WORKFLOW_STATE=disabled_manually'
 
       - name: Publish Module 025 Protected-Test result
-        if: always()
+        if: ${{ always() && github.event_name == 'issue_comment' }}
         shell: bash
         env:
           DEPLOYMENT_RUN_ID: ${{ steps.dispatch.outputs.run_id }}

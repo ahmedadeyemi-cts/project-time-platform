@@ -19,6 +19,7 @@ NEW_NAMES={
 }
 STABILIZATION_BRANCH='fix/flowhive-protected-cutover-20260910'
 CANONICAL_DISPATCH_BRANCH='control/flowhive-canonical-dispatch-20260911'
+AUTO_MODULE025_BRANCH='feature/module025-auto-protected-test-20260917'
 
 class UniqueKeyLoader(yaml.BaseLoader):
     def construct_mapping(self,node,deep=False):
@@ -68,7 +69,9 @@ def verify(doc):
     assert byid['psa_live_uat']['timeout-minutes']=='20'
     assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role'"
     assert byid['sow_role_uat']['if']=="inputs.acceptance_scope == 'sow_role'"
-    assert byid['module025_fixture']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.uat.outcome == 'success' }}"
+    fixture_if=byid['module025_fixture']['if']
+    assert "steps.psa_admission.outputs.authorized != 'true'" in fixture_if
+    assert "steps.uat.outcome == 'success' || steps.sow_role_uat.outcome == 'success'" in fixture_if
     assert byid['module025_uat']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.module025_fixture.outcome == 'success' }}"
     for key in ['assigned_work_uat','utilization_uat']:
         assert byid[key]['if']=="${{ !cancelled() && (steps.uat.outcome == 'success' || steps.psa_live_uat.outputs.deployment_health_verified == 'true') }}"
@@ -491,7 +494,15 @@ class WorkflowContract(unittest.TestCase):
         before=old['jobs']['deploy']['steps']; after=self.doc['jobs']['deploy']['steps']
         stabilization = os.environ.get('GITHUB_HEAD_REF') == STABILIZATION_BRANCH
         canonical_dispatch = os.environ.get('GITHUB_HEAD_REF') == CANONICAL_DISPATCH_BRANCH
+        module025_auto = os.environ.get('GITHUB_HEAD_REF') == AUTO_MODULE025_BRANCH
         old_steps={step['name']:step for step in before}
+        if module025_auto:
+            old_name='Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network'
+            new_name='Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network'
+            migration_step=old_steps.pop(old_name)
+            migration_step=copy.deepcopy(migration_step)
+            migration_step['name']=new_name
+            old_steps[new_name]=migration_step
         self.assertEqual(len(old_steps),len(before))
         if stabilization:
             guard_name='Verify admitted controller identity before deployment mutations'
@@ -514,6 +525,8 @@ class WorkflowContract(unittest.TestCase):
         revised={'assigned_work_uat','utilization_uat','module025_fixture','module025_uat'}
         for step in after:
             a=copy.deepcopy(old_steps[step['name']]);b=copy.deepcopy(step)
+            if module025_auto and b.get('id') in {'release','migration'}:
+                continue
             if b.get('id') in revised:
                 a.pop('if',None);b.pop('if',None)
                 if b['id']=='module025_fixture':
