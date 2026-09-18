@@ -13,6 +13,7 @@ const expected = [
   "src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs",
   "tests/FlowHiveDetailedPlannerTests/Module025WorkerAuthorizationTests.cs",
   "tests/FlowHiveDetailedPlannerTests/Program.cs",
+  "tests/flowhive-psa-admission.test.mjs",
   "tests/module025-worker-authorization-scope.mjs"
 ];
 const registrations = {
@@ -34,6 +35,12 @@ for (const [name, registration] of Object.entries(registrations)) {
     assert.throws(() => verifyReadOnlyWorkflow(source.replace('contents: read', 'contents: write'), name));
   }
 }
+const admissionTest = 'tests/flowhive-psa-admission.test.mjs';
+assert.equal(fs.readFileSync(admissionTest, 'utf8'), original(admissionTest)
+  .replace('const module025ReviewTimingDelete =', "const module025WorkerAuthorization = process.env.GITHUB_HEAD_REF === 'fix/module025-fixture-generation-authorization-20260918';\nconst module025ReviewTimingDelete =")
+  .replace('  || module025GenerationCorrection ||', '  || module025WorkerAuthorization || module025GenerationCorrection ||')
+  .replace('const module025VerifierBase = module025ReviewTimingDelete ?', "const module025VerifierBase = module025WorkerAuthorization ? '734aa6d844a2ba2bc89e9f64d759db862ca4db58' : module025ReviewTimingDelete ?"),
+  'Historical admission tests may only register this branch and exact main base');
 for (const name of [
   '.github/workflows/projectpulse-deploy-test.yml', '.github/workflows/projectpulse-deploy-production.yml',
   '.github/workflows/module025-protected-uat-control.yml', '.github/flowhive-psa-protected-test-candidate.json',
@@ -49,4 +56,4 @@ const module = fs.readFileSync('src/backend/ProjectTime.Api/Modules/Module025Sow
 assert.ok(module.indexOf('MatchesWorkerGrant(protectedTestUatGrant)) continue;') < module.indexOf('if (!await TryLockGenerationAsync'),
   'Worker binding must be checked before claiming the job');
 assert.match(module, /catch \(UnauthorizedAccessException exception\) when \(exception.Message == "module025_generation_authority_revoked"\)/);
-console.log('MODULE025_WORKER_AUTHORIZATION_SCOPE=PASS exact_files=8 request_authority=unchanged deployment_authority=unchanged');
+console.log('MODULE025_WORKER_AUTHORIZATION_SCOPE=PASS exact_files=9 request_authority=unchanged deployment_authority=unchanged');
