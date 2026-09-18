@@ -41,7 +41,9 @@ publish_mode() {
 
 if [[ "$HEAD_BRANCH" == 'feature/module025-review-timing-delete-reliability-20260918' ]]; then
   node tests/module025-review-timing-delete-scope.mjs
-  ALLOWED_DATABASE='^database/migrations/110_module025_ungenerated_draft_delete\.sql
+  ALLOWED_DATABASE='^database/migrations/110_module025_ungenerated_draft_delete\.sql$'
+  publish_mode MODULE025_REVIEW_TIMING_DELETE
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-pm-acceptance-contract' ]]; then
   BASE_SHA="$BASE" node tests/validate-flowhive-pm-acceptance-scope.mjs
   publish_mode FLOWHIVE_PSA_RELEASE_CONTROL
   exit 0
