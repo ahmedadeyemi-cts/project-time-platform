@@ -507,6 +507,13 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);
       execFileSync('python3', ['tests/module025-scoped-deploy.test.py']);
     }
+    if (module025AutoProtectedTest) {
+      // This governed branch deliberately updates the Protected Test controller
+      // and supervisor. Its exact scope, sealed-admission behavior, production
+      // isolation and lifecycle UAT dependency are enforced by dedicated tests.
+      protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);
+      execFileSync('node', ['tests/module025-auto-protected-test-scope.mjs']);
+    }
     for (const path of protectedPaths) {
       const baseBytes = execFileSync('git', ['show', `${module025VerifierBase}:${path}`]);
       assert.deepEqual(fs.readFileSync(new URL(`../${path}`, import.meta.url)), baseBytes,
