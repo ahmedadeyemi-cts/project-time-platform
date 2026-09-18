@@ -262,6 +262,7 @@ jobs:
             database/migrations/105_flowhive_reviewed_regeneration.sql \
             database/migrations/106_module025_sow_sell_register.sql \
             database/migrations/107_module_066_operation_authorization_and_raid_actor.sql \
+            database/migrations/109_module025_project_name.sql \
             database/rollback/096_project_planning_document_authority_rollback.sql \
             database/rollback/097_project_planning_identity_safe_admission_rollback.sql \
             database/rollback/103_module_066_flowhive_enterprise_psa_revamp_rollback.sql \
@@ -890,8 +891,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           jq -n --arg api "$API_IMAGE" --arg web "$WEB_IMAGE" --arg migration "$MIGRATION_IMAGE" '{apiImage:$api,webImage:$web,migrationImage:$migration}' > "$EVIDENCE_DIR/immutable-images.json"
 
-      # Compatibility contract: Apply and verify Migrations 086, 088, 093, 094, 095, 096, and 097 inside Test private network.
-      - name: Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network
+      # Compatibility contract: Apply and verify governed system-wide migrations plus Module 025 project-name migration 109 inside Test private network.
+      - name: Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network
         if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
         id: migration
         shell: bash
@@ -923,7 +924,7 @@ jobs:
             PROJECTPULSE_RELEASE_ROOT="$PWD" bash "$GITHUB_WORKSPACE/control/scripts/release-test/build-and-run-flowhive-psa-migrations.sh"
           fi
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
-          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
+          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation","109_module025_project_name"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
         if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
@@ -1832,7 +1833,7 @@ jobs:
 
       - name: Enable exact-run Module 025 protected-Test authorization fixture
         id: module025_fixture
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.uat.outcome == 'success') }}
+        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && steps.psa_admission.outputs.authorized != 'true' && (steps.uat.outcome == 'success' || steps.sow_role_uat.outcome == 'success')) }}
         shell: bash
         working-directory: release
         run: |
