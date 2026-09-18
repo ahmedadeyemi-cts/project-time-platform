@@ -168,6 +168,9 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
 elif [[ "$HEAD_BRANCH" == 'feature/module025-project-name-20260917' ]]; then
   node tests/module025-project-name-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == 'fix/module025-auto-deploy-exact-zero-job-quarantine-20260917' ]]; then
+  node tests/module025-auto-protected-test-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/module025-auto-deploy-stale-zero-job-20260917' ]]; then
   node tests/module025-auto-protected-test-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
