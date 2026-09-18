@@ -82,6 +82,12 @@ function formatTime(value) {
   }
 }
 
+function meaningfulServiceOverview(value) {
+  const text = String(value || '').trim();
+  if (text.length < 20 || !/\s/.test(text)) return false;
+  return text.split(/\s+/).filter((token) => /[A-Za-z]{3}/.test(token)).length >= 4;
+}
+
 function formatDuration(totalSeconds) {
   const seconds = Math.max(0, Number(totalSeconds || 0));
   const whole = Math.floor(seconds);
@@ -560,6 +566,8 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
   const isSpecialGsd = engagement?.customerProgram === 'toyota' || engagement?.customerProgram === 'hyundai';
   const warnings = Array.isArray(engagement?.aiMetadata?.warnings) ? engagement.aiMetadata.warnings : [];
   const missingEvidence = Array.isArray(engagement?.aiMetadata?.missingEvidence) ? engagement.aiMetadata.missingEvidence : [];
+  const generationInputReady = Boolean(String(engagement?.customerName || '').trim())
+    && meaningfulServiceOverview(engagement?.serviceOverview);
   const downloadReady = engagement?.status === 'confirmed' && !dirty && !detailLoading && !actionState.busy;
   const phaseReviewComplete = (engagement?.phases || []).length === 5
     && (engagement?.phases || []).every((phase) => String(phase.objective || '').trim().length > 0);
@@ -793,7 +801,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
                   <div className="m025-generation-control">
                     <Button
                       kind="primary"
-                      disabled={readOnly || actionState.busy === 'generate' || (engagement.serviceOverview || '').trim().length < 20}
+                      disabled={readOnly || actionState.busy === 'generate' || !generationInputReady}
                       onClick={() => runAction('generate', 'Detailed P/D/I/V/R scope generated and ready for review.')}
                     >
                       {actionState.busy === 'generate' ? 'Generating detailed scope…' : engagement.lastGeneratedAt ? 'Regenerate detailed scope' : 'Generate detailed scope'}
@@ -815,6 +823,9 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
                     placeholder="Describe the requested services, platforms, expected outcome, known quantities/versions, locations, constraints, integrations, customer responsibilities, and any known acceptance requirements…"
                   />
                 </Field>
+                {!generationInputReady ? (
+                  <p className="m025-generation-input-help">To generate scope, select a customer and enter a meaningful multi-word Service Overview describing the technical work, expected outcome, and known platform/version details.</p>
+                ) : null}
                 <div className="m025-ai-meta">
                   <span>Last generated: <strong>{formatTime(engagement.lastGeneratedAt)}</strong></span>
                   <span>Confidence: <strong>{generationConfidence(engagement)}</strong></span>
