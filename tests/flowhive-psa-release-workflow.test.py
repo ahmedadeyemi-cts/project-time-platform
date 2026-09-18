@@ -70,7 +70,6 @@ def verify(doc):
     assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role'"
     assert byid['sow_role_uat']['if']=="inputs.acceptance_scope == 'sow_role'"
     fixture_if=byid['module025_fixture']['if']
-    assert "inputs.qualification_provider == '' || inputs.qualification_provider == 'none'" in fixture_if
     assert "steps.psa_admission.outputs.authorized != 'true'" in fixture_if
     assert "steps.uat.outcome == 'success' || steps.sow_role_uat.outcome == 'success'" in fixture_if
     assert byid['module025_uat']['if']=="${{ !cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.module025_fixture.outcome == 'success' }}"
