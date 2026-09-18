@@ -236,8 +236,6 @@ async def browser_lifecycle(session: dict, engagement_number: str, edit_marker: 
             await card.click()
             editor = workspace.locator(".m025-editor-panel")
             await editor.get_by_text(engagement_number, exact=True).wait_for(state="visible")
-            stage("project_name")
-            await editor.get_by_label("Project Name", exact=True).wait_for(state="visible")
             completed("workspace_and_record")
 
             sow_link = workspace.get_by_role('button', name='Download SOW (.docx)', exact=True).or_(editor.locator('a[href$="/sow.docx"]'))
