@@ -4,9 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const base='a2864cb0f9f4bbbcb5b3a0849d07a38852bbdddb';
+const base='a82b4c37d13b492e1335798e5fbb1b6f423c6d68';
 const expected=[
   ".github/workflows/module025-protected-uat-control.yml",
+  "scripts/release-test/validate-protected-test-controller-branches.sh",
   "tests/module025-auto-protected-test-scope.mjs"
 ].sort();
 
@@ -21,7 +22,10 @@ export function verifyModule025AutoProtectedTestScope(){
   assert.match(supervisor,/acceptance_scope:"sow_role"/);
   assert.match(supervisor,/disabled_manually/);
   assert.match(supervisor,/MODULE025_PROTECTED_UAT_IDLE_ACTIVE_WORKFLOW_RESEALED=true/);
-  assert.match(supervisor,/Another executable Protected-Test deployment already exists/);
+  assert.match(supervisor,/STALE_ZERO_JOB_RUN/);
+  assert.match(supervisor,/actions\/runs\/\$\{run_id\}\/cancel/);
+  assert.match(supervisor,/queued-zero-job-not-cancelled/);
+  assert.match(supervisor,/Executable Protected-Test deployment already exists/);
   const deploy=fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml','utf8');
   assert.match(deploy,/permissions:\s*[\s\S]*id-token:\s*write[\s\S]*contents:\s*read[\s\S]*actions:\s*read/);
   assert.match(deploy,/steps\.sow_role_uat\.outcome == 'success'/);

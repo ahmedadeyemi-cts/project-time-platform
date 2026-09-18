@@ -86,14 +86,57 @@ jobs:
 
           workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
           runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
-          active_count="$(jq --argjson quarantined "$QUARANTINED_ZERO_JOB_RUN_ID" '
-            [.workflow_runs[]
-              | select(.id != $quarantined)
-              | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending")
-            ] | length
-          ' <<<"$runs_json")"
-          [[ "$active_count" == 0 ]] \
-            || fail "Another executable Protected-Test deployment already exists (count $active_count)."
+          now_epoch="$(date -u +%s)"
+          blocking_runs=()
+          reconciled_stale_runs=()
+          mapfile -t active_run_ids < <(jq -r --argjson quarantined "$QUARANTINED_ZERO_JOB_RUN_ID" '
+            .workflow_runs[]
+            | select(.id != $quarantined)
+            | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending")
+            | .id
+          ' <<<"$runs_json")
+
+          for run_id in "${active_run_ids[@]}"; do
+            [[ "$run_id" =~ ^[0-9]+$ ]] || continue
+            run_status="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .status' <<<"$runs_json")"
+            run_created_at="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .created_at' <<<"$runs_json")"
+            if [[ "$run_status" == 'queued' ]]; then
+              created_epoch="$(date -u -d "$run_created_at" +%s 2>/dev/null || echo 0)"
+              age_seconds=$(( now_epoch - created_epoch ))
+              if (( created_epoch > 0 && age_seconds >= 1800 )); then
+                job_count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?filter=all&per_page=1" --jq '.total_count')"
+                if [[ "$job_count" == 0 ]]; then
+                  echo "MODULE025_PROTECTED_UAT_STALE_ZERO_JOB_RUN=${run_id} age_seconds=${age_seconds}"
+                  gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel" >/dev/null 2>&1 || true
+                  terminal=false
+                  for cancel_poll in $(seq 1 15); do
+                    run_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.status')"
+                    if [[ "$run_state" == 'completed' ]]; then
+                      terminal=true
+                      break
+                    fi
+                    sleep 2
+                  done
+                  if [[ "$terminal" == true ]]; then
+                    reconciled_stale_runs+=("$run_id")
+                    continue
+                  fi
+                  blocking_runs+=("${run_id}:queued-zero-job-not-cancelled")
+                  continue
+                fi
+              fi
+            fi
+            blocking_runs+=("${run_id}:${run_status}")
+          done
+
+          if (( ${#reconciled_stale_runs[@]} > 0 )); then
+            joined_stale_runs="$(IFS=,; echo "${reconciled_stale_runs[*]}")"
+            echo "MODULE025_PROTECTED_UAT_RECONCILED_STALE_RUNS=$joined_stale_runs"
+          fi
+          if (( ${#blocking_runs[@]} > 0 )); then
+            joined_blocking_runs="$(IFS=,; echo "${blocking_runs[*]}")"
+            fail "Executable Protected-Test deployment already exists: $joined_blocking_runs"
+          fi
 
           case "$workflow_state" in
             disabled_manually)
