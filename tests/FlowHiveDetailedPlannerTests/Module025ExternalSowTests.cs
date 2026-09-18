@@ -183,6 +183,18 @@ internal static class Module025ExternalSowTests
             var claude = new ProjectPulseClaudeProvider(claudeTransport, configuration);
             await claude.GenerateAsync(request, CancellationToken.None);
             Check(claudeTransport.TokenLimit == 12288 && claudeTransport.Requests == 1, "claude_sow_http_budget_is_12288_not_shared_800");
+            var claudeFormat = claudeTransport.LastPayload.GetProperty("output_config").GetProperty("format");
+            Check(claudeFormat.GetProperty("type").GetString() == "json_schema"
+                && JsonNode.DeepEquals(JsonNode.Parse(claudeFormat.GetProperty("schema").GetRawText()), Module025PhaseOutputContract.ClaudeSchema("Plan")),
+                "claude_wire_request_enforces_server_selected_phase_schema");
+            var claudeCalls = claudeTransport.Requests;
+            var invalidClaudePhase = await claude.GenerateAsync(request with { SowPhase = null }, CancellationToken.None);
+            Check(invalidClaudePhase.Code == "module025_phase_request_invalid" && claudeTransport.Requests == claudeCalls,
+                "claude_invalid_phase_rejected_before_spending");
+            await claude.GenerateAsync(request with { StructuredSowPhase = false }, CancellationToken.None);
+            Check(!claudeTransport.LastPayload.TryGetProperty("output_config", out _)
+                && claudeTransport.TokenLimit == configuration.MaxOutputTokens,
+                "claude_non_sow_transport_budget_and_format_unchanged");
             await claude.GenerateAsync(request with { MaxOutputTokens = int.MaxValue }, CancellationToken.None);
             Check(claudeTransport.TokenLimit == 12288, "claude_sow_cannot_exceed_bounded_cloud_allowance");
             claudeTransport.Body = "{\"content\":[{\"type\":\"text\",\"text\":\"{}\"}],\"stop_reason\":\"max_tokens\"}";
@@ -273,6 +285,7 @@ internal static class Module025ExternalSowTests
                 && restoredEvent.SowDiagnostics.OutputValidationField == "$.tasks[0].name",
                 "external_sow_router_and_journal_projection_preserve_failure_metadata");
             Check(!JsonSerializer.Serialize(events).Contains("Zyxperson"), "external_sow_progress_never_retains_rejected_response");
+            await Module025ProviderFallbackTests.RunAsync(fixture, evidence, sanitizer);
             Console.WriteLine("MODULE025_EXTERNAL_SOW_TESTS=PASS");
         }
         finally

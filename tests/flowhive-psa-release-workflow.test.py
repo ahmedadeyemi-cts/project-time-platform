@@ -229,7 +229,12 @@ class WorkflowContract(unittest.TestCase):
             branch_script=ROOT/'scripts/release-test/validate-protected-test-controller-branches.sh'
             if 'source scripts/release-test/validate-protected-test-controller-branches.sh' in controller_script:
                 controller_script += '\n' + branch_script.read_text()
-            self.assertEqual(controller_script.count('"$PR_NUMBER"'), 2)
+            self.assertEqual([line.strip() for line in controller_script.splitlines() if '"$PR_NUMBER"' in line], [
+                "[[ \"$PR_NUMBER\" == '1090' ]] || fail 'Module 019 scope is registered only for PR #1090.'",
+                "elif [[ \"$PR_NUMBER\" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then",
+                "elif [[ \"$PR_NUMBER\" == '777' ]]; then",
+            ] if 'source scripts/release-test/validate-protected-test-controller-branches.sh' in controller_script
+                else ['[[ "$PR_NUMBER" == "$PR_NUMBER" ]]'])
             self.assertNotIn('${{', controller_script)
             subprocess.run(['bash','-n'], input=controller_script, text=True, check=True, capture_output=True)
         for body in ['x'*21001, 'x'*19000+'${{ github.event.pull_request.number }}']:
