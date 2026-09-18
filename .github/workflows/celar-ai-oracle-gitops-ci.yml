@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'deployment/oracle-celar/**'
+      - 'tests/test-celar-ollama-update.py'
       - '.github/workflows/celar-ai-oracle-gitops-ci.yml'
       - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
   workflow_dispatch:
@@ -36,6 +37,7 @@ jobs:
           python3 -m py_compile deployment/oracle-celar/gateway/gateway.py deployment/oracle-celar/gateway/wsgi.py
           python3 tests/test-celar-sow-runtime-deadlines.py
           python3 tests/test-ollama-memory-policy.py
+          python3 tests/test-celar-ollama-update.py
           python3 tests/test-celar-runtime-evidence.py
           jq -e '
             .schema == 1 and

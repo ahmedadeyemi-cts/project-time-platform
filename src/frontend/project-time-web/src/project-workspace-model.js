@@ -18,12 +18,13 @@ export function workOptions(data = {}) {
   return [...projects, ...requests].sort((a, b) => `${a.customer} ${a.code}`.localeCompare(`${b.customer} ${b.code}`));
 }
 
-export function documentsForWork(documents, work) {
+export function documentsForWork(documents, work, requests = []) {
   if (!work) return [];
+  const intakeIds = new Set(requests.filter(request => request.projectId === work.id).map(request => request.projectIntakeRequestId).filter(Boolean));
   const unique = new Map();
   for (const document of documents || []) {
     const matches = work.kind === 'project'
-      ? document.projectId === work.id
+      ? document.projectId === work.id || (!document.projectId && intakeIds.has(document.projectIntakeRequestId))
       : work.id && document.projectIntakeRequestId === work.id;
     if (matches) unique.set(document.id, document);
   }

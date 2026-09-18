@@ -30,3 +30,12 @@ test('missing project totals remain unknown instead of becoming zero', () => {
 test('zero allocation is explained separately from a confirmed budget overrun', () => {
   assert.match(hourExplanation({ assigned: 0, logged: 3, remaining: -3 }), /no current hours are allocated/);
 });
+
+test('project documents include explicitly linked intake files without matching names or conflicting project IDs', () => {
+  const files = [
+    { id: 'linked', projectIntakeRequestId: 'i1' },
+    { id: 'unrelated', projectIntakeRequestId: 'i2', projectCode: 'P1' },
+    { id: 'conflicting', projectIntakeRequestId: 'i1', projectId: 'p2' }
+  ];
+  assert.deepEqual(documentsForWork(files, { kind: 'project', id: 'p1' }, [{ projectId: 'p1', projectIntakeRequestId: 'i1' }]).map(file => file.id), ['linked']);
+});

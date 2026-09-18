@@ -90,9 +90,15 @@ assert status == 502
 assert ns['_budgets']('TEST_UNSET_BUDGET', [3000]*3, 3, 3600, shared_deadline=True) == [3000]*3
 print('CELAR_SOW_RUNTIME_DEADLINES=PASS')
 
-# The coupled runtime gate must also run on manual and squash/rebase rollouts.
+# The coupled runtime gate must run whenever normal API image building runs,
+# including manual and squash/rebase rollouts. The existing qualification-only
+# mode skips both steps and does not install an API release.
+from module025_qualification_workflow import GATE
 controller = (root / '.github/workflows/projectpulse-deploy-test.yml').read_text()
 gate = controller.split('      - name: Verify the matching Oracle SOW runtime before API rollout', 1)[1].split('      - name:', 1)[0]
-assert '\n        if:' not in gate
+build = controller.split('      - name: Build immutable API, web, and migration images', 1)[1].split('      - name:', 1)[0]
+def conditions(step):
+    return [line.strip() for line in step.splitlines() if line.startswith('        if:')]
+assert conditions(gate) == conditions(build) == [f'if: {GATE}']
 assert 'verify-oracle-sow-runtime.py' in gate
 assert controller.index('Verify the matching Oracle SOW runtime') < controller.index('Build immutable API')

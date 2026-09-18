@@ -492,8 +492,7 @@ internal static class ProjectWorkspaceModule019Repair
                       )
                   )
               )
-            ORDER BY p.created_at DESC
-            LIMIT 100;
+            ORDER BY p.created_at DESC, p.project_id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -542,6 +541,16 @@ internal static class ProjectWorkspaceModule019Repair
                   AND (
                       (COALESCE(@team_name, '') <> '' AND LOWER(COALESCE(member.team_name, '')) = LOWER(@team_name))
                       OR (COALESCE(@department_name, '') <> '' AND LOWER(COALESCE(member.department_name, '')) = LOWER(@department_name))
+                      OR EXISTS (
+                          SELECT 1
+                          FROM projectpulse_team_scope_assignments tsa
+                          WHERE tsa.scoped_user_id = @user_id
+                            AND tsa.is_active = TRUE
+                            AND (
+                                (tsa.team_name IS NOT NULL AND LOWER(COALESCE(member.team_name, '')) = LOWER(tsa.team_name))
+                                OR (tsa.department_name IS NOT NULL AND LOWER(COALESCE(member.department_name, '')) = LOWER(tsa.department_name))
+                            )
+                      )
                   )
             ),
             scoped_documents AS (
@@ -597,6 +606,7 @@ internal static class ProjectWorkspaceModule019Repair
                           )
                           AND (
                               team_request.fulfilled_by_user_id IN (SELECT user_id FROM team_members)
+                              OR team_request.assigned_pm_user_id IN (SELECT user_id FROM team_members)
                               OR EXISTS (
                                   SELECT 1
                                   FROM engineering_resource_request_assignments team_request_assignment
@@ -652,11 +662,11 @@ internal static class ProjectWorkspaceModule019Repair
                   OR (
                       @can_view_team_scope = TRUE
                       AND COALESCE(document.engineering_visible, FALSE) = TRUE
-                      AND (scope.team_project_assignment OR scope.team_service_request_assignment)
+                      AND (scope.team_project_assignment OR scope.team_service_request_assignment
+                           OR project.project_manager_user_id IN (SELECT user_id FROM team_members))
                   )
               )
-            ORDER BY document.uploaded_at DESC
-            LIMIT 250;
+            ORDER BY document.uploaded_at DESC, document.project_intake_document_id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -837,6 +847,16 @@ internal static class ProjectWorkspaceModule019Repair
                   AND (
                       (COALESCE(@team_name, '') <> '' AND LOWER(COALESCE(member.team_name, '')) = LOWER(@team_name))
                       OR (COALESCE(@department_name, '') <> '' AND LOWER(COALESCE(member.department_name, '')) = LOWER(@department_name))
+                      OR EXISTS (
+                          SELECT 1
+                          FROM projectpulse_team_scope_assignments tsa
+                          WHERE tsa.scoped_user_id = @user_id
+                            AND tsa.is_active = TRUE
+                            AND (
+                                (tsa.team_name IS NOT NULL AND LOWER(COALESCE(member.team_name, '')) = LOWER(tsa.team_name))
+                                OR (tsa.department_name IS NOT NULL AND LOWER(COALESCE(member.department_name, '')) = LOWER(tsa.department_name))
+                            )
+                      )
                   )
             )
             SELECT
@@ -903,8 +923,7 @@ internal static class ProjectWorkspaceModule019Repair
                       )
                   )
               )
-            ORDER BY request.created_at DESC
-            LIMIT 250;
+            ORDER BY request.created_at DESC, request.engineering_resource_request_id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -960,6 +979,16 @@ internal static class ProjectWorkspaceModule019Repair
                   AND (
                       (COALESCE(@team_name, '') <> '' AND LOWER(COALESCE(member.team_name, '')) = LOWER(@team_name))
                       OR (COALESCE(@department_name, '') <> '' AND LOWER(COALESCE(member.department_name, '')) = LOWER(@department_name))
+                      OR EXISTS (
+                          SELECT 1
+                          FROM projectpulse_team_scope_assignments tsa
+                          WHERE tsa.scoped_user_id = @user_id
+                            AND tsa.is_active = TRUE
+                            AND (
+                                (tsa.team_name IS NOT NULL AND LOWER(COALESCE(member.team_name, '')) = LOWER(tsa.team_name))
+                                OR (tsa.department_name IS NOT NULL AND LOWER(COALESCE(member.department_name, '')) = LOWER(tsa.department_name))
+                            )
+                      )
                   )
             ),
             scoped_document AS (
@@ -1015,6 +1044,7 @@ internal static class ProjectWorkspaceModule019Repair
                           )
                           AND (
                               team_request.fulfilled_by_user_id IN (SELECT user_id FROM team_members)
+                              OR team_request.assigned_pm_user_id IN (SELECT user_id FROM team_members)
                               OR EXISTS (
                                   SELECT 1
                                   FROM engineering_resource_request_assignments team_request_assignment
@@ -1055,7 +1085,8 @@ internal static class ProjectWorkspaceModule019Repair
                   OR (
                       @can_view_team_scope = TRUE
                       AND COALESCE(document.engineering_visible, FALSE) = TRUE
-                      AND (scope.team_project_assignment OR scope.team_service_request_assignment)
+                      AND (scope.team_project_assignment OR scope.team_service_request_assignment
+                           OR project.project_manager_user_id IN (SELECT user_id FROM team_members))
                   )
               );
             """;

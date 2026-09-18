@@ -17,6 +17,10 @@ const page = await browser.newPage({ viewport: { width: 1360, height: 1020 } });
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 let invoiceReads = 0;
+let overviewStatus = 200;
+let downloadStatus = 200;
+let invoiceStatus = 200;
+let overviewOverride = null;
 const data = {
   access: { userId: 'u1', isViewAs: false },
   projects: [{ id: 'p1', projectCode: 'PRO-001', projectName: 'Voice migration', clientName: 'Example Customer', status: 'active', projectManagerName: 'Project Manager', solutionArchitectName: 'Solution Architect' }, { id: 'p2', projectCode: 'PRO-002', projectName: 'Storage upgrade', clientName: 'Second Customer', status: 'active' }],
@@ -35,14 +39,18 @@ await page.route('**/api/**', async route => {
   const preview = Boolean(headers['x-projectpulse-view-as-user']);
   const json = value => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value) });
   if (url.pathname.endsWith('/view-as/users')) return json({ users: [{ userId: 'u2', displayName: 'Engineer Two' }] });
-  if (url.pathname.endsWith('/overview')) return json({ ...data, access: { userId: preview ? 'u2' : 'u1', isViewAs: preview } });
+  if (url.pathname.endsWith('/overview')) {
+    if (overviewStatus !== 200) return route.fulfill({ status: overviewStatus });
+    return json(overviewOverride || { ...data, access: { userId: preview ? 'u2' : 'u1', isViewAs: preview } });
+  }
   if (url.pathname.startsWith('/api/project-financials/')) {
     if (url.pathname.includes('/p2')) return route.fulfill({ status: 503 });
     return json({ project: { visibility: { commercial: false }, budgetStatus: 'over_budget', laborCost: null }, sources: [] });
   }
-  if (url.pathname.includes('/invoices')) { invoiceReads++; return json({ invoices: [{ billingInvoiceId: 'inv1', invoiceNumber: 'INV-001', invoiceDate: '2026-09-18', invoiceStatus: 'finalized', totalAmount: 1200 }] }); }
+  if (url.pathname.includes('/invoices')) { invoiceReads++; if (invoiceStatus !== 200) return route.fulfill({ status: invoiceStatus }); return json({ invoices: [{ billingInvoiceId: 'inv1', invoiceNumber: 'INV-001', invoiceDate: '2026-09-18', invoiceStatus: 'finalized', totalAmount: 1200 }] }); }
   if (url.pathname.endsWith('/download')) {
     assert.equal(headers['x-projectpulse-session'], 'synthetic-test-only');
+    if (downloadStatus !== 200) return route.fulfill({ status: downloadStatus, contentType: 'application/json', body: JSON.stringify({ message: 'This file is no longer available.' }) });
     return route.fulfill({ status: 200, contentType: 'application/octet-stream', headers: { 'Content-Disposition': 'attachment; filename="project-document.docx"' }, body: 'synthetic document' });
   }
   throw new Error(`Unexpected API request: ${url.pathname}`);
@@ -98,8 +106,42 @@ try {
   await page.getByRole('button', { name: 'Cost & billing', exact: true }).click();
   await page.getByText('Invoice history is not available in user preview. Sign in as the user to verify billing access.').waitFor();
   assert.equal(invoiceReads, before, 'View-As must never request signed-in administrator invoice data');
+  await page.getByRole('button', { name: 'Exit preview', exact: true }).click();
+  await page.getByLabel('Select assigned work').selectOption('project:p1');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  downloadStatus = 404;
+  await page.getByRole('button', { name: 'Download', exact: true }).click();
+  await page.getByText('This file is no longer available.', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Voice_Migration_SOW.docx', { exact: true }).count(), 1);
+  downloadStatus = 200;
+  invoiceStatus = 403;
+  await page.getByRole('button', { name: 'Cost & billing', exact: true }).click();
+  await page.getByText('Invoice history is unavailable in your current access. Ask the project manager or Billing for the billed amount.').waitFor();
+  assert.equal(await page.getByText('INV-001', { exact: true }).count(), 0, 'denied billing never retains a previous invoice');
+  overviewStatus = 401;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.getByRole('alert').waitFor();
+  assert.equal(await page.getByLabel('Select assigned work').count(), 0, 'expired session clears all prior work');
+  assert.equal(await page.getByText('No active projects or service requests are assigned in your current access.', { exact: true }).count(), 0, 'failed read is not an empty portfolio');
+  overviewStatus = 200;
+  overviewOverride = { access: { userId: 'unassigned' }, projects: [], documents: [], assignments: [], teamHours: [], resourceRequests: [] };
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await page.getByText('No active projects or service requests are assigned in your current access.', { exact: true }).waitFor();
+  overviewOverride = { ...data, access: { userId: 'lead', scope: 'engineering_team_lead_scope' }, teamHours: null };
+  await page.reload();
+  await page.getByLabel('Select assigned work').selectOption('project:p1');
+  await page.getByText('Configure the platform', { exact: true }).waitFor();
+  await page.getByText('Project time is unavailable. Remaining hours cannot be confirmed.', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'All project tasks', exact: true }).getAttribute('aria-pressed'), 'true');
+  // Linking an intake to the selected project brings its existing authorized files into that project.
+  overviewOverride = { ...data, resourceRequests: [{ ...data.resourceRequests[0], projectId: 'p1' }] };
+  await page.reload();
+  await page.getByLabel('Select assigned work').selectOption('project:p1');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByText('Assessment_Brief.docx', { exact: true }).waitFor();
+  assert.equal(await page.locator('option[value="request:SR-003"]').count(), 0, 'linked request is consolidated into its project');
   assert.deepEqual(errors, []);
-  console.log('Module 019 browser scenarios: PASS (selection, tasks, team totals, documents, authenticated download, preview, source failure, service request, search, mobile, View-As)');
+  console.log('Module 019 browser scenarios: PASS (selection, tasks, team totals, documents, authenticated download, preview, source failure, service request, search, mobile, View-As, missing files, billing denial, expired session, unassigned user, lead defaults, missing totals, linked intake)');
 } finally {
   await browser.close(); await server.close(); await fs.rm(temp, { recursive: true, force: true });
 }

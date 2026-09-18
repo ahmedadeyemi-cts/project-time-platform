@@ -71,4 +71,5 @@ jobs:
         run: |
           node --test tests/module019-workspace-model.test.mjs
           node tests/module019-workspace-sql.test.mjs
+          node tests/module019-workspace-access.test.mjs
           node tests/module019-workspace-browser.mjs

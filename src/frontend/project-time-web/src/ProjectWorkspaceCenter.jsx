@@ -147,7 +147,7 @@ function EngineeringProjectWorkspace({ selectedViewAsUserId }) {
   const selectionKey = work?.key || '';
   const isProject = work?.kind === 'project';
   const hours = projectHours(data, isProject ? work.id : null, data.access?.userId);
-  const projectDocuments = documentsForWork(data.documents, work);
+  const projectDocuments = documentsForWork(data.documents, work, data.resourceRequests);
   const filteredDocuments = projectDocuments.filter(document => `${document.originalFileName} ${document.documentCategory}`.toLowerCase().includes(documentSearch.toLowerCase()));
   const relatedRequests = isProject ? (data.resourceRequests || []).filter(request => request.projectId === work.id) : work ? [work.request] : [];
   const visibleTasks = taskScope === 'team' ? hours.tasks : hours.tasks.filter(task => task.userId === data.access?.userId);
@@ -232,7 +232,7 @@ function EngineeringProjectWorkspace({ selectedViewAsUserId }) {
       <button type="button" onClick={() => setRevision(value => value + 1)} disabled={overview.loading}>Refresh</button>
     </header>
     {overview.error ? <div className="workspace-error" role="alert">{overview.error} <button type="button" onClick={() => setRevision(value => value + 1)}>Retry</button></div> : null}
-    {overview.loading ? <p role="status">Loading your assigned work...</p> : <>
+    {overview.loading ? <p role="status">Loading your assigned work...</p> : !overview.error && <>
       <div className="workspace-picker">
         <label>Find a project or service request<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search by customer, name, or number" /></label>
         <label>Select assigned work<select value={selectionKey} onChange={event => setSelectedKey(event.target.value)} disabled={!matches.length}>

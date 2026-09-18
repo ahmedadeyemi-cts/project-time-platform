@@ -363,8 +363,11 @@ requireText(
 );
 
 const workspaceUi = read('src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx');
-requireText(workspaceUi, 'assignments.map((assignment)', 'Module 019 assignment rendering');
-requireText(workspaceUi, '{assignment.projectCode}', 'Module 019 durable identifier rendering');
+requireText(workspaceUi, 'visibleTasks.map(task =>', 'Module 019 assignment rendering');
+requireText(workspaceUi, '{work.code}', 'Module 019 durable identifier rendering');
+
+const workspaceModel = read('src/frontend/project-time-web/src/project-workspace-model.js');
+requireText(workspaceModel, 'row.projectId !== projectId', 'Module 019 selected project assignment isolation');
 
 const assignedWorkUat = read('scripts/release-test/run-assigned-work-protected-test-uat.sh');
 [
