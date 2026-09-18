@@ -10,6 +10,30 @@ namespace ProjectTime.Api.Modules;
 /// </summary>
 internal static class Module025ProtectedTestUatAccess
 {
+    // A queue grant is captured only after Authorizes has checked the actual
+    // request, user, origin and role. It binds background processing to that
+    // same short-lived run; another API revision must leave the job unclaimed.
+    internal sealed record WorkerGrant(string RunId, string SourceCommit, long ExpiresAt);
+
+    internal static WorkerGrant? CurrentWorkerGrant()
+    {
+        var run = Environment.GetEnvironmentVariable(RunIdVariable) ?? string.Empty;
+        var source = Environment.GetEnvironmentVariable(SourceCommitVariable) ?? string.Empty;
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (!string.Equals(Environment.GetEnvironmentVariable(EnabledVariable), "true", StringComparison.OrdinalIgnoreCase)
+            || !Regex.IsMatch(run, "^[0-9]+-[0-9]+$", RegexOptions.CultureInvariant)
+            || !Regex.IsMatch(source, "^[0-9a-f]{40}$", RegexOptions.CultureInvariant)
+            || source != Environment.GetEnvironmentVariable("PROJECTPULSE_SOURCE_COMMIT")
+            || !long.TryParse(Environment.GetEnvironmentVariable(ExpiresAtVariable),
+                System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var expiry)
+            || expiry <= now || expiry > now + 3_600)
+            return null;
+        return new(run, source, expiry);
+    }
+
+    internal static bool MatchesWorkerGrant(WorkerGrant? grant) =>
+        grant is not null && grant == CurrentWorkerGrant();
+
     internal const string EnabledVariable =
         "PROJECTPULSE_MODULE025_PROTECTED_TEST_UAT_ENABLED";
     internal const string RunIdVariable =
