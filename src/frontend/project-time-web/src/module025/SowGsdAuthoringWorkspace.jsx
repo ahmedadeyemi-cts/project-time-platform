@@ -82,6 +82,14 @@ function formatTime(value) {
   }
 }
 
+function formatDuration(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds || 0));
+  const whole = Math.floor(seconds);
+  const minutes = Math.floor(whole / 60);
+  const remainder = whole % 60;
+  return `${minutes}m ${String(remainder).padStart(2, '0')}s`;
+}
+
 function commercialLabel(value) {
   return value === 'fixed' ? 'Fixed Price' : 'Time & Materials';
 }
@@ -247,6 +255,9 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState({ state: 'idle', message: '', at: null });
   const [actionState, setActionState] = useState({ busy: '', message: '', error: '' });
+  const [generationStartedAt, setGenerationStartedAt] = useState(null);
+  const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
+  const [lastGenerationDurationSeconds, setLastGenerationDurationSeconds] = useState(null);
   const dirtyRef = useRef(false);
   const editVersion = useRef(0);
   const saveInFlight = useRef(false);
@@ -429,9 +440,22 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
     }
   };
 
+  useEffect(() => {
+    if (actionState.busy !== 'generate' || !generationStartedAt) return undefined;
+    const update = () => setGenerationElapsedSeconds(Math.max(0, Math.floor((Date.now() - generationStartedAt) / 1000)));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [actionState.busy, generationStartedAt]);
+
   const runAction = async (action, successMessage) => {
     if (!engagement || actionState.busy) return;
     const actionRecordId = engagement.engagementId;
+    const localGenerationStart = action === 'generate' ? Date.now() : null;
+    if (localGenerationStart) {
+      setGenerationStartedAt(localGenerationStart);
+      setGenerationElapsedSeconds(0);
+    }
     setActionState({ busy: action, message: '', error: '' });
     try {
       if (dirtyRef.current && !await saveNow()) {
@@ -446,19 +470,38 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
         payload = await waitForDetailedScopeGeneration(
           engagement.engagementId,
           payload.generationId,
-          (progress) => selectedEngagementRef.current === actionRecordId && setActionState({
-            busy: action,
-            message: formatGenerationProgress(progress),
-            error: ''
-          })
+          (progress) => {
+            if (selectedEngagementRef.current !== actionRecordId) return;
+            const queuedAt = Date.parse(progress?.queuedAt || '');
+            if (Number.isFinite(queuedAt)) setGenerationStartedAt(queuedAt);
+            setActionState({
+              busy: action,
+              message: formatGenerationProgress(progress),
+              error: ''
+            });
+          }
         );
       }
       if (selectedEngagementRef.current !== actionRecordId) return;
+      if (action === 'generate') {
+        const duration = Number(payload?.elapsedSeconds);
+        const measured = Number.isFinite(duration) ? duration : Math.ceil((Date.now() - (generationStartedAt || localGenerationStart || Date.now())) / 1000);
+        setLastGenerationDurationSeconds(measured);
+        setGenerationElapsedSeconds(measured);
+        setGenerationStartedAt(null);
+      }
       await openEngagement(engagement.engagementId);
       await loadList();
       setActionState({ busy: '', message: payload?.message || successMessage, error: '' });
     } catch (error) {
       if (selectedEngagementRef.current !== actionRecordId) return;
+      if (action === 'generate') {
+        const duration = Number(error?.payload?.elapsedSeconds);
+        const measured = Number.isFinite(duration) ? duration : Math.ceil((Date.now() - (generationStartedAt || localGenerationStart || Date.now())) / 1000);
+        setLastGenerationDurationSeconds(measured);
+        setGenerationElapsedSeconds(measured);
+        setGenerationStartedAt(null);
+      }
       setActionState({ busy: '', message: '', error: error?.message || `${action} could not be completed.` });
     }
   };
@@ -475,6 +518,24 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
       setActionState({ busy: '', message: 'SOW/GSD moved to Archived.', error: '' });
     } catch (error) {
       setActionState({ busy: '', message: '', error: error?.message || 'The SOW/GSD could not be archived.' });
+    }
+  };
+
+  const deleteDraft = async () => {
+    if (!engagement || engagement.status !== 'draft' || engagement.lastGeneratedAt || actionState.busy) return;
+    const confirmed = window.confirm(`Delete draft ${engagement.engagementNumber}? This permanently removes the ungenerated draft and cannot be undone.`);
+    if (!confirmed) return;
+    setActionState({ busy: 'delete', message: '', error: '' });
+    try {
+      await requestJson(`/api/module025/sow-gsd/${engagement.engagementId}`, { method: 'DELETE' });
+      selectedEngagementRef.current = '';
+      setSelectedId('');
+      setEngagement(null);
+      setAccess(null);
+      await loadList();
+      setActionState({ busy: '', message: 'Ungenerated draft deleted.', error: '' });
+    } catch (error) {
+      setActionState({ busy: '', message: '', error: error?.message || 'The draft could not be deleted.' });
     }
   };
 
@@ -500,6 +561,18 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
   const warnings = Array.isArray(engagement?.aiMetadata?.warnings) ? engagement.aiMetadata.warnings : [];
   const missingEvidence = Array.isArray(engagement?.aiMetadata?.missingEvidence) ? engagement.aiMetadata.missingEvidence : [];
   const downloadReady = engagement?.status === 'confirmed' && !dirty && !detailLoading && !actionState.busy;
+  const phaseReviewComplete = (engagement?.phases || []).length === 5
+    && (engagement?.phases || []).every((phase) => String(phase.objective || '').trim().length > 0);
+  const confirmChecks = engagement ? [
+    { key: 'generation', label: 'Detailed P/D/I/V/R scope generated', complete: Boolean(engagement.lastGeneratedAt) },
+    { key: 'customer', label: 'Customer selected', complete: Boolean(String(engagement.customerName || '').trim()) },
+    { key: 'account-executive', label: 'Account Executive selected', complete: Boolean(engagement.accountExecutiveUserId) },
+    { key: 'inside-sales', label: 'Inside Sales Representative selected', complete: Boolean(engagement.resaleUserId) },
+    { key: 'phases', label: 'All five phase objectives reviewed', complete: phaseReviewComplete },
+    { key: 'loe', label: 'SA Final LOE is greater than 0 hours', complete: reviewedHours > 0 }
+  ] : [];
+  const confirmReady = confirmChecks.length > 0 && confirmChecks.every((item) => item.complete);
+  const incompleteConfirmChecks = confirmChecks.filter((item) => !item.complete);
   const documentReadiness = !engagement
     ? 'Select a SOW/GSD record to review its documents and SELL handoff.'
     : engagement.status === 'confirmed'
@@ -509,6 +582,17 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
         : !engagement.lastGeneratedAt
           ? 'Generate the detailed scope, review it, then confirm to enable both downloads. Generation failure does not remove this record or any earlier retained versions.'
           : 'Review and confirm the current scope to enable both downloads. Previously retained documents remain available in version history.';
+
+  function confirmReviewed() {
+    if (!engagement || actionState.busy || !access?.canEdit) return;
+    if (!confirmReady) {
+      const missing = incompleteConfirmChecks.map((item) => item.label).join('; ');
+      setActionState({ busy: '', message: '', error: `Complete these review requirements before confirmation: ${missing}.` });
+      window.requestAnimationFrame(() => document.getElementById('m025-confirm-readiness')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      return;
+    }
+    void runAction('confirm', 'SOW/GSD confirmed and ready for download.');
+  }
 
   function documentFileName(artifact) {
     const number = String(engagement?.engagementNumber || '').replace(/^SOW-/i, '');
@@ -706,13 +790,20 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
               <section className="m025-section">
                 <div className="m025-section-heading m025-section-heading--action">
                   <div><span>02</span><h2>Service Overview &amp; AI scope</h2></div>
-                  <Button
-                    kind="primary"
-                    disabled={readOnly || actionState.busy === 'generate' || (engagement.serviceOverview || '').trim().length < 20}
-                    onClick={() => runAction('generate', 'Detailed P/D/I/V/R scope generated and ready for review.')}
-                  >
-                    {actionState.busy === 'generate' ? 'Generating detailed scope…' : engagement.lastGeneratedAt ? 'Regenerate detailed scope' : 'Generate detailed scope'}
-                  </Button>
+                  <div className="m025-generation-control">
+                    <Button
+                      kind="primary"
+                      disabled={readOnly || actionState.busy === 'generate' || (engagement.serviceOverview || '').trim().length < 20}
+                      onClick={() => runAction('generate', 'Detailed P/D/I/V/R scope generated and ready for review.')}
+                    >
+                      {actionState.busy === 'generate' ? 'Generating detailed scope…' : engagement.lastGeneratedAt ? 'Regenerate detailed scope' : 'Generate detailed scope'}
+                    </Button>
+                    {actionState.busy === 'generate' ? (
+                      <span className="m025-generation-timer" role="timer">Running · {formatDuration(generationElapsedSeconds)}</span>
+                    ) : lastGenerationDurationSeconds !== null ? (
+                      <span className="m025-generation-timer m025-generation-timer--complete">Last run · {formatDuration(lastGenerationDurationSeconds)}</span>
+                    ) : null}
+                  </div>
                 </div>
                 <Field label="Service Overview" hint="Describe the work in enough detail for the configured AI provider to produce specific technical execution steps. Unsupported facts are returned as assumptions/open questions rather than invented.">
                   <textarea
@@ -758,6 +849,18 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
                   <Metric label="GSD profile" value={isSpecialGsd ? 'HAEA / KUS UVO' : 'Standard'} detail={isSpecialGsd ? 'Toyota / Hyundai profile' : 'Standard delivery profile'} />
                 </div>
 
+                {engagement.status !== 'confirmed' && engagement.status !== 'archived' ? (
+                  <div id="m025-confirm-readiness" className={confirmReady ? 'm025-confirm-readiness is-ready' : 'm025-confirm-readiness'}>
+                    <div>
+                      <strong>{confirmReady ? 'Ready to confirm' : `Review readiness · ${confirmChecks.filter((item) => item.complete).length}/${confirmChecks.length} complete`}</strong>
+                      <p>{confirmReady ? 'All required review checks are complete. Confirming will freeze this revision for download and version history.' : 'Complete the remaining checks below before confirming this SOW/GSD.'}</p>
+                    </div>
+                    <ul>
+                      {confirmChecks.map((item) => <li key={item.key} className={item.complete ? 'is-complete' : 'is-incomplete'}>{item.complete ? '✓' : '○'} {item.label}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+
                 <div className="m025-review-actions">
                   {engagement.status === 'confirmed' ? (
                     <>
@@ -765,8 +868,14 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
                       <p>The confirmed documents are available in Documents &amp; SELL handoff at the top of this workspace.</p>
                     </>
                   ) : engagement.status !== 'archived' ? (
-                    <Button kind="primary" onClick={() => runAction('confirm', 'SOW/GSD confirmed and ready for download.')} disabled={readOnly || Boolean(actionState.busy) || !engagement.lastGeneratedAt || reviewedHours <= 0}>
-                      {actionState.busy === 'confirm' ? 'Confirming…' : 'Confirm reviewed SOW / GSD'}
+                    <Button className="m025-confirm-button" kind="primary" onClick={confirmReviewed} disabled={!access?.canEdit || Boolean(actionState.busy)}>
+                      {actionState.busy === 'confirm' ? 'Confirming…' : confirmReady ? 'Confirm Reviewed SOW / GSD' : 'Review Requirements to Confirm'}
+                    </Button>
+                  ) : null}
+
+                  {engagement.status === 'draft' && !engagement.lastGeneratedAt ? (
+                    <Button kind="danger" onClick={deleteDraft} disabled={!access?.canEdit || Boolean(actionState.busy)}>
+                      {actionState.busy === 'delete' ? 'Deleting…' : 'Delete Draft'}
                     </Button>
                   ) : null}
 
