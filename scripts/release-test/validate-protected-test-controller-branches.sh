@@ -168,6 +168,9 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
 elif [[ "$HEAD_BRANCH" == 'fix/module025-terminal-provider-evidence-20260918' ]]; then
   node tests/module025-terminal-provider-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == 'fix/module025-orphan-35374125567-20260918' ]]; then
+  node tests/module025-deployment-startup-recovery.test.mjs --orphan-scope
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/module025-deployment-startup-recovery-20260918' ]]; then
   node tests/module025-deployment-startup-recovery.test.mjs --scope
   node tests/validate-systemwide-image-build-controller.mjs

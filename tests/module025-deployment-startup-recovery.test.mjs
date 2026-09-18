@@ -14,7 +14,10 @@ if (process.argv[2] === '--fake-command') {
   const save = () => fs.writeFileSync(statePath, JSON.stringify(state));
   const reply = (value) => { save(); console.log(typeof value === 'string' ? value : JSON.stringify(value)); process.exit(0); };
   if (command === 'sleep') { state.epoch = (state.epoch || 0) + Number(args[0]); reply(''); }
-  if (command === 'git') { save(); process.exit(state.ancestryOk === false ? 1 : 0); }
+  if (command === 'git') {
+    save();
+    process.exit((args[0] === 'diff' ? state.deploymentGuardChanged : state.ancestryOk === false) ? 1 : 0);
+  }
   if (command === 'date') reply(args[0] === '+%s' ? String(state.epoch || 0) : '2026-09-18T16:30:00Z');
   assert.equal(command, 'gh');
   const endpoint = args.find((arg) => arg.startsWith('repos/'));
@@ -28,11 +31,16 @@ if (process.argv[2] === '--fake-command') {
     state.jobReads++;
     save();
     if (state.jobsApiError) process.exit(1);
-    reply({total_count: state.jobReads > state.emptyJobReads ? state.jobs.length : 0,
+    reply({total_count: state.jobReads > state.emptyJobReads ? (state.reportedJobsTotal ?? state.jobs.length) : 0,
       jobs: state.jobReads > state.emptyJobReads ? state.jobs : []});
   }
+  if (endpoint.endsWith('/pending_deployments')) {
+    save();
+    if (state.pendingApiError) process.exit(1);
+    reply(state.pendingDeployments ?? []);
+  }
   if (/\/actions\/runs\/\d+$/.test(endpoint)) reply(state.run);
-  if (endpoint.includes('/runs?')) reply({workflow_runs: [state.run]});
+  if (endpoint.includes('/runs?')) reply({workflow_runs: [state.run, ...(state.additionalRuns ?? [])]});
   if (endpoint.endsWith('/actions/workflows/315562561')) reply(state.workflowState);
   throw new Error(`Unexpected mock command: ${args.join(' ')}`);
 }
@@ -64,6 +72,10 @@ const defaultRun = {
 };
 const orphan = {...defaultRun, id: 35364203547, head_sha: base,
   created_at: '2026-09-18T15:43:56Z', updated_at: '2026-09-18T15:43:56Z'};
+const repairBase = 'e7f1634aaa6eabb81d404510178de2812660214d';
+const uncancellable = {...defaultRun, id: 35374125567,
+  head_sha: '245b0915d895d83f1ceaed32460ad95a4a3d79be',
+  created_at: '2026-09-18T17:24:14Z', updated_at: '2026-09-18T17:24:14Z'};
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'module025-startup-'));
 let cases = 0;
 function execute(body, changes = {}, envChanges = {}) {
@@ -84,6 +96,7 @@ function execute(body, changes = {}, envChanges = {}) {
       REPAIRED_MODULE025_SHA: 'f7c86b45cff09741dd022c0e80bc1e6ad7d5c80b',
       QUARANTINED_ZERO_JOB_RUN_ID: '33654881418', QUARANTINED_ZERO_JOB_RUN_ID_2: '34377182662',
       QUARANTINED_ZERO_JOB_RUN_ID_3: '34495606530', QUARANTINED_ZERO_JOB_RUN_ID_4: '35364203547',
+      QUARANTINED_ZERO_JOB_RUN_ID_5: '35374125567',
       ...envChanges}});
   assert.ifError(result.error);
   return {...result, state: JSON.parse(fs.readFileSync(statePath, 'utf8')), output: fs.readFileSync(output, 'utf8')};
@@ -135,6 +148,64 @@ try {
   }
   const sameRelease = execute(authorize, {run: orphan, jobs: [], main: base}, {GITHUB_SHA: base});
   assert.notEqual(sameRelease.status, 0, 'same release cannot quarantine a possible duplicate deployment');
+
+  const recovered = execute(authorize, {run: uncancellable, jobs: []});
+  assert.equal(recovered.status, 0, recovered.stderr);
+  assert.match(recovered.stdout, /ZERO_JOB_QUARANTINE=35374125567/);
+  assert.match(recovered.stdout, /RELEASE_AUTHORIZED=/);
+  for (const changes of [
+    {run: {...uncancellable, id: 35374125568}},
+    {run: {...uncancellable, head_sha: 'c'.repeat(40)}},
+    {run: {...uncancellable, head_branch: 'other'}},
+    {run: {...uncancellable, workflow_id: 111}},
+    {run: {...uncancellable, event: 'push'}},
+    {run: {...uncancellable, run_attempt: 2}},
+    {run: {...uncancellable, status: 'in_progress'}},
+    {run: {...uncancellable, status: 'waiting'}},
+    {run: {...uncancellable, conclusion: 'failure'}},
+    {run: {...uncancellable, updated_at: '2026-09-18T17:24:15Z'}},
+    {run: {...uncancellable, created_at: '2026-09-18T17:24:15Z'}},
+    {jobs: [{id: 123, run_id: uncancellable.id}]},
+    {jobs: [{id: 123, run_id: uncancellable.id}], reportedJobsTotal: 0},
+    {reportedJobsTotal: 1}, {jobsApiError: true}, {ancestryOk: false},
+    {deploymentGuardChanged: true}, {pendingApiError: true},
+    {pendingDeployments: [{environment: {id: 123, name: 'test'}}]},
+    {pendingDeployments: {}},
+    {additionalRuns: [{...defaultRun, id: 1000, status: 'in_progress'}]},
+    {additionalRuns: [{...defaultRun, id: 1000, status: 'queued'}]}
+  ]) {
+    const result = execute(authorize, {run: uncancellable, jobs: [], ...changes});
+    assert.notEqual(result.status, 0, 'changed evidence or another active run must block recovery');
+    assert.doesNotMatch(result.stdout, /RELEASE_AUTHORIZED=/);
+  }
+  const sameOrphanRelease = execute(authorize, {run: uncancellable, jobs: [], main: uncancellable.head_sha},
+    {GITHUB_SHA: uncancellable.head_sha});
+  assert.notEqual(sameOrphanRelease.status, 0, 'recovery requires a descendant release');
+
+  if (process.argv.includes('--orphan-scope')) {
+    assert.equal(execFileSync('git', ['merge-base', repairBase, 'HEAD'], {encoding: 'utf8'}).trim(), repairBase);
+    const changed = execFileSync('git', ['diff', '--name-only', repairBase], {encoding: 'utf8'}).trim().split('\n').sort();
+    const verify = files => assert.deepEqual([...files].sort(), [supervisorPath, branchesPath, testPath].sort());
+    verify(changed);
+    assert.throws(() => verify([...changed, '.github/workflows/projectpulse-deploy-test.yml']));
+    for (const file of changed) assert.throws(() => verify(changed.filter(name => name !== file)));
+    for (const file of [
+      '.github/workflows/projectpulse-deploy-test.yml', '.github/workflows/projectpulse-deploy-production.yml',
+      '.github/flowhive-psa-protected-test-candidate.json', 'scripts/release-test/flowhive-psa-admission.mjs',
+      'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
+    ]) assert.deepEqual(fs.readFileSync(file), execFileSync('git', ['show', `${repairBase}:${file}`]));
+    const original = execFileSync('git', ['show', `${repairBase}:${supervisorPath}`], {encoding: 'utf8'});
+    const tail = '      - name: Dispatch exact governed Protected-Test deployment and reseal admissions';
+    assert.equal(source.slice(source.indexOf(tail)), original.slice(original.indexOf(tail)),
+      'dispatch, startup deadline, observation, and finalization controls remain unchanged');
+    assert.equal(source.split('    env:\n')[0], original.split('    env:\n')[0],
+      'triggers, permissions, concurrency, and job conditions remain unchanged');
+    const deploy = fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8');
+    assert.ok(deploy.indexOf('Guard exact source and validate release') < deploy.indexOf('Sign in to protected Test subscription'));
+    assert.ok(deploy.includes('[[ "$(git rev-parse origin/main)" == "$TARGET_RELEASE_COMMIT" ]]'));
+    assert.deepEqual(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml'),
+      execFileSync('git', ['show', `${uncancellable.head_sha}:.github/workflows/projectpulse-deploy-test.yml`]));
+  }
 
   if (process.argv.includes('--scope')) {
     assert.equal(execFileSync('git', ['merge-base', base, 'HEAD'], {encoding: 'utf8'}).trim(), base);
