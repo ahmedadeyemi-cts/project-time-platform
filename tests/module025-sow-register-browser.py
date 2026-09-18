@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -30,10 +31,13 @@ async def run() -> None:
     password = os.environ.get('TEST_LOGIN_PASSWORD', '')
     engagement_number = os.environ.get('MODULE025_ENGAGEMENT_NUMBER', '')
     evidence_path = os.environ.get('MODULE025_CREATE_RESPONSE', '')
+    uat_run_id = os.environ.get('MODULE025_UAT_RUN_ID', '')
     if not engagement_number and evidence_path:
         engagement_number = json.loads(Path(evidence_path).read_text(encoding='utf-8')).get('engagement', {}).get('engagementNumber', '')
     if len(password) < 12 or not engagement_number:
         fail('browser_fixture_inputs_missing')
+    if not re.fullmatch(r'[0-9]+-[0-9]+', uat_run_id):
+        fail('browser_fixture_run_missing')
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
@@ -49,6 +53,18 @@ async def run() -> None:
         if session.get('provider') != 'LOCAL' or not session.get('sessionToken'):
             fail('browser_session_missing')
         password = ''
+        fixture_headers = {'Origin': base, 'X-ProjectPulse-Module025-Uat-Run': uat_run_id}
+        bootstrap_response = await context.request.get(
+            f'{base}/api/module025/sow-gsd/bootstrap',
+            headers={**fixture_headers, 'Authorization': f'Bearer {session["sessionToken"]}',
+                     'X-ProjectPulse-Session': session['sessionToken']},
+        )
+        if bootstrap_response.status != 200:
+            fail('browser_fixture_bootstrap_denied')
+        bootstrap = await bootstrap_response.json()
+        if (bootstrap.get('access', {}).get('protectedTestUatRoleFixture') is not True
+                or bootstrap.get('access', {}).get('isSolutionArchitect') is not True):
+            fail('browser_fixture_authorization_missing')
         generation_posts = []
         unexpected_writes = []
 
@@ -66,15 +82,23 @@ async def run() -> None:
                 unexpected_writes.append(request.method + ':' + parsed.path)
                 await route.abort()
                 return
-            await route.continue_()
+            # Carry the existing exact-run fixture only to this origin's
+            # Module 025 reads. It must never reach another origin/module or
+            # the separate unauthenticated download checks below.
+            if (parsed.scheme == urlparse(base).scheme
+                    and parsed.netloc == urlparse(base).netloc
+                    and parsed.path.startswith('/api/module025/')):
+                await route.continue_(headers={**request.headers, **fixture_headers})
+            else:
+                await route.continue_()
 
         await context.route('**/*', restrict)
         page = await context.new_page()
         page.set_default_timeout(45_000)
         try:
             await page.goto(f'{base}/#sow-generator', wait_until='domcontentloaded', timeout=45_000)
-            await page.get_by_role('button', name='SOW Register & SELL', exact=True).click()
-            register = page.locator('[data-module025-sow-register="true"]')
+            await page.get_by_role('tab', name='SOW Register & SELL', exact=True).click()
+            register = page.locator('[data-module025-sow-register="true"]:visible')
             await register.wait_for(state='visible')
             csv_path = await register.get_by_role('button', name='Export SA report (.csv)', exact=True).get_attribute('data-csv-download-path')
             async with page.expect_response(
@@ -142,7 +166,7 @@ async def run() -> None:
                 await unauthenticated.dispose()
 
             await page.reload(wait_until='domcontentloaded', timeout=45_000)
-            await page.get_by_role('button', name='SOW Register & SELL', exact=True).click()
+            await page.get_by_role('tab', name='SOW Register & SELL', exact=True).click()
             await register.get_by_placeholder('Search retained records').fill(engagement_number)
             await register.locator('table').nth(1).get_by_role('button', name=engagement_number, exact=True).click()
             await register.locator('.m025-register-version').first.wait_for(state='visible')
