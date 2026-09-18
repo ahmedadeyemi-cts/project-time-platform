@@ -11,6 +11,7 @@ const expected=[
   ".github/workflows/projectpulse-deploy-test.yml",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "tests/module025-auto-protected-test-scope.mjs",
+"tests/validate-systemwide-image-build-controller.mjs",
   "tests/validate-celar-ai-pr630-consolidated.mjs"
 ].sort();
 
