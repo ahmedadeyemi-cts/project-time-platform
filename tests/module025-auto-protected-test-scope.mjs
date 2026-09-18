@@ -14,6 +14,7 @@ const expected=[
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "tests/flowhive-psa-admission.test.mjs",
   "tests/flowhive-psa-installed-acceptance.test.py",
+  "tests/flowhive-psa-release-workflow.test.py",
   "tests/module025-auto-protected-test-scope.mjs",
   "tests/test-project-planning-collaboration-migration-095.sh",
 "tests/validate-systemwide-enterprise-reliability.mjs",
