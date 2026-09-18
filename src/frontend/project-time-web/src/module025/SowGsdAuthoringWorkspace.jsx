@@ -115,9 +115,9 @@ function Metric({ label, value, detail }) {
   );
 }
 
-function Button({ children, kind = 'secondary', ...props }) {
+function Button({ children, kind = 'secondary', className = '', ...props }) {
   return (
-    <button type="button" className={`m025-button m025-button--${kind}`} {...props}>
+    <button type="button" className={`m025-button m025-button--${kind} ${className}`.trim()} {...props}>
       {children}
     </button>
   );
