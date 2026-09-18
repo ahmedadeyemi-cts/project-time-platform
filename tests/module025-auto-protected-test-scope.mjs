@@ -7,7 +7,9 @@ import path from 'node:path';
 const base='73412b3a3509f2f4098d137748c4d376947c1143';
 const expected=[
   ".github/workflows/flowhive-psa-release-control-ci.yml",
-  ".github/workflows/module025-protected-uat-control.yml",
+  ".github/workflows/module025-governed-protected-test-release-manual.yml",
+".github/workflows/module025-protected-uat-control.yml",
+".github/workflows/projectpulse-release-test-control-ci.yml",
   ".github/workflows/projectpulse-deploy-test.yml",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "tests/module025-auto-protected-test-scope.mjs",
