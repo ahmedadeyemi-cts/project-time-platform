@@ -69,6 +69,8 @@ jobs:
           python -m pip install PyYAML==6.0.3
           if [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pm-acceptance-contract' ]]; then
             node tests/validate-flowhive-pm-acceptance-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-register-startup-readiness-20260918' ]]; then
+            node tests/module025-register-startup-readiness-scope.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-register-report-contract-20260918' ]]; then
             node tests/module025-register-report-contract-scope.mjs
           elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-phase-provider-recovery-20260918' ]]; then

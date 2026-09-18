@@ -22,6 +22,8 @@ const user = { userId: 'sa', username: 'synthetic.local', displayName: 'Test SA'
 if (registerMode) user.roles = [{ roleCode: 'MANAGER' }];
 let denyModule = false;
 let reportFailure = '';
+let bootstrapReady = Promise.resolve();
+let releaseBootstrap = () => {};
 const server = await createServer({ configFile: false, root: path.join(root, 'src/frontend/project-time-web'),
   plugins: [react(), { name: 'installed-browser-regression', configureServer(vite) {
     vite.middlewares.use(async (req, res, next) => {
@@ -39,16 +41,26 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       if (url.pathname === '/__state') {
         res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ engagement, requests })); return;
       }
+      if (url.pathname === '/__release-bootstrap' && req.method === 'GET') {
+        releaseBootstrap(); res.end('{}'); return;
+      }
       if (url.pathname === '/__reset' && req.method === 'POST') {
         const chunks = []; for await (const chunk of req) chunks.push(chunk);
-        const { status, denyDownload, deniedModule, failReport } = JSON.parse(Buffer.concat(chunks).toString());
+        const { status, denyDownload, deniedModule, failReport, holdBootstrap } = JSON.parse(Buffer.concat(chunks).toString());
         denyModule = deniedModule === true;
         reportFailure = failReport || '';
+        releaseBootstrap();
+        bootstrapReady = holdBootstrap ? new Promise(resolve => { releaseBootstrap = resolve; }) : Promise.resolve();
         engagement.status = status; engagement.serviceOverview = 'Synthetic CUCM upgrade.';
         requests.length = 0; process.env.MODULE025_TEST_DENY_DOWNLOAD = denyDownload || '';
         res.end('{}'); return;
       }
       if (!url.pathname.startsWith('/api/')) { next(); return; }
+      if (url.pathname === '/api/module025/sow-gsd/bootstrap' && req.headers['sec-fetch-mode']) await bootstrapReady;
+      if (process.env.MODULE025_TEST_DELAY_STARTUP === 'true'
+          && ['/api/security/me', '/api/users/me', '/api/module025/sow-gsd/bootstrap'].includes(url.pathname)) {
+        await new Promise(resolve => setTimeout(resolve, url.pathname.endsWith('/bootstrap') ? 1200 : 700));
+      }
       const authenticated = req.headers.authorization === 'Bearer synthetic-session-only' && req.headers['x-projectpulse-session'] === 'synthetic-session-only';
       const fixture = req.headers['x-projectpulse-module025-uat-run'] === '12345-1' && req.headers.origin === `http://${req.headers.host}`;
       requests.push({ method: req.method, path: url.pathname, ...(registerMode ? { fixture, authenticated,
@@ -63,7 +75,7 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       else if (registerMode && url.pathname.startsWith('/api/module025/') && (!authenticated || !fixture || denyModule)) {
         res.statusCode = authenticated ? 403 : 401; body = { message: 'Fixture/session required' };
       }
-      else if (url.pathname === '/api/module025/sow-gsd/bootstrap') body = { currentUser: { userId: 'sa' }, access: { canCreate: true, isSolutionArchitect: true, ...(registerMode ? { protectedTestUatRoleFixture: true } : {}) },
+      else if (url.pathname === '/api/module025/sow-gsd/bootstrap') body = { currentUser: { userId: 'sa' }, access: { canCreate: true, isSolutionArchitect: true, ...(registerMode ? { isManager: true, managerScopeReadOnly: true, protectedTestUatRoleFixture: true } : {}) },
         solutionArchitects: [{ userId: 'sa', displayName: 'Test SA' }], commercialModels: [], customerPrograms: [] };
       else if (registerMode && url.pathname === '/api/module025/sow-register') {
         if (reportFailure === 'api' || (reportFailure === 'browser' && req.headers['sec-fetch-mode'])) {

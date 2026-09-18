@@ -25,7 +25,8 @@ def document(name):
     return base64.b64encode(data.getvalue()).decode()
 
 async def main():
-    env = os.environ | {'MODULE025_TEST_REGISTER': 'true', 'MODULE025_TEST_SOW': document('word/document.xml'),
+    env = os.environ | {'MODULE025_TEST_REGISTER': 'true', 'MODULE025_TEST_DELAY_STARTUP': 'true',
+                        'MODULE025_TEST_SOW': document('word/document.xml'),
                         'MODULE025_TEST_GSD': document('xl/workbook.xml')}
     server = subprocess.Popen(['node', 'tests/module025-installed-browser-harness.mjs'], cwd=ROOT,
                               env=env, stdout=subprocess.PIPE, text=True)
@@ -40,9 +41,10 @@ async def main():
         def state():
             with urlopen(runner.ORIGIN + '/__state') as response:
                 return json.load(response)
-        def reset(deny=False, fail_report=''):
+        def reset(deny=False, fail_report='', hold_bootstrap=False):
             with urlopen(Request(runner.ORIGIN + '/__reset', method='POST',
-                data=json.dumps({'status': 'confirmed', 'deniedModule': deny, 'failReport': fail_report}).encode())) as response:
+                data=json.dumps({'status': 'confirmed', 'deniedModule': deny, 'failReport': fail_report,
+                                 'holdBootstrap': hold_bootstrap}).encode())) as response:
                 response.read()
         variables = {'BASE': runner.ORIGIN, 'TEST_LOGIN_PASSWORD': 'synthetic-password-only',
                      'MODULE025_ENGAGEMENT_NUMBER': 'SOW-TEST-025', 'MODULE025_UAT_RUN_ID': '12345-1'}
@@ -60,6 +62,25 @@ async def main():
             protected = [item for item in requests if item['path'].endswith(('sow.docx', 'gsd.xlsx'))]
             assert len([item for item in protected if item['authenticated'] and item['fixture']]) == 4
             assert len([item for item in protected if not item['authenticated'] and not item['runHeaderPresent']]) == 2
+            # Hold the browser's real bootstrap until this test has inspected
+            # the early tab. Loading must disable it; releasing the response
+            # enables it and the complete real register lifecycle must pass.
+            ready_open_register = runner.open_register
+            early_visits = 0
+            async def early_tab(page):
+                nonlocal early_visits
+                early_visits += 1
+                if early_visits > 1:
+                    await ready_open_register(page)
+                    return
+                tab = page.get_by_role('tab', name='SOW Register & SELL', exact=True)
+                await tab.wait_for(state='visible')
+                assert await tab.is_disabled(), 'Register tab was active before bootstrap completed'
+                await page.context.request.get(runner.ORIGIN + '/__release-bootstrap')
+                await tab.click()
+            reset(hold_bootstrap=True)
+            with patch.object(runner, 'open_register', early_tab):
+                await runner.run()
             # Failed report APIs must remain failures with a closed HTTP code,
             # not an unrelated missing-button timeout or a raw response body.
             for mode, code in [('api', 'browser_register_preflight_http_500'),

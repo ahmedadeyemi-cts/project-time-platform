@@ -196,6 +196,10 @@ function isExcludedLegacyHeader(element) {
     // workspace page, not the legacy Module 999 guide header; excluding it
     // prevents the enterprise chrome decorator from hiding its h1.
     '.role-journeys',
+    // Module 025 headers contain document/report actions. They are part of the
+    // workspace, even when asynchronous startup makes their h1 appear first.
+    '[data-module025-sow-gsd-workspace="true"]',
+    '[data-module025-sow-register="true"]',
     '[role="dialog"]',
     '[aria-modal="true"]',
     '.drawer',
