@@ -45,6 +45,8 @@ jobs:
       DEPLOY_WORKFLOW_PATH: .github/workflows/projectpulse-deploy-test.yml
       REPAIRED_MODULE025_SHA: f7c86b45cff09741dd022c0e80bc1e6ad7d5c80b
       QUARANTINED_ZERO_JOB_RUN_ID: '33654881418'
+      QUARANTINED_ZERO_JOB_RUN_ID_2: '34377182662'
+      QUARANTINED_ZERO_JOB_RUN_ID_3: '34495606530'
 
     steps:
       - name: Check out exact current main controller
@@ -86,52 +88,74 @@ jobs:
 
           workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
           runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
-          now_epoch="$(date -u +%s)"
           blocking_runs=()
-          reconciled_stale_runs=()
-          mapfile -t active_run_ids < <(jq -r --argjson quarantined "$QUARANTINED_ZERO_JOB_RUN_ID" '
+          quarantined_runs=()
+
+          verify_zero_job_quarantine() {
+            local run_id="$1" expected_sha="$2" expected_branch="$3" expected_created="$4"
+            local run_json jobs_json
+            run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+            jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?filter=all&per_page=1")"
+            jq -e \
+              --argjson id "$run_id" \
+              --argjson workflow "$DEPLOY_WORKFLOW_ID" \
+              --arg sha "$expected_sha" \
+              --arg branch "$expected_branch" \
+              --arg created "$expected_created" '
+                .id == $id
+                and .workflow_id == $workflow
+                and .run_attempt == 1
+                and .event == "workflow_dispatch"
+                and .head_sha == $sha
+                and .head_branch == $branch
+                and .created_at == $created
+                and .updated_at == $created
+                and .status == "queued"
+                and .conclusion == null
+              ' <<<"$run_json" >/dev/null || return 1
+            [[ "$(jq -r '.total_count' <<<"$jobs_json")" == 0 ]] || return 1
+            return 0
+          }
+
+          mapfile -t active_run_ids < <(jq -r '
             .workflow_runs[]
-            | select(.id != $quarantined)
             | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending")
             | .id
           ' <<<"$runs_json")
 
           for run_id in "${active_run_ids[@]}"; do
             [[ "$run_id" =~ ^[0-9]+$ ]] || continue
-            run_status="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .status' <<<"$runs_json")"
-            run_created_at="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .created_at' <<<"$runs_json")"
-            if [[ "$run_status" == 'queued' ]]; then
-              created_epoch="$(date -u -d "$run_created_at" +%s 2>/dev/null || echo 0)"
-              age_seconds=$(( now_epoch - created_epoch ))
-              if (( created_epoch > 0 && age_seconds >= 1800 )); then
-                job_count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?filter=all&per_page=1" --jq '.total_count')"
-                if [[ "$job_count" == 0 ]]; then
-                  echo "MODULE025_PROTECTED_UAT_STALE_ZERO_JOB_RUN=${run_id} age_seconds=${age_seconds}"
-                  gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel" >/dev/null 2>&1 || true
-                  terminal=false
-                  for cancel_poll in $(seq 1 15); do
-                    run_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.status')"
-                    if [[ "$run_state" == 'completed' ]]; then
-                      terminal=true
-                      break
-                    fi
-                    sleep 2
-                  done
-                  if [[ "$terminal" == true ]]; then
-                    reconciled_stale_runs+=("$run_id")
-                    continue
-                  fi
-                  blocking_runs+=("${run_id}:queued-zero-job-not-cancelled")
-                  continue
-                fi
-              fi
+            if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID" ]] && \
+               verify_zero_job_quarantine "$run_id" \
+                 '3d02b4cb62683b96554186f9d3a782fc1f21ca54' \
+                 'fix/shared-project-document-planning-20260819' \
+                 '2026-09-02T16:26:03Z'; then
+              quarantined_runs+=("$run_id")
+              continue
             fi
+            if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_2" ]] && \
+               verify_zero_job_quarantine "$run_id" \
+                 'af5fcb463384096f668345ac7cc9bd00efef0a33' \
+                 'main' \
+                 '2026-09-09T16:30:42Z'; then
+              quarantined_runs+=("$run_id")
+              continue
+            fi
+            if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_3" ]] && \
+               verify_zero_job_quarantine "$run_id" \
+                 '9f30078c2c407d4d3576ccefd663a145be50c6c4' \
+                 'main' \
+                 '2026-09-10T15:26:05Z'; then
+              quarantined_runs+=("$run_id")
+              continue
+            fi
+            run_status="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .status' <<<"$runs_json")"
             blocking_runs+=("${run_id}:${run_status}")
           done
 
-          if (( ${#reconciled_stale_runs[@]} > 0 )); then
-            joined_stale_runs="$(IFS=,; echo "${reconciled_stale_runs[*]}")"
-            echo "MODULE025_PROTECTED_UAT_RECONCILED_STALE_RUNS=$joined_stale_runs"
+          if (( ${#quarantined_runs[@]} > 0 )); then
+            joined_quarantined="$(IFS=,; echo "${quarantined_runs[*]}")"
+            echo "MODULE025_PROTECTED_UAT_ZERO_JOB_QUARANTINE=$joined_quarantined"
           fi
           if (( ${#blocking_runs[@]} > 0 )); then
             joined_blocking_runs="$(IFS=,; echo "${blocking_runs[*]}")"
