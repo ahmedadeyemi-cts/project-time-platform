@@ -72,6 +72,7 @@ public static class Module025SowGsdModule
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/reopen", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)ReopenAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/archive", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)ArchiveAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/unarchive", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)UnarchiveAsync);
+        app.MapDelete("/api/module025/sow-gsd/{engagementId:guid}", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)DeleteDraftAsync);
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/sow.docx", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)DownloadSowAsync);
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/gsd.xlsx", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)DownloadGsdAsync);
         return app;
@@ -543,6 +544,7 @@ public static class Module025SowGsdModule
             currentPhase = currentProgress?.Phase ?? string.Empty,
             currentProvider = progress.LastOrDefault(item => item.Provider.Length > 0)?.Provider ?? string.Empty,
             deadlineAt = first.CreatedAt.AddSeconds(Module025GenerationEngine.DeadlineSeconds),
+            elapsedSeconds = Math.Max(0, (int)Math.Ceiling((latest.CreatedAt - first.CreatedAt).TotalSeconds)),
             maximumProviderAttempts = Module025GenerationEngine.AttemptsPerPhase * 5,
             maximumOutputTokensPerAttempt = Module025GenerationEngine.MaximumOutputTokens,
             progress = progress.Select(item => new
@@ -1042,6 +1044,102 @@ public static class Module025SowGsdModule
         await InsertEventAsync(connection, transaction, engagementId, access.ActualUserId, revision.Value, "reopened", "Confirmed SOW/GSD reopened for Solution Architect edits and reconfirmation.", new { }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Results.Ok(new { status = "module025_reopened", engagementId, revision, stateChanged = true });
+    }
+
+    private static async Task<IResult> DeleteDraftAsync(Guid engagementId, HttpContext context, CancellationToken cancellationToken)
+    {
+        if (!SameOrigin(context)) return OriginRejected();
+        var writable = await LoadWritableStateAsync(engagementId, context, cancellationToken);
+        if (writable.Error is not null) return writable.Error;
+        await using var connection = writable.Connection!;
+        var engagement = writable.Engagement!;
+
+        if (engagement.Status != "draft" || engagement.LastGeneratedAt.HasValue)
+            return StateConflict("draft_delete_not_allowed",
+                "Only an active draft that has never completed detailed-scope generation can be deleted. Archive generated or reviewed records instead.");
+        if (!await SowSellSchemaReadyAsync(connection, cancellationToken)) return SowSellMigrationRequired();
+
+        const string eligibilitySql = """
+            SELECT
+                EXISTS(
+                    SELECT 1 FROM module025_sow_gsd_generation_snapshots
+                    WHERE engagement_id=@engagement_id
+                )
+                OR EXISTS(
+                    SELECT 1 FROM module025_sow_gsd_versions
+                    WHERE engagement_id=@engagement_id
+                )
+                OR EXISTS(
+                    SELECT 1 FROM module025_sow_sell_submissions
+                    WHERE engagement_id=@engagement_id
+                ) AS has_retained_evidence,
+                EXISTS(
+                    SELECT 1
+                    FROM module025_sow_gsd_events queued
+                    WHERE queued.engagement_id=@engagement_id
+                      AND queued.event_type='ai_generation_queued'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM module025_sow_gsd_events terminal
+                          WHERE terminal.engagement_id=queued.engagement_id
+                            AND terminal.event_type IN ('ai_generation_completed','ai_generation_failed','ai_generation_obsolete')
+                            AND terminal.evidence_json->>'generationId'=queued.evidence_json->>'generationId'
+                      )
+                ) AS generation_active;
+            """;
+        bool hasEvidence;
+        bool generationActive;
+        await using (var command = new NpgsqlCommand(eligibilitySql, connection))
+        {
+            command.Parameters.AddWithValue("engagement_id", engagementId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+                return Results.Json(new { status = "module025_delete_eligibility_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            hasEvidence = reader.GetBoolean(0);
+            generationActive = reader.GetBoolean(1);
+        }
+
+        if (generationActive)
+            return StateConflict("generation_in_progress", "Wait for the current detailed-scope generation to stop before deleting this draft.");
+        if (hasEvidence)
+            return StateConflict("retained_evidence_exists",
+                "This SOW/GSD has retained generation or release evidence and cannot be deleted. Archive it instead.");
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var guard = new NpgsqlCommand(
+            "SELECT set_config('projectpulse.module025_allow_draft_delete','on',true);",
+            connection, transaction))
+        {
+            await guard.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using (var events = new NpgsqlCommand(
+            "DELETE FROM module025_sow_gsd_events WHERE engagement_id=@engagement_id;",
+            connection, transaction))
+        {
+            events.Parameters.AddWithValue("engagement_id", engagementId);
+            await events.ExecuteNonQueryAsync(cancellationToken);
+        }
+        int deleted;
+        await using (var root = new NpgsqlCommand(
+            "DELETE FROM module025_sow_gsd_engagements WHERE engagement_id=@engagement_id AND status='draft' AND is_active=TRUE AND last_generated_at IS NULL;",
+            connection, transaction))
+        {
+            root.Parameters.AddWithValue("engagement_id", engagementId);
+            deleted = await root.ExecuteNonQueryAsync(cancellationToken);
+        }
+        if (deleted != 1)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return StateConflict("draft_delete_conflict", "The draft changed before it could be deleted. Reload and try again.");
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return Results.Ok(new
+        {
+            status = "module025_draft_deleted",
+            engagementId,
+            engagementNumber = engagement.EngagementNumber,
+            stateChanged = true
+        });
     }
 
     private static async Task<IResult> ArchiveAsync(Guid engagementId, HttpContext context, CancellationToken cancellationToken)
