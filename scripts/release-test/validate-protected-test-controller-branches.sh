@@ -165,6 +165,10 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
     exit 1
   }
   node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+elif [[ "$HEAD_BRANCH" == 'feature/module025-review-timing-delete-reliability-20260918' ]]; then
+  node tests/module025-review-timing-delete-scope.mjs
+  node tests/module025-review-timing-delete.test.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'feature/module025-project-name-20260917' ]]; then
   node tests/module025-project-name-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
