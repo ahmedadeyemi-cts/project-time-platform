@@ -8,10 +8,9 @@ import { verifyReadOnlyWorkflow } from './flowhive-psa-scope.mjs';
 const base='7339b882ed97371b399ff8cd35b8e48f2bce3a6c';
 const expected=[
   ".github/workflows/flowhive-psa-release-control-ci.yml",
-  ".github/workflows/module-management-owner-drawer-ci.yml",
   ".github/workflows/projectpulse-deploy-test.yml",
   "database/migrations/110_module025_ungenerated_draft_delete.sql",
-  "scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh",
+  "scripts/release-test/build-and-run-module025-retention-migration-106.sh",
   "scripts/release-test/run-module025-installed-sa-uat.py",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs",
