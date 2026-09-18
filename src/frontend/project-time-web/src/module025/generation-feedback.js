@@ -19,15 +19,30 @@ export function formatGenerationProgress(progress, now = Date.now()) {
 }
 
 export function formatGenerationFailure(payload) {
-  const decisions = (payload?.targetDecisions || []).map(decision => {
-    const provider = providers[decision.target ?? decision.Target];
-    const reason = code(decision.reasonCode ?? decision.ReasonCode);
-    return provider && reason ? `${provider}: ${reason}` : '';
-  }).filter(Boolean);
+  const decisionRows = (payload?.targetDecisions || []).map(decision => ({
+    provider: providers[decision.target ?? decision.Target] || '',
+    reason: code(decision.reasonCode ?? decision.ReasonCode)
+  })).filter(item => item.provider && item.reason);
+  const decisions = decisionRows.map(item => `${item.provider}: ${item.reason}`);
   const diagnostic = code(payload?.diagnosticCode);
+  const elapsed = Number(payload?.elapsedSeconds);
+  const elapsedText = Number.isFinite(elapsed)
+    ? `Elapsed: ${Math.floor(elapsed / 60)}m ${Math.max(0, Math.floor(elapsed % 60))}s.`
+    : '';
+  const deadlineHit = decisionRows.some(item => item.reason === 'provider_deadline_exceeded')
+    || diagnostic === 'provider_deadline_exceeded';
+  const adapterUnavailable = decisionRows.some(item => item.reason === 'structured_sow_adapter_unavailable');
+  const recommendation = deadlineHit && adapterUnavailable
+    ? 'Private providers reached their bounded deadline and no privacy-safe structured cloud fallback was eligible. Verify that Customer is selected and the Service Overview clearly names the technology and requested operation, then retry. Any completed phase checkpoints will be reused.'
+    : deadlineHit
+      ? 'A provider reached its bounded deadline. Retry generation; completed phase checkpoints will be reused instead of starting over.'
+      : adapterUnavailable
+        ? 'The privacy-safe structured cloud fallback was not eligible for this Service Overview. Clearly identify the technology and requested operation, then retry.'
+        : '';
   return ['Generation did not complete. The scope and hours below are the previous saved result.',
-    position(payload), diagnostic ? `Diagnostic: ${diagnostic}.` : '',
+    position(payload), elapsedText, diagnostic ? `Diagnostic: ${diagnostic}.` : '',
     decisions.length ? `Provider results: ${decisions.join('; ')}.` : '',
+    recommendation,
     payload?.message || 'The saved draft was preserved.'].filter(Boolean).join(' ');
 }
 
