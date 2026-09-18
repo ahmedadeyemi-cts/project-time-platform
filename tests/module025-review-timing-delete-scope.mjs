@@ -30,8 +30,13 @@ export function verifyModule025ReviewTimingDeleteScope(){
   const actual=text?text.split(/\r?\n/):[];
   assert.deepEqual([...actual].sort(),expected);
   assert.throws(()=>assert.deepEqual([...actual,'.github/workflows/projectpulse-deploy-production.yml'].sort(),expected));
-  for(const file of expected.filter(file=>file.startsWith('.github/workflows/')))
+  for(const file of expected.filter(file=>file.startsWith('.github/workflows/') && file !== '.github/workflows/projectpulse-deploy-test.yml'))
     verifyReadOnlyWorkflow(fs.readFileSync(file,'utf8'),file);
+  const deploy=fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml','utf8');
+  assert.match(deploy,/environment: test/);
+  assert.match(deploy,/group: projectpulse-deploy-test/);
+  assert.match(deploy,/110_module025_ungenerated_draft_delete/);
+  assert.doesNotMatch(deploy,/projectpulse-deploy-production/);
   assert.deepEqual(
     fs.readFileSync('.github/workflows/projectpulse-deploy-production.yml'),
     execFileSync('git',['show',`${base}:.github/workflows/projectpulse-deploy-production.yml`])
