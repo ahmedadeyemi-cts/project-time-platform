@@ -20,8 +20,10 @@ const expected=[
   "src/frontend/project-time-web/src/module025/generation-feedback.js",
   "src/frontend/project-time-web/src/module025/sow-gsd-workspace.css",
   "tests/module025-review-timing-delete-scope.mjs",
+  "tests/flowhive-psa-admission.test.mjs",
   "tests/module025-review-timing-delete.test.mjs",
-  "tests/test-module025-draft-delete-migration-110.sh"
+  "tests/test-module025-draft-delete-migration-110.sh",
+  "tests/validate-celar-ai-pr630-consolidated.mjs"
 ].sort();
 
 export function verifyModule025ReviewTimingDeleteScope(){
