@@ -2,6 +2,7 @@ import { createServer } from '../src/frontend/project-time-web/node_modules/vite
 import react from '../src/frontend/project-time-web/node_modules/@vitejs/plugin-react/dist/index.js';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const engagement = {
@@ -11,9 +12,14 @@ const engagement = {
   customerProgram: 'standard', phases: [], lastGeneratedAt: '2026-09-17T00:00:00Z'
 };
 const requests = [];
+const registerMode = process.env.MODULE025_TEST_REGISTER === 'true';
+const session = { sessionToken: 'synthetic-session-only', username: 'demo.manager@ussignal.local', loginMethod: 'local', provider: 'LOCAL', expiresAt: '2099-01-01T00:00:00Z', mustChangePassword: false };
+const bytes = label => Buffer.from(process.env['MODULE025_TEST_' + label.toUpperCase()], 'base64');
+const digest = data => crypto.createHash('sha256').update(data).digest('hex');
 const dist = path.join(root, 'src/frontend/project-time-web/dist');
 if (!fs.existsSync(path.join(dist, 'index.html'))) throw new Error('Build the complete application before the installed browser test.');
 const user = { userId: 'sa', username: 'synthetic.local', displayName: 'Test SA', roles: [{ roleCode: 'SOLUTION_ARCHITECT' }], permissions: ['VIEW_SOW_GENERATOR', 'MANAGE_SOW_GENERATOR'] };
+if (registerMode) user.roles = [{ roleCode: 'MANAGER' }];
 let denyModule = false;
 const server = await createServer({ configFile: false, root: path.join(root, 'src/frontend/project-time-web'),
   plugins: [react(), { name: 'installed-browser-regression', configureServer(vite) {
@@ -41,17 +47,41 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
         res.end('{}'); return;
       }
       if (!url.pathname.startsWith('/api/')) { next(); return; }
-      requests.push({ method: req.method, path: url.pathname });
+      const authenticated = req.headers.authorization === 'Bearer synthetic-session-only' && req.headers['x-projectpulse-session'] === 'synthetic-session-only';
+      const fixture = req.headers['x-projectpulse-module025-uat-run'] === '12345-1' && req.headers.origin === `http://${req.headers.host}`;
+      requests.push({ method: req.method, path: url.pathname, ...(registerMode ? { fixture, authenticated,
+        runHeaderPresent: Boolean(req.headers['x-projectpulse-module025-uat-run']) } : {}) });
       let body;
-      if (url.pathname === '/api/module025/sow-gsd/bootstrap') body = { currentUser: { userId: 'sa' }, access: { canCreate: true, isSolutionArchitect: true },
+      if (registerMode && url.pathname === '/api/auth/local/login') {
+        const chunks = []; for await (const chunk of req) chunks.push(chunk);
+        const login = JSON.parse(Buffer.concat(chunks).toString());
+        if (login.username !== 'demo.manager@ussignal.local' || login.password !== 'synthetic-password-only') { res.statusCode = 401; body = {}; }
+        else body = session;
+      }
+      else if (registerMode && url.pathname.startsWith('/api/module025/') && (!authenticated || !fixture || denyModule)) {
+        res.statusCode = authenticated ? 403 : 401; body = { message: 'Fixture/session required' };
+      }
+      else if (url.pathname === '/api/module025/sow-gsd/bootstrap') body = { currentUser: { userId: 'sa' }, access: { canCreate: true, isSolutionArchitect: true, ...(registerMode ? { protectedTestUatRoleFixture: true } : {}) },
         solutionArchitects: [{ userId: 'sa', displayName: 'Test SA' }], commercialModels: [], customerPrograms: [] };
+      else if (registerMode && url.pathname === '/api/module025/sow-register') {
+        if (url.searchParams.get('format') === 'csv') {
+          const data = Buffer.from('Engagement,Customer\nSOW-TEST-025,Synthetic customer\n');
+          res.setHeader('Content-Type', 'text/csv'); res.setHeader('X-Content-Sha256', digest(data)); res.end(data); return;
+        }
+        body = { records: [{ ...engagement, latestVersionNumber: 1 }], statistics: [], totalRecords: 1, runtimeEnvironment: 'test' };
+      }
+      else if (registerMode && url.pathname.endsWith('/versions')) body = {
+        ...engagement, runtimeEnvironment: 'test', currentContentReleased: true, latestVersionId: 'version-1',
+        versions: [{ versionId: 'version-1', versionNumber: 1, sourceRevision: 5,
+          sowSha256: digest(bytes('sow')), gsdSha256: digest(bytes('gsd')), submissions: [] }] };
+      else if (registerMode && url.pathname.endsWith('/history')) body = { events: [] };
       else if (/\/(sow\.docx|gsd\.xlsx)$/.test(url.pathname)) {
         if (process.env.MODULE025_TEST_DENY_DOWNLOAD === 'true' || req.headers.authorization !== 'Bearer synthetic-session-only' || req.headers['x-projectpulse-session'] !== 'synthetic-session-only') {
           res.statusCode = 401; body = { message: 'Session required' };
         } else {
           const label = url.pathname.endsWith('sow.docx') ? 'sow' : 'gsd';
           res.setHeader('Content-Type', 'application/octet-stream');
-          res.end(Buffer.from(process.env['MODULE025_TEST_' + label.toUpperCase()], 'base64')); return;
+          res.end(bytes(label)); return;
         }
       }
       else if (url.pathname.endsWith('/reopen') && req.method === 'POST') {
@@ -67,7 +97,7 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       else if (url.pathname.endsWith('/sow-gsd')) body = { engagements: [engagement] };
       else if (['/api/users/me', '/api/security/me'].includes(url.pathname)) body = { ...user, isViewAs: false };
       else if (url.pathname.startsWith('/api/rbac/v1/')) body = { roles: user.roles,
-        modules: [{ moduleCode: '025', moduleNumber: '025', isActive: true }], actor: { roleCodes: ['SOLUTION_ARCHITECT'] },
+        modules: [{ moduleCode: '025', moduleNumber: '025', isActive: true }], actor: { roleCodes: user.roles.map(role => role.roleCode) },
         grants: denyModule ? [{ moduleCode: '025', roleCode: 'SOLUTION_ARCHITECT', actionCode: 'MODULE_ACCESS', grantEffect: 'DENY' }] : [], legacyFallback: [] };
       else if (url.pathname === '/api/module-availability/overrides') body = { states: [], access: {} };
       else if (url.pathname === '/api/module-availability') body = { modules: [] };
