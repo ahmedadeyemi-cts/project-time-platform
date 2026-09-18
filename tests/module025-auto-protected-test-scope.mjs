@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const base='a82b4c37d13b492e1335798e5fbb1b6f423c6d68';
+const base='3c52a76306a63128dafa777959787b6dedfed5f3';
 const expected=[
   ".github/workflows/module025-protected-uat-control.yml",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
