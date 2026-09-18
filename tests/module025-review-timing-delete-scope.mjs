@@ -8,8 +8,8 @@ import { verifyReadOnlyWorkflow } from './flowhive-psa-scope.mjs';
 const base='7339b882ed97371b399ff8cd35b8e48f2bce3a6c';
 const expected=[
   ".github/workflows/flowhive-psa-release-control-ci.yml",
-  ".github/workflows/projectpulse-deploy-test.yml",
   "database/migrations/110_module025_ungenerated_draft_delete.sql",
+  "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
   "scripts/release-test/build-and-run-module025-retention-migration-106.sh",
   "scripts/release-test/run-module025-installed-sa-uat.py",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
@@ -32,13 +32,16 @@ export function verifyModule025ReviewTimingDeleteScope(){
   const actual=text?text.split(/\r?\n/):[];
   assert.deepEqual([...actual].sort(),expected);
   assert.throws(()=>assert.deepEqual([...actual,'.github/workflows/projectpulse-deploy-production.yml'].sort(),expected));
-  for(const file of expected.filter(file=>file.startsWith('.github/workflows/') && file !== '.github/workflows/projectpulse-deploy-test.yml'))
+  for(const file of expected.filter(file=>file.startsWith('.github/workflows/')))
     verifyReadOnlyWorkflow(fs.readFileSync(file,'utf8'),file);
-  const deploy=fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml','utf8');
-  assert.match(deploy,/environment: test/);
-  assert.match(deploy,/group: projectpulse-deploy-test/);
-  assert.match(deploy,/110_module025_ungenerated_draft_delete/);
-  assert.doesNotMatch(deploy,/projectpulse-deploy-production/);
+  assert.deepEqual(
+    fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml'),
+    execFileSync('git',['show',`${base}:.github/workflows/projectpulse-deploy-test.yml`])
+  );
+  const retention=fs.readFileSync('scripts/release-test/build-and-run-module025-retention-migration-106.sh','utf8');
+  assert.match(retention,/migration-106\.sql/);
+  assert.match(retention,/migration-110\.sql/);
+  assert.match(retention,/MIGRATION_110_MODULE025_DRAFT_DELETE=APPLIED_AND_VERIFIED/);
   assert.deepEqual(
     fs.readFileSync('.github/workflows/projectpulse-deploy-production.yml'),
     execFileSync('git',['show',`${base}:.github/workflows/projectpulse-deploy-production.yml`])
