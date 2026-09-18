@@ -8,7 +8,12 @@ internal static class Module025GenerationEngine
 {
     internal const string ContractVersion = "module025-detailed-phases-v2";
     internal const int DeadlineSeconds = 1200;
-    internal const int ProviderTimeoutSeconds = 120;
+    // Private SOW inference can need more than two minutes for a fully structured phase.
+    // Keep the overall 20-minute document deadline bounded while allowing a single
+    // private provider enough time to complete before failing over.
+    internal const int ProviderTimeoutSeconds = 180;
+    // External closed-capsule providers stay on the tighter interactive budget.
+    internal const int ExternalProviderTimeoutSeconds = 120;
     internal const int AttemptsPerPhase = 2;
     internal const int MaximumOutputTokens = 6144;
     // The live OpenAI Plan response exhausted 6144 tokens before completion.
