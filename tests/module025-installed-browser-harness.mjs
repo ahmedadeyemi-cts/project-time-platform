@@ -21,6 +21,7 @@ if (!fs.existsSync(path.join(dist, 'index.html'))) throw new Error('Build the co
 const user = { userId: 'sa', username: 'synthetic.local', displayName: 'Test SA', roles: [{ roleCode: 'SOLUTION_ARCHITECT' }], permissions: ['VIEW_SOW_GENERATOR', 'MANAGE_SOW_GENERATOR'] };
 if (registerMode) user.roles = [{ roleCode: 'MANAGER' }];
 let denyModule = false;
+let reportFailure = '';
 const server = await createServer({ configFile: false, root: path.join(root, 'src/frontend/project-time-web'),
   plugins: [react(), { name: 'installed-browser-regression', configureServer(vite) {
     vite.middlewares.use(async (req, res, next) => {
@@ -40,8 +41,9 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       }
       if (url.pathname === '/__reset' && req.method === 'POST') {
         const chunks = []; for await (const chunk of req) chunks.push(chunk);
-        const { status, denyDownload, deniedModule } = JSON.parse(Buffer.concat(chunks).toString());
+        const { status, denyDownload, deniedModule, failReport } = JSON.parse(Buffer.concat(chunks).toString());
         denyModule = deniedModule === true;
+        reportFailure = failReport || '';
         engagement.status = status; engagement.serviceOverview = 'Synthetic CUCM upgrade.';
         requests.length = 0; process.env.MODULE025_TEST_DENY_DOWNLOAD = denyDownload || '';
         res.end('{}'); return;
@@ -64,11 +66,16 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       else if (url.pathname === '/api/module025/sow-gsd/bootstrap') body = { currentUser: { userId: 'sa' }, access: { canCreate: true, isSolutionArchitect: true, ...(registerMode ? { protectedTestUatRoleFixture: true } : {}) },
         solutionArchitects: [{ userId: 'sa', displayName: 'Test SA' }], commercialModels: [], customerPrograms: [] };
       else if (registerMode && url.pathname === '/api/module025/sow-register') {
+        if (reportFailure === 'api' || (reportFailure === 'browser' && req.headers['sec-fetch-mode'])) {
+          res.statusCode = reportFailure === 'api' ? 500 : 403;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ message: 'Synthetic report denial; never log this body.' })); return;
+        }
         if (url.searchParams.get('format') === 'csv') {
-          const data = Buffer.from('Engagement,Customer\nSOW-TEST-025,Synthetic customer\n');
+          const data = Buffer.from('\uFEFFRuntime environment,From UTC date,Through UTC date,ownerUserId,ownerDisplayName,recordsCreated,uniqueSowsGenerated,successfulGenerationRuns,failedGenerationRuns,releasedVersions,uniqueSowsSent,successfulVersionSubmissions,submissionRequests,blockedSubmissions\r\ntest,All time,All time,sa,Test SA,1,1,1,0,1,0,0,0,0\r\n');
           res.setHeader('Content-Type', 'text/csv'); res.setHeader('X-Content-Sha256', digest(data)); res.end(data); return;
         }
-        body = { records: [{ ...engagement, latestVersionNumber: 1 }], statistics: [], totalRecords: 1, runtimeEnvironment: 'test' };
+        body = { status: 'module025_sow_register', records: [{ ...engagement, latestVersionNumber: 1 }], statistics: [], totalRecords: 1, runtimeEnvironment: 'test' };
       }
       else if (registerMode && url.pathname.endsWith('/versions')) body = {
         ...engagement, runtimeEnvironment: 'test', currentContentReleased: true, latestVersionId: 'version-1',

@@ -8,18 +8,49 @@ reloads without starting another generation or mutation.
 from __future__ import annotations
 
 import asyncio
+import csv
 import hashlib
+import io
 import json
 import os
 import re
+import sys
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ORIGIN = 'https://phd-west-test.onenecklab.com'
 
 
 def fail(code: str) -> None:
     raise RuntimeError(code)
+
+
+def verify_csv(data: bytes) -> None:
+    try:
+        rows = list(csv.reader(io.StringIO(data.decode('utf-8-sig')), strict=True))
+    except (UnicodeError, csv.Error):
+        fail('browser_csv_encoding_or_parse_failed')
+    expected = ['Runtime environment', 'From UTC date', 'Through UTC date',
+                'ownerUserId', 'ownerDisplayName', 'recordsCreated', 'uniqueSowsGenerated',
+                'successfulGenerationRuns', 'failedGenerationRuns', 'releasedVersions',
+                'uniqueSowsSent', 'successfulVersionSubmissions', 'submissionRequests', 'blockedSubmissions']
+    if not rows or rows[0] != expected or len(rows) < 2:
+        fail('browser_csv_report_contract_mismatch')
+    if any(len(row) != len(expected) or row[0] != 'test' for row in rows[1:]):
+        fail('browser_csv_report_rows_invalid')
+
+
+async def verify_report(response, stage: str) -> None:
+    if response.status != 200:
+        fail(f'browser_{stage}_http_{response.status}')
+    try:
+        payload = await response.json()
+    except Exception:
+        fail(f'browser_{stage}_invalid_json')
+    if (not isinstance(payload, dict) or payload.get('status') != 'module025_sow_register'
+            or not isinstance(payload.get('records'), list)
+            or not isinstance(payload.get('statistics'), list)):
+        fail(f'browser_{stage}_contract_mismatch')
 
 
 async def run() -> None:
@@ -65,6 +96,13 @@ async def run() -> None:
         if (bootstrap.get('access', {}).get('protectedTestUatRoleFixture') is not True
                 or bootstrap.get('access', {}).get('isSolutionArchitect') is not True):
             fail('browser_fixture_authorization_missing')
+        report_preflight = await context.request.get(
+            f'{base}/api/module025/sow-register?page=1',
+            headers={**fixture_headers, 'Authorization': f'Bearer {session["sessionToken"]}',
+                     'X-ProjectPulse-Session': session['sessionToken']},
+        )
+        await verify_report(report_preflight, 'register_preflight')
+        print('MODULE025_REGISTER_PREFLIGHT=PASS', file=sys.stderr, flush=True)
         generation_posts = []
         unexpected_writes = []
 
@@ -95,11 +133,34 @@ async def run() -> None:
         await context.route('**/*', restrict)
         page = await context.new_page()
         page.set_default_timeout(45_000)
+        report_responses = asyncio.Queue()
+
+        def observe_response(response):
+            parsed = urlparse(response.url)
+            if (parsed.scheme, parsed.netloc) != (urlparse(base).scheme, urlparse(base).netloc):
+                return
+            if response.request.method != 'GET':
+                return
+            label = {'/api/module025/sow-gsd/bootstrap': 'bootstrap',
+                     '/api/module025/sow-register': 'register'}.get(parsed.path)
+            if label:
+                # Closed metadata only: no response bodies, query values,
+                # session headers, user identifiers or generated text.
+                print(f'MODULE025_REGISTER_HTTP={label} status={response.status}', file=sys.stderr, flush=True)
+            if label == 'register' and parse_qs(parsed.query).get('format') != ['csv']:
+                report_responses.put_nowait(response)
+
+        page.on('response', observe_response)
         try:
             await page.goto(f'{base}/#sow-generator', wait_until='domcontentloaded', timeout=45_000)
             await page.get_by_role('tab', name='SOW Register & SELL', exact=True).click()
             register = page.locator('[data-module025-sow-register="true"]:visible')
             await register.wait_for(state='visible')
+            try:
+                report_response = await asyncio.wait_for(report_responses.get(), timeout=45)
+            except asyncio.TimeoutError:
+                fail('browser_register_response_missing')
+            await verify_report(report_response, 'register_read')
             csv_path = await register.get_by_role('button', name='Export SA report (.csv)', exact=True).get_attribute('data-csv-download-path')
             async with page.expect_response(
                 lambda response: urlparse(response.url).path == urlparse(f'{base}{csv_path}').path
@@ -110,8 +171,7 @@ async def run() -> None:
             report_response = await report_response_info.value
             report_download = await report_download_info.value
             report_bytes = Path(await report_download.path()).read_bytes()
-            if b'Engagement' not in report_bytes and b'SOW' not in report_bytes:
-                fail('browser_csv_download_content_missing')
+            verify_csv(report_bytes)
             report_hash = report_response.headers.get('x-content-sha256', '')
             if len(report_hash) != 64 or hashlib.sha256(report_bytes).hexdigest() != report_hash:
                 fail('browser_csv_download_hash_mismatch')
