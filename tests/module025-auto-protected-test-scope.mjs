@@ -12,6 +12,7 @@ const expected=[
 ".github/workflows/projectpulse-release-test-control-ci.yml",
   ".github/workflows/projectpulse-deploy-test.yml",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
+  "tests/flowhive-psa-admission.test.mjs",
   "tests/module025-auto-protected-test-scope.mjs",
 "tests/validate-systemwide-image-build-controller.mjs",
   "tests/validate-celar-ai-pr630-consolidated.mjs"
