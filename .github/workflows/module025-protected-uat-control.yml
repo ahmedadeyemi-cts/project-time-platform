@@ -47,6 +47,7 @@ jobs:
       QUARANTINED_ZERO_JOB_RUN_ID: '33654881418'
       QUARANTINED_ZERO_JOB_RUN_ID_2: '34377182662'
       QUARANTINED_ZERO_JOB_RUN_ID_3: '34495606530'
+      QUARANTINED_ZERO_JOB_RUN_ID_4: '35364203547'
 
     steps:
       - name: Check out exact current main controller
@@ -146,6 +147,19 @@ jobs:
                  '9f30078c2c407d4d3576ccefd663a145be50c6c4' \
                  'main' \
                  '2026-09-10T15:26:05Z'; then
+              quarantined_runs+=("$run_id")
+              continue
+            fi
+            # GitHub rejects cancellation of this never-started run. Only a
+            # descendant release can quarantine it: its unchanged deployment
+            # controller rejects stale main before any Azure authentication.
+            if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_4" && \
+                  "$requested_sha" != '669b467b932d3d029bde2c5bba03e0f63ba474f4' ]] && \
+               git merge-base --is-ancestor '669b467b932d3d029bde2c5bba03e0f63ba474f4' HEAD && \
+               verify_zero_job_quarantine "$run_id" \
+                 '669b467b932d3d029bde2c5bba03e0f63ba474f4' \
+                 'main' \
+                 '2026-09-18T15:43:56Z'; then
               quarantined_runs+=("$run_id")
               continue
             fi
@@ -253,6 +267,38 @@ jobs:
           done
           [[ "$deployment_run_id" =~ ^[0-9]+$ && "$deployment_run_url" == https://github.com/* ]] \
             || fail 'The exact dispatched Protected-Test deployment could not be located.'
+
+          # A run record alone does not prove GitHub has scheduled the workflow.
+          # Keep the existing bounded admission open until a real job is attached;
+          # every failure still reseals through the EXIT trap.
+          echo "run_id=$deployment_run_id" >> "$GITHUB_OUTPUT"
+          echo "run_url=$deployment_run_url" >> "$GITHUB_OUTPUT"
+          job_attached=false
+          startup_deadline_epoch=$(( $(date +%s) + 180 ))
+          for attempt in $(seq 1 90); do
+            (( $(date +%s) < startup_deadline_epoch )) || break
+            run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${deployment_run_id}")"
+            jq -e --arg sha "$RELEASE_SHA" --argjson id "$deployment_run_id" \
+              --argjson workflow "$DEPLOY_WORKFLOW_ID" '
+                .id == $id and .workflow_id == $workflow
+                and .event == "workflow_dispatch" and .head_branch == "main"
+                and .head_sha == $sha and .run_attempt == 1
+              ' <<<"$run_json" >/dev/null \
+              || fail 'Dispatched Protected-Test run identity changed before startup.'
+            [[ "$(jq -r '.status' <<<"$run_json")" != 'completed' ]] \
+              || fail 'Dispatched Protected-Test run ended before startup verification.'
+            jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${deployment_run_id}/jobs?filter=all&per_page=1")"
+            if jq -e --argjson id "$deployment_run_id" '
+              .total_count > 0 and any(.jobs[]; .run_id == $id)
+            ' <<<"$jobs_json" >/dev/null; then
+              job_attached=true
+              break
+            fi
+            sleep 2
+          done
+          [[ "$job_attached" == true ]] \
+            || fail "Protected-Test run $deployment_run_id has no attached job after the 180-second startup budget; admissions will reseal. Inspect this exact run before any retry."
+          echo "MODULE025_PROTECTED_UAT_DEPLOYMENT_JOB_ATTACHED=$deployment_run_id"
 
           disable_deploy_workflow
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]] \
