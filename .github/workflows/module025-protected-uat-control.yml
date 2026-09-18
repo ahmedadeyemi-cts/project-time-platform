@@ -85,9 +85,6 @@ jobs:
             || fail 'The Module 025 live UAT success contract is missing.'
 
           workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
-          [[ "$workflow_state" == 'disabled_manually' ]] \
-            || fail "Protected-Test deployment workflow must begin disabled_manually; found $workflow_state."
-
           runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/runs?per_page=100")"
           active_count="$(jq --argjson quarantined "$QUARANTINED_ZERO_JOB_RUN_ID" '
             [.workflow_runs[]
@@ -97,6 +94,20 @@ jobs:
           ' <<<"$runs_json")"
           [[ "$active_count" == 0 ]] \
             || fail "Another executable Protected-Test deployment already exists (count $active_count)."
+
+          case "$workflow_state" in
+            disabled_manually)
+              ;;
+            active)
+              gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/disable" >/dev/null
+              [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'disabled_manually' ]] \
+                || fail 'Idle active Protected-Test deployment workflow could not be resealed before authorization.'
+              echo 'MODULE025_PROTECTED_UAT_IDLE_ACTIVE_WORKFLOW_RESEALED=true'
+              ;;
+            *)
+              fail "Protected-Test deployment workflow must be active or disabled_manually; found $workflow_state."
+              ;;
+          esac
 
           echo "release_sha=$requested_sha" >> "$GITHUB_OUTPUT"
           echo "MODULE025_PROTECTED_UAT_RELEASE_AUTHORIZED=$requested_sha"
