@@ -69,6 +69,15 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
             [[ "$(git rev-parse HEAD)" == "${{ inputs.release_sha }}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
           fi
+          if [[ "$HEAD_BRANCH" == 'feature/module025-auto-protected-test-20260917' ]]; then
+            node tests/module025-auto-protected-test-scope.mjs
+            node tests/validate-systemwide-image-build-controller.mjs
+            grep -Fq "acceptance_scope:\"sow_role\"" .github/workflows/module025-protected-uat-control.yml
+            grep -Fq "steps.sow_role_uat.outcome == 'success'" .github/workflows/projectpulse-deploy-test.yml
+            grep -Fq '109_module025_project_name' .github/workflows/projectpulse-deploy-test.yml
+            echo 'MODULE025_AUTO_PROTECTED_TEST_RELEASE_SCOPE=PASSED'
+            exit 0
+          fi
           if [[ "$HEAD_BRANCH" == 'fix/module025-output-budget-preflight-20260917' ]]; then
             node tests/module025-output-budget-preflight-scope.mjs
             node tests/validate-systemwide-image-build-controller.mjs
