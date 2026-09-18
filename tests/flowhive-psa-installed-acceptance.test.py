@@ -176,7 +176,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
                      "Guard exact source and validate release",
                      "Sign in to protected Test subscription",
                      "Build immutable API, web, and migration images",
-                     "Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network",
+                     "Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network",
                      "Deploy immutable Test API image", "Deploy immutable Test web image"):
             with self.subTest(operation=name):
                 matches = [index for index, row in enumerate(steps) if row.get("name") == name]
