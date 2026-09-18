@@ -648,7 +648,7 @@ export default function SowGsdWorkspace({ onOpenRegister }) {
                 </div>
                 <div className="m025-form-grid m025-form-grid--3">
                   <Field label="Project Name" hint="Used in SOW/GSD documents, SELL handoff, search, and downloaded filenames.">
-                    <input value={engagement.projectName || ''} disabled={readOnly} maxLength={500} onChange={(event) => updateTopLevel('projectName', event.target.value)} placeholder="CUCM 14 to 15 Upgrade" />
+                    <input value={engagement.projectName || ''} disabled={readOnly} maxLength={500} onChange={(event) => updateTopLevel('projectName', event.target.value)} placeholder="Enter project name" />
                   </Field>
                   <Field label="Customer" hint="Use the canonical customer directory or choose Customer not listed.">
                     <select
