@@ -257,7 +257,6 @@ execFileSync(process.execPath, [injectorPath], {
 
 const mounts = [
   ['ProjectManagerWorkloadCenter.jsx', 'workspace="pm" projectManagerUserId={selectedProjectManagerUserId}'],
-  ['ProjectWorkspaceCenter.jsx', 'workspace="engineering"'],
   ['SalesInsightsDashboard.jsx', 'workspace="sales"'],
   ['RateCardAdministrationCenter.jsx', 'workspace="rate-card"']
 ];
@@ -269,6 +268,13 @@ for (const [fileName, mount] of mounts) {
       && count(source, mount) === 1,
     `${fileName} contains one import and one role-specific mount`);
 }
+
+const engineering = read(path.join(sourceRoot, 'ProjectWorkspaceCenter.jsx'));
+check('MODULE019_SINGLE_WORKSPACE',
+  !engineering.includes('<UnifiedProjectFinancialWorkspace')
+    && engineering.includes('EngineeringProjectWorkspace')
+    && engineering.includes('Select assigned work'),
+  'Module 019 owns one selected-work view; installer must not recreate the duplicate portfolio');
 
 console.log(`GROUP_3_VALIDATION_CHECKS=${checks}`);
 console.log(`GROUP_3_FULL_REPOSITORY_CONTEXT=${fullRepositoryContext ? 'YES' : 'NO'}`);

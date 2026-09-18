@@ -168,6 +168,10 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
 elif [[ "$HEAD_BRANCH" == 'fix/module025-register-browser-acceptance-20260918' ]]; then
   node tests/module025-register-browser-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == 'codex/module019-project-focused-workspace' ]]; then
+  [[ "$PR_NUMBER" == '1090' ]] || fail 'Module 019 scope is registered only for PR #1090.'
+  node tests/module019-release-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/module025-fixture-generation-authorization-20260918' ]]; then
   node tests/module025-worker-authorization-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs

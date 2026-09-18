@@ -11,6 +11,12 @@ on:
       - 'tests/test-module019-document-access-repair-085.sh'
       - 'tests/test-module019-document-access-migration-085.sh'
       - '.github/workflows/module019-document-access-repair-ci.yml'
+      - 'src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx'
+      - 'src/frontend/project-time-web/src/project-workspace-model.js'
+      - 'src/frontend/project-time-web/src/project-workspace-center.css'
+      - 'src/frontend/project-time-web/scripts/inject-group-3-project-financial-workspaces.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-3-project-financial-workspaces.mjs'
+      - 'tests/module019-workspace-*.mjs'
   workflow_dispatch:
 
 permissions:
@@ -42,3 +48,28 @@ jobs:
         run: dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
       - name: Build backend
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+
+  workspace-behavior:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Install frontend and isolated validation dependencies
+        run: |
+          npm ci --prefix src/frontend/project-time-web --ignore-scripts --no-audit --no-fund
+          npm install --prefix /tmp/module019-validation @electric-sql/pglite@0.5.8 playwright@1.62.1 --ignore-scripts --no-audit --no-fund
+          node /tmp/module019-validation/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Verify project selection, hours, SQL scope, and browser behavior
+        env:
+          MODULE019_PGLITE_PATH: /tmp/module019-validation/node_modules/@electric-sql/pglite/dist/index.js
+          MODULE019_PLAYWRIGHT_PATH: /tmp/module019-validation/node_modules/playwright/index.mjs
+        run: |
+          node --test tests/module019-workspace-model.test.mjs
+          node tests/module019-workspace-sql.test.mjs
+          node tests/module019-workspace-access.test.mjs
+          node tests/module019-workspace-browser.mjs

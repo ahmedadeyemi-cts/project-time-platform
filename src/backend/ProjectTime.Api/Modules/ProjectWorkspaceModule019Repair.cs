@@ -137,8 +137,9 @@ internal static class ProjectWorkspaceModule019Repair
 
         var projects = await LoadProjectsAsync(connection, access, httpContext.RequestAborted);
         var documents = await LoadDocumentsAsync(connection, access, httpContext.RequestAborted);
-        var assignments = await LoadAssignmentsAsync(connection, access, httpContext.RequestAborted);
+        var assignments = await LoadAssignmentsAsync(connection, projects.Select(project => project.Id).ToArray(), httpContext.RequestAborted);
         var resourceRequests = await LoadResourceRequestsAsync(connection, access, httpContext.RequestAborted);
+        var teamHours = await LoadTeamHoursAsync(connection, projects.Select(project => project.Id).ToArray(), httpContext.RequestAborted);
 
         return Results.Ok(new
         {
@@ -170,6 +171,7 @@ internal static class ProjectWorkspaceModule019Repair
             projects,
             documents,
             assignments,
+            teamHours,
             resourceRequests,
             guardrails = new[]
             {
@@ -490,8 +492,7 @@ internal static class ProjectWorkspaceModule019Repair
                       )
                   )
               )
-            ORDER BY p.created_at DESC
-            LIMIT 100;
+            ORDER BY p.created_at DESC, p.project_id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -540,6 +541,16 @@ internal static class ProjectWorkspaceModule019Repair
                   AND (
                       (COALESCE(@team_name, '') <> '' AND LOWER(COALESCE(member.team_name, '')) = LOWER(@team_name))
                       OR (COALESCE(@department_name, '') <> '' AND LOWER(COALESCE(member.department_name, '')) = LOWER(@department_name))
+                      OR EXISTS (
+                          SELECT 1
+                          FROM projectpulse_team_scope_assignments tsa
+                          WHERE tsa.scoped_user_id = @user_id
+                            AND tsa.is_active = TRUE
+                            AND (
+                                (tsa.team_name IS NOT NULL AND LOWER(COALESCE(member.team_name, '')) = LOWER(tsa.team_name))
+                                OR (tsa.department_name IS NOT NULL AND LOWER(COALESCE(member.department_name, '')) = LOWER(tsa.department_name))
+                            )
+                      )
                   )
             ),
             scoped_documents AS (
@@ -595,6 +606,7 @@ internal static class ProjectWorkspaceModule019Repair
                           )
                           AND (
                               team_request.fulfilled_by_user_id IN (SELECT user_id FROM team_members)
+                              OR team_request.assigned_pm_user_id IN (SELECT user_id FROM team_members)
                               OR EXISTS (
                                   SELECT 1
                                   FROM engineering_resource_request_assignments team_request_assignment
@@ -650,11 +662,11 @@ internal static class ProjectWorkspaceModule019Repair
                   OR (
                       @can_view_team_scope = TRUE
                       AND COALESCE(document.engineering_visible, FALSE) = TRUE
-                      AND (scope.team_project_assignment OR scope.team_service_request_assignment)
+                      AND (scope.team_project_assignment OR scope.team_service_request_assignment
+                           OR project.project_manager_user_id IN (SELECT user_id FROM team_members))
                   )
               )
-            ORDER BY document.uploaded_at DESC
-            LIMIT 250;
+            ORDER BY document.uploaded_at DESC, document.project_intake_document_id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -690,45 +702,45 @@ internal static class ProjectWorkspaceModule019Repair
 
     private static async Task<List<ProjectWorkspace019Assignment>> LoadAssignmentsAsync(
         NpgsqlConnection connection,
-        ProjectWorkspace019AccessContext access,
+        Guid[] visibleProjectIds,
         CancellationToken cancellationToken)
     {
         var rows = new List<ProjectWorkspace019Assignment>();
+        if (visibleProjectIds.Length == 0) return rows;
         const string sql = """
-            WITH team_members AS (
-                SELECT member.user_id
-                FROM app_users member
-                WHERE member.is_active = TRUE
-                  AND (
-                      (COALESCE(@team_name, '') <> '' AND LOWER(COALESCE(member.team_name, '')) = LOWER(@team_name))
-                      OR (COALESCE(@department_name, '') <> '' AND LOWER(COALESCE(member.department_name, '')) = LOWER(@department_name))
-                  )
-            ),
-            resource_alloc AS (
-                SELECT
-                    request.project_id,
-                    assignment.user_id,
-                    SUM(assignment.allocated_hours)::numeric
-                        / NULLIF(COUNT(DISTINCT project_assignment.project_assignment_id), 0)::numeric AS allocated_hours_per_task
+            WITH request_alloc AS (
+                SELECT request.project_id, assignment.user_id, SUM(assignment.allocated_hours)::numeric AS allocated_hours
                 FROM engineering_resource_requests request
                 JOIN engineering_resource_request_assignments assignment
                   ON assignment.engineering_resource_request_id = request.engineering_resource_request_id
-                LEFT JOIN project_assignments project_assignment
-                  ON project_assignment.project_id = request.project_id
-                 AND project_assignment.user_id = assignment.user_id
-                WHERE request.project_id IS NOT NULL
+                WHERE request.project_id = ANY(@visible_project_ids)
+                  AND LOWER(COALESCE(request.request_status, '')) NOT IN ('cancelled', 'canceled', 'closed', 'archived')
                 GROUP BY request.project_id, assignment.user_id
+            ),
+            resource_alloc AS (
+                SELECT request.project_id, request.user_id,
+                    GREATEST(request.allocated_hours - SUM(COALESCE(project_assignment.assigned_hours, 0)), 0)
+                    / NULLIF(COUNT(*) FILTER (WHERE COALESCE(project_assignment.assigned_hours, 0) = 0), 0)::numeric AS allocated_hours_per_task
+                FROM request_alloc request
+                JOIN project_assignments project_assignment
+                  ON project_assignment.project_id = request.project_id
+                 AND project_assignment.user_id = request.user_id
+                 AND project_assignment.effective_start_date <= CURRENT_DATE
+                 AND (project_assignment.effective_end_date IS NULL OR project_assignment.effective_end_date >= CURRENT_DATE)
+                GROUP BY request.project_id, request.user_id, request.allocated_hours
             ),
             used_time AS (
                 SELECT user_id, project_id, task_id, SUM(hours)::numeric AS used_hours
                 FROM time_entries
-                WHERE status NOT IN ('voided', 'rejected')
+                WHERE LOWER(COALESCE(status, '')) NOT IN ('voided', 'rejected', 'declined', 'manager_declined', 'pm_declined')
+                  AND project_id = ANY(@visible_project_ids)
                   AND project_id IS NOT NULL
                   AND task_id IS NOT NULL
                 GROUP BY user_id, project_id, task_id
             )
             SELECT
                 assignment.project_assignment_id AS id,
+                assignment.project_id, assignment.user_id, assignment.task_id,
                 project.project_code,
                 project.project_name,
                 task.task_code,
@@ -765,18 +777,13 @@ internal static class ProjectWorkspaceModule019Repair
             WHERE LOWER(COALESCE(project.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived')
               AND assignment.effective_start_date <= CURRENT_DATE
               AND (assignment.effective_end_date IS NULL OR assignment.effective_end_date >= CURRENT_DATE)
-              AND (
-                  @is_broad_scope = TRUE
-                  OR assignment.user_id = @user_id
-                  OR (@can_view_managed_projects = TRUE AND project.project_manager_user_id = @user_id)
-                  OR (@can_view_team_scope = TRUE AND assignment.user_id IN (SELECT user_id FROM team_members))
-              )
-            ORDER BY project.project_code, engineer.display_name, assignment.effective_start_date
-            LIMIT 250;
+              AND project.project_id = ANY(@visible_project_ids)
+            ORDER BY project.project_code, engineer.display_name, assignment.effective_start_date;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
-        AddScopeParameters(command, access);
+        // Only IDs already authorized by LoadProjectsAsync for the effective actor.
+        command.Parameters.AddWithValue("visible_project_ids", visibleProjectIds);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -796,9 +803,33 @@ internal static class ProjectWorkspaceModule019Repair
                 reader.GetDecimal(O("used_hours")),
                 reader.GetDecimal(O("remaining_hours")),
                 reader.GetBoolean(O("is_over_allocated")),
-                reader.IsDBNull(O("allocation_percent")) ? null : reader.GetDecimal(O("allocation_percent"))));
+                reader.IsDBNull(O("allocation_percent")) ? null : reader.GetDecimal(O("allocation_percent")),
+                reader.GetGuid(O("project_id")), reader.GetGuid(O("user_id")), reader.GetGuid(O("task_id"))));
         }
 
+        return rows;
+    }
+
+    private static async Task<List<ProjectWorkspace019TeamHours>> LoadTeamHoursAsync(
+        NpgsqlConnection connection, Guid[] visibleProjectIds, CancellationToken cancellationToken)
+    {
+        var rows = new List<ProjectWorkspace019TeamHours>();
+        if (visibleProjectIds.Length == 0) return rows;
+        // Includes former assignees and taskless time so current assignments cannot hide usage.
+        const string sql = """
+            SELECT entry.project_id, entry.user_id, COALESCE(engineer.display_name, 'Former team member'),
+                   SUM(entry.hours)::numeric
+            FROM time_entries entry
+            LEFT JOIN app_users engineer ON engineer.user_id = entry.user_id
+            WHERE entry.project_id = ANY(@visible_project_ids)
+              AND LOWER(COALESCE(entry.status, '')) NOT IN ('voided', 'rejected', 'declined', 'manager_declined', 'pm_declined')
+            GROUP BY entry.project_id, entry.user_id, engineer.display_name;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("visible_project_ids", visibleProjectIds);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            rows.Add(new ProjectWorkspace019TeamHours(reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetDecimal(3)));
         return rows;
     }
 
@@ -816,10 +847,21 @@ internal static class ProjectWorkspaceModule019Repair
                   AND (
                       (COALESCE(@team_name, '') <> '' AND LOWER(COALESCE(member.team_name, '')) = LOWER(@team_name))
                       OR (COALESCE(@department_name, '') <> '' AND LOWER(COALESCE(member.department_name, '')) = LOWER(@department_name))
+                      OR EXISTS (
+                          SELECT 1
+                          FROM projectpulse_team_scope_assignments tsa
+                          WHERE tsa.scoped_user_id = @user_id
+                            AND tsa.is_active = TRUE
+                            AND (
+                                (tsa.team_name IS NOT NULL AND LOWER(COALESCE(member.team_name, '')) = LOWER(tsa.team_name))
+                                OR (tsa.department_name IS NOT NULL AND LOWER(COALESCE(member.department_name, '')) = LOWER(tsa.department_name))
+                            )
+                      )
                   )
             )
             SELECT
                 request.request_number,
+                request.project_id, request.project_intake_request_id,
                 COALESCE(project.project_code, intake.request_number, 'No project') AS project_code,
                 COALESCE(project.project_name, intake.request_title, 'Unlinked request') AS source_name,
                 request.requested_function,
@@ -881,8 +923,7 @@ internal static class ProjectWorkspaceModule019Repair
                       )
                   )
               )
-            ORDER BY request.created_at DESC
-            LIMIT 250;
+            ORDER BY request.created_at DESC, request.engineering_resource_request_id;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -901,7 +942,9 @@ internal static class ProjectWorkspaceModule019Repair
                 reader.GetString(O("priority")),
                 reader.GetString(O("status")),
                 S("assigned_engineers"),
-                reader.GetInt64(O("assigned_engineer_count"))));
+                reader.GetInt64(O("assigned_engineer_count")),
+                reader.IsDBNull(O("project_id")) ? null : reader.GetGuid(O("project_id")),
+                reader.IsDBNull(O("project_intake_request_id")) ? null : reader.GetGuid(O("project_intake_request_id"))));
         }
 
         return rows;
@@ -936,6 +979,16 @@ internal static class ProjectWorkspaceModule019Repair
                   AND (
                       (COALESCE(@team_name, '') <> '' AND LOWER(COALESCE(member.team_name, '')) = LOWER(@team_name))
                       OR (COALESCE(@department_name, '') <> '' AND LOWER(COALESCE(member.department_name, '')) = LOWER(@department_name))
+                      OR EXISTS (
+                          SELECT 1
+                          FROM projectpulse_team_scope_assignments tsa
+                          WHERE tsa.scoped_user_id = @user_id
+                            AND tsa.is_active = TRUE
+                            AND (
+                                (tsa.team_name IS NOT NULL AND LOWER(COALESCE(member.team_name, '')) = LOWER(tsa.team_name))
+                                OR (tsa.department_name IS NOT NULL AND LOWER(COALESCE(member.department_name, '')) = LOWER(tsa.department_name))
+                            )
+                      )
                   )
             ),
             scoped_document AS (
@@ -991,6 +1044,7 @@ internal static class ProjectWorkspaceModule019Repair
                           )
                           AND (
                               team_request.fulfilled_by_user_id IN (SELECT user_id FROM team_members)
+                              OR team_request.assigned_pm_user_id IN (SELECT user_id FROM team_members)
                               OR EXISTS (
                                   SELECT 1
                                   FROM engineering_resource_request_assignments team_request_assignment
@@ -1031,7 +1085,8 @@ internal static class ProjectWorkspaceModule019Repair
                   OR (
                       @can_view_team_scope = TRUE
                       AND COALESCE(document.engineering_visible, FALSE) = TRUE
-                      AND (scope.team_project_assignment OR scope.team_service_request_assignment)
+                      AND (scope.team_project_assignment OR scope.team_service_request_assignment
+                           OR project.project_manager_user_id IN (SELECT user_id FROM team_members))
                   )
               );
             """;
@@ -1370,7 +1425,12 @@ internal sealed record ProjectWorkspace019Assignment(
     decimal UsedHours,
     decimal RemainingHours,
     bool IsOverAllocated,
-    decimal? AllocationPercent);
+    decimal? AllocationPercent,
+    Guid ProjectId,
+    Guid UserId,
+    Guid TaskId);
+
+internal sealed record ProjectWorkspace019TeamHours(Guid ProjectId, Guid UserId, string EngineerName, decimal LoggedHours);
 
 internal sealed record ProjectWorkspace019ResourceRequest(
     string RequestNumber,
@@ -1381,7 +1441,9 @@ internal sealed record ProjectWorkspace019ResourceRequest(
     string Priority,
     string Status,
     string? AssignedEngineers,
-    long AssignedEngineerCount);
+    long AssignedEngineerCount,
+    Guid? ProjectId,
+    Guid? ProjectIntakeRequestId);
 
 internal sealed record ProjectWorkspace019DatabaseConfig(
     string? Host,
