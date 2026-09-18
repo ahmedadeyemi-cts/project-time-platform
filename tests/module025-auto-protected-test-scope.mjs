@@ -7,6 +7,7 @@ import path from 'node:path';
 const base='a82b4c37d13b492e1335798e5fbb1b6f423c6d68';
 const expected=[
   ".github/workflows/module025-protected-uat-control.yml",
+  "scripts/release-test/validate-protected-test-controller-branches.sh",
   "tests/module025-auto-protected-test-scope.mjs"
 ].sort();
 
