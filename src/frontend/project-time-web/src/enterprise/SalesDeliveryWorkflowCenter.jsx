@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { authoritativeApi } from '../projectpulse-authoritative-api.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import SowGsdWorkspace from '../module025/SowGsdWorkspace.jsx';
 import './sales-delivery-workflow-center.css';
 
@@ -91,31 +92,43 @@ function AiTimeEntry() {
 function UatValidation() {
   const checks = useMemo(() => [{ name: 'Release identity', path: '/api/version' }, { name: 'Module availability', path: '/api/module-availability' }, { name: 'Notification readiness', path: '/api/enterprise-notifications/runtime/readiness' }], []);
   const [results, setResults] = useState([]); const [busy, setBusy] = useState(false);
+  const sequence = useRef(0);
   async function run() {
+    const current = ++sequence.current;
     setBusy(true);
     try {
       const next = await Promise.all(checks.map(async (check) => {
         const started = performance.now();
         try {
-          const response = await fetch(check.path, { credentials: 'include', cache: 'no-store', headers: headers(), signal: AbortSignal.timeout(15000) });
-          const isJson = (response.headers.get('content-type') || '').includes('application/json');
-          const payload = isJson ? await response.json() : null;
-          const passed = response.ok && isJson && payload && payload.ready !== false && payload.status !== 'degraded' && payload.status !== 'error';
-          const detail = !response.ok ? payload?.message || (response.status === 401 ? 'Sign in again, then retry.' : response.status === 403 ? 'Your role cannot run this check.' : 'API request failed.')
-            : !isJson ? 'The web server returned a page instead of the API response.'
-            : !passed ? payload?.message || 'API responded, but readiness is incomplete.' : 'API response verified.';
-          return { ...check, passed: Boolean(passed), detail, status: response.status, duration: Math.round(performance.now() - started) };
+          const payload = await authoritativeApi(check.path, { timeoutMs: 15000, moduleNumber: '029' });
+          const passed = payload && payload.ready !== false && !['degraded', 'error', 'unavailable', 'not_ready'].includes(payload.status);
+          const detail = passed ? 'API response verified.' : payload?.message || 'API responded, but readiness is incomplete.';
+          return { ...check, passed: Boolean(passed), detail, status: 200, duration: Math.round(performance.now() - started) };
         } catch (error) {
-          return { ...check, passed: false, detail: error.name === 'TimeoutError' ? 'Check timed out after 15 seconds.' : error.message, status: 'Unavailable', duration: Math.round(performance.now() - started) };
+          return { ...check, passed: false, detail: error.name === 'TimeoutError' ? 'Check timed out after 15 seconds.' : error.message, status: error.status || 'Unavailable', duration: Math.round(performance.now() - started) };
         }
       }));
-      setResults(next);
-    } finally { setBusy(false); }
+      if (current === sequence.current) setResults(next);
+    } finally { if (current === sequence.current) setBusy(false); }
   }
-  useEffect(() => { void run(); }, []);
+  useEffect(() => {
+    const reload = () => { setResults([]); void run(); };
+    void run();
+    window.addEventListener('projectpulse:auth-session-ready', reload);
+    window.addEventListener('projectpulse:view-as-changed', reload);
+    return () => { sequence.current += 1; window.removeEventListener('projectpulse:auth-session-ready', reload); window.removeEventListener('projectpulse:view-as-changed', reload); };
+  }, []);
   return <section className="sales-delivery-card"><div className="sales-delivery-card-heading"><div><span>Live smoke suite</span><h2>UAT validation workspace</h2><p>Small, bounded checks replace the prior endless preview. Results are current-browser evidence and do not mutate business data.</p></div><button className="sales-delivery-primary" type="button" onClick={run} disabled={busy}>{busy ? 'Running…' : 'Run checks'}</button></div><div className="sales-delivery-uat-grid">{checks.map((check) => { const result = results.find((item) => item.path === check.path); return <article key={check.path}><span className={result?.passed ? 'is-success' : result ? 'is-error' : ''}>{result ? result.passed ? 'Passed' : 'Failed' : 'Pending'}</span><strong>{check.name}</strong><small>{check.path}</small><p>{result ? `HTTP ${result.status} · ${result.duration} ms` : 'Waiting to run'}</p>{result?.detail ? <p>{result.detail}</p> : null}</article>; })}</div><div className="sales-delivery-boundary"><strong>Release UAT remains authoritative</strong><span>Role workflows, database migrations, exact-head CI, signed-in acceptance, rollback, and customer approval still belong to the protected deployment and Audit History—not a browser-only green badge.</span></div></section>;
 }
 
+const MODULE_PURPOSE = {
+  '024': { title: 'Sales intake', description: 'Capture a customer opportunity, request, and supporting proposal or quote before a project is approved.', next: 'After signature, send the signed package through Module 027.', href: '#signed-handoff', action: 'Open signed handoff' },
+  '027': { title: 'Signed handoff', description: 'Send the signed SOW and supporting documents to the delivery team so they can check readiness and assign ownership.', next: 'Create the approved project in Module 055D; maintain existing projects in Module 055C.', href: '#create-work-register', action: 'Open project creation' },
+  '028': { title: 'Time description assistant', description: 'Turn your work notes into a customer-facing description. Review the suggestion before using it.', next: 'You can use this same assistance directly in your timesheet. Hours and submission stay under your control.', href: '#timesheet', action: 'Open timesheet' },
+  '029': { title: 'UAT connection checks', description: 'Check whether this signed-in session can reach the application APIs and see their current readiness.', next: 'A successful connection check does not verify every business workflow or email delivery.' }
+};
+
 export default function SalesDeliveryWorkflowCenter({ module }) {
-  return <section className="sales-delivery-workflow-center" data-module={module} data-module025-deployment-marker={module === '025' ? MODULE025_DEPLOYMENT_MARKER : undefined}>{module === '024' ? <IntakeUploader /> : null}{module === '025' ? <SowGsdWorkspace /> : null}{module === '027' ? <IntakeUploader signed /> : null}{module === '028' ? <AiTimeEntry /> : null}{module === '029' ? <UatValidation /> : null}</section>;
+  const purpose = MODULE_PURPOSE[module];
+  return <section className="sales-delivery-workflow-center" data-module={module} data-module025-deployment-marker={module === '025' ? MODULE025_DEPLOYMENT_MARKER : undefined}>{purpose ? <header className="sales-delivery-card"><p className="eyebrow">Module {module}</p><h1>{purpose.title}</h1><p>{purpose.description}</p><p>{purpose.next}</p>{purpose.href ? <a href={purpose.href}>{purpose.action}</a> : null}</header> : null}{module === '024' ? <IntakeUploader /> : null}{module === '025' ? <SowGsdWorkspace /> : null}{module === '027' ? <IntakeUploader signed /> : null}{module === '028' ? <AiTimeEntry /> : null}{module === '029' ? <UatValidation /> : null}</section>;
 }

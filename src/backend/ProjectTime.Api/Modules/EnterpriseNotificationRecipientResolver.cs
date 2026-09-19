@@ -95,8 +95,7 @@ internal static class EnterpriseNotificationRecipientResolver
             case "timesheet_engineer":
                 await AddSubjectUserAsync(connection, recipients, notificationEvent.SubjectUserId,
                     "to", "timesheet.submitter", cancellationToken);
-                await AddRoleGroupAsync(connection, recipients, PtcRoles, "cc",
-                    "timesheet.submission_ptc_visibility", cancellationToken);
+                await AddTimesheetProjectCoordinatorsAsync(connection, recipients, notificationEvent, cancellationToken);
                 break;
 
             case "subject_user":
@@ -323,6 +322,44 @@ internal static class EnterpriseNotificationRecipientResolver
                 "PROJECT_MANAGER",
                 "time_entries.projects.project_manager_user_id",
                 recipientType));
+        }
+    }
+
+    private static async Task AddTimesheetProjectCoordinatorsAsync(
+        NpgsqlConnection connection,
+        List<ProjectNotificationUser> recipients,
+        EnterpriseNotificationEventRow notificationEvent,
+        CancellationToken cancellationToken)
+    {
+        if (!notificationEvent.EntityId.HasValue) return;
+        var workDate = PayloadDate(notificationEvent.Payload, "workDate");
+        if (!workDate.HasValue) return;
+
+        await using var command = new NpgsqlCommand("""
+            SELECT DISTINCT
+                manager.user_id,
+                COALESCE(NULLIF(manager.display_name, ''), manager.email),
+                lower(manager.email)
+            FROM time_entries entry
+            JOIN projects project ON project.project_id = entry.project_id
+            JOIN app_users manager
+              ON manager.user_id = project.project_coordinator_user_id
+             AND manager.is_active = TRUE
+            WHERE entry.timesheet_id = @timesheet_id
+              AND entry.work_date = @work_date;
+            """, connection);
+        command.Parameters.AddWithValue("timesheet_id", notificationEvent.EntityId.Value);
+        command.Parameters.AddWithValue("work_date", workDate.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            recipients.Add(new(
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                "PROJECT_TEAM_COORDINATOR",
+                "time_entries.projects.project_manager_user_id",
+                "cc"));
         }
     }
 

@@ -1,3 +1,4 @@
+import { loadFinancialPortfolio } from './project-financial-portfolio.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './projectpulse-module-standard.css';
@@ -594,7 +595,7 @@ export default function UnifiedProjectFinancialWorkspace({
     try {
       const parameters = new URLSearchParams({ workspace, limit: '250' });
       if (projectManagerUserId) parameters.set('projectManagerUserId', projectManagerUserId);
-      const data = await readJson(`/api/project-financials/portfolio?${parameters}`);
+      const data = await loadFinancialPortfolio(readJson, parameters, () => requestId === requestSequence.current);
       if (requestId !== requestSequence.current) return;
       setState({ loading: false, data, error: '' });
       setSelectedProjectId((current) => {

@@ -720,12 +720,6 @@ public static class ContractsPrepaidModule
             return new AccessResult(false, false);
         }
 
-        var profile = string.Join(
-            " ",
-            Enumerable.Range(0, 4)
-                .Select(reader.GetString))
-            .ToLowerInvariant();
-
         foreach (var role in reader.GetString(4)
             .Split(
                 ',',
@@ -735,19 +729,10 @@ public static class ContractsPrepaidModule
             roles.Add(role);
         }
 
-        var canManage =
-            roles.Overlaps(ManagementRoleCodes)
-            || profile.Contains("administrator")
-            || profile.Contains("superadmin")
-            || profile.Contains("project team coordinator")
-            || profile.Contains("project coordinator");
-
-        var canReadOnly =
-            roles.Overlaps(ReadOnlyRoleCodes)
-            || profile.Contains("account executive")
-            || profile.Contains("account manager")
-            || profile.Contains("sales")
-            || profile.Contains("executive");
+        // Job titles and department names are display metadata, not write grants.
+        // An engineer titled "Systems Administrator" must remain read-only.
+        var canManage = roles.Overlaps(ManagementRoleCodes);
+        var canReadOnly = roles.Overlaps(ReadOnlyRoleCodes);
 
         return new AccessResult(
             canManage || canReadOnly,

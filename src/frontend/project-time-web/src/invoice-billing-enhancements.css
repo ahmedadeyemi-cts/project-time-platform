@@ -30,3 +30,11 @@
 .m042-invoice-notes small {
   color: #60768a;
 }
+
+/* Keep essential invoice references visible independently of saved table columns. */
+.m042-reference-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; padding: 1rem; margin: 0; border-bottom: 1px solid var(--border-color, #dce3ec); }
+.m042-reference-summary dt { font-size: .8rem; color: var(--text-muted, #64748b); }
+.m042-reference-summary dd { margin: .35rem 0 0; font-weight: 600; overflow-wrap: anywhere; }
+details.m042-output-commandbar, details.m042-preview-mode { display: block; }
+details.m042-output-commandbar > summary, details.m042-preview-mode > summary { cursor: pointer; font-weight: 600; padding: .4rem 0; }
+@media (max-width: 700px) { .m042-reference-summary { grid-template-columns: 1fr; } }

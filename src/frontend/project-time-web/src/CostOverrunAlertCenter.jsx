@@ -1,38 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { loadFinancialPortfolio } from './project-financial-portfolio.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './cost-overrun-alert-center.css';
-
-function storedSession() {
-  try {
-    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
-    return session?.sessionToken ? session : null;
-  } catch {
-    return null;
-  }
-}
-
-function authHeaders(json = false) {
-  const session = storedSession();
-  return {
-    ...(session?.sessionToken ? {
-      Authorization: `Bearer ${session.sessionToken}`,
-      'X-ProjectPulse-Session': session.sessionToken
-    } : {}),
-    ...(json ? { 'Content-Type': 'application/json' } : {})
-  };
-}
+import { authoritativeApi } from './projectpulse-authoritative-api.js';
 
 async function request(path, options = {}) {
-  const response = await fetch(path, {
-    cache: 'no-store',
-    credentials: 'include',
-    ...options,
-    headers: { ...authHeaders(Boolean(options.body)), ...(options.headers || {}) }
-  });
-  const text = await response.text();
-  let body = null;
-  try { body = text ? JSON.parse(text) : null; } catch { body = { message: text }; }
-  if (!response.ok) throw new Error(body?.message || body?.status || `${path} returned HTTP ${response.status}.`);
-  return body;
+  return authoritativeApi(path, options);
 }
 
 const money = (value) => value == null
@@ -53,27 +25,31 @@ function authoritativeState(project) {
     return { key: 'data_incomplete', label: 'Data incomplete', tone: 'incomplete', reason: 'A required budget, expense, rate, or financial source is missing. No over-budget conclusion is asserted.' };
   }
   if (project.budgetStatus === 'over_budget') {
-    return { key: 'over_budget', label: 'Over budget', tone: 'critical', reason: 'Forecast at completion exceeds the approved labor and expense budget.' };
+    return { key: 'over_budget', label: 'Over budget', tone: 'critical', reason: 'Estimated forecast exceeds the recorded labor and expense budget.' };
   }
   if (project.budgetStatus === 'approaching_budget') {
     return { key: 'approaching_budget', label: 'Approaching budget', tone: 'warning', reason: 'Forecast at completion is at least 85% of the approved budget.' };
   }
-  return { key: 'within_budget', label: 'Within budget', tone: 'healthy', reason: 'Current authoritative forecast remains below the alert threshold.' };
+  return { key: 'within_budget', label: 'Within budget', tone: 'healthy', reason: 'The estimated forecast remains below the alert threshold; verify internal costs and remaining work before concluding the project is within budget.' };
 }
 
 export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) {
   const [state, setState] = useState({ loading: true, financial: null, alerts: null, errors: [] });
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('action');
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const generation = useRef(0);
   const [actionStatus, setActionStatus] = useState('');
   const [notes, setNotes] = useState({});
 
   async function load() {
+    const currentGeneration = ++generation.current;
     setState((current) => ({ ...current, loading: true, errors: [] }));
     const [financialResult, alertResult] = await Promise.allSettled([
-      request('/api/project-financials/portfolio?workspace=pm&limit=250'),
+      loadFinancialPortfolio(request, { workspace: 'pm', limit: '250' }, () => currentGeneration === generation.current),
       request('/api/projects/cost-alerts')
     ]);
+    if (currentGeneration !== generation.current) return;
     const errors = [];
     if (financialResult.status === 'rejected') errors.push(`Authoritative project financials: ${financialResult.reason?.message || 'unavailable'}`);
     if (alertResult.status === 'rejected') errors.push(`Persisted alert workflow: ${alertResult.reason?.message || 'unavailable'}`);
@@ -85,7 +61,22 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
     });
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    const reset = () => {
+      generation.current += 1;
+      setState({ loading: true, financial: null, alerts: null, errors: [] });
+      setSelectedProjectId(''); setNotes({}); setActionStatus('');
+      void load();
+    };
+    void load();
+    window.addEventListener('projectpulse:auth-session-ready', reset);
+    window.addEventListener('projectpulse:view-as-changed', reset);
+    return () => {
+      generation.current += 1;
+      window.removeEventListener('projectpulse:auth-session-ready', reset);
+      window.removeEventListener('projectpulse:view-as-changed', reset);
+    };
+  }, []);
 
   const persistedByProject = useMemo(() => {
     const map = new Map();
@@ -99,9 +90,9 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
 
   const rows = useMemo(() => (state.financial?.projects || []).map((project) => {
     const posture = authoritativeState(project);
-    const budget = project.laborBudget == null
+    const budget = project.laborBudget == null || project.expenseBudget == null
       ? null
-      : Number(project.laborBudget) + Number(project.expenseBudget || 0);
+      : Number(project.laborBudget) + Number(project.expenseBudget);
     const forecast = project.forecastedFinalCost == null ? null : Number(project.forecastedFinalCost);
     const variance = project.currentVariance == null ? null : Number(project.currentVariance);
     const variancePercent = budget && forecast != null ? ((forecast - budget) / budget) * 100 : null;
@@ -119,6 +110,8 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
         .some((value) => String(value || '').toLowerCase().includes(query));
     });
   }, [filter, rows, search]);
+
+  const selected = filtered.find(({ project }) => project.projectId === selectedProjectId) || filtered[0];
 
   const summary = useMemo(() => ({
     over: rows.filter((row) => row.posture.key === 'over_budget').length,
@@ -162,6 +155,10 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
   return (
     <section className="cost-alert-center" data-module="022">
       <aside className="cost-alert-notice" role="note"><strong>What needs attention?</strong><p>Start with projects over budget or approaching budget. Select a project, review its budget and expense sources, then record the follow-up action. A missing budget or failed source means Data incomplete.</p><p>Forecast = estimated labor value + recorded project expenses. These estimates do not verify actual internal labor cost.</p></aside>
+      <details className="cost-alert-panel"><summary>How is overbudget calculated?</summary>
+        <p>Budget is the recorded engineering and PM labor budget plus the expense allowance. Forecast is logged hours plus remaining allocated hours, valued at the governed billing-rate estimate, plus current expense uploads. Negative budget minus forecast means an estimated overrun; the warning threshold is 85%.</p>
+        <p>Billing rates are not internal labor costs. Purchase commitments, approved changes, future expenses, and independently estimated remaining work are not yet fully reconciled here. Treat this as a forecast warning, not a verified final project cost. Missing budget components, failed sources, or expenses requiring currency conversion prevent a complete conclusion.</p>
+      </details>
       <header className="cost-alert-header">
         <div>
           <p className="eyebrow">Module 022 · Project financial control</p>
@@ -188,7 +185,13 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
       </section>
 
       <div className="cost-alert-card-list">
-        {filtered.map(({ project, posture, budget, forecast, variance, variancePercent, persisted }) => (
+        <label className="cost-alert-panel">Project to review
+          <select value={selected?.project.projectId || ''} onChange={(event) => setSelectedProjectId(event.target.value)}>
+            {!filtered.length ? <option value="">No matching projects</option> : null}
+            {filtered.map(({ project, posture }) => <option key={project.projectId} value={project.projectId}>{project.projectCode} · {project.projectName} — {posture.label}</option>)}
+          </select>
+        </label>
+        {(selected ? [selected] : []).map(({ project, posture, budget, forecast, variance, variancePercent, persisted }) => (
           <article className={`cost-alert-card posture-${posture.tone}`} key={project.projectId}>
             <div className="cost-alert-card-header">
               <div><span>{project.customerName || 'Customer not recorded'}</span><strong>{project.projectCode} · {project.projectName}</strong><small>Project Manager: {project.projectManagerName || 'Unassigned'}</small></div>
@@ -197,7 +200,7 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
             <p className="cost-alert-posture-reason">{posture.reason}</p>
             <div className="cost-alert-financial-grid">
               <span>Approved budget<strong>{money(budget)}</strong><small>Labor + expense budget</small></span>
-              <span>Actual / committed cost<strong>{money(project.committedCost)}</strong><small>Labor and uploaded expenses</small></span>
+              <span>Estimated incurred cost<strong>{money(project.committedCost)}</strong><small>Labor and uploaded expenses</small></span>
               <span>Forecast at completion<strong>{money(forecast)}</strong><small>Governed forecast basis</small></span>
               <span>Remaining budget<strong>{money(variance)}</strong><small>{variance != null && variance < 0 ? 'Negative indicates forecast overrun' : 'Budget less forecast'}</small></span>
               <span>Forecast variance<strong>{percent(variancePercent)}</strong><small>Relative to approved budget</small></span>

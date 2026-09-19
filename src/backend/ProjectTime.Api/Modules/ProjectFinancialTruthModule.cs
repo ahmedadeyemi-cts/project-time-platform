@@ -55,15 +55,17 @@ public static class ProjectFinancialTruthModule
             1,
             250);
 
-        var projects = data.Projects
+        var offset = Math.Max(0, int.TryParse(context.Request.Query["offset"], out var requestedOffset) ? requestedOffset : 0);
+        var filtered = data.Projects
             .Where(project => string.IsNullOrWhiteSpace(search)
                 || SearchText(project).Contains(search, StringComparison.OrdinalIgnoreCase))
             .Where(project => string.IsNullOrWhiteSpace(status)
                 || status == "all"
                 || project.BudgetStatus.Equals(status, StringComparison.OrdinalIgnoreCase)
                 || project.ProjectStatus.Equals(status, StringComparison.OrdinalIgnoreCase))
-            .Take(limit)
+            .OrderBy(project => project.ProjectId)
             .ToArray();
+        var projects = filtered.Skip(offset).Take(limit).ToArray();
 
         return Results.Ok(new
         {
@@ -74,8 +76,10 @@ public static class ProjectFinancialTruthModule
             generatedAt = data.GeneratedAt,
             workspace,
             access = Access(data.Actor, workspace),
-            filters = new { search, status, limit },
-            summary = Summary(projects),
+            filters = new { search, status, limit, offset },
+            totalCount = filtered.Length,
+            nextOffset = offset + projects.Length < filtered.Length ? (int?)(offset + projects.Length) : null,
+            summary = Summary(filtered),
             projects,
             sources = data.Sources,
             calculationAuthority = "forecast_estimate_not_verified_internal_labor_cost",
@@ -892,7 +896,9 @@ public static class ProjectFinancialTruthModule
 
         var expenseSourceDown = sources.Any(source =>
             source.Key == "project_expenses" && source.Status == "unavailable");
-        decimal? uploadedExpenses = expenseSourceDown ? null : expenses.Sum(row => row.TotalAmount);
+        var unsupportedExpenseCurrency = expenses.Any(row => !row.Currency.Equals("USD", StringComparison.OrdinalIgnoreCase));
+        decimal? uploadedExpenses = expenseSourceDown || unsupportedExpenseCurrency
+            ? null : expenses.Sum(row => row.TotalAmount);
 
         var rates = commercial.Rates
             .Where(rate => rate.BillableDefault
@@ -924,9 +930,7 @@ public static class ProjectFinancialTruthModule
         decimal? forecast = forecastLabor.HasValue && uploadedExpenses.HasValue
             ? forecastLabor + uploadedExpenses
             : null;
-        decimal? budget = laborBudget.HasValue && expenseBudget.HasValue
-            ? laborBudget + expenseBudget
-            : null;
+        var budget = ProjectBudgetAssessment.CompleteTotal(laborBudget, expenseBudget);
         decimal? variance = budget.HasValue && forecast.HasValue
             ? budget - forecast
             : null;
@@ -986,6 +990,7 @@ public static class ProjectFinancialTruthModule
             .OrderBy(group => DocumentOrder(group.Group)).ToArray();
 
         var missing = new List<string>();
+        if (unsupportedExpenseCurrency) missing.Add("expense_currency_conversion_required");
         if (!contractedValue.HasValue) missing.Add("contracted_value");
         if (!laborBudget.HasValue || laborBudget <= 0) missing.Add("labor_budget");
         if (!expenseBudget.HasValue) missing.Add("expense_budget");
@@ -1229,11 +1234,8 @@ public static class ProjectFinancialTruthModule
         decimal? laborBudget,
         decimal? expenseBudget)
     {
-        if (!laborBudget.HasValue || laborBudget <= 0 || !forecast.HasValue)
-            return "missing_financial_information";
-        if (forecast > budget) return "over_budget";
-        if (budget > 0 && forecast >= budget * 0.85m) return "approaching_budget";
-        return expenseBudget.HasValue ? "on_track" : "on_track_partial_expense_budget";
+        return ProjectBudgetAssessment.Classify(
+            ProjectBudgetAssessment.CompleteTotal(laborBudget, expenseBudget), forecast);
     }
 
     private static int StatusOrder(string status) => status switch
