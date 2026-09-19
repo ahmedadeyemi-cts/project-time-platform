@@ -1293,3 +1293,19 @@ body[data-project-pulse-route="invoice-billing-center"] .app-shell {
   }
 }
 /* MODULE_001_TIMESHEET_MULTIVIEW_STYLES_END */
+
+/* React owns route visibility, including legacy panels on new module routes. */
+main.app-shell > section[hidden] { display: none !important; }
+
+/* Compact time-entry workspace with persistent actions and readable notes. */
+.details-modal.enterprise-time-entry { width: min(860px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; overflow-y: auto; border-radius: 18px; }
+.enterprise-time-entry .modal-title-row { position: sticky; top: 0; z-index: 2; margin: 0; padding: 20px 24px; background: var(--surface, white); border-bottom: 1px solid var(--border, #dce4ee); }
+.enterprise-time-entry .modal-title-row h2 { font-size: 1.4rem; margin-block: 4px; }
+.enterprise-time-entry .modal-detail-form { padding: 20px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.enterprise-time-entry .modal-detail-form > label:nth-child(2) { grid-column: 1 / -1; }
+.enterprise-time-entry .modal-detail-form textarea { min-height: 130px; font-weight: 400; line-height: 1.5; }
+.enterprise-time-entry .ai-time-suggestion-card { padding: 14px; margin-top: 12px; box-shadow: none; }
+.enterprise-time-entry .ai-time-suggestion-card h3 { font-size: 1rem; }
+.enterprise-time-entry .ai-time-suggestion-card .section-copy { font-size: .85rem; font-weight: 400; }
+.enterprise-time-entry .day-submit-actions { position: sticky; bottom: 0; padding: 14px 24px; margin: 0; background: var(--surface, white); border-top: 1px solid var(--border, #dce4ee); }
+@media (max-width: 600px) { .enterprise-time-entry .modal-detail-form { grid-template-columns: 1fr; } .enterprise-time-entry .modal-title-row { flex-wrap: wrap; } }

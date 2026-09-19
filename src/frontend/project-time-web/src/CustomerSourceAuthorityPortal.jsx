@@ -1,27 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import { authoritativeApi } from './projectpulse-authoritative-api.js';
 
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, {
-    credentials: 'include',
-    ...options,
-    headers: {
-      Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {})
-    }
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(payload?.message || `Request failed with status ${response.status}.`);
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
-  }
-  return payload;
+  return authoritativeApi(url, options);
 }
 
 function sourceLabel(source) {
-  if (!source) return 'Loading source';
+  if (!source) return 'Source unavailable';
   if (source.mode === 'manual') return 'Manual customer directory';
   if (source.mode === 'sell') return 'ConnectWise SELL';
   return source.providerName || source.providerKey || 'Module 026 CRM';
@@ -46,7 +32,7 @@ function formatTimestamp(value) {
 }
 
 export default function CustomerSourceAuthorityPortal() {
-  const [module021Visible, setModule021Visible] = useState(false);
+  const requestSequence = useRef(0);
   const [state, setState] = useState({ loading: true, source: null, providers: [], canManage: false, migrationApplied: true, error: '' });
   const [draftMode, setDraftMode] = useState('sell');
   const [draftProviderKey, setDraftProviderKey] = useState('');
@@ -59,8 +45,10 @@ export default function CustomerSourceAuthorityPortal() {
   const [importLoading, setImportLoading] = useState(false);
 
   const loadSource = async () => {
+    const requestId = ++requestSequence.current;
     try {
       const payload = await requestJson('/api/customers/source');
+      if (requestId !== requestSequence.current) return;
       const source = payload?.source || null;
       setState({
         loading: false,
@@ -73,9 +61,11 @@ export default function CustomerSourceAuthorityPortal() {
       setDraftMode(source?.mode || 'sell');
       setDraftProviderKey(source?.mode === 'crm' ? (source?.providerKey || '') : '');
     } catch (error) {
+      if (requestId !== requestSequence.current) return;
       setState((current) => ({
         ...current,
         loading: false,
+        canManage: false,
         error: error?.message || 'Customer source authority is unavailable.'
       }));
     }
@@ -83,17 +73,19 @@ export default function CustomerSourceAuthorityPortal() {
 
   useEffect(() => {
     void loadSource();
+    const reload = () => {
+      setState({ loading: true, source: null, providers: [], canManage: false, migrationApplied: true, error: '' });
+      void loadSource();
+    };
+    window.addEventListener('projectpulse:auth-session-ready', reload);
+    window.addEventListener('projectpulse:view-as-changed', reload);
+    return () => {
+      requestSequence.current += 1;
+      window.removeEventListener('projectpulse:auth-session-ready', reload);
+      window.removeEventListener('projectpulse:view-as-changed', reload);
+    };
   }, []);
 
-  useEffect(() => {
-    const detect = () => {
-      setModule021Visible(Boolean(document.querySelector('.customer-directory-center[data-module="021"]')));
-    };
-    detect();
-    const observer = new MutationObserver(detect);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     const mode = state.source?.mode || 'sell';
@@ -213,7 +205,6 @@ export default function CustomerSourceAuthorityPortal() {
     heading?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  if (!module021Visible) return null;
 
   const source = state.source;
   const externalCrmActive = source?.mode === 'crm';
@@ -231,7 +222,7 @@ export default function CustomerSourceAuthorityPortal() {
         </span>
       </header>
 
-      {state.error ? <div className="customer-source-authority__alert">{state.error}</div> : null}
+      {state.error ? <div className="customer-source-authority__alert" role="alert">{state.error} <button type="button" onClick={loadSource}>Retry</button></div> : null}
       {!state.migrationApplied ? (
         <div className="customer-source-authority__alert">
           Migration 098 has not been applied yet. ConnectWise SELL remains the backward-compatible source until the migration is installed.

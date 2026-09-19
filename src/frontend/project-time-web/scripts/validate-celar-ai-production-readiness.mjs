@@ -521,7 +521,7 @@ assert(
     && module064.includes('privateDocumentRuntimeReady')
     && module064.includes('blockers = blockers.Distinct')
     && panel.includes('productionReadiness')
-    && panel.includes('production-readiness item'),
+    && panel.includes('runtime-readiness item'),
   'Module 064 exposes end-to-end readiness and actionable blockers without returning paths or secrets'
 );
 

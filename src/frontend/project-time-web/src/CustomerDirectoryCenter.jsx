@@ -1,3 +1,4 @@
+import CustomerSourceAuthorityPortal from './CustomerSourceAuthorityPortal.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import './customer-directory-center.css';
 import './customer-directory-sell-sync.css';
@@ -417,6 +418,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
 
   return (
     <section className="customer-directory-center" data-module="021">
+      <CustomerSourceAuthorityPortal />
       <div className="customer-directory-header">
         <div>
           <p className="eyebrow">MODULE 021</p>
@@ -441,7 +443,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
             </p>
           </div>
           <div className="customer-sell-sync-actions">
-            <a className="secondary-action" href="#crm-erp-integrations">Open Module 026</a>
+            <a className="secondary-action" href="#crm-integration">Open Module 026</a>
             <button type="button" className="secondary-action" onClick={() => void loadSellStatus()} disabled={sellState.statusLoading}>Refresh connection</button>
           </div>
         </div>

@@ -93,6 +93,12 @@ internal static class EnterpriseNotificationRecipientResolver
         switch (strategy)
         {
             case "timesheet_engineer":
+                await AddSubjectUserAsync(connection, recipients, notificationEvent.SubjectUserId,
+                    "to", "timesheet.submitter", cancellationToken);
+                await AddRoleGroupAsync(connection, recipients, PtcRoles, "cc",
+                    "timesheet.submission_ptc_visibility", cancellationToken);
+                break;
+
             case "subject_user":
             case "expense_owner":
             case "report_requester":

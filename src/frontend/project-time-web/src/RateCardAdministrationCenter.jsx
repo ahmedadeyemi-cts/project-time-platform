@@ -368,7 +368,9 @@ export default function RateCardAdministrationCenter() {
   return (
     <section className="rate-card-admin-center">
       {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START */}
+      <details><summary>Project rate coverage and financial context</summary>
       <UnifiedProjectFinancialWorkspace workspace="rate-card" />
+      </details>
       {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_END */}
       <div className="rate-card-admin-header">
         <div>

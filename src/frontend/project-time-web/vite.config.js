@@ -96,13 +96,7 @@ function fulfilledSourceWarnings(source, payload) {
 }`;
 
       code = replaceExactly(code, warningHelper, sourceAwareWarningHelper, id, 'Module 039 source-warning helper');
-      code = replaceExactly(
-        code,
-        "const sourceNames = ['Project Workspace', 'Project Intake', 'Customer Directory', 'Certify staged expenses', 'Certify exceptions', 'Billing candidates'];",
-        "const sourceNames = ['Project Workspace', 'Module 020 · Project Intake', 'Customer Directory', 'Certify staged expenses', 'Certify exceptions', 'Billing candidates'];",
-        id,
-        'Module 039 Project Intake owner'
-      );
+
     }
 
     if (sourceId.endsWith('/InvoiceBillingCenter.jsx')) {
@@ -112,27 +106,6 @@ function fulfilledSourceWarnings(source, payload) {
         "const source = commercial.commercialSource === 'SELL' ? 'ConnectWise SELL' : text(commercial.commercialSource, 'Current stored rates');",
         id,
         'Module 042 commercial source label'
-      );
-      code = replaceExactly(
-        code,
-        "if (columnKey === 'sellQuoteId') return text(candidate.sellQuoteNumber, missingValue);",
-        "if (columnKey === 'sellQuoteId') return candidate.commercial?.commercialSource === 'SELL' ? text(candidate.sellQuoteNumber, missingValue) : 'Not required';",
-        id,
-        'Module 042 external association cell'
-      );
-      code = replaceExactly(
-        code,
-        "['sellQuoteId', 'ConnectWise SELL Quote', 'External IDs', false],",
-        "['sellQuoteId', 'External association', 'External IDs', false],",
-        id,
-        'Module 042 external association column'
-      );
-      code = replaceExactly(
-        code,
-        '<div><span>ConnectWise SELL Quote</span><strong>{text(selected.sellQuoteNumber, missingValue)}</strong></div>',
-        "<div><span>External association</span><strong>{selected.commercial?.commercialSource === 'SELL' ? text(selected.sellQuoteNumber, missingValue) : 'Not required for this customer source'}</strong></div>",
-        id,
-        'Module 042 project reference association'
       );
       code = replaceExactly(
         code,
@@ -148,13 +121,7 @@ function fulfilledSourceWarnings(source, payload) {
         id,
         'Module 042 selected commercial source'
       );
-      code = replaceExactly(
-        code,
-        "<div><dt>ConnectWise SELL quote</dt><dd>{text(selected.commercial?.sellQuoteNumber, 'Not configured')}</dd></div>",
-        "<div><dt>External association</dt><dd>{selected.commercial?.commercialSource === 'SELL' ? text(selected.commercial?.sellQuoteNumber, 'Not configured') : 'Not required for this customer source'}</dd></div>",
-        id,
-        'Module 042 commercial association detail'
-      );
+
       code = replaceExactly(
         code,
         "<div><dt>Last ConnectWise SELL sync</dt><dd>{selected.commercial?.lastSuccessfulSyncAt ? formatDateTime(selected.commercial.lastSuccessfulSyncAt) : 'No successful ConnectWise SELL sync recorded'}</dd></div>",
