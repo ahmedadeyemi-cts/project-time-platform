@@ -41,6 +41,14 @@ class RegisterControlTests(unittest.TestCase):
                 authority.verify_source(run, jobs, '12345')
             step['conclusion'] = 'success'
 
+    def test_governed_validator_fits_github_run_limit(self):
+        source = (ROOT / '.github/workflows/module025-governed-protected-test-release-manual.yml').read_text()
+        workflow = yaml.load(source, Loader=yaml.BaseLoader)
+        for job in workflow['jobs'].values():
+            for step in job['steps']:
+                self.assertLessEqual(len(step.get('run', '')), 21000)
+        self.assertIn('bash scripts/release-test/validate-module025-governed-release.sh', source)
+
     def test_read_only_workflow_boundary(self):
         source = (ROOT / '.github/workflows/module025-retained-register-check.yml').read_text()
         workflow = yaml.load(source, Loader=yaml.BaseLoader)

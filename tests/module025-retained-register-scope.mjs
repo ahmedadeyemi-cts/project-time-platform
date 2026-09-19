@@ -10,6 +10,7 @@ const expected = [
   ".github/workflows/module025-governed-protected-test-release-manual.yml",
   ".github/workflows/module025-retained-register-check.yml",
   "scripts/release-test/authorize-module025-register-check.py",
+  "scripts/release-test/validate-module025-governed-release.sh",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs",
   "src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs",
@@ -47,7 +48,14 @@ export function verifyModule025RetainedRegisterScope() {
   for (const name of expected) assert.throws(() => verify(expected.filter(value => value !== name)));
   assert.throws(() => verify([...expected, '.github/workflows/projectpulse-deploy-test.yml']));
   for (const [name, registration] of Object.entries(registrations)) {
-    const source = fs.readFileSync(name, 'utf8');
+    let source = fs.readFileSync(name, 'utf8');
+    if (name === '.github/workflows/module025-governed-protected-test-release-manual.yml') {
+      const script = fs.readFileSync('scripts/release-test/validate-module025-governed-release.sh', 'utf8');
+      assert.ok(script.startsWith('#!/usr/bin/env bash\n'));
+      const body = script.slice('#!/usr/bin/env bash\n'.length).replace('${RELEASE_SHA}', '${{ inputs.release_sha }}').split('\n').map(line => line ? '          ' + line : '').join('\n');
+      source = source.replace('          bash scripts/release-test/validate-module025-governed-release.sh\n', body)
+        .replace('          RELEASE_SHA: ${{ inputs.release_sha }}\n', '');
+    }
     assert.equal(source.replace(registration, ''), original(name));
     if (name.endsWith('.yml')) verifyReadOnlyWorkflow(source, name);
   }
