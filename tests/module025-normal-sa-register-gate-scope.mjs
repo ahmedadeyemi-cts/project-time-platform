@@ -15,6 +15,7 @@ const expected = [
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "scripts/release-test/verify-module025-sa-register-evidence.py",
   "tests/flowhive-psa-admission.test.mjs",
+  "tests/flowhive-psa-installed-acceptance.test.py",
   "tests/module025-normal-sa-register-gate-scope.mjs",
   "tests/module025-register-browser.test.py",
   "tests/module025-sow-register-browser.py",
