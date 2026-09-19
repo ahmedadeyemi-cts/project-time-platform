@@ -9,6 +9,7 @@ on:
       - '.github/workflows/module025-protected-uat-control.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
       - 'scripts/release-test/verify-module025-quarantine-controller.py'
+      - 'scripts/release-test/build-and-run-module025-retention-migration-106.sh'
       - 'database/migrations/098_customer_directory_source_authority.sql'
       - 'database/migrations/109_module025_project_name.sql'
       - 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'

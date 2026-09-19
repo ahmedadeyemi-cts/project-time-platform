@@ -6,7 +6,11 @@ ROOT="${PROJECTPULSE_RELEASE_ROOT:-$(pwd -P)}"
 RELEASE="${RELIABILITY_RELEASE_COMMIT:-}"
 ACR="${AZURE_ACR_NAME:-}"
 [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch && "${GITHUB_REF:-}" == refs/heads/main ]]
-[[ "${TARGET_RELEASE_BRANCH:-}" == main && "${ACCEPTANCE_SCOPE:-}" == sow_role ]]
+[[ "${TARGET_RELEASE_BRANCH:-}" == main ]]
+case "${ACCEPTANCE_SCOPE:-}" in
+  sow_role|sow_exports) ;;
+  *) echo "ERROR: Module 025 retention migrations require sow_role or sow_exports acceptance." >&2; exit 1 ;;
+esac
 [[ "$RELEASE" =~ ^[a-f0-9]{40}$ && "$(git -C "$ROOT" rev-parse HEAD)" == "$RELEASE" ]]
 [[ "$ACR" =~ ^[a-zA-Z0-9]+$ && "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]]
 API="$(az containerapp show -g "${AZURE_RESOURCE_GROUP:?}" -n "${AZURE_API_APP:?}" -o json --only-show-errors)"
