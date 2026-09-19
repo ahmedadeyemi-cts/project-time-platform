@@ -63,7 +63,16 @@ INSERT INTO customer_directory_source_authority (
     provider_key,
     updated_at
 )
-VALUES (1, 'sell', 'zendesk_sell', NOW())
+-- Check existence before constructing a legacy seed: PostgreSQL validates CHECK
+-- constraints before ON CONFLICT, and migration 111 replaces the SELL provider.
+SELECT 1, 'sell',
+    CASE WHEN EXISTS (
+        SELECT 1 FROM schema_migrations WHERE migration_id = '111_connectwise_sell_provider'
+    ) THEN 'connectwise_sell' ELSE 'zendesk_sell' END,
+    NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM customer_directory_source_authority WHERE customer_source_authority_id = 1
+)
 ON CONFLICT (customer_source_authority_id) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS ix_customer_directory_source_authority_history_changed_at
