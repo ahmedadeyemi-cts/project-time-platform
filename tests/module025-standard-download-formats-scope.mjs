@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { verifyReadOnlyWorkflow } from './flowhive-psa-scope.mjs';
 const base = "fd38a04d2e0dc171bbf52c9066db7dc3d99e72b9";
 const expected = [
+  "scripts/ci/validate-module030-source-boundary.sh",
   ".github/workflows/module025-protected-uat-control.yml",
   ".github/workflows/projectpulse-deploy-test.yml",
   "scripts/release-test/run-module025-export-uat.py",
@@ -36,6 +37,7 @@ const expected = [
   "tests/validate-celar-ai-pr630-consolidated.mjs"
 ];
 const registrations = {
+  "scripts/ci/validate-module030-source-boundary.sh": [["if [[ \"$HEAD_BRANCH\" == fix/module025-private-generation-recovery ]]; then", "if [[ \"$HEAD_BRANCH\" == fix/module025-standard-download-formats-20260919 ]]; then\n  node tests/module025-standard-download-formats-scope.mjs\n  exit 0\nelif [[ \"$HEAD_BRANCH\" == fix/module025-private-generation-recovery ]]; then"]],
   "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh": [
     [
       "if [[ \"$HEAD_BRANCH\" == fix/module025-private-generation-recovery ]]; then",
