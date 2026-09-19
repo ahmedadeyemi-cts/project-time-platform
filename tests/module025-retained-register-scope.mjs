@@ -12,6 +12,8 @@ const expected = [
   "scripts/release-test/authorize-module025-register-check.py",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs",
+  "src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs",
+  "src/frontend/project-time-web/scripts/validate-module-001-ai-task-grounding.mjs",
   "tests/FlowHiveDetailedPlannerTests/Module025ExternalSowTests.cs",
   "tests/FlowHiveDetailedPlannerTests/Module025ProviderFallbackTests.cs",
   "tests/flowhive-psa-admission.test.mjs",
@@ -66,7 +68,16 @@ export function verifyModule025RetainedRegisterScope() {
     'src/backend/ProjectTime.Api/Ai/Module025ExternalSowAdapter.cs',
     'src/backend/ProjectTime.Api/Ai/PulseAiEscalationSanitizer.cs'
   ]) assert.equal(fs.readFileSync(name, 'utf8'), original(name), `Protected authority or validation changed: ${name}`);
-  assert.equal(git('diff', '--name-only', base, '--', 'deployment', 'database', 'src/frontend', 'src/backend/ProjectTime.Api/Modules'), '');
+  assert.equal(git('diff', '--name-only', base, '--', 'deployment', 'database', 'src/frontend/project-time-web/src', 'src/backend/ProjectTime.Api/Modules'), '');
+  for (const [name, label, next] of [
+    ['src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs', "  'MODULE064_PERSISTED_ORDER_IS_RUNTIME_AUTHORITY',", "  'MODULE064_PRODUCTION_GATE_VISIBLE',"],
+    ['src/frontend/project-time-web/scripts/validate-module-001-ai-task-grounding.mjs', "  'MODULE001_AI_CONFIGURED_ROUTE_AUTHORITY',", "  'MODULE001_AI_PRIVATE_TARGET_NOT_RETRIED',"]
+  ]) {
+    const source = fs.readFileSync(name, 'utf8'), before = original(name);
+    assert.equal(source.split(label)[0], before.split(label)[0]);
+    assert.equal(source.slice(source.indexOf(next)), before.slice(before.indexOf(next)));
+    assert.match(source.slice(source.indexOf(label),source.indexOf(next)), /PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED/);
+  }
   const router = fs.readFileSync('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs', 'utf8');
   const start = '        static bool IsPrivateTarget';
   const end = '                // A cloud target needs';

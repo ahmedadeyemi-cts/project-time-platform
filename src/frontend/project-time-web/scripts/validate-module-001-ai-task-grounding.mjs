@@ -394,14 +394,14 @@ check(
     && containsAll(centralRoute, [
       'var route = await _store.LoadRouteAsync(',
       'privatePolicyProfile?.RequirePrivateModelForDocuments == true',
-      'var externalSowReady = execution.StructuredSowPhase && execution.ExternalSow is not null',
-      '&& Module025ExternalSowAdapter.PolicyEnabled;',
-      'var orderedTargets = externalSowReady',
-      ': requirePrivateTargetBeforeExternal',
+      'var orderedTargets = requirePrivateTargetBeforeExternal',
+      '!RuntimeFlag("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED")',
+      'module025_paid_fallback_disabled',
       'route.Targets.Where(IsPrivateTarget)',
       'route.Targets.Where(target => !IsPrivateTarget(target))',
       'CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi'
     ])
+    && !centralRoute.includes('var externalSowReady =')
     && !timesheetSuggestion.includes('_router.IsFirstTargetAsync('),
   'the central router owns persisted order and conditionally forces private document inference'
 );
