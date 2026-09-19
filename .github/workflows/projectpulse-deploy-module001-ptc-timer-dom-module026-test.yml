@@ -185,7 +185,7 @@ jobs:
 
           grep -Fq 'Edit connection' "$MODULE026_UI"
           grep -Fq 'Add CRM platform' "$MODULE026_UI"
-          grep -Fq 'zendesk_sell' "$MODULE026_BACKEND"
+          grep -Fq 'connectwise_sell' "$MODULE026_BACKEND"
           grep -Fq 'salesforce' "$MODULE026_BACKEND"
           grep -Fq 'servicenow' "$MODULE026_BACKEND"
           grep -Fq 'certinia' "$MODULE026_BACKEND"

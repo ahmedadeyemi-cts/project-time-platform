@@ -68,7 +68,7 @@ test('BUFFERED_JSON_BODY_READ', !authorization.includes('Request.Body.Length == 
 test('ARCHIVE_GUARD_SHARED_ID_RESOLUTION', program.includes('WorkRegisterAuthorization.ReadProjectUpdateIdText(lifecycleRoot)') && authorization.includes('internal static readonly string[] ProjectUpdateIdAliases'));
 test('CENTRAL_AUTHORIZATION_MIDDLEWARE', program.includes('app.UseWorkRegisterAuthorization();'));
 test('CREATE_API_GUARDED', program.includes('HasCreateAuthorityAsync') && sellImport.includes('HasCreateAuthorityAsync'));
-test('GSD_AND_SELL_OPTIONS', frontend.includes('Import from GSD') && frontend.includes('Import from SELL'));
+test('GSD_AND_SELL_OPTIONS', frontend.includes('Import from GSD') && frontend.includes('Import from ConnectWise SELL'));
 test('SELL_ENDPOINT', sellImport.includes('/api/work-register/intake/packages/sell/import') && program.includes('app.MapWorkRegisterSellImportEndpoints();'));
 test('SELL_MODULE_026_CREDENTIAL', sellImport.includes('CrmErpIntegrationModule.LoadCredentialAsync'));
 test('SELL_SOURCE_LOCK_UI', frontend.includes('sellAuthoritativeReview') && frontend.includes('disabled={sellAuthoritativeReview}'));

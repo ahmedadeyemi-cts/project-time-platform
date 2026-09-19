@@ -135,7 +135,7 @@ export default function SystemArchitectureCenter({ authSession }) {
           <h1 id="system-architecture-title">System Architecture &amp; API Dependency Map</h1>
           <p>
             One shared registry for the hosting platform, browser, web, API, database, storage,
-            Microsoft Integration, mail, SELL, Salesforce, ServiceNow, Certinia, GitHub controls,
+            Microsoft Integration, mail, ConnectWise SELL, Salesforce, ServiceNow, Certinia, GitHub controls,
             module-to-API relationships, regions, replicas, and governed external data flows.
           </p>
         </div>

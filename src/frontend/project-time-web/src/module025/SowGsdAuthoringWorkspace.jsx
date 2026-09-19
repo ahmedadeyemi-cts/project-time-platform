@@ -586,9 +586,9 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   const confirmReady = confirmChecks.length > 0 && confirmChecks.every((item) => item.complete);
   const incompleteConfirmChecks = confirmChecks.filter((item) => !item.complete);
   const documentReadiness = !engagement
-    ? 'Select a SOW/GSD record to review its documents and SELL handoff.'
+    ? 'Select a SOW/GSD record to review its documents and ConnectWise SELL handoff.'
     : engagement.status === 'confirmed'
-      ? 'The confirmed SOW and GSD are ready to download. Review SELL readiness before submitting.'
+      ? 'The confirmed SOW and GSD are ready to download. Review ConnectWise SELL readiness before submitting.'
       : engagement.status === 'archived'
         ? 'This record is archived. Open version history to download any previously retained documents.'
         : !engagement.lastGeneratedAt
@@ -656,16 +656,16 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
         </div>
       </header>
 
-      <section className="m025-section m025-document-actions" aria-label="Documents and SELL">
-        <div className="m025-section-heading"><div><h2>Documents &amp; SELL handoff</h2></div></div>
+      <section className="m025-section m025-document-actions" aria-label="Documents and ConnectWise SELL">
+        <div className="m025-section-heading"><div><h2>Documents &amp; ConnectWise SELL handoff</h2></div></div>
         <p id="m025-document-readiness" role="status">{documentReadiness}</p>
         <div className="m025-review-actions" aria-describedby="m025-document-readiness">
           <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('sow.docx')}>Download SOW (.docx)</Button>
           <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('gsd.xlsx')}>Download GSD (.xlsx)</Button>
-          <Button disabled={!engagement || detailLoading || Boolean(actionState.busy) || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Send to SELL</Button>
+          <Button disabled={!engagement || detailLoading || Boolean(actionState.busy) || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Send to ConnectWise SELL</Button>
           <Button disabled={!engagement || detailLoading || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Version history</Button>
         </div>
-        <p className="m025-document-help">Send to SELL opens this record’s retained versions and submission readiness. It does not send documents until you confirm an available submission.</p>
+        <p className="m025-document-help">Send to ConnectWise SELL opens this record’s retained versions and submission readiness. It does not send documents until you confirm an available submission.</p>
       </section>
 
       <section className="m025-metrics" aria-label="Module 025 summary">
@@ -743,7 +743,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
                   <p>Commercial and ownership metadata flows into both the SOW and GSD.</p>
                 </div>
                 <div className="m025-form-grid m025-form-grid--3">
-                  <Field label="Project Name" hint="Used in SOW/GSD documents, SELL handoff, search, and downloaded filenames.">
+                  <Field label="Project Name" hint="Used in SOW/GSD documents, ConnectWise SELL handoff, search, and downloaded filenames.">
                     <input value={engagement.projectName || ''} disabled={readOnly} maxLength={500} onChange={(event) => updateTopLevel('projectName', event.target.value)} placeholder="Enter project name" />
                   </Field>
                   <Field label="Customer" hint="Use the canonical customer directory or choose Customer not listed.">
@@ -880,7 +880,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
                   {engagement.status === 'confirmed' ? (
                     <>
                       <Button onClick={() => runAction('reopen', 'SOW/GSD reopened for editing.') } disabled={!access?.canEdit || Boolean(actionState.busy)}>Reopen for editing</Button>
-                      <p>The confirmed documents are available in Documents &amp; SELL handoff at the top of this workspace.</p>
+                      <p>The confirmed documents are available in Documents &amp; ConnectWise SELL handoff at the top of this workspace.</p>
                     </>
                   ) : engagement.status !== 'archived' ? (
                     <Button className="m025-confirm-button" kind="primary" onClick={confirmReviewed} disabled={!access?.canEdit || Boolean(actionState.busy)}>

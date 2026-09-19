@@ -401,7 +401,7 @@ public sealed class PulseAiQuestionPlanner
                 "Module 055D is the authoritative new-project workflow. Module 055C is the authoritative existing-project workspace. Project Intake and signed handoff establish upstream readiness, but the retired Work Task Builder no longer owns project or task creation.",
                 [
                     "Confirm that Project Intake or the applicable Sales/Signed Handoff workflow has the required customer, commercial, ownership, and signed-date information.",
-                    "Open Module 055D and choose the approved GSD or SELL source path.",
+                    "Open Module 055D and choose the approved GSD or ConnectWise SELL source path.",
                     "Review the source-controlled project name, customer, ownership, dates, pricing or rate information, and required commercial fields before creating the project.",
                     "Complete the authorized creation workflow. Creation and any migration or external synchronization remain governed by the module’s own controls.",
                     "After creation, open Module 055C to manage project details, tasks, assignments, dates, documents, lifecycle status, audit history, and closeout handoff.",
@@ -409,7 +409,7 @@ public sealed class PulseAiQuestionPlanner
                 ],
                 [
                     "Module 011 Celar AI does not create projects or tasks.",
-                    "SELL remains authoritative for fields assigned to the SELL contract; Celar AI may explain but cannot override them.",
+                    "ConnectWise SELL remains authoritative for fields assigned to the ConnectWise SELL contract; Celar AI may explain but cannot override them.",
                     "Project and task changes require the applicable Module 055C/055D permissions and audit evidence."
                 ],
                 ["019", "020", "024", "027", "055C", "055D", "066"],
@@ -467,7 +467,7 @@ public sealed class PulseAiQuestionPlanner
                 "Celar AI should use the authoritative project financial truth and reporting contracts rather than estimating from prose. It must apply the user’s financial and project scope, calculate exact values deterministically, preserve unavailable values as unknown, and then explain the drivers in detail.",
                 [
                     "State the business question, reporting period, currency, customer or project scope, and whether the answer should use actual, approved, forecast, or combined values.",
-                    "Resolve the authorized Group 3 workspace and retrieve project, assignment, time, expense, cost-alert, document, Work Register, and SELL commercial source health.",
+                    "Resolve the authorized Group 3 workspace and retrieve project, assignment, time, expense, cost-alert, document, Work Register, and ConnectWise SELL commercial source health.",
                     "Apply the published formula for planned cost, actual cost, forecasted final cost, current variance, budget status, and margin only when authoritative revenue and rate data are available.",
                     "Separate known values, unknown values, stale values, and unavailable optional sources. Do not silently treat missing data as zero.",
                     "Explain the portfolio or project result, the largest drivers, exceptions, trend direction, operational causes, business risk, and recommended follow-up.",

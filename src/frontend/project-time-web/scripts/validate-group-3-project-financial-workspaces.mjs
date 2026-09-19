@@ -104,7 +104,7 @@ if (fullRepositoryContext) {
     'SellCommercialReadModelModule.LoadProjectCommercialSummaryAsync',
     'Module 026', 'Connection and credential ownership remain in Module 026.',
     'secondCredentialSystemCreated = false'
-  ]), 'Module 055B and workspaces reuse Module 026 rather than a second SELL connection');
+  ]), 'Module 055B and workspaces reuse Module 026 rather than a second ConnectWise SELL connection');
 
   check('NO_RETIRED_MODULE_067_MAIL_DEPENDENCY',
     !/Module\s*067|module-067|GLOBAL_MAIL_PROVIDER/i.test(backend),
@@ -140,7 +140,7 @@ if (fullRepositoryContext) {
     'Module 018', 'Module 019', 'Module 036', 'Module 055B',
     'Module 005', 'Module 026', 'PR #187', 'No migration',
     'Groups 4, 5, and 6'
-  ]), 'documentation records dependencies, completed SELL ownership, no migration, and later groups');
+  ]), 'documentation records dependencies, completed ConnectWise SELL ownership, no migration, and later groups');
 
   check('NO_DATABASE_OR_DEPLOYMENT_SCOPE',
     documentation.includes('No database migration')
@@ -166,7 +166,7 @@ check('WORKSPACE_IDENTITIES', includesAll(component, [
 check('WORKSPACE_SPECIFIC_EXPERIENCES', includesAll(component, [
   'Project portfolio command center',
   'Engineering assignments and project evidence',
-  'Customer, SELL, and delivery readiness',
+  'Customer, ConnectWise SELL, and delivery readiness',
   'Governed rate context',
   "data-workspace-summary={workspace}",
   "data-workspace-table={workspace}",
@@ -197,9 +197,9 @@ check('ENGINEERING_EXPERIENCE', includesAll(component, [
 'engineering hours, grouped documents, and authenticated downloads are present');
 
 check('SELL_GOVERNANCE_PRESENTATION', includesAll(component, [
-  'Connection owner', 'SELL relationship', 'Module 026',
-  'without another provider credential', 'SELL connection owner: Module 026'
-]), 'Module 055B and sales visibly consume governed SELL context');
+  'Connection owner', 'ConnectWise SELL relationship', 'Module 026',
+  'without another provider credential', 'ConnectWise SELL connection owner: Module 026'
+]), 'Module 055B and sales visibly consume governed ConnectWise SELL context');
 
 check('SOURCE_RETRY', includesAll(component, [
   'Source health', 'Retry sources', 'One unavailable optional source does not blank',

@@ -29,45 +29,30 @@ const EMPTY_PROVIDER = {
   notes: '',
 };
 
-const SELL_MAPPING = JSON.stringify({
-  projectNamePath: 'data.name',
-  quoteNumberPath: 'data.id',
-  customerNamePath: 'data.organization_name',
-  contractedAmountPath: 'data.value',
-  rateLinesPath: 'data.custom_fields.pricing_rate_review',
-  rateCodePath: 'sku',
-  descriptionPath: 'description',
-  unitRatePath: 'unit_rate',
-  laborCategoryPath: 'labor_category',
-  timeTypePath: 'time_type',
-  unitTypePath: 'unit_type',
-  billablePath: 'billable',
-}, null, 2);
-
 const PROVIDER_TEMPLATES = Object.freeze({
-  zendesk_sell: {
-    providerKey: 'zendesk_sell',
-    providerName: 'SELL (Zendesk Sell)',
-    shortName: 'SELL',
+  connectwise_sell: {
+    providerKey: 'connectwise_sell',
+    providerName: 'ConnectWise SELL',
+    shortName: 'ConnectWise SELL',
     providerType: 'crm',
     authModel: 'api_key',
     recommendedAuth: 'api_key',
-    baseUrl: 'https://api.getbase.com',
-    healthCheckUrl: 'https://api.getbase.com/v2/contacts?per_page=1',
-    oauthAuthorizationUrl: 'https://api.getbase.com/oauth2/authorize',
-    oauthTokenUrl: 'https://api.getbase.com/oauth2/token',
-    oauthScopes: 'read profile',
+    baseUrl: 'https://sellapi.quosalsell.com',
+    healthCheckUrl: 'https://sellapi.quosalsell.com/api/quotes?page=1&pageSize=1&includeFields=id',
+    oauthAuthorizationUrl: '',
+    oauthTokenUrl: '',
+    oauthScopes: '',
     apiKeyHeader: 'Authorization',
-    apiKeyPrefix: 'Bearer',
-    recordLookupUrlTemplate: 'https://api.getbase.com/v2/deals/{recordId}',
-    importMappingJson: SELL_MAPPING,
-    description: 'Authoritative customer, organization, deal, quote, and pricing source for ProjectPulse.',
-    consumes: ['Module 021 customer sync', 'Module 055D work intake', 'Customer and opportunity handoff'],
+    apiKeyPrefix: 'Basic',
+    recordLookupUrlTemplate: 'https://sellapi.quosalsell.com/api/quotes/{recordId}',
+    importMappingJson: '{}',
+    description: 'ConnectWise SELL (CPQ) API connection for quoting and commercial data.',
+    consumes: ['Module 021 customer sync: mapping pending', 'Module 055D work intake: mapping required', 'SOW publishing: adapter pending'],
     setup: [
-      'Choose API key for a governed access token or OAuth 2.0 for delegated consent.',
-      'Review the non-secret URLs, scopes, lookup template, and field mapping.',
-      'Save configuration, then enter the write-only token or OAuth client secret.',
-      'Enable and test the connection before another module consumes SELL data.',
+      'In ConnectWise SELL, open Settings → Organization Setup → API Keys to generate Public and Private API Keys.',
+      'Use the Access Key from your ConnectWise SELL sign-in URL. This is the SELL site key.',
+      'Save this configuration now. When your keys arrive, enter all three credential fields below and save securely.',
+      'Enable the connection and test read-only quote access. Customer imports, pricing mappings and document publishing need separate verification.',
     ],
   },
   salesforce: {
@@ -147,7 +132,7 @@ const PROVIDER_TEMPLATES = Object.freeze({
   },
 });
 
-const BUILTIN_ORDER = ['zendesk_sell', 'salesforce', 'servicenow', 'certinia'];
+const BUILTIN_ORDER = ['connectwise_sell', 'salesforce', 'servicenow', 'certinia'];
 
 function sessionToken() {
   return window.localStorage.getItem('projectPulseSessionToken')
@@ -233,6 +218,7 @@ function providerPayload(provider) {
 function templateProvider(templateKey, current = EMPTY_PROVIDER) {
   const template = PROVIDER_TEMPLATES[templateKey];
   if (!template) return { ...current };
+  if (!current.isPersisted) current = { ...current, ...template, isPersisted: false, isEnabled: false };
   return {
     ...EMPTY_PROVIDER,
     ...current,
@@ -273,10 +259,11 @@ function serviceNowInstanceDefaults(value) {
 
 export default function CrmErpIntegrationCenter() {
   const [state, setState] = useState({ loading: true, error: '', payload: null });
-  const [selectedKey, setSelectedKey] = useState('zendesk_sell');
+  const [selectedKey, setSelectedKey] = useState('connectwise_sell');
   const [draft, setDraft] = useState(null);
   const [editing, setEditing] = useState(false);
   const [credential, setCredential] = useState('');
+  const [sellKeys, setSellKeys] = useState({ accessKey: '', publicKey: '', privateKey: '' });
   const [showCredential, setShowCredential] = useState(false);
   const [newProvider, setNewProvider] = useState({ ...EMPTY_PROVIDER });
   const [showAdd, setShowAdd] = useState(false);
@@ -314,7 +301,7 @@ export default function CrmErpIntegrationCenter() {
         }
       };
       setState({ loading: false, error: '', payload });
-      setSelectedKey((current) => preferredKey || current || 'zendesk_sell');
+      setSelectedKey((current) => preferredKey || current || 'connectwise_sell');
     } catch (error) {
       setState({ loading: false, error: error?.message || 'Module 026 is unavailable.', payload: null });
     }
@@ -337,7 +324,7 @@ export default function CrmErpIntegrationCenter() {
       return templateProvider(providerKey, saved || { ...EMPTY_PROVIDER, providerKey });
     });
     const customs = persisted
-      .filter((provider) => !BUILTIN_ORDER.includes(provider.providerKey))
+      .filter((provider) => provider.providerKey !== 'zendesk_sell' && !BUILTIN_ORDER.includes(provider.providerKey))
       .sort((left, right) => left.providerName.localeCompare(right.providerName));
     return [...builtins, ...customs];
   }, [state.payload?.providers]);
@@ -348,6 +335,10 @@ export default function CrmErpIntegrationCenter() {
   );
 
   const selectedTemplate = PROVIDER_TEMPLATES[selected?.providerKey] ?? null;
+  const isConnectWiseSell = draft?.providerKey === 'connectwise_sell';
+  const credentialReady = isConnectWiseSell
+    ? Object.values(sellKeys).every((value) => value.trim())
+    : Boolean(credential.trim());
   const canManage = Boolean(state.payload?.access?.canManage);
   const configuredCount = providers.filter((provider) => provider.credentialConfigured || provider.oauthConnected).length;
   const availableCount = providers.filter((provider) => provider.availabilityStatus === 'available').length;
@@ -355,6 +346,7 @@ export default function CrmErpIntegrationCenter() {
   useEffect(() => {
     setDraft(selected ? { ...selected } : null);
     setCredential('');
+    setSellKeys({ accessKey: '', publicKey: '', privateKey: '' });
     setShowCredential(false);
     setEditing(false);
   }, [selected?.providerKey, selected?.isPersisted, selected?.lastCheckedAt]);
@@ -374,6 +366,7 @@ export default function CrmErpIntegrationCenter() {
   function cancelEditing() {
     setDraft(selected ? { ...selected } : null);
     setCredential('');
+    setSellKeys({ accessKey: '', publicKey: '', privateKey: '' });
     setEditing(false);
     setNotice({ tone: '', message: '' });
   }
@@ -384,7 +377,7 @@ export default function CrmErpIntegrationCenter() {
 
   function applySelectedTemplate() {
     if (!selectedTemplate || !draft) return;
-    setDraft((current) => templateProvider(selected.providerKey, current));
+    setDraft((current) => ({ ...current, ...selectedTemplate, isPersisted: current.isPersisted, isEnabled: current.isEnabled }));
     setNotice({ tone: 'warning', message: `Recommended ${selectedTemplate.shortName} non-secret defaults are staged. Review and save them before adding a credential.` });
   }
 
@@ -424,15 +417,16 @@ export default function CrmErpIntegrationCenter() {
 
   async function saveCredential(event) {
     event.preventDefault();
-    if (!draft?.isPersisted || !credential.trim() || !canManage) return;
+    if (!draft?.isPersisted || !credentialReady || !canManage) return;
     setBusy(`credential:${draft.providerKey}`);
     setNotice({ tone: '', message: '' });
     try {
       const result = await jsonRequest(`/api/integrations/026/providers/${encodeURIComponent(draft.providerKey)}/credential`, {
         method: 'PUT',
-        body: JSON.stringify({ secret: credential.trim() }),
+        body: JSON.stringify(isConnectWiseSell ? sellKeys : { secret: credential.trim() }),
       });
       setCredential('');
+    setSellKeys({ accessKey: '', publicKey: '', privateKey: '' });
       setShowCredential(false);
       setNotice({ tone: 'success', message: result.message || 'Credential saved securely.' });
       await load(draft.providerKey);
@@ -504,7 +498,7 @@ export default function CrmErpIntegrationCenter() {
         <div className="crm-erp-hero-copy">
           <p className="crm-erp-eyebrow">Module 026 · CRM/ERP integrations</p>
           <h1>Integration Control Center</h1>
-          <span>Configure SELL, Salesforce, ServiceNow, Certinia, and approved custom CRM or ERP platforms through one secure, consistent administration experience.</span>
+          <span>Configure ConnectWise SELL, Salesforce, ServiceNow, Certinia, and approved custom CRM or ERP platforms through one secure, consistent administration experience.</span>
         </div>
         <div className="crm-erp-hero-actions">
           <button type="button" className="secondary-action" onClick={() => load()} disabled={state.loading}>{state.loading ? 'Refreshing…' : 'Refresh status'}</button>
@@ -585,7 +579,7 @@ export default function CrmErpIntegrationCenter() {
                 <div><p>{selectedTemplate.shortName} integration profile</p><h3>{selectedTemplate.description}</h3><div className="crm-erp-consumer-list">{selectedTemplate.consumes.map((consumer) => <span key={consumer}>{consumer}</span>)}</div></div>
                 {editing ? <button type="button" className="secondary-action" onClick={applySelectedTemplate}>Apply recommended template</button> : null}
                 <ol>{selectedTemplate.setup.map((step) => <li key={step}>{step}</li>)}</ol>
-                {selected?.providerKey === 'zendesk_sell' ? <a className="crm-erp-inline-link" href="#customer-directory">Open Module 021 Customer Directory sync →</a> : null}
+                {selected?.providerKey === 'connectwise_sell' ? <a className="crm-erp-inline-link" href="#customer-directory">Open Module 021 Customer Directory sync →</a> : null}
               </section>
             ) : null}
 
@@ -612,17 +606,18 @@ export default function CrmErpIntegrationCenter() {
               <>
                 <form className="crm-erp-configuration" onSubmit={saveConfiguration}>
                   <div className="crm-erp-section-heading"><div><p>Editable non-secret settings</p><h3>Connection configuration</h3><span>{draft.isPersisted ? 'Save changes before replacing the credential or testing.' : 'The first save registers this built-in template as an editable connection.'}</span></div><label className="crm-erp-toggle"><input type="checkbox" checked={Boolean(draft.isEnabled)} onChange={(event) => updateDraft('isEnabled', event.target.checked)} /> Enabled</label></div>
+                  {isConnectWiseSell ? <p>ConnectWise SELL uses API keys. You can save the connection before the keys are available. A successful test verifies read-only quote access.</p> : null}
                   <div className="crm-erp-auth-switch" role="group" aria-label="Authentication method">
-                    <button type="button" className={draft.authModel === 'oauth2' ? 'active' : ''} onClick={() => updateDraft('authModel', 'oauth2')}><strong>OAuth 2.0</strong><small>Client ID, write-only secret, and provider consent</small></button>
-                    <button type="button" className={draft.authModel === 'api_key' ? 'active' : ''} onClick={() => updateDraft('authModel', 'api_key')}><strong>API key</strong><small>Write-only token sent through the configured header</small></button>
+                    <button type="button" disabled={isConnectWiseSell} className={draft.authModel === 'oauth2' ? 'active' : ''} onClick={() => updateDraft('authModel', 'oauth2')}><strong>OAuth 2.0</strong><small>Client ID, write-only secret, and provider consent</small></button>
+                    <button type="button" className={draft.authModel === 'api_key' ? 'active' : ''} onClick={() => updateDraft('authModel', 'api_key')}><strong>API key</strong><small>{isConnectWiseSell ? 'Access Key plus Public and Private API Keys' : 'Write-only token sent through the configured header'}</small></button>
                   </div>
                   <div className="crm-erp-form-grid">
                     <label>Display name<input required value={draft.providerName} onChange={(event) => updateDraft('providerName', event.target.value)} /></label>
                     <label>Platform type<select value={draft.providerType} onChange={(event) => updateDraft('providerType', event.target.value)}><option value="crm">CRM</option><option value="erp">ERP</option><option value="erp_psa">ERP / PSA</option><option value="itsm_erp">ITSM / ERP</option><option value="other">Other</option></select></label>
-                    <label className="wide">Base URL<input type="url" placeholder={selected?.providerKey === 'servicenow' ? 'https://instance.service-now.com' : 'https://provider.example.com'} value={draft.baseUrl} onChange={(event) => updateServiceNowInstance(event.target.value)} /><small>Only approved public HTTPS endpoints are accepted.</small></label>
-                    <label className="wide">Availability / health URL<input type="url" placeholder="https://provider.example.com/api/status" value={draft.healthCheckUrl} onChange={(event) => updateDraft('healthCheckUrl', event.target.value)} /></label>
-                    {draft.authModel === 'oauth2' ? <><label className="wide">OAuth authorization URL<input type="url" value={draft.oauthAuthorizationUrl} onChange={(event) => updateDraft('oauthAuthorizationUrl', event.target.value)} /></label><label className="wide">OAuth token URL<input type="url" value={draft.oauthTokenUrl} onChange={(event) => updateDraft('oauthTokenUrl', event.target.value)} /></label><label>OAuth client ID<input value={draft.oauthClientId} onChange={(event) => updateDraft('oauthClientId', event.target.value)} /></label><label>OAuth scopes<input value={draft.oauthScopes} placeholder="api refresh_token" onChange={(event) => updateDraft('oauthScopes', event.target.value)} /></label></> : <><label>API-key header<input value={draft.apiKeyHeader} onChange={(event) => updateDraft('apiKeyHeader', event.target.value)} /></label><label>Value prefix<input value={draft.apiKeyPrefix} placeholder="Bearer" onChange={(event) => updateDraft('apiKeyPrefix', event.target.value)} /></label></>}
-                    <label className="wide">Record lookup URL template<input type="text" inputMode="url" placeholder="https://provider.example.com/api/records/{recordId}" value={draft.recordLookupUrlTemplate || ''} onChange={(event) => updateDraft('recordLookupUrlTemplate', event.target.value)} /><small>Keep the literal {'{recordId}'} placeholder.</small></label>
+                    <label className="wide">Base URL<input type="url" placeholder={selected?.providerKey === 'servicenow' ? 'https://instance.service-now.com' : 'https://provider.example.com'} readOnly={isConnectWiseSell} value={draft.baseUrl} onChange={(event) => updateServiceNowInstance(event.target.value)} /><small>Only approved public HTTPS endpoints are accepted.</small></label>
+                    <label className="wide">Availability / health URL<input type="url" placeholder="https://provider.example.com/api/status" readOnly={isConnectWiseSell} value={draft.healthCheckUrl} onChange={(event) => updateDraft('healthCheckUrl', event.target.value)} /></label>
+                    {draft.authModel === 'oauth2' ? <><label className="wide">OAuth authorization URL<input type="url" value={draft.oauthAuthorizationUrl} onChange={(event) => updateDraft('oauthAuthorizationUrl', event.target.value)} /></label><label className="wide">OAuth token URL<input type="url" value={draft.oauthTokenUrl} onChange={(event) => updateDraft('oauthTokenUrl', event.target.value)} /></label><label>OAuth client ID<input value={draft.oauthClientId} onChange={(event) => updateDraft('oauthClientId', event.target.value)} /></label><label>OAuth scopes<input value={draft.oauthScopes} placeholder="api refresh_token" onChange={(event) => updateDraft('oauthScopes', event.target.value)} /></label></> : <><label>API-key header<input readOnly={isConnectWiseSell} value={draft.apiKeyHeader} onChange={(event) => updateDraft('apiKeyHeader', event.target.value)} /></label><label>Value prefix<input readOnly={isConnectWiseSell} value={draft.apiKeyPrefix} placeholder="Bearer" onChange={(event) => updateDraft('apiKeyPrefix', event.target.value)} /></label></>}
+                    <label className="wide">Record lookup URL template<input type="text" inputMode="url" placeholder="https://provider.example.com/api/records/{recordId}" readOnly={isConnectWiseSell} value={draft.recordLookupUrlTemplate || ''} onChange={(event) => updateDraft('recordLookupUrlTemplate', event.target.value)} /><small>Keep the literal {'{recordId}'} placeholder.</small></label>
                     <label className="wide">Import field mapping (JSON)<textarea rows={10} value={draft.importMappingJson || '{}'} onChange={(event) => updateDraft('importMappingJson', event.target.value)} /><small>Maps approved source fields into ProjectPulse.</small></label>
                     <label className="wide">Notes<textarea value={draft.notes} onChange={(event) => updateDraft('notes', event.target.value)} /></label>
                   </div>
@@ -630,9 +625,13 @@ export default function CrmErpIntegrationCenter() {
                 </form>
 
                 <form className="crm-erp-credential" onSubmit={saveCredential}>
-                  <div><p>Write-only credential</p><h3>{draft.authModel === 'oauth2' ? 'OAuth client secret' : 'API key / access token'}</h3><span>{draft.isPersisted ? 'The value is encrypted and cannot be viewed after saving.' : 'Create the connection first; then add the secret.'}</span></div>
+                  <div><p>Write-only credential</p><h3>{isConnectWiseSell ? 'ConnectWise SELL API credentials' : draft.authModel === 'oauth2' ? 'OAuth client secret' : 'API key / access token'}</h3><span>{draft.isPersisted ? 'The value is encrypted and cannot be viewed after saving.' : 'Create the connection first; then add the secret.'}</span></div>
+                  {isConnectWiseSell ? <div className="crm-erp-form-grid">
+                    {[['accessKey', 'Access Key (ConnectWise SELL site key)'], ['publicKey', 'Public API Key'], ['privateKey', 'Private API Key']].map(([key, label]) => <label key={key}>{label}<input aria-label={label} type="password" autoComplete="new-password" disabled={!draft.isPersisted} value={sellKeys[key]} onChange={(event) => setSellKeys((current) => ({ ...current, [key]: event.target.value }))} /><small>Write-only. Enter all three values when saving or replacing credentials.</small></label>)}
+                  </div> : <>
                   <label><span className="sr-only">Write-only credential</span><div className="crm-erp-secret-input"><input type={showCredential ? 'text' : 'password'} autoComplete="new-password" value={credential} disabled={!draft.isPersisted} placeholder={draft.credentialConfigured ? 'Replace saved credential' : 'Enter credential'} onChange={(event) => setCredential(event.target.value)} /><button type="button" className="secondary-action" disabled={!draft.isPersisted} onClick={() => setShowCredential((current) => !current)}>{showCredential ? 'Hide while typing' : 'Show while typing'}</button></div></label>
-                  <button type="submit" className="secondary-action" disabled={!draft.isPersisted || !credential.trim() || busy === `credential:${draft.providerKey}`}>{busy === `credential:${draft.providerKey}` ? 'Encrypting…' : 'Save credential securely'}</button>
+                  </>}
+                  <button type="submit" className="secondary-action" disabled={!draft.isPersisted || !credentialReady || busy === `credential:${draft.providerKey}`}>{busy === `credential:${draft.providerKey}` ? 'Encrypting…' : 'Save credential securely'}</button>
                 </form>
 
                 <div className="crm-erp-actions-panel">

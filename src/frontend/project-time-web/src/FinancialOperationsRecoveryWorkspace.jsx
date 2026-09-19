@@ -429,7 +429,7 @@ function ReportCenter({ authSession }) {
           {resultState.data ? <Status value={resultState.data.resultStatus} /> : null}
         </div>
         <div className="group5-filter-grid">
-          <label>Search<input type="search" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Customer, project, PM, contract, SELL…" /></label>
+          <label>Search<input type="search" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Customer, project, PM, contract, ConnectWise SELL…" /></label>
           <label>Customer<select value={filters.customer} onChange={(event) => setFilters((current) => ({ ...current, customer: event.target.value }))}><option value="">All role-scoped customers</option>{customerOptions.map((value) => <option key={value}>{value}</option>)}</select></label>
           <label>Status<input value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))} placeholder="Project or budget status" /></label>
           <label>Date from<input type="date" value={filters.dateFrom} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} /></label>

@@ -202,7 +202,7 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
               <span>Forecast variance<strong>{percent(variancePercent)}</strong><small>Relative to approved budget</small></span>
               <span>Completion<strong>{project.completionPercentage == null ? 'Not available' : percent(Number(project.completionPercentage))}</strong><small>{project.plannedHours} planned · {project.usedHours} used hours</small></span>
             </div>
-            <div className="cost-alert-source-strip"><span>Financial source: <strong>{state.financial?.status ? words(state.financial.status) : 'Unavailable'}</strong></span><span>Calculated: <strong>{when(project.calculatedAt || state.financial?.generatedAt)}</strong></span><span>SELL readiness: <strong>{words(project.sell?.readinessStatus || 'not available')}</strong></span></div>
+            <div className="cost-alert-source-strip"><span>Financial source: <strong>{state.financial?.status ? words(state.financial.status) : 'Unavailable'}</strong></span><span>Calculated: <strong>{when(project.calculatedAt || state.financial?.generatedAt)}</strong></span><span>ConnectWise SELL readiness: <strong>{words(project.sell?.readinessStatus || 'not available')}</strong></span></div>
             {project.missing?.length ? <div className="cost-alert-missing"><strong>Missing authoritative evidence</strong><span>{project.missing.map(words).join(' · ')}</span></div> : null}
             <div className="cost-alert-project-actions"><a href="#project-workload">Open project financial workspace</a></div>
 

@@ -89,7 +89,7 @@ async def open_register(page):
     await workspace.wait_for(state='visible')
     await workspace.locator('.m025-filters').wait_for(state='visible')
     await workspace.locator('.m025-list-panel').wait_for(state='visible')
-    await page.get_by_role('tab', name='SOW Register & SELL', exact=True).click()
+    await page.get_by_role('tab', name='SOW Register & ConnectWise SELL', exact=True).click()
 
 
 async def capture_entry_state(page):

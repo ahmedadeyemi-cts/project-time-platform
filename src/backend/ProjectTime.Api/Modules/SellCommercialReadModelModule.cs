@@ -141,10 +141,10 @@ public static class SellCommercialReadModelModule
             currentInvoiceRateSource = cutoverEnabled ? "SELL_when_project_ready" : "current_stored_rates",
             cutoverRequirements = new[]
             {
-                "SELL connector configured or connected",
+                "ConnectWise SELL connector configured or connected",
                 "inbound synchronization enabled",
                 "successful synchronization timestamp present",
-                "SELL quote number present on project",
+                "ConnectWise SELL quote number present on project",
                 "active effective commercial rate card with billable rate lines"
             },
             milestoneBilling = "deferred_to_structured_milestone_module"
@@ -405,7 +405,7 @@ internal sealed record SellConnectorSummary(
     DateTimeOffset? LastSuccessfulSyncAt)
 {
     public static SellConnectorSummary NotRegistered => new(
-        "SELL", "SELL", "not_registered", false, false, "not_tested", null, null);
+        "SELL", "ConnectWise SELL", "not_registered", false, false, "not_tested", null, null);
 }
 
 internal sealed record SellCommercialRateCardSummary(

@@ -1820,7 +1820,7 @@ public static class ContractsPrepaidManagementModule
                 Number("Remaining Balance"),
                 Number("Balance %"),
                 Text("Certinia ID"),
-                Text("SELL Quote"),
+                Text("ConnectWise SELL Quote"),
                 Text("Salesforce ID"),
                 Text("Notes"),
                 ae?.UserId,

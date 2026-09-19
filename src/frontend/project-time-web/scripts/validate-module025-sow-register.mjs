@@ -114,8 +114,8 @@ for (const marker of [
   'needs_reconciliation',
   'SELL_RECEIPT_MISMATCH',
   'module025_sow_sell_notification_outbox'
-]) requireText(worker, marker, `SELL worker safety interaction missing: ${marker}`);
-requireText(policy, 'SELL_DOCUMENT_WRITE_ADAPTER_REQUIRED', 'SELL must remain explicitly adapter-gated');
+]) requireText(worker, marker, `ConnectWise SELL worker safety interaction missing: ${marker}`);
+requireText(policy, 'SELL_DOCUMENT_WRITE_ADAPTER_REQUIRED', 'ConnectWise SELL must remain explicitly adapter-gated');
 for (const marker of [
   'auth_request PUT "/api/module025/sow-gsd/$ENGAGEMENT_ID"',
   'auth_request POST "/api/module025/sow-gsd/$ENGAGEMENT_ID/confirm"',
@@ -127,7 +127,7 @@ for (const marker of [
   'MODULE025_RETAINED_VERSION_API_LIFECYCLE=PASS'
 ]) requireText(protectedUat, marker, `Protected-Test retained-version lifecycle missing: ${marker}`);
 for (const marker of [
-  'SOW Register & SELL',
+  'SOW Register & ConnectWise SELL',
   'Download SOW v1',
   'Download GSD v1',
   'File integrity',

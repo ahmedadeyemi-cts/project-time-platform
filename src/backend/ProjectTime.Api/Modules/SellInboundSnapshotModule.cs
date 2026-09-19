@@ -51,7 +51,7 @@ public static class SellInboundSnapshotModule
         if (!Flag("PROJECTPULSE_SELL_SNAPSHOT_IMPORT_ENABLED"))
             return Results.Json(new { status = "snapshot_import_disabled" }, statusCode: 409);
         if (Flag("PROJECTPULSE_SELL_COMMERCIAL_READ_MODEL_ACTIVE"))
-            return Results.Json(new { status = "guard_violation", message = "SELL cutover must remain disabled." }, statusCode: 409);
+            return Results.Json(new { status = "guard_violation", message = "ConnectWise SELL cutover must remain disabled." }, statusCode: 409);
         if (request.ProjectId != Guid.Empty && request.ProjectId != projectId)
             return Results.BadRequest(new { status = "project_mismatch" });
         if (string.IsNullOrWhiteSpace(request.QuoteNumber))
@@ -172,7 +172,7 @@ public static class SellInboundSnapshotModule
                 normalized.RateLines.Count + normalized.Milestones.Count + 1);
             insert.Parameters.AddWithValue("metadata", metadata);
             runId = (Guid)(await insert.ExecuteScalarAsync()
-                ?? throw new InvalidOperationException("SELL snapshot persistence failed."));
+                ?? throw new InvalidOperationException("ConnectWise SELL snapshot persistence failed."));
         }
 
         return Results.Ok(new

@@ -478,7 +478,7 @@ function pr467FriendlyPrerequisite(value) {
     contracted_value: 'Contracted value',
     expense_budget: 'Expense budget',
     planned_hours: 'Planned hours',
-    sell_association: 'SELL association'
+    sell_association: 'ConnectWise SELL association'
   };
   return labels[String(value || '').trim()] || String(value || '').replaceAll('_', ' ');
 }
@@ -487,7 +487,7 @@ function blockerGuidance(issue) {
   const normalized = String(issue ?? '').toLowerCase();
   if (normalized.includes('contracted_value') || normalized.includes('contracted value')) return { text: 'Add the project list price or contracted value in Module 055C. Current project creation stores project_list_price, which Module 039 now recognizes.', route: '#work-register', action: 'Open project commercial fields' };
   if (normalized.includes('expense_budget') || normalized.includes('expense budget')) return { text: 'Add the planned travel/expense budget in Module 055C. Current project creation stores planned_travel_cost, which Module 039 now recognizes.', route: '#work-register', action: 'Open project budget fields' };
-  if (normalized.includes('sell_association') || normalized.includes('sell association')) return { text: 'Associate the authoritative SELL quote through the CRM/ERP integration. Do not enter a fabricated quote ID.', route: '#crm-integration', action: 'Open SELL integration' };
+  if (normalized.includes('sell_association') || normalized.includes('sell association')) return { text: 'Associate the authoritative ConnectWise SELL quote through the CRM/ERP integration. Do not enter a fabricated quote ID.', route: '#crm-integration', action: 'Open ConnectWise SELL integration' };
   return { text: 'Resolve or document this item before marking the package ready for billing.', route: '#work-register', action: 'Review project data' };
 }
 

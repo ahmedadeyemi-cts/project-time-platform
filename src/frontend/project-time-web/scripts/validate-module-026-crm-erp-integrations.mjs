@@ -32,7 +32,7 @@ const project = read(files.project);
 const sellImport = read('src/backend/ProjectTime.Api/Modules/WorkRegisterSellImportModule.cs');
 const frontend = read(files.frontend);
 const css = read(files.css);
-const migration = read(files.migration);
+const migration = read(files.migration) + read('database/migrations/111_connectwise_sell_provider.sql');
 const docker = read('deployment/containers/web/Dockerfile');
 const pkg = JSON.parse(read('src/frontend/project-time-web/package.json'));
 
@@ -46,7 +46,7 @@ function test(name, condition, evidence = '') {
 
 for (const [name, file] of Object.entries(files)) test(`FILE_${name.toUpperCase()}`, exists(file), file);
 
-test('BUILTIN_PROVIDERS', ['zendesk_sell', 'salesforce', 'servicenow', 'certinia'].every((provider) => administration.includes(`"${provider}"`) && migration.includes(`'${provider}'`)));
+test('BUILTIN_PROVIDERS', ['connectwise_sell', 'salesforce', 'servicenow', 'certinia'].every((provider) => administration.includes(`"${provider}"`) && migration.includes(`'${provider}'`)));
 test('VIRTUAL_BUILTIN_BOOTSTRAP', administration.includes('BuiltinProviderTemplates') && administration.includes('if (persistedKeys.Contains(template.ProviderKey)) continue;') && administration.includes('IsPersisted') && administration.includes('firstSaveCreatesProvider = true'));
 test('MIGRATION_SEED_NOT_REQUIRED_FOR_DISPLAY', administration.includes('migrationSeedRequiredForDisplay = false') && administration.includes('virtualTemplateCount'));
 test('MANUAL_PROVIDER_ROUTE', backend.includes('group.MapPost("/providers", CreateProviderAsync);'));

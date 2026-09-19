@@ -118,7 +118,7 @@ authority for view and write access.
 
 The deployment validation preserved Modules `001`, `042`, `057`, `059`, and `060`,
 including Timesheet multiview, Certinia, Calendar Capacity, Invoice & Billing,
-Session Intelligence, Contracts, Prepaid, Block of Hours, and SELL Quote markers.
+Session Intelligence, Contracts, Prepaid, Block of Hours, and ConnectWise SELL Quote markers.
 
 ### Deployment evidence directory
 

@@ -1191,7 +1191,7 @@ public static class CertiniaBillingModule
         AppendXlsxSummaryPair(xml, 6, "A", "Project", "B", $"{header.ProjectCode} — {header.ProjectName}", "G", "Invoice type", "H", header.InvoiceType);
         AppendXlsxSummaryPair(xml, 7, "A", "Project Manager", "B", projectManager, "G", "Project Coordinator", "H", projectCoordinator);
         AppendXlsxSummaryPair(xml, 8, "A", "Billing period", "B", $"{FormatDate(header.BillingPeriodStart)} through {FormatDate(header.BillingPeriodEnd)}", "G", "Invoice date", "H", FormatDate(header.InvoiceDate));
-        AppendXlsxSummaryPair(xml, 9, "A", "Purchase order", "B", Fallback(header.PurchaseOrderNumber, "Not configured"), "G", "SELL Quote", "H", Fallback(header.SellQuote, "Not configured"));
+        AppendXlsxSummaryPair(xml, 9, "A", "Purchase order", "B", Fallback(header.PurchaseOrderNumber, "Not configured"), "G", "ConnectWise SELL Quote", "H", Fallback(header.SellQuote, "Not configured"));
         AppendXlsxSummaryPair(xml, 10, "A", "Certinia ID", "B", Fallback(header.CertiniaId, "Not configured"), "G", "Salesforce ID", "H", Fallback(header.SalesforceId, "Not configured"));
         AppendXlsxSummaryPair(xml, 11, "A", "Contract type", "B", Fallback(header.ContractType, "Not configured"), "G", "Personal names", "H", personalNames);
         AppendXlsxSummaryPair(xml, 12, "A", "PO authorized amount", "B", header.PurchaseOrderAmount is decimal poAmount ? $"${poAmount:0.00}" : "Not configured", "G", "Snapshot SHA256", "H", invoice.ImmutableSnapshotSha256);

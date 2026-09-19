@@ -75,7 +75,7 @@ async def main():
                 if early_visits > 1:
                     await ready_open_register(page)
                     return
-                tab = page.get_by_role('tab', name='SOW Register & SELL', exact=True)
+                tab = page.get_by_role('tab', name='SOW Register & ConnectWise SELL', exact=True)
                 await tab.wait_for(state='visible')
                 assert await tab.is_disabled(), 'Register tab was active before bootstrap completed'
                 await page.context.request.get(runner.ORIGIN + '/__release-bootstrap')

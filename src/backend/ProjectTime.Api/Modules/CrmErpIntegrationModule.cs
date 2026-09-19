@@ -92,7 +92,7 @@ public static class CrmErpIntegrationModule
             FROM crm_integration_providers p
             ORDER BY
                 CASE p.provider_key
-                    WHEN 'zendesk_sell' THEN 10
+                    WHEN 'connectwise_sell' THEN 10
                     WHEN 'salesforce' THEN 20
                     WHEN 'certinia' THEN 30
                     WHEN 'servicenow' THEN 40
@@ -243,10 +243,12 @@ public static class CrmErpIntegrationModule
         if (!SameOrigin(context)) return OriginRejected();
 
         providerKey = NormalizeProviderKey(providerKey);
+        if (providerKey == ConnectWiseSellContract.LegacyProviderKey)
+            return Invalid("This legacy connector is retired. Configure ConnectWise SELL instead.");
         if (string.IsNullOrWhiteSpace(providerKey)) return Invalid("A valid provider key is required.");
         var body = await ReadBodyAsync<ProviderRequest>(context);
         if (body.Value is null) return body.Failure!;
-        var validation = ValidateProviderRequest(body.Value, creating: false);
+        var validation = ValidateProviderRequest(body.Value with { ProviderKey = providerKey }, creating: false);
         if (validation is not null) return validation;
 
         await using var connection = await OpenConnectionAsync(context);
@@ -325,9 +327,18 @@ public static class CrmErpIntegrationModule
         if (!SameOrigin(context)) return OriginRejected();
 
         providerKey = NormalizeProviderKey(providerKey);
+        if (providerKey == ConnectWiseSellContract.LegacyProviderKey)
+            return Invalid("This legacy connector is retired. Configure ConnectWise SELL instead.");
         var body = await ReadBodyAsync<CredentialRequest>(context);
         if (body.Value is null) return body.Failure!;
         var secret = body.Value.Secret?.Trim();
+        if (providerKey == ConnectWiseSellContract.ProviderKey)
+        {
+            if (!ConnectWiseSellContract.TryCreateCredential(body.Value.AccessKey, body.Value.PublicKey,
+                    body.Value.PrivateKey, out var envelope))
+                return Invalid("Enter the ConnectWise SELL Access Key, Public API Key and Private API Key. All three are required and must not contain whitespace or credential delimiters.");
+            secret = envelope;
+        }
         if (string.IsNullOrWhiteSpace(secret)) return Invalid("A write-only credential is required.");
         if (Encoding.UTF8.GetByteCount(secret) > MaximumSecretBytes) return Invalid("The credential is too large.");
 
@@ -414,11 +425,14 @@ public static class CrmErpIntegrationModule
         if (!SameOrigin(context)) return OriginRejected();
 
         providerKey = NormalizeProviderKey(providerKey);
+        if (providerKey == ConnectWiseSellContract.LegacyProviderKey)
+            return Invalid("This legacy connector is retired. Configure ConnectWise SELL instead.");
         await using var connection = await OpenConnectionAsync(context);
         if (connection is null) return DependencyUnavailable();
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return SchemaUnavailable();
         var provider = await ReadProviderConfigurationAsync(connection, providerKey, context.RequestAborted);
         if (provider is null) return Results.NotFound(new { module = ModuleNumber, status = "provider_not_found", message = "The integration provider was not found." });
+        if (providerKey == ConnectWiseSellContract.ProviderKey) return Invalid("ConnectWise SELL uses API-key authentication.");
         if (provider.AuthModel != "oauth2") return Invalid("This provider is configured for API-key authentication.");
         if (string.IsNullOrWhiteSpace(provider.OAuthClientId)
             || !TryHttpsUri(provider.OAuthAuthorizationUrl, out var authorizationUri)
@@ -502,6 +516,8 @@ public static class CrmErpIntegrationModule
         }
         if (oauthState is null) return OAuthPage(false, "This OAuth request is expired, invalid, or already used.");
 
+        if (oauthState.ProviderKey is ConnectWiseSellContract.LegacyProviderKey or ConnectWiseSellContract.ProviderKey)
+            return OAuthPage(false, "This provider does not support OAuth. Configure ConnectWise SELL API keys.");
         if (!string.IsNullOrWhiteSpace(providerError)) return OAuthPage(false, "The provider did not authorize the connection.");
         if (string.IsNullOrWhiteSpace(code)) return OAuthPage(false, "The provider did not return an authorization code.");
 
@@ -595,12 +611,19 @@ public static class CrmErpIntegrationModule
         if (!SameOrigin(context)) return OriginRejected();
 
         providerKey = NormalizeProviderKey(providerKey);
+        if (providerKey == ConnectWiseSellContract.LegacyProviderKey)
+            return Invalid("This legacy connector is retired. Configure ConnectWise SELL instead.");
         await using var connection = await OpenConnectionAsync(context);
         if (connection is null) return DependencyUnavailable();
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return SchemaUnavailable();
         var provider = await ReadProviderConfigurationAsync(connection, providerKey, context.RequestAborted);
         if (provider is null) return Results.NotFound(new { module = ModuleNumber, status = "provider_not_found", message = "The integration provider was not found." });
         if (!provider.IsEnabled) return Invalid("Enable the provider before testing its connection.");
+        if (providerKey == ConnectWiseSellContract.ProviderKey
+            && !ConnectWiseSellContract.IsConfiguration(provider.AuthModel, provider.BaseUrl,
+                provider.HealthCheckUrl, provider.ApiKeyHeader, provider.ApiKeyPrefix,
+                null, provider.OAuthAuthorizationUrl, provider.OAuthTokenUrl))
+            return Invalid("Apply and save the ConnectWise SELL template before testing.");
         if (!TryHttpsUri(provider.HealthCheckUrl, out var healthUri)) return Invalid("A public HTTPS health-check URL is required.");
         if (!await IsSafeExternalUriAsync(healthUri!, context.RequestAborted)) return Invalid("The health-check URL must resolve to a public HTTPS address.");
 
@@ -617,8 +640,16 @@ public static class CrmErpIntegrationModule
             {
                 var apiKey = await LoadCredentialAsync(connection, providerKey, "api_key", encryptionKey, context.RequestAborted);
                 if (string.IsNullOrWhiteSpace(apiKey)) return Invalid("Save the write-only API key before testing.");
-                var value = string.IsNullOrWhiteSpace(provider.ApiKeyPrefix) ? apiKey : $"{provider.ApiKeyPrefix.Trim()} {apiKey}";
-                request.Headers.TryAddWithoutValidation(provider.ApiKeyHeader, value);
+                if (providerKey == ConnectWiseSellContract.ProviderKey)
+                {
+                    if (!ConnectWiseSellContract.TryAuthorize(request, apiKey))
+                        return Invalid("Save all three ConnectWise SELL API credential fields before testing.");
+                }
+                else
+                {
+                    var value = string.IsNullOrWhiteSpace(provider.ApiKeyPrefix) ? apiKey : $"{provider.ApiKeyPrefix.Trim()} {apiKey}";
+                    request.Headers.TryAddWithoutValidation(provider.ApiKeyHeader, value);
+                }
             }
             else
             {
@@ -638,7 +669,13 @@ public static class CrmErpIntegrationModule
                 : response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
                     ? "authentication_failed"
                     : "unavailable";
-            errorCode = availability switch
+            if (providerKey == ConnectWiseSellContract.ProviderKey && availability == "available"
+                && !ConnectWiseSellContract.IsQuoteList(await ReadBoundedResponseBodyAsync(response.Content, context.RequestAborted)))
+            {
+                availability = "unavailable";
+                errorCode = "connectwise_response_invalid";
+            }
+            errorCode = errorCode.Length > 0 ? errorCode : availability switch
             {
                 "authentication_failed" => "remote_authentication_rejected",
                 "unavailable" => "remote_non_success_status",
@@ -907,6 +944,14 @@ public static class CrmErpIntegrationModule
 
     private static IResult? ValidateProviderRequest(ProviderRequest request, bool creating)
     {
+        var normalizedKey = NormalizeProviderKey(request.ProviderKey ?? string.Empty);
+        if (normalizedKey == ConnectWiseSellContract.LegacyProviderKey)
+            return Invalid("This legacy connector is retired. Configure ConnectWise SELL instead.");
+        if (normalizedKey == ConnectWiseSellContract.ProviderKey
+            && !ConnectWiseSellContract.IsConfiguration(request.AuthModel, request.BaseUrl,
+                request.HealthCheckUrl, request.ApiKeyHeader, request.ApiKeyPrefix,
+                request.RecordLookupUrlTemplate, request.OAuthAuthorizationUrl, request.OAuthTokenUrl))
+            return Invalid("Apply the ConnectWise SELL API-key template. Its API host, read-only test endpoint and Basic authentication are fixed.");
         if (creating && string.IsNullOrWhiteSpace(request.ProviderKey)) return Invalid("Provider key is required.");
         if (creating && NormalizeProviderKey(request.ProviderKey!).Length is < 2 or > 60) return Invalid("Provider key must contain 2 to 60 letters, numbers, or underscores.");
         if (string.IsNullOrWhiteSpace(request.ProviderName) || request.ProviderName.Trim().Length > 150) return Invalid("Provider name is required and must be 150 characters or fewer.");
@@ -1301,7 +1346,7 @@ public static class CrmErpIntegrationModule
         bool IsEnabled,
         string? Notes);
 
-    private sealed record CredentialRequest(string? Secret);
+    private sealed record CredentialRequest(string? Secret, string? AccessKey, string? PublicKey, string? PrivateKey);
     private sealed record BodyOutcome<T>(T? Value, IResult? Failure);
     private sealed record OAuthState(string ProviderKey, Guid ActorUserId, string RedirectUri);
     private sealed record ProviderConfiguration(

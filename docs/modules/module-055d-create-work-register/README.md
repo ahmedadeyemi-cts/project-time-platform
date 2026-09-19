@@ -24,22 +24,22 @@ same **Time and Material** value rather than creating duplicate types.
 
 The reviewed SOW signed date and estimated end date are persisted on the
 created project and are shown in Module 055C after creation. Both initial dates
-survive intake-package reloads across GSD and SELL paths. The estimated end date
+survive intake-package reloads across GSD and ConnectWise SELL paths. The estimated end date
 must be on or after the project creation date; clearing either optional review
 date keeps it cleared.
 
-### Import from SELL
+### Import from ConnectWise SELL
 
-The coordinator supplies a SELL record ID and the matching ProjectPulse
+The coordinator supplies a ConnectWise SELL record ID and the matching ProjectPulse
 customer. Module 055D uses the server-side Module 026 connection—OAuth 2.0 or
 write-only API key—to retrieve the record. The configured Module 026 lookup URL
 must contain a literal `{recordId}` placeholder, and its mapping determines the
-approved SELL fields.
+approved ConnectWise SELL fields.
 
-SELL is authoritative for:
+ConnectWise SELL is authoritative for:
 
 - project name;
-- SELL quote/reference; and
+- ConnectWise SELL quote/reference; and
 - Actual Rate / Pricing / Rate Review rows.
 
 Those fields are read-only in the review UI and are re-imposed from the
@@ -54,7 +54,7 @@ writes `work_register_created` evidence to `work_register_change_history` in
 the same database transaction as project creation,
 which is visible in Module 055C's Audit tab.
 
-The SELL response is size-bounded. Only mapped operational fields are retained;
+The ConnectWise SELL response is size-bounded. Only mapped operational fields are retained;
 the raw provider response and credentials are not stored. Public-HTTPS and
 server-side credential protections are inherited from Module 026.
 

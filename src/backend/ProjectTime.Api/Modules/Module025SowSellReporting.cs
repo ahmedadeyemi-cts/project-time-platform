@@ -70,7 +70,7 @@ public static partial class Module025SowGsdModule
         var owners = ownerUserId.HasValue ? new[] { ownerUserId.Value }
             : access.VisibleSolutionArchitectIds.Append(access.EffectiveUserId).Distinct().ToArray();
         var environment = MicrosoftEnvironmentRuntimeResolver.Resolve(context) ?? string.Empty;
-        if (environment is not ("test" or "production")) return StateConflict("environment_required", "Resolve the governed runtime environment before reporting SELL submissions.");
+        if (environment is not ("test" or "production")) return StateConflict("environment_required", "Resolve the governed runtime environment before reporting ConnectWise SELL submissions.");
         var searchText = Clean(search, MaximumSearchLength);
         var pageNumber = page ?? 1;
         await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);

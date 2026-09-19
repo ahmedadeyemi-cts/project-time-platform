@@ -36,7 +36,7 @@ The Group 3 source remains authoritative for:
 - current variance;
 - completion percentage;
 - cost-alert state; and
-- Module 026 SELL context.
+- Module 026 ConnectWise SELL context.
 
 `ProjectFinancialTruthReportingBridge.cs` extends the current Group 3 class through a generated partial declaration. The reviewed Group 3 source is not rewritten, and Group 5 does not maintain competing project-financial SQL.
 
@@ -69,7 +69,7 @@ The initial catalog includes:
    - variance;
    - completion;
    - budget status; and
-   - SELL readiness.
+   - ConnectWise SELL readiness.
 
 2. **Project Hours Consumption**
    - planned hours;
@@ -95,7 +95,7 @@ The initial catalog includes:
    - latest billing-readiness review;
    - forecast;
    - variance;
-   - SELL readiness; and
+   - ConnectWise SELL readiness; and
    - blockers.
 
 5. **Project Closeout Readiness**
@@ -181,7 +181,7 @@ Sources include:
 - Group 4 notification dispatches;
 - project metadata;
 - cost alerts; and
-- Module 026 SELL commercial model.
+- Module 026 ConnectWise SELL commercial model.
 
 Raw database exceptions, connection strings, credentials, request bodies, and provider secrets are not returned to the browser. Correlation IDs and sanitized diagnostic codes remain available for technical support.
 

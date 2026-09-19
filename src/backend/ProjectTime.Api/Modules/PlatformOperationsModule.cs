@@ -784,7 +784,7 @@ public static partial class PlatformOperationsModule
                 "schema_not_available",
                 null,
                 "Module 026",
-                ["SELL", "Salesforce", "ServiceNow", "Certinia"],
+                ["ConnectWise SELL", "Salesforce", "ServiceNow", "Certinia"],
                 false));
         }
 
