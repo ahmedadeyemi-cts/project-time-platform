@@ -9,7 +9,11 @@ HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
   [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
 fi
-if [[ "$HEAD_BRANCH" == fix/enterprise-module-repairs-20260919 ]]; then
+if [[ "$HEAD_BRANCH" == fix/complete-module-repairs-20260920 ]]; then
+  python3 tests/enterprise-full-scope-followup.py
+  node --test tests/project-financial-portfolio.test.mjs tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs
+  exit 0
+elif [[ "$HEAD_BRANCH" == fix/enterprise-module-repairs-20260919 ]]; then
   python3 tests/enterprise-module-repair-scope.py
   node --test tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs
   node tests/validate-systemwide-image-build-controller.mjs

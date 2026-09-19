@@ -16,6 +16,11 @@ if [[ "$HEAD_BRANCH" == fix/protected-test-foundation-recovery-20260919 ]]; then
   python3 tests/protected-test-foundation-recovery-scope.py
   node tests/module025-deployment-startup-recovery.test.mjs
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/complete-module-repairs-20260920 ]]; then
+  [[ "$PR_NUMBER" == '1115' ]] || fail 'Module follow-up registration is restricted to PR #1115.'
+  python3 tests/enterprise-full-scope-followup.py
+  node --test tests/project-financial-portfolio.test.mjs tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/enterprise-module-repairs-20260919 ]]; then
   [[ "$PR_NUMBER" == '1111' ]] || fail 'Enterprise repair registration is restricted to PR #1111.'
   python3 tests/enterprise-module-repair-scope.py
