@@ -53,6 +53,7 @@ jobs:
       QUARANTINED_ZERO_JOB_RUN_ID_4: '35364203547'
       QUARANTINED_ZERO_JOB_RUN_ID_5: '35374125567'
       QUARANTINED_ZERO_JOB_RUN_ID_6: '35461429670'
+      QUARANTINED_ZERO_JOB_RUN_ID_7: '35473939797'
 
     steps:
       - name: Check out exact current main controller
@@ -201,6 +202,23 @@ jobs:
                  '2026-09-19T18:30:44Z'; then
               pending_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/pending_deployments")" \
                 || fail 'Cannot verify pending approvals for the exact export orphan.'
+              if jq -e 'type == "array" and length == 0' <<<"$pending_json" >/dev/null; then
+                quarantined_runs+=("$run_id")
+                continue
+              fi
+            fi
+            # Exact foundation-release orphan: normal cancellation was rejected. A descendant with the identical deployment controller
+            # makes this old release fail its exact-main guard before Azure login.
+            if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_7" && \
+                  "$requested_sha" != 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17' ]] && \
+               git merge-base --is-ancestor 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17' HEAD && \
+               git diff --quiet 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17' HEAD -- "$DEPLOY_WORKFLOW_PATH" && \
+               verify_zero_job_quarantine "$run_id" \
+                 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17' \
+                 'main' \
+                 '2026-09-19T22:39:09Z'; then
+              pending_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/pending_deployments")" \
+                || fail 'Cannot verify pending approvals for the exact foundation orphan.'
               if jq -e 'type == "array" and length == 0' <<<"$pending_json" >/dev/null; then
                 quarantined_runs+=("$run_id")
                 continue
