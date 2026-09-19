@@ -92,12 +92,14 @@ internal static class Module025SowGsdDocumentExporter
 
         var documentXml = $"""
             <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
               <w:body>
                 {body}
                 <w:sectPr>
+                  <w:headerReference w:type="default" r:id="rIdHeader"/>
+                  <w:footerReference w:type="default" r:id="rIdFooter"/>
                   <w:pgSz w:w="12240" w:h="15840"/>
-                  <w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080"/>
+                  <w:pgMar w:top="1584" w:right="1080" w:bottom="1080" w:left="1080" w:header="360" w:footer="360"/>
                 </w:sectPr>
               </w:body>
             </w:document>
@@ -111,6 +113,9 @@ internal static class Module025SowGsdDocumentExporter
                 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
                   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
                   <Default Extension="xml" ContentType="application/xml"/>
+                  <Default Extension="png" ContentType="image/png"/>
+                  <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+                  <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
                   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
                   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
                 </Types>
@@ -125,8 +130,23 @@ internal static class Module025SowGsdDocumentExporter
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
                   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+                  <Relationship Id="rIdHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
+                  <Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
                 </Relationships>
                 """);
+            WriteZipEntry(archive, "word/header1.xml", LetterheadXml());
+            WriteZipEntry(archive, "word/footer1.xml", """
+                <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                  <w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">US Signal | Statement of Work | Page </w:t></w:r><w:fldSimple w:instr="PAGE"/></w:p>
+                </w:ftr>
+                """);
+            WriteZipEntry(archive, "word/_rels/header1.xml.rels", """
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/us-signal.png"/>
+                </Relationships>
+                """);
+            using (var image = archive.CreateEntry("word/media/us-signal.png").Open())
+                image.Write(InvoiceBrandingAssets.LoadPng());
             WriteZipEntry(archive, "word/styles.xml", StylesXml());
             WriteZipEntry(archive, "word/document.xml", documentXml);
         }
@@ -135,6 +155,8 @@ internal static class Module025SowGsdDocumentExporter
 
     internal static byte[] CreateGsdXlsx(Module025DocumentModel model)
     {
+        if (model.Engagement.GsdTemplateKey == StandardGsdTemplateKey)
+            return Module025StandardGsdExporter.Create(model);
         using var workbook = new XLWorkbook();
         var engagement = model.Engagement;
         var special = engagement.GsdTemplateKey == HaeaGsdTemplateKey;
@@ -322,14 +344,34 @@ internal static class Module025SowGsdDocumentExporter
         body.Append($"<w:t xml:space=\"preserve\">{Xml(text)}</w:t></w:r></w:p>");
     }
 
+    private static string LetterheadXml() => """
+        <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+          xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+          xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+          xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+          <w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:drawing><wp:inline>
+            <wp:extent cx="914400" cy="806718"/>
+            <wp:docPr id="1" name="US Signal logo" descr="US Signal"/>
+            <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+              <pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="US Signal"/><pic:cNvPicPr/></pic:nvPicPr>
+                <pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+                <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="806718"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+              </pic:pic>
+            </a:graphicData></a:graphic>
+          </wp:inline></w:drawing></w:r></w:p>
+        </w:hdr>
+        """;
+
     private static string StylesXml() => """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-          <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="22"/></w:rPr></w:style>
+          <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>
+          <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/><w:widowControl/></w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:color w:val="000000"/><w:sz w:val="22"/></w:rPr></w:style>
           <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="38"/></w:rPr></w:style>
           <w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:rPr><w:sz w:val="26"/></w:rPr></w:style>
-          <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="30"/></w:rPr></w:style>
-          <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>
+          <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="30"/></w:rPr></w:style>
+          <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:before="180" w:after="80"/></w:pPr><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>
           <w:style w:type="paragraph" w:styleId="Bullet"><w:name w:val="Bullet"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:style>
         </w:styles>
         """;

@@ -1,0 +1,26 @@
+name: Module025 standard document exports
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/Module025*Exporter.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs'
+      - 'src/backend/ProjectTime.Api/Modules/InvoiceBrandingAssets.cs'
+      - 'src/backend/ProjectTime.Api/Assets/Templates/**'
+      - 'src/backend/ProjectTime.Api/Assets/Branding/**'
+      - 'tests/Module025ExportTests/**'
+      - '.github/workflows/module025-export-ci.yml'
+permissions:
+  contents: read
+jobs:
+  exports:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify template mapping and branded documents without model calls
+        run: dotnet run --project tests/Module025ExportTests -- /tmp/module025-exports
