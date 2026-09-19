@@ -43,6 +43,18 @@ if (args.Length == 3 && args[0] == "--prepare-template")
     foreach (var prop in book.CustomProperties.ToArray()) book.CustomProperties.Delete(prop.Name);
     Directory.CreateDirectory(Path.GetDirectoryName(args[2])!);
     book.SaveAs(args[2]);
+    // ClosedXML preserves some unrecognized workbook extension metadata.
+    // Remove the source document's SharePoint location and coauthor revision IDs.
+    using (var archive = System.IO.Compression.ZipFile.Open(args[2], System.IO.Compression.ZipArchiveMode.Update))
+    {
+        var entry = archive.GetEntry("xl/workbook.xml")!;
+        System.Xml.Linq.XDocument xml;
+        using (var input = entry.Open()) xml = System.Xml.Linq.XDocument.Load(input);
+        foreach (var node in xml.Root!.Elements().Where(n => n.Name.LocalName is "AlternateContent" or "revisionPtr").ToArray()) node.Remove();
+        entry.Delete();
+        using var destination = archive.CreateEntry("xl/workbook.xml").Open();
+        xml.Save(destination);
+    }
     Console.WriteLine("SANITIZED_TEMPLATE_CREATED");
     return;
 }
@@ -66,6 +78,12 @@ static void RunExportTests(string output)
         "review_ready", true, 2, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, phases);
     var model = new ProjectTime.Api.Modules.Module025DocumentModel(e, phases, 40, phases.Sum(p => p.FinalHours));
     var bytes = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(model);
+    using (var archive = new System.IO.Compression.ZipArchive(new MemoryStream(bytes)))
+    {
+        var xml = string.Join(" ", archive.Entries.Where(p => p.FullName.EndsWith(".xml") || p.FullName.EndsWith(".rels")).Select(p => { using var reader = new StreamReader(p.Open()); return reader.ReadToEnd(); }));
+        foreach (var forbidden in new[] { "sharepoint.com", "Pourdre", "Poudre", "Stephanie", "McDonald", "Shaffer", "206140" })
+            Check(!xml.Contains(forbidden, StringComparison.OrdinalIgnoreCase), "package metadata sanitized: " + forbidden);
+    }
     using var book = new XLWorkbook(new MemoryStream(bytes));
     Check(book.Worksheets.Select(s => s.Name).SequenceEqual(new[] { "Summary", "Phase Breakdown", "Totals Sheet", "SELL SKUs", "Plan", "Design", "Implement", "Validate", "Release", "Architect Notes", "Gotcha Items", "Assumptions Responsibilities" }), "standard 12-sheet layout");
     var summary = book.Worksheet("Summary");
