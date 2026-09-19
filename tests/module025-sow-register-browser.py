@@ -16,7 +16,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 ORIGIN = 'https://phd-west-test.onenecklab.com'
 
@@ -40,7 +40,7 @@ def verify_csv(data: bytes) -> None:
         fail('browser_csv_report_rows_invalid')
 
 
-async def verify_report(response, stage: str) -> None:
+async def verify_report(response, stage: str) -> dict:
     if response.status != 200:
         fail(f'browser_{stage}_http_{response.status}')
     try:
@@ -51,6 +51,30 @@ async def verify_report(response, stage: str) -> None:
             or not isinstance(payload.get('records'), list)
             or not isinstance(payload.get('statistics'), list)):
         fail(f'browser_{stage}_contract_mismatch')
+    return payload
+
+
+def select_retained_record(payload, owner_id, source_run_id):
+    """Only reuse the exact synthetic record owned by the authenticated SA."""
+    if payload.get('runtimeEnvironment') != 'test' or not owner_id:
+        fail('browser_retained_record_scope_invalid')
+    matches = [record for record in payload['records']
+               if record.get('ownerUserId') == owner_id
+               and record.get('projectName') == f'Protected UAT Module 025 {source_run_id}'
+               and record.get('customerName') == f'Protected UAT normal SA {source_run_id}']
+    if (len(matches) != 1 or payload.get('hasMore') is True
+            or matches[0].get('latestVersionNumber') != 1
+            or not matches[0].get('engagementNumber')):
+        fail('browser_retained_record_missing_or_ambiguous')
+    return matches[0]['engagementNumber']
+
+
+async def web_fingerprint(context, base):
+    # This detects a changed HTML/asset manifest, not an installed commit identity.
+    response = await context.request.get(f'{base}/', headers={'Cache-Control': 'no-cache'})
+    if response.status != 200:
+        fail('browser_installed_web_unavailable')
+    return hashlib.sha256(await response.body()).hexdigest()
 
 
 async def open_register(page):
@@ -120,23 +144,34 @@ async def run() -> None:
     base = os.environ.get('BASE', ORIGIN).rstrip('/')
     if base != ORIGIN:
         fail('unapproved_public_origin')
-    password = os.environ.get('TEST_LOGIN_PASSWORD', '')
+    mode = os.environ.get('MODULE025_REGISTER_MODE', 'fixture')
+    if mode not in ('fixture', 'retained-sa'):
+        fail('browser_mode_invalid')
+    retained_sa = mode == 'retained-sa'
+    username = os.environ.get('PROJECTPULSE_M025_SA_EMAIL', '') if retained_sa else 'demo.manager@ussignal.local'
+    password = os.environ.get('PROJECTPULSE_M025_SA_PASSWORD' if retained_sa else 'TEST_LOGIN_PASSWORD', '')
+    source_run_id = os.environ.get('MODULE025_SOURCE_RUN_ID', '')
     engagement_number = os.environ.get('MODULE025_ENGAGEMENT_NUMBER', '')
     evidence_path = os.environ.get('MODULE025_CREATE_RESPONSE', '')
     uat_run_id = os.environ.get('MODULE025_UAT_RUN_ID', '')
-    if not engagement_number and evidence_path:
+    if not retained_sa and not engagement_number and evidence_path:
         engagement_number = json.loads(Path(evidence_path).read_text(encoding='utf-8')).get('engagement', {}).get('engagementNumber', '')
-    if len(password) < 12 or not engagement_number:
+    if retained_sa:
+        if (len(password) < 12 or not username or not re.fullmatch(r'[0-9]+', source_run_id)):
+            fail('browser_retained_sa_inputs_missing')
+    elif len(password) < 12 or not engagement_number:
         fail('browser_fixture_inputs_missing')
-    if not re.fullmatch(r'[0-9]+-[0-9]+', uat_run_id):
+    if not retained_sa and not re.fullmatch(r'[0-9]+-[0-9]+', uat_run_id):
         fail('browser_fixture_run_missing')
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
         context = await browser.new_context(ignore_https_errors=False, viewport={'width': 1600, 'height': 1000})
+        if retained_sa:
+            initial_web = await web_fingerprint(context, base)
         login = await context.request.post(
             f'{base}/api/auth/local/login',
-            data={'username': 'demo.manager@ussignal.local', 'password': password},
+            data={'username': username, 'password': password},
             headers={'Origin': base, 'Sec-Fetch-Site': 'same-origin'},
         )
         if login.status != 200:
@@ -145,79 +180,93 @@ async def run() -> None:
         if session.get('provider') != 'LOCAL' or not session.get('sessionToken'):
             fail('browser_session_missing')
         password = ''
-        fixture_headers = {'Origin': base, 'X-ProjectPulse-Module025-Uat-Run': uat_run_id}
-        bootstrap_response = await context.request.get(
-            f'{base}/api/module025/sow-gsd/bootstrap',
-            headers={**fixture_headers, 'Authorization': f'Bearer {session["sessionToken"]}',
-                     'X-ProjectPulse-Session': session['sessionToken']},
-        )
-        if bootstrap_response.status != 200:
-            fail('browser_fixture_bootstrap_denied')
-        bootstrap = await bootstrap_response.json()
-        if (bootstrap.get('access', {}).get('protectedTestUatRoleFixture') is not True
-                or bootstrap.get('access', {}).get('isSolutionArchitect') is not True):
-            fail('browser_fixture_authorization_missing')
-        report_preflight = await context.request.get(
-            f'{base}/api/module025/sow-register?page=1',
-            headers={**fixture_headers, 'Authorization': f'Bearer {session["sessionToken"]}',
-                     'X-ProjectPulse-Session': session['sessionToken']},
-        )
-        await verify_report(report_preflight, 'register_preflight')
-        print('MODULE025_REGISTER_PREFLIGHT=PASS', file=sys.stderr, flush=True)
-        generation_posts = []
-        unexpected_writes = []
-
-        await context.add_init_script(
-            "localStorage.setItem('projectPulseAuthSession', SESSION); localStorage.removeItem('projectPulseViewAsUser');"
-            .replace('SESSION', json.dumps(json.dumps(session)))
-        )
-
-        async def restrict(route):
-            request = route.request
-            parsed = urlparse(request.url)
-            if parsed.netloc == urlparse(base).netloc and parsed.path.endswith('/generate') and request.method == 'POST':
-                generation_posts.append(parsed.path)
-            if request.method not in ('GET', 'HEAD', 'OPTIONS'):
-                unexpected_writes.append(request.method + ':' + parsed.path)
-                await route.abort()
-                return
-            # Carry the existing exact-run fixture only to this origin's
-            # Module 025 reads. It must never reach another origin/module or
-            # the separate unauthenticated download checks below.
-            if (parsed.scheme == urlparse(base).scheme
-                    and parsed.netloc == urlparse(base).netloc
-                    and parsed.path.startswith('/api/module025/')):
-                await route.continue_(headers={**request.headers, **fixture_headers})
-            else:
-                await route.continue_()
-
-        await context.route('**/*', restrict)
-        page = await context.new_page()
-        page.set_default_timeout(45_000)
-        report_responses = asyncio.Queue()
-        bootstrap_responses = []
-        page_errors = []
-        page.on('pageerror', lambda _: page_errors.append('browser_page_error'))
-
-        def observe_response(response):
-            parsed = urlparse(response.url)
-            if (parsed.scheme, parsed.netloc) != (urlparse(base).scheme, urlparse(base).netloc):
-                return
-            if response.request.method != 'GET':
-                return
-            label = {'/api/module025/sow-gsd/bootstrap': 'bootstrap',
-                     '/api/module025/sow-register': 'register'}.get(parsed.path)
-            if label:
-                # Closed metadata only: no response bodies, query values,
-                # session headers, user identifiers or generated text.
-                print(f'MODULE025_REGISTER_HTTP={label} status={response.status}', file=sys.stderr, flush=True)
-            if label == 'bootstrap':
-                bootstrap_responses.append(response)
-            if label == 'register' and parse_qs(parsed.query).get('format') != ['csv']:
-                report_responses.put_nowait(response)
-
-        page.on('response', observe_response)
         try:
+            fixture_headers = {'Origin': base}
+            if not retained_sa:
+                fixture_headers['X-ProjectPulse-Module025-Uat-Run'] = uat_run_id
+            bootstrap_response = await context.request.get(
+                f'{base}/api/module025/sow-gsd/bootstrap',
+                headers={**fixture_headers, 'Authorization': f'Bearer {session["sessionToken"]}',
+                         'X-ProjectPulse-Session': session['sessionToken']},
+            )
+            if bootstrap_response.status != 200:
+                fail('browser_fixture_bootstrap_denied')
+            bootstrap = await bootstrap_response.json()
+            access = bootstrap.get('access', {})
+            if retained_sa:
+                if (access.get('protectedTestUatRoleFixture') is not False
+                        or access.get('isSolutionArchitect') is not True
+                        or access.get('canCreate') is not True or access.get('canEditOwn') is not True
+                        or access.get('isViewAs') is not False):
+                    fail('browser_normal_sa_authorization_missing')
+            elif (access.get('protectedTestUatRoleFixture') is not True
+                    or access.get('isSolutionArchitect') is not True):
+                fail('browser_fixture_authorization_missing')
+            owner_id = bootstrap.get('currentUser', {}).get('userId', '')
+            query = urlencode({'page': 1, 'ownerUserId': owner_id,
+                               'search': f'Protected UAT Module 025 {source_run_id}'}) if retained_sa else 'page=1'
+            report_preflight = await context.request.get(
+                f'{base}/api/module025/sow-register?{query}',
+                headers={**fixture_headers, 'Authorization': f'Bearer {session["sessionToken"]}',
+                         'X-ProjectPulse-Session': session['sessionToken']},
+            )
+            preflight = await verify_report(report_preflight, 'register_preflight')
+            if retained_sa:
+                engagement_number = select_retained_record(preflight, owner_id, source_run_id)
+            print('MODULE025_REGISTER_PREFLIGHT=PASS', file=sys.stderr, flush=True)
+            generation_posts = []
+            unexpected_writes = []
+
+            await context.add_init_script(
+                "localStorage.setItem('projectPulseAuthSession', SESSION); localStorage.removeItem('projectPulseViewAsUser');"
+                .replace('SESSION', json.dumps(json.dumps(session)))
+            )
+
+            async def restrict(route):
+                request = route.request
+                parsed = urlparse(request.url)
+                if parsed.netloc == urlparse(base).netloc and parsed.path.endswith('/generate') and request.method == 'POST':
+                    generation_posts.append(parsed.path)
+                if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+                    unexpected_writes.append(request.method + ':' + parsed.path)
+                    await route.abort()
+                    return
+                # Carry the existing exact-run fixture only to this origin's
+                # Module 025 reads. It must never reach another origin/module or
+                # the separate unauthenticated download checks below.
+                if (parsed.scheme == urlparse(base).scheme
+                        and parsed.netloc == urlparse(base).netloc
+                        and parsed.path.startswith('/api/module025/')):
+                    await route.continue_(headers={**request.headers, **fixture_headers})
+                else:
+                    await route.continue_()
+
+            await context.route('**/*', restrict)
+            page = await context.new_page()
+            page.set_default_timeout(45_000)
+            report_responses = asyncio.Queue()
+            bootstrap_responses = []
+            page_errors = []
+            page.on('pageerror', lambda _: page_errors.append('browser_page_error'))
+
+            def observe_response(response):
+                parsed = urlparse(response.url)
+                if (parsed.scheme, parsed.netloc) != (urlparse(base).scheme, urlparse(base).netloc):
+                    return
+                if response.request.method != 'GET':
+                    return
+                label = {'/api/module025/sow-gsd/bootstrap': 'bootstrap',
+                         '/api/module025/sow-register': 'register'}.get(parsed.path)
+                if label:
+                    # Closed metadata only: no response bodies, query values,
+                    # session headers, user identifiers or generated text.
+                    print(f'MODULE025_REGISTER_HTTP={label} status={response.status}', file=sys.stderr, flush=True)
+                if label == 'bootstrap':
+                    bootstrap_responses.append(response)
+                if label == 'register' and parse_qs(parsed.query).get('format') != ['csv']:
+                    report_responses.put_nowait(response)
+
+            page.on('response', observe_response)
             await page.goto(f'{base}/#sow-generator', wait_until='domcontentloaded', timeout=45_000)
             await open_register(page)
             register = page.locator('[data-module025-sow-register="true"]:visible')
@@ -300,10 +349,18 @@ async def run() -> None:
                 fail('browser_reload_retained_version_missing')
             if generation_posts or unexpected_writes:
                 fail('browser_readonly_register_started_mutation')
+            if retained_sa:
+                if await web_fingerprint(context, base) != initial_web:
+                    fail('browser_installed_web_changed')
         except Exception:
-            await report_entry_failure(page, bootstrap_responses, len(page_errors), unexpected_writes)
+            if 'page' in locals():
+                await report_entry_failure(page, bootstrap_responses, len(page_errors), unexpected_writes)
             raise
         finally:
+            # Authentication lifecycle only; never mutate the retained record.
+            await context.request.post(f'{base}/api/auth/session/logout', headers={
+                'Origin': base, 'Authorization': f'Bearer {session["sessionToken"]}',
+                'X-ProjectPulse-Session': session['sessionToken']})
             await context.close()
             await browser.close()
 

@@ -22,6 +22,7 @@ const user = { userId: 'sa', username: 'synthetic.local', displayName: 'Test SA'
 if (registerMode) user.roles = [{ roleCode: 'MANAGER' }];
 let denyModule = false;
 let denyNavigation = false;
+let normalSa = false;
 let reportFailure = '';
 let bootstrapReady = Promise.resolve();
 let releaseBootstrap = () => {};
@@ -47,7 +48,11 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       }
       if (url.pathname === '/__reset' && req.method === 'POST') {
         const chunks = []; for await (const chunk of req) chunks.push(chunk);
-        const { status, denyDownload, deniedModule, deniedNavigation, failReport, holdBootstrap } = JSON.parse(Buffer.concat(chunks).toString());
+        const { status, denyDownload, deniedModule, deniedNavigation, failReport, holdBootstrap, retainedSa } = JSON.parse(Buffer.concat(chunks).toString());
+        normalSa = retainedSa === true;
+        user.roles = [{ roleCode: normalSa || !registerMode ? 'SOLUTION_ARCHITECT' : 'MANAGER' }];
+        engagement.projectName = normalSa ? 'Protected UAT Module 025 12345' : 'Synthetic project';
+        engagement.customerName = normalSa ? 'Protected UAT normal SA 12345' : 'Synthetic customer';
         denyModule = deniedModule === true;
         denyNavigation = deniedNavigation === true;
         reportFailure = failReport || '';
@@ -71,13 +76,13 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       if (registerMode && url.pathname === '/api/auth/local/login') {
         const chunks = []; for await (const chunk of req) chunks.push(chunk);
         const login = JSON.parse(Buffer.concat(chunks).toString());
-        if (login.username !== 'demo.manager@ussignal.local' || login.password !== 'synthetic-password-only') { res.statusCode = 401; body = {}; }
+        if (login.username !== (normalSa ? 'synthetic.sa@ussignal.local' : 'demo.manager@ussignal.local') || login.password !== 'synthetic-password-only') { res.statusCode = 401; body = {}; }
         else body = session;
       }
-      else if (registerMode && url.pathname.startsWith('/api/module025/') && (!authenticated || !fixture || denyModule)) {
+      else if (registerMode && url.pathname.startsWith('/api/module025/') && (!authenticated || (!normalSa && !fixture) || denyModule)) {
         res.statusCode = authenticated ? 403 : 401; body = { message: 'Fixture/session required' };
       }
-      else if (url.pathname === '/api/module025/sow-gsd/bootstrap') body = { currentUser: { userId: 'sa' }, access: { canCreate: true, isSolutionArchitect: true, ...(registerMode ? { isManager: true, managerScopeReadOnly: true, protectedTestUatRoleFixture: true } : {}) },
+      else if (url.pathname === '/api/module025/sow-gsd/bootstrap') body = { currentUser: { userId: 'sa' }, access: { canCreate: true, isSolutionArchitect: true, ...(normalSa ? { canEditOwn: true, isViewAs: false, protectedTestUatRoleFixture: false } : registerMode ? { isManager: true, managerScopeReadOnly: true, protectedTestUatRoleFixture: true } : {}) },
         solutionArchitects: [{ userId: 'sa', displayName: 'Test SA' }], commercialModels: [], customerPrograms: [] };
       else if (registerMode && url.pathname === '/api/module025/sow-register') {
         if (reportFailure === 'api' || (reportFailure === 'browser' && req.headers['sec-fetch-mode'])) {

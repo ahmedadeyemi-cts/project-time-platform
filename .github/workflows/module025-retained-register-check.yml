@@ -1,0 +1,63 @@
+name: Verify Module 025 retained register without generation
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: read
+
+# Share the existing supervisor lock; never interrupt an active deployment.
+concurrency:
+  group: module025-protected-uat-control
+  cancel-in-progress: false
+
+jobs:
+  register:
+    if: >-
+      github.event.issue.pull_request &&
+      github.actor == 'ahmedadeyemi-cts' &&
+      startsWith(github.event.comment.body, 'VERIFY MODULE025 REGISTER SHA ')
+    runs-on: ubuntu-24.04
+    environment:
+      name: test
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Authorize exact main and an existing successful SA lifecycle
+        id: authorize
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUEST_COMMENT: ${{ github.event.comment.body }}
+        run: python3 scripts/release-test/authorize-module025-register-check.py
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install isolated browser dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/module025-register-browser"
+          "$RUNNER_TEMP/module025-register-browser/bin/pip" install --disable-pip-version-check playwright==1.57.0
+          "$RUNNER_TEMP/module025-register-browser/bin/playwright" install --with-deps chromium
+      - name: Verify retained files as the actual Solution Architect
+        env:
+          MODULE025_REGISTER_MODE: retained-sa
+          MODULE025_SOURCE_RUN_ID: ${{ steps.authorize.outputs.source_run_id }}
+          PROJECTPULSE_M025_SA_EMAIL: ${{ secrets.PROJECTPULSE_M025_SA_EMAIL }}
+          PROJECTPULSE_M025_SA_PASSWORD: ${{ secrets.PROJECTPULSE_M025_SA_PASSWORD }}
+        run: '"$RUNNER_TEMP/module025-register-browser/bin/python" tests/module025-sow-register-browser.py'
+      - name: Describe the bounded result
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          {
+            echo "Retained-register browser result: $RESULT"
+            echo 'Generation requests and business writes: blocked by the verifier.'
+            echo 'Scope: existing synthetic SA record, CSV and retained downloads, hashes, repeated bytes, unauthorized access, reload.'
+            echo 'This check does not qualify model quality, SELL publication, or an exact installed release.'
+          } >> "$GITHUB_STEP_SUMMARY"
