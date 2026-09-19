@@ -23,3 +23,7 @@ for path in ['.github/flowhive-psa-protected-test-candidate.json',
              'scripts/release-test/flowhive-psa-admission.mjs']:
     assert Path(path).read_text() == git('show',BASE+':'+path), path
 print('FLOWHIVE_WORKSPACE_SCOPE=PASS release_authority=unchanged')
+
+workflow = '.github/workflows/flowhive-psa-release-control-ci.yml'
+block = '          if [[ "$GITHUB_HEAD_REF" == feature/flowhive-psa-team-workspace-20260919 ]]; then\n            python3 tests/flowhive-psa-workspace-scope.py\n          elif'
+assert Path(workflow).read_text().replace(block,'          if',1) == git('show',BASE+':'+workflow)

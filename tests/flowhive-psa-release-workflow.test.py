@@ -237,6 +237,7 @@ class WorkflowContract(unittest.TestCase):
             if 'source scripts/release-test/validate-protected-test-controller-branches.sh' in controller_script:
                 controller_script += '\n' + branch_script.read_text()
             self.assertEqual([line.strip() for line in controller_script.splitlines() if '"$PR_NUMBER"' in line], [
+                '[[ "$PR_NUMBER" == \'1111\' ]] || fail \'Enterprise repair registration is restricted to PR #1111.\'',
                 "[[ \"$PR_NUMBER\" == '1090' ]] || fail 'Module 019 scope is registered only for PR #1090.'",
                 "elif [[ \"$PR_NUMBER\" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then",
                 "elif [[ \"$PR_NUMBER\" == '777' ]]; then",

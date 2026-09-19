@@ -1637,6 +1637,16 @@
       "rationale": ""
     },
     {
+      "path": "database/migrations/112_module_066_task_notifications.sql",
+      "sha256": "d3d0ee1078091415822c2b93f122b21da9e039a11b338930f5e22d0c49876184",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "New FlowHive task-event policies and checkpoint schema; pending production migration review. Defaults remain test_only; no deployment authorized."
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [

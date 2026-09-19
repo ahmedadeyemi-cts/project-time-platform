@@ -102,7 +102,7 @@
 .flowhive-psa-calendar-weekdays,
 .flowhive-psa-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); min-width: 900px; }
 .flowhive-psa-calendar-weekdays { border: 1px solid var(--flowhive-line); border-bottom: 0; border-radius: 12px 12px 0 0; overflow: hidden; }
-.flowhive-psa-calendar-weekdays strong { padding: 8px 10px; background: var(--flowhive-ink); color: #fff; text-align: center; font-size: 0.8rem; }
+.flowhive-psa-calendar-weekdays strong { padding: 8px 10px; background: var(--flowhive-ink, #0a2b48); color: #fff; text-align: center; font-size: 0.8rem; }
 .flowhive-psa-calendar-grid { border-left: 1px solid var(--flowhive-line); border-top: 1px solid var(--flowhive-line); }
 .flowhive-psa-calendar-grid > section { min-height: 126px; padding: 6px; border-right: 1px solid var(--flowhive-line); border-bottom: 1px solid var(--flowhive-line); background: #fff; }
 .flowhive-psa-calendar-grid > section.blank { background: #f5f7f9; }
@@ -191,7 +191,7 @@
 .flowhive-psa-table-wrap table { width: 100%; border-collapse: collapse; min-width: 720px; }
 .flowhive-psa-table-wrap th,
 .flowhive-psa-table-wrap td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid #e1e8ed; font-size: 0.8rem; }
-.flowhive-psa-table-wrap th { color: #fff; background: var(--flowhive-ink); }
+.flowhive-psa-table-wrap th { color: #fff; background: var(--flowhive-ink, #0a2b48); }
 .flowhive-psa-status-extras details { border-top: 1px solid #e0e7ed; padding: 8px 0; }
 .flowhive-psa-status-extras summary { cursor: pointer; font-weight: 700; color: #304a62; }
 .flowhive-psa-status-extras pre { max-height: 280px; overflow: auto; padding: 10px; border-radius: 8px; background: #0f263b; color: #e4eef6; font-size: 0.72rem; }
