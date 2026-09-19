@@ -23,7 +23,7 @@ async function requestJson(url, options = {}) {
 function sourceLabel(source) {
   if (!source) return 'Loading source';
   if (source.mode === 'manual') return 'Manual customer directory';
-  if (source.mode === 'sell') return 'SELL (Zendesk Sell)';
+  if (source.mode === 'sell') return 'ConnectWise SELL';
   return source.providerName || source.providerKey || 'Module 026 CRM';
 }
 
@@ -106,7 +106,7 @@ export default function CustomerSourceAuthorityPortal() {
   }, [state.source]);
 
   const crmProviders = useMemo(
-    () => state.providers.filter((provider) => provider?.providerKey !== 'zendesk_sell' && provider?.eligibleCustomerSource),
+    () => state.providers.filter((provider) => provider?.providerKey !== 'connectwise_sell' && provider?.eligibleCustomerSource),
     [state.providers]
   );
 
@@ -234,14 +234,14 @@ export default function CustomerSourceAuthorityPortal() {
       {state.error ? <div className="customer-source-authority__alert">{state.error}</div> : null}
       {!state.migrationApplied ? (
         <div className="customer-source-authority__alert">
-          Migration 098 has not been applied yet. SELL remains the backward-compatible source until the migration is installed.
+          Migration 098 has not been applied yet. ConnectWise SELL remains the backward-compatible source until the migration is installed.
         </div>
       ) : null}
 
       <label className="customer-source-authority__field">
         <span>Authoritative source</span>
         <select value={draftMode} onChange={handleModeChange} disabled={!state.canManage || saving || !state.migrationApplied}>
-          <option value="sell">SELL (Zendesk Sell)</option>
+          <option value="sell">ConnectWise SELL</option>
           <option value="crm">Another Module 026 CRM/ERP</option>
           <option value="manual">Manual</option>
         </select>
@@ -282,7 +282,7 @@ export default function CustomerSourceAuthorityPortal() {
       {source?.mode === 'manual' ? (
         <div className="customer-source-authority__mode-card">
           <strong>Manual is authoritative</strong>
-          <p>Customers are maintained directly in Module 021. SELL association and external CRM synchronization are not required.</p>
+          <p>Customers are maintained directly in Module 021. ConnectWise SELL association and external CRM synchronization are not required.</p>
           <button type="button" onClick={scrollToManualCustomer}>Add customer manually</button>
         </div>
       ) : null}
@@ -344,7 +344,7 @@ export default function CustomerSourceAuthorityPortal() {
 
       {source?.mode === 'sell' ? (
         <p className="customer-source-authority__note">
-          SELL is active. Use the existing governed SELL preview/import controls in Module 021 below this selector.
+          ConnectWise SELL is active. Use the existing governed ConnectWise SELL preview/import controls in Module 021 below this selector.
         </p>
       ) : null}
 

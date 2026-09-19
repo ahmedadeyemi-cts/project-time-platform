@@ -92,7 +92,7 @@ rules. BoH-linked hours may still be tracked for usage and utilization.
 - Extended Through / Effective Expiration
 - Status
 - Certinia ID
-- SELL Quote
+- ConnectWise SELL Quote
 - Salesforce ID
 - Purchase Order / Quote reference
 - Notes

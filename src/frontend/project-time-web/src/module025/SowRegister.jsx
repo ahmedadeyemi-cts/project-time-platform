@@ -28,7 +28,7 @@ function status(value) {
   return ({
     draft: 'Draft', review_ready: 'Ready for SA review', confirmed: 'Confirmed', archived: 'Archived',
     blocked: 'Blocked — not sent', queued: 'Queued — awaiting processing', publishing: 'Publishing — awaiting verification',
-    published: 'Verified in SELL', awaiting_sell: 'Awaiting SELL confirmation', sending: 'Email submission in progress',
+    published: 'Verified in ConnectWise SELL', awaiting_sell: 'Awaiting ConnectWise SELL confirmation', sending: 'Email submission in progress',
     provider_accepted: 'Email provider accepted', suppressed: 'Email suppressed — no delivery',
     failed: 'Failed — review required', needs_reconciliation: 'Outcome unknown — reconciliation required'
   })[value] || 'Not submitted';
@@ -39,7 +39,7 @@ function Metric({ label, value }) {
 }
 
 const reportFields = [
-  ['uniqueSowsGenerated', 'Unique SOWs generated'], ['uniqueSowsSent', 'Unique SOWs verified in SELL'],
+  ['uniqueSowsGenerated', 'Unique SOWs generated'], ['uniqueSowsSent', 'Unique SOWs verified in ConnectWise SELL'],
   ['successfulGenerationRuns', 'Successful generation runs'], ['releasedVersions', 'Retained document versions'],
   ['successfulVersionSubmissions', 'Verified version submissions'], ['blockedSubmissions', 'Blocked requests']
 ];
@@ -127,7 +127,7 @@ export default function SowRegister({ initialEngagementId = '' }) {
   async function runAction(action, versionId) {
     if (!detail?.canWrite || actionBusy) return;
     const id = detail.engagementId;
-    if (action === 'sell' && !window.confirm(`Push ${detail.engagementNumber}'s selected confirmed version to SELL? The assigned Inside Sales Representative, Account Executive and Solution Architect will be notified only after both documents are verified. No additional SOW record will be created.`)) return;
+    if (action === 'sell' && !window.confirm(`Push ${detail.engagementNumber}'s selected confirmed version to ConnectWise SELL? The assigned Inside Sales Representative, Account Executive and Solution Architect will be notified only after both documents are verified. No additional SOW record will be created.`)) return;
     setActionBusy(action);
     setNotice(null);
     try {
@@ -187,7 +187,7 @@ export default function SowRegister({ initialEngagementId = '' }) {
       <header className="m025-header">
         <div className="m025-header__identity"><USSignalLogo size="large" /><div>
           <p className="m025-eyebrow">Module 025 · Retained records</p>
-          <h1>SOW Register &amp; SELL</h1>
+          <h1>SOW Register &amp; ConnectWise SELL</h1>
           <p>One SOW identity. Reviewed versions, verified submissions and an append-only history.</p>
         </div></div>
         <div className="m025-header__actions">
@@ -208,7 +208,7 @@ export default function SowRegister({ initialEngagementId = '' }) {
       {readError ? <div className="m025-notice m025-notice--critical" role="alert"><strong>Register needs attention</strong><p>{readError}</p></div> : null}
       {notice ? <div className={`m025-notice m025-notice--${notice.tone}`} role="status"><p>{notice.text}</p></div> : null}
       <section className="m025-metrics" aria-label="SA production metrics">{reportFields.map(([key, label]) => <Metric key={key} label={label} value={totals[key]} />)}</section>
-      <p className="m025-register-explanation">Downloads do not increase SOW counts. A revised version stays under its original SOW number. Only a verified SELL receipt counts as sent; queued, blocked or uncertain requests do not. Metrics cover all matching records, not only this page.</p>
+      <p className="m025-register-explanation">Downloads do not increase SOW counts. A revised version stays under its original SOW number. Only a verified ConnectWise SELL receipt counts as sent; queued, blocked or uncertain requests do not. Metrics cover all matching records, not only this page.</p>
 
       <div className="m025-register-table-wrap">
         <table className="m025-register-table"><caption>Solution Architect output for the selected period</caption>
@@ -218,7 +218,7 @@ export default function SowRegister({ initialEngagementId = '' }) {
       </div>
       <div className="m025-register-table-wrap" aria-busy={loading}>
         <table className="m025-register-table"><caption>{loading ? 'Refreshing records…' : `${report?.totalRecords ?? 0} matching SOW records · ${report?.runtimeEnvironment || 'governed environment'}`}</caption>
-          <thead><tr><th scope="col">SOW record</th><th scope="col">Project</th><th scope="col">Customer</th><th scope="col">Solution Architect</th><th scope="col">Working status</th><th scope="col">Latest version</th><th scope="col">SELL status</th></tr></thead>
+          <thead><tr><th scope="col">SOW record</th><th scope="col">Project</th><th scope="col">Customer</th><th scope="col">Solution Architect</th><th scope="col">Working status</th><th scope="col">Latest version</th><th scope="col">ConnectWise SELL status</th></tr></thead>
           <tbody>{(report?.records || []).map((row) => <tr key={row.engagementId} aria-selected={selectedId === row.engagementId}>
             <th scope="row"><button type="button" className="m025-button m025-button--secondary" onClick={() => { setSelectedId(row.engagementId); setVersionPage(1); setNotice(null); }}>{row.engagementNumber}</button></th>
             <td>{row.projectName || 'Project name not set'}</td><td>{row.customerName || 'Customer not selected'}</td><td>{row.ownerDisplayName}</td><td>{status(row.status)}</td><td>{row.latestVersionNumber ? `v${row.latestVersionNumber}` : 'Not released'}</td><td>{status(row.lastSellStatus)}</td>
@@ -232,9 +232,9 @@ export default function SowRegister({ initialEngagementId = '' }) {
       {detail ? <section className="m025-section" aria-label="Selected SOW history">
         <div className="m025-section-heading"><div><h2>{detail.engagementNumber} · {detail.projectName || 'Project name not set'}</h2></div><p>SA: {detail.ownerDisplayName} · Working revision {detail.revision} · {status(detail.status)}</p></div>
         <p>Use SOW Authoring to reopen and edit this record. Reconfirmation retains the next changed version; previous versions remain downloadable.</p>
-        {!detail.sellReadiness?.ready ? <div className="m025-notice m025-notice--warning" role="status"><strong>Automatic SELL publication is not enabled</strong><p>{detail.sellReadiness?.message}</p><p>You can download the retained SOW and GSD below for manual upload. No automatic SELL upload or success notification has occurred.</p></div> : null}
+        {!detail.sellReadiness?.ready ? <div className="m025-notice m025-notice--warning" role="status"><strong>Automatic ConnectWise SELL publication is not enabled</strong><p>{detail.sellReadiness?.message}</p><p>You can download the retained SOW and GSD below for manual upload. No automatic ConnectWise SELL upload or success notification has occurred.</p></div> : null}
         {canRelease ? <button type="button" className="m025-button m025-button--primary" disabled={Boolean(actionBusy)} onClick={() => runAction('versions')}>{actionBusy === 'versions' ? 'Retaining files…' : 'Retain confirmed version'}</button> : null}
-        {!detail.versions?.length ? <><p>This record is tracked. Review and confirm the detailed scope in SOW Authoring to retain both documents. Older confirmed records require one explicit retention step.</p><div className="m025-review-actions"><button type="button" className="m025-button m025-button--primary" disabled>Download SOW (.docx)</button><button type="button" className="m025-button m025-button--primary" disabled>Download GSD (.xlsx)</button><button type="button" className="m025-button m025-button--secondary" disabled>Send to SELL</button></div></> : null}
+        {!detail.versions?.length ? <><p>This record is tracked. Review and confirm the detailed scope in SOW Authoring to retain both documents. Older confirmed records require one explicit retention step.</p><div className="m025-review-actions"><button type="button" className="m025-button m025-button--primary" disabled>Download SOW (.docx)</button><button type="button" className="m025-button m025-button--primary" disabled>Download GSD (.xlsx)</button><button type="button" className="m025-button m025-button--secondary" disabled>Send to ConnectWise SELL</button></div></> : null}
         <div className="m025-register-versions">{(detail.versions || []).map((version) => {
           const submissions = (version.submissions || []).filter((item) => item.environment === detail.runtimeEnvironment);
           const published = submissions.some((item) => item.sellStatus === 'published');
@@ -246,11 +246,11 @@ export default function SowRegister({ initialEngagementId = '' }) {
             <div className="m025-review-actions">
               <button type="button" className="m025-button m025-button--primary" disabled={Boolean(actionBusy)} onClick={() => downloadVersion(version, 'sow.docx')}>{actionBusy === `${version.versionId}-sow.docx` ? 'Downloading…' : `Download SOW v${version.versionNumber}`}</button>
               <button type="button" className="m025-button m025-button--primary" disabled={Boolean(actionBusy)} onClick={() => downloadVersion(version, 'gsd.xlsx')}>{actionBusy === `${version.versionId}-gsd.xlsx` ? 'Downloading…' : `Download GSD v${version.versionNumber}`}</button>
-              <button type="button" className="m025-button m025-button--secondary" disabled={!eligible || !detail.sellReadiness?.ready || published || Boolean(actionBusy)} onClick={() => runAction('sell', version.versionId)}>{published ? 'Already verified in SELL' : actionBusy === 'sell' ? 'Registering submission…' : 'Push to SELL'}</button>
+              <button type="button" className="m025-button m025-button--secondary" disabled={!eligible || !detail.sellReadiness?.ready || published || Boolean(actionBusy)} onClick={() => runAction('sell', version.versionId)}>{published ? 'Already verified in ConnectWise SELL' : actionBusy === 'sell' ? 'Registering submission…' : 'Push to ConnectWise SELL'}</button>
             </div>
             <p>First SOW issuance: {when(version.firstSowServedAt)} · First GSD issuance: {when(version.firstGsdServedAt)}</p>
             <details><summary>File integrity</summary><p className="m025-register-hash">SOW SHA-256: {version.sowSha256}</p><p className="m025-register-hash">GSD SHA-256: {version.gsdSha256}</p></details>
-            {submissions.map((submission) => <div key={submission.submissionId} className="m025-register-submission"><strong>{status(submission.sellStatus)}</strong><p>Email: {status(submission.mailStatus)}</p><p>Tracking ID: {submission.submissionId}{submission.sellRecordId ? ` · SELL record: ${submission.sellRecordId}` : ''}</p><small>Requested {when(submission.requestedAt)} · Verified {when(submission.verifiedAt)}{submission.diagnosticCode ? ` · ${submission.diagnosticCode}` : ''}</small></div>)}
+            {submissions.map((submission) => <div key={submission.submissionId} className="m025-register-submission"><strong>{status(submission.sellStatus)}</strong><p>Email: {status(submission.mailStatus)}</p><p>Tracking ID: {submission.submissionId}{submission.sellRecordId ? ` · ConnectWise SELL record: ${submission.sellRecordId}` : ''}</p><small>Requested {when(submission.requestedAt)} · Verified {when(submission.verifiedAt)}{submission.diagnosticCode ? ` · ${submission.diagnosticCode}` : ''}</small></div>)}
           </article>;
         })}</div>
         <div className="m025-review-actions"><button type="button" className="m025-button m025-button--secondary" disabled={versionPage === 1} onClick={() => setVersionPage(versionPage - 1)}>Newer versions</button><span>Version page {versionPage}</span><button type="button" className="m025-button m025-button--secondary" disabled={!detail.hasMore} onClick={() => setVersionPage(versionPage + 1)}>Older versions</button></div>

@@ -108,8 +108,8 @@ function fulfilledSourceWarnings(source, payload) {
     if (sourceId.endsWith('/InvoiceBillingCenter.jsx')) {
       code = replaceExactly(
         code,
-        "const source = commercial.commercialSource === 'SELL' ? 'SELL' : 'Current stored rates';",
-        "const source = text(commercial.commercialSource, 'Current stored rates');",
+        "const source = commercial.commercialSource === 'SELL' ? 'ConnectWise SELL' : 'Current stored rates';",
+        "const source = commercial.commercialSource === 'SELL' ? 'ConnectWise SELL' : text(commercial.commercialSource, 'Current stored rates');",
         id,
         'Module 042 commercial source label'
       );
@@ -122,42 +122,42 @@ function fulfilledSourceWarnings(source, payload) {
       );
       code = replaceExactly(
         code,
-        "['sellQuoteId', 'SELL Quote', 'External IDs', false],",
+        "['sellQuoteId', 'ConnectWise SELL Quote', 'External IDs', false],",
         "['sellQuoteId', 'External association', 'External IDs', false],",
         id,
         'Module 042 external association column'
       );
       code = replaceExactly(
         code,
-        '<div><span>SELL Quote</span><strong>{text(selected.sellQuoteNumber, missingValue)}</strong></div>',
+        '<div><span>ConnectWise SELL Quote</span><strong>{text(selected.sellQuoteNumber, missingValue)}</strong></div>',
         "<div><span>External association</span><strong>{selected.commercial?.commercialSource === 'SELL' ? text(selected.sellQuoteNumber, missingValue) : 'Not required for this customer source'}</strong></div>",
         id,
         'Module 042 project reference association'
       );
       code = replaceExactly(
         code,
-        '<section className="m0423-commercial" aria-label="SELL commercial source">',
+        '<section className="m0423-commercial" aria-label="ConnectWise SELL commercial source">',
         '<section className="m0423-commercial" aria-label="Commercial source">',
         id,
         'Module 042 commercial source aria label'
       );
       code = replaceExactly(
         code,
-        "<strong>{selected.commercial?.commercialSource === 'SELL' ? 'SELL' : 'Current stored rates'}</strong>",
-        "<strong>{text(selected.commercial?.commercialSource, 'Current stored rates')}</strong>",
+        "<strong>{selected.commercial?.commercialSource === 'SELL' ? 'ConnectWise SELL' : 'Current stored rates'}</strong>",
+        "<strong>{selected.commercial?.commercialSource === 'SELL' ? 'ConnectWise SELL' : text(selected.commercial?.commercialSource, 'Current stored rates')}</strong>",
         id,
         'Module 042 selected commercial source'
       );
       code = replaceExactly(
         code,
-        "<div><dt>SELL quote</dt><dd>{text(selected.commercial?.sellQuoteNumber, 'Not configured')}</dd></div>",
+        "<div><dt>ConnectWise SELL quote</dt><dd>{text(selected.commercial?.sellQuoteNumber, 'Not configured')}</dd></div>",
         "<div><dt>External association</dt><dd>{selected.commercial?.commercialSource === 'SELL' ? text(selected.commercial?.sellQuoteNumber, 'Not configured') : 'Not required for this customer source'}</dd></div>",
         id,
         'Module 042 commercial association detail'
       );
       code = replaceExactly(
         code,
-        "<div><dt>Last SELL sync</dt><dd>{selected.commercial?.lastSuccessfulSyncAt ? formatDateTime(selected.commercial.lastSuccessfulSyncAt) : 'No successful SELL sync recorded'}</dd></div>",
+        "<div><dt>Last ConnectWise SELL sync</dt><dd>{selected.commercial?.lastSuccessfulSyncAt ? formatDateTime(selected.commercial.lastSuccessfulSyncAt) : 'No successful ConnectWise SELL sync recorded'}</dd></div>",
         "<div><dt>Last source sync</dt><dd>{selected.commercial?.commercialSource === 'MANUAL' ? 'Not applicable for manual source' : selected.commercial?.lastSuccessfulSyncAt ? formatDateTime(selected.commercial.lastSuccessfulSyncAt) : 'No successful customer-source sync recorded'}</dd></div>",
         id,
         'Module 042 source sync detail'
@@ -167,8 +167,8 @@ function fulfilledSourceWarnings(source, payload) {
     if (sourceId.endsWith('/CustomerDirectoryCenter.jsx')) {
       code = replaceExactly(
         code,
-        'Pull authoritative customer organizations from SELL, then enrich each ProjectPulse customer with locally maintained contacts, relationships, addresses, and workflow context.',
-        'Choose SELL, another configured Module 026 CRM/ERP provider, or Manual as the authoritative customer source. Local contacts, relationships, addresses, and workflow context remain managed in Module 021.',
+        'Pull authoritative customer organizations from ConnectWise SELL, then enrich each ProjectPulse customer with locally maintained contacts, relationships, addresses, and workflow context.',
+        'Choose ConnectWise SELL, another configured Module 026 CRM/ERP provider, or Manual as the authoritative customer source. Local contacts, relationships, addresses, and workflow context remain managed in Module 021.',
         id,
         'Module 021 source description'
       );

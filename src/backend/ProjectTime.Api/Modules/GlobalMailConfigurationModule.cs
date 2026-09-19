@@ -40,7 +40,7 @@ public static class GlobalMailConfigurationModule
         app.MapDynamicRbacAdministrationEndpoints();
 
         // Additive registration only: Module 021 consumes the authoritative
-        // Module 026 SELL connection without changing Microsoft Integration.
+        // Module 026 ConnectWise SELL connection without changing Microsoft Integration.
         app.MapCustomerDirectorySellSyncEndpoints();
         return app;
     }

@@ -13,7 +13,7 @@ public static partial class Module025SowGsdModule
 
     public static IServiceCollection AddModule025SowSell(this IServiceCollection services)
     {
-        services.TryAddSingleton<IModule025SellPublisher, Module025ZendeskSellPublisher>();
+        services.TryAddSingleton<IModule025SellPublisher, Module025ConnectWiseSellPublisher>();
         services.AddHostedService<Module025SowSellWorker>();
         return services;
     }
@@ -43,7 +43,7 @@ public static partial class Module025SowGsdModule
     private static IResult SowSellMigrationRequired() => Results.Json(new
     {
         status = "module025_sow_register_migration_required", migration = SowSellMigration,
-        message = "The SOW Register requires migration 106. No untracked document or SELL submission was created."
+        message = "The SOW Register requires migration 106. No untracked document or ConnectWise SELL submission was created."
     }, statusCode: StatusCodes.Status409Conflict);
 
     private sealed record ReleasedSowVersion(Guid VersionId, int VersionNumber, int SourceRevision,
@@ -279,16 +279,16 @@ public static partial class Module025SowGsdModule
         await using var connection = state.Connection!;
         if (!await SowSellSchemaReadyAsync(connection, cancellationToken)) return SowSellMigrationRequired();
         var environment = MicrosoftEnvironmentRuntimeResolver.Resolve(context) ?? string.Empty;
-        if (environment is not ("test" or "production")) return StateConflict("environment_required", "The governed runtime environment could not be resolved. No SELL write was attempted.");
+        if (environment is not ("test" or "production")) return StateConflict("environment_required", "The governed runtime environment could not be resolved. No ConnectWise SELL write was attempted.");
         var readiness = await context.RequestServices.GetRequiredService<IModule025SellPublisher>().GetReadinessAsync(environment, cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var current = await LockSowForReleaseAsync(connection, transaction, engagementId, cancellationToken);
         if (current is null) return Results.NotFound();
         if (current.Revision != request.ExpectedRevision) return RevisionConflict(current.Revision);
-        if (current.Status != "confirmed" || !current.IsActive) return StateConflict("confirmation_required", "Confirm the latest SA edits before pushing to SELL.");
+        if (current.Status != "confirmed" || !current.IsActive) return StateConflict("confirmation_required", "Confirm the latest SA edits before pushing to ConnectWise SELL.");
         var version = await LatestSowVersionAsync(connection, engagementId, cancellationToken);
         if (version is null || version.VersionId != request.VersionId || version.ContentSha256 != Module025SowSellPolicy.Fingerprint(current))
-            return StateConflict("current_version_required", "Release and select the latest confirmed document version before pushing to SELL.");
+            return StateConflict("current_version_required", "Release and select the latest confirmed document version before pushing to ConnectWise SELL.");
 
         // Freeze server-resolved recipients, never a browser-supplied mail list.
         var recipients = await ResolveSowSellRecipientsAsync(connection, current, cancellationToken);
@@ -299,7 +299,7 @@ public static partial class Module025SowGsdModule
         await using (var insert = new NpgsqlCommand("""
             INSERT INTO module025_sow_sell_submissions(submission_id,engagement_id,version_id,destination_key,
                 runtime_environment,actor_user_id,recipients_json)
-            VALUES(@submission,@id,@version,'zendesk_sell',@environment,@actor,@recipients::jsonb)
+            VALUES(@submission,@id,@version,'connectwise_sell',@environment,@actor,@recipients::jsonb)
             ON CONFLICT (version_id,destination_key,runtime_environment) DO NOTHING RETURNING submission_id;
             """, connection, transaction))
         {
@@ -311,7 +311,7 @@ public static partial class Module025SowGsdModule
             insert.Parameters.AddWithValue("recipients", JsonSerializer.Serialize(recipients, Module025SowSellPolicy.Json));
             created = await insert.ExecuteScalarAsync(cancellationToken) is Guid;
         }
-        await using (var find = new NpgsqlCommand("SELECT submission_id FROM module025_sow_sell_submissions WHERE version_id=@version AND destination_key='zendesk_sell' AND runtime_environment=@environment;", connection, transaction))
+        await using (var find = new NpgsqlCommand("SELECT submission_id FROM module025_sow_sell_submissions WHERE version_id=@version AND destination_key='connectwise_sell' AND runtime_environment=@environment;", connection, transaction))
         {
             find.Parameters.AddWithValue("version", version.VersionId);
             find.Parameters.AddWithValue("environment", environment);
@@ -329,7 +329,7 @@ public static partial class Module025SowGsdModule
             dispatch.Parameters.AddWithValue("diagnostic", readiness.Ready ? string.Empty : Clean(readiness.DiagnosticCode,160));
             await dispatch.ExecuteNonQueryAsync(cancellationToken);
             await InsertEventAsync(connection, transaction, engagementId, state.Access!.ActualUserId, current.Revision,
-                "sell_submission_requested", "The retained SOW/GSD version was registered for SELL processing; this is not a success receipt.",
+                "sell_submission_requested", "The retained SOW/GSD version was registered for ConnectWise SELL processing; this is not a success receipt.",
                 new { submissionId, versionId = version.VersionId, versionNumber = version.VersionNumber, runtimeEnvironment = environment, blocked = !readiness.Ready }, cancellationToken);
         }
         else if (readiness.Ready)
@@ -353,9 +353,9 @@ public static partial class Module025SowGsdModule
             mailStatus = reader.GetString(1);
         }
         await transaction.CommitAsync(cancellationToken);
-        var message = sellStatus == "published" ? "This exact version already has a verified SELL receipt. No duplicate submission was created."
+        var message = sellStatus == "published" ? "This exact version already has a verified ConnectWise SELL receipt. No duplicate submission was created."
             : sellStatus == "blocked" ? readiness.Message
-            : sellStatus == "queued" ? "The version is queued. SELL success and notification status will appear in the immutable history after verification."
+            : sellStatus == "queued" ? "The version is queued. ConnectWise SELL success and notification status will appear in the immutable history after verification."
             : "This submission already exists. Its recorded status is authoritative; no duplicate external write was requested.";
         return Results.Json(new { status = "module025_sell_submission", submissionId, sellStatus, mailStatus, message, stateChanged = created },
             statusCode: sellStatus == "blocked" ? 409 : sellStatus == "queued" ? 202 : 200);

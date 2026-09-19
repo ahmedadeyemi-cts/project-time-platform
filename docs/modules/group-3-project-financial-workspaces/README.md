@@ -2,9 +2,9 @@
 
 ## Scope
 
-This package unifies Modules 018, 019, 036, and 055B around one read-only authoritative project financial API. It reconciles project ownership, assignments, approved and in-flight time, current Module 005 expenses, Module 019 documents, Module 022 cost-alert evidence, governed rate cards, and the Module 026 SELL commercial read model.
+This package unifies Modules 018, 019, 036, and 055B around one read-only authoritative project financial API. It reconciles project ownership, assignments, approved and in-flight time, current Module 005 expenses, Module 019 documents, Module 022 cost-alert evidence, governed rate cards, and the Module 026 ConnectWise SELL commercial read model.
 
-The package is source-only. No database migration, deployment workflow, Azure operation, provider connection, credential change, external SELL request, or test/production resource mutation is included.
+The package is source-only. No database migration, deployment workflow, Azure operation, provider connection, credential change, external ConnectWise SELL request, or test/production resource mutation is included.
 
 ## Existing responsibilities inspected
 
@@ -12,8 +12,8 @@ The package is source-only. No database migration, deployment workflow, Azure op
 |---|---|---|
 | Module 018 | Project Manager workload, project status, risk highlights, assigned resources, tasks, planned hours, and planned cost | No single source for actual cost, current expenses, forecast, variance, budget state, notification evidence, or calculation explanations |
 | Module 019 | Role-scoped project workspace, assignments, engineering-visible documents, resource requests, and working downloads | Financial and progress data were separate from document and assignment context; the unified experience adds allocated, used, and remaining hours without depending on Module 011 |
-| Module 036 | Sales handoff, intake readiness, PM assignment, source documents, customer signals, and delivery blockers | No authoritative SELL association, project financial status, budget warnings, forecast, variance, or assigned delivery-team summary |
-| Module 055B | Governed rate-card administration | Project/customer financial context was separate from the governed SELL commercial model and could encourage duplicate connection logic |
+| Module 036 | Sales handoff, intake readiness, PM assignment, source documents, customer signals, and delivery blockers | No authoritative ConnectWise SELL association, project financial status, budget warnings, forecast, variance, or assigned delivery-team summary |
+| Module 055B | Governed rate-card administration | Project/customer financial context was separate from the governed ConnectWise SELL commercial model and could encourage duplicate connection logic |
 
 ## Authoritative project summary
 
@@ -40,9 +40,9 @@ The API provides the following shared project-level fields:
 - completion percentage;
 - budget status;
 - notification and cost-alert evidence; and
-- governed SELL association.
+- governed ConnectWise SELL association.
 
-Unknown or restricted values remain `null`, `not_recorded`, or explicitly restricted. The API does not convert missing data into zero and does not fabricate a contract value, budget, rate, cost, or SELL relationship.
+Unknown or restricted values remain `null`, `not_recorded`, or explicitly restricted. The API does not convert missing data into zero and does not fabricate a contract value, budget, rate, cost, or ConnectWise SELL relationship.
 
 ## Source authority
 
@@ -84,11 +84,11 @@ Downloads use the existing Module 019 role-scoped endpoint. No Module 011 depend
 
 Existing open cost-alert and queued-notification evidence is consumed read-only. Group 3 does not create configurable alert-routing or notification schedules. Those responsibilities remain assigned to Group 4.
 
-### Module 026 SELL ownership
+### Module 026 ConnectWise SELL ownership
 
-PR #187 completed the Module 021/026 SELL connection foundation and migration 049. Group 3 calls `SellCommercialReadModelModule.LoadProjectCommercialSummaryAsync` and therefore consumes the governed Module 026 connection, readiness, quote association, rate card, rate lines, and synchronization status.
+PR #187 completed the Module 021/026 ConnectWise SELL connection foundation and migration 049. Group 3 calls `SellCommercialReadModelModule.LoadProjectCommercialSummaryAsync` and therefore consumes the governed Module 026 connection, readiness, quote association, rate card, rate lines, and synchronization status.
 
-Module 055B does not create or maintain a second SELL credential, secret, connector, health registry, connection-test path, or synchronization system.
+Module 055B does not create or maintain a second ConnectWise SELL credential, secret, connector, health registry, connection-test path, or synchronization system.
 
 ## Calculations
 
@@ -104,7 +104,7 @@ max(planned hours - used hours, 0)
 used hours × effective governed hourly rate
 ```
 
-The preferred rate basis is the governed Module 026 SELL/current commercial rate model. When no governed rate line is available but a labor budget and planned hours are known, the API can expose a clearly labeled budget-derived rate estimate. This is a project-cost estimate and is never represented as payroll cost.
+The preferred rate basis is the governed Module 026 ConnectWise SELL/current commercial rate model. When no governed rate line is available but a labor budget and planned hours are known, the API can expose a clearly labeled budget-derived rate estimate. This is a project-cost estimate and is never represented as payroll cost.
 
 ### Committed cost
 
@@ -175,7 +175,7 @@ Engineering users receive hours and progress by default. Detailed labor-cost, bu
 Module 036 receives:
 
 - sales-owned projects;
-- SELL quote and readiness association;
+- ConnectWise SELL quote and readiness association;
 - customer and opportunity context already stored with the project;
 - project financial status;
 - delivery risk;
@@ -186,11 +186,11 @@ Sales receives commercial summary visibility without detailed labor-cost basis u
 
 ### Module 055B — Rate Card Administration context
 
-Module 055B retains all existing rate-card administration controls. The new context panel shows which visible projects and customers consume governed rate information, their Module 026 SELL association, commercial readiness, and current project financial state.
+Module 055B retains all existing rate-card administration controls. The new context panel shows which visible projects and customers consume governed rate information, their Module 026 ConnectWise SELL association, commercial readiness, and current project financial state.
 
 ## Source-level resilience
 
-The project source is required. Optional assignment, time, expense, alert, document, metadata, and SELL sources are loaded independently. A failed optional source is returned with:
+The project source is required. Optional assignment, time, expense, alert, document, metadata, and ConnectWise SELL sources are loaded independently. A failed optional source is returned with:
 
 - source name;
 - required/optional classification;

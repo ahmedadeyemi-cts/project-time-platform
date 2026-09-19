@@ -19,7 +19,7 @@ export default function SowGsdWorkspace() {
           className={view === 'authoring' ? 'is-active' : ''} onClick={() => setView('authoring')}>SOW Authoring</button>
         <button type="button" id="m025-register-tab" role="tab" aria-selected={view === 'register'} aria-controls="m025-register-panel"
           disabled={!workspaceReady}
-          className={view === 'register' ? 'is-active' : ''} onClick={() => setView('register')}>SOW Register &amp; SELL</button>
+          className={view === 'register' ? 'is-active' : ''} onClick={() => setView('register')}>SOW Register &amp; ConnectWise SELL</button>
       </nav>
       {/* Keep the existing editor mounted: switching tabs must not discard
           unsaved SA edits or stop its already-running generation status checks. */}

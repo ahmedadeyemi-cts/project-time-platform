@@ -16,21 +16,21 @@ public static partial class CrmErpIntegrationModule
     private static readonly BuiltinProviderTemplate[] BuiltinProviderTemplates =
     [
         new(
-            "zendesk_sell",
-            "SELL (Zendesk Sell)",
+            "connectwise_sell",
+            "ConnectWise SELL",
             "crm",
             "api_key",
-            "https://api.getbase.com",
-            "https://api.getbase.com/v2/contacts?per_page=1",
-            "https://api.getbase.com/oauth2/authorize",
-            "https://api.getbase.com/oauth2/token",
+            ConnectWiseSellContract.BaseUrl,
+            ConnectWiseSellContract.HealthUrl,
             string.Empty,
-            "read profile",
+            string.Empty,
+            string.Empty,
+            string.Empty,
             "Authorization",
-            "Bearer",
-            "https://api.getbase.com/v2/deals/{recordId}",
-            "{\"projectNamePath\":\"data.name\",\"quoteNumberPath\":\"data.id\",\"customerNamePath\":\"data.organization_name\",\"contractedAmountPath\":\"data.value\",\"rateLinesPath\":\"data.custom_fields.pricing_rate_review\",\"rateCodePath\":\"sku\",\"descriptionPath\":\"description\",\"unitRatePath\":\"unit_rate\",\"laborCategoryPath\":\"labor_category\",\"timeTypePath\":\"time_type\",\"unitTypePath\":\"unit_type\",\"billablePath\":\"billable\"}",
-            "Authoritative customer, organization, deal, quote, and pricing source for ProjectPulse."),
+            "Basic",
+            ConnectWiseSellContract.LookupUrl,
+            "{}",
+            "ConnectWise SELL (CPQ) API connection. Quote/customer imports require verified mappings; document publishing requires a separate write adapter."),
         new(
             "salesforce",
             "Salesforce",
@@ -132,9 +132,10 @@ public static partial class CrmErpIntegrationModule
                       AND c.credential_kind = 'oauth_token'
                 ) AS oauth_connected
             FROM crm_integration_providers p
+            WHERE p.provider_key <> 'zendesk_sell'
             ORDER BY
                 CASE p.provider_key
-                    WHEN 'zendesk_sell' THEN 10
+                    WHEN 'connectwise_sell' THEN 10
                     WHEN 'salesforce' THEN 20
                     WHEN 'servicenow' THEN 30
                     WHEN 'certinia' THEN 40
@@ -321,7 +322,7 @@ public static partial class CrmErpIntegrationModule
     private static int BuiltinOrder(string providerKey) =>
         providerKey.ToLowerInvariant() switch
         {
-            "zendesk_sell" => 10,
+            "connectwise_sell" => 10,
             "salesforce" => 20,
             "servicenow" => 30,
             "certinia" => 40,

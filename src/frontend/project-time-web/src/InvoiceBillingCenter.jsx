@@ -13,7 +13,7 @@ const columns = [
   ['coordinator', 'Project Team Coordinator', 'Ownership', false],
   ['assignedEngineers', 'Assigned engineers', 'Ownership', false],
   ['certiniaId', 'Certinia ID', 'External IDs', true],
-  ['sellQuoteId', 'SELL Quote', 'External IDs', false],
+  ['sellQuoteId', 'ConnectWise SELL Quote', 'External IDs', false],
   ['commercialSource', 'Commercial source', 'Billing data', true],
   ['salesforceId', 'Salesforce ID', 'External IDs', false],
   ['purchaseOrder', 'Purchase order', 'External IDs', false],
@@ -191,7 +191,7 @@ function candidateCellValue(candidate, columnKey, selections) {
   if (columnKey === 'sellQuoteId') return text(candidate.sellQuoteNumber, missingValue);
   if (columnKey === 'commercialSource') {
     const commercial = candidate.commercial || {};
-    const source = commercial.commercialSource === 'SELL' ? 'SELL' : 'Current stored rates';
+    const source = commercial.commercialSource === 'SELL' ? 'ConnectWise SELL' : 'Current stored rates';
     return (
       <span className="m042-stack">
         <strong>{source}</strong>
@@ -610,7 +610,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
       <section className="m042-preview-mode m042-live-mode" aria-label="Module 042 live data status">
         <strong>Commercial source guard</strong>
         <span>
-          SELL quote and rate readiness are now evaluated from the canonical project and rate-card read model. Invoice calculations remain on current stored rates until SELL synchronization and guarded cutover are explicitly enabled. Current scope: {payload.scope || 'Loading'}.
+          ConnectWise SELL quote and rate readiness are now evaluated from the canonical project and rate-card read model. Invoice calculations remain on current stored rates until ConnectWise SELL synchronization and guarded cutover are explicitly enabled. Current scope: {payload.scope || 'Loading'}.
         </span>
       </section>
 
@@ -667,7 +667,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
           <article>
             <span>Stored integrations</span>
             <h2>Connector Readiness</h2>
-            <p>Salesforce, Certinia, and SELL remain independent connector registrations. No connector action runs from this page.</p>
+            <p>Salesforce, Certinia, and ConnectWise SELL remain independent connector registrations. No connector action runs from this page.</p>
             <dl>
               <div><dt>Connected</dt><dd>{configuredConnectors}</dd></div>
               <div><dt>Registered</dt><dd>{payload.connectorStatuses.length}</dd></div>
@@ -695,7 +695,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
               <input
                 type="search"
                 value={search}
-                placeholder="Customer, project, code, PM, PTC, engineer, Certinia, SELL, Salesforce..."
+                placeholder="Customer, project, code, PM, PTC, engineer, Certinia, ConnectWise SELL, Salesforce..."
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
@@ -790,7 +790,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
                   <section className="m042-refs">
                     <div><span>Certinia ID</span><strong>{text(selected.certiniaId, missingValue)}</strong></div>
-                    <div><span>SELL Quote</span><strong>{text(selected.sellQuoteNumber, missingValue)}</strong></div>
+                    <div><span>ConnectWise SELL Quote</span><strong>{text(selected.sellQuoteNumber, missingValue)}</strong></div>
                     <div><span>Salesforce ID</span><strong>{text(selected.salesforceId, missingValue)}</strong></div>
                     <div>
                       <span>Purchase order</span>
@@ -799,22 +799,22 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                     </div>
                   </section>
 
-                  <section className="m0423-commercial" aria-label="SELL commercial source">
+                  <section className="m0423-commercial" aria-label="ConnectWise SELL commercial source">
                     <header>
                       <div>
                         <span>Commercial source</span>
-                        <strong>{selected.commercial?.commercialSource === 'SELL' ? 'SELL' : 'Current stored rates'}</strong>
+                        <strong>{selected.commercial?.commercialSource === 'SELL' ? 'ConnectWise SELL' : 'Current stored rates'}</strong>
                       </div>
                       <b className={selected.commercial?.cutoverReady ? 'ready' : 'pending'}>
                         {text(selected.commercial?.readinessStatus, 'Not evaluated').replaceAll('_', ' ')}
                       </b>
                     </header>
                     <dl>
-                      <div><dt>SELL quote</dt><dd>{text(selected.commercial?.sellQuoteNumber, 'Not configured')}</dd></div>
+                      <div><dt>ConnectWise SELL quote</dt><dd>{text(selected.commercial?.sellQuoteNumber, 'Not configured')}</dd></div>
                       <div><dt>Customer-facing project</dt><dd>{text(selected.commercial?.customerFacingProjectName, text(selected.projectName, 'Unnamed project'))}</dd></div>
                       <div><dt>Billing method</dt><dd>{text(selected.commercial?.billingMethod, 'Unknown').replaceAll('_', ' ')}</dd></div>
                       <div><dt>Rate card</dt><dd>{text(selected.commercial?.rateCard?.rateCardName, 'No active commercial rate card')}</dd></div>
-                      <div><dt>Last SELL sync</dt><dd>{selected.commercial?.lastSuccessfulSyncAt ? formatDateTime(selected.commercial.lastSuccessfulSyncAt) : 'No successful SELL sync recorded'}</dd></div>
+                      <div><dt>Last ConnectWise SELL sync</dt><dd>{selected.commercial?.lastSuccessfulSyncAt ? formatDateTime(selected.commercial.lastSuccessfulSyncAt) : 'No successful ConnectWise SELL sync recorded'}</dd></div>
                       <div><dt>Milestone readiness</dt><dd>{text(selected.commercial?.milestoneReadiness, 'Not evaluated').replaceAll('_', ' ')}</dd></div>
                     </dl>
                     {selected.commercial?.rates?.length ? (
@@ -890,7 +890,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                                 <option value="">Select stored rate</option>
                                 {(item.line.rateOptions || []).map((rate) => (
                                   <option value={rate.rateLineId} key={rate.rateLineId}>
-                                    {formatMoney(rate.unitRate)}/hr — {rate.displayName} — {selected.commercial?.commercialSource === 'SELL' ? 'SELL' : 'stored rate'}
+                                    {formatMoney(rate.unitRate)}/hr — {rate.displayName} — {selected.commercial?.commercialSource === 'SELL' ? 'ConnectWise SELL' : 'stored rate'}
                                   </option>
                                 ))}
                               </select>

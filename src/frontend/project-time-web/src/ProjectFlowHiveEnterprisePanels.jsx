@@ -63,10 +63,10 @@ export function FlowHiveFinancialsPanel({ enterprise, financials, controls, setC
     ['Planned labor', `${Number(project.plannedHours ?? 0).toLocaleString()} hours`],
     ['Used labor', `${Number(project.usedHours ?? 0).toLocaleString()} hours`],
     ['Budget health', label(project.budgetStatus || 'unknown')],
-    ['SELL readiness', label(project.sell?.readinessStatus || 'not available')]
+    ['ConnectWise SELL readiness', label(project.sell?.readinessStatus || 'not available')]
   ];
   return <div className="flowhive-view-panel">
-    <div className="flowhive-section-heading"><div><span>PM financial command center</span><h3>Project financials and commercial controls</h3><p>Authoritative actuals come from the project-financial service, Module 005 expenses, time entries, Module 055C metadata, and SELL. Missing values are shown as unavailable rather than estimated.</p></div></div>
+    <div className="flowhive-section-heading"><div><span>PM financial command center</span><h3>Project financials and commercial controls</h3><p>Authoritative actuals come from the project-financial service, Module 005 expenses, time entries, Module 055C metadata, and ConnectWise SELL. Missing values are shown as unavailable rather than estimated.</p></div></div>
     <div className="flowhive-financial-grid">{summary.map(([title, value]) => <article key={title}><span>{title}</span><strong>{value}</strong></article>)}</div>
     <section className="flowhive-enterprise-card">
       <header><div><span>Project Manager controls</span><h3>Commercial model and forecast assumptions</h3></div><span>{canManage ? 'Editable by assigned PM' : 'Read-only'}</span></header>

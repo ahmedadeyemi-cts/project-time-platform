@@ -31,7 +31,7 @@ The catalog contains 24 report types covering:
 - project-team assignments;
 - customer project summaries;
 - current Module 005 expenses;
-- Module 026 SELL and delivery context;
+- Module 026 ConnectWise SELL and delivery context;
 - billing and closeout readiness;
 - notification delivery;
 - qualifications and certification expiration;

@@ -82,7 +82,7 @@ No change is made to `App.jsx`, `main.jsx`, navigation files, module registries,
 
 No migration is included or required. Group 2B reads runtime, adapter, and operator-recorded configuration evidence. It does not create or alter database schema or data.
 
-Group 3 financial workspace work is intentionally outside this package. Modules 018, 019, 036, and 055B, Module 005 expenses, Module 026 SELL integration, project assignments, documents, time entries, rates, and allocations are not modified here. PR #187 is treated as completed dependency history rather than a concurrent connection-foundation change.
+Group 3 financial workspace work is intentionally outside this package. Modules 018, 019, 036, and 055B, Module 005 expenses, Module 026 ConnectWise SELL integration, project assignments, documents, time entries, rates, and allocations are not modified here. PR #187 is treated as completed dependency history rather than a concurrent connection-foundation change.
 
 ## Validation
 

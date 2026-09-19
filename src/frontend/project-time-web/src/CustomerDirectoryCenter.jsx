@@ -172,7 +172,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
         ...current,
         statusLoading: false,
         status: null,
-        statusError: error instanceof Error ? error.message : 'SELL synchronization status is unavailable.',
+        statusError: error instanceof Error ? error.message : 'ConnectWise SELL synchronization status is unavailable.',
       }));
     }
   }
@@ -185,7 +185,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
   const customers = directory.data?.customers ?? [];
   const contacts = directory.data?.contacts ?? [];
   const sellCustomers = sellState.preview?.customers ?? [];
-  const sellIsReady = providerReady(sellState.status);
+  const sellIsReady = providerReady(sellState.status) && sellState.status?.customerSyncAvailable === true;
 
   const filteredCustomers = useMemo(() => {
     const search = searchTerm.trim().toLowerCase();
@@ -360,14 +360,14 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
       });
       setSellFilters((current) => ({ ...current, page: result.page ?? nextPage }));
       setSellState((current) => ({ ...current, previewLoading: false, preview: result, previewError: '' }));
-      setActionStatus(result.message ?? 'SELL customers loaded for review.');
+      setActionStatus(result.message ?? 'ConnectWise SELL customers loaded for review.');
       await loadSellStatus();
     } catch (error) {
       setSellState((current) => ({
         ...current,
         previewLoading: false,
         preview: null,
-        previewError: error instanceof Error ? error.message : 'Unable to preview SELL customers.',
+        previewError: error instanceof Error ? error.message : 'Unable to preview ConnectWise SELL customers.',
       }));
     }
   }
@@ -386,11 +386,11 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
 
   async function importSellCustomers() {
     if (!canManageCustomers) {
-      setActionStatus('SELL customer import is restricted to authorized customer managers.');
+      setActionStatus('ConnectWise SELL customer import is restricted to authorized customer managers.');
       return;
     }
     if (!selectedSellIds.length) {
-      setActionStatus('Select at least one SELL organization to import or refresh.');
+      setActionStatus('Select at least one ConnectWise SELL organization to import or refresh.');
       return;
     }
 
@@ -399,7 +399,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
       const result = await sendJson('/api/customers/sell/import', 'POST', {
         sourceRecordIds: selectedSellIds,
       });
-      setActionStatus(result.message ?? 'SELL customer synchronization completed.');
+      setActionStatus(result.message ?? 'ConnectWise SELL customer synchronization completed.');
       const preferredClientId = result.results?.find((item) => item.clientId)?.clientId ?? '';
       setSelectedSellIds([]);
       await Promise.all([loadDirectory(preferredClientId), loadSellStatus()]);
@@ -408,7 +408,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
       setSellState((current) => ({
         ...current,
         importLoading: false,
-        previewError: error instanceof Error ? error.message : 'Unable to import SELL customers.',
+        previewError: error instanceof Error ? error.message : 'Unable to import ConnectWise SELL customers.',
       }));
       return;
     }
@@ -422,7 +422,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
           <p className="eyebrow">MODULE 021</p>
           <h2>Customer Directory</h2>
           <p className="muted">
-            Pull authoritative customer organizations from SELL, then enrich each ProjectPulse customer with locally maintained contacts, relationships, addresses, and workflow context.
+            Pull authoritative customer organizations from ConnectWise SELL, then enrich each ProjectPulse customer with locally maintained contacts, relationships, addresses, and workflow context.
           </p>
         </div>
         <span className="customer-directory-status">{canManageCustomers ? 'Management enabled' : 'Read only'}</span>
@@ -434,10 +434,10 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
       <section className="customer-sell-sync" aria-labelledby="customer-sell-sync-title">
         <div className="customer-sell-sync-heading">
           <div>
-            <p className="eyebrow">SELL CUSTOMER SOURCE</p>
+            <p className="eyebrow">ConnectWise SELL CUSTOMER SOURCE</p>
             <h3 id="customer-sell-sync-title">Pull customers from Module 026</h3>
             <p>
-              SELL owns the source organization identity. ProjectPulse stores the source link and keeps local contact enrichment separate, so adding a phone number, relationship, address, or primary contact here does not overwrite SELL.
+              ConnectWise SELL owns the source organization identity. ProjectPulse stores the source link and keeps local contact enrichment separate, so adding a phone number, relationship, address, or primary contact here does not overwrite ConnectWise SELL.
             </p>
           </div>
           <div className="customer-sell-sync-actions">
@@ -453,7 +453,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
           <article>
             <span>Module 026 connection</span>
             <strong>{sellState.statusLoading ? 'Checking…' : sellState.status?.provider?.configured ? 'Configured' : 'Not configured'}</strong>
-            <small>{sellState.status?.provider?.name ?? 'SELL (Zendesk Sell)'}</small>
+            <small>{sellState.status?.provider?.name ?? 'ConnectWise SELL'}</small>
           </article>
           <article>
             <span>Authentication</span>
@@ -463,12 +463,12 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
           <article>
             <span>Availability</span>
             <strong className={sellIsReady ? 'ready' : 'attention'}>{words(sellState.status?.provider?.availabilityStatus)}</strong>
-            <small>{sellIsReady ? 'Ready to pull customers' : 'Enable and successfully test SELL in Module 026'}</small>
+            <small>{sellIsReady ? 'Ready to pull customers' : 'Customer mapping requires verification'}</small>
           </article>
           <article>
             <span>Linked customers</span>
             <strong>{sellState.status?.linkedCustomers ?? 0}</strong>
-            <small>ProjectPulse records linked to SELL source IDs</small>
+            <small>ProjectPulse records linked to ConnectWise SELL source IDs</small>
           </article>
           <article>
             <span>Last synchronization</span>
@@ -479,19 +479,19 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
 
         {!sellIsReady ? (
           <div className="customer-sell-guidance">
-            <strong>SELL must be ready before customer preview.</strong>
+            <strong>ConnectWise SELL customer synchronization is not enabled.</strong><p>{sellState.status?.customerSyncMessage || 'Configure API credentials in Module 026. Customer identity mapping must be verified before imports are available.'}</p>
             <ol>
-              <li>Open Module 026 and select SELL.</li>
-              <li>Choose OAuth 2.0 or API key/access token and save the non-secret configuration.</li>
+              <li>Open Module 026 and select ConnectWise SELL.</li>
+              <li>Save the ConnectWise SELL API-key configuration; add the Access Key, Public API Key and Private API Key when available.</li>
               <li>Save the write-only credential, enable the connection, and run Test availability.</li>
-              <li>Return here and refresh the connection status.</li>
+              <li>Customer imports remain unavailable until the quote-customer adapter and identity mapping are verified.</li>
             </ol>
           </div>
         ) : (
           <>
             <div className="customer-sell-filter-grid">
               <label>
-                Search this SELL page
+                Search this ConnectWise SELL page
                 <input value={sellFilters.search} placeholder="Company, industry, city, email…" onChange={(event) => setSellFilters((current) => ({ ...current, search: event.target.value, page: 1 }))} />
               </label>
               <label>
@@ -513,7 +513,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
                 </select>
               </label>
               <button type="button" className="primary-action" onClick={() => void previewSellCustomers(1)} disabled={sellState.previewLoading}>
-                {sellState.previewLoading ? 'Pulling from SELL…' : 'Preview SELL customers'}
+                {sellState.previewLoading ? 'Pulling from ConnectWise SELL…' : 'Preview ConnectWise SELL customers'}
               </button>
             </div>
 
@@ -537,7 +537,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
                     <thead>
                       <tr>
                         <th aria-label="Select"></th>
-                        <th>SELL organization</th>
+                        <th>ConnectWise SELL organization</th>
                         <th>Relationship</th>
                         <th>Source details</th>
                         <th>ProjectPulse action</th>
@@ -549,7 +549,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
                           <td><input type="checkbox" aria-label={`Select ${customer.name}`} checked={selectedSellIds.includes(customer.sourceRecordId)} onChange={() => toggleSellCustomer(customer.sourceRecordId)} /></td>
                           <td>
                             <strong>{customer.name}</strong>
-                            <small>SELL ID {customer.sourceRecordId} · Updated {formatDate(customer.updatedAt)}</small>
+                            <small>ConnectWise SELL ID {customer.sourceRecordId} · Updated {formatDate(customer.updatedAt)}</small>
                           </td>
                           <td>
                             <span className="customer-sell-pill">{customer.customerStatus ? `${words(customer.customerStatus)} customer` : words(customer.prospectStatus || 'organization')}</span>
@@ -565,7 +565,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
                         </tr>
                       ))}
                       {!sellCustomers.length ? (
-                        <tr><td colSpan={5}>No SELL organizations matched this page and filter.</td></tr>
+                        <tr><td colSpan={5}>No ConnectWise SELL organizations matched this page and filter.</td></tr>
                       ) : null}
                     </tbody>
                   </table>
@@ -595,7 +595,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
                   {run.errorCode ? <small>{words(run.errorCode)}</small> : null}
                 </article>
               ))}
-              {!sellState.runs.length ? <p>No SELL customer synchronization history is recorded.</p> : null}
+              {!sellState.runs.length ? <p>No ConnectWise SELL customer synchronization history is recorded.</p> : null}
             </div>
           ) : null}
         </div>
@@ -675,7 +675,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
 
               <div className="customer-local-enrichment-banner">
                 <strong>Local enrichment</strong>
-                <span>Contacts, titles, relationships, phone numbers, and addresses added below remain Pulse-owned and are preserved when the customer is refreshed from SELL.</span>
+                <span>Contacts, titles, relationships, phone numbers, and addresses added below remain Pulse-owned and are preserved when the customer is refreshed from ConnectWise SELL.</span>
               </div>
 
               <div className="customer-cost-grid">
@@ -730,7 +730,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
         <div className="customer-directory-layout management-layout">
           <article className="customer-directory-panel">
             <h3>{editingCustomerId ? 'Edit Customer' : 'Add Customer'}</h3>
-            <p className="muted">Manual customers remain supported. When a matching SELL organization is later imported, ProjectPulse links the existing record instead of creating a duplicate.</p>
+            <p className="muted">Manual customers remain supported. When a matching ConnectWise SELL organization is later imported, ProjectPulse links the existing record instead of creating a duplicate.</p>
             <form className="customer-directory-form" onSubmit={saveCustomer}>
               <label>
                 Customer name
@@ -767,7 +767,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
 
           <article className="customer-directory-panel">
             <h3>{editingContactId ? 'Edit Contact' : 'Add Contact'}</h3>
-            <p className="muted">Selected customer: {selectedCustomer?.clientName ?? 'None selected'}. These details are local ProjectPulse enrichment and are not overwritten by SELL synchronization.</p>
+            <p className="muted">Selected customer: {selectedCustomer?.clientName ?? 'None selected'}. These details are local ProjectPulse enrichment and are not overwritten by ConnectWise SELL synchronization.</p>
             <form className="customer-directory-form" onSubmit={saveContact}>
               <label>Contact name<input value={contactForm.contactName} onChange={(event) => setContactForm((current) => ({ ...current, contactName: event.target.value }))} required /></label>
               <label>Title<input value={contactForm.title} onChange={(event) => setContactForm((current) => ({ ...current, title: event.target.value }))} /></label>

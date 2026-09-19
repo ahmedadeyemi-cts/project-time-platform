@@ -160,7 +160,7 @@ export default function IntakeWorkTaskHandoffPanel() {
         <a href="#create-work-register">
           <span>MODULE 055D</span>
           <strong>Create New Project</strong>
-          <small>Create the project from GSD or SELL after intake is ready.</small>
+          <small>Create the project from GSD or ConnectWise SELL after intake is ready.</small>
         </a>
         <a href="#work-register">
           <span>MODULE 055C</span>

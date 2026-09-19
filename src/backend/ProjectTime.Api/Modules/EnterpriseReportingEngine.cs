@@ -519,7 +519,7 @@ internal static class EnterpriseReportingEngine
             if (approvedHours <= 0) blockers.Add("No approved invoice-eligible time.");
             if (review is null) blockers.Add("No billing-readiness review.");
             if (project.Missing.Length > 0) blockers.Add($"Missing: {string.Join(", ", project.Missing)}.");
-            if (project.SellReadinessStatus.Contains("not", StringComparison.OrdinalIgnoreCase)) blockers.Add($"SELL: {project.SellReadinessStatus}.");
+            if (project.SellReadinessStatus.Contains("not", StringComparison.OrdinalIgnoreCase)) blockers.Add($"ConnectWise SELL: {project.SellReadinessStatus}.");
             return Row(
                 ("projectId", project.ProjectId), ("customer", project.CustomerName), ("projectCode", project.ProjectCode),
                 ("projectName", project.ProjectName), ("approvedHours", approvedHours),
@@ -1062,7 +1062,7 @@ internal static class EnterpriseReportingEngine
     private static Dictionary<string, object?>[] SalesDeliveryHandoffQuality(FinancialOperationsProject[] projects) => projects.Select(project =>
     {
         var gaps = new List<string>();
-        if (string.IsNullOrWhiteSpace(project.SellQuoteNumber)) gaps.Add("SELL quote");
+        if (string.IsNullOrWhiteSpace(project.SellQuoteNumber)) gaps.Add("ConnectWise SELL quote");
         if (project.ProjectManagerUserId is null) gaps.Add("Project Manager");
         if (project.AccountExecutive is null) gaps.Add("Account Executive");
         if (project.SolutionArchitect is null) gaps.Add("Solution Architect");

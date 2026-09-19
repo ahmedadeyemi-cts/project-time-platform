@@ -39,7 +39,7 @@ const customerUi = read(paths.customerUi);
 const customerCss = read(paths.customerCss);
 const packageJson = JSON.parse(read(paths.package));
 
-assert('CORE_PROVIDER_CARDS', ['zendesk_sell', 'salesforce', 'servicenow', 'certinia']
+assert('CORE_PROVIDER_CARDS', ['connectwise_sell', 'salesforce', 'servicenow', 'certinia']
   .every((provider) => integrationUi.includes(`${provider}: {`)),
 'Module 026 renders explicit SELL, Salesforce, ServiceNow, and Certinia provider profiles');
 assert('CONSISTENT_PROVIDER_WORKSPACE', integrationUi.includes('Select a connector, then choose Edit')
@@ -60,24 +60,23 @@ assert('PROVIDER_TEMPLATE_ACTION', integrationUi.includes('Apply recommended tem
   && integrationUi.includes('Add CRM platform')
   && integrationUi.includes('Add another CRM or ERP platform'),
 'admins can apply built-in defaults or add and continue configuring another provider');
-assert('SELL_MODULE_021_HANDOFF', integrationUi.includes('Module 021 customer sync')
+assert('SELL_MODULE_021_HANDOFF', integrationUi.includes('Module 021 customer sync: mapping pending')
   && integrationUi.includes('Open Module 021 Customer Directory sync'),
 'Module 026 explicitly identifies the SELL connection consumed by Module 021');
-assert('SELL_PUBLIC_ENDPOINTS', integrationUi.includes('https://api.getbase.com/v2/contacts?per_page=1')
-  && integrationUi.includes('https://api.getbase.com/oauth2/authorize')
-  && integrationUi.includes('https://api.getbase.com/oauth2/token'),
-'SELL template uses fixed public HTTPS API and OAuth endpoints');
+assert('SELL_PUBLIC_ENDPOINTS', integrationUi.includes('https://sellapi.quosalsell.com/api/quotes?page=1&pageSize=1')
+  && !integrationUi.includes('api.getbase.com') && integrationUi.includes("apiKeyPrefix: 'Basic'"),
+'ConnectWise SELL uses its CPQ quote API and API-key Basic authentication');
 assert('CUSTOMER_SYNC_STATUS', customerUi.includes("fetchJson('/api/customers/sell/status'")
   && customerUi.includes("fetchJson('/api/customers/sell/runs'"),
 'Module 021 reads connection readiness and synchronization history');
 assert('CUSTOMER_SYNC_PREVIEW_IMPORT', customerUi.includes("sendJson('/api/customers/sell/preview'")
   && customerUi.includes("sendJson('/api/customers/sell/import'")
-  && customerUi.includes('Preview SELL customers')
+  && customerUi.includes('Preview ConnectWise SELL customers')
   && customerUi.includes('Import / refresh selected'),
 'Module 021 provides governed preview, selection, import, and refresh controls');
 assert('LOCAL_ENRICHMENT_VISIBLE', customerUi.includes('Local enrichment')
   && customerUi.includes('locally maintained contacts')
-  && customerUi.includes('not overwritten by SELL synchronization')
+  && customerUi.includes('not overwritten by ConnectWise SELL synchronization')
   && customerUi.includes('/contacts'),
 'ProjectPulse contact enrichment remains available after customer synchronization');
 assert('INTUITIVE_SYNC_LAYOUT', customerCss.includes('.customer-sell-readiness-grid')
@@ -108,33 +107,27 @@ if (fullRepositoryContext) {
     '/api/customers/sell/runs',
   ].every((route) => backend.includes(route)),
   'Module 021 has status, preview, import, and history APIs');
-  assert('MODULE_026_CREDENTIAL_REUSE', backend.includes('ProviderKey = "zendesk_sell"')
-    && backend.includes('CrmErpIntegrationModule.LoadCredentialAsync')
-    && backend.includes('CrmErpIntegrationModule.ReadEncryptionKey')
-    && backend.includes('CrmErpIntegrationModule.ReadBoundedResponseBodyAsync'),
-  'customer sync consumes the existing encrypted Module 026 SELL connection');
-  assert('API_KEY_AND_OAUTH_CONSUMPTION', backend.includes('provider.AuthModel == "api_key"')
-    && backend.includes('"oauth_token"')
-    && backend.includes('AuthorizationOutcome'),
-  'sync supports either approved Module 026 API-key/access-token or OAuth connection mode');
-  assert('SELL_HOST_ALLOWLIST', backend.includes('new("https://api.getbase.com/")')
-    && backend.includes('uri.Host.Equals(SellBaseUri.Host')
-    && backend.includes('CrmErpIntegrationModule.IsSafeExternalUriAsync'),
-  'outbound sync is restricted to the public SELL host and existing SSRF defenses');
-  assert('SOURCE_ORGANIZATIONS_ONLY', backend.includes('is_organization')
-    && backend.includes('ParseOrganizationData')
-    && backend.includes('not_an_organization'),
-  'only SELL organization records become ProjectPulse customers');
+  assert('MODULE_026_CONNECTION', backend.includes('ProviderKey = ConnectWiseSellContract.ProviderKey')
+    && backend.includes('ReadProviderAsync') && backend.includes('credential_configured'),
+  'status reads the authoritative ConnectWise SELL connection');
+  assert('CUSTOMER_ADAPTER_BLOCKED', backend.includes('customerSyncAvailable = false')
+    && backend.includes('connectwise_sell_customer_adapter_required')
+    && !backend.includes('LoadCredentialAsync') && !backend.includes('SendAsync'),
+  'unsupported customer sync cannot send credentials or claim success');
+  assert('NO_LEGACY_CONTACT_API', !backend.includes('api.getbase.com') && !backend.includes('v2/contacts'),
+  'the incompatible contacts API has been removed');
+  assert('SYNC_READINESS_UI', customerUi.includes('status?.customerSyncAvailable === true')
+    && customerUi.includes('customerSyncMessage'),
+  'the interface distinguishes API access from customer adapter readiness');
   assert('LOCAL_CONTACTS_PRESERVED', backend.includes('localContactEnrichmentPreserved = true')
-    && backend.includes('localContactsOverwritten', false)
+
     && !backend.includes('UPDATE client_contacts')
     && !backend.includes('INSERT INTO client_contacts'),
   'SELL refreshes never overwrite Module 021 local contact rows');
-  assert('DEDUPE_AND_LINK', backend.includes('customer_directory_source_links')
-    && backend.includes('ReadCustomerByNameAsync')
-    && backend.includes('existing_customer_linked')
-    && backend.includes('ON CONFLICT (source_system, source_record_id)'),
-  'source IDs and normalized names prevent duplicate customer creation');
+  assert('HISTORICAL_LINEAGE_PRESERVED', backend.includes('customer_directory_source_links')
+    && backend.includes('customer_directory_sync_runs') && !backend.includes('UPDATE clients')
+    && backend.includes('CONNECTWISE_SELL'),
+  'the new source cannot reinterpret legacy customer IDs or overwrite local records');
   assert('VIEW_AS_WRITE_BLOCKED', backend.includes('view_as_read_only')
     && backend.includes('IsViewAs(context)')
     && backend.includes('SameOrigin(context)'),

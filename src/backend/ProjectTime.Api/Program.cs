@@ -8304,7 +8304,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
                         'Authorized 055D user created Work Register from ' ||
                             CASE WHEN source_mode = 'sell_import' THEN 'SELL' ELSE 'GSD' END ||
                             ' intake package.',
-                        'Project Name,Customer,Source,SELL Quote,Pricing / Rate Review',
+                        'Project Name,Customer,Source,ConnectWise SELL Quote,Pricing / Rate Review',
                         @actor, NULL,
                         jsonb_build_object(
                             'intakePackageId', work_register_intake_package_id,

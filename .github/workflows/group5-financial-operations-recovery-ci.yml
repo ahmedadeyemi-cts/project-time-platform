@@ -90,7 +90,10 @@ jobs:
           CENTRAL_GROUP5_CONVERGENCE='^src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace\.jsx$'
           ENTERPRISE_OPERATIONS_ALLOWED='^src/frontend/project-time-web/(scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css))$'
 
-          if [[ "$OWNED_BRANCH" == 'true' ]]; then
+          if [[ "$HEAD_BRANCH" == fix/connectwise-sell-module026 ]]; then
+            python3 tests/connectwise-sell-release-scope.py
+            echo "GROUP_5_VALIDATION_MODE=CONNECTWISE_REGRESSION" >> "$GITHUB_ENV"
+          elif [[ "$OWNED_BRANCH" == 'true' ]]; then
             UNEXPECTED="$(grep -Ev "$OWNED_ALLOWED" <<<"$CHANGED" || true)"
             [[ -z "$UNEXPECTED" ]] || {
               echo 'Unexpected Group 5 source scope:' >&2

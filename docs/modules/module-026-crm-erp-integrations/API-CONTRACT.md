@@ -21,8 +21,20 @@ expiry; it does not accept arbitrary provider or actor identifiers.
 Only public HTTPS provider endpoints are accepted. Connection tests do not
 follow redirects or store response bodies.
 
-Module 055D is an internal consumer of the configured SELL provider. Its
-`POST /api/work-register/intake/packages/sell/import` route accepts a SELL
+Module 055D is an internal consumer of the configured ConnectWise SELL provider. Its
+`POST /api/work-register/intake/packages/sell/import` route accepts a ConnectWise SELL
 record ID, replaces the required `{recordId}` lookup-template token, applies
 the administrator-owned mapping, and retains only the mapped Work Register
 fields.
+
+## ConnectWise SELL credentials
+
+For `connectwise_sell`, `PUT /api/integrations/026/providers/connectwise_sell/credential`
+accepts `accessKey`, `publicKey`, and `privateKey`. All three are required together;
+`secret` is reserved for other providers. The three values are encrypted as one
+credential and never returned. Configuration saves do not require credentials.
+The built-in API origin, read-only quote test, Authorization header and Basic
+prefix are validated server-side; OAuth is rejected.
+
+See [setup and API boundaries](CONNECTWISE-SELL-SETUP.md). Migration 111 adds the
+new provider identity while preserving old source and submission evidence.

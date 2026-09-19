@@ -424,6 +424,9 @@ public static partial class CrmErpIntegrationModule
         IHttpClientFactory httpClientFactory,
         CancellationToken cancellationToken)
     {
+        if (provider.ProviderKey is ConnectWiseSellContract.LegacyProviderKey or ConnectWiseSellContract.ProviderKey)
+            return new(false, "oauth_not_supported", "oauth_not_supported", null,
+                "Configure ConnectWise SELL with its API keys.", StatusCodes.Status409Conflict);
         var lockKey = $"module026-oauth-refresh:{provider.ProviderKey}";
         var lockAcquired = false;
         await using (var claim = new NpgsqlCommand(

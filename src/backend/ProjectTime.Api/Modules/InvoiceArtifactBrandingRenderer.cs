@@ -166,7 +166,7 @@ internal static class BrandedInvoiceArtifactRenderer
         PdfFillRect(page, 30d, 228d, 552d, 52d, "0.94 0.98 1.00");
         PdfStrokeRect(page, 30d, 228d, 552d, 52d, "0.67 0.84 0.93", 0.8d);
         PdfLabelValue(page, 42d, 240d, "CERTINIA ID", Fallback(invoice.CertiniaId, "Not configured"), 150d);
-        PdfLabelValue(page, 218d, 240d, "SELL QUOTE", Fallback(invoice.SellQuote, "Not configured"), 150d);
+        PdfLabelValue(page, 218d, 240d, "ConnectWise SELL QUOTE", Fallback(invoice.SellQuote, "Not configured"), 150d);
         PdfLabelValue(page, 394d, 240d, "SALESFORCE ID", Fallback(invoice.SalesforceId, "Not configured"), 168d);
     }
 
@@ -553,7 +553,7 @@ internal static class BrandedInvoiceArtifactRenderer
         XlsxPairRow(xml, 6, "A", "PROJECT", "B", $"{invoice.ProjectCode} - {invoice.ProjectName}", "G", "BILLING PERIOD", "H", $"{FormatDate(invoice.BillingPeriodStart)} through {FormatDate(invoice.BillingPeriodEnd)}");
         XlsxPairRow(xml, 7, "A", "PROJECT MANAGER", "B", invoice.ProjectManager, "G", "PROJECT COORDINATOR", "H", invoice.ProjectCoordinator);
         XlsxPairRow(xml, 8, "A", "PURCHASE ORDER", "B", Fallback(invoice.PurchaseOrderNumber, "Not configured"), "G", "CONTRACT TYPE", "H", Fallback(invoice.ContractType, "Not configured"));
-        XlsxPairRow(xml, 10, "A", "CERTINIA ID", "B", Fallback(invoice.CertiniaId, "Not configured"), "G", "SELL QUOTE", "H", Fallback(invoice.SellQuote, "Not configured"));
+        XlsxPairRow(xml, 10, "A", "CERTINIA ID", "B", Fallback(invoice.CertiniaId, "Not configured"), "G", "ConnectWise SELL QUOTE", "H", Fallback(invoice.SellQuote, "Not configured"));
         XlsxPairRow(xml, 11, "A", "SALESFORCE ID", "B", Fallback(invoice.SalesforceId, "Not configured"), "G", "PO AUTHORIZED", "H", invoice.PurchaseOrderAmount is decimal po ? Money(po) : "Not configured");
         merges.AddRange(new[] { "B5:F5", "H5:K5", "B6:F6", "H6:K6", "B7:F7", "H7:K7", "B8:F8", "H8:K8", "B10:F10", "H10:K10", "B11:F11", "H11:K11" });
 

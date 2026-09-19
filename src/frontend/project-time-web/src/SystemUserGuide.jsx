@@ -531,16 +531,16 @@ const detailedModuleGuides = {
   'create-work-register': {
     category: 'Customers & Commercial',
     audience: ['Project Team Coordinator', 'Administrator'],
-    purpose: 'Create a new project from either GSD or SELL.',
+    purpose: 'Create a new project from either GSD or ConnectWise SELL.',
     functions: [
-      'Offers Import from GSD and Import from SELL as separate controlled sources.',
-      'Uses Module 026 OAuth or API-key configuration for SELL.',
-      'Treats SELL as authoritative for project name and Actual Rate / Pricing / Rate Review.',
+      'Offers Import from GSD and Import from ConnectWise SELL as separate controlled sources.',
+      'Uses Module 026 OAuth or API-key configuration for ConnectWise SELL.',
+      'Treats ConnectWise SELL as authoritative for project name and Actual Rate / Pricing / Rate Review.',
       'Allows review of customer, assignments, tasks, documents, and other permitted fields.',
       'Records intake, review, and final-creation audit evidence.'
     ],
-    steps: ['Choose GSD or SELL.', 'Select the ProjectPulse customer and enter the audit reason.', 'Upload GSD/SOW files or enter the SELL record ID.', 'Review the permitted fields and assignments.', 'Create the record and verify its Audit tab in Module 055C.'],
-    notes: ['Project Team Coordinators, Administrators, and Super Administrators can create. SELL project name and pricing fields cannot be overwritten during review.']
+    steps: ['Choose GSD or ConnectWise SELL.', 'Select the ProjectPulse customer and enter the audit reason.', 'Upload GSD/SOW files or enter the ConnectWise SELL record ID.', 'Review the permitted fields and assignments.', 'Create the record and verify its Audit tab in Module 055C.'],
+    notes: ['Project Team Coordinators, Administrators, and Super Administrators can create. ConnectWise SELL project name and pricing fields cannot be overwritten during review.']
   },
   'rate-card-administration': {
     category: 'Customers & Commercial',
@@ -673,7 +673,7 @@ const detailedModuleGuides = {
   'crm-integration': {
     category: 'Expenses & Integrations',
     audience: ['Sales / Account Executive', 'Project Team Coordinator', 'Administrator'],
-    purpose: 'Connect SELL, Salesforce, Certinia, ServiceNow, and approved custom CRM/ERP platforms and review sanitized service availability.',
+    purpose: 'Connect ConnectWise SELL, Salesforce, Certinia, ServiceNow, and approved custom CRM/ERP platforms and review sanitized service availability.',
     functions: [
       'Shows built-in and manually registered CRM/ERP providers.',
       'Supports OAuth 2.0 or write-only API-key configuration.',

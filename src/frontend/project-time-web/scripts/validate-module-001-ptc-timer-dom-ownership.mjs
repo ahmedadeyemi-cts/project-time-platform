@@ -292,7 +292,7 @@ requireAll(module026, [
 ], 'PR 207 Module 026 editable connectors');
 if (module026Backend) {
   requireAll(module026Backend, [
-    'zendesk_sell',
+    'connectwise_sell',
     'salesforce',
     'servicenow',
     'certinia',

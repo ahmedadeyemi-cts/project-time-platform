@@ -45,8 +45,8 @@ try {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await page.goto(origin + '/__module025');
-    const actions = page.getByRole('region', { name: 'Documents and SELL', exact: true });
-    for (const name of ['Download SOW (.docx)', 'Download GSD (.xlsx)', 'Send to SELL', 'Version history']) {
+    const actions = page.getByRole('region', { name: 'Documents and ConnectWise SELL', exact: true });
+    for (const name of ['Download SOW (.docx)', 'Download GSD (.xlsx)', 'Send to ConnectWise SELL', 'Version history']) {
       await actions.getByRole('button', { name, exact: true }).waitFor();
       assert.equal(await actions.getByRole('button', { name, exact: true }).isDisabled(), true, `No record: ${name}`);
     }
@@ -67,11 +67,11 @@ try {
         assert.equal(req.headers['x-projectpulse-session'], 'synthetic-session-only');
       }
     }
-    await actions.getByRole('button', { name: 'Send to SELL', exact: true }).click();
+    await actions.getByRole('button', { name: 'Send to ConnectWise SELL', exact: true }).click();
     const register = page.locator('[data-module025-sow-register="true"]');
     await register.getByRole('heading', { name: /SOW-TEST-025/ }).waitFor();
-    await register.getByText('Automatic SELL publication is not enabled', { exact: true }).waitFor();
-    assert.equal(await register.getByRole('button', { name: state === 'confirmed' || state === 'archived' ? 'Push to SELL' : 'Send to SELL', exact: true }).isDisabled(), true);
+    await register.getByText('Automatic ConnectWise SELL publication is not enabled', { exact: true }).waitFor();
+    assert.equal(await register.getByRole('button', { name: state === 'confirmed' || state === 'archived' ? 'Push to ConnectWise SELL' : 'Send to ConnectWise SELL', exact: true }).isDisabled(), true);
     await page.getByRole('tab', { name: 'SOW Authoring', exact: true }).click();
     await page.locator('.m025-editor-panel').getByText('SOW-TEST-025', { exact: true }).waitFor();
     assert.deepEqual(writes, [], 'Viewing actions or SELL readiness must not generate, save, or publish');
