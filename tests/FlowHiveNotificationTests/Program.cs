@@ -66,6 +66,7 @@ async System.Threading.Tasks.Task Database()
         CREATE TABLE projects(project_id UUID PRIMARY KEY,project_code TEXT,status TEXT DEFAULT 'active',project_manager_user_id UUID);
         CREATE TABLE project_notification_dispatches(project_notification_dispatch_id UUID PRIMARY KEY);
         """);
+    Check(!await ProjectFlowHiveNotificationSource.ReadyAsync(db,default),"missing optional notification tables report unavailable without breaking the PSA workspace");
     var m64="database/migrations/064_module_065_enterprise_notification_orchestration.sql";
     foreach(var table in new[]{"enterprise_notification_policies","enterprise_notification_events","enterprise_notification_event_history","enterprise_notification_source_checkpoints"}) await Sql(Table(m64,table));
     await Sql("""

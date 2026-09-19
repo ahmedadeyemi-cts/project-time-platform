@@ -14,13 +14,20 @@ internal static class ProjectFlowHiveNotificationSource
 
     internal static async System.Threading.Tasks.Task<bool> ReadyAsync(NpgsqlConnection connection, CancellationToken token)
     {
-        await using var command = new NpgsqlCommand("""
+        // Module 103 can exist before the optional Module 065 orchestration schema.
+        // Check relation names without parsing a query against missing tables.
+        await using var tables = new NpgsqlCommand("""
             SELECT to_regclass('public.project_flowhive_notification_state') IS NOT NULL
                 AND to_regclass('public.project_flowhive_plan_versions') IS NOT NULL
-                AND EXISTS(SELECT 1 FROM enterprise_notification_policies WHERE policy_code='FLOWHIVE_TASK_ASSIGNED')
-                AND EXISTS(SELECT 1 FROM enterprise_notification_policies WHERE policy_code='FLOWHIVE_TASK_DUE');
+                AND to_regclass('public.project_flowhive_plan_reviews') IS NOT NULL
+                AND to_regclass('public.enterprise_notification_policies') IS NOT NULL;
             """, connection);
-        return await command.ExecuteScalarAsync(token) is true;
+        if (await tables.ExecuteScalarAsync(token) is not true) return false;
+        await using var policies = new NpgsqlCommand("""
+            SELECT COUNT(*)=2 FROM enterprise_notification_policies
+            WHERE policy_code IN ('FLOWHIVE_TASK_ASSIGNED','FLOWHIVE_TASK_DUE');
+            """, connection);
+        return await policies.ExecuteScalarAsync(token) is true;
     }
 
     internal static async System.Threading.Tasks.Task<EnterpriseNotificationSourceObservation> ScanAsync(
