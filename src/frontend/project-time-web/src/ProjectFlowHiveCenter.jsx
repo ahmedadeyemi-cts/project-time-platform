@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import ProjectFlowHivePlannerReview from './ProjectFlowHivePlannerReview.jsx';
+import ProjectFlowHiveOverview from './ProjectFlowHiveOverview.jsx';
+import { flowHiveProjectLink } from './flowhive-psa-overview.js';
 import ProjectFlowHivePsaWorkspace from './ProjectFlowHivePsaWorkspace.jsx';
 import { boundedFetch, canApplyPlannerResult, observePlanner } from './flowhive-planner-operation.js';
 import usSignalLogoUrl from '../brand/ussignal.png';
@@ -13,6 +15,7 @@ import './projectpulse-module-standard.css';
 
 const views = [
   { id: 'portfolio', label: 'Portfolio' },
+  { id: 'overview', label: 'Delivery overview' },
   { id: 'planner', label: 'Planner' },
   { id: 'kanban', label: 'Kanban' },
   { id: 'calendar', label: 'Monthly calendar' },
@@ -394,6 +397,8 @@ export default function ProjectFlowHiveCenter() {
       setArtifactReadiness(artifactResult);
       setSavedPlans(plansResult.plans || []);
       setSelectedProjectId((current) => current || portfolioResult.projects?.[0]?.projectId || '');
+      const linkedProject = flowHiveProjectLink(window.location.hash, portfolioResult.projects);
+      if (linkedProject && !selectedProjectId) { setSelectedProjectId(linkedProject); setActiveView('overview'); }
     } catch (loadError) {
       if (!isCurrent()) return;
       setError(loadError.message || 'Project FlowHive could not be loaded.');
@@ -1325,6 +1330,8 @@ export default function ProjectFlowHiveCenter() {
           </div>
         </div>
       ) : null}
+
+      {activeView === 'overview' ? <ProjectFlowHiveOverview key={selectedProjectId} plan={draftPlan} schedule={schedule} dirty={dirty} userId={portfolio?.access?.effectiveUserId} onOpenTask={(wbs) => { setActiveView('planner'); setCollapsedPhases(new Set()); setExpandedTaskWbs(wbs); }} /> : null}
 
       {activeView === 'planner' ? (
         <div className="flowhive-view-panel">

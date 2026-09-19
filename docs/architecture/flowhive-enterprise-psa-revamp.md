@@ -24,11 +24,11 @@ Already on main at c15ef12d5ce1bc54c15d8b31c87a50daa94bad17:
 - Reviewed regeneration preserves existing work through an explicit merge preview.
 - Working copies, immutable versions, baselines, schedule preview, Gantt, Kanban,
   financial controls/readback, RAID, exports, and governed customer sharing.
-- Meetings contains recordings. Task reminders explicitly report unavailable.
+- Meetings contains recordings. Task reminder preferences existed without a dispatcher before this PR.
 - Schedule calculation explicitly remains a weekday preview, not a capacity-aware
   commitment. A calendar display does not change that scheduling authority.
 
-Implemented in this first increment:
+Implemented in PR #1114:
 
 - Canonical Account Executive name/identity and visible source document count in
   the scoped portfolio; search includes the AE. No duplicate contact directory.
@@ -43,6 +43,18 @@ Implemented in this first increment:
   days with exclusive end. Event subjects, locations and bodies are not returned.
   Missing credentials, consent, mailbox errors and partial failures remain unknown.
 - UTC is explicit throughout this increment; timezone selection is still required.
+
+- Approved-baseline assignment and due-date events feed the existing Module 065
+  enterprise worker. Default lead days are 3 and 0, plus one overdue event per
+  due-date transition. Project timezone, quiet hours, active identities and current
+  source eligibility are rechecked. Drafts cannot publish notifications.
+- Project notification history and PM/engineer delivery overview expose overdue,
+  due-soon, blocked, unassigned and critical-path work without inventing capacity.
+- Migration 112 registers policies at test_only, preserves existing settings, and
+  records restart-safe source state. Rollback disables policies and preserves audit.
+
+The [PSA benchmark](flowhive-psa-benchmark.md) maps ten reference products to
+capability gaps, system ownership and measurable release gates.
 
 ## Full release requirements and acceptance gates
 
@@ -97,11 +109,11 @@ Implemented in this first increment:
 
 - [ ] One durable project event authority with independent email and Teams delivery
       records, retries, backoff, deduplication, suppression reason and delivery history.
-- [ ] Assignment/reassignment: notify new assignee only when the change is published.
+- [x] Assignment/reassignment: notify new assignee only when the change is published.
       Draft generation and unchanged baseline publication must not send duplicates.
 - [ ] Reminders: 3 calendar days before due, due day, and first day overdue in the
       project's timezone; configurable later escalation and digest cadence.
-- [ ] Late assignment inside the reminder window sends the assignment immediately;
+- [x] Late assignment inside the reminder window sends the assignment immediately;
       do not emit stale three-day reminders for a date that already passed.
 - [ ] Changed due date cancels obsolete pending reminders. Completion, cancellation,
       reassignment, project closure and revoked access are rechecked before delivery.
@@ -111,7 +123,7 @@ Implemented in this first increment:
       changes, RAID changes, meeting updates, budget thresholds and closeout events.
 - [ ] Event preferences by project, recipient, severity and channel, with quiet hours,
       digest options and documented escalation rules. Required assignment email stays on.
-- [ ] Email uses Module 065 transport and recipient policy; do not add direct SMTP.
+- [x] Email uses Module 065 transport and recipient policy; do not add direct SMTP.
 - [ ] Teams personal activity notifications use an installed Teams app and approved
       Graph permissions; a channel workflow is a separate optional destination.
 - [ ] Teams cards link to the authorized task/project. Interactive updates reauthorize
@@ -172,8 +184,40 @@ unknown calendars, week/month navigation, refresh and project-switch races.
 Protected UAT must additionally verify SQL against the real migration set, project
 scope for PM/engineer/AE/SA/admin/View-As, private-event redaction, calendar permissions,
 20+ mailboxes and partial Graph failures. No external messages are sent by this
-increment. Email/Teams workers and full capacity forecasting are not implemented by
-these display/calendar changes and remain explicit release blockers above.
+PR. The Module 065 worker now scans approved WBS tasks, but migration 112 and
+controlled live-provider acceptance remain required. Teams transport, meeting
+booking and full capacity forecasting remain release blockers above.
 
 Rollout must preserve existing project IDs, task IDs, time entries and baseline
 history. No destructive test-data cleanup or production deployment is part of this PR.
+
+## Task event contract for the concurrent Module 065 Teams implementation
+
+Source module `066`, contract `flowhive-task-events-v1`, policies
+`FLOWHIVE_TASK_ASSIGNED` / `FLOWHIVE_TASK_DUE`. Recipients are active canonical
+`subject_user_id` values resolved from approved task assignments or project PM.
+Payload contains project/task IDs, WBS/name, due date, timezone, kind, transition,
+project boundary and authorized project deep link. It contains no webhook,
+credential, calendar details, arbitrary email recipients or private cost data.
+
+Module 065 must preserve the strictest project/event/global boundary, apply the
+source eligibility check before each channel retry, and store channel-specific
+outcomes. A test-only event cannot become live when settings change later. Channel
+membership and personal Entra mapping belong in Module 065. No Teams provider is
+added in this PR, and email success must not imply Teams success.
+
+Operational semantics: the existing worker normally scans every five minutes;
+quiet hours defer detection/delivery. Initial enablement observes current approved
+assignments (there is no historical message replay). Unchanged baselines retain
+transition keys. New/reassigned owners and changed due dates receive new keys.
+Old lead-day events become stale when their local-date window passes; overdue is
+once per due-date/recipient transition. The latest non-archived reviewed baseline
+is the notification authority even while a newer draft is being edited. Progress
+and date changes must be published to change that authority.
+
+Event creation is idempotent and replicas use PostgreSQL advisory locks. A crash
+before the source checkpoint replays the same event keys. FlowHive processing
+leases can be reclaimed after 30 minutes; failed delivery uses Module 065 backoff
+and the existing eight-attempt limit. Provider acknowledgement lost after a send
+can still cause at-least-once delivery; exact-once email is not claimed. Review
+Module 065 failure diagnostics and replay through its governed controls.

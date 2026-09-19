@@ -23,6 +23,8 @@ internal static partial class ProjectFlowHivePsaModule
                 UNION ALL SELECT account_executive_user_id, 'Account Executive' FROM projects WHERE project_id=@project
                 UNION ALL SELECT solution_architect_user_id, 'Solution Architect' FROM projects WHERE project_id=@project
                 UNION ALL SELECT user_id, 'Project team' FROM project_assignments WHERE project_id=@project
+                    AND (effective_start_date IS NULL OR effective_start_date <= CURRENT_DATE)
+                    AND (effective_end_date IS NULL OR effective_end_date >= CURRENT_DATE)
                 UNION ALL SELECT user_id, 'Planning collaborator' FROM project_planning_collaborators
                     WHERE project_id=@project AND module_code='066' AND is_active
                       AND effective_start_date <= CURRENT_DATE

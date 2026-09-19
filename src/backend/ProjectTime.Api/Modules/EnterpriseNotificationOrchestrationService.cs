@@ -198,6 +198,29 @@ internal static class EnterpriseNotificationOrchestrationService
                 message);
         }
 
+        string? sourceBoundary = null;
+        if (notificationEvent.PolicyCode is ProjectFlowHiveNotificationSource.AssignmentPolicy or ProjectFlowHiveNotificationSource.DuePolicy)
+        {
+            var source = await ProjectFlowHiveNotificationSource.ValidateAsync(connection, notificationEvent, cancellationToken);
+            sourceBoundary = source.Boundary;
+            if (!source.Current)
+            {
+                const string message = "The approved WBS task, recipient, due date, or notification preference changed.";
+                await EnterpriseNotificationRepository.CompleteEventAsync(connection, notificationEvent, "suppressed",
+                    null, releasedByUserId, "FLOWHIVE_TASK_EVENT_STALE", message, new { sourceCurrent = false }, correlationId, cancellationToken);
+                return new(notificationEvent.EventId, null, policy.PolicyCode, "suppressed", "module_065", "locked", 0,
+                    "FLOWHIVE_TASK_EVENT_STALE", message);
+            }
+            if (source.Defer)
+            {
+                await using var defer = new NpgsqlCommand("UPDATE enterprise_notification_events SET event_status='pending', available_at=NOW()+INTERVAL '5 minutes', attempt_count=GREATEST(0,attempt_count-1), updated_at=NOW() WHERE enterprise_notification_event_id=@id;", connection);
+                defer.Parameters.AddWithValue("id", notificationEvent.EventId);
+                await defer.ExecuteNonQueryAsync(cancellationToken);
+                return new(notificationEvent.EventId, null, policy.PolicyCode, "queued", "module_065", source.Boundary, 0,
+                    "FLOWHIVE_QUIET_HOURS", "Delivery deferred during the project's quiet hours.");
+            }
+        }
+
         var recipientResolution = await EnterpriseNotificationRecipientResolver.ResolveAsync(
             connection,
             policy,
@@ -212,6 +235,7 @@ internal static class EnterpriseNotificationOrchestrationService
             context,
             cancellationToken);
         var boundary = EffectiveBoundary(policy.DeliveryBoundary, readiness.RecipientBoundary);
+        if (sourceBoundary is not null) boundary = EffectiveBoundary(boundary, sourceBoundary);
         var project = await LoadMinimalProjectSnapshotAsync(
             connection,
             notificationEvent.ProjectId,

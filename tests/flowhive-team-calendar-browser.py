@@ -64,6 +64,23 @@ async def main():
         await page.evaluate('''() => window.mountFlowHiveTeamCalendar({projectId:'error-project',request:async()=>{throw new Error('Synthetic calendar outage');}})''')
         await page.get_by_text('Synthetic calendar outage',exact=True).wait_for()
         assert await page.get_by_text('New project member',exact=True).count()==0
+        await page.evaluate("""() => {
+          window.openedTask=null;
+          const today=new Date().toISOString().slice(0,10);
+          window.mountFlowHiveOverview({userId:'engineer',dirty:true,onOpenTask:wbs=>window.openedTask=wbs,
+            plan:{tasks:[{clientTaskId:'t1',wbsNumber:'1.1',name:'Configure test service',status:'blocked'},
+                         {clientTaskId:'t2',wbsNumber:'1.2',name:'Verify test service',status:'not_started'}],
+                  assignments:[{taskWbs:'1.1',resourceUserId:'engineer',resourceDisplayName:'Fixture engineer'}]},
+            schedule:{valid:true,projectFinishDate:today,tasks:[{wbsNumber:'1.1',endDate:today,isCritical:true}]}});
+        }""")
+        await page.get_by_role('heading',name='What needs attention').wait_for()
+        await page.get_by_role('button',name='My work 1',exact=True).click()
+        assert await page.locator('tbody tr').count()==1
+        await page.get_by_role('button',name='1.1 · Configure test service',exact=True).click()
+        assert await page.evaluate('window.openedTask')=='1.1'
+        await page.get_by_role('button',name='Unassigned 1',exact=True).click()
+        assert 'Verify test service' in await page.locator('tbody').inner_text()
+        await page.screenshot(path='/tmp/flowhive-delivery-overview-preview.png',full_page=True)
         assert not errors, errors
         await browser.close()
         print('FLOWHIVE_TEAM_CALENDAR_BROWSER=PASS (navigation, unknown state, member filter, refresh, race, failure)')
