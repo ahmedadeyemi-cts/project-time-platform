@@ -142,19 +142,19 @@ async def report_entry_failure(page, bootstrap_responses, page_errors, unexpecte
         print('MODULE025_REGISTER_ENTRY_CAPTURE=unavailable', file=sys.stderr, flush=True)
 
 
-async def run() -> None:
+async def run(mode=None, source_run_id=None) -> None:
     from playwright.async_api import async_playwright
 
     base = os.environ.get('BASE', ORIGIN).rstrip('/')
     if base != ORIGIN:
         fail('unapproved_public_origin')
-    mode = os.environ.get('MODULE025_REGISTER_MODE', 'fixture')
+    mode = mode or os.environ.get('MODULE025_REGISTER_MODE', 'fixture')
     if mode not in ('fixture', 'retained-sa'):
         fail('browser_mode_invalid')
     retained_sa = mode == 'retained-sa'
     username = os.environ.get('PROJECTPULSE_M025_SA_EMAIL', '') if retained_sa else 'demo.manager@ussignal.local'
     password = os.environ.get('PROJECTPULSE_M025_SA_PASSWORD' if retained_sa else 'TEST_LOGIN_PASSWORD', '')
-    source_run_id = os.environ.get('MODULE025_SOURCE_RUN_ID', '')
+    source_run_id = source_run_id or os.environ.get('MODULE025_SOURCE_RUN_ID', '')
     engagement_number = os.environ.get('MODULE025_ENGAGEMENT_NUMBER', '')
     evidence_path = os.environ.get('MODULE025_CREATE_RESPONSE', '')
     uat_run_id = os.environ.get('MODULE025_UAT_RUN_ID', '')

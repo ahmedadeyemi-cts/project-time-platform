@@ -165,6 +165,9 @@ elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-live-celar-compact-prompt-202609
     exit 1
   }
   node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+elif [[ "$HEAD_BRANCH" == 'fix/module025-normal-sa-register-gate-20260919' ]]; then
+  node tests/module025-normal-sa-register-gate-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/module025-retained-record-lookup-20260919' ]]; then
   node tests/module025-retained-record-lookup-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs

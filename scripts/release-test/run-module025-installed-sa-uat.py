@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -34,6 +35,22 @@ DETAIL_FIELDS = (
 
 class AcceptanceError(Exception):
     pass
+
+
+def load_register_verifier():
+    path = Path(__file__).resolve().parents[2] / 'tests/module025-sow-register-browser.py'
+    spec = importlib.util.spec_from_file_location('normal_sa_register', path)
+    verifier = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verifier)
+    return verifier
+
+
+async def verify_normal_sa_register(report, source_run_id):
+    # Run the same generation-free suite proven against the installed real SA.
+    # Record success only after CSV, retained downloads, hashes and reload pass.
+    await load_register_verifier().run(mode='retained-sa', source_run_id=source_run_id)
+    report['registerBrowser'] = {'status': 'passed', 'sourceRunId': source_run_id,
+                                 'generationPosts': 0, 'businessWrites': 0}
 
 
 def require(condition: bool, code: str) -> None:
@@ -533,6 +550,7 @@ async def main() -> int:
         # A SOW lifecycle pass never claims that document publication occurred.
         report["fullRequestedScopePassed"] = False
 
+        await verify_normal_sa_register(report, os.environ.get('GITHUB_RUN_ID', ''))
         await browser_lifecycle(session, engagement_number, edit_marker, report, evidence_dir)
         report["retainedVersions"] = verify_historical_downloads(engagement_id, token, report["confirmedVersion"])
 
