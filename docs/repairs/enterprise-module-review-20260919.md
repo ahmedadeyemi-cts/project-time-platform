@@ -64,3 +64,7 @@ Complete unresolved AI policy/adapters, inspect Module 060 published permissions
 ## Current-main validation and release decision
 
 September 19: merged main `7cd57991` locally. Full frontend production build and three queue tests pass; `git diff --check` passes. Release remains blocked: application-level autosave week navigation/submit race coverage is missing; backend compilation, effective contract-read permissions, signed-in role acceptance, AI routing authority/adapters and complete cost reconciliation remain unresolved. No merge to main or Protected UAT deployment is approved by these results. Local Git push could not authenticate; attempting publication through the connected GitHub app for CI review only.
+
+## CI repair follow-up
+
+API Release compilation and frontend production builds passed in GitHub Actions for c7598981. Source-stability failures came from the tracked generated financial service; it is now synchronized. Added exact package registration for the existing release-scope validators, preserving deployment controls. Seven autosave tests now exercise the real application handlers as well as serialization: newer typing retains the popup, offline saves retain the selected week, submission locks before waiting, other days save before day submission refresh, and identity changes cancel waiting submissions. Full frontend build passes after these fixes. This evidence does not resolve the remaining AI integration, cost-model or signed-in acceptance items above.

@@ -4330,6 +4330,8 @@ export default function App() {
   const draftWrite = useRef(createDraftWriteQueue());
   const draftScope = useRef('');
   const draftRevision = useRef(0);
+  const draftMutation = useRef(false);
+  const draftHydrationScope = useRef('');
   const [draftDirty, setDraftDirty] = useState(false);
   const [activitySource, setActivitySource] = useState('nonProject');
   /* MODULE_001_TIMESHEET_MULTIVIEW_START */
@@ -4656,6 +4658,11 @@ export default function App() {
   }, [selectedWeekStart, authSession?.sessionToken]);
 
   useEffect(() => {
+    if (timesheet.loading || !timesheet.data || timesheet.data.weekStart !== selectedWeekStart) return;
+    const hydrationScope = JSON.stringify([selectedWeekStart, authSession?.sessionToken, securityContext.data?.effectiveUserId]);
+    if (draftDirty && draftHydrationScope.current === hydrationScope) return;
+    draftHydrationScope.current = hydrationScope;
+    setDraftDirty(false);
     const categories = timesheet.data?.nonProjectCategories ?? [];
   const assignedOpenTasks = openTasks.data?.tasks ?? [];
     const savedEntries = timesheet.data?.entries ?? [];
@@ -4757,7 +4764,7 @@ export default function App() {
     const holidayDraftTotal = Object.values(entryMap).reduce((total, entry) => total + Number(entry.hours || 0), 0);
     setSubmissionStatus(statusToLabel(timesheet.data?.status, savedTotal || holidayDraftTotal));
     setSaveStatus(savedEntries.length > 0 ? `Loaded ${savedEntries.length} saved time entr${savedEntries.length === 1 ? 'y' : 'ies'}` : 'Not saved yet');
-  }, [timesheet.data?.weekStart, timesheet.data?.timesheetId, timesheet.data?.status, timesheet.data?.entries?.length, openTasks.data?.count, timesheetPreferences.data?.defaultNonProjectCategoryCodes?.join(','), timesheetPreferences.data?.autoAddHolidays, companyHolidays.data?.count, hiddenRowsRevision]);
+  }, [timesheet.data?.weekStart, timesheet.data?.timesheetId, timesheet.data?.status, timesheet.data?.entries?.length, openTasks.data?.count, timesheetPreferences.data?.defaultNonProjectCategoryCodes?.join(','), timesheetPreferences.data?.autoAddHolidays, companyHolidays.data?.count, hiddenRowsRevision, timesheet.loading, authSession?.sessionToken, securityContext.data?.effectiveUserId]);
 
   const days = timesheet.data?.days ?? [];
   const categories = timesheet.data?.nonProjectCategories ?? [];
@@ -5804,7 +5811,7 @@ export default function App() {
   }
 
   function isDayEditable(workDate) {
-    return getDayStatus(workDate).canEdit !== false;
+    return !draftMutation.current && !isSaving && !timesheet.loading && getDayStatus(workDate).canEdit !== false;
   }
 
   function getEntry(rowId, date, type) {
@@ -5950,6 +5957,8 @@ export default function App() {
   function removeRow(rowId) {
     if (!isAnyDayEditable) return;
 
+    draftRevision.current += 1;
+    setDraftDirty(true);
     hideRowForCurrentWeek(rowId);
     setActiveRows((current) => current.filter((row) => row.id !== rowId));
     setEntries((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${rowId}|`))));
@@ -6017,16 +6026,24 @@ export default function App() {
   const selectedDayStatus = selectedCell ? getDayStatus(selectedCell.date) : null;
   const selectedEntryIsEditable = Boolean(selectedCell && isDayEditable(selectedCell.date));
 
+  async function changeTimesheetWeek(nextWeek) {
+    if (nextWeek === selectedWeekStart || draftMutation.current || isSaving) return;
+    if (draftDirty && !(await autoSaveDraft())) return;
+    if (draftMutation.current || isSaving) return;
+    setSelectedCell(null);
+    setSelectedWeekStart(nextWeek);
+  }
+
   function openEntryDetails(rowId, date, type) {
     setAiSuggestionState({ loading: false, suggestion: '', provider: '', targetDecisions: [], warning: '', error: '' });
     setSelectedCell({ rowId, date, type });
   }
 
   useEffect(() => {
-    if (!draftDirty || isSaving || activeRoute !== 'timesheet') return undefined;
+    if (!draftDirty || isSaving || timesheet.loading || draftHydrationScope.current !== draftScope.current) return undefined;
     const timer = window.setTimeout(() => void autoSaveDraft(), 1200);
     return () => window.clearTimeout(timer);
-  }, [entries, draftDirty, isSaving, activeRoute]);
+  }, [entries, draftDirty, isSaving, timesheet.loading, selectedWeekStart, authSession?.sessionToken, securityContext.data?.effectiveUserId]);
 
   useEffect(() => {
     if (!draftDirty) return undefined;
@@ -6204,7 +6221,7 @@ export default function App() {
   }
 
   async function autoSaveDraft(statusMessage = 'Saving draft…') {
-    if (!isAnyDayEditable || isSaving) return false;
+    if (!isAnyDayEditable || isSaving || draftMutation.current || draftHydrationScope.current !== draftScope.current) return false;
     const scope = draftScope.current;
     const revision = draftRevision.current;
     const payload = buildTimesheetPayload();
@@ -6223,7 +6240,7 @@ export default function App() {
           setDraftDirty(false);
           setSaveStatus('Draft saved');
         }
-        return true;
+        return scope === draftScope.current && revision === draftRevision.current;
       } catch (error) {
         if (scope === draftScope.current) setSaveStatus(`Draft not saved: ${error instanceof Error ? error.message : 'Retry saving.'}`);
         return false;
@@ -6233,13 +6250,17 @@ export default function App() {
   }
 
   async function saveDraft() {
-    await draftWrite.current.idle();
     if (!isAnyDayEditable || isSaving) return;
 
+    if (draftMutation.current) return;
+    draftMutation.current = true;
+    const mutationScope = draftScope.current;
     setIsSaving(true);
     setSaveStatus('Saving draft...');
 
     try {
+      await draftWrite.current.idle();
+      if (mutationScope !== draftScope.current) return;
       const payload = buildTimesheetPayload();
       const missingDescriptions = getEntriesMissingDescriptions(payload.entries);
 
@@ -6249,6 +6270,8 @@ export default function App() {
       }
 
       const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/week/draft', payload);
+      if (mutationScope !== draftScope.current) return;
+      setDraftDirty(false);
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
       setDraftDirty(false);
@@ -6256,12 +6279,12 @@ export default function App() {
     } catch (error) {
       setSaveStatus(error instanceof Error ? error.message : 'Failed to save draft');
     } finally {
+      draftMutation.current = false;
       setIsSaving(false);
     }
   }
 
   async function submitSelectedDay() {
-    await draftWrite.current.idle();
     if (!selectedCell || isSaving) return;
 
     if (!selectedEntryIsEditable) {
@@ -6275,15 +6298,25 @@ export default function App() {
       return;
     }
 
+    if (draftMutation.current) return;
+    draftMutation.current = true;
+    const mutationScope = draftScope.current;
     setIsSaving(true);
     setSaveStatus(`Submitting ${selectedCell.date}...`);
 
     try {
+      await draftWrite.current.idle();
+      if (mutationScope !== draftScope.current) return;
+      // Persist other edited days before submission refreshes the whole week.
+      await postProjectPulse051DTimeEntryJson('/api/timesheets/week/draft', buildTimesheetPayload());
+      if (mutationScope !== draftScope.current) return;
       const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/day/submit', {
         weekStart: selectedWeekStart,
         workDate: selectedCell.date,
         entries: buildTimesheetPayload().entries.filter((entry) => entry.workDate === selectedCell.date) /* 051B_DAY_SUBMIT_ENTRIES_FIX */
       });
+      if (mutationScope !== draftScope.current) return;
+      setDraftDirty(false);
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(`${selectedCell.date} submitted (${formatNumber(dayTotal)} hours).`);
       setDraftDirty(false);
@@ -6293,6 +6326,7 @@ export default function App() {
       setSaveStatus(error instanceof Error ? error.message : 'Failed to submit selected day');
       window.alert(error instanceof Error ? error.message : 'Failed to submit selected day');
     } finally {
+      draftMutation.current = false;
       setIsSaving(false);
     }
   }
@@ -6319,7 +6353,6 @@ export default function App() {
   }
 
   async function handleSubmit() {
-    await draftWrite.current.idle();
     if (!isAnyDayEditable || isSaving) return;
 
     if (grandTotal <= 0) {
@@ -6328,10 +6361,15 @@ export default function App() {
       return;
     }
 
+    if (draftMutation.current) return;
+    draftMutation.current = true;
+    const mutationScope = draftScope.current;
     setIsSaving(true);
     setSaveStatus('Saving weekly draft...');
 
     try {
+      await draftWrite.current.idle();
+      if (mutationScope !== draftScope.current) return;
       const payload = buildTimesheetPayload();
       const missingDescriptions = getEntriesMissingDescriptions(payload.entries);
 
@@ -6341,12 +6379,15 @@ export default function App() {
       }
 
       const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/week/draft', payload);
+      if (mutationScope !== draftScope.current) return;
+      setDraftDirty(false);
       setTimesheet({ loading: false, data: result.timesheet, error: null });
       setSubmissionStatus(statusToLabel(result.timesheet?.status, grandTotal));
       setSaveStatus('Weekly draft saved. Submit each day from the time-entry window when the day reaches 8.00 hours.');
     } catch (error) {
       setSaveStatus(error instanceof Error ? error.message : 'Failed to save weekly draft');
     } finally {
+      draftMutation.current = false;
       setIsSaving(false);
     }
   }
@@ -6354,6 +6395,8 @@ export default function App() {
   function resetTimesheet() {
     if (!isAnyDayEditable) return;
 
+    draftRevision.current += 1;
+    setDraftDirty(true);
     saveHiddenRows(new Set());
     setEntries({});
     setSelectedCell(null);
@@ -7953,9 +7996,9 @@ Analytics - Variphy / Infortel`}
           </div>
 
           <div className="toolbar-actions">
-            <button type="button" onClick={() => setSelectedWeekStart(addDaysIso(selectedWeekStart, -7))}>← Previous</button>
-            <button type="button" onClick={() => setSelectedWeekStart(getSundayIso())}>Current week</button>
-            <button type="button" onClick={() => setSelectedWeekStart(addDaysIso(selectedWeekStart, 7))}>Next →</button>
+            <button type="button" disabled={isSaving || timesheet.loading} onClick={() => void changeTimesheetWeek(addDaysIso(selectedWeekStart, -7))}>← Previous</button>
+            <button type="button" disabled={isSaving || timesheet.loading} onClick={() => void changeTimesheetWeek(getSundayIso())}>Current week</button>
+            <button type="button" disabled={isSaving || timesheet.loading} onClick={() => void changeTimesheetWeek(addDaysIso(selectedWeekStart, 7))}>Next →</button>
             <button type="button" onClick={resetTimesheet} disabled={!isAnyDayEditable || isSaving}>Reset</button>
             <button type="button" onClick={saveDraft} disabled={!isAnyDayEditable || isSaving}>Save draft</button>
             <button type="button" className="primary-action" onClick={handleSubmit} disabled={!isAnyDayEditable || isSaving}>Save week</button>

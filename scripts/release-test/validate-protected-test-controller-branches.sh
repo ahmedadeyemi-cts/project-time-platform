@@ -12,7 +12,12 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == fix/module025-export-retention-scope ]]; then
+if [[ "$HEAD_BRANCH" == fix/enterprise-module-repairs-20260919 ]]; then
+  [[ "$PR_NUMBER" == '1111' ]] || fail 'Enterprise repair registration is restricted to PR #1111.'
+  python3 tests/enterprise-module-repair-scope.py
+  node --test tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/module025-export-retention-scope ]]; then
   python3 tests/module025-export-retention-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/module025-export-orphan-recovery ]]; then

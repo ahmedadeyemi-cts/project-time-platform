@@ -45,7 +45,11 @@ jobs:
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
-          if [[ "$HEAD_BRANCH" == fix/module025-private-generation-recovery ]]; then
+          if [[ "$HEAD_BRANCH" == fix/enterprise-module-repairs-20260919 ]]; then
+            python3 tests/enterprise-module-repair-scope.py
+            RESERVED=""
+            echo "MODULES_010_065_VALIDATION_MODE=ENTERPRISE_REPAIR_REGRESSION" >> "$GITHUB_ENV"
+          elif [[ "$HEAD_BRANCH" == fix/module025-private-generation-recovery ]]; then
             python3 tests/module025-private-generation-scope.py
             RESERVED=""
             echo "MODULES_010_065_VALIDATION_MODE=CONNECTWISE_REGRESSION" >> "$GITHUB_ENV"
