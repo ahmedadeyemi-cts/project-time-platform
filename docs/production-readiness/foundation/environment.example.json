@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "phase": "preparation",
+  "production_deployment_enabled": false,
+  "outbound_email_enabled": false,
+  "external_writes_enabled": false,
+  "background_jobs_enabled": false,
+  "resources": {
+    "database": {"test": "", "production": ""},
+    "document_storage": {"test": "", "production": ""},
+    "notification_queue": {"test": "", "production": ""},
+    "integration_queue": {"test": "", "production": ""},
+    "rag_index": {"test": "", "production": ""},
+    "secret_store": {"test": "", "production": ""}
+  }
+}
