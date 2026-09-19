@@ -10,6 +10,7 @@ current authoritative evidence from the application layer when freshness matters
 from __future__ import annotations
 
 import fcntl
+import logging
 import os
 import subprocess
 import tempfile
@@ -23,6 +24,9 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 import gateway
 from gateway import app
+
+# Retain only our closed operational phase metrics at INFO.
+app.logger.setLevel(logging.INFO)
 
 LOCK_PATH = Path("/var/lib/celar-ai/gateway/ocr.lock")
 CONTRACT_MODEL = gateway.GENERATION_MODEL
