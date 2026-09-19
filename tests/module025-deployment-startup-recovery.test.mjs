@@ -16,6 +16,12 @@ if (process.argv[2] === '--fake-command') {
   if (command === 'sleep') { state.epoch = (state.epoch || 0) + Number(args[0]); reply(''); }
   if (command === 'git') {
     save();
+    if (args[0] === 'show') {
+      const content = execFileSync(process.env.RECOVERY_REAL_GIT, args);
+      fs.writeFileSync(1, content);
+      if (args[1].startsWith('HEAD:') && state.deploymentGuardChanged) process.stdout.write('unexpected controller change\n');
+      process.exit(0);
+    }
     process.exit((args[0] === 'diff' ? state.deploymentGuardChanged : state.ancestryOk === false) ? 1 : 0);
   }
   if (command === 'date') reply(args[0] === '+%s' ? String(state.epoch || 0) : '2026-09-18T16:30:00Z');
@@ -89,6 +95,7 @@ function execute(body, changes = {}, envChanges = {}) {
   fs.writeFileSync(output, '');
   const result = spawnSync('bash', ['-c', body], {cwd: root, encoding: 'utf8', timeout: 30000,
     env: {...process.env, PATH: `${path.join(temporary, 'bin')}:${process.env.PATH}`,
+      RECOVERY_REAL_GIT: execFileSync('which', ['git'], {encoding: 'utf8'}).trim(),
       RECOVERY_TEST_STATE: statePath, RUNNER_TEMP: directory, GITHUB_OUTPUT: output,
       GITHUB_REPOSITORY: 'example/repo', GITHUB_SHA: release, RELEASE_SHA: release,
       GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main', REQUEST_COMMENT: '',

@@ -172,7 +172,7 @@ jobs:
             if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_5" && \
                   "$requested_sha" != '245b0915d895d83f1ceaed32460ad95a4a3d79be' ]] && \
                git merge-base --is-ancestor '245b0915d895d83f1ceaed32460ad95a4a3d79be' HEAD && \
-               git diff --quiet '245b0915d895d83f1ceaed32460ad95a4a3d79be' HEAD -- "$DEPLOY_WORKFLOW_PATH" && \
+               python3 scripts/release-test/verify-module025-quarantine-controller.py && \
                verify_zero_job_quarantine "$run_id" \
                  '245b0915d895d83f1ceaed32460ad95a4a3d79be' \
                  'main' \
