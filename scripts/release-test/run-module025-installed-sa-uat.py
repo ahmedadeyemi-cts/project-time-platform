@@ -493,6 +493,11 @@ async def main() -> int:
         reviewed_source = current.get("serviceOverview")
         reviewed_generation = current.get("lastGeneratedAt")
         reviewed_phases = [phase_payload(phase) for phase in (current.get("phases") or [])]
+        # Synthetic reviewer allocation only; no additional model request.
+        import uuid
+        for phase in reviewed_phases:
+            phase["tasks"] = [{"taskId": str(uuid.uuid4()), "description": phase["objective"],
+                               "hours": phase["finalHours"], "notes": "Synthetic UAT reviewed phase work package"}]
         plan = next(phase for phase in reviewed_phases if phase["phaseCode"] == "plan")
         plan["acceptanceCriteria"] = [*(plan.get("acceptanceCriteria") or []), edit_marker]
         save_payload = {

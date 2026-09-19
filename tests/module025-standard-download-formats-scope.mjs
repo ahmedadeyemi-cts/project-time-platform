@@ -8,16 +8,26 @@ const expected = [
   ".github/workflows/module025-export-ci.yml",
   "docs/releases/2026-09-19-module025-standard-download-formats.md",
   "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
+  "scripts/release-test/run-module025-installed-sa-uat.py",
+  "scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh",
   "scripts/release-test/validate-module025-governed-release.sh",
   "scripts/release-test/validate-protected-test-controller-branches.sh",
   "src/backend/ProjectTime.Api/Assets/Templates/Module025StandardGsd.xlsx",
+  "src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs",
   "src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs",
+  "src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs",
   "src/backend/ProjectTime.Api/Modules/Module025StandardGsdExporter.cs",
+  "src/backend/ProjectTime.Api/Modules/Module025TaskEstimates.cs",
   "src/backend/ProjectTime.Api/ProjectTime.Api.csproj",
+  "src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx",
+  "src/frontend/project-time-web/src/module025/sow-gsd-workspace.css",
+  "src/frontend/project-time-web/src/module025/task-estimates.js",
   "tests/Module025ExportTests/Module025ExportTests.csproj",
   "tests/Module025ExportTests/Program.cs",
   "tests/flowhive-psa-admission.test.mjs",
   "tests/module025-standard-download-formats-scope.mjs",
+  "tests/module025-task-editor.test.mjs",
+  "tests/module025-task-estimates.test.mjs",
   "tests/validate-celar-ai-pr630-consolidated.mjs"
 ];
 const registrations = {
@@ -68,6 +78,26 @@ const registrations = {
       "const scopedCompatibilityMode = privateGenerationMode ||",
       "const scopedCompatibilityMode = module025StandardExportsMode || privateGenerationMode ||"
     ]
+  ],
+  "scripts/release-test/run-module025-installed-sa-uat.py": [
+    [
+      "        reviewed_phases = [phase_payload(phase) for phase in (current.get(\"phases\") or [])]",
+      "        reviewed_phases = [phase_payload(phase) for phase in (current.get(\"phases\") or [])]\n        # Synthetic reviewer allocation only; no additional model request.\n        import uuid\n        for phase in reviewed_phases:\n            phase[\"tasks\"] = [{\"taskId\": str(uuid.uuid4()), \"description\": phase[\"objective\"],\n                               \"hours\": phase[\"finalHours\"], \"notes\": \"Synthetic UAT reviewed phase work package\"}]"
+    ]
+  ],
+  "scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh": [
+    [
+      "    customerName:$customerName,",
+      "    customerName:$customerName,\n    projectName:\"Protected UAT Module 025 scope\","
+    ],
+    [
+      "  expectedRevision: .engagement.revision,",
+      "  expectedRevision: .engagement.revision,\n  projectName: .engagement.projectName,"
+    ],
+    [
+      "    acceptanceCriteria, validationSteps, risks, loeRationale\n  }]",
+      "    acceptanceCriteria, validationSteps, risks, loeRationale,\n    tasks: [{taskId: (\"00000000-0000-4000-8000-00000000000\" + (.sortOrder | tostring)), description: .objective,\n             hours: ((.finalHours // 0) + (if .phaseCode == \"plan\" then 1 else 0 end)), notes: \"Synthetic UAT reviewed phase work package\"}]\n  }]"
+    ]
   ]
 };
 const git = (...args) => execFileSync('git', args, {encoding:'utf8'}).trim();
@@ -83,10 +113,10 @@ for (const [path, changes] of Object.entries(registrations)) {
   assert.equal(fs.readFileSync(path, 'utf8'), allowed, `Registration exceeded scope: ${path}`);
 }
 for (const name of expected.filter(p => p.endsWith('.yml'))) verifyReadOnlyWorkflow(fs.readFileSync(name,'utf8'), name);
-for (const path of ['.github/workflows/projectpulse-deploy-test.yml', '.github/workflows/projectpulse-deploy-production.yml', '.github/workflows/module025-protected-uat-control.yml', '.github/flowhive-psa-protected-test-candidate.json', 'scripts/release-test/flowhive-psa-admission.mjs', 'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs', 'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs'])
+for (const path of ['.github/workflows/projectpulse-deploy-test.yml', '.github/workflows/projectpulse-deploy-production.yml', '.github/workflows/module025-protected-uat-control.yml', '.github/flowhive-psa-protected-test-candidate.json', 'scripts/release-test/flowhive-psa-admission.mjs', 'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs'])
   assert.equal(fs.readFileSync(path, 'utf8'), original(path), `Protected behavior changed: ${path}`);
 const project = 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj';
 const resource = '    <EmbeddedResource Include="Assets/Templates/Module025StandardGsd.xlsx" LogicalName="ProjectTime.Api.Assets.Templates.Module025StandardGsd.xlsx" />\n';
 assert.equal(fs.readFileSync(project, 'utf8').replace(resource, ''), original(project));
-assert.equal(git('diff', '--name-only', base, '--', 'database', 'deployment', 'src/backend/ProjectTime.Api/Ai', 'src/frontend'), '');
-console.log('MODULE025_STANDARD_DOWNLOAD_FORMATS_SCOPE=PASS generation=unchanged retained_versions=unchanged deployment_authority=unchanged');
+assert.equal(git('diff', '--name-only', base, '--', 'database', 'deployment', 'src/backend/ProjectTime.Api/Ai'), '');
+console.log('MODULE025_STANDARD_DOWNLOAD_FORMATS_SCOPE=PASS generation_engine=unchanged retained_versions=unchanged deployment_authority=unchanged');

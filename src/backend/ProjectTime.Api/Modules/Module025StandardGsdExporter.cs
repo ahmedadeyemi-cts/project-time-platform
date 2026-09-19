@@ -6,7 +6,7 @@ namespace ProjectTime.Api.Modules;
 // not a model operation. Missing commercial/task allocation facts stay unknown.
 internal static class Module025StandardGsdExporter
 {
-    internal static byte[] Create(Module025DocumentModel model)
+    internal static byte[] Create(Module025DocumentModel model, bool draft = false)
     {
         using var template = typeof(Module025StandardGsdExporter).Assembly.GetManifestResourceStream(
             "ProjectTime.Api.Assets.Templates.Module025StandardGsd.xlsx")
@@ -14,6 +14,7 @@ internal static class Module025StandardGsdExporter
         using var book = new XLWorkbook(template);
         var e = model.Engagement;
         var summary = book.Worksheet("Summary");
+        if (draft) summary.Cell("E1").Value = "DRAFT - General Services Delivery Worksheet";
         summary.Cell("C11").Value = e.CustomerName;
         summary.Cell("C12").Value = e.ProjectName ?? "";
         summary.Cell("C13").Value = e.CommercialModel == "fixed" ? "FP" : "T&M";
@@ -28,8 +29,8 @@ internal static class Module025StandardGsdExporter
         summary.AddPicture(logo, "US Signal").MoveTo(summary.Cell("B1")).WithSize(79, 70);
         // Do not add template-default project management, reserve or travel hours
         // to the Solution Architect's reviewed phase totals.
-        summary.Cell("F4").FormulaA1 = "SUM('Totals Sheet'!C15:C19)";
-        summary.Cell("F7").FormulaA1 = "F4";
+        summary.Cell("F4").FormulaA1 = "IF(COUNT('Totals Sheet'!C15:C19)=5,SUM('Totals Sheet'!C15:C19),\"\")";
+        summary.Cell("F7").FormulaA1 = "IF(ISNUMBER(F4),F4,\"\")";
         summary.Cell("E7").Value = "Reviewed Phase Hours";
         summary.Cell("F9").Clear(XLClearOptions.Contents);
         summary.Cell("M4").Value = "Rates pending";
@@ -39,7 +40,7 @@ internal static class Module025StandardGsdExporter
         var phases = new[] { ("plan", "Plan"), ("design", "Design"), ("implement", "Implement"), ("validate", "Validate"), ("release", "Release") };
         var totals = book.Worksheet("Totals Sheet");
         var breakdown = book.Worksheet("Phase Breakdown");
-        var notes = new List<(string, string)> { ("Estimate basis", "Hours are saved phase totals, not individual task allocations. Blank task hours, engineering roles, overtime, reserve, travel and prices are unknown. Allocate hours to tasks during review without adding the phase total a second time.") };
+        var notes = new List<(string, string)> { ("Estimate basis", "Reviewed task hours roll up to phase totals. Legacy phase-only estimates are identified separately. Blank task hours, engineering roles, overtime, reserve, travel and prices are unknown. Prices require approved commercial inputs.") };
         var risks = new List<(string, string)>();
         var assumptions = new List<(string, string)>();
         for (var index = 0; index < phases.Length; index++)
@@ -48,7 +49,7 @@ internal static class Module025StandardGsdExporter
             var sheet = book.Worksheet(name);
             var phase = model.Phases.SingleOrDefault(p => p.PhaseCode == code);
             sheet.Cell("A2").Value = name + " tasks";
-            sheet.Cell("G2").Value = "Reviewed phase estimate; task-level allocations are not stored in Pulse.";
+            sheet.Cell("G2").Value = phase?.Tasks is { Count: > 0 } ? "Task hours saved and reviewed in Pulse." : "Phase-only estimate; task allocations require review.";
             sheet.Cell("A3").Value = "Task breakdown below; phase hours appear once.";
             sheet.Cell("A4").Value = name + " reviewed phase total";
             var lastTask = 4;
@@ -65,13 +66,33 @@ internal static class Module025StandardGsdExporter
                 var totalRow = 100 + additionalRows;
                 sheet.Cell(totalRow, 1).Value = "Reviewed phase hours";
                 sheet.Cell(totalRow, 2).FormulaA1 = $"SUM(B4:B{totalRow - 1})";
-                totals.Cell(15 + index, 3).FormulaA1 = $"'{name}'!B{totalRow}";
+                if (phase.Tasks is { Count: > 0 } tasks)
+                {
+                    sheet.Range(4, 1, Math.Max(99, lastTask), 7).Clear(XLClearOptions.Contents);
+                    var extraTaskRows = Math.Max(0, tasks.Count - 96);
+                    if (extraTaskRows > additionalRows) sheet.Row(totalRow).InsertRowsAbove(extraTaskRows - additionalRows);
+                    totalRow = 100 + Math.Max(extraTaskRows, additionalRows);
+                    lastTask = 3 + tasks.Count;
+                    for (var t = 0; t < tasks.Count; t++)
+                    {
+                        sheet.Cell(t + 4, 1).Value = tasks[t].Description;
+                        if (tasks[t].Hours.HasValue) sheet.Cell(t + 4, 2).Value = tasks[t].Hours!.Value;
+                        sheet.Cell(t + 4, 7).Value = tasks[t].Notes ?? "";
+                    }
+                    sheet.Cell(totalRow, 1).Value = "Reviewed phase hours";
+                    sheet.Cell(totalRow, 2).FormulaA1 = $"IF(COUNT(B4:B{lastTask})={tasks.Count},SUM(B4:B{lastTask}),\"\")";
+                    sheet.Cell("A3").Value = "Task hours roll up to the phase total.";
+                    if (!Module025TaskEstimates.Reconciled(phase)) sheet.Cell("G2").Value = "DRAFT - Complete and reconcile all task hours before confirmation.";
+                }
+                totals.Cell(15 + index, 3).FormulaA1 = $"IF(ISNUMBER('{name}'!B{totalRow}),'{name}'!B{totalRow},\"\")";
                 var baseRow = index switch { 0 or 1 => 8, 2 or 3 => 28, _ => 48 };
                 var col = index is 1 or 3 ? 11 : 2;
                 breakdown.Cell(baseRow, col).Value = "Role allocation pending";
-                breakdown.Cell(baseRow, col + 1).FormulaA1 = $"'{name}'!B{totalRow}";
-                breakdown.Cell(baseRow + 5, col + 1).FormulaA1 = $"'{name}'!B{totalRow}";
+                breakdown.Cell(baseRow, col + 1).FormulaA1 = $"IF(ISNUMBER('{name}'!B{totalRow}),'{name}'!B{totalRow},\"\")";
+                breakdown.Cell(baseRow + 5, col + 1).FormulaA1 = $"IF(ISNUMBER('{name}'!B{totalRow}),'{name}'!B{totalRow},\"\")";
                 notes.Add((name + " objective", phase.Objective));
+                notes.Add((name + " estimate rationale", phase.LoeRationale));
+                Add(notes, name + " technical detail", phase.TechnicalTasks);
                 Add(notes, name + " deliverable", phase.Deliverables);
                 Add(notes, name + " acceptance", phase.AcceptanceCriteria);
                 Add(notes, name + " validation", phase.ValidationSteps);
@@ -107,9 +128,9 @@ internal static class Module025StandardGsdExporter
             sheet.PageSetup.PrintAreas.Add(1, 1, lastTask, 7);
         }
         totals.Cell("B11").Value = "Reviewed phase hours";
-        totals.Cell("C11").FormulaA1 = "SUM(C15:C19)";
-        totals.Cell("C24").FormulaA1 = "SUM(C15:C16,C19)";
-        totals.Cell("C25").FormulaA1 = "SUM(C17:C18)";
+        totals.Cell("C11").FormulaA1 = "IF(COUNT(C15:C19)=5,SUM(C15:C19),\"\")";
+        totals.Cell("C24").FormulaA1 = "IF(COUNT(C15:C16,C19)=3,SUM(C15:C16,C19),\"\")";
+        totals.Cell("C25").FormulaA1 = "IF(COUNT(C17:C18)=2,SUM(C17:C18),\"\")";
         totals.Cell("B3").Value = "RESOURCE ALLOCATION REQUIRES REVIEW";
         totals.Cell("B5").Value = "BA/Dev/Arch";
         totals.Cell("B6").Value = "SME";

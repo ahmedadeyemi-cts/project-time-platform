@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const web = path.join(root, 'src/frontend/project-time-web');
+const require = createRequire(path.join(web, 'package.json'));
+const { createServer } = await import(path.join(web, 'node_modules/vite/dist/node/index.js'));
+const { default: react } = await import(path.join(web, 'node_modules/@vitejs/plugin-react/dist/index.js'));
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
+const server = await createServer({ configFile:false, root:web, plugins:[react(), {name:'task-editor-harness',configureServer(vite){vite.middlewares.use('/__tasks',async(req,res)=>{res.setHeader('Content-Type','text/html');res.end(await vite.transformIndexHtml('/__tasks','<div id="root"></div><script type="module">import React from "react";import{createRoot}from"react-dom/client";import Workspace from"/src/module025/SowGsdAuthoringWorkspace.jsx";createRoot(document.getElementById("root")).render(React.createElement(Workspace));</script>'));});}}],server:{host:'127.0.0.1',port:0}});
+await server.listen();
+const browser=await chromium.launch({headless:true,...(process.env.MODULE025_TEST_CHROMIUM?{executablePath:process.env.MODULE025_TEST_CHROMIUM,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
+try {
+  const context=await browser.newContext({acceptDownloads:true});
+  await context.addInitScript(()=>localStorage.setItem('projectPulseAuthSession',JSON.stringify({sessionToken:'synthetic-only'})));
+  const page=await context.newPage();
+  const errors=[],writes=[],downloads=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  let canEdit=true;
+  let e={engagementId:'task-fixture',engagementNumber:'SOW-TASK-TEST',ownerUserId:'sa',ownerDisplayName:'Example SA',customerName:'Synthetic customer',projectName:'Synthetic project',customerEntryMode:'manual',commercialModel:'fixed',customerProgram:'standard',accountExecutiveUserId:'ae',accountExecutiveName:'Example AE',resaleUserId:'saa',resaleName:'Example SAA',serviceOverview:'Review and deliver the approved project scope.',status:'review_ready',isActive:true,revision:1,lastGeneratedAt:'2026-09-19T00:00:00Z',phases:['plan','design','implement','validate','release'].map((code,i)=>({phaseCode:code,label:code,sortOrder:i+1,objective:`Complete ${code}`,finalHours:1,suggestedHours:2,detailedActivities:['Discover requirements','Review results'],technicalTasks:[],tasks:[]}))};
+  await page.route('**/api/**',async route=>{
+    const request=route.request(),url=new URL(request.url()),method=request.method();
+    let body;
+    if (method!=='GET') {writes.push(url.pathname);assert.equal(method,'PUT','Only autosave is allowed');assert.ok(url.pathname.endsWith('/task-fixture'));const saved=request.postDataJSON();assert.equal(saved.expectedRevision,e.revision);e={...e,...saved,revision:e.revision+1};body={engagement:{engagement:e,access:{canEdit:true}},revision:e.revision};}
+    else if(url.pathname.endsWith('/bootstrap'))body={currentUser:{userId:'sa'},access:{canCreate:true,isSolutionArchitect:true},solutionArchitects:[{userId:'sa',displayName:'Example SA'}],accountExecutives:[{userId:'ae',displayName:'Example AE'}],insideSalesRepresentatives:[{userId:'saa',displayName:'Example SAA'}],commercialModels:[{key:'fixed',label:'Fixed Price'}],customerPrograms:[{key:'standard',label:'Standard'}],customers:[]};
+    else if(url.pathname.endsWith('/task-fixture'))body={engagement:e,access:{canEdit,canConfirm:canEdit}};
+    else if(url.pathname.endsWith('/history'))body={events:[]};
+    else if(/\/draft-(sow.docx|gsd.xlsx)$/.test(url.pathname)){downloads.push(url.pathname);assert.equal(request.headers().authorization,'Bearer synthetic-only');await route.fulfill({status:200,contentType:'application/octet-stream',body:'synthetic draft fixture'});return;}
+    else body={engagements:[e]};
+    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
+  });
+  const origin=`http://127.0.0.1:${server.httpServer.address().port}`;
+  await page.goto(origin+'/__tasks');
+  await page.locator('.m025-work-card').click();
+  const phase=page.getByRole('region',{name:'plan task estimates',exact:true});
+  await phase.getByRole('button',{name:'Create task rows from saved scope'}).click();
+  await phase.getByLabel('Task 1 hours',{exact:true}).fill('0.1');
+  await phase.getByLabel('Task 2 hours',{exact:true}).fill('0.2');
+  await phase.getByText('Reviewed phase total: 0.30 hours',{exact:true}).waitFor();
+  const firstDownload=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Download draft GSD',exact:true}).click();
+  await firstDownload;
+  assert.equal(e.phases[0].finalHours,0.3);
+  assert.deepEqual(e.phases[0].tasks.map(t=>t.hours),[0.1,0.2]);
+  await page.reload();await page.locator('.m025-work-card').click();
+  assert.equal(await phase.getByLabel('Task 1 hours',{exact:true}).inputValue(),'0.1');
+  await phase.getByLabel('Task 1 hours',{exact:true}).fill('');
+  await phase.getByText('Task estimates are incomplete. Complete each description and hours before confirmation.',{exact:true}).waitFor();
+  const confirmation=page.getByRole('button',{name:'Review Requirements to Confirm',exact:true});
+  await confirmation.waitFor();
+  const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download draft SOW',exact:true}).click();await pending;
+  assert.equal(e.phases[0].tasks[0].hours,null);
+  assert.ok(downloads.length===2);
+  assert.ok(!writes.some(p=>/generate|confirm|sell/.test(p)));
+  canEdit=false;
+  const savesBeforeReadOnly=writes.length;
+  await page.reload();await page.locator('.m025-work-card').click();
+  assert.equal(await phase.getByLabel('Task 1 hours',{exact:true}).isDisabled(),true);
+  assert.equal(await phase.getByRole('button',{name:'Add task',exact:true}).isDisabled(),true);
+  assert.equal(writes.length,savesBeforeReadOnly);
+  assert.deepEqual(errors,[]);
+  console.log('MODULE025_TASK_EDITOR=PASS autosave=verified reload=verified drafts=authenticated generationPosts=0');
+} finally {await browser.close();await server.close();}

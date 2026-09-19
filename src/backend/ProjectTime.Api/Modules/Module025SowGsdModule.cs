@@ -75,6 +75,8 @@ public static class Module025SowGsdModule
         app.MapDelete("/api/module025/sow-gsd/{engagementId:guid}", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)DeleteDraftAsync);
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/sow.docx", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)DownloadSowAsync);
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/gsd.xlsx", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)DownloadGsdAsync);
+        app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/draft-sow.docx", (Guid engagementId, HttpContext context, CancellationToken cancellationToken) => DownloadDraftAsync(engagementId, true, context, cancellationToken));
+        app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/draft-gsd.xlsx", (Guid engagementId, HttpContext context, CancellationToken cancellationToken) => DownloadDraftAsync(engagementId, false, context, cancellationToken));
         return app;
     }
 
@@ -299,6 +301,14 @@ public static class Module025SowGsdModule
         if (current.Status == "confirmed") return StateConflict("confirmed_record", "Reopen this confirmed SOW/GSD before editing it.");
         if (request.ExpectedRevision != current.Revision) return RevisionConflict(current.Revision);
 
+        foreach (var phaseRequest in request.Phases ?? Array.Empty<Module025SowGsdPhaseSaveRequest>())
+        {
+            var taskError = Module025TaskEstimates.Validate(phaseRequest.Tasks);
+            if (taskError is not null) return Results.BadRequest(new { status = "invalid_task_estimates", message = taskError });
+        }
+        if ((request.Phases ?? Array.Empty<Module025SowGsdPhaseSaveRequest>()).GroupBy(p => NormalizePhaseCode(p.PhaseCode)).Any(g => g.Key is null || g.Count() > 1))
+            return Results.BadRequest(new { status = "invalid_phases", message = "Provide each recognized phase at most once." });
+
         var customer = await ResolveCustomerAsync(connection, request.CustomerId, request.CustomerName, request.CustomerEntryMode, cancellationToken);
         if (customer.Error is not null) return customer.Error;
         var accountExecutive = await ResolvePersonAsync(connection, request.AccountExecutiveUserId, AccountExecutiveRoles, cancellationToken);
@@ -350,7 +360,16 @@ public static class Module025SowGsdModule
         foreach (var phaseRequest in request.Phases ?? Array.Empty<Module025SowGsdPhaseSaveRequest>())
         {
             var phaseCode = NormalizePhaseCode(phaseRequest.PhaseCode);
-            if (phaseCode is not null) await SaveHumanPhaseAsync(connection, transaction, engagementId, phaseCode, phaseRequest, cancellationToken);
+            if (phaseCode is not null)
+            {
+                var tasks = phaseRequest.Tasks ?? current.Phases.First(p => p.PhaseCode == phaseCode).Tasks;
+                var reviewed = phaseRequest with
+                {
+                    Tasks = tasks,
+                    FinalHours = Module025TaskEstimates.Complete(tasks) ? tasks!.Sum(t => t.Hours!.Value) : phaseRequest.FinalHours
+                };
+                await SaveHumanPhaseAsync(connection, transaction, engagementId, phaseCode, reviewed, cancellationToken);
+            }
         }
         await transaction.CommitAsync(cancellationToken);
         var saved = await LoadEngagementAsync(connection, engagementId, cancellationToken);
@@ -1050,6 +1069,8 @@ public static class Module025SowGsdModule
         if (!engagement.ResaleUserId.HasValue) return StateConflict("resale_required", "Select the Inside Sales Representative before confirmation.");
         if (engagement.Phases.Count != 5 || engagement.Phases.Any(phase => string.IsNullOrWhiteSpace(phase.Objective))) return StateConflict("phase_review_incomplete", "Review all five Plan, Design, Implement, Validate, and Release sections before confirmation.");
         if (engagement.Phases.Sum(phase => phase.FinalHours) <= 0) return StateConflict("level_of_effort_required", "The reviewed GSD must contain a positive total level of effort before confirmation.");
+        var exportReadiness = Module025TaskEstimates.Readiness(engagement);
+        if (exportReadiness is not null) return StateConflict("export_review_incomplete", exportReadiness);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         const string sql = "UPDATE module025_sow_gsd_engagements SET status='confirmed', confirmed_at=NOW(), revision=revision+1 WHERE engagement_id=@engagement_id AND revision=@revision AND is_active=TRUE RETURNING revision;";
         var revision = await ExecuteRevisionUpdateAsync(connection, transaction, sql, engagementId, engagement.Revision, cancellationToken);
@@ -1229,6 +1250,21 @@ public static class Module025SowGsdModule
         return Results.File(Module025SowGsdDocumentExporter.CreateGsdXlsx(BuildDocumentModel(engagement)), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", DocumentFileName(engagement, "GSD", ".xlsx"));
     }
 
+    private static async Task<IResult> DownloadDraftAsync(Guid engagementId, bool sow, HttpContext context, CancellationToken cancellationToken)
+    {
+        var readable = await LoadReadableStateAsync(engagementId, context, cancellationToken);
+        if (readable.Error is not null) return readable.Error;
+        await using var connection = readable.Connection!;
+        var engagement = readable.Engagement!;
+        if (!engagement.IsActive || engagement.Status is "confirmed" or "archived")
+            return StateConflict("draft_required", "Use the retained version downloads for confirmed or archived records.");
+        context.Response.Headers.CacheControl = "no-store";
+        var model = BuildDocumentModel(engagement);
+        return Results.File(sow ? Module025SowGsdDocumentExporter.CreateSowDocx(model, draft: true) : Module025SowGsdDocumentExporter.CreateGsdXlsx(model, draft: true),
+            sow ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            DocumentFileName(engagement, sow ? "DRAFT_SOW" : "DRAFT_GSD", sow ? ".docx" : ".xlsx"));
+    }
+
     internal static string DocumentFileName(Module025EngagementRow engagement, string artifact, string extension)
     {
         var sowNumber = engagement.EngagementNumber.StartsWith("SOW-", StringComparison.OrdinalIgnoreCase)
@@ -1272,6 +1308,20 @@ public static class Module025SowGsdModule
         command.Parameters.AddWithValue("risks", JsonSerializer.Serialize(CleanList(request.Risks)));
         command.Parameters.AddWithValue("loe_rationale", Clean(request.LoeRationale, 12_000));
         await command.ExecuteNonQueryAsync(cancellationToken);
+        if (request.Tasks is not null)
+        {
+            const string tasksSql = """
+                UPDATE module025_sow_gsd_engagements
+                SET sow_sections=jsonb_set(sow_sections, '{reviewedTasks}',
+                    COALESCE(sow_sections->'reviewedTasks','{}'::jsonb) || jsonb_build_object(@phase_code,@tasks::jsonb),true)
+                WHERE engagement_id=@engagement_id;
+                """;
+            await using var taskCommand = new NpgsqlCommand(tasksSql, connection, transaction);
+            taskCommand.Parameters.AddWithValue("engagement_id", engagementId);
+            taskCommand.Parameters.AddWithValue("phase_code", phaseCode);
+            taskCommand.Parameters.AddWithValue("tasks", JsonSerializer.Serialize(request.Tasks, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+            await taskCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
     internal static string BuildGeneratedEffortRationale(IEnumerable<JsonElement> workPackages, string phaseCode)
@@ -1372,7 +1422,7 @@ public static class Module025SowGsdModule
                 NullableTimestamp(reader, 23), NullableTimestamp(reader, 24), NullableTimestamp(reader, 25), reader.GetFieldValue<DateTimeOffset>(26), reader.GetFieldValue<DateTimeOffset>(27), Array.Empty<Module025PhaseRow>());
         }
         var phases = await LoadPhasesAsync(connection, engagementId, cancellationToken, transaction);
-        return shell with { Phases = phases };
+        return shell with { Phases = phases.Select(p => p with { Tasks = Module025TaskEstimates.Read(shell.SowSections, p.PhaseCode) }).ToArray() };
     }
 
     private static async Task<IReadOnlyList<Module025PhaseRow>> LoadPhasesAsync(NpgsqlConnection connection, Guid engagementId, CancellationToken cancellationToken, NpgsqlTransaction? transaction = null)
@@ -1418,7 +1468,7 @@ public static class Module025SowGsdModule
                 phase.PhaseCode, label = PhaseLabel(phase.PhaseCode), phase.SortOrder, phase.SuggestedHours, phase.FinalHours, phase.Objective,
                 phase.DetailedActivities, phase.TechnicalTasks, phase.Deliverables, phase.CustomerResponsibilities, phase.UsSignalResponsibilities,
                 phase.Prerequisites, phase.Dependencies, phase.Assumptions, phase.OpenQuestions, phase.AcceptanceCriteria, phase.ValidationSteps,
-                phase.Risks, phase.LoeRationale, phase.SourceCitationIds, phase.AiGenerated, phase.UpdatedAt
+                phase.Risks, phase.LoeRationale, phase.SourceCitationIds, phase.AiGenerated, phase.UpdatedAt, phase.Tasks
             }).ToArray()
         },
         access = new

@@ -13,11 +13,12 @@ internal static class Module025SowGsdDocumentExporter
     internal const string HaeaGsdTemplateKey = "haea_staff_aug_gsd_kus_uvo_telematics_1";
     internal const string HaeaGsdDisplayName = "HAEA Staff Aug GSD KUS UVO Telematics 1";
 
-    internal static byte[] CreateSowDocx(Module025DocumentModel model)
+    internal static byte[] CreateSowDocx(Module025DocumentModel model, bool draft = false)
     {
         var engagement = model.Engagement;
         var body = new StringBuilder();
         BodyParagraph(body, "STATEMENT OF WORK", "Title");
+        if (draft) BodyParagraph(body, "DRAFT - Not approved for customer acceptance", "Strong");
         BodyParagraph(body, engagement.EngagementNumber, "Subtitle");
         if (!string.IsNullOrWhiteSpace(engagement.ProjectName))
             BodyParagraph(body, engagement.ProjectName, "Subtitle");
@@ -31,7 +32,6 @@ internal static class Module025SowGsdDocumentExporter
             ("Solution Architect", engagement.OwnerDisplayName),
             ("Account Executive", EmptyAsTbd(engagement.AccountExecutiveName)),
             ("Inside Sales Representative", EmptyAsTbd(engagement.ResaleName)),
-            ("GSD Profile", GsdProfileLabel(engagement.GsdTemplateKey)),
             ("Revision", engagement.Revision.ToString(CultureInfo.InvariantCulture))
         });
 
@@ -41,17 +41,17 @@ internal static class Module025SowGsdDocumentExporter
         BodyHeading(body, "Services Description", 1);
         BodyParagraph(body,
             "The services below are organized into the Plan, Design, Implement, Validate, and Release delivery lifecycle. " +
-            "Each phase describes the work expected to be performed, the associated deliverables and responsibilities, " +
-            "and the review evidence required before the Solution Architect confirms the final scope.");
+            "Each phase describes the work, deliverables, responsibilities, and acceptance criteria.");
 
         foreach (var phase in model.Phases.OrderBy(item => item.SortOrder))
         {
             BodyHeading(body, PhaseLabel(phase.PhaseCode), 1);
             BodyParagraph(body, EmptyAsTbd(phase.Objective));
-            BodyParagraph(body, $"Reviewed level of effort: {phase.FinalHours:0.##} hour(s). AI suggestion: {phase.SuggestedHours:0.##} hour(s).", "Strong");
-            if (!string.IsNullOrWhiteSpace(phase.LoeRationale))
-                BodyParagraph(body, $"Level-of-effort rationale: {phase.LoeRationale}");
+            BodyParagraph(body, draft && phase.Tasks is { Count: > 0 } && !Module025TaskEstimates.Reconciled(phase)
+                ? "Level of effort pending task review."
+                : $"Reviewed level of effort: {phase.FinalHours:0.##} hour(s).", "Strong");
 
+            AppendDetailedSection(body, "Reviewed Tasks", (phase.Tasks ?? Array.Empty<Module025TaskEstimate>()).Select(t => t.Description));
             AppendDetailedSection(body, "Detailed Activities", phase.DetailedActivities);
             AppendDetailedSection(body, "Technical Tasks / Configuration", phase.TechnicalTasks);
             AppendDetailedSection(body, "Deliverables", phase.Deliverables);
@@ -60,7 +60,7 @@ internal static class Module025SowGsdDocumentExporter
             AppendDetailedSection(body, "Prerequisites", phase.Prerequisites);
             AppendDetailedSection(body, "Dependencies", phase.Dependencies);
             AppendDetailedSection(body, "Assumptions", phase.Assumptions);
-            AppendDetailedSection(body, "Open Questions", phase.OpenQuestions);
+
             AppendDetailedSection(body, "Acceptance Criteria", phase.AcceptanceCriteria);
             AppendDetailedSection(body, "Validation Steps", phase.ValidationSteps);
             AppendDetailedSection(body, "Risks / Considerations", phase.Risks);
@@ -81,14 +81,15 @@ internal static class Module025SowGsdDocumentExporter
         AppendBullets(body, SectionArray(engagement.SowSections, "assumptions", model.Phases.SelectMany(phase => phase.Assumptions)));
         AppendBullets(body, SectionArray(engagement.SowSections, "dependencies", model.Phases.SelectMany(phase => phase.Dependencies)));
 
-        BodyHeading(body, "Review and Commercial Basis", 1);
+        BodyHeading(body, "Commercial Basis", 1);
         BodyParagraph(body,
             engagement.CommercialModel == "fixed"
                 ? "This scope is configured as Fixed Price. Any work outside the confirmed scope, assumptions, dependencies, or acceptance basis requires review through the applicable change-control process."
                 : "This scope is configured as Time & Materials. Actual billable effort is governed by the executed commercial agreement and approved work performed against this scope.");
         BodyParagraph(body,
-            "This generated document remains a review artifact until the Solution Architect confirms the engagement. " +
-            "Commercial, legal, security, technical, and customer approvals remain authoritative where applicable.");
+            draft
+                ? "This draft is pending review and is not approved for customer acceptance."
+                : "Commercial, legal, security, technical, and customer approvals remain authoritative where applicable.");
 
         var documentXml = $"""
             <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -153,17 +154,17 @@ internal static class Module025SowGsdDocumentExporter
         return output.ToArray();
     }
 
-    internal static byte[] CreateGsdXlsx(Module025DocumentModel model)
+    internal static byte[] CreateGsdXlsx(Module025DocumentModel model, bool draft = false)
     {
         if (model.Engagement.GsdTemplateKey == StandardGsdTemplateKey)
-            return Module025StandardGsdExporter.Create(model);
+            return Module025StandardGsdExporter.Create(model, draft);
         using var workbook = new XLWorkbook();
         var engagement = model.Engagement;
         var special = engagement.GsdTemplateKey == HaeaGsdTemplateKey;
 
         var summary = workbook.AddWorksheet(special ? "HAEA GSD" : "GSD Summary");
         summary.Cell("A1").Value = special ? HaeaGsdDisplayName : "General Solution Design / Level of Effort";
-        summary.Cell("A2").Value = "Generated from Module 025 SOW & GSD Workspace";
+        summary.Cell("A2").Value = draft ? "DRAFT - Not approved for customer acceptance" : "Generated from Module 025 SOW & GSD Workspace";
         summary.Range("A1:E1").Merge();
         summary.Range("A2:E2").Merge();
         summary.Cell("A4").Value = "SOW/GSD ID";

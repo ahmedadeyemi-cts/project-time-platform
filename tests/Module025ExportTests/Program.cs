@@ -109,6 +109,51 @@ static void RunExportTests(string output)
     Check(safe.Worksheet("Summary").Cell("C14").IsEmpty() && safe.Worksheet("Summary").Cell("C16").IsEmpty(), "missing contacts stay blank");
     using var special = new XLWorkbook(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(model with { Engagement = e with { GsdTemplateKey = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.HaeaGsdTemplateKey } })));
     Check(special.Worksheet(1).Name == "HAEA GSD", "existing HAEA profile preserved");
+    var allocatedPhases = phases.Select(p => p with { Tasks = new[] {
+        new ProjectTime.Api.Modules.Module025TaskEstimate(Guid.NewGuid().ToString(), "Reviewed discovery task", 0.1m, "INTERNAL NOTE ONLY"),
+        new ProjectTime.Api.Modules.Module025TaskEstimate(Guid.NewGuid().ToString(), "Reviewed delivery task", p.FinalHours - 0.1m)
+    } }).ToArray();
+    var allocated = model with { Phases = allocatedPhases, Engagement = e with { Phases = allocatedPhases, AccountExecutiveUserId = Guid.NewGuid(), ResaleUserId = Guid.NewGuid() } };
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Readiness(allocated.Engagement) is null, "complete reviewed task estimate is confirmable");
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Readiness(allocated.Engagement with { ProjectName = "" }) is not null, "missing project blocks confirmation");
+    var unknown = allocatedPhases[0].Tasks![0] with { Hours = null };
+    Check(!ProjectTime.Api.Modules.Module025TaskEstimates.Complete(new[] { unknown }), "unknown hours remain incomplete");
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Complete(new[] { unknown with { Hours = 0 } }), "explicit zero hours are valid");
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Validate(new[] { unknown with { Hours = -1 } }) is not null, "negative hours rejected");
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Validate(new[] { unknown with { Hours = 0.001m } }) is not null, "fractional precision bounded");
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Validate(new[] { unknown, unknown }) is not null, "duplicate task ids rejected");
+    var sections = System.Text.Json.JsonSerializer.SerializeToElement(new { reviewedTasks = new Dictionary<string, object> { ["plan"] = allocatedPhases[0].Tasks! } }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Read(sections, "plan").SequenceEqual(allocatedPhases[0].Tasks!), "task JSON round trip preserves ids hours and notes");
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Read(json.RootElement, "plan").Count == 0, "legacy records load without invented allocations");
+    var allocatedBytes = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(allocated);
+    using var allocatedBook = new XLWorkbook(new MemoryStream(allocatedBytes));
+    Check(allocatedBook.Worksheet("Plan").Cell("A4").GetString() == "Reviewed discovery task", "GSD task descriptions mapped");
+    Check(allocatedBook.Worksheet("Plan").Cell("B4").GetDouble() == 0.1, "GSD task hours mapped");
+    Check(allocatedBook.Worksheet("Plan").Cell("G4").GetString() == "INTERNAL NOTE ONLY", "GSD notes retained internally");
+    Check(allocatedBook.Worksheet("Summary").Cell("F4").GetDouble() == (double)model.FinalHours, "task totals roll up without duplicated phase allowance");
+    var partialPhases = allocatedPhases.Select((p, i) => i == 0 ? p with { Tasks = new[] { unknown } } : p).ToArray();
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Readiness(allocated.Engagement with { Phases = partialPhases }) is not null, "partial allocations block final confirmation");
+    using var draftBook = new XLWorkbook(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(allocated with { Phases = partialPhases }, draft: true)));
+    Check(draftBook.Worksheet("Summary").Cell("E1").GetString().StartsWith("DRAFT"), "GSD draft marked");
+    Check(draftBook.Worksheet("Summary").Cell("F4").GetString() == "", "partial task totals do not become a misleading project total");
+    var cleanDocx = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateSowDocx(allocated);
+    using (var cleanZip = new System.IO.Compression.ZipArchive(new MemoryStream(cleanDocx)))
+    {
+        using var reader = new StreamReader(cleanZip.GetEntry("word/document.xml")!.Open());
+        var content = reader.ReadToEnd();
+        Check(content.Contains("Reviewed discovery task"), "SOW contains reviewed task scope");
+        Check(!content.Contains("AI suggestion:") && !content.Contains("Level-of-effort rationale:") && !content.Contains("INTERNAL NOTE ONLY"), "customer SOW excludes internal estimating commentary");
+    }
+    var draftDocx = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateSowDocx(allocated, draft: true);
+    using (var draftZip = new System.IO.Compression.ZipArchive(new MemoryStream(draftDocx)))
+    {
+        using var reader = new StreamReader(draftZip.GetEntry("word/document.xml")!.Open());
+        Check(reader.ReadToEnd().Contains("DRAFT - Not approved"), "SOW draft marked");
+    }
+    Directory.CreateDirectory(output);
+    File.WriteAllBytes(Path.Combine(output, "Task-GSD.xlsx"), allocatedBytes);
+    File.WriteAllBytes(Path.Combine(output, "Task-SOW.docx"), cleanDocx);
+    File.WriteAllBytes(Path.Combine(output, "Draft-SOW.docx"), draftDocx);
     var docx = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateSowDocx(model);
     using var zip = new System.IO.Compression.ZipArchive(new MemoryStream(docx));
     foreach (var part in zip.Entries.Where(p => p.FullName.EndsWith(".xml") || p.FullName.EndsWith(".rels")))
