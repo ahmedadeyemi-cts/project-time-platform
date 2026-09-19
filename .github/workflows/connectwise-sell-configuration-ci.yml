@@ -9,6 +9,7 @@ on:
       - 'src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx'
       - 'src/frontend/project-time-web/src/Customer*Center.jsx'
       - 'src/frontend/project-time-web/scripts/validate-module*-*sell-customer-sync.mjs'
+      - 'database/migrations/098_customer_directory_source_authority.sql'
       - 'database/migrations/111_connectwise_sell_provider.sql'
       - 'tests/ConnectWiseSellApiTests/**'
       - 'tests/connectwise-sell-*.test.*'

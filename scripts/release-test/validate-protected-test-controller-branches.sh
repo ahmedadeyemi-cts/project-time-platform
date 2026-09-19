@@ -12,7 +12,10 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == fix/module025-orphan-timing-quarantine ]]; then
+if [[ "$HEAD_BRANCH" == fix/connectwise-sell-migration-replay ]]; then
+  python3 tests/connectwise-sell-replay-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/module025-orphan-timing-quarantine ]]; then
   python3 tests/module025-orphan-timing-scope.py
   node tests/module025-deployment-startup-recovery.test.mjs
   node tests/validate-systemwide-image-build-controller.mjs
