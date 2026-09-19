@@ -12,7 +12,11 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == fix/enterprise-module-repairs-20260919 ]]; then
+if [[ "$HEAD_BRANCH" == fix/protected-test-foundation-recovery-20260919 ]]; then
+  python3 tests/protected-test-foundation-recovery-scope.py
+  node tests/module025-deployment-startup-recovery.test.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/enterprise-module-repairs-20260919 ]]; then
   [[ "$PR_NUMBER" == '1111' ]] || fail 'Enterprise repair registration is restricted to PR #1111.'
   python3 tests/enterprise-module-repair-scope.py
   node --test tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs
