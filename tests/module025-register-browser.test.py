@@ -42,10 +42,11 @@ async def main():
         def state():
             with urlopen(runner.ORIGIN + '/__state') as response:
                 return json.load(response)
-        def reset(deny=False, fail_report='', hold_bootstrap=False, deny_navigation=False):
+        def reset(deny=False, fail_report='', hold_bootstrap=False, deny_navigation=False, retained_sa=False):
             with urlopen(Request(runner.ORIGIN + '/__reset', method='POST',
                 data=json.dumps({'status': 'confirmed', 'deniedModule': deny, 'failReport': fail_report,
-                                 'holdBootstrap': hold_bootstrap, 'deniedNavigation': deny_navigation}).encode())) as response:
+                                 'holdBootstrap': hold_bootstrap, 'deniedNavigation': deny_navigation,
+                                 'retainedSa': retained_sa}).encode())) as response:
                 response.read()
         variables = {'BASE': runner.ORIGIN, 'TEST_LOGIN_PASSWORD': 'synthetic-password-only',
                      'MODULE025_ENGAGEMENT_NUMBER': 'SOW-TEST-025', 'MODULE025_UAT_RUN_ID': '12345-1'}
@@ -128,6 +129,34 @@ async def main():
                     raise AssertionError('Malformed run was accepted')
                 except RuntimeError as error:
                     assert str(error) == 'browser_fixture_run_missing'
+            # The independent path must use actual SA permissions and an exact
+            # previously retained synthetic record, with no fixture override.
+            reset(retained_sa=True)
+            with patch.dict(os.environ, {'MODULE025_REGISTER_MODE': 'retained-sa',
+                    'MODULE025_SOURCE_RUN_ID': '12345', 'PROJECTPULSE_M025_SA_EMAIL': 'synthetic.sa@ussignal.local',
+                    'PROJECTPULSE_M025_SA_PASSWORD': 'synthetic-password-only'}):
+                await runner.run()
+                requests = state()['requests']
+                assert not any(item['runHeaderPresent'] for item in requests)
+                assert not any(item['method'] != 'GET' for item in requests if item['path'].startswith('/api/module025/'))
+                assert len([item for item in requests if item['authenticated'] and item['path'].endswith(('sow.docx', 'gsd.xlsx'))]) == 4
+                reset()  # Fixture-only authority cannot substitute for normal SA authority.
+                try:
+                    await runner.run()
+                    raise AssertionError('Fixture authority accepted as normal SA')
+                except RuntimeError as error:
+                    assert str(error) == 'browser_login_failed'
+        valid = {'runtimeEnvironment': 'test', 'records': [{'ownerUserId': 'sa',
+            'projectName': 'Protected UAT Module 025 12345', 'customerName': 'Protected UAT normal SA 12345',
+            'latestVersionNumber': 1, 'engagementNumber': 'SOW-TEST-025'}]}
+        assert runner.select_retained_record(valid, 'sa', '12345') == 'SOW-TEST-025'
+        for invalid in (valid | {'runtimeEnvironment': 'production'}, valid | {'records': []},
+                        valid | {'records': valid['records'] * 2}, valid | {'hasMore': True}):
+            try:
+                runner.select_retained_record(invalid, 'sa', '12345')
+                raise AssertionError('Unsafe retained record selection accepted')
+            except RuntimeError:
+                pass
         for invalid in (b'Engagement,Customer\nSOW-TEST-025,Synthetic customer\n',
                         b'<html>SOW error</html>', b'\xff'):
             try:

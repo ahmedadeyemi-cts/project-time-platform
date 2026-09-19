@@ -12,6 +12,7 @@ internal static class Module025ProviderFallbackTests
         { if (!condition) throw new InvalidOperationException("ASSERTION_FAILED " + label); Console.WriteLine("ASSERTION_PASSED " + label); }
         var environment = new Dictionary<string, string?> {
             ["PROJECTPULSE_CELAR_AI_ENABLED"] = "true",
+            ["PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED"] = "true",
             ["PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT"] = "https://synthetic.invalid/v1/chat/completions",
             ["PROJECTPULSE_PRIVATE_INFERENCE_MODEL"] = "synthetic-model",
             ["PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN"] = "synthetic-test-only"
@@ -20,8 +21,10 @@ internal static class Module025ProviderFallbackTests
         try
         {
             foreach (var pair in environment) Environment.SetEnvironmentVariable(pair.Key, pair.Value);
-            foreach (var scenario in new[] { "private_success", "all_failed", "refusal", "cancelled" })
+            foreach (var scenario in new[] { "private_success", "all_failed", "refusal", "cancelled", "paid_unset", "paid_false", "paid_invalid", "deepseek_success", "private_refusal" })
             {
+                Environment.SetEnvironmentVariable("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED", scenario switch {
+                    "paid_unset" or "deepseek_success" or "private_refusal" => null, "paid_false" => "false", "paid_invalid" => "invalid", _ => "true" });
                 var events = new List<Module025GenerationProgress>();
                 var phase = new Module025PhaseExecution("Implement", 0, (value, _) => { events.Add(value); return Task.CompletedTask; });
                 var adapter = Module025ExternalSowAdapter.TryCreate(evidence with { PhaseExecution = phase })!;
@@ -64,22 +67,28 @@ internal static class Module025ProviderFallbackTests
                         token.ThrowIfCancellationRequested();
                         var target = ProjectPulseDeepSeekProvider.PrivateTarget!;
                         privateCalls.Add(target);
-                        var success = scenario == "private_success" && target == "celar_ai";
+                        var success = scenario == "private_success" && target == "celar_ai"
+                            || scenario == "deepseek_success" && target == "deepseek_v4";
+                        if (scenario == "private_refusal")
+                            return Task.FromResult(new ProjectPulseAiProviderResult(target, "refusal", null, "private_safety_refusal", null, null, null, 200));
                         return Task.FromResult(new ProjectPulseAiProviderResult(target, success ? "success" : "failure",
                             success ? "synthetic validated private phase" : null,
                             success ? null : "private_model_unavailable", null, null, null, 200));
                     }, () => throw new InvalidOperationException("Local template must never complete a detailed SOW."), cancel.Token);
+                    var started = events.Where(e => e.Stage == "provider_started").Select(e => e.Provider).ToArray();
                     if (scenario == "refusal")
-                        Check(result.Outcome == "refusal" && openai.Calls == 0 && privateCalls.Count == 0,
-                            "structured_sow_refusal_stops_all_fallback");
-                    else
+                        Check(result.Outcome == "refusal" && openai.Calls == 0 && claude.Calls == 1
+                            && started.SequenceEqual(new[] { "deepseek_v4", "celar_ai", "claude" }),
+                            "structured_sow_refusal_stops_remaining_fallback");
+                    else if (scenario == "private_refusal")
+                        Check(result.Outcome == "refusal" && claude.Calls == 0 && openai.Calls == 0
+                            && started.SequenceEqual(new[] { "deepseek_v4" }), "private_refusal_never_escalates");
+                    else if (scenario == "all_failed")
                     {
                         Check(claude.Calls == 1 && openai.Calls == 1 && deepseek.Calls == 0
-                            && privateCalls.SequenceEqual(new[] { "deepseek_v4", "celar_ai" })
-                            && events.Count(e => e.Stage == "provider_started") == 4,
-                            "two_rejected_cloud_outputs_allow_both_private_providers_" + scenario);
-                        Check(scenario == "private_success" ? result.Provider == "celar_ai" && result.Outcome == "success"
-                            : result.Outcome != "success", "route_result_is_truthful_" + scenario);
+                            && started.SequenceEqual(new[] { "deepseek_v4", "celar_ai", "claude", "openai" }),
+                            "paid_opt_in_preserves_private_first_order");
+                        Check(result.Outcome != "success", "all_failed_never_returns_template_success");
                         Check(!await phase.BeforeAttemptAsync("openai", CancellationToken.None),
                             "route_cannot_spend_a_fifth_attempt");
                         Check(claude.Request!.UserPrompt == request.UserPrompt && openai.Request!.UserPrompt == request.UserPrompt
@@ -87,11 +96,24 @@ internal static class Module025ProviderFallbackTests
                             && !JsonSerializer.Serialize(events).Contains(secretSentinel),
                             "rejected_credentials_never_enter_fallback_prompts_or_progress");
                     }
+                    else
+                    {
+                        Check(claude.Calls == 0 && openai.Calls == 0 && deepseek.Calls == 0,
+                            "no_paid_provider_calls_" + scenario);
+                        var succeeded = scenario is "private_success" or "deepseek_success";
+                        Check(succeeded ? result.Outcome == "success" && result.Provider == (scenario == "deepseek_success" ? "deepseek_v4" : "celar_ai")
+                            : result.Outcome != "success", "private_route_result_is_truthful_" + scenario);
+                        Check(started.SequenceEqual(scenario == "deepseek_success" ? new[] { "deepseek_v4" }
+                            : new[] { "deepseek_v4", "celar_ai" }), "private_provider_attempt_order_" + scenario);
+                        if (!succeeded)
+                            Check(result.TargetDecisions!.Count(d => d.ReasonCode == "module025_paid_fallback_disabled") == 2,
+                                "paid_denial_is_explicit_" + scenario);
+                    }
                 }
                 catch (OperationCanceledException) when (scenario == "cancelled")
                 { Check(claude.Calls == 0 && openai.Calls == 0 && privateCalls.Count == 0, "deadline_cancellation_stops_before_any_provider"); }
             }
-            Console.WriteLine("MODULE025_PROVIDER_FALLBACK_TESTS=PASS scenarios=4 privacy=unchanged deadline=bounded");
+            Console.WriteLine("MODULE025_PROVIDER_FALLBACK_TESTS=PASS scenarios=9 privacy=unchanged deadline=bounded paid_default=disabled");
         }
         finally { foreach (var pair in previous) Environment.SetEnvironmentVariable(pair.Key, pair.Value); }
     }

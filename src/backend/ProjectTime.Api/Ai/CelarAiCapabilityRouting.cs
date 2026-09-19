@@ -2589,12 +2589,10 @@ public sealed class CelarAiCapabilityRouter
         var privateDocumentTargetMandatory = execution.ContainsPrivateDocuments
             && privatePolicyProfile?.RequirePrivateModelForDocuments == true;
         static bool IsPrivateTarget(string target) => target is CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi;
-        var externalSowReady = execution.StructuredSowPhase && execution.ExternalSow is not null
-            && Module025ExternalSowAdapter.PolicyEnabled;
-        var orderedTargets = externalSowReady
-            ? route.Targets.Where(target => target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi)
-                .Concat(route.Targets.Where(target => target is not (CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi))).ToArray()
-            : requirePrivateTargetBeforeExternal
+        // SOW processing must honor the configured order and the existing
+        // private-data precedence. Enabling a sanitized adapter is not consent
+        // to spend on paid providers before the private targets.
+        var orderedTargets = requirePrivateTargetBeforeExternal
             ? route.Targets.Where(IsPrivateTarget)
                 .Concat(route.Targets.Where(target => !IsPrivateTarget(target)))
                 .ToArray()
@@ -2603,7 +2601,7 @@ public sealed class CelarAiCapabilityRouter
         var skipped = new List<string>();
         var failed = new List<string>();
         var decisions = new List<ProjectPulseAiTargetDecision>();
-        if (requirePrivateTargetBeforeExternal && !externalSowReady)
+        if (requirePrivateTargetBeforeExternal)
         {
             foreach (var deferredTarget in route.Targets.TakeWhile(target => !IsPrivateTarget(target)))
             {
@@ -2625,6 +2623,15 @@ public sealed class CelarAiCapabilityRouter
             {
                 if (feature != CelarAiCapabilityCatalog.SowGsdPlanning)
                     throw new InvalidOperationException("structured_sow_capability_mismatch");
+                // Separate cost opt-in for SOWs. Missing/invalid/false means
+                // private-only, even if global external assistance is enabled.
+                if (target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                    && !RuntimeFlag("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED"))
+                {
+                    skipped.Add(target);
+                    decisions.Add(new(target, "skipped", "module025_paid_fallback_disabled"));
+                    continue;
+                }
                 // A cloud target needs the permission-checked closed SOW capsule.
                 // The generic assistance and local-template paths remain ineligible.
                 if (target == CelarAiCapabilityTargets.Local

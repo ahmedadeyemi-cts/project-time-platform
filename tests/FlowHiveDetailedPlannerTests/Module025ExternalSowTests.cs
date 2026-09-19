@@ -14,10 +14,12 @@ internal static class Module025ExternalSowTests
         { if (!condition) throw new InvalidOperationException("ASSERTION_FAILED " + label); Console.WriteLine("ASSERTION_PASSED " + label); }
         var previous = Environment.GetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION");
         var previousFallback = Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED");
+        var previousPaid = Environment.GetEnvironmentVariable("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED");
         var priorDb = Environment.GetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION");
         try
         {
             Environment.SetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION", null);
+            Environment.SetEnvironmentVariable("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED", "true");
             Environment.SetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", "true");
             Environment.SetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED", "true");
             var events = new List<Module025GenerationProgress>();
@@ -293,6 +295,7 @@ internal static class Module025ExternalSowTests
             Environment.SetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", previous);
             Environment.SetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED", previousFallback);
             Environment.SetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION", priorDb);
+            Environment.SetEnvironmentVariable("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED", previousPaid);
         }
     }
     private sealed class FakeProvider(string code, string content) : IProjectPulseAiProvider
