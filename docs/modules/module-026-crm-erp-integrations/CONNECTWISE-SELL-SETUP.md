@@ -37,7 +37,7 @@ submission storage. It adds a disabled connection, retires the old one, records
 the authority switch and permits new submission destinations. Reapplication
 preserves configuration. Existing customer links, credentials, receipts and
 manual/other CRM source selections are retained. Old credentials are never copied.
-This PR does not apply migrations or deploy anything.
+The Protected Test `sow_role` release lane packages and applies migration 111 after migrations 106 and 110, then verifies the new provider and legacy retirement before application deployment. Live API verification remains pending until credentials are issued.
 
 Protocol references checked September 19, 2026:
 
