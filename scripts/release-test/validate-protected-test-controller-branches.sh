@@ -12,7 +12,10 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == fix/module025-standard-download-formats-20260919 ]]; then
+if [[ "$HEAD_BRANCH" == fix/module025-export-quarantine-compatibility ]]; then
+  python3 tests/module025-export-quarantine-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/module025-standard-download-formats-20260919 ]]; then
   node tests/module025-standard-download-formats-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/connectwise-sell-migration-replay ]]; then
