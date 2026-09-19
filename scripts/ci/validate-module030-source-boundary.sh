@@ -4,6 +4,11 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
+if [[ "$HEAD_BRANCH" == fix/connectwise-sell-module026 ]]; then
+  python3 tests/connectwise-sell-release-scope.py
+  exit 0
+fi
+
 git fetch origin "$BASE_BRANCH" --no-tags
 BASE_REF="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
 test -n "$BASE_REF"

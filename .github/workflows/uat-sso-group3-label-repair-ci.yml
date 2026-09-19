@@ -114,8 +114,8 @@ jobs:
           for marker in \
             'Project portfolio command center' \
             'Engineering assignments and project evidence' \
-            'Customer, SELL, and delivery readiness' \
-            'Projects, customers, SELL, and governed rates' \
+            'Customer, ConnectWise SELL, and delivery readiness' \
+            'Projects, customers, ConnectWise SELL, and governed rates' \
             'data-workspace-summary' \
             'workspaceColumns' \
             'workspaceCells'; do

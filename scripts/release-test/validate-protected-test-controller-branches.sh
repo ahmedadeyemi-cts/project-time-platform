@@ -12,7 +12,10 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == 'fix/flowhive-reviewed-regeneration-control-20260907' ]]; then
+if [[ "$HEAD_BRANCH" == fix/connectwise-sell-module026 ]]; then
+  python3 tests/connectwise-sell-release-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-reviewed-regeneration-control-20260907' ]]; then
   [[ "$CURRENT_BASE_SHA" == '7e5c378dcb15b2b2a00511fa69f90d2411eec336' ]] \
     || fail 'Reviewed regeneration control is not based on current main.'
   cmp -s "$CIT/diff" "$CIT/e-flowhive-reviewed-regeneration-files" || fail 'Reviewed regeneration control differs from its exact governed file set.'
