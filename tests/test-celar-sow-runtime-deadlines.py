@@ -102,3 +102,18 @@ def conditions(step):
 assert conditions(gate) == conditions(build) == [f'if: {GATE}']
 assert 'verify-oracle-sow-runtime.py' in gate
 assert controller.index('Verify the matching Oracle SOW runtime') < controller.index('Build immutable API')
+
+# Durable phase calls have a shorter server deadline and exactly one local attempt.
+gateway.app = SimpleNamespace(logger=SimpleNamespace(info=lambda *args: None))
+gateway._ollama_post = post
+clock[0] = 0
+attempts.clear()
+request.headers = {'X-Pulse-AI-Feature':'sow_gsd_planning', 'X-Pulse-AI-Workload':'module025_phase_v4', 'X-Pulse-AI-Deadline-Seconds':'300'}
+_, status = ns['_local_chat_completions']()
+assert status == 504 and attempts == [('gemma3:4b',300)]
+for value in ['', '0', '301', '3600', '-1', 'NaN', '٣٠٠']:
+    attempts.clear()
+    request.headers['X-Pulse-AI-Deadline-Seconds'] = value
+    _, status = ns['_local_chat_completions']()
+    assert status == 400 and not attempts
+print('MODULE025_GATEWAY_PHASE_DEADLINE=PASS')

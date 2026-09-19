@@ -65,6 +65,10 @@ jobs:
           done
 
           case "$HEAD_BRANCH" in
+            fix/module025-private-generation-recovery)
+              python3 tests/module025-private-generation-scope.py
+              echo "PULSE_AI_HELP_CHAT_VALIDATION_MODE=CONNECTWISE_REGRESSION" >> "$GITHUB_ENV"
+              ;;
             fix/connectwise-sell-module026)
               python3 tests/connectwise-sell-release-scope.py
               echo "PULSE_AI_HELP_CHAT_VALIDATION_MODE=CONNECTWISE_REGRESSION" >> "$GITHUB_ENV"

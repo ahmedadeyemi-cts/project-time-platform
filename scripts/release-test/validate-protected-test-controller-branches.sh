@@ -12,7 +12,10 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == fix/connectwise-sell-module026 ]]; then
+if [[ "$HEAD_BRANCH" == fix/module025-private-generation-recovery ]]; then
+  python3 tests/module025-private-generation-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/connectwise-sell-module026 ]]; then
   python3 tests/connectwise-sell-release-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-reviewed-regeneration-control-20260907' ]]; then

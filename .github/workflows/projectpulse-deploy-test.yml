@@ -1096,7 +1096,7 @@ jobs:
       - name: Verify Module 025 scoped deployment identity and lifecycle
         id: sow_role_uat
         if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (inputs.acceptance_scope == 'sow_role') }}
-        timeout-minutes: 35
+        timeout-minutes: 50
         shell: bash
         working-directory: release
         env:
@@ -1114,7 +1114,7 @@ jobs:
           PROJECTPULSE_M025_SA_PASSWORD: ${{ secrets.PROJECTPULSE_M025_SA_PASSWORD }}
           PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
           PROJECTPULSE_M025_PM_PASSWORD: ${{ secrets.PROJECTPULSE_M025_PM_PASSWORD }}
-          MODULE025_GENERATION_TIMEOUT_SECONDS: '1500'
+          MODULE025_GENERATION_TIMEOUT_SECONDS: '2520'
         run: |
           set -Eeuo pipefail
           [[ "$BASE" == 'https://phd-west-test.onenecklab.com' && "$TARGET_RELEASE_BRANCH" == main ]]

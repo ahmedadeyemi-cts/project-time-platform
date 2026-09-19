@@ -4,7 +4,10 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
-if [[ "$HEAD_BRANCH" == fix/connectwise-sell-module026 ]]; then
+if [[ "$HEAD_BRANCH" == fix/module025-private-generation-recovery ]]; then
+  python3 tests/module025-private-generation-scope.py
+  exit 0
+elif [[ "$HEAD_BRANCH" == fix/connectwise-sell-module026 ]]; then
   python3 tests/connectwise-sell-release-scope.py
   exit 0
 fi

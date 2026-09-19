@@ -351,8 +351,10 @@ def _sow_completion(payload: dict[str, Any], timeout: int) -> tuple[dict[str, An
     completion = {"role": "assistant", "content": message["content"]}
     if message.get("refusal"):
         completion["refusal"] = message["refusal"]
+    metrics = {key: body[key] for key in ("load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration", "total_duration")
+               if type(body.get(key)) is int and body[key] >= 0}
     return {"model": body["model"], "choices": [
-        {"index": 0, "message": completion, "finish_reason": reason}]}, 200
+        {"index": 0, "message": completion, "finish_reason": reason}], "celar_metrics": metrics}, 200
 
 
 def _local_chat_completions() -> Any:
@@ -411,7 +413,18 @@ def _local_chat_completions() -> Any:
         if name in payload:
             base_payload[name] = payload[name]
 
-    deadline = time.monotonic() + (SOW_TIMEOUT_SECONDS if sow else gateway.CHAT_TIMEOUT_SECONDS)
+    phase_request = feature == "sow_gsd_planning" and request.headers.get("X-Pulse-AI-Workload") == "module025_phase_v4"
+    deadline_seconds = SOW_TIMEOUT_SECONDS if sow else gateway.CHAT_TIMEOUT_SECONDS
+    if phase_request:
+        supplied = request.headers.get("X-Pulse-AI-Deadline-Seconds", "")
+        if not supplied.isascii() or not supplied.isdigit() or not 10 <= int(supplied) <= 300:
+            return gateway._error("module025_deadline_invalid", 400)
+        deadline_seconds = min(deadline_seconds, int(supplied))
+        # The durable router owns attempts. Do not restart inference on another
+        # local model after the caller's bounded phase has already expired.
+        candidates = candidates[:1]
+        attempt_budgets = [deadline_seconds]
+    deadline = time.monotonic() + deadline_seconds
     last_body: dict[str, Any] = {"error": {"code": "private_runtime_unavailable"}}
     last_status = 502
     attempted: list[str] = []
@@ -438,6 +451,14 @@ def _local_chat_completions() -> Any:
                 "/v1/chat/completions", candidate_payload, attempt_timeout,
                 gateway.MAX_GATEWAY_RESPONSE_BYTES,
             )
+        if phase_request:
+            phase_metrics = body.get("celar_metrics", {})
+            if not isinstance(phase_metrics, dict):
+                phase_metrics = {}
+            gateway.app.logger.info("module025_phase model=%s status=%s budget_seconds=%s metrics=%s",
+                candidate, status, attempt_timeout, {key: value for key, value in phase_metrics.items()
+                    if key in {"load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration", "total_duration"}
+                    and type(value) is int and value >= 0})
         if status == 200:
             response = jsonify(body)
             response.headers["X-Celar-Local-Model"] = candidate

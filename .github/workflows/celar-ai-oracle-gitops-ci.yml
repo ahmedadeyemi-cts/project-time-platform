@@ -44,7 +44,7 @@ jobs:
             .environment == "protected-test-oracle-celar" and
             .hostname == "celarai.onenecklab.com" and
             .architecture == "arm64" and
-            .gatewayVersion == "1.1.7" and
+            .gatewayVersion == "1.1.8" and
             .ollamaMaxLoadedModels == 1 and
             .ollamaNumParallel == 1 and
             .gatewayBind == "127.0.0.1:8787" and
