@@ -216,3 +216,28 @@
   .flowhive-psa-financial-summary > div,
   .flowhive-psa-reminder-grid { grid-template-columns: 1fr; }
 }
+
+.flowhive-team-calendar { background: #fff; border: 1px solid #d5e1eb; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+.flowhive-team-calendar h3 { margin: 6px 0; }
+.flowhive-team-calendar p { color: #4f6377; }
+.flowhive-team-calendar-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+.flowhive-team-calendar-toolbar label { display: grid; gap: 5px; }
+.flowhive-team-calendar-scroll { max-width: 100%; overflow: auto; max-height: 650px; }
+.flowhive-team-calendar table { border-collapse: separate; border-spacing: 0; width: 100%; }
+.flowhive-team-calendar th, .flowhive-team-calendar td { min-width: 145px; padding: 12px; vertical-align: top; border-right: 1px solid #d5e1eb; border-bottom: 1px solid #d5e1eb; text-align: left; }
+.flowhive-team-calendar thead th { position: sticky; top: 0; background: #0a2b48; color: #fff; z-index: 2; }
+.flowhive-team-calendar tbody th { position: sticky; left: 0; background: #f2f7fb; min-width: 190px; z-index: 1; }
+.flowhive-team-calendar th small { display: block; font-weight: 400; margin-top: 5px; }
+.flowhive-calendar-slot { padding: 8px; margin-bottom: 6px; border-left: 3px solid #2379ad; background: #eaf3fa; border-radius: 4px; }
+.flowhive-calendar-slot span { display: block; white-space: nowrap; }
+.flowhive-calendar-slot.status-oof { background: #fff3dd; border-color: #9b6400; }
+.flowhive-calendar-unknown { color: #8a5100; }
+.flowhive-calendar-clear { color: #53687a; }
+.flowhive-work-row .flowhive-task-description-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-height: 3em; }
+.flowhive-milestone-disclosure { border: 1px solid #d5e1eb; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+.flowhive-milestone-disclosure > summary { cursor: pointer; font-weight: 600; }
+.flowhive-document-readiness { font-size: .85rem; color: #52687c; }
+.flowhive-team-calendar-toolbar button, .flowhive-team-calendar-toolbar input, .flowhive-team-calendar-toolbar select { min-height: 38px; border: 1px solid #b8cada; border-radius: 6px; padding: 7px 10px; background: #fff; color: #173a55; font: inherit; }
+.flowhive-team-calendar-toolbar button { cursor: pointer; font-weight: 600; }
+.flowhive-team-calendar-toolbar button:disabled { opacity: .6; cursor: wait; }
+.flowhive-team-calendar-toolbar :is(button, input, select):focus-visible { outline: 3px solid #2a8abd; outline-offset: 2px; }

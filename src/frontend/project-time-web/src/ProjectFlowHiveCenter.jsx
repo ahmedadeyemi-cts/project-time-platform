@@ -581,7 +581,7 @@ export default function ProjectFlowHiveCenter() {
       if (customer !== 'all' && project.customerName !== customer) return false;
       if (projectStatus !== 'all' && project.status !== projectStatus) return false;
       if (!query) return true;
-      return [project.projectCode, project.projectName, project.customerName, project.projectManagerName, project.status]
+      return [project.projectCode, project.projectName, project.customerName, project.projectManagerName, project.accountExecutiveName, project.status]
         .some((value) => String(value ?? '').toLowerCase().includes(query));
     });
   }, [customer, projectStatus, projects, search]);
@@ -1266,7 +1266,7 @@ export default function ProjectFlowHiveCenter() {
 
       <div className="flowhive-scope-toolbar">
         <label>Canonical project<select value={selectedProjectId} onChange={(event) => chooseProject(event.target.value)}><option value="">Select a project</option>{projects.map((project) => <option key={project.projectId} value={project.projectId}>{project.projectCode} — {project.projectName}</option>)}</select></label>
-        <span>Project changes clear the current view and reload only the newly selected authorized scope.</span>
+        <span>{selectedProject ? `PM: ${selectedProject.projectManagerName || 'Unassigned'} · AE: ${selectedProject.accountExecutiveName || 'Unassigned'}` : 'Select a project to see its delivery team.'}</span>
       </div>
 
       {activeView === 'kanban' ? <ProjectFlowHivePsaWorkspace
@@ -1302,7 +1302,7 @@ export default function ProjectFlowHiveCenter() {
       {activeView === 'portfolio' ? (
         <div className="flowhive-view-panel">
           <div className="flowhive-filter-bar">
-            <label>Search<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Project, customer, manager, or status" /></label>
+            <label>Search<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Project, customer, PM, AE, or status" /></label>
             <label>Customer<select value={customer} onChange={(event) => setCustomer(event.target.value)}><option value="all">All authorized customers</option>{customerOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
             <label>Project status<select value={projectStatus} onChange={(event) => setProjectStatus(event.target.value)}><option value="all">All statuses</option>{statusOptions.map((value) => <option key={value} value={value}>{labelFrom(value)}</option>)}</select></label>
           </div>
@@ -1318,8 +1318,8 @@ export default function ProjectFlowHiveCenter() {
             {filteredProjects.map((project) => (
               <article className={`flowhive-project-card ${selectedProjectId === project.projectId ? 'selected' : ''}`} key={project.projectId}>
                 <div className="flowhive-project-card-heading"><div><span>{project.customerName}</span><h3>{project.projectCode} · {project.projectName}</h3></div><span className={`flowhive-status ${statusTone(project.status)}`}>{labelFrom(project.status)}</span></div>
-                <dl><div><dt>Project Manager</dt><dd>{project.projectManagerName}</dd></div><div><dt>Current dates</dt><dd>{formatDate(project.startDate)} – {formatDate(project.endDate)}</dd></div><div><dt>Tasks</dt><dd>{project.taskCount}</dd></div><div><dt>Assignments</dt><dd>{project.assignmentCount}</dd></div></dl>
-                <footer><button type="button" onClick={() => chooseProject(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => chooseProject(project.projectId, true)}>Open planner</button></footer>
+                <dl><div><dt>Project Manager</dt><dd>{project.projectManagerName}</dd></div><div><dt>Account Executive</dt><dd>{project.accountExecutiveName || 'Unassigned'}</dd></div><div><dt>Documents</dt><dd>{Number.isFinite(project.documentCount) ? `${project.documentCount} attached` : 'Checking availability'}</dd></div><div><dt>Current dates</dt><dd>{formatDate(project.startDate)} – {formatDate(project.endDate)}</dd></div><div><dt>Tasks</dt><dd>{project.taskCount}</dd></div><div><dt>Assignments</dt><dd>{project.assignmentCount}</dd></div></dl>
+                <p className="flowhive-document-readiness">{project.documentCount === 0 ? 'Upload a project document before using AI Planner.' : 'AI Planner checks the approved SOW and its processing status before generation.'}</p><footer><button type="button" onClick={() => chooseProject(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => chooseProject(project.projectId, true)}>Open planner</button></footer>
               </article>
             ))}
           </div>
@@ -1330,7 +1330,7 @@ export default function ProjectFlowHiveCenter() {
         <div className="flowhive-view-panel">
           <div className="flowhive-planner-toolbar">
             <button type="button" onClick={createLocalDraft} disabled={!selectedProject || !canEditPlanner}>Create/reset draft</button><button type="button" onClick={loadWorkingCopy} disabled={!selectedProjectId || busy}>Load working copy</button>
-            <button type="button" className="primary flowhive-ai-planner-button" aria-label="AI Planner" onClick={previewAiRequest} disabled={!selectedProjectId || Boolean(busy) || plannerObserved || !canEditPlanner}>{busy === 'ai-planner' ? 'Building from SOW…' : 'AI Planner'}</button>
+            <button type="button" className="primary flowhive-ai-planner-button" aria-label="AI Planner" onClick={previewAiRequest} disabled={!selectedProjectId || selectedProject?.documentCount === 0 || Boolean(busy) || plannerObserved || !canEditPlanner}>{busy === 'ai-planner' ? 'Building from SOW…' : 'AI Planner'}</button>
             <button type="button" onClick={validatePlan} disabled={!selectedProjectId || busy}>Validate</button>
             <button type="button" onClick={calculateSchedule} disabled={!draftPlan || busy}>Calculate schedule</button>
             <button type="button" onClick={saveDraft} disabled={!draftPlan || busy || !canEditPlanner}>{busy === 'save' ? 'Saving…' : 'Save immutable version'}</button>
@@ -1362,7 +1362,7 @@ export default function ProjectFlowHiveCenter() {
                 <div><span>Evidence score</span><strong>{formatPercent(aiPreview.confidence)}</strong><small>{labelFrom(aiPreview.executionPath)}</small></div>
                 <div className="privacy"><span>External privacy</span><strong>No private SOW content sent</strong><small>Only a fixed identity-free planning blueprint is eligible for Claude/OpenAI.</small></div>
               </aside> : null}
-              {(draftPlan.milestones || []).length ? <section className="flowhive-milestone-list"><header><div><h3>Project milestones</h3><p>Source-backed release and acceptance gates. Target dates are calculated from predecessor tasks.</p></div><strong>{draftPlan.milestones.length}</strong></header><div>{draftPlan.milestones.map((milestone) => <article key={milestone.clientMilestoneId}><div><span>{milestone.predecessorWbs}</span><h4>{milestone.name}</h4></div><p>{milestone.description}</p><small>{formatDate(milestone.targetDate)} · {(milestone.citationIds || []).length} citation(s)</small></article>)}</div></section> : null}
+              {(draftPlan.milestones || []).length ? <details className="flowhive-milestone-disclosure"><summary>Project milestones ({draftPlan.milestones.length})</summary><section className="flowhive-milestone-list"><header><div><h3>Project milestones</h3><p>Source-backed release and acceptance gates. Target dates are calculated from predecessor tasks.</p></div><strong>{draftPlan.milestones.length}</strong></header><div>{draftPlan.milestones.map((milestone) => <article key={milestone.clientMilestoneId}><div><span>{milestone.predecessorWbs}</span><h4>{milestone.name}</h4></div><p>{milestone.description}</p><small>{formatDate(milestone.targetDate)} · {(milestone.citationIds || []).length} citation(s)</small></article>)}</div></section></details> : null}
               <div className="flowhive-table-heading"><div><h3>AI Planner work breakdown</h3><p>Expand each phase and task for complete steps, inputs, outputs, validation, acceptance, responsibilities, risks, questions, and private citations. Use the Add task action on the Plan, Design, Implement, Validate, or Release phase header. Drag tasks to reorder or move them between phases.</p></div></div>
               <div className="flowhive-table-wrap">
                 <table className="flowhive-task-table flowhive-planner-table flowhive-smartsheet-table">
@@ -1392,7 +1392,7 @@ export default function ProjectFlowHiveCenter() {
                       <Fragment key={task.clientTaskId || `${task.wbsNumber}-${index}`}>
                         <tr className={`flowhive-work-row phase-${String(task.phase || '').toLowerCase()} ${draggedTaskWbs === task.wbsNumber ? 'dragging' : ''}`} draggable={Boolean(enterprise?.access?.canManage)} onDragStart={() => setDraggedTaskWbs(task.wbsNumber)} onDragEnd={() => setDraggedTaskWbs('')} onDragOver={(event) => event.preventDefault()} onDrop={() => dropTask(task.wbsNumber, task.parentWbsNumber, 'before')}>
                           <td><span className="flowhive-wbs-child" title="Drag this row to reorder or move it to another phase"><span aria-hidden="true">⋮⋮</span>{task.wbsNumber}</span></td>
-                          <td><div className="flowhive-task-name-control"><input aria-label={`Task ${task.wbsNumber} name`} value={task.name} onChange={(event) => updateTask(index, 'name', event.target.value)} /><button type="button" className="flowhive-inline-detail-button" onClick={() => setExpandedTaskWbs(detailOpen ? '' : task.wbsNumber)} aria-expanded={detailOpen}>{detailOpen ? 'Close details' : 'Task details'}</button><button type="button" className="danger-quiet" disabled={!enterprise?.access?.canManage} onClick={() => deleteTask(task.wbsNumber)}>Delete</button></div><small>{task.description}</small></td>
+                          <td><div className="flowhive-task-name-control"><input aria-label={`Task ${task.wbsNumber} name`} value={task.name} onChange={(event) => updateTask(index, 'name', event.target.value)} /><button type="button" className="flowhive-inline-detail-button" onClick={() => setExpandedTaskWbs(detailOpen ? '' : task.wbsNumber)} aria-expanded={detailOpen}>{detailOpen ? 'Close details' : 'Task details'}</button><button type="button" className="danger-quiet" disabled={!enterprise?.access?.canManage} onClick={() => deleteTask(task.wbsNumber)}>Delete</button></div><small className="flowhive-task-description-preview" title={task.description}>{task.description}</small></td>
                           <td><input className="flowhive-date-cell" aria-label={`Start date for ${task.name}`} type="date" value={task.constraintDate || scheduledTask?.startDate || ''} onChange={(event) => updateTaskStartDate(index, event.target.value)} /></td>
                           <td><input className="flowhive-date-cell" aria-label={`End date for ${task.name}`} type="date" min={task.constraintDate || scheduledTask?.startDate || draftPlan.projectStartDate || undefined} value={scheduledTask?.endDate || ''} onChange={(event) => updateTaskEndDate(index, event.target.value, scheduledTask?.startDate)} /></td>
                           <td><div className="flowhive-duration-cell"><input aria-label={`Duration for ${task.name}`} type="number" min="1" max="730" value={task.durationWorkingDays} onChange={(event) => updateTask(index, 'durationWorkingDays', Number(event.target.value))} /><span>day(s)</span></div></td>
@@ -1480,7 +1480,7 @@ export default function ProjectFlowHiveCenter() {
           <section className="flowhive-enterprise-card flowhive-ai-operation-control">
             <header><div><span>AI Planner automation</span><h3>Start or resume project-grounded planning</h3></div><strong>{selectedProject ? selectedProject.projectCode : 'Select project'}</strong></header>
             <p>FlowHive automatically uses the selected project's existing active Work Register SOW, current GSD, and authorized supporting documents. No pasted excerpt, duplicate upload, or manual preparation step is required.</p>
-            <button type="button" className="primary" onClick={previewAiRequest} disabled={!selectedProjectId || Boolean(busy) || plannerObserved || !canEditPlanner}>{busy === 'ai-planner' ? 'Resolving evidence and building plan…' : aiPreview?.runId && !aiPreview?.terminal ? 'Resume AI Planner' : 'Start AI Planner'}</button>
+            <button type="button" className="primary" onClick={previewAiRequest} disabled={!selectedProjectId || selectedProject?.documentCount === 0 || Boolean(busy) || plannerObserved || !canEditPlanner}>{busy === 'ai-planner' ? 'Resolving evidence and building plan…' : aiPreview?.runId && !aiPreview?.terminal ? 'Resume AI Planner' : 'Start AI Planner'}</button>
           </section>
         </div>
       ) : null}

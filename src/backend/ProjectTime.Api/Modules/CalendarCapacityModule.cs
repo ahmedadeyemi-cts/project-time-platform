@@ -602,7 +602,7 @@ public static class CalendarCapacityModule
         throw new InvalidOperationException("ProjectPulse database connection is not configured.");
     }
 
-    private static async Task<string> GraphToken()
+    internal static async Task<string> GraphToken(CancellationToken cancellationToken = default)
     {
         using var client = new HttpClient();
         using var content = new FormUrlEncodedContent(new Dictionary<string,string>
@@ -613,7 +613,7 @@ public static class CalendarCapacityModule
             ["grant_type"] = "client_credentials"
         });
         var tenant = Required("PROJECTPULSE_ENTRA_TENANT_ID");
-        var response = await client.PostAsync($"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token", content);
+        var response = await client.PostAsync($"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token", content, cancellationToken);
         var raw = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"Graph token request failed with HTTP {(int)response.StatusCode}.");
         using var document = JsonDocument.Parse(raw);

@@ -26,7 +26,7 @@ public sealed record ProjectFlowHiveReminderPreferenceRequest(
 
 public sealed record ProjectFlowHivePsaArtifactRequest(ProjectFlowHivePlanRequest Plan);
 
-internal static class ProjectFlowHivePsaModule
+internal static partial class ProjectFlowHivePsaModule
 {
     internal const string MigrationId = "103_module_066_flowhive_enterprise_psa_revamp";
     private const long MaximumMeetingBytes = 2L * 1024 * 1024 * 1024;
@@ -47,6 +47,9 @@ internal static class ProjectFlowHivePsaModule
         endpoints.MapGet(
             "/api/project-flowhive/projects/{projectId:guid}/psa",
             (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetWorkspaceAsync);
+        endpoints.MapGet(
+            "/api/project-flowhive/projects/{projectId:guid}/team-calendar",
+            (Func<Guid, DateOnly, DateOnly, HttpContext, CancellationToken, Task<IResult>>)GetTeamCalendarAsync);
         var meetingUpload = endpoints.MapPost(
             "/api/project-flowhive/projects/{projectId:guid}/meetings",
             (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)UploadMeetingAsync);

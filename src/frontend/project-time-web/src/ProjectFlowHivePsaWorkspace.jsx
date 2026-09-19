@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './project-flowhive-psa-workspace.css';
+import ProjectFlowHiveTeamCalendar from './ProjectFlowHiveTeamCalendar.jsx';
 
 const KANBAN_COLUMNS = [
   ['not_started', 'Not started'],
@@ -382,6 +383,7 @@ export default function ProjectFlowHivePsaWorkspace({
   if (mode === 'meetings') {
     const meetings = psa?.meetings || [];
     return <div className="flowhive-view-panel flowhive-psa-panel">
+      <ProjectFlowHiveTeamCalendar key={projectId} projectId={projectId} request={jsonRequest} />
       <div className="flowhive-section-heading"><div><span>Customer collaboration</span><h3>Project meetings and recordings</h3><p>Upload MP4 meeting recordings to the governed project store. Customer-visible recordings can be downloaded only through an active reviewed FlowHive sharing link that explicitly allows meetings.</p></div><strong>{meetings.length} recording(s)</strong></div>
       <form className="flowhive-psa-meeting-upload" onSubmit={uploadMeeting}>
         <label>Meeting title<input value={meetingForm.title} onChange={(event) => setMeetingForm({ ...meetingForm, title: event.target.value })} placeholder="Weekly project status meeting" /></label>

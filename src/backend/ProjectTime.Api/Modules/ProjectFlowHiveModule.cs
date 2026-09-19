@@ -648,11 +648,19 @@ public static class ProjectFlowHiveModule
                 p.start_date,
                 p.end_date,
                 COALESCE(pm.display_name, pm.email, 'Unassigned') AS project_manager_name,
+                COALESCE(ae.display_name, ae.email, 'Unassigned') AS account_executive_name,
+                p.account_executive_user_id,
+                (SELECT COUNT(*) FROM project_intake_documents d
+                 WHERE d.project_id = p.project_id AND d.is_active = TRUE
+                   AND (@is_broad_scope OR p.project_manager_user_id = @user_id
+                        OR p.account_executive_user_id = @user_id OR p.solution_architect_user_id = @user_id
+                        OR d.engineering_visible = TRUE)) AS document_count,
                 COUNT(DISTINCT task.task_id)::bigint AS task_count,
                 COUNT(DISTINCT assignment.project_assignment_id)::bigint AS assignment_count
             FROM projects p
             LEFT JOIN clients c ON c.client_id = p.client_id
             LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+            LEFT JOIN app_users ae ON ae.user_id = p.account_executive_user_id
             LEFT JOIN project_tasks task
                 ON task.project_id = p.project_id
                AND task.is_active = TRUE
@@ -701,6 +709,8 @@ public static class ProjectFlowHiveModule
                 p.end_date,
                 pm.display_name,
                 pm.email,
+                ae.display_name,
+                ae.email,
                 p.created_at
             ORDER BY p.created_at DESC
             LIMIT 200;
@@ -726,7 +736,10 @@ public static class ProjectFlowHiveModule
                 reader.GetString(O("project_manager_name")),
                 reader.GetInt64(O("task_count")),
                 reader.GetInt64(O("assignment_count")),
-                "canonical_project"));
+                "canonical_project",
+                reader.IsDBNull(O("account_executive_user_id")) ? null : reader.GetGuid(O("account_executive_user_id")),
+                reader.GetString(O("account_executive_name")),
+                reader.GetInt64(O("document_count"))));
         }
 
         return rows;
@@ -1195,7 +1208,10 @@ internal sealed record ProjectFlowHiveProject(
     string ProjectManagerName,
     long TaskCount,
     long AssignmentCount,
-    string Source);
+    string Source,
+    Guid? AccountExecutiveUserId = null,
+    string AccountExecutiveName = "Unassigned",
+    long DocumentCount = 0);
 
 internal sealed record ProjectFlowHiveTask(
     Guid TaskId,
