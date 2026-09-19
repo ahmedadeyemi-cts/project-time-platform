@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './projectpulse-module-standard.css';
 import './unified-project-financial-workspace.css';
@@ -573,9 +573,12 @@ export default function UnifiedProjectFinancialWorkspace({
   projectManagerUserId = ''
 }) {
   const config = workspaceConfig[workspace] || workspaceConfig.engineering;
+  const requestSequence = useRef(0);
+  const [identityVersion, setIdentityVersion] = useState(0);
   const [state, setState] = useState({ loading: true, data: null, error: '' });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedAe, setSelectedAe] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [activeTab, setActiveTab] = useState(config.defaultTab);
   const [downloadState, setDownloadState] = useState({
@@ -586,24 +589,44 @@ export default function UnifiedProjectFinancialWorkspace({
   });
 
   const load = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setState((current) => ({ ...current, loading: true, error: '' }));
     try {
       const parameters = new URLSearchParams({ workspace, limit: '250' });
       if (projectManagerUserId) parameters.set('projectManagerUserId', projectManagerUserId);
       const data = await readJson(`/api/project-financials/portfolio?${parameters}`);
+      if (requestId !== requestSequence.current) return;
       setState({ loading: false, data, error: '' });
       setSelectedProjectId((current) => {
         if (current && data.projects?.some((project) => project.projectId === current)) return current;
         return data.projects?.[0]?.projectId || '';
       });
     } catch (error) {
+      if (requestId !== requestSequence.current) return;
       setState({
         loading: false,
         data: null,
         error: error instanceof Error ? error.message : 'Unable to load project financial truth.'
       });
     }
-  }, [workspace, projectManagerUserId]);
+  }, [workspace, projectManagerUserId, identityVersion]);
+
+  useEffect(() => {
+    const invalidate = () => {
+      requestSequence.current += 1;
+      setState({ loading: true, data: null, error: '' });
+      setSelectedAe('');
+      setSelectedProjectId('');
+      setIdentityVersion((value) => value + 1);
+    };
+    window.addEventListener('projectpulse:view-as-changed', invalidate);
+    window.addEventListener('projectpulse:auth-session-ready', invalidate);
+    return () => {
+      requestSequence.current += 1;
+      window.removeEventListener('projectpulse:view-as-changed', invalidate);
+      window.removeEventListener('projectpulse:auth-session-ready', invalidate);
+    };
+  }, []);
 
   useEffect(() => {
     setActiveTab(config.defaultTab);
@@ -622,11 +645,11 @@ export default function UnifiedProjectFinancialWorkspace({
         || `${project.customerName} ${project.projectCode} ${project.projectName} ${project.projectManagerName} ${project.accountExecutive?.displayName || ''} ${engineerNames} ${project.contractType || ''} ${project.sell?.sellQuoteNumber || ''} ${project.sell?.rateCard?.rateCardName || ''}`
           .toLowerCase()
           .includes(normalized);
-      return statusMatches && searchMatches;
+      return statusMatches && searchMatches && (!selectedAe || project.accountExecutive?.userId === selectedAe);
     });
-  }, [projects, search, statusFilter]);
+  }, [projects, search, statusFilter, selectedAe]);
 
-  const selectedProject = projects.find((project) => project.projectId === selectedProjectId)
+  const selectedProject = filteredProjects.find((project) => project.projectId === selectedProjectId)
     || filteredProjects[0]
     || null;
 
@@ -735,11 +758,23 @@ export default function UnifiedProjectFinancialWorkspace({
               <option value="missing_financial_information">Missing financial information</option>
             </select>
           </label>
+          {workspace === 'sales' && state.data?.access?.canSelectAccountExecutive ? <label>Account Executive
+            <select value={selectedAe} onChange={(event) => setSelectedAe(event.target.value)}>
+              <option value="">All authorized AEs</option>
+              {[...new Map(projects.filter((project) => project.accountExecutive?.userId).map((project) => [project.accountExecutive.userId, project.accountExecutive])).values()].map((ae) => <option key={ae.userId} value={ae.userId}>{ae.displayName}</option>)}
+            </select>
+          </label> : null}
           <span>{filteredProjects.length} of {projects.length} project(s)</span>
         </div>
 
         {state.loading && !state.data ? (
           <div className="group3-empty">Loading authoritative project financial data…</div>
+        ) : filteredProjects.length && workspace === 'sales' ? (
+          <label className="group3-filterbar">Project
+            <select value={selectedProject?.projectId || ''} onChange={(event) => setSelectedProjectId(event.target.value)}>
+              {filteredProjects.map((project) => <option key={project.projectId} value={project.projectId}>{project.customerName} · {project.projectCode} · {project.projectName}</option>)}
+            </select>
+          </label>
         ) : filteredProjects.length ? (
           <ProjectTable
             workspace={workspace}

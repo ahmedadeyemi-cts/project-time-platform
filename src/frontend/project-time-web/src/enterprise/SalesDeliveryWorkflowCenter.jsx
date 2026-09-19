@@ -89,11 +89,31 @@ function AiTimeEntry() {
 }
 
 function UatValidation() {
-  const checks = useMemo(() => [{ name: 'API health', path: '/health' }, { name: 'Release identity', path: '/api/version' }, { name: 'Module availability', path: '/api/module-availability' }, { name: 'Notification readiness', path: '/api/enterprise-notifications/runtime/readiness' }], []);
+  const checks = useMemo(() => [{ name: 'Release identity', path: '/api/version' }, { name: 'Module availability', path: '/api/module-availability' }, { name: 'Notification readiness', path: '/api/enterprise-notifications/runtime/readiness' }], []);
   const [results, setResults] = useState([]); const [busy, setBusy] = useState(false);
-  async function run() { setBusy(true); const next = await Promise.all(checks.map(async (check) => { const started = performance.now(); try { const response = await fetch(check.path, { credentials: 'include', headers: headers() }); return { ...check, passed: response.ok, status: response.status, duration: Math.round(performance.now() - started) }; } catch (error) { return { ...check, passed: false, status: 'Network error', duration: Math.round(performance.now() - started) }; } })); setResults(next); setBusy(false); }
+  async function run() {
+    setBusy(true);
+    try {
+      const next = await Promise.all(checks.map(async (check) => {
+        const started = performance.now();
+        try {
+          const response = await fetch(check.path, { credentials: 'include', cache: 'no-store', headers: headers(), signal: AbortSignal.timeout(15000) });
+          const isJson = (response.headers.get('content-type') || '').includes('application/json');
+          const payload = isJson ? await response.json() : null;
+          const passed = response.ok && isJson && payload && payload.ready !== false && payload.status !== 'degraded' && payload.status !== 'error';
+          const detail = !response.ok ? payload?.message || (response.status === 401 ? 'Sign in again, then retry.' : response.status === 403 ? 'Your role cannot run this check.' : 'API request failed.')
+            : !isJson ? 'The web server returned a page instead of the API response.'
+            : !passed ? payload?.message || 'API responded, but readiness is incomplete.' : 'API response verified.';
+          return { ...check, passed: Boolean(passed), detail, status: response.status, duration: Math.round(performance.now() - started) };
+        } catch (error) {
+          return { ...check, passed: false, detail: error.name === 'TimeoutError' ? 'Check timed out after 15 seconds.' : error.message, status: 'Unavailable', duration: Math.round(performance.now() - started) };
+        }
+      }));
+      setResults(next);
+    } finally { setBusy(false); }
+  }
   useEffect(() => { void run(); }, []);
-  return <section className="sales-delivery-card"><div className="sales-delivery-card-heading"><div><span>Live smoke suite</span><h2>UAT validation workspace</h2><p>Small, bounded checks replace the prior endless preview. Results are current-browser evidence and do not mutate business data.</p></div><button className="sales-delivery-primary" type="button" onClick={run} disabled={busy}>{busy ? 'Running…' : 'Run checks'}</button></div><div className="sales-delivery-uat-grid">{checks.map((check) => { const result = results.find((item) => item.path === check.path); return <article key={check.path}><span className={result?.passed ? 'is-success' : result ? 'is-error' : ''}>{result ? result.passed ? 'Passed' : 'Failed' : 'Pending'}</span><strong>{check.name}</strong><small>{check.path}</small><p>{result ? `HTTP ${result.status} · ${result.duration} ms` : 'Waiting to run'}</p></article>; })}</div><div className="sales-delivery-boundary"><strong>Release UAT remains authoritative</strong><span>Role workflows, database migrations, exact-head CI, signed-in acceptance, rollback, and customer approval still belong to the protected deployment and Audit History—not a browser-only green badge.</span></div></section>;
+  return <section className="sales-delivery-card"><div className="sales-delivery-card-heading"><div><span>Live smoke suite</span><h2>UAT validation workspace</h2><p>Small, bounded checks replace the prior endless preview. Results are current-browser evidence and do not mutate business data.</p></div><button className="sales-delivery-primary" type="button" onClick={run} disabled={busy}>{busy ? 'Running…' : 'Run checks'}</button></div><div className="sales-delivery-uat-grid">{checks.map((check) => { const result = results.find((item) => item.path === check.path); return <article key={check.path}><span className={result?.passed ? 'is-success' : result ? 'is-error' : ''}>{result ? result.passed ? 'Passed' : 'Failed' : 'Pending'}</span><strong>{check.name}</strong><small>{check.path}</small><p>{result ? `HTTP ${result.status} · ${result.duration} ms` : 'Waiting to run'}</p>{result?.detail ? <p>{result.detail}</p> : null}</article>; })}</div><div className="sales-delivery-boundary"><strong>Release UAT remains authoritative</strong><span>Role workflows, database migrations, exact-head CI, signed-in acceptance, rollback, and customer approval still belong to the protected deployment and Audit History—not a browser-only green badge.</span></div></section>;
 }
 
 export default function SalesDeliveryWorkflowCenter({ module }) {

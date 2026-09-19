@@ -38,7 +38,6 @@ import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDual
 import MicrosoftMailTransportReadinessPanel from './MicrosoftMailTransportReadinessPanel.jsx';
 import EnterpriseExperienceController from './EnterpriseExperienceController.jsx';
 import ProjectForgeFlowHiveSyncPortal from './ProjectForgeFlowHiveSyncPortal.jsx';
-import CustomerSourceAuthorityPortal from './CustomerSourceAuthorityPortal.jsx';
 import ApplicationErrorBoundary from './ApplicationErrorBoundary.jsx';
 import WorkspaceNavigationPortal from './WorkspaceNavigationPortal.jsx';
 import './approval-access-navigation-compatibility.js';
@@ -96,7 +95,6 @@ createRoot(
       <MicrosoftIntegrationDualConnectionPortal />
       <MicrosoftMailTransportReadinessPanel />
       <ProjectForgeFlowHiveSyncPortal />
-      <CustomerSourceAuthorityPortal />
       <AuthenticatedHelpAssistant />
       <WorkspaceNavigationPortal />
     </ApplicationErrorBoundary>

@@ -347,7 +347,8 @@ public static class MicrosoftMailTransportTestModule
 
         var ownEmail = access.Context!.Email.Trim().ToLowerInvariant();
         var allowlist = TestRecipientAllowlist();
-        var recipientAuthorized = recipientEmail.Equals(ownEmail, StringComparison.OrdinalIgnoreCase)
+        var recipientAuthorized = access.Context.Roles.Contains("SUPER_ADMINISTRATOR")
+            || recipientEmail.Equals(ownEmail, StringComparison.OrdinalIgnoreCase)
             || allowlist.Contains(recipientEmail);
         if (!recipientAuthorized)
         {
@@ -397,7 +398,7 @@ public static class MicrosoftMailTransportTestModule
             selfRecipient ? access.Context.Email : recipientEmail,
             recipientEmail,
             "MODULE_065_TEST_RECIPIENT",
-            selfRecipient ? "signed_in_user" : "server_allowlist",
+            selfRecipient ? "signed_in_user" : allowlist.Contains(recipientEmail) ? "server_allowlist" : "super_administrator_test_recipient",
             "to");
         var now = DateTimeOffset.UtcNow;
         var subject = $"US Signal ProjectPulse Module 065 Test — {now:yyyy-MM-dd HH:mm:ss} UTC";

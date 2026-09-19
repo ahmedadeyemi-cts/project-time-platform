@@ -13,9 +13,9 @@ const columns = [
   ['coordinator', 'Project Team Coordinator', 'Ownership', false],
   ['assignedEngineers', 'Assigned engineers', 'Ownership', false],
   ['certiniaId', 'Certinia ID', 'External IDs', true],
-  ['sellQuoteId', 'ConnectWise SELL Quote', 'External IDs', false],
+  ['sellQuoteId', 'ConnectWise SELL Quote', 'External IDs', true],
   ['commercialSource', 'Commercial source', 'Billing data', true],
-  ['salesforceId', 'Salesforce ID', 'External IDs', false],
+  ['salesforceId', 'Salesforce ID / Quote', 'External IDs', true],
   ['purchaseOrder', 'Purchase order', 'External IDs', false],
   ['approvedLines', 'Approved billing lines', 'Billing data', true],
   ['approvedHours', 'Approved billing hours', 'Billing data', true],
@@ -606,6 +606,11 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
           <button type="button" className="primary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as PDF without opening a pop-up window.' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('pdf')}>Download PDF</button>
         </div>
       </header>
+
+      <section className="m042-notice" aria-label="How to generate an invoice">
+        <strong>Create an invoice in three steps</strong>
+        <ol><li>Find and select the customer project below.</li><li>Review approved billing lines, rates, expenses, and external references.</li><li>Use Generate Partial Invoice for eligible work, or Generate Final Invoice after closeout requirements are met. Download the saved invoice from invoice history.</li></ol>
+      </section>
 
       <section className="m042-preview-mode m042-live-mode" aria-label="Module 042 live data status">
         <strong>Commercial source guard</strong>

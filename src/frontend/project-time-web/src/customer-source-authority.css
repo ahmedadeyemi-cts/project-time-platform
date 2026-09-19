@@ -1,11 +1,8 @@
 .customer-source-authority {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 1250;
-  width: min(390px, calc(100vw - 32px));
-  max-height: min(78vh, 760px);
-  overflow: auto;
+  position: static;
+  width: 100%;
+  box-sizing: border-box;
+  margin-block: 16px;
   padding: 16px;
   border: 1px solid var(--border-color, rgba(124, 145, 178, 0.35));
   border-radius: 16px;
@@ -178,7 +175,7 @@ html[data-customer-source-mode='crm'] .customer-directory-center[data-module='02
   .customer-source-authority {
     right: 12px;
     bottom: 12px;
-    width: calc(100vw - 24px);
-    max-height: 68vh;
+    width: 100%;
+    max-height: none;
   }
 }

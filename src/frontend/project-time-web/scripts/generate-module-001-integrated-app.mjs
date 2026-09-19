@@ -151,7 +151,7 @@ if (handleSubmitIndex < 0) throw new Error('Module 001 generator could not locat
 
 const draftPrefix = generated.slice(0, handleSubmitIndex);
 const submitSuffix = generated.slice(handleSubmitIndex);
-const missingDescriptionGuard = /\n\s*const missingDescriptions = getEntriesMissingDescriptions\(payload\.entries\);\n\s*if \(missingDescriptions\.length > 0\) \{\n\s*setSaveStatus\(getMissingDescriptionMessage\(missingDescriptions\)\);\n\s*return;\n\s*\}\n/g;
+const missingDescriptionGuard = /\n\s*const missingDescriptions = getEntriesMissingDescriptions\(payload\.entries\);\n\s*if \(missingDescriptions\.length > 0\) \{\n\s*setSaveStatus\(getMissingDescriptionMessage\(missingDescriptions\)\);\n\s*return(?: false)?;\n\s*\}\n/g;
 const matches = [...draftPrefix.matchAll(missingDescriptionGuard)];
 if (matches.length !== 2) {
   throw new Error(`Expected two draft description guards before submission; found ${matches.length}.`);

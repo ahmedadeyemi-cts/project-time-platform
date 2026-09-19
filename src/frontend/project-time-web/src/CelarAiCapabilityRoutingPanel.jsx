@@ -64,12 +64,13 @@ export default function CelarAiCapabilityRoutingPanel() {
   const load = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setState((current) => ({ ...current, loading: true, error: '' }));
     try {
-      const [routesPayload, profilePayload, consumersPayload, knowledgePayload] = await Promise.all([
-        readJson(await fetch('/api/ai-configuration/routes', { credentials: 'include', cache: 'no-store' })),
-        readJson(await fetch('/api/ai-configuration/private-model', { credentials: 'include', cache: 'no-store' })),
-        readJson(await fetch('/api/ai-configuration/consumers', { credentials: 'include', cache: 'no-store' })),
-        readJson(await fetch('/api/ai-configuration/knowledge-fabric', { credentials: 'include', cache: 'no-store' })),
-      ]);
+      const results = await Promise.allSettled([
+        '/api/ai-configuration/routes', '/api/ai-configuration/private-model',
+        '/api/ai-configuration/consumers', '/api/ai-configuration/knowledge-fabric'
+      ].map(async (path) => readJson(await fetch(path, { credentials: 'include', cache: 'no-store' }))));
+      if (results[0].status === 'rejected') throw results[0].reason;
+      const [routesPayload, profilePayload, consumersPayload, knowledgePayload] = results.map((result) => result.status === 'fulfilled' ? result.value : {});
+      const failures = results.flatMap((result, index) => result.status === 'rejected' ? [`${['Routing', 'Private runtime', 'Consumer inventory', 'Knowledge fabric'][index]}: ${result.reason?.message || 'Unavailable'}`] : []);
       const routes = routesPayload.routes ?? [];
       const profile = profilePayload.profile ?? null;
       setDrafts(Object.fromEntries(routes.map((route) => [route.feature, routeDraft(route)])));
@@ -85,7 +86,7 @@ export default function CelarAiCapabilityRoutingPanel() {
       }));
       setState({
         loading: false,
-        error: '',
+        error: failures.join(' · '),
         routes,
         profile,
         productionReadiness: profilePayload.productionReadiness ?? null,
@@ -113,6 +114,8 @@ export default function CelarAiCapabilityRoutingPanel() {
     setDrafts((current) => {
       const draft = current[feature] ?? { targets: [...targetOptions], revision: 0 };
       const targets = [...draft.targets];
+      const previousPosition = targets.indexOf(value);
+      if (previousPosition >= 0) targets[previousPosition] = targets[position];
       targets[position] = value;
       return { ...current, [feature]: { ...draft, targets } };
     });
@@ -273,6 +276,12 @@ export default function CelarAiCapabilityRoutingPanel() {
         ))}
       </div>
 
+      <section className="celar-ai-routing__private-summary" aria-label="Celar AI availability">
+        <article><span>Celar AI inference</span><strong>{production?.privateModelReady ? 'Available' : 'Unavailable or unverified'}</strong><small>Only fresh server probe evidence establishes availability.</small></article>
+        <article><span>Last verified</span><strong>{formatDate(production?.privateTargetAvailability?.verifiedAt)}</strong><small>{production?.privateTargetAvailability?.lastFailureCode || 'No failure code reported'}</small></article>
+        <article><span>Document storage and processing</span><strong>{production?.privateDocumentRuntimeReady ? 'Ready' : 'Attention required'}</strong><small>Document readiness is tracked separately from inference.</small></article>
+      </section>
+
       <section className="celar-ai-routing__private-model" aria-labelledby="private-celar-model-title">
         <div className="celar-ai-routing__subheading">
           <div>
@@ -297,7 +306,7 @@ export default function CelarAiCapabilityRoutingPanel() {
           <header>
             <div>
               <span>End-to-end private runtime</span>
-              <strong>{production?.ready ? 'Production ready' : 'Configuration required'}</strong>
+              <strong>{production?.ready ? 'Runtime ready' : 'Attention required'}</strong>
             </div>
             <small>Endpoint, encrypted secret storage, migrations, persistent files, processing, and SOW readiness</small>
           </header>
@@ -309,7 +318,7 @@ export default function CelarAiCapabilityRoutingPanel() {
           </div>
           {!production?.ready && (production?.blockers ?? []).length ? (
             <details>
-              <summary>Review {production.blockers.length} production-readiness item{production.blockers.length === 1 ? '' : 's'}</summary>
+              <summary>Review {production.blockers.length} runtime-readiness item{production.blockers.length === 1 ? '' : 's'}</summary>
               <ul>{production.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
             </details>
           ) : null}
@@ -449,7 +458,7 @@ export default function CelarAiCapabilityRoutingPanel() {
                         onChange={(event) => setTarget(route.feature, position, event.target.value)}
                         disabled={deploymentManaged || position === 4}
                       >
-                        {targetOptions.map((target) => <option value={target} key={target}>{TARGET_LABELS[target]}</option>)}
+                        {targetOptions.filter((target) => position === 4 ? target === 'local_template' : target !== 'local_template').map((target) => <option value={target} key={target}>{TARGET_LABELS[target]}</option>)}
                       </select>
                     </label>
                   ))}

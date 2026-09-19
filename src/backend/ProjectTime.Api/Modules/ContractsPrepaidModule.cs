@@ -20,6 +20,8 @@ public static class ContractsPrepaidModule
 
     private static readonly string[] ReadOnlyRoleCodes =
     {
+        "ENGINEER",
+        "ENGINEERING",
         "SALES",
         "ACCOUNT_EXECUTIVE",
         "ACCOUNT_MANAGER",

@@ -302,7 +302,7 @@ export default function MicrosoftMailTransportReadinessPanel() {
             <p className="eyebrow">MODULE 065 · REAL TEST DELIVERY</p>
             <h3>Send one governed Microsoft 365 Test message</h3>
             <p>
-              This is separate from the readiness check. It creates a durable dispatch and delivery-attempt record, keeps the general Test boundary unchanged, and permits only the signed-in user's own email or a server-side allowlisted recipient.
+              This is separate from the readiness check. It creates a durable dispatch and delivery-attempt record, keeps the general Test boundary unchanged, and allows Super Administrators to test any valid recipient. Other administrators use their own email or a server-side allowlisted recipient.
             </p>
           </div>
           <span>View-As blocked · No secrets returned</span>

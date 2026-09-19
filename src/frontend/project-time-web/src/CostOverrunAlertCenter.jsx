@@ -161,6 +161,7 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
 
   return (
     <section className="cost-alert-center" data-module="022">
+      <aside className="cost-alert-notice" role="note"><strong>What needs attention?</strong><p>Start with projects over budget or approaching budget. Select a project, review its budget and expense sources, then record the follow-up action. A missing budget or failed source means Data incomplete.</p><p>Forecast = estimated labor value + recorded project expenses. These estimates do not verify actual internal labor cost.</p></aside>
       <header className="cost-alert-header">
         <div>
           <p className="eyebrow">Module 022 · Project financial control</p>

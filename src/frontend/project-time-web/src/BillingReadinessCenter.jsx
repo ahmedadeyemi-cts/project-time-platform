@@ -512,16 +512,15 @@ export default function BillingReadinessCenter() {
 
     const results = await Promise.allSettled([
       fetchJson('/api/project-workspace/overview'),
-      fetchJson('/api/project-intake/overview'),
       fetchJson('/api/customers/overview'),
       fetchJson('/api/certify/expenses/staged'),
       fetchJson('/api/certify/exceptions'),
       fetchJson('/api/billing/candidates')
     ]);
 
-    const [workspace, intake, customers, certifyExpenses, certifyExceptions, billingCandidates] = results;
+    const [workspace, customers, certifyExpenses, certifyExceptions, billingCandidates] = results;
 
-    const sourceNames = ['Project Workspace', 'Project Intake', 'Customer Directory', 'Certify staged expenses', 'Certify exceptions', 'Billing candidates'];
+    const sourceNames = ['Project Workspace', 'Customer Directory', 'Certify staged expenses', 'Certify exceptions', 'Billing candidates'];
     const degradedSources = results.flatMap((result, index) => {
       if (result.status === 'rejected') {
         return [{
@@ -540,7 +539,7 @@ export default function BillingReadinessCenter() {
       error: billingCandidateFailure,
       degradedSources,
       workspace: workspace.status === 'fulfilled' ? workspace.value : null,
-      intake: intake.status === 'fulfilled' ? intake.value : null,
+      intake: null, // Billing uses created projects and verified candidates, not legacy intake directories.
       customers: customers.status === 'fulfilled' ? customers.value : null,
       certifyExpenses: certifyExpenses.status === 'fulfilled' ? certifyExpenses.value : null,
       certifyExceptions: certifyExceptions.status === 'fulfilled' ? certifyExceptions.value : null,

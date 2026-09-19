@@ -78,6 +78,7 @@ public static class ProjectFinancialTruthModule
             summary = Summary(projects),
             projects,
             sources = data.Sources,
+            calculationAuthority = "forecast_estimate_not_verified_internal_labor_cost",
             calculations = CalculationContract(),
             governedDependencies = Dependencies(),
             security = Security()
@@ -283,13 +284,17 @@ public static class ProjectFinancialTruthModule
             ? parsedPmId
             : (Guid?)null;
 
+        var salesScope = await TryLoadAsync(
+            "sales_scope", "Sales reporting scope", workspace == "sales",
+            () => LoadSalesScopeAsync(connection, actor, context.RequestAborted));
+        if (workspace == "sales") sources.Add(salesScope.State);
         var visibleSeeds = FilterProjects(
             projectSeeds,
             assignments.Value,
             actor,
             workspace,
             requestedPmId,
-            permittedPmIds.Value).ToArray();
+            permittedPmIds.Value, salesScope.Value).ToArray();
         var visibleIds = visibleSeeds.Select(project => project.ProjectId).ToHashSet();
         var visibleAssignments = assignments.Value
             .Where(row => visibleIds.Contains(row.ProjectId)).ToList();
@@ -519,6 +524,29 @@ public static class ProjectFinancialTruthModule
                 reader.IsDBNull(8) ? null : reader.GetDecimal(8)));
         }
         return rows;
+    }
+
+    private static bool IsSalesLeader(Actor actor) => actor.Roles.Any(role =>
+        role is "SALES_MANAGER" or "SALES_DIRECTOR" or "SALES_LEAD" or "MANAGER" or "DIRECTOR" or "EXECUTIVE_LEADERSHIP");
+
+    private static async Task<HashSet<Guid>> LoadSalesScopeAsync(
+        NpgsqlConnection connection, Actor actor, CancellationToken cancellationToken)
+    {
+        var ids = new HashSet<Guid> { actor.EffectiveUserId };
+        if (!IsSalesLeader(actor)) return ids;
+        await using var command = new NpgsqlCommand("""
+            WITH RECURSIVE reports AS (
+                SELECT user_id, email FROM app_users WHERE user_id = @user_id AND is_active = TRUE
+                UNION
+                SELECT child.user_id, child.email FROM app_users child
+                JOIN reports parent ON lower(child.manager_email) = lower(parent.email)
+                WHERE child.is_active = TRUE
+            ) SELECT user_id FROM reports;
+            """, connection);
+        command.Parameters.AddWithValue("user_id", actor.EffectiveUserId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) ids.Add(reader.GetGuid(0));
+        return ids;
     }
 
     private static async Task<HashSet<Guid>> LoadPmScopeAsync(
@@ -896,8 +924,8 @@ public static class ProjectFinancialTruthModule
         decimal? forecast = forecastLabor.HasValue && uploadedExpenses.HasValue
             ? forecastLabor + uploadedExpenses
             : null;
-        decimal? budget = laborBudget.HasValue
-            ? laborBudget + expenseBudget.GetValueOrDefault()
+        decimal? budget = laborBudget.HasValue && expenseBudget.HasValue
+            ? laborBudget + expenseBudget
             : null;
         decimal? variance = budget.HasValue && forecast.HasValue
             ? budget - forecast
@@ -907,6 +935,13 @@ public static class ProjectFinancialTruthModule
             : expenseBudget.HasValue
                 ? "labor_and_expense_budget"
                 : "labor_budget_only_expense_budget_missing";
+        // Missing source rows cannot establish a complete project-cost conclusion.
+        if (sources.Any(source => source.Required && source.Status != "healthy"))
+        {
+            forecast = null;
+            committed = null;
+            variance = null;
+        }
         var budgetStatus = FinancialStatus(budget, forecast, laborBudget, expenseBudget);
 
         var visibility = Visibility(
@@ -1017,7 +1052,8 @@ public static class ProjectFinancialTruthModule
         Actor actor,
         string workspace,
         Guid? requestedPmId,
-        HashSet<Guid> permittedPmIds)
+        HashSet<Guid> permittedPmIds,
+        HashSet<Guid> permittedSalesIds)
     {
         var assignedProjects = assignments
             .Where(row => row.UserId == actor.EffectiveUserId)
@@ -1048,7 +1084,8 @@ public static class ProjectFinancialTruthModule
                     project.ProjectManagerUserId.HasValue
                     && permittedPmIds.Contains(project.ProjectManagerUserId.Value),
                 "pm" => manager,
-                "sales" => actor.Broad || salesOwner,
+                "sales" => actor.Broad || salesOwner || assignedProjects.Contains(project.ProjectId)
+                    || (ae.HasValue && permittedSalesIds.Contains(ae.Value)),
                 "rate-card" => actor.Broad || actor.RateAdmin || related,
                 _ => actor.Broad || related
             };
@@ -1138,6 +1175,7 @@ public static class ProjectFinancialTruthModule
         workspace,
         actor.IsViewAs,
         readOnly = true,
+        canSelectAccountExecutive = actor.Broad || IsSalesLeader(actor),
         viewAsTransfersMutationAuthority = false,
         projectScope = actor.Broad ? "organization" : workspace switch
         {

@@ -6,6 +6,8 @@ public static class ContractsModule
 {
     private static readonly string[] ViewRoleCodes =
     {
+        "ENGINEER",
+        "ENGINEERING",
         "PROJECT_TEAM_COORDINATOR",
         "SALES",
         "ACCOUNT_EXECUTIVE",
