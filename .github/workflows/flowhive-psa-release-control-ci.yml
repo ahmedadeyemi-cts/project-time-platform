@@ -67,7 +67,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
-          if [[ "$GITHUB_HEAD_REF" == fix/connectwise-sell-module026 ]]; then
+          if [[ "$GITHUB_HEAD_REF" == fix/module025-private-generation-recovery ]]; then
+            python3 tests/module025-private-generation-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/connectwise-sell-module026 ]]; then
             python3 tests/connectwise-sell-release-scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pm-acceptance-contract' ]]; then
             node tests/validate-flowhive-pm-acceptance-scope.mjs

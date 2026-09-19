@@ -44,7 +44,7 @@ jobs:
             .environment == "protected-test-oracle-celar" and
             .hostname == "celarai.onenecklab.com" and
             .architecture == "arm64" and
-            .gatewayVersion == "1.1.7" and
+            .gatewayVersion == "1.1.8" and
             .ollamaMaxLoadedModels == 1 and
             .ollamaNumParallel == 1 and
             .gatewayBind == "127.0.0.1:8787" and
@@ -171,7 +171,8 @@ jobs:
           grep -Fq 'GENERAL_ORDER' "$WSGI"
           grep -Fq 'STRUCTURED_ATTEMPT_SECONDS' "$WSGI"
           grep -Fq 'GENERAL_ATTEMPT_SECONDS' "$WSGI"
-          grep -Fq 'deadline = time.monotonic() + (SOW_TIMEOUT_SECONDS if sow else gateway.CHAT_TIMEOUT_SECONDS)' "$WSGI"
+          grep -Fq 'deadline_seconds = SOW_TIMEOUT_SECONDS if sow else gateway.CHAT_TIMEOUT_SECONDS' "$WSGI"
+          grep -Fq 'deadline = time.monotonic() + deadline_seconds' "$WSGI"
           grep -Fq 'attempt_timeout = max(10, min(attempt_budgets[index], remaining))' "$WSGI"
           grep -Fq 'if status < 500' "$WSGI"
           grep -Fq 'X-Celar-Local-Model' "$WSGI"

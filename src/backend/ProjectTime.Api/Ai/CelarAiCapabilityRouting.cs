@@ -2645,7 +2645,7 @@ public sealed class CelarAiCapabilityRouter
                 targetTimeout = TimeSpan.FromSeconds(
                     target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
                         ? Module025GenerationEngine.ExternalProviderTimeoutSeconds
-                        : Module025GenerationEngine.ProviderTimeoutSeconds);
+                        : Module025GenerationEngine.PrivatePhaseTimeoutSeconds);
             }
             cancellationToken.ThrowIfCancellationRequested();
             if (skipPrivateTarget

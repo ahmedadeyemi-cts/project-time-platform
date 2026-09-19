@@ -71,6 +71,13 @@ jobs:
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
           PROTECTED_DEPLOYMENT="$(grep -E '^(deployment/|src/frontend/project-time-web/Dockerfile)' <<<"$CHANGED" || true)"
+          if [[ "$HEAD_BRANCH" == 'fix/module025-private-generation-recovery' ]]; then
+            python3 tests/module025-private-generation-scope.py
+            PROTECTED_DEPLOYMENT="$(grep -Fvx \
+              -e 'deployment/oracle-celar/gateway/wsgi.py' \
+              -e 'deployment/oracle-celar/release.json' \
+              <<<"$PROTECTED_DEPLOYMENT" || true)"
+          fi
           if [[ "$HEAD_BRANCH" == 'fix/module025-provider-diagnostics-20260917' ]]; then
             node tests/module025-provider-diagnostics-scope.mjs
             PROTECTED_DEPLOYMENT="$(grep -Fvx \

@@ -7,10 +7,13 @@ namespace ProjectTime.Api.Ai;
 internal static class Module025GenerationEngine
 {
     internal const string ContractVersion = "module025-detailed-phases-v2";
-    internal const int DeadlineSeconds = 1200;
-    // Private SOW inference can need more than two minutes for a fully structured phase.
-    // Keep the overall 20-minute document deadline bounded while allowing a single
-    // private provider enough time to complete before failing over.
+    // Five phases can each try DeepSeek (120s), then Celar (330s), with
+    // 150s reserved for persistence and assembly. The deadline stays durable.
+    internal const int DeadlineSeconds = 2400;
+    internal const int PrivatePhaseTimeoutSeconds = 330;
+    internal const int GatewayPhaseTimeoutSeconds = 300;
+    // Legacy provider/qualification transport budget. Durable private phases use
+    // PrivatePhaseTimeoutSeconds; paid provider routing retains its 120s cap.
     internal const int ProviderTimeoutSeconds = 180;
     // External closed-capsule providers stay on the tighter interactive budget.
     internal const int ExternalProviderTimeoutSeconds = 120;

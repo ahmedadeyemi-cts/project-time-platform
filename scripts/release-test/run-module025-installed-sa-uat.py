@@ -462,7 +462,7 @@ async def main() -> int:
         generation_id = str(queued.get("generationId") or "")
         report["generationId"] = generation_id
         require(re.fullmatch(r"[0-9a-fA-F-]{36}", generation_id) is not None, "module025_generation_id_missing")
-        deadline = time.monotonic() + int(os.environ.get("MODULE025_GENERATION_TIMEOUT_SECONDS", "1500"))
+        deadline = time.monotonic() + int(os.environ.get("MODULE025_GENERATION_TIMEOUT_SECONDS", "2520"))
         while True:
             status, generation, _ = http(f"/api/module025/sow-gsd/{engagement_id}/generations/{generation_id}", token=token)
             require(status == 200 and isinstance(generation, dict), "module025_generation_poll_http_" + str(status))

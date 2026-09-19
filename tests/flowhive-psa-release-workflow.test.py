@@ -479,6 +479,16 @@ class WorkflowContract(unittest.TestCase):
             # Role result collection may differ; compare every other field.
             self.assertEqual(previous_acceptance_projection(self.doc), old)
             return
+        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-private-generation-recovery':
+            expected = copy.deepcopy(old)
+            acceptance = next(step for step in expected['jobs']['deploy']['steps']
+                              if step.get('id') == 'sow_role_uat')
+            self.assertEqual(acceptance['timeout-minutes'], '35')
+            self.assertEqual(acceptance['env']['MODULE025_GENERATION_TIMEOUT_SECONDS'], '1500')
+            acceptance['timeout-minutes'] = '50'
+            acceptance['env']['MODULE025_GENERATION_TIMEOUT_SECONDS'] = '2520'
+            self.assertEqual(self.doc, expected)
+            return
         reviewed = os.environ.get('GITHUB_HEAD_REF') == 'fix/flowhive-reviewed-regeneration-control-20260907'
         successor = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-sow-successor-approval-20260909'
         successor_release = os.environ.get('GITHUB_HEAD_REF') == 'control/flowhive-successor-approval-20260911'

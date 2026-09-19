@@ -1937,7 +1937,7 @@ public sealed class PulseAiPrivateRagService
         if (index < 0) throw new ArgumentException("module025_phase_invalid");
         var result = await GenerateModule025PhaseAsync(request,
             BoundModule025PhaseRetrieval(retrieval, execution.Phase, index), generate,
-            execution.Phase, index, TimeSpan.FromSeconds(Module025GenerationEngine.ProviderTimeoutSeconds),
+            execution.Phase, index, TimeSpan.FromSeconds(Module025GenerationEngine.PrivatePhaseTimeoutSeconds),
             Module025GenerationEngine.MaximumOutputTokens, token, null, fullDetail: true, maximumAttempts: 1);
         await execution.ObserveAsync(result.Result, token);
         return result.Plan is null ? result.Result : result.Result with { Content = JsonSerializer.Serialize(result.Plan) };
@@ -2383,7 +2383,8 @@ public sealed class PulseAiPrivateRagService
             .Replace("Return at least two tasks for every phase and at least ten tasks total.",
                 "Return at least two distinct tasks for the requested phase only; add tasks where the scope requires them.", StringComparison.Ordinal)
             + $"\nThis is phase {phaseIndex + 1} of five. Return ONLY {phase} tasks. Use WBS {phaseIndex + 1}.1 onward. "
-            + "Return the FULL task contract, including task-specific review fields; do not omit fields expecting server-generated filler. "
+            + "Organize the phase into two to four substantive work packages, combining related actions into ordered steps. "
+            + "Use concise, task-specific sentences and avoid restating the same facts across fields. Return the FULL task contract, including task-specific review fields; do not omit fields expecting server-generated filler. "
             + "Include actionable technical steps and the reason for effort estimates in each description. Preserve supplied products, versions, quantities and integration requirements; never invent missing values. "
             + "Include explicit assumptions, exclusions, risks and open questions. Avoid repeating the same explanation in multiple fields; retain the complete technical detail contract. "
             + $"Return one complete JSON object within {maximumOutputTokens} output tokens. "

@@ -132,7 +132,9 @@ internal static class Module025GenerationEngineTests
             "module025_full_document_above_96k_preserves_all_detailed_work_packages_without_inference");
         Check(Module025GenerationEngine.MaximumDocumentCharacters >= Module025GenerationEngine.MaximumPhaseCharacters * 5
             && Module025GenerationEngine.MaximumOutputTokens == 6144
-            && Module025GenerationEngine.AttemptsPerPhase == 4 && Module025GenerationEngine.DeadlineSeconds == 1200,
+            && Module025GenerationEngine.AttemptsPerPhase == 4 && Module025GenerationEngine.DeadlineSeconds == 2400
+            && 5 * (120 + Module025GenerationEngine.PrivatePhaseTimeoutSeconds) < Module025GenerationEngine.DeadlineSeconds
+            && Module025GenerationEngine.GatewayPhaseTimeoutSeconds < Module025GenerationEngine.PrivatePhaseTimeoutSeconds,
             "module025_four_provider_slots_preserve_private_token_and_document_deadline_bounds");
         foreach (var phase in new string?[] { "Plan", null })
         {

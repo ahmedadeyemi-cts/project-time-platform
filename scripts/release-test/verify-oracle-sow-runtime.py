@@ -68,7 +68,10 @@ def main():
         (evidence / 'oracle-sow-runtime.json').write_text(json.dumps(result) + '\n')
         print(json.dumps(result))
         return 1
-    for attempt in range(1, 11):
+    # Oracle GitOps reconciles every five minutes. Allow that cycle plus
+    # installation time; continue to fail closed on a mismatched contract.
+    maximum_attempts = 30
+    for attempt in range(1, maximum_attempts + 1):
         try:
             status, raw = fetch(token)
         except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException):
@@ -84,7 +87,7 @@ def main():
             return 0
         if status in (401, 403):
             break
-        if attempt < 10:
+        if attempt < maximum_attempts:
             time.sleep(15)
     return 1
 
