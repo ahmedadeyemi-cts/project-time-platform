@@ -9,15 +9,9 @@ const importLine = "import UnifiedProjectFinancialWorkspace from './UnifiedProje
 const markerStart = 'GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START';
 const markerEnd = 'GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_END';
 
-// ProjectWorkspaceCenter.jsx owns its consolidated Module 019 view.
+// ProjectWorkspaceCenter.jsx and ProjectManagerWorkloadCenter.jsx own consolidated views.
 // Do not re-inject the legacy financial portfolio above it.
 const installations = [
-  {
-    file: 'ProjectManagerWorkloadCenter.jsx',
-    importAnchor: "import './project-manager-workload-center.css';",
-    rootAnchor: '    <section className="pm-workload-center">',
-    mount: '      <UnifiedProjectFinancialWorkspace workspace="pm" projectManagerUserId={selectedProjectManagerUserId} />'
-  },
   {
     file: 'SalesInsightsDashboard.jsx',
     importAnchor: "import './sales-insights-dashboard.css';",
