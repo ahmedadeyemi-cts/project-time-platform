@@ -41,6 +41,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Assets/Templates/Module025StandardGsd.xlsx" LogicalName="ProjectTime.Api.Assets.Templates.Module025StandardGsd.xlsx" />
     <EmbeddedResource Include="Assets/Branding/USSNavyStacked.png" LogicalName="ProjectTime.Api.Assets.Branding.USSNavyStacked.png" />
     <EmbeddedResource Include="Assets/Branding/USSNavyStacked.jpg" LogicalName="ProjectTime.Api.Assets.Branding.USSNavyStacked.jpg" />
     <EmbeddedResource Include="Assets/Fonts/NotoSansCJKsc-Regular.otf" LogicalName="ProjectTime.Api.Assets.Fonts.NotoSansCJKsc-Regular.otf" />

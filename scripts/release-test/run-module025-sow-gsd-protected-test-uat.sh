@@ -324,6 +324,7 @@ CREATE_PAYLOAD="$WORK_DIR/module025-create.json"
   '{
     customerId:null,
     customerName:$customerName,
+    projectName:"Protected UAT Module 025 scope",
     customerEntryMode:"manual",
     commercialModel:"time_and_materials",
     customerProgram:"standard",
@@ -532,6 +533,7 @@ jq -e --arg id "$ENGAGEMENT_ID" --arg owner "$SA_USER_ID" --argjson revision "$G
 SAVE_PAYLOAD="$WORK_DIR/module025-save-edited-phase.json"
 jq '{
   expectedRevision: .engagement.revision,
+  projectName: .engagement.projectName,
   customerId: .engagement.customerId,
   customerName: .engagement.customerName,
   customerEntryMode: .engagement.customerEntryMode,
@@ -544,7 +546,9 @@ jq '{
     phaseCode, finalHours: ((.finalHours // 0) + (if .phaseCode == "plan" then 1 else 0 end)),
     objective, detailedActivities, technicalTasks, deliverables, customerResponsibilities,
     usSignalResponsibilities, prerequisites, dependencies, assumptions, openQuestions,
-    acceptanceCriteria, validationSteps, risks, loeRationale
+    acceptanceCriteria, validationSteps, risks, loeRationale,
+    tasks: [{taskId: ("00000000-0000-4000-8000-00000000000" + (.sortOrder | tostring)), description: .objective,
+             hours: ((.finalHours // 0) + (if .phaseCode == "plan" then 1 else 0 end)), notes: "Synthetic UAT reviewed phase work package"}]
   }]
 }' "$READBACK_RESPONSE" > "$SAVE_PAYLOAD"
 SAVE_RESPONSE="$EVIDENCE_DIR/module025-saved-edit-response.json"
