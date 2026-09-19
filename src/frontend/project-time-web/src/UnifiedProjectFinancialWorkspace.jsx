@@ -62,7 +62,7 @@ function storedSession() {
   }
 }
 
-function requestHeaders() {
+export function requestHeaders() {
   const session = storedSession();
   const headers = {};
   const token = session?.sessionToken || session?.token || session?.accessToken || '';
@@ -83,7 +83,7 @@ function requestHeaders() {
   return headers;
 }
 
-async function readJson(path) {
+export async function readJson(path) {
   const response = await fetch(path, {
     method: 'GET',
     credentials: 'include',
@@ -381,7 +381,7 @@ function OverviewTab({ project }) {
   );
 }
 
-function FinancialTab({ project }) {
+export function FinancialTab({ project }) {
   return (
     <>
       <div className="group3-financial-grid">
@@ -467,7 +467,7 @@ function TeamTab({ project }) {
   );
 }
 
-function ExpenseTab({ project }) {
+export function ExpenseTab({ project }) {
   return (
     <section className="group3-card">
       <div className="group3-section-heading">

@@ -256,7 +256,6 @@ execFileSync(process.execPath, [injectorPath], {
 });
 
 const mounts = [
-  ['ProjectManagerWorkloadCenter.jsx', 'workspace="pm" projectManagerUserId={selectedProjectManagerUserId}'],
   ['SalesInsightsDashboard.jsx', 'workspace="sales"'],
   ['RateCardAdministrationCenter.jsx', 'workspace="rate-card"']
 ];
@@ -268,6 +267,15 @@ for (const [fileName, mount] of mounts) {
       && count(source, mount) === 1,
     `${fileName} contains one import and one role-specific mount`);
 }
+
+const pm = read(path.join(sourceRoot, 'ProjectManagerWorkloadCenter.jsx'));
+check('MODULE018_SINGLE_WORKSPACE',
+  !pm.includes('<UnifiedProjectFinancialWorkspace')
+    && pm.includes('ProjectManagerWorkspace')
+    && pm.includes('Select managed project')
+    && pm.includes("workspace: 'pm'")
+    && pm.includes("params.set('projectManagerUserId', manager)"),
+  'Module 018 owns one selected-project view with PM-scoped detail requests');
 
 const engineering = read(path.join(sourceRoot, 'ProjectWorkspaceCenter.jsx'));
 check('MODULE019_SINGLE_WORKSPACE',
