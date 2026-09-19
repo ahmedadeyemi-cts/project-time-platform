@@ -9,9 +9,10 @@ SUP='.github/workflows/module025-protected-uat-control.yml'
 REG='scripts/release-test/validate-protected-test-controller-branches.sh'
 SELF='tests/module025-export-retention-scope.py'
 CI='.github/workflows/flowhive-psa-release-control-ci.yml'
+ADMISSION='tests/flowhive-psa-admission.test.mjs'
 def show(p): return subprocess.check_output(['git','show',BASE+':'+p]).decode()
 assert subprocess.check_output(['git','merge-base',BASE,'HEAD']).decode().strip()==BASE
-assert set(subprocess.check_output(['git','diff','--name-only',BASE]).decode().splitlines())=={HELPER,SUP,REG,SELF,CI}
+assert set(subprocess.check_output(['git','diff','--name-only',BASE]).decode().splitlines())=={HELPER,SUP,REG,SELF,CI,ADMISSION}
 old='[[ "${TARGET_RELEASE_BRANCH:-}" == main && "${ACCEPTANCE_SCOPE:-}" == sow_role ]]'
 new='''[[ "${TARGET_RELEASE_BRANCH:-}" == main ]]
 case "${ACCEPTANCE_SCOPE:-}" in
@@ -37,3 +38,5 @@ for p in ['.github/workflows/projectpulse-deploy-test.yml','.github/workflows/pr
 print('MODULE025_EXPORT_RETENTION_SCOPE=PASS admission_cases=9 migration_sql=unchanged cloud_calls=0')
 
 assert Path(CI).read_text()==show(CI).replace('          if [[ "$GITHUB_HEAD_REF" == fix/module025-standard-download-formats-20260919 ]]; then','          if [[ "$GITHUB_HEAD_REF" == fix/module025-export-retention-scope ]]; then\n            python3 tests/module025-export-retention-scope.py\n          elif [[ "$GITHUB_HEAD_REF" == fix/module025-standard-download-formats-20260919 ]]; then',1)
+
+assert Path(ADMISSION).read_text()==show(ADMISSION).replace('const module025StandardExports =',"const module025ExportRetention = process.env.GITHUB_HEAD_REF === 'fix/module025-export-retention-scope';\nconst module025StandardExports =",1).replace('  || module025StandardExports ||','  || module025ExportRetention || module025StandardExports ||',1).replace('const module025VerifierBase = module025StandardExports ?',"const module025VerifierBase = module025ExportRetention ? '45074ea00496ef561fda25e7a2f148280689ed97' : module025StandardExports ?",1)
