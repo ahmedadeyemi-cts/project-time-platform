@@ -150,6 +150,15 @@ async def main():
             'projectName': 'Protected UAT Module 025 12345', 'customerName': 'Protected UAT normal SA 12345',
             'latestVersionNumber': 1, 'engagementNumber': 'SOW-TEST-025'}]}
         assert runner.select_retained_record(valid, 'sa', '12345') == 'SOW-TEST-025'
+        historical = valid | {'records': [valid['records'][0] | {'projectName': ''}]}
+        assert runner.select_retained_record(historical, 'sa', '12345') == 'SOW-TEST-025'
+        for changed in ({'ownerUserId': 'another'}, {'customerName': 'Different customer'},
+                        {'projectName': 'Unrelated project'}, {'latestVersionNumber': 2}):
+            try:
+                runner.select_retained_record(valid | {'records': [valid['records'][0] | changed]}, 'sa', '12345')
+                raise AssertionError('Wrong retained identity accepted')
+            except RuntimeError:
+                pass
         for invalid in (valid | {'runtimeEnvironment': 'production'}, valid | {'records': []},
                         valid | {'records': valid['records'] * 2}, valid | {'hasMore': True}):
             try:

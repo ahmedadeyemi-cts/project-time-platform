@@ -55,12 +55,16 @@ async def verify_report(response, stage: str) -> dict:
 
 
 def select_retained_record(payload, owner_id, source_run_id):
-    """Only reuse the exact synthetic record owned by the authenticated SA."""
+    """Only reuse the exact synthetic record owned by the authenticated SA.
+
+    Older UAT saves omitted projectName and cleared it. The exact immutable
+    source-run customer marker and owner remain required for those records.
+    """
     if payload.get('runtimeEnvironment') != 'test' or not owner_id:
         fail('browser_retained_record_scope_invalid')
     matches = [record for record in payload['records']
                if record.get('ownerUserId') == owner_id
-               and record.get('projectName') == f'Protected UAT Module 025 {source_run_id}'
+               and record.get('projectName') in ('', f'Protected UAT Module 025 {source_run_id}')
                and record.get('customerName') == f'Protected UAT normal SA {source_run_id}']
     if (len(matches) != 1 or payload.get('hasMore') is True
             or matches[0].get('latestVersionNumber') != 1
@@ -204,7 +208,7 @@ async def run() -> None:
                 fail('browser_fixture_authorization_missing')
             owner_id = bootstrap.get('currentUser', {}).get('userId', '')
             query = urlencode({'page': 1, 'ownerUserId': owner_id,
-                               'search': f'Protected UAT Module 025 {source_run_id}'}) if retained_sa else 'page=1'
+                               'search': f'Protected UAT normal SA {source_run_id}'}) if retained_sa else 'page=1'
             report_preflight = await context.request.get(
                 f'{base}/api/module025/sow-register?{query}',
                 headers={**fixture_headers, 'Authorization': f'Bearer {session["sessionToken"]}',

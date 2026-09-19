@@ -25,6 +25,7 @@ on:
       - '.github/flowhive-enterprise-psa-release-files.txt'
       - '.github/flowhive-planner-output-budget-release-files.txt'
       - '.github/flowhive-psa-release-control-files.txt'
+      - 'scripts/release-test/validate-module025-governed-release.sh'
       - '.github/workflows/module025-governed-protected-test-release-manual.yml'
 
 permissions:

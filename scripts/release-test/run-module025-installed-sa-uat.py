@@ -439,6 +439,7 @@ async def main() -> int:
         edited_overview = service_overview + " SA review marker: confirm customer change window and rollback owner."
         save_payload = {
             "expectedRevision": current.get("revision"),
+            "projectName": current.get("projectName"),
             "customerId": None,
             "customerName": current.get("customerName"),
             "customerEntryMode": current.get("customerEntryMode"),
@@ -496,6 +497,7 @@ async def main() -> int:
         plan["acceptanceCriteria"] = [*(plan.get("acceptanceCriteria") or []), edit_marker]
         save_payload = {
             "expectedRevision": current.get("revision"),
+            "projectName": current.get("projectName"),
             "customerId": current.get("customerId"),
             "customerName": current.get("customerName"),
             "customerEntryMode": current.get("customerEntryMode"),
