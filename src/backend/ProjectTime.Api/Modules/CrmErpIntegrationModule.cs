@@ -92,7 +92,7 @@ public static class CrmErpIntegrationModule
             FROM crm_integration_providers p
             ORDER BY
                 CASE p.provider_key
-                    WHEN 'zendesk_sell' THEN 10
+                    WHEN 'connectwise_sell' THEN 10
                     WHEN 'salesforce' THEN 20
                     WHEN 'certinia' THEN 30
                     WHEN 'servicenow' THEN 40
@@ -172,7 +172,7 @@ public static class CrmErpIntegrationModule
 
         var body = await ReadBodyAsync<ProviderRequest>(context);
         if (body.Value is null) return body.Failure!;
-        var validation = ValidateProviderRequest(body.Value, creating: true);
+        var validation = ValidateProviderRequest(body.Value with { ProviderKey = NormalizeProviderKey(body.Value.ProviderKey ?? string.Empty) }, creating: true);
         if (validation is not null) return validation;
 
         var providerKey = NormalizeProviderKey(body.Value.ProviderKey!);
@@ -243,10 +243,11 @@ public static class CrmErpIntegrationModule
         if (!SameOrigin(context)) return OriginRejected();
 
         providerKey = NormalizeProviderKey(providerKey);
+        if (providerKey == "zendesk_sell") return Invalid("This connection is retired. Configure ConnectWise SELL in Module 026.");
         if (string.IsNullOrWhiteSpace(providerKey)) return Invalid("A valid provider key is required.");
         var body = await ReadBodyAsync<ProviderRequest>(context);
         if (body.Value is null) return body.Failure!;
-        var validation = ValidateProviderRequest(body.Value, creating: false);
+        var validation = ValidateProviderRequest(body.Value with { ProviderKey = providerKey }, creating: false);
         if (validation is not null) return validation;
 
         await using var connection = await OpenConnectionAsync(context);
@@ -325,9 +326,16 @@ public static class CrmErpIntegrationModule
         if (!SameOrigin(context)) return OriginRejected();
 
         providerKey = NormalizeProviderKey(providerKey);
+        if (providerKey == "zendesk_sell") return Invalid("This connection is retired. Configure ConnectWise SELL in Module 026.");
         var body = await ReadBodyAsync<CredentialRequest>(context);
         if (body.Value is null) return body.Failure!;
         var secret = body.Value.Secret?.Trim();
+        if (providerKey == ConnectWiseSellApi.ProviderKey)
+        {
+            if (!ConnectWiseSellApi.TryPackCredential(body.Value.AccessKey, body.Value.PublicKey, body.Value.PrivateKey, out var packed))
+                return Invalid("Enter the ConnectWise SELL access key, public API key, and private API key. A bearer token or account password cannot be used.");
+            secret = packed;
+        }
         if (string.IsNullOrWhiteSpace(secret)) return Invalid("A write-only credential is required.");
         if (Encoding.UTF8.GetByteCount(secret) > MaximumSecretBytes) return Invalid("The credential is too large.");
 
@@ -414,6 +422,7 @@ public static class CrmErpIntegrationModule
         if (!SameOrigin(context)) return OriginRejected();
 
         providerKey = NormalizeProviderKey(providerKey);
+        if (providerKey == "zendesk_sell") return Invalid("This connection is retired. Configure ConnectWise SELL in Module 026.");
         await using var connection = await OpenConnectionAsync(context);
         if (connection is null) return DependencyUnavailable();
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return SchemaUnavailable();
@@ -505,6 +514,8 @@ public static class CrmErpIntegrationModule
         if (!string.IsNullOrWhiteSpace(providerError)) return OAuthPage(false, "The provider did not authorize the connection.");
         if (string.IsNullOrWhiteSpace(code)) return OAuthPage(false, "The provider did not return an authorization code.");
 
+        if (oauthState.ProviderKey is "zendesk_sell" or ConnectWiseSellApi.ProviderKey)
+            return Invalid("ConnectWise SELL uses API keys. OAuth is not available for this connection.");
         var provider = await ReadProviderConfigurationAsync(connection, oauthState.ProviderKey, context.RequestAborted);
         if (provider is null || !TryHttpsUri(provider.OAuthTokenUrl, out var tokenUri)) return OAuthPage(false, "The provider token endpoint is not configured.");
         if (!await IsSafeExternalUriAsync(tokenUri!, context.RequestAborted)) return OAuthPage(false, "The provider token endpoint is not an approved public HTTPS address.");
@@ -595,12 +606,16 @@ public static class CrmErpIntegrationModule
         if (!SameOrigin(context)) return OriginRejected();
 
         providerKey = NormalizeProviderKey(providerKey);
+        if (providerKey == "zendesk_sell") return Invalid("This connection is retired. Configure ConnectWise SELL in Module 026.");
         await using var connection = await OpenConnectionAsync(context);
         if (connection is null) return DependencyUnavailable();
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return SchemaUnavailable();
         var provider = await ReadProviderConfigurationAsync(connection, providerKey, context.RequestAborted);
         if (provider is null) return Results.NotFound(new { module = ModuleNumber, status = "provider_not_found", message = "The integration provider was not found." });
         if (!provider.IsEnabled) return Invalid("Enable the provider before testing its connection.");
+        if (providerKey == ConnectWiseSellApi.ProviderKey
+            && (provider.AuthModel != "api_key" || provider.HealthCheckUrl != ConnectWiseSellApi.HealthUrl))
+            return Invalid("Apply the recommended ConnectWise SELL API configuration before testing.");
         if (!TryHttpsUri(provider.HealthCheckUrl, out var healthUri)) return Invalid("A public HTTPS health-check URL is required.");
         if (!await IsSafeExternalUriAsync(healthUri!, context.RequestAborted)) return Invalid("The health-check URL must resolve to a public HTTPS address.");
 
@@ -617,8 +632,16 @@ public static class CrmErpIntegrationModule
             {
                 var apiKey = await LoadCredentialAsync(connection, providerKey, "api_key", encryptionKey, context.RequestAborted);
                 if (string.IsNullOrWhiteSpace(apiKey)) return Invalid("Save the write-only API key before testing.");
-                var value = string.IsNullOrWhiteSpace(provider.ApiKeyPrefix) ? apiKey : $"{provider.ApiKeyPrefix.Trim()} {apiKey}";
-                request.Headers.TryAddWithoutValidation(provider.ApiKeyHeader, value);
+                if (providerKey == ConnectWiseSellApi.ProviderKey)
+                {
+                    if (!ConnectWiseSellApi.TryAuthorize(request, apiKey))
+                        return Invalid("Save all three ConnectWise SELL API credentials and apply the recommended API configuration before testing.");
+                }
+                else
+                {
+                    var value = string.IsNullOrWhiteSpace(provider.ApiKeyPrefix) ? apiKey : $"{provider.ApiKeyPrefix.Trim()} {apiKey}";
+                    request.Headers.TryAddWithoutValidation(provider.ApiKeyHeader, value);
+                }
             }
             else
             {
@@ -638,10 +661,16 @@ public static class CrmErpIntegrationModule
                 : response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
                     ? "authentication_failed"
                     : "unavailable";
+            if (providerKey == ConnectWiseSellApi.ProviderKey && response.IsSuccessStatusCode
+                && !ConnectWiseSellApi.IsQuoteList(await ReadBoundedResponseBodyAsync(response.Content, context.RequestAborted)))
+            {
+                availability = "unavailable";
+                errorCode = "connectwise_sell_response_invalid";
+            }
             errorCode = availability switch
             {
                 "authentication_failed" => "remote_authentication_rejected",
-                "unavailable" => "remote_non_success_status",
+                "unavailable" => string.IsNullOrEmpty(errorCode) ? "remote_non_success_status" : errorCode,
                 _ => string.Empty
             };
         }
@@ -907,6 +936,17 @@ public static class CrmErpIntegrationModule
 
     private static IResult? ValidateProviderRequest(ProviderRequest request, bool creating)
     {
+        if (request.ProviderKey == "zendesk_sell") return Invalid("The retired connection is read-only. Configure ConnectWise SELL instead.");
+        if (request.ProviderKey == ConnectWiseSellApi.ProviderKey)
+        {
+            if (request.ProviderName != ConnectWiseSellApi.DisplayName || request.AuthModel != "api_key"
+                || request.BaseUrl != ConnectWiseSellApi.BaseUrl || request.HealthCheckUrl != ConnectWiseSellApi.HealthUrl
+                || request.RecordLookupUrlTemplate != ConnectWiseSellApi.LookupUrl
+                || request.ApiKeyHeader != "Authorization" || request.ApiKeyPrefix != "Basic"
+                || !string.IsNullOrWhiteSpace(request.OAuthAuthorizationUrl) || !string.IsNullOrWhiteSpace(request.OAuthTokenUrl)
+                || !string.IsNullOrWhiteSpace(request.OAuthClientId) || !string.IsNullOrWhiteSpace(request.OAuthScopes))
+                return Invalid("Apply the ConnectWise SELL template: CPQ API URLs and API-key Basic authentication are required. OAuth and PSA/Manage endpoints are not supported by this connector.");
+        }
         if (creating && string.IsNullOrWhiteSpace(request.ProviderKey)) return Invalid("Provider key is required.");
         if (creating && NormalizeProviderKey(request.ProviderKey!).Length is < 2 or > 60) return Invalid("Provider key must contain 2 to 60 letters, numbers, or underscores.");
         if (string.IsNullOrWhiteSpace(request.ProviderName) || request.ProviderName.Trim().Length > 150) return Invalid("Provider name is required and must be 150 characters or fewer.");
@@ -1301,7 +1341,7 @@ public static class CrmErpIntegrationModule
         bool IsEnabled,
         string? Notes);
 
-    private sealed record CredentialRequest(string? Secret);
+    private sealed record CredentialRequest(string? Secret, string? AccessKey = null, string? PublicKey = null, string? PrivateKey = null);
     private sealed record BodyOutcome<T>(T? Value, IResult? Failure);
     private sealed record OAuthState(string ProviderKey, Guid ActorUserId, string RedirectUri);
     private sealed record ProviderConfiguration(

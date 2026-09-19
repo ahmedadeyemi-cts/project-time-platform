@@ -1,0 +1,35 @@
+name: ConnectWise SELL configuration
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/connectwise-sell-configuration-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/*Sell*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CrmErp*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CustomerSourceAuthorityModule.cs'
+      - 'src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx'
+      - 'src/frontend/project-time-web/src/Customer*Center.jsx'
+      - 'src/frontend/project-time-web/scripts/validate-module*-*sell-customer-sync.mjs'
+      - 'database/migrations/111_connectwise_sell_provider.sql'
+      - 'tests/ConnectWiseSellApiTests/**'
+      - 'tests/connectwise-sell-*.test.*'
+permissions:
+  contents: read
+jobs:
+  configuration-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: dotnet run --project tests/ConnectWiseSellApiTests --configuration Release
+      - run: npm install --prefix "$RUNNER_TEMP/connectwise-test" --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - run: node tests/connectwise-sell-migration.test.mjs
+        env:
+          PROJECTPULSE_PGLITE_MODULE: ${{ runner.temp }}/connectwise-test/node_modules/@electric-sql/pglite/dist/index.js
+      - run: node src/frontend/project-time-web/scripts/validate-module-026-crm-erp-integrations.mjs
+      - run: node src/frontend/project-time-web/scripts/validate-modules-021-026-sell-customer-sync.mjs

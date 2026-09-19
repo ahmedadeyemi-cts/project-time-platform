@@ -148,21 +148,21 @@ internal static class EnterpriseReportingCatalog
                 C("billingTreatment", "Billing treatment", "status"), C("uploadedAt", "Uploaded", "datetime")
             ]),
         Report(
-            "sell_delivery_context", "SELL & Delivery Context", "Sales & Delivery",
-            "Governed SELL association, quote, commercial source, billing method, connector readiness, ownership, and project delivery state.",
+            "sell_delivery_context", "ConnectWise SELL & Delivery Context", "Sales & Delivery",
+            "Governed ConnectWise SELL association, quote, commercial source, billing method, connector readiness, ownership, and project delivery state.",
             ["026", "030", "036", "055B"],
             ["projects"], ["sell_commercial_model"],
             ["commercial_scoped"], "Commercial fields remain limited to roles with project and commercial visibility.",
             [Customer(), Project(), ProjectManager(), ProjectStatus(), ContractType(), SourceStatus()],
             [
                 C("customer", "Customer"), C("projectCode", "Project code"), C("projectName", "Project"), C("projectManager", "Project Manager"),
-                C("accountExecutive", "Account Executive"), C("contractType", "Contract type"), C("sellQuoteNumber", "SELL quote"),
+                C("accountExecutive", "Account Executive"), C("contractType", "Contract type"), C("sellQuoteNumber", "ConnectWise SELL quote"),
                 C("billingMethod", "Billing method"), C("commercialSource", "Commercial source"), C("connectorReady", "Connector ready", "boolean"),
-                C("readinessStatus", "SELL readiness", "status"), C("lastSuccessfulSyncAt", "Last sync", "datetime")
+                C("readinessStatus", "ConnectWise SELL readiness", "status"), C("lastSuccessfulSyncAt", "Last sync", "datetime")
             ]),
         Report(
             "billing_readiness", "Billing Readiness", "Financial",
-            "Approved time, current expenses, package review, forecast, variance, SELL readiness, and invoice blockers.",
+            "Approved time, current expenses, package review, forecast, variance, ConnectWise SELL readiness, and invoice blockers.",
             ["001", "005", "026", "039", "042"],
             ["projects", "approved_time_entries"], ["project_expenses", "billing_readiness_reviews", "sell_commercial_model"],
             ["financial_scoped"], "Billing evidence is limited to projects and financial fields authorized for the user.",
@@ -171,7 +171,7 @@ internal static class EnterpriseReportingCatalog
                 C("customer", "Customer"), C("projectCode", "Project code"), C("projectName", "Project"), C("approvedHours", "Approved hours", "number"),
                 C("currentExpenses", "Current expenses", "currency", true), C("packageStatus", "Package status", "status"),
                 C("forecastedFinalCost", "Forecast", "currency", true), C("currentVariance", "Variance", "currency", true),
-                C("sellReadiness", "SELL readiness", "status"), C("blockers", "Blockers")
+                C("sellReadiness", "ConnectWise SELL readiness", "status"), C("blockers", "Blockers")
             ]),
         Report(
             "project_closeout_readiness", "Project Closeout Readiness Report", "Project Delivery",
@@ -346,10 +346,10 @@ internal static class EnterpriseReportingCatalog
             [Customer(), Project(), ProjectManager(), Engineer(), DateFrom(), DateTo()],
             [
                 C("customer", "Customer"), C("projectCode", "Project code"), C("projectName", "Project"),
-                C("projectManager", "Project Manager"), C("contractType", "Contract type"), C("sellQuoteNumber", "SELL quote"),
+                C("projectManager", "Project Manager"), C("contractType", "Contract type"), C("sellQuoteNumber", "ConnectWise SELL quote"),
                 C("usedHours", "Used hours", "number"), C("contractedValue", "Contracted value", "currency", true),
                 C("laborCost", "Labor cost", "currency", true), C("currentVariance", "Current variance", "currency", true),
-                C("sellReadiness", "SELL readiness", "status")
+                C("sellReadiness", "ConnectWise SELL readiness", "status")
             ]),
         Report(
             "project_status_billed_balance", "Project Status Report — Billed Cost and Remaining Balance", "Financial",
@@ -504,7 +504,7 @@ internal static class EnterpriseReportingCatalog
                 C("customer", "Customer"), C("projectCode", "Project code"), C("projectName", "Project"),
                 C("exceptionType", "Exception type"), C("exceptionDetail", "Exception detail"), C("severity", "Severity", "status"),
                 C("contractedValue", "Contracted value", "currency", true), C("committedCost", "Committed cost", "currency", true),
-                C("currentVariance", "Current variance", "currency", true), C("sellReadiness", "SELL readiness", "status")
+                C("currentVariance", "Current variance", "currency", true), C("sellReadiness", "ConnectWise SELL readiness", "status")
             ]),
         Report(
             "customer_profitability", "Customer Profitability Report", "Financial",
@@ -521,7 +521,7 @@ internal static class EnterpriseReportingCatalog
             ]),
         Report(
             "sales_delivery_handoff_quality", "Sales-to-Delivery Handoff Quality Report", "Sales & Delivery",
-            "SELL association, quote, ownership, project-document, assignment, and commercial-readiness evidence for each project.",
+            "ConnectWise SELL association, quote, ownership, project-document, assignment, and commercial-readiness evidence for each project.",
             ["019", "026", "030", "036", "055B", "055D"],
             ["projects"], ["sell_commercial_model", "project_metadata"],
             ["commercial_scoped", "delivery_scoped"], "Sales and delivery fields remain limited to authorized projects.",
@@ -529,8 +529,8 @@ internal static class EnterpriseReportingCatalog
             [
                 C("customer", "Customer"), C("projectCode", "Project code"), C("projectName", "Project"),
                 C("projectManager", "Project Manager"), C("accountExecutive", "Account Executive"),
-                C("solutionArchitect", "Solution Architect"), C("sellQuoteNumber", "SELL quote"),
-                C("sellReadiness", "SELL readiness", "status"), C("assignmentReady", "Assignment ready", "boolean"),
+                C("solutionArchitect", "Solution Architect"), C("sellQuoteNumber", "ConnectWise SELL quote"),
+                C("sellReadiness", "ConnectWise SELL readiness", "status"), C("assignmentReady", "Assignment ready", "boolean"),
                 C("documentReady", "Document ready", "boolean"), C("handoffScore", "Handoff score", "percent"), C("gaps", "Handoff gaps")
             ]),
         Report(

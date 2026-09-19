@@ -6,7 +6,7 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Group 3 read-only project financial truth for Modules 018, 019, 036, and
-/// 055B. SELL context is read through Module 026's governed commercial model;
+/// 055B. ConnectWise SELL context is read through Module 026's governed commercial model;
 /// this module never stores or reads a second provider credential.
 /// </summary>
 public static partial class ProjectFinancialTruthModule
@@ -770,7 +770,7 @@ public static partial class ProjectFinancialTruthModule
                 rows,
                 SourceState.Healthy(
                     "sell_commercial",
-                    "Module 026 governed SELL commercial read model",
+                    "Module 026 governed ConnectWise SELL commercial read model",
                     false,
                     rows.Count));
         }
@@ -779,16 +779,16 @@ public static partial class ProjectFinancialTruthModule
             var state = rows.Count == 0
                 ? SourceState.Unavailable(
                     "sell_commercial",
-                    "Module 026 governed SELL commercial read model",
+                    "Module 026 governed ConnectWise SELL commercial read model",
                     false,
                     exception)
                 : SourceState.Partial(
                     "sell_commercial",
-                    "Module 026 governed SELL commercial read model",
+                    "Module 026 governed ConnectWise SELL commercial read model",
                     false,
                     exception,
                     rows.Count,
-                    "SELL context loaded for part of the visible portfolio.");
+                    "ConnectWise SELL context loaded for part of the visible portfolio.");
             return Load<Dictionary<Guid, SellCommercialProjectSummary>>.Success(rows, state);
         }
     }
@@ -1074,7 +1074,7 @@ public static partial class ProjectFinancialTruthModule
         if (workspace == "sales" || sa == actor.EffectiveUserId
             || ae == actor.EffectiveUserId || actor.Sales)
             return new("commercial_summary", false, true, true,
-                "Sales sees commercial status, forecast, variance, team, and SELL context without detailed labor-cost basis.");
+                "Sales sees commercial status, forecast, variance, team, and ConnectWise SELL context without detailed labor-cost basis.");
 
         if (assignments.Any(row => row.UserId == actor.EffectiveUserId))
             return new("hours_and_progress", false, false, false,
@@ -1152,7 +1152,7 @@ public static partial class ProjectFinancialTruthModule
     [
         new { field = "plannedHours", authority = "Project assignments and engineering resource allocations." },
         new { field = "usedHours", authority = "Non-voided and non-declined ProjectPulse time entries." },
-        new { field = "laborCost", authority = "Module 026 SELL/current governed rate model, with a labeled budget-derived fallback." },
+        new { field = "laborCost", authority = "Module 026 ConnectWise SELL/current governed rate model, with a labeled budget-derived fallback." },
         new { field = "uploadedExpenses", authority = "Current, non-deleted Module 005 expense uploads." },
         new { field = "forecastedFinalCost", authority = "Assignments, time entries, governed rates, and Module 005 expenses." },
         new { field = "currentVariance", authority = "Known project budget minus calculated forecast." }
@@ -1163,7 +1163,7 @@ public static partial class ProjectFinancialTruthModule
         module005 = "Current uploaded project expenses",
         module026 = new
         {
-            responsibility = "SELL connection, health, commercial rates, and credentials",
+            responsibility = "ConnectWise SELL connection, health, commercial rates, and credentials",
             connectionReused = true,
             secondCredentialSystemCreated = false
         },

@@ -275,7 +275,7 @@ function normalizeRoute(hash) {
   href: '#toyota-hyundai-pipelines',
   title: 'Toyota & Hyundai Pipelines',
   navLabel: 'MODULE 006',
-  description: 'Track the reviewed Toyota and Hyundai workbook baseline plus additional customer pipeline records, active and archived work, ownership, SELL references, estimates, notes, and historical update evidence.',
+  description: 'Track the reviewed Toyota and Hyundai workbook baseline plus additional customer pipeline records, active and archived work, ownership, ConnectWise SELL references, estimates, notes, and historical update evidence.',
   permissions: ['MANAGE_ALL'],
   strictRoleCodes: ['SUPER_ADMINISTRATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD'],
   roleCodes: ['SUPER_ADMINISTRATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD']

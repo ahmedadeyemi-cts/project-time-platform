@@ -3311,7 +3311,7 @@ async function createWorkRegisterFromReviewedIntake() {
       return;
     }
     if (!String(intakeForm.sellRecordId || '').trim()) {
-      setIntakeWizardStatus('Enter the SELL deal, quote, or opportunity record ID.');
+      setIntakeWizardStatus('Enter the ConnectWise SELL deal, quote, or opportunity record ID.');
       return;
     }
     if (!intakeForm.customerId) {
@@ -3332,8 +3332,8 @@ async function createWorkRegisterFromReviewedIntake() {
     setSelectedIntakeReview(null);
     setIntakeReviewForm(null);
     setIntakePackages([]);
-    setIntakeWizardStatus('Importing the authoritative project name and Actual Rate / Pricing / Rate Review from SELL...');
-    setIntakeReviewStatus('Connecting to SELL through Module 026...');
+    setIntakeWizardStatus('Importing the authoritative project name and Actual Rate / Pricing / Rate Review from ConnectWise SELL...');
+    setIntakeReviewStatus('Connecting to ConnectWise SELL through Module 026...');
 
     try {
       const result = await postJson('/api/work-register/intake/packages/sell/import', {
@@ -3356,9 +3356,9 @@ async function createWorkRegisterFromReviewedIntake() {
         documentCount: 0
       }]);
       await openIntakeReview(result.intakePackageId);
-      setIntakeWizardStatus('SELL intake imported. Project name and pricing are source-locked; complete assignments and final review.');
+      setIntakeWizardStatus('ConnectWise SELL intake imported. Project name and pricing are source-locked; complete assignments and final review.');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to import the SELL record.';
+      const message = error instanceof Error ? error.message : 'Unable to import the ConnectWise SELL record.';
       setIntakeWizardStatus(message);
       setIntakeReviewStatus(message);
     }
@@ -3645,7 +3645,7 @@ async function createWorkRegisterFromReviewedIntake() {
           <h2>{isCreateMode ? 'Create New Project' : 'Manage Existing Projects'}</h2>
           <p className="muted">
             {isCreateMode
-              ? 'Create new work from either GSD documents or a connected SELL record. Project Team Coordinators, Administrators, and Super Administrators can complete this workflow.'
+              ? 'Create new work from either GSD documents or a connected ConnectWise SELL record. Project Team Coordinators, Administrators, and Super Administrators can complete this workflow.'
               : 'Search and edit existing work. Every saved mutation is recorded with the actor, reason, old values, and new values in the Audit tab.'}
           </p>
         </div>
@@ -3839,7 +3839,7 @@ async function createWorkRegisterFromReviewedIntake() {
                   <small>End: {item.estimatedEndDate || 'Not set'}</small>
                   <small>Closed: {item.closedDate || 'Not closed'}</small>
                   <small>SOW signed: {item.sowSignedDate || 'Not set'}</small>
-                  {workRegisterBillingIdentifierValue(item, 'sellQuoteNumber', 'sell_quote_number') ? <small>SELL Quote: {workRegisterBillingIdentifierValue(item, 'sellQuoteNumber', 'sell_quote_number')}</small> : null}
+                  {workRegisterBillingIdentifierValue(item, 'sellQuoteNumber', 'sell_quote_number') ? <small>ConnectWise SELL Quote: {workRegisterBillingIdentifierValue(item, 'sellQuoteNumber', 'sell_quote_number')}</small> : null}
                   {workRegisterBillingIdentifierValue(item, 'salesforceIdNumber', 'salesforce_id_number') ? <small>Salesforce ID: {workRegisterBillingIdentifierValue(item, 'salesforceIdNumber', 'salesforce_id_number')}</small> : null}
                   {workRegisterBillingIdentifierValue(item, 'certiniaIdNumber', 'certinia_id_number') ? <small>Certinia ID: {workRegisterBillingIdentifierValue(item, 'certiniaIdNumber', 'certinia_id_number')}</small> : null}
                   {purchaseOrderForProject(item.workId)?.purchaseOrder?.poNumber ? (
@@ -3931,10 +3931,10 @@ async function createWorkRegisterFromReviewedIntake() {
                       <span>MODULE 055D · CREATE NEW PROJECT</span>
 
 
-                      <h3>Create from GSD or SELL</h3>
+                      <h3>Create from GSD or ConnectWise SELL</h3>
 
 
-                      <p>Choose a controlled source. SELL supplies the authoritative project name and Actual Rate / Pricing / Rate Review; GSD uses the existing extraction and review workflow.</p>
+                      <p>Choose a controlled source. ConnectWise SELL supplies the authoritative project name and Actual Rate / Pricing / Rate Review; GSD uses the existing extraction and review workflow.</p>
 
 
                     </div>
@@ -3989,7 +3989,7 @@ async function createWorkRegisterFromReviewedIntake() {
                       checked={intakeForm.sourceMode === 'sell'}
                       onChange={() => updateIntakeField('sourceMode', 'sell')}
                     />
-                    <strong>Import from SELL</strong>
+                    <strong>Import from ConnectWise SELL</strong>
                     <small>Use Module 026 to retrieve the authoritative project name and Actual Rate / Pricing / Rate Review.</small>
                   </label>
                 </div>
@@ -4042,36 +4042,36 @@ async function createWorkRegisterFromReviewedIntake() {
                   </label>
 
                   <label>
-                    {intakeForm.sourceMode === 'sell' ? 'Project / Work Name (from SELL)' : 'Project / Work Name'}
+                    {intakeForm.sourceMode === 'sell' ? 'Project / Work Name (from ConnectWise SELL)' : 'Project / Work Name'}
                     <input
                       type="text"
                       name="projectNameHint"
                       value={intakeForm.projectNameHint}
                       onChange={(event) => updateIntakeField('projectNameHint', event.target.value)}
-                      placeholder={intakeForm.sourceMode === 'sell' ? 'Imported from SELL after connection' : 'Optional; GSD extraction should populate this'}
+                      placeholder={intakeForm.sourceMode === 'sell' ? 'Imported from ConnectWise SELL after connection' : 'Optional; GSD extraction should populate this'}
                       disabled={intakeForm.sourceMode === 'sell'}
                     />
                   </label>
                   {intakeForm.sourceMode === 'sell' ? (
                     <label>
-                      SELL deal / quote / opportunity record ID
+                      ConnectWise SELL deal / quote / opportunity record ID
                       <input
                         type="text"
                         value={intakeForm.sellRecordId || ''}
                         onChange={(event) => updateIntakeField('sellRecordId', event.target.value)}
-                        placeholder="Required SELL record ID"
+                        placeholder="Required ConnectWise SELL record ID"
                         required
                       />
                     </label>
                   ) : null}
                   {/* 055D_5A_CREATE_BILLING_IDENTIFIERS */}
                   <label>
-                    SELL Quote <span className="optional-pill">Optional</span>
+                    ConnectWise SELL Quote <span className="optional-pill">Optional</span>
                     <input
                       type="text"
                       value={intakeForm.sellQuoteNumber || ''}
                       onChange={(event) => updateIntakeForm('sellQuoteNumber', event.target.value)}
-                      placeholder={intakeForm.sourceMode === 'sell' ? 'Imported from SELL' : 'Optional SELL quote number'}
+                      placeholder={intakeForm.sourceMode === 'sell' ? 'Imported from ConnectWise SELL' : 'Optional ConnectWise SELL quote number'}
                       disabled={intakeForm.sourceMode === 'sell'}
                     />
                   </label>
@@ -4136,14 +4136,14 @@ async function createWorkRegisterFromReviewedIntake() {
                 </div>
                 ) : (
                   <div className="work-register-sell-authority-notice">
-                    <strong>SELL authority boundary</strong>
-                    <p>The project name and all Actual Rate / Pricing / Rate Review rows are read from SELL through Module 026 and cannot be overwritten during review.</p>
+                    <strong>ConnectWise SELL authority boundary</strong>
+                    <p>The project name and all Actual Rate / Pricing / Rate Review rows are read from ConnectWise SELL through Module 026 and cannot be overwritten during review.</p>
                   </div>
                 )}
 
                 <div className="work-register-intake-primary-submit" data-marker="055D_2E_PRIMARY_UPLOAD_BUTTON">
                   <button type="submit" className="primary-action">
-                    {intakeForm.sourceMode === 'sell' ? 'Connect to SELL and import' : 'Upload and extract current intake package'}
+                    {intakeForm.sourceMode === 'sell' ? 'Connect to ConnectWise SELL and import' : 'Upload and extract current intake package'}
                   </button>
                   <span className="muted">
                     {intakeForm.sourceMode === 'sell'
@@ -4380,7 +4380,7 @@ async function createWorkRegisterFromReviewedIntake() {
               <section>
                 <h4>6. Source extraction and review mapping</h4>
                 <p className="muted">
-                  GSD packages are extracted from the uploaded workbook. SELL packages arrive already extracted through Module 026.
+                  GSD packages are extracted from the uploaded workbook. ConnectWise SELL packages arrive already extracted through Module 026.
                   Review the permitted fields before creating the Work Register record.
                 </p>
 
@@ -4438,7 +4438,7 @@ async function createWorkRegisterFromReviewedIntake() {
                           onChange={(event) => updateIntakeReviewForm('projectName', event.target.value)}
                           disabled={sellAuthoritativeReview}
                         />
-                        {sellAuthoritativeReview ? <small>Authoritative value supplied by SELL.</small> : null}
+                        {sellAuthoritativeReview ? <small>Authoritative value supplied by ConnectWise SELL.</small> : null}
                       </label>
 
                       <label>
@@ -4558,7 +4558,7 @@ async function createWorkRegisterFromReviewedIntake() {
 
                     <div className="work-register-gsd-review-summary">
                       <div>
-                        <span>{sellAuthoritativeReview ? 'SELL project list price' : 'GSD project list price'}</span>
+                        <span>{sellAuthoritativeReview ? 'ConnectWise SELL project list price' : 'GSD project list price'}</span>
                         <strong>{moneyReviewValue(intakeReviewForm.projectListPrice)}</strong>
                       </div>
                       <div>
@@ -4571,17 +4571,17 @@ async function createWorkRegisterFromReviewedIntake() {
                       </div>
                       <div>
                         <span>Pricing source</span>
-                        <strong>{sellAuthoritativeReview ? 'SELL authoritative snapshot' : 'GSD snapshot'}</strong>
+                        <strong>{sellAuthoritativeReview ? 'ConnectWise SELL authoritative snapshot' : 'GSD snapshot'}</strong>
                       </div>
                     </div>
 
                     <div className="work-register-gsd-review-table">
                       <div className="work-register-gsd-review-table-header">
                         <div>
-                          <h5>{sellAuthoritativeReview ? 'SELL Actual Rate / Pricing / Rate Review' : 'GSD Pricing / Rate Review'}</h5>
+                          <h5>{sellAuthoritativeReview ? 'ConnectWise SELL Actual Rate / Pricing / Rate Review' : 'GSD Pricing / Rate Review'}</h5>
                           <p className="muted">
                             {sellAuthoritativeReview
-                              ? 'These source-locked rows came directly from SELL and become the project-specific rate snapshot.'
+                              ? 'These source-locked rows came directly from ConnectWise SELL and become the project-specific rate snapshot.'
                               : 'These rows become the project-specific rate snapshot when the intake is committed to Work Register.'}
                           </p>
                         </div>
@@ -4958,7 +4958,7 @@ async function createWorkRegisterFromReviewedIntake() {
 
 
                       <button type="submit" className="primary-action">
-                        {intakeForm.sourceMode === 'sell' ? 'Connect to SELL and import' : 'Upload and extract intake package'}
+                        {intakeForm.sourceMode === 'sell' ? 'Connect to ConnectWise SELL and import' : 'Upload and extract intake package'}
                       </button>
 
 
@@ -5190,12 +5190,12 @@ async function createWorkRegisterFromReviewedIntake() {
               </label>
                 {/* 055D_5A_EDIT_BILLING_IDENTIFIERS */}
                 <label>
-                  SELL Quote <span className="optional-pill">Optional</span>
+                  ConnectWise SELL Quote <span className="optional-pill">Optional</span>
                   <input
                     type="text"
                     value={editForm.sellQuoteNumber || ''}
                     onChange={(event) => updateEditField('sellQuoteNumber', event.target.value)}
-                    placeholder={selectedWorkItem.sellQuoteNumber || selectedWorkItem.sell_quote_number || 'Optional SELL quote number'}
+                    placeholder={selectedWorkItem.sellQuoteNumber || selectedWorkItem.sell_quote_number || 'Optional ConnectWise SELL quote number'}
                     disabled={!canModifySelectedProject}
                   />
                 </label>
@@ -5683,7 +5683,7 @@ async function createWorkRegisterFromReviewedIntake() {
                 <div className="work-register-detail-summary">
                   <span>Total hours used: <strong>{hours(projectDetails.data?.summary?.totalHours ?? selectedWorkItem.usedHours)}</strong></span>
                   <span>Current total cost: <strong>{money(selectedWorkItem.totalCost)}</strong></span>
-                  {workRegisterBillingIdentifierValue(selectedWorkItem, 'sellQuoteNumber', 'sell_quote_number') ? <span>SELL Quote: <strong>{workRegisterBillingIdentifierValue(selectedWorkItem, 'sellQuoteNumber', 'sell_quote_number')}</strong></span> : null}
+                  {workRegisterBillingIdentifierValue(selectedWorkItem, 'sellQuoteNumber', 'sell_quote_number') ? <span>ConnectWise SELL Quote: <strong>{workRegisterBillingIdentifierValue(selectedWorkItem, 'sellQuoteNumber', 'sell_quote_number')}</strong></span> : null}
                   {workRegisterBillingIdentifierValue(selectedWorkItem, 'salesforceIdNumber', 'salesforce_id_number') ? <span>Salesforce ID: <strong>{workRegisterBillingIdentifierValue(selectedWorkItem, 'salesforceIdNumber', 'salesforce_id_number')}</strong></span> : null}
                   {workRegisterBillingIdentifierValue(selectedWorkItem, 'certiniaIdNumber', 'certinia_id_number') ? <span>Certinia ID: <strong>{workRegisterBillingIdentifierValue(selectedWorkItem, 'certiniaIdNumber', 'certinia_id_number')}</strong></span> : null}
                   <span>Approved change orders: <strong>{money(projectDetails.data?.costingSummary?.changeOrderTotal ?? 0)}</strong></span>

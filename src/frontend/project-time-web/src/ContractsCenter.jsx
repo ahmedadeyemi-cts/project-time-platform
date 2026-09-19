@@ -656,7 +656,7 @@ export default function ContractsCenter() {
                       <th>Remaining</th>
                       <th>Balance %</th>
                       <th>Certinia ID</th>
-                      <th>SELL Quote</th>
+                      <th>ConnectWise SELL Quote</th>
                       <th>Salesforce ID</th>
                       <th>Notes</th>
                     </tr>
@@ -807,7 +807,7 @@ export default function ContractsCenter() {
               <div className="prepaid-commercial-grid">
                 {[
                   ['poQuote', 'PO/Quote', 'Customer PO or quote reference'],
-                  ['sellQuote', 'SELL Quote', 'SELL quote number'],
+                  ['sellQuote', 'ConnectWise SELL Quote', 'ConnectWise SELL quote number'],
                   ['salesforceId', 'Salesforce ID', 'Salesforce opportunity or record ID'],
                   ['certiniaId', 'Certinia ID', 'Certinia contract or engagement ID']
                 ].map(([name, label, placeholder]) => (

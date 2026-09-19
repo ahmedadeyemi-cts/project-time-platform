@@ -9,14 +9,14 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Module 021 customer-source authority shared by customer-facing modules.
-/// SELL remains the backward-compatible default, while authorized operators may
+/// ConnectWise SELL remains the backward-compatible default, while authorized operators may
 /// select another Module 026 CRM/ERP provider or locally managed customers.
 /// </summary>
 public static class CustomerSourceAuthorityModule
 {
     internal const string ModuleNumber = "021";
     internal const string ProviderModuleNumber = "026";
-    internal const string SellProviderKey = "zendesk_sell";
+    internal const string SellProviderKey = "connectwise_sell";
     internal const string MigrationId = "098_customer_directory_source_authority";
     private const int MaximumRequestBytes = 64 * 1024;
     private const int MaximumPageSize = 100;
@@ -82,9 +82,9 @@ public static class CustomerSourceAuthorityModule
             source = ToPublicSource(source),
             providers,
             message = source.IsManual
-                ? "Manual customer management is authoritative. External CRM and SELL associations are not required."
+                ? "Manual customer management is authoritative. External CRM and ConnectWise SELL associations are not required."
                 : source.IsSell
-                    ? "SELL is the authoritative customer source through Module 026."
+                    ? "ConnectWise SELL is the authoritative customer source through Module 026."
                     : $"{source.ProviderName} is the authoritative customer source through Module 026."
         });
     }
@@ -114,7 +114,7 @@ public static class CustomerSourceAuthorityModule
             providerKey = SellProviderKey;
             selectedProvider = await LoadProviderRecordAsync(connection, providerKey, null, context.RequestAborted);
             if (selectedProvider is null)
-                return Invalid("The built-in SELL provider is not registered in Module 026.");
+                return Invalid("The built-in ConnectWise SELL provider is not registered in Module 026.");
         }
         else if (mode == "crm")
         {
@@ -122,7 +122,7 @@ public static class CustomerSourceAuthorityModule
             if (string.IsNullOrWhiteSpace(providerKey))
                 return Invalid("Select a Module 026 CRM/ERP provider before enabling CRM customer sourcing.");
             if (providerKey == SellProviderKey)
-                return Invalid("Choose SELL mode when Zendesk Sell is the selected provider.");
+                return Invalid("Choose ConnectWise SELL mode when ConnectWise SELL is the selected provider.");
 
             selectedProvider = await LoadProviderRecordAsync(connection, providerKey, null, context.RequestAborted);
             if (selectedProvider is null)
@@ -185,9 +185,9 @@ public static class CustomerSourceAuthorityModule
             stateChanged = previous.Mode != updated.Mode
                            || !string.Equals(previous.ProviderKey, updated.ProviderKey, StringComparison.OrdinalIgnoreCase),
             message = updated.IsManual
-                ? "Manual customer management is now authoritative. SELL association is not required by downstream customer workflows."
+                ? "Manual customer management is now authoritative. ConnectWise SELL association is not required by downstream customer workflows."
                 : updated.IsSell
-                    ? "SELL is now the authoritative customer source."
+                    ? "ConnectWise SELL is now the authoritative customer source."
                     : $"{updated.ProviderName} is now the authoritative Module 026 customer source."
         });
     }
@@ -224,7 +224,7 @@ public static class CustomerSourceAuthorityModule
                 module = ModuleNumber,
                 status = "sell_native_sync_active",
                 useNativeSellEndpoints = true,
-                message = "SELL uses the existing governed Module 021 synchronization controls."
+                message = "ConnectWise SELL uses the existing governed Module 021 synchronization controls."
             }, statusCode: StatusCodes.Status409Conflict);
         if (!source.ProviderReady)
             return SourceNotReady(source);
@@ -378,7 +378,7 @@ public static class CustomerSourceAuthorityModule
         if (source.IsManual)
             return Results.Json(new { module = ModuleNumber, status = "manual_customer_source_active", message = "Manual customer management is active. Add customers directly in Module 021." }, statusCode: StatusCodes.Status409Conflict);
         if (source.IsSell)
-            return Results.Json(new { module = ModuleNumber, status = "sell_native_sync_active", useNativeSellEndpoints = true, message = "Use the existing governed SELL import controls for the SELL source." }, statusCode: StatusCodes.Status409Conflict);
+            return Results.Json(new { module = ModuleNumber, status = "sell_native_sync_active", useNativeSellEndpoints = true, message = "Use the existing governed ConnectWise SELL import controls for the ConnectWise SELL source." }, statusCode: StatusCodes.Status409Conflict);
         if (!source.ProviderReady) return SourceNotReady(source);
 
         var provider = await LoadProviderRecordAsync(connection, source.ProviderKey!, null, context.RequestAborted);
@@ -649,8 +649,8 @@ public static class CustomerSourceAuthorityModule
         sourceSystem = source.SourceSystem,
         requiresSellAssociation = source.RequiresSellAssociation,
         manualCustomerEntryEnabled = source.IsManual,
-        customerPreviewConfigured = source.IsSell || ParseCustomerImportMapping(source).PreviewConfigured,
-        customerImportConfigured = source.IsSell || ParseCustomerImportMapping(source).ImportConfigured,
+        customerPreviewConfigured = !source.IsSell && ParseCustomerImportMapping(source).PreviewConfigured,
+        customerImportConfigured = !source.IsSell && ParseCustomerImportMapping(source).ImportConfigured,
         lastSuccessfulCustomerSyncAt = source.LastSuccessfulCustomerSyncAt,
         updatedAt = source.UpdatedAt
     };
@@ -672,8 +672,9 @@ public static class CustomerSourceAuthorityModule
                          END
                    ) AS credential_configured
             FROM crm_integration_providers provider
+            WHERE provider_key <> 'zendesk_sell'
             ORDER BY CASE provider_key
-                WHEN 'zendesk_sell' THEN 0
+                WHEN 'connectwise_sell' THEN 0
                 WHEN 'salesforce' THEN 1
                 WHEN 'certinia' THEN 2
                 WHEN 'servicenow' THEN 3
@@ -1604,7 +1605,7 @@ public static class CustomerSourceAuthorityModule
         internal bool IsSell => Mode == "sell";
         internal bool ProviderReady => IsManual || (ProviderEnabled && CredentialConfigured && AvailabilityStatus.Equals("available", StringComparison.OrdinalIgnoreCase));
         internal bool RequiresSellAssociation => IsSell;
-        internal string SourceSystem => IsManual ? "MANUAL" : IsSell ? "SELL" : $"CRM:{ProviderKey}";
+        internal string SourceSystem => IsManual ? "MANUAL" : IsSell ? "CONNECTWISE_SELL" : $"CRM:{ProviderKey}";
     }
 
     private sealed record ProviderRecord(

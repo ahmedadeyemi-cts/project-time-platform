@@ -46,7 +46,7 @@ function test(name, condition, evidence = '') {
 
 for (const [name, file] of Object.entries(files)) test(`FILE_${name.toUpperCase()}`, exists(file), file);
 
-test('BUILTIN_PROVIDERS', ['zendesk_sell', 'salesforce', 'servicenow', 'certinia'].every((provider) => administration.includes(`"${provider}"`) && migration.includes(`'${provider}'`)));
+test('BUILTIN_PROVIDERS', administration.includes('ConnectWiseSellApi.ProviderKey') && ['salesforce', 'servicenow', 'certinia'].every((provider) => administration.includes(`"${provider}"`) && migration.includes(`'${provider}'`)));
 test('VIRTUAL_BUILTIN_BOOTSTRAP', administration.includes('BuiltinProviderTemplates') && administration.includes('if (persistedKeys.Contains(template.ProviderKey)) continue;') && administration.includes('IsPersisted') && administration.includes('firstSaveCreatesProvider = true'));
 test('MIGRATION_SEED_NOT_REQUIRED_FOR_DISPLAY', administration.includes('migrationSeedRequiredForDisplay = false') && administration.includes('virtualTemplateCount'));
 test('MANUAL_PROVIDER_ROUTE', backend.includes('group.MapPost("/providers", CreateProviderAsync);'));
@@ -77,7 +77,7 @@ test('GENERATED_PARTIAL_COMPILE', project.includes('<Compile Remove="Modules/Crm
 
 test('NATIVE_REACT_ROUTE', app.includes("import CrmErpIntegrationCenter from './CrmErpIntegrationCenter.jsx';") && app.includes('<CrmErpIntegrationCenter />'));
 test('LEGACY_OVERLAY_DISABLED', legacy.includes('MODULE_026_NATIVE_REACT_ROUTE') && legacy.includes("(function () {\n  // MODULE_026_NATIVE_REACT_ROUTE: the historical local-only overlay is disabled.\n  return;"));
-test('CORE_CONNECTOR_CARDS', frontend.includes('SELL') && frontend.includes('Salesforce') && frontend.includes('ServiceNow') && frontend.includes('Certinia') && frontend.includes('Configure connection'));
+test('CORE_CONNECTOR_CARDS', frontend.includes('ConnectWise SELL') && frontend.includes('Salesforce') && frontend.includes('ServiceNow') && frontend.includes('Certinia') && frontend.includes('Configure connection'));
 test('EXPLICIT_EDIT_MODE', frontend.includes('Edit connection') && frontend.includes('beginEditing') && frontend.includes('cancelEditing') && frontend.includes("const [editing, setEditing] = useState(false)"));
 test('FIRST_SAVE_CREATES_BUILTIN', frontend.includes('const creating = !draft.isPersisted') && frontend.includes("? '/api/integrations/026/providers'") && frontend.includes("method: creating ? 'POST' : 'PUT'"));
 test('CUSTOM_PLATFORM_MODAL', frontend.includes('Add CRM platform') && frontend.includes('Add another CRM or ERP platform') && frontend.includes('Add platform and continue setup') && frontend.includes('crm-erp-modal-backdrop'));

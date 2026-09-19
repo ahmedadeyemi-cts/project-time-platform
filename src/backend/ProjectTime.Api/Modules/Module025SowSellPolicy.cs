@@ -55,14 +55,14 @@ internal interface IModule025SellPublisher
     Task<Module025SellPublishOutcome> PublishAsync(Module025SellPackage package, CancellationToken cancellationToken);
 }
 
-internal sealed class Module025ZendeskSellPublisher : IModule025SellPublisher
+internal sealed class Module025ConnectWiseSellPublisher : IModule025SellPublisher
 {
     internal const string Blocker = "SELL_DOCUMENT_WRITE_ADAPTER_REQUIRED";
     public Task<Module025SellReadiness> GetReadinessAsync(string runtimeEnvironment, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(new Module025SellReadiness(false, Blocker,
-            "The existing SELL connection supports reads. An approved SELL record-and-document write adapter is required before automatic submission can be enabled. No SELL record or email has been created."));
+            "The ConnectWise SELL connection test verifies quote API access only. An approved ConnectWise SELL record-and-document write adapter is required before automatic submission can be enabled. No ConnectWise SELL record or email has been created."));
     }
     public Task<Module025SellPublishOutcome> PublishAsync(Module025SellPackage package, CancellationToken cancellationToken) =>
         Task.FromResult(new Module025SellPublishOutcome(Module025SellOutcomeKind.RejectedBeforeWrite, null, Blocker));
@@ -70,7 +70,7 @@ internal sealed class Module025ZendeskSellPublisher : IModule025SellPublisher
 
 internal static class Module025SowSellPolicy
 {
-    internal const string DestinationKey = "zendesk_sell";
+    internal const string DestinationKey = "connectwise_sell";
     internal const int MaximumArtifactBytes = 16 * 1024 * 1024;
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -162,21 +162,21 @@ internal static class Module025SowSellPolicy
 
     internal static (string Subject, string Body) Notification(Module025SellPackage package, Module025SellReceipt receipt)
     {
-        if (!ValidReceipt(package, receipt)) throw new InvalidOperationException("A verified two-document SELL receipt is required.");
+        if (!ValidReceipt(package, receipt)) throw new InvalidOperationException("A verified two-document ConnectWise SELL receipt is required.");
         var sa = package.Recipients.Single(p => p.Role == "solution_architect");
         var inside = package.Recipients.Single(p => p.Role == "inside_sales");
         var ae = package.Recipients.Single(p => p.Role == "account_executive");
         var updated = !string.IsNullOrWhiteSpace(package.ExistingSellRecordId);
         var verb = updated ? "updated in" : "created in";
-        var subject = $"SOW and GSD {verb} SELL | {package.EngagementNumber} v{package.VersionNumber} | {package.CustomerName}";
+        var subject = $"SOW and GSD {verb} ConnectWise SELL | {package.EngagementNumber} v{package.VersionNumber} | {package.CustomerName}";
         subject = new string(subject.Where(c => !char.IsControl(c)).ToArray());
         if (subject.Length > 500) subject = subject[..500];
-        var upload = updated ? "has uploaded an updated SOW and GSD to the existing record in SELL" : "has uploaded a SOW and GSD in SELL";
+        var upload = updated ? "has uploaded an updated SOW and GSD to the existing record in ConnectWise SELL" : "has uploaded a SOW and GSD in ConnectWise SELL";
         var body = $"{sa.DisplayName} {upload} for customer \"{package.CustomerName}\".\n\n"
             + $"{inside.DisplayName}, please can you assist in processing this quote?\n\n"
             + $"SOW record: {package.EngagementNumber}\nVersion: {package.VersionNumber}\nSELL record: {receipt.SellRecordId}\n"
             + $"Solution Architect: {sa.DisplayName}\nAccount Executive: {ae.DisplayName}\nInside Sales Representative: {inside.DisplayName}\n\n"
-            + "Both the SOW and GSD for this version have been verified in SELL. Earlier versions remain retained in the SOW Register.";
+            + "Both the SOW and GSD for this version have been verified in ConnectWise SELL. Earlier versions remain retained in the SOW Register.";
         return (subject, body);
     }
 

@@ -21,8 +21,24 @@ expiry; it does not accept arbitrary provider or actor identifiers.
 Only public HTTPS provider endpoints are accepted. Connection tests do not
 follow redirects or store response bodies.
 
-Module 055D is an internal consumer of the configured SELL provider. Its
-`POST /api/work-register/intake/packages/sell/import` route accepts a SELL
+Module 055D is an internal consumer of the configured ConnectWise SELL provider. Its
+`POST /api/work-register/intake/packages/sell/import` route accepts a ConnectWise SELL
 record ID, replaces the required `{recordId}` lookup-template token, applies
 the administrator-owned mapping, and retains only the mapped Work Register
 fields.
+
+## ConnectWise SELL provider
+
+Use `connectwise_sell`. The credential PUT accepts `accessKey`, `publicKey` and
+`privateKey` together instead of `secret`. It encrypts the complete credential;
+GET, audit and connection-check responses contain no key values. The retired
+provider key cannot be configured, tested, authorized with OAuth, or given keys.
+
+The profile pins HTTPS to `sellapi.quosalsell.com`, uses API-key Basic auth and
+reads `/api/quotes?page=1&pageSize=1`. HTTP 2xx is available only when the bounded
+response is a CPQ quote array. HTTP 401/403 is authentication_failed; malformed,
+HTML, oversized and other non-success responses are unavailable.
+
+Customer preview/import return HTTP 409 `connectwise_sell_customer_adapter_required`.
+Work intake without a reviewed rate adapter returns HTTP 409
+`connectwise_sell_rate_adapter_required`. These are separate from API availability.

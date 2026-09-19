@@ -16,7 +16,7 @@ internal sealed class Module025SowSellWorker(IServiceProvider services, ILogger<
             catch (Exception exception)
             {
                 // Never log customer content, recipients, documents or credentials.
-                logger.LogWarning("Module 025 SELL worker paused. DiagnosticType={DiagnosticType}", exception.GetType().Name);
+                logger.LogWarning("Module 025 ConnectWise SELL worker paused. DiagnosticType={DiagnosticType}", exception.GetType().Name);
             }
             try { await Task.Delay(worked ? TimeSpan.FromMilliseconds(250) : TimeSpan.FromSeconds(15), stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
@@ -60,7 +60,7 @@ public static partial class Module025SowGsdModule
         catch
         {
             // A lost response can follow a successful remote write. Never create
-            // another SELL record or send the success email on an assumption.
+            // another ConnectWise SELL record or send the success email on an assumption.
             await FinishSowSellFailureAsync(connection, work, "needs_reconciliation", "SELL_OUTCOME_UNKNOWN", cancellationToken);
             return true;
         }
@@ -132,7 +132,7 @@ public static partial class Module025SowGsdModule
         }
         var work = await LoadSowSellWorkAsync(connection, id.Value, cancellationToken);
         await InsertEventAsync(connection, transaction, work.Package.EngagementId, work.ActorUserId, work.SourceRevision,
-            "sell_publication_started", "The governed worker claimed the version for SELL publication.",
+            "sell_publication_started", "The governed worker claimed the version for ConnectWise SELL publication.",
             new { submissionId = id.Value, work.Package.VersionId, work.Package.IdempotencyKey }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return work;
@@ -151,7 +151,7 @@ public static partial class Module025SowGsdModule
             """, connection);
         command.Parameters.AddWithValue("id", submissionId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("The retained SELL submission is missing.");
+        if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("The retained ConnectWise SELL submission is missing.");
         var source = JsonSerializer.Deserialize<Module025EngagementRow>(reader.GetString(7), Module025SowSellPolicy.Json)
             ?? throw new InvalidOperationException("The retained document source is invalid.");
         var recipients = JsonSerializer.Deserialize<Module025SellRecipient[]>(reader.GetString(4), Module025SowSellPolicy.Json) ?? [];
@@ -258,14 +258,14 @@ public static partial class Module025SowGsdModule
         command.Parameters.AddWithValue("diagnostic", SowSellDiagnostic(diagnostic));
         if (await command.ExecuteNonQueryAsync(cancellationToken) > 0)
             await InsertEventAsync(connection, transaction, work.Package.EngagementId, work.ActorUserId, work.SourceRevision,
-                "sell_publication_not_confirmed", "SELL acceptance of this SOW/GSD version was not confirmed. No success notification was queued.",
+                "sell_publication_not_confirmed", "ConnectWise SELL acceptance of this SOW/GSD version was not confirmed. No success notification was queued.",
                 new { work.Package.SubmissionId, sellStatus = status, diagnosticCode = SowSellDiagnostic(diagnostic) }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
     private static async Task CommitVerifiedSowReceiptAsync(NpgsqlConnection connection, SowSellWork work, Module025SellReceipt receipt, CancellationToken cancellationToken)
     {
-        if (!Module025SowSellPolicy.ValidReceipt(work.Package, receipt)) throw new InvalidOperationException("Invalid SELL receipt.");
+        if (!Module025SowSellPolicy.ValidReceipt(work.Package, receipt)) throw new InvalidOperationException("Invalid ConnectWise SELL receipt.");
         var notification = Module025SowSellPolicy.Notification(work.Package, receipt);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using (var state = new NpgsqlCommand("SELECT sell_status FROM module025_sow_sell_dispatch WHERE submission_id=@id FOR UPDATE;", connection, transaction))
@@ -295,7 +295,7 @@ public static partial class Module025SowGsdModule
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         await InsertEventAsync(connection, transaction, work.Package.EngagementId, work.ActorUserId, work.SourceRevision,
-            "sell_submission_verified", "SELL record and both retained document hashes were verified. The quote-processing notification was queued atomically.", receipt, cancellationToken);
+            "sell_submission_verified", "ConnectWise SELL record and both retained document hashes were verified. The quote-processing notification was queued atomically.", receipt, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 

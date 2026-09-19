@@ -199,7 +199,7 @@ public static class SystemArchitectureModule
             "Business integrations",
             "integration",
             "integration",
-            "SELL/CRM, Certinia, Certify, customer, rate, and related governed exchanges",
+            "ConnectWise SELL/CRM, Certinia, Certify, customer, rate, and related governed exchanges",
             ["bounded HTTPS contracts", "role-scoped data", "integration-owned status"]),
         new(
             "shared-platform-services",

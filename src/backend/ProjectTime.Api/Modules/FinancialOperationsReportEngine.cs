@@ -7,7 +7,7 @@ internal static class FinancialOperationsReportEngine
         new(
             "project_financial_health",
             "Project Financial Health",
-            "Project budget, cost, forecast, variance, completion, and governed SELL readiness.",
+            "Project budget, cost, forecast, variance, completion, and governed ConnectWise SELL readiness.",
             ["030", "039", "042"],
             ["projects", "assignments", "time_entries"],
             ["project_expenses", "project_metadata", "sell_commercial_model", "cost_alerts"],
@@ -24,7 +24,7 @@ internal static class FinancialOperationsReportEngine
                 Column("currentVariance", "Current variance", "currency", "Known budget less governed forecast."),
                 Column("budgetStatus", "Budget status", "status", "On-track, approaching, over, or missing-information state."),
                 Column("completionPercentage", "Completion", "percent", "Used hours divided by planned hours."),
-                Column("sellReadiness", "SELL readiness", "status", "Module 026 commercial readiness.")
+                Column("sellReadiness", "ConnectWise SELL readiness", "status", "Module 026 commercial readiness.")
             ]),
         new(
             "project_hours_consumption",
@@ -431,7 +431,7 @@ internal static class FinancialOperationsReportEngine
             blockers.Add($"Billing package is {readiness.ReviewStatus}.");
         if (project.SellReadinessStatus.Contains("not_ready", StringComparison.OrdinalIgnoreCase)
             || project.SellReadinessStatus.Contains("missing", StringComparison.OrdinalIgnoreCase))
-            blockers.Add($"SELL readiness: {project.SellReadinessStatus}.");
+            blockers.Add($"ConnectWise SELL readiness: {project.SellReadinessStatus}.");
         return blockers.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 

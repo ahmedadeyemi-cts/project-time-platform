@@ -52,7 +52,7 @@ public static class ContractsPrepaidModule
         "Remaining Balance",
         "Balance %",
         "Certinia ID",
-        "SELL Quote",
+        "ConnectWise SELL Quote",
         "Salesforce ID",
         "Notes"
     };

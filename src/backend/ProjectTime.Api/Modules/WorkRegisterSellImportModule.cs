@@ -8,7 +8,7 @@ namespace ProjectTime.Api.Modules;
 
 public static class WorkRegisterSellImportModule
 {
-    private const string ProviderKey = "zendesk_sell";
+    private const string ProviderKey = "connectwise_sell";
 
     public static WebApplication MapWorkRegisterSellImportEndpoints(this WebApplication app)
     {
@@ -27,8 +27,8 @@ public static class WorkRegisterSellImportModule
         var actorUserId = ActualUserId(context);
         if (actorUserId is null) return Results.Json(new { status = "session_required" }, statusCode: 401);
         if (string.IsNullOrWhiteSpace(request.SellRecordId) || request.SellRecordId.Trim().Length > 200)
-            return Invalid("A SELL record ID of 200 characters or fewer is required.");
-        if (request.CustomerId == Guid.Empty) return Invalid("Select the ProjectPulse customer for this SELL record.");
+            return Invalid("A ConnectWise SELL record ID of 200 characters or fewer is required.");
+        if (request.CustomerId == Guid.Empty) return Invalid("Select the ProjectPulse customer for this ConnectWise SELL record.");
         if (string.IsNullOrWhiteSpace(request.Reason)) return Invalid("An intake reason is required for audit history.");
 
         DateOnly? sowSignedDate = null;
@@ -72,7 +72,7 @@ public static class WorkRegisterSellImportModule
             return Results.Json(new
             {
                 status = "access_denied",
-                message = "Only a Project Team Coordinator, Administrator, or Super Administrator can import SELL work into the Work Register."
+                message = "Only a Project Team Coordinator, Administrator, or Super Administrator can import ConnectWise SELL work into the Work Register."
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
@@ -80,21 +80,27 @@ public static class WorkRegisterSellImportModule
         if (provider is null) return Results.Json(new
         {
             status = "sell_provider_unavailable",
-            message = "Configure SELL in Module 026 before importing a Work Register record."
+            message = "Configure ConnectWise SELL in Module 026 before importing a Work Register record."
         }, statusCode: StatusCodes.Status409Conflict);
         if (!provider.IsEnabled) return Results.Json(new
         {
             status = "sell_provider_disabled",
-            message = "Enable SELL in Module 026 before importing."
+            message = "Enable ConnectWise SELL in Module 026 before importing."
         }, statusCode: StatusCodes.Status409Conflict);
         if (!string.Equals(provider.AvailabilityStatus, "available", StringComparison.OrdinalIgnoreCase))
             return Results.Json(new
             {
                 status = "sell_provider_not_available",
-                message = "Run a successful SELL availability test in Module 026 before importing."
+                message = "Run a successful ConnectWise SELL availability test in Module 026 before importing."
             }, statusCode: StatusCodes.Status409Conflict);
         if (!provider.RecordLookupUrlTemplate.Contains("{recordId}", StringComparison.Ordinal))
-            return Invalid("SELL record lookup is not configured in Module 026.");
+            return Invalid("ConnectWise SELL record lookup is not configured in Module 026.");
+
+        using (var mapping = JsonDocument.Parse(provider.ImportMappingJson))
+        {
+            if (string.IsNullOrWhiteSpace(Mapping(mapping.RootElement, "rateLinesPath")))
+                return Results.Json(new { status = "connectwise_sell_rate_adapter_required", message = "ConnectWise SELL API access is configured. Work intake still requires a reviewed quote-item/labor-rate adapter; quote totals cannot be treated as hourly rates." }, statusCode: StatusCodes.Status409Conflict);
+        }
 
         var lookupValue = provider.RecordLookupUrlTemplate.Replace(
             "{recordId}",
@@ -103,7 +109,7 @@ public static class WorkRegisterSellImportModule
         if (!Uri.TryCreate(lookupValue, UriKind.Absolute, out var lookupUri)
             || !await CrmErpIntegrationModule.IsSafeExternalUriAsync(lookupUri, context.RequestAborted))
         {
-            return Invalid("The configured SELL lookup URL is not an approved public HTTPS address.");
+            return Invalid("The configured ConnectWise SELL lookup URL is not an approved public HTTPS address.");
         }
 
         var encryptionKey = CrmErpIntegrationModule.ReadEncryptionKey();
@@ -116,26 +122,10 @@ public static class WorkRegisterSellImportModule
         try
         {
             using var outbound = new HttpRequestMessage(HttpMethod.Get, lookupUri);
-            if (provider.AuthModel == "api_key")
-            {
-                var apiKey = await CrmErpIntegrationModule.LoadCredentialAsync(
-                    connection, ProviderKey, "api_key", encryptionKey, context.RequestAborted);
-                if (string.IsNullOrWhiteSpace(apiKey)) return Invalid("Save the SELL API key in Module 026 before importing.");
-                var value = string.IsNullOrWhiteSpace(provider.ApiKeyPrefix)
-                    ? apiKey
-                    : $"{provider.ApiKeyPrefix.Trim()} {apiKey}";
-                outbound.Headers.TryAddWithoutValidation(provider.ApiKeyHeader, value);
-            }
-            else
-            {
-                var envelope = await CrmErpIntegrationModule.LoadCredentialAsync(
-                    connection, ProviderKey, "oauth_token", encryptionKey, context.RequestAborted);
-                if (string.IsNullOrWhiteSpace(envelope)) return Invalid("Connect SELL with OAuth in Module 026 before importing.");
-                using var tokenDocument = JsonDocument.Parse(envelope);
-                var token = Text(tokenDocument.RootElement, "accessToken");
-                if (string.IsNullOrWhiteSpace(token)) return Invalid("Reconnect SELL OAuth in Module 026 before importing.");
-                outbound.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            }
+            var apiKey = await CrmErpIntegrationModule.LoadCredentialAsync(
+                connection, ProviderKey, "api_key", encryptionKey, context.RequestAborted);
+            if (provider.AuthModel != "api_key" || !ConnectWiseSellApi.TryAuthorize(outbound, apiKey))
+                return Invalid("Save the ConnectWise SELL access key, public key and private key in Module 026 before importing.");
 
             var client = httpClientFactory.CreateClient("Module026");
             using var response = await client.SendAsync(
@@ -148,7 +138,7 @@ public static class WorkRegisterSellImportModule
             if (responseBody is null) return Results.Json(new
             {
                 status = "sell_response_too_large",
-                message = "SELL returned more data than the controlled import limit."
+                message = "ConnectWise SELL returned more data than the controlled import limit."
             }, statusCode: StatusCodes.Status502BadGateway);
             if (!response.IsSuccessStatusCode) return Results.Json(new
             {
@@ -156,8 +146,8 @@ public static class WorkRegisterSellImportModule
                     ? "sell_authentication_failed"
                     : "sell_record_unavailable",
                 message = response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-                    ? "SELL rejected the configured credential. Reconnect it in Module 026."
-                    : "SELL could not return the requested record.",
+                    ? "ConnectWise SELL rejected the configured credential. Reconnect it in Module 026."
+                    : "ConnectWise SELL could not return the requested record.",
                 remoteStatusCode = (int)response.StatusCode
             }, statusCode: StatusCodes.Status502BadGateway);
 
@@ -169,9 +159,9 @@ public static class WorkRegisterSellImportModule
             var sellCustomerName = PathText(source.RootElement, Mapping(mapping, "customerNamePath"));
             var contractedAmount = PathDecimal(source.RootElement, Mapping(mapping, "contractedAmountPath"));
             var rateElement = Path(source.RootElement, Mapping(mapping, "rateLinesPath"));
-            if (string.IsNullOrWhiteSpace(projectName)) return Invalid("The SELL mapping did not return a project name. Update the field mapping in Module 026.");
+            if (string.IsNullOrWhiteSpace(projectName)) return Invalid("The ConnectWise SELL mapping did not return a project name. Update the field mapping in Module 026.");
             if (rateElement is null || rateElement.Value.ValueKind != JsonValueKind.Array)
-                return Invalid("The SELL mapping did not return Pricing / Rate Review rows. Update the field mapping in Module 026.");
+                return Invalid("The ConnectWise SELL mapping did not return Pricing / Rate Review rows. Update the field mapping in Module 026.");
 
             var rates = new List<object>();
             foreach (var rate in rateElement.Value.EnumerateArray())
@@ -194,7 +184,7 @@ public static class WorkRegisterSellImportModule
                     billable = PathBool(rate, Mapping(mapping, "billablePath")) ?? true
                 });
             }
-            if (rates.Count == 0) return Invalid("SELL returned no usable Actual Rate rows for Pricing / Rate Review.");
+            if (rates.Count == 0) return Invalid("ConnectWise SELL returned no usable Actual Rate rows for Pricing / Rate Review.");
 
             var customerName = await CustomerNameAsync(connection, request.CustomerId, context.RequestAborted);
             if (customerName is null) return Invalid("The selected ProjectPulse customer was not found.");
@@ -220,7 +210,7 @@ public static class WorkRegisterSellImportModule
                 phaseTotals = Array.Empty<object>(),
                 parserNotes = new[]
                 {
-                    "Project name and Actual Rate / Pricing / Rate Review rows were imported directly from SELL and are source-locked.",
+                    "Project name and Actual Rate / Pricing / Rate Review rows were imported directly from ConnectWise SELL and are source-locked.",
                     "Task and assignment planning remains a ProjectPulse review step before final creation."
                 }
             };
@@ -289,20 +279,20 @@ public static class WorkRegisterSellImportModule
                 extractionStatus = "completed",
                 reviewStatus = "needs_review",
                 rateCount = rates.Count,
-                message = "SELL project name and Actual Rate / Pricing / Rate Review data were imported. Review assignments, then create the Work Register record."
+                message = "ConnectWise SELL project name and Actual Rate / Pricing / Rate Review data were imported. Review assignments, then create the Work Register record."
             });
         }
         catch (JsonException)
         {
-            return Invalid("SELL returned data that does not match the configured import mapping.");
+            return Invalid("ConnectWise SELL returned data that does not match the configured import mapping.");
         }
         catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested)
         {
-            return Results.Json(new { status = "sell_timeout", message = "SELL did not respond before the connection timeout." }, statusCode: 504);
+            return Results.Json(new { status = "sell_timeout", message = "ConnectWise SELL did not respond before the connection timeout." }, statusCode: 504);
         }
         catch (HttpRequestException)
         {
-            return Results.Json(new { status = "sell_connection_failed", message = "ProjectPulse could not reach SELL." }, statusCode: 502);
+            return Results.Json(new { status = "sell_connection_failed", message = "ProjectPulse could not reach ConnectWise SELL." }, statusCode: 502);
         }
         finally
         {

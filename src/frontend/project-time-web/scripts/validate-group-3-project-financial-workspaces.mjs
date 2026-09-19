@@ -166,7 +166,7 @@ check('WORKSPACE_IDENTITIES', includesAll(component, [
 check('WORKSPACE_SPECIFIC_EXPERIENCES', includesAll(component, [
   'Project portfolio command center',
   'Engineering assignments and project evidence',
-  'Customer, SELL, and delivery readiness',
+  'Customer, ConnectWise SELL, and delivery readiness',
   'Governed rate context',
   "data-workspace-summary={workspace}",
   "data-workspace-table={workspace}",
@@ -197,8 +197,8 @@ check('ENGINEERING_EXPERIENCE', includesAll(component, [
 'engineering hours, grouped documents, and authenticated downloads are present');
 
 check('SELL_GOVERNANCE_PRESENTATION', includesAll(component, [
-  'Connection owner', 'SELL relationship', 'Module 026',
-  'without another provider credential', 'SELL connection owner: Module 026'
+  'Connection owner', 'ConnectWise SELL relationship', 'Module 026',
+  'without another provider credential', 'ConnectWise SELL connection owner: Module 026'
 ]), 'Module 055B and sales visibly consume governed SELL context');
 
 check('SOURCE_RETRY', includesAll(component, [

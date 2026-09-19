@@ -4,7 +4,7 @@ Module 026 replaces the historical browser-local CRM framework overlay with a
 native ProjectPulse page and backend API. It owns integration configuration and
 sanitized availability for:
 
-- SELL (Zendesk Sell)
+- ConnectWise SELL
 - Salesforce
 - Certinia
 - ServiceNow
@@ -26,10 +26,10 @@ Certinia uses an approved Salesforce connected-app/OAuth boundary. Tenant- or
 instance-specific endpoints are administrator configuration; the repository
 does not guess an organization URL.
 
-For 055D SELL creation, Module 026 also owns the public-HTTPS record lookup URL
-template and JSON field mapping. The template must contain `{recordId}`. The
-mapping selects project name, quote/reference, customer context, and rate rows;
-raw provider payloads are not retained by the Work Register.
+ConnectWise SELL uses a dedicated CPQ API-key profile. See
+[ConnectWise SELL setup](CONNECTWISE-SELL-SETUP.md) for the three-key credential,
+read-only connection test and adapter limitations. OAuth remains available for
+other providers. Configuration can be saved before credentials are issued.
 
 ## Availability status
 

@@ -11,10 +11,10 @@ const workspaceConfig = {
     description: 'Assigned-project hours, financial position, delivery risk, notifications, and attention items for the selected Project Manager scope.',
     authorityTitle: 'Project Management authority',
     authorityDescription: 'Only projects allowed by the server-enforced Project Manager or Project Management Lead scope are returned. Portfolio costs, current expenses, forecasts, alerts, and project teams are reconciled for delivery decisions.',
-    searchPlaceholder: 'Customer, project, Project Manager, or SELL quote…',
+    searchPlaceholder: 'Customer, project, Project Manager, or ConnectWise SELL quote…',
     refreshLabel: 'Refresh PM portfolio',
     defaultTab: 'overview',
-    tabs: [['overview', 'Overview'], ['financials', 'Financials'], ['team', 'Team & SELL'], ['expenses', 'Expenses'], ['documents', 'Documents']]
+    tabs: [['overview', 'Overview'], ['financials', 'Financials'], ['team', 'Team & ConnectWise SELL'], ['expenses', 'Expenses'], ['documents', 'Documents']]
   },
   engineering: {
     module: '019',
@@ -31,26 +31,26 @@ const workspaceConfig = {
   sales: {
     module: '036',
     eyebrow: 'Sales insights workspace',
-    title: 'Customer, SELL, and delivery readiness',
-    description: 'Sales-owned and assigned projects with governed SELL association, Account Executive context, commercial status, forecast, budget signals, and delivery ownership.',
+    title: 'Customer, ConnectWise SELL, and delivery readiness',
+    description: 'Sales-owned and assigned projects with governed ConnectWise SELL association, Account Executive context, commercial status, forecast, budget signals, and delivery ownership.',
     authorityTitle: 'Sales and delivery handoff',
-    authorityDescription: 'Module 036 emphasizes customer, Account Executive, SELL quote, contracted value, commercial readiness, and delivery risk without exposing restricted labor-cost detail.',
-    searchPlaceholder: 'Customer, project, Account Executive, or SELL quote…',
+    authorityDescription: 'Module 036 emphasizes customer, Account Executive, ConnectWise SELL quote, contracted value, commercial readiness, and delivery risk without exposing restricted labor-cost detail.',
+    searchPlaceholder: 'Customer, project, Account Executive, or ConnectWise SELL quote…',
     refreshLabel: 'Refresh sales portfolio',
     defaultTab: 'team',
-    tabs: [['team', 'SELL & ownership'], ['financials', 'Commercial position'], ['overview', 'Delivery readiness']]
+    tabs: [['team', 'ConnectWise SELL & ownership'], ['financials', 'Commercial position'], ['overview', 'Delivery readiness']]
   },
   'rate-card': {
     module: '055B',
     eyebrow: 'Rate Card Administration context',
-    title: 'Projects, customers, SELL, and governed rates',
-    description: 'Project and customer rate coverage from the Module 026 governed SELL connection, including contract type, matched rate card, effective status, and missing-rate attention.',
+    title: 'Projects, customers, ConnectWise SELL, and governed rates',
+    description: 'Project and customer rate coverage from the Module 026 governed ConnectWise SELL connection, including contract type, matched rate card, effective status, and missing-rate attention.',
     authorityTitle: 'Governed rate context',
-    authorityDescription: 'Module 055B retains rate-card administration while this context identifies which customers and projects have a governed rate basis, SELL association, and complete rate coverage without another provider credential.',
+    authorityDescription: 'Module 055B retains rate-card administration while this context identifies which customers and projects have a governed rate basis, ConnectWise SELL association, and complete rate coverage without another provider credential.',
     searchPlaceholder: 'Customer, project, contract type, rate card, or quote…',
     refreshLabel: 'Refresh governed rate context',
     defaultTab: 'team',
-    tabs: [['team', 'Rate card & SELL'], ['financials', 'Rate impact'], ['overview', 'Project context']]
+    tabs: [['team', 'Rate card & ConnectWise SELL'], ['financials', 'Rate impact'], ['overview', 'Project context']]
   }
 };
 
@@ -224,7 +224,7 @@ function summaryMetrics(workspace, summary, projects, loading) {
     case 'sales':
       return [
         { label: 'Sales-visible projects', value: number(summary?.projectCount, 0), detail: `${number(summary?.customerCount, 0)} customer(s)` },
-        { label: 'SELL-linked projects', value: number(linkedSellCount, 0), detail: `${Math.max(projectList.length - linkedSellCount, 0)} awaiting quote association`, status: linkedSellCount === projectList.length ? 'healthy' : 'approaching_budget' },
+        { label: 'ConnectWise SELL-linked projects', value: number(linkedSellCount, 0), detail: `${Math.max(projectList.length - linkedSellCount, 0)} awaiting quote association`, status: linkedSellCount === projectList.length ? 'healthy' : 'approaching_budget' },
         { label: 'Contracted value', value: money(sumProjects(projectList, (project) => project.contractedValue)), detail: 'Only role-visible commercial values' },
         { label: 'Forecast final cost', value: money(summary?.forecastedFinalCost), detail: `Portfolio variance ${money(summary?.currentVariance)}` },
         { label: 'Delivery risks', value: number(riskCount, 0), detail: `${number(summary?.approachingBudgetCount, 0)} approaching · ${number(summary?.overBudgetCount, 0)} over`, status: riskCount > 0 ? 'over_budget' : 'healthy' },
@@ -235,7 +235,7 @@ function summaryMetrics(workspace, summary, projects, loading) {
         { label: 'Projects in context', value: number(summary?.projectCount, 0), detail: `${number(summary?.customerCount, 0)} customer(s)` },
         { label: 'Governed rate cards', value: number(governedRateCards, 0), detail: `${customerSpecificRateCards} customer-specific` },
         { label: 'Missing rate coverage', value: number(missingRateCoverage, 0), detail: 'Projects without a governed labor-rate basis', status: missingRateCoverage > 0 ? 'approaching_budget' : 'healthy' },
-        { label: 'SELL-linked projects', value: number(linkedSellCount, 0), detail: 'Quote association owned by Module 026' },
+        { label: 'ConnectWise SELL-linked projects', value: number(linkedSellCount, 0), detail: 'Quote association owned by Module 026' },
         { label: 'Forecast using rate basis', value: money(summary?.forecastedFinalCost), detail: `Variance ${money(summary?.currentVariance)}` },
         { label: 'Rate-impact warnings', value: number(riskCount, 0), detail: `${number(summary?.missingFinancialInformationCount, 0)} incomplete financial record(s)`, status: riskCount > 0 ? 'approaching_budget' : 'healthy' }
       ];
@@ -266,9 +266,9 @@ function workspaceColumns(workspace) {
     case 'engineering':
       return ['Customer / project', 'Project Manager', 'Engineers', 'Hours remaining', 'Documents', 'Delivery status'];
     case 'sales':
-      return ['Customer / project', 'Account Executive', 'SELL quote', 'Contracted value', 'Forecast', 'Delivery risk'];
+      return ['Customer / project', 'Account Executive', 'ConnectWise SELL quote', 'Contracted value', 'Forecast', 'Delivery risk'];
     case 'rate-card':
-      return ['Customer / project', 'Contract type', 'Governed rate card', 'Rate lines', 'SELL quote', 'Coverage'];
+      return ['Customer / project', 'Contract type', 'Governed rate card', 'Rate lines', 'ConnectWise SELL quote', 'Coverage'];
     default:
       return ['Customer / project', 'Project Manager', 'Hours', 'Forecast', 'Variance', 'Status'];
   }
@@ -297,7 +297,7 @@ function workspaceCells(workspace, project) {
         label(project.contractType),
         text(project.sell?.rateCard?.rateCardName, 'No governed rate card'),
         number(project.sell?.rateCard?.rateLineCount || 0, 0),
-        text(project.sell?.sellQuoteNumber, 'No SELL quote'),
+        text(project.sell?.sellQuoteNumber, 'No ConnectWise SELL quote'),
         <Status key="status" value={project.sell?.rateCard?.rateCardId ? project.sell?.rateCard?.status || 'ready' : 'missing_rate_context'} />
       ];
     default:
@@ -452,7 +452,7 @@ function TeamTab({ project }) {
       </section>
 
       <section className="group3-card group3-span-two">
-        <p className="group3-eyebrow">SELL relationship</p>
+        <p className="group3-eyebrow">ConnectWise SELL relationship</p>
         <div className="group3-sell-grid">
           <div><span>Connection owner</span><strong>{project.sell?.connectionOwner}</strong></div>
           <div><span>Quote</span><strong>{text(project.sell?.sellQuoteNumber)}</strong></div>
@@ -801,7 +801,7 @@ export default function UnifiedProjectFinancialWorkspace({
         <span>Contract {state.data?.contractVersion || 'pending'}</span>
         <span>Generated {dateTime(state.data?.generatedAt)}</span>
         <span>{config.authorityTitle} · server-enforced scope</span>
-        <span>SELL connection owner: Module 026</span>
+        <span>ConnectWise SELL connection owner: Module 026</span>
       </footer>
     </section>
   );
