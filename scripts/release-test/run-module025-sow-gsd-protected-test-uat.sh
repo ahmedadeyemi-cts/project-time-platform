@@ -20,6 +20,12 @@ BASE="${BASE%/}"
 [[ "$MODULE025_UAT_RUN_ID" =~ ^[0-9]+-[0-9]+$ ]] \
   || fail 'MODULE025_UAT_RUN_ID must be the exact numeric GitHub run ID and attempt.'
 
+# The sow_role lane already owns an actual-SA lifecycle. Require its complete
+# register proof before this fixture can create or generate another document.
+if [[ "${MODULE025_NORMAL_SA_REGISTER_REQUIRED:-false}" == true ]]; then
+  python3 scripts/release-test/verify-module025-sa-register-evidence.py
+fi
+
 install -d -m 0700 "$EVIDENCE_DIR"
 WORK_DIR="$(mktemp -d)"
 chmod 0700 "$WORK_DIR"
@@ -640,14 +646,18 @@ jq -e --arg id "$VERSION_ID" '
   || fail 'Repeated retained downloads did not leave one first-issuance receipt for each artifact.'
 echo 'MODULE025_RETAINED_VERSION_API_LIFECYCLE=PASS'
 
-[[ -x "${RUNNER_TEMP:-}/flowhive-psa-browser/bin/python" ]] \
-  || fail 'The authenticated Module 025 browser verifier is not installed.'
-BASE="$BASE" TEST_LOGIN_PASSWORD="$TEST_LOGIN_PASSWORD" \
-  MODULE025_ENGAGEMENT_NUMBER="$ENGAGEMENT_NUMBER" MODULE025_CREATE_RESPONSE="$CREATE_RESPONSE" \
-  "${RUNNER_TEMP}/flowhive-psa-browser/bin/python" tests/module025-sow-register-browser.py \
-  > "$EVIDENCE_DIR/module025-register-browser.log"
-grep -Fq 'MODULE025_REGISTER_BROWSER_DISPLAY=PASS' "$EVIDENCE_DIR/module025-register-browser.log" \
-  || fail 'Authenticated retained SOW/GSD and CSV browser downloads were not verified.'
+if [[ "${MODULE025_NORMAL_SA_REGISTER_REQUIRED:-false}" == true ]]; then
+  python3 scripts/release-test/verify-module025-sa-register-evidence.py
+else
+  [[ -x "${RUNNER_TEMP:-}/flowhive-psa-browser/bin/python" ]] \
+    || fail 'The authenticated Module 025 browser verifier is not installed.'
+  BASE="$BASE" TEST_LOGIN_PASSWORD="$TEST_LOGIN_PASSWORD" \
+    MODULE025_ENGAGEMENT_NUMBER="$ENGAGEMENT_NUMBER" MODULE025_CREATE_RESPONSE="$CREATE_RESPONSE" \
+    "${RUNNER_TEMP}/flowhive-psa-browser/bin/python" tests/module025-sow-register-browser.py \
+    > "$EVIDENCE_DIR/module025-register-browser.log"
+  grep -Fq 'MODULE025_REGISTER_BROWSER_DISPLAY=PASS' "$EVIDENCE_DIR/module025-register-browser.log" \
+    || fail 'Authenticated retained SOW/GSD and CSV browser downloads were not verified.'
+fi
 echo 'MODULE025_RETAINED_VERSION_BROWSER_LIFECYCLE=PASS authenticatedClicks=true hashes=verified unauthorized=checked reload=verified'
 
 ACTIVE_LIST="$EVIDENCE_DIR/module025-active-list-readback.json"

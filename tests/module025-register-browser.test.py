@@ -18,6 +18,12 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('register_verifier', ROOT / 'tests/module025-sow-register-browser.py')
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
+sa_spec = importlib.util.spec_from_file_location('installed_sa', ROOT / 'scripts/release-test/run-module025-installed-sa-uat.py')
+sa_runner = importlib.util.module_from_spec(sa_spec)
+sa_spec.loader.exec_module(sa_runner)
+evidence_spec = importlib.util.spec_from_file_location('sa_register_evidence', ROOT / 'scripts/release-test/verify-module025-sa-register-evidence.py')
+evidence_verifier = importlib.util.module_from_spec(evidence_spec)
+evidence_spec.loader.exec_module(evidence_verifier)
 
 def document(name):
     data = io.BytesIO()
@@ -135,7 +141,23 @@ async def main():
             with patch.dict(os.environ, {'MODULE025_REGISTER_MODE': 'retained-sa',
                     'MODULE025_SOURCE_RUN_ID': '12345', 'PROJECTPULSE_M025_SA_EMAIL': 'synthetic.sa@ussignal.local',
                     'PROJECTPULSE_M025_SA_PASSWORD': 'synthetic-password-only'}):
-                await runner.run()
+                sa_report = {'status': 'passed', 'normalAuthorizedSolutionArchitect': True}
+                with patch.object(sa_runner, 'load_register_verifier', lambda: runner):
+                    await sa_runner.verify_normal_sa_register(sa_report, '12345')
+                evidence_verifier.verify(sa_report, '12345')
+                for invalid in (sa_report | {'status': 'failed'}, sa_report | {'normalAuthorizedSolutionArchitect': False},
+                                sa_report | {'registerBrowser': {}}, sa_report | {'registerBrowser': sa_report['registerBrowser'] | {'generationPosts': 1}},
+                                sa_report | {'registerBrowser': sa_report['registerBrowser'] | {'businessWrites': 1}}):
+                    try:
+                        evidence_verifier.verify(invalid, '12345')
+                        raise AssertionError('Incomplete or mutating SA browser evidence accepted')
+                    except RuntimeError:
+                        pass
+                try:
+                    evidence_verifier.verify(sa_report, '12346')
+                    raise AssertionError('Another run evidence accepted')
+                except RuntimeError:
+                    pass
                 requests = state()['requests']
                 assert not any(item['runHeaderPresent'] for item in requests)
                 assert not any(item['method'] != 'GET' for item in requests if item['path'].startswith('/api/module025/'))

@@ -557,6 +557,14 @@ class SowReviewConfirmationTests(unittest.TestCase):
                 return 200, {}, {}
             return 200, {"engagement": copy.deepcopy(engagement)}, {}
 
+        async def register_browser(report, source_run_id):
+            # Full UI behavior is exercised separately against the built app.
+            # This API lifecycle test verifies ordering and proof propagation.
+            self.assertEqual(engagement['status'], 'confirmed')
+            self.assertEqual(sum(path.endswith('/generate') for path, _ in calls), 1)
+            report['registerBrowser'] = {'status': 'passed', 'sourceRunId': source_run_id,
+                                         'generationPosts': 0, 'businessWrites': 0}
+
         async def browser(session, number, marker, report, evidence, *, preflight=False):
             # The real browser journey also runs against the React fixture in CI.
             if preflight:
@@ -579,6 +587,7 @@ class SowReviewConfirmationTests(unittest.TestCase):
         }), patch.object(runner, "login", return_value={"sessionToken": "test-session"}), \
                 patch.object(runner, "http", side_effect=http), \
                 patch.object(runner, "browser_lifecycle", side_effect=browser), \
+                patch.object(runner, "verify_normal_sa_register", side_effect=register_browser), \
                 patch("sys.stdout", new_callable=io.StringIO) as output:
             result = asyncio.run(runner.main())
             report = json.loads((Path(directory) / "module025-installed-sa-uat.json").read_text())
@@ -594,6 +603,8 @@ class SowReviewConfirmationTests(unittest.TestCase):
         self.assertTrue(any("Browser reload acceptance marker" in a for a in plan["acceptanceCriteria"]))
         self.assertEqual(sum(path.endswith("/generate") for path, method in calls), 1)
         self.assertIn("MODULE025_INSTALLED_SA_UAT=PASS", output)
+        self.assertEqual(report['registerBrowser']['status'], 'passed')
+        self.assertEqual(report['registerBrowser']['generationPosts'], 0)
         self.assertTrue(report['retentionSchemaReady'])
         self.assertTrue(report['retainedVersions']['historicalHashesVerified'])
         self.assertTrue(report['retainedVersions']['unauthorizedDownloadsDenied'])

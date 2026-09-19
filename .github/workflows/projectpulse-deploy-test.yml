@@ -1878,6 +1878,7 @@ jobs:
           EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
           MODULE025_UAT_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
           MODULE025_UAT_EXPIRES_AT: ${{ steps.module025_fixture.outputs.expires_at }}
+          MODULE025_NORMAL_SA_REGISTER_REQUIRED: ${{ inputs.acceptance_scope == 'sow_role' }}
         run: |
           set -Eeuo pipefail
           bash scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
