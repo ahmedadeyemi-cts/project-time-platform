@@ -64,6 +64,56 @@ async def open_register(page):
     await page.get_by_role('tab', name='SOW Register & SELL', exact=True).click()
 
 
+async def capture_entry_state(page):
+    # Closed labels, booleans and counts only. Do not inspect storage, arbitrary
+    # text, headers, query strings or user/customer identifiers.
+    return await page.evaluate("""() => {
+        const route = location.hash.replace(/^#/, '').split('?')[0];
+        const navigation = window.__projectPulseEffectiveNavigation;
+        const nodes = selector => [...document.querySelectorAll(selector)];
+        const visible = node => !!node && node.checkVisibility();
+        const workspaces = nodes('section[data-module025-sow-gsd-workspace="true"]');
+        const tabs = nodes('[role="tab"][id="m025-register-tab"]');
+        return {
+            route: ['sow-generator', 'dashboard', 'modules'].includes(route) ? route : 'other',
+            navigationState: ['ready', 'loading', 'anonymous', 'unavailable'].includes(navigation?.state) ? navigation.state : 'unknown',
+            module025Denied: Array.isArray(navigation?.deniedModuleNumbers) && navigation.deniedModuleNumbers.includes('025'),
+            module025ExplicitlyDenied: Array.isArray(navigation?.explicitDeniedModuleNumbers) && navigation.explicitDeniedModuleNumbers.includes('025'),
+            workspaceMatches: workspaces.length,
+            visibleWorkspaces: workspaces.filter(visible).length,
+            visibleAuthoringFilters: workspaces.flatMap(node => [...node.querySelectorAll('.m025-filters')]).filter(visible).length,
+            visibleAuthoringLists: workspaces.flatMap(node => [...node.querySelectorAll('.m025-list-panel')]).filter(visible).length,
+            visibleRegisterTabs: tabs.filter(visible).length,
+            enabledVisibleRegisterTabs: tabs.filter(node => visible(node) && !node.disabled).length,
+            visibleRegisters: nodes('[data-module025-sow-register="true"]').filter(visible).length,
+            loadingWorkspaceVisible: nodes('.m025-workspace--loading').some(visible),
+            workspaceErrorVisible: nodes('.m025-workspace--error').some(visible),
+            loginPasswordVisible: nodes('input[type="password"]').some(visible)
+        };
+    }""")
+
+
+async def report_entry_failure(page, bootstrap_responses, page_errors, unexpected_writes):
+    try:
+        state = await capture_entry_state(page)
+        state.update(pageErrors=page_errors, unexpectedWrites=len(unexpected_writes))
+        print('MODULE025_REGISTER_ENTRY=' + json.dumps(state, sort_keys=True), file=sys.stderr, flush=True)
+        for response in bootstrap_responses[-4:]:
+            evidence = {'httpStatus': response.status, 'validJson': False}
+            try:
+                payload = await response.json()
+                access = payload.get('access') if isinstance(payload, dict) else None
+                if isinstance(access, dict):
+                    evidence['validJson'] = True
+                    for key in ('protectedTestUatRoleFixture', 'isSolutionArchitect', 'isManager', 'canCreate'):
+                        evidence[key] = access.get(key) is True
+            except Exception:
+                pass
+            print('MODULE025_REGISTER_BOOTSTRAP_ACCESS=' + json.dumps(evidence, sort_keys=True), file=sys.stderr, flush=True)
+    except Exception:
+        print('MODULE025_REGISTER_ENTRY_CAPTURE=unavailable', file=sys.stderr, flush=True)
+
+
 async def run() -> None:
     from playwright.async_api import async_playwright
 
@@ -145,6 +195,9 @@ async def run() -> None:
         page = await context.new_page()
         page.set_default_timeout(45_000)
         report_responses = asyncio.Queue()
+        bootstrap_responses = []
+        page_errors = []
+        page.on('pageerror', lambda _: page_errors.append('browser_page_error'))
 
         def observe_response(response):
             parsed = urlparse(response.url)
@@ -158,6 +211,8 @@ async def run() -> None:
                 # Closed metadata only: no response bodies, query values,
                 # session headers, user identifiers or generated text.
                 print(f'MODULE025_REGISTER_HTTP={label} status={response.status}', file=sys.stderr, flush=True)
+            if label == 'bootstrap':
+                bootstrap_responses.append(response)
             if label == 'register' and parse_qs(parsed.query).get('format') != ['csv']:
                 report_responses.put_nowait(response)
 
@@ -245,6 +300,9 @@ async def run() -> None:
                 fail('browser_reload_retained_version_missing')
             if generation_posts or unexpected_writes:
                 fail('browser_readonly_register_started_mutation')
+        except Exception:
+            await report_entry_failure(page, bootstrap_responses, len(page_errors), unexpected_writes)
+            raise
         finally:
             await context.close()
             await browser.close()

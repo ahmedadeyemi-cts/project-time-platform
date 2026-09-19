@@ -21,6 +21,7 @@ if (!fs.existsSync(path.join(dist, 'index.html'))) throw new Error('Build the co
 const user = { userId: 'sa', username: 'synthetic.local', displayName: 'Test SA', roles: [{ roleCode: 'SOLUTION_ARCHITECT' }], permissions: ['VIEW_SOW_GENERATOR', 'MANAGE_SOW_GENERATOR'] };
 if (registerMode) user.roles = [{ roleCode: 'MANAGER' }];
 let denyModule = false;
+let denyNavigation = false;
 let reportFailure = '';
 let bootstrapReady = Promise.resolve();
 let releaseBootstrap = () => {};
@@ -46,8 +47,9 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       }
       if (url.pathname === '/__reset' && req.method === 'POST') {
         const chunks = []; for await (const chunk of req) chunks.push(chunk);
-        const { status, denyDownload, deniedModule, failReport, holdBootstrap } = JSON.parse(Buffer.concat(chunks).toString());
+        const { status, denyDownload, deniedModule, deniedNavigation, failReport, holdBootstrap } = JSON.parse(Buffer.concat(chunks).toString());
         denyModule = deniedModule === true;
+        denyNavigation = deniedNavigation === true;
         reportFailure = failReport || '';
         releaseBootstrap();
         bootstrapReady = holdBootstrap ? new Promise(resolve => { releaseBootstrap = resolve; }) : Promise.resolve();
@@ -117,7 +119,7 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
       else if (['/api/users/me', '/api/security/me'].includes(url.pathname)) body = { ...user, isViewAs: false };
       else if (url.pathname.startsWith('/api/rbac/v1/')) body = { roles: user.roles,
         modules: [{ moduleCode: '025', moduleNumber: '025', isActive: true }], actor: { roleCodes: user.roles.map(role => role.roleCode) },
-        grants: denyModule ? [{ moduleCode: '025', roleCode: 'SOLUTION_ARCHITECT', actionCode: 'MODULE_ACCESS', grantEffect: 'DENY' }] : [], legacyFallback: [] };
+        grants: denyModule || denyNavigation ? [{ moduleCode: '025', roleCode: user.roles[0].roleCode, actionCode: 'MODULE_ACCESS', grantEffect: 'DENY' }] : [], legacyFallback: [] };
       else if (url.pathname === '/api/module-availability/overrides') body = { states: [], access: {} };
       else if (url.pathname === '/api/module-availability') body = { modules: [] };
       else if (url.pathname.startsWith('/api/module025/')) { res.statusCode = 500; body = { message: 'Unexpected Module 025 test request' }; }

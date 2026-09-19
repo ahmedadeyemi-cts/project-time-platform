@@ -1,6 +1,7 @@
 """Run the real read-only register verifier against the complete built UI."""
 import asyncio
 import base64
+from contextlib import redirect_stderr
 import importlib.util
 import io
 import json
@@ -41,10 +42,10 @@ async def main():
         def state():
             with urlopen(runner.ORIGIN + '/__state') as response:
                 return json.load(response)
-        def reset(deny=False, fail_report='', hold_bootstrap=False):
+        def reset(deny=False, fail_report='', hold_bootstrap=False, deny_navigation=False):
             with urlopen(Request(runner.ORIGIN + '/__reset', method='POST',
                 data=json.dumps({'status': 'confirmed', 'deniedModule': deny, 'failReport': fail_report,
-                                 'holdBootstrap': hold_bootstrap}).encode())) as response:
+                                 'holdBootstrap': hold_bootstrap, 'deniedNavigation': deny_navigation}).encode())) as response:
                 response.read()
         variables = {'BASE': runner.ORIGIN, 'TEST_LOGIN_PASSWORD': 'synthetic-password-only',
                      'MODULE025_ENGAGEMENT_NUMBER': 'SOW-TEST-025', 'MODULE025_UAT_RUN_ID': '12345-1'}
@@ -81,6 +82,28 @@ async def main():
             reset(hold_bootstrap=True)
             with patch.object(runner, 'open_register', early_tab):
                 await runner.run()
+            # Module API access cannot override a published navigation denial.
+            # Preserve that failure and expose only closed diagnostic metadata.
+            async def denied_navigation(page):
+                await page.wait_for_function("window.__projectPulseEffectiveNavigation?.deniedModuleNumbers?.includes('025') === true")
+                page.set_default_timeout(1500)
+                await ready_open_register(page)
+            reset(deny_navigation=True)
+            diagnostic_output = io.StringIO()
+            with patch.object(runner, 'open_register', denied_navigation), redirect_stderr(diagnostic_output):
+                try:
+                    await runner.run()
+                    raise AssertionError('Navigation denial was accepted')
+                except Exception as error:
+                    assert type(error).__name__ == 'TimeoutError', type(error).__name__
+            diagnostics = diagnostic_output.getvalue().splitlines()
+            entry = json.loads(next(line.split('=', 1)[1] for line in diagnostics if line.startswith('MODULE025_REGISTER_ENTRY=')))
+            assert entry['route'] == 'dashboard' and entry['module025Denied'] is True
+            assert entry['module025ExplicitlyDenied'] is True
+            assert entry['visibleWorkspaces'] == 0 and entry['visibleRegisterTabs'] == 0
+            assert all(isinstance(value, (bool, int)) or value in ('dashboard', 'ready') for value in entry.values())
+            assert 'synthetic-session-only' not in diagnostic_output.getvalue()
+            assert 'demo.manager@ussignal.local' not in diagnostic_output.getvalue()
             # Failed report APIs must remain failures with a closed HTTP code,
             # not an unrelated missing-button timeout or a raw response body.
             for mode, code in [('api', 'browser_register_preflight_http_500'),
