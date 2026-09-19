@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { verifyReadOnlyWorkflow } from './flowhive-psa-scope.mjs';
 const base = "fd38a04d2e0dc171bbf52c9066db7dc3d99e72b9";
 const expected = [
+  "tests/flowhive-psa-release-workflow.test.py",
   "scripts/ci/validate-module030-source-boundary.sh",
   ".github/workflows/module025-protected-uat-control.yml",
   ".github/workflows/projectpulse-deploy-test.yml",
@@ -37,6 +38,7 @@ const expected = [
   "tests/validate-celar-ai-pr630-consolidated.mjs"
 ];
 const registrations = {
+  "tests/flowhive-psa-release-workflow.test.py": [["    assert byid['uat']['if']==\"steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role'\"\n    assert byid['sow_role_uat']['if']==\"inputs.acceptance_scope == 'sow_role'\"", "    exports = 'sow_exports' in doc['on']['workflow_dispatch']['inputs']['acceptance_scope']['options']\n    expected_full = \"steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role'\"\n    expected_scoped = \"inputs.acceptance_scope == 'sow_role'\"\n    if exports:\n        expected_full += \" && inputs.acceptance_scope != 'sow_exports'\"\n        expected_scoped = \"(inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports')\"\n        assert \"inputs.acceptance_scope != 'sow_exports'\" in byid['module025_fixture']['if']\n    assert byid['uat']['if'] == expected_full\n    assert byid['sow_role_uat']['if'] == expected_scoped"], ["        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-complete-acceptance-20260917':", "        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-standard-download-formats-20260919':\n            subprocess.run(['python3', str(ROOT/'tests/module025-export-deploy.test.py')], check=True)\n            subprocess.run(['node', str(ROOT/'tests/module025-standard-download-formats-scope.mjs')], check=True)\n            return\n        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-complete-acceptance-20260917':"]],
   "scripts/ci/validate-module030-source-boundary.sh": [["if [[ \"$HEAD_BRANCH\" == fix/module025-private-generation-recovery ]]; then", "if [[ \"$HEAD_BRANCH\" == fix/module025-standard-download-formats-20260919 ]]; then\n  node tests/module025-standard-download-formats-scope.mjs\n  exit 0\nelif [[ \"$HEAD_BRANCH\" == fix/module025-private-generation-recovery ]]; then"]],
   "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh": [
     [

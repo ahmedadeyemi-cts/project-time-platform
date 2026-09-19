@@ -31,9 +31,9 @@ lists, template data removal, HAEA isolation and DOCX package branding. The test
 project links the real exporter code and embedded assets, without API or model
 clients. Rendered synthetic documents are used for local visual review.
 
-Deployment hold: do not merge automatically. Application changes under
-Module025 can trigger Protected UAT generation on main. This PR prepares exports
-only; the user's no-generation hold still applies.
+Original preparation hold (superseded by the release authorization below):
+Module025 changes previously triggered AI generation during Protected UAT.
+The new sow_exports acceptance scope removes that cost from this deployment.
 
 ## Reviewed task estimates and customer documents
 
@@ -61,8 +61,8 @@ are not inferred from task hours or the reference workbook.
 
 Synthetic UAT fixtures now explicitly review phase work packages and preserve
 project names before confirmation. No generation or deployed acceptance run was
-started. The deployment hold above continues to apply: a generation-free deployment
-path must be reviewed before merging this application change.
+started during preparation. The subsequent release authorization below supersedes
+the preparation hold and requires generation-free export acceptance.
 
 ## Authorized generation-free Protected UAT release
 

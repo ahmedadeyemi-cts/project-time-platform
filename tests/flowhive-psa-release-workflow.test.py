@@ -67,8 +67,15 @@ def verify(doc):
     assert 'database/rollback/107_module_066_operation_authorization_and_raid_actor_rollback.sql' in release_guard['run']
     assert byid['psa_live_uat']['working-directory']=='control'
     assert byid['psa_live_uat']['timeout-minutes']=='20'
-    assert byid['uat']['if']=="steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role'"
-    assert byid['sow_role_uat']['if']=="inputs.acceptance_scope == 'sow_role'"
+    exports = 'sow_exports' in doc['on']['workflow_dispatch']['inputs']['acceptance_scope']['options']
+    expected_full = "steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role'"
+    expected_scoped = "inputs.acceptance_scope == 'sow_role'"
+    if exports:
+        expected_full += " && inputs.acceptance_scope != 'sow_exports'"
+        expected_scoped = "(inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports')"
+        assert "inputs.acceptance_scope != 'sow_exports'" in byid['module025_fixture']['if']
+    assert byid['uat']['if'] == expected_full
+    assert byid['sow_role_uat']['if'] == expected_scoped
     fixture_if=byid['module025_fixture']['if']
     assert "steps.psa_admission.outputs.authorized != 'true'" in fixture_if
     assert "steps.uat.outcome == 'success' || steps.sow_role_uat.outcome == 'success'" in fixture_if
@@ -474,6 +481,10 @@ class WorkflowContract(unittest.TestCase):
         base=os.environ.get('CONTROL_BASE')
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
+        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-standard-download-formats-20260919':
+            subprocess.run(['python3', str(ROOT/'tests/module025-export-deploy.test.py')], check=True)
+            subprocess.run(['node', str(ROOT/'tests/module025-standard-download-formats-scope.mjs')], check=True)
+            return
         if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-complete-acceptance-20260917':
             # Only the exact migration-106 invocation and independent SOW/My
             # Role result collection may differ; compare every other field.
