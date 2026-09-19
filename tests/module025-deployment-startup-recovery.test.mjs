@@ -103,7 +103,7 @@ function execute(body, changes = {}, envChanges = {}) {
       REPAIRED_MODULE025_SHA: 'f7c86b45cff09741dd022c0e80bc1e6ad7d5c80b',
       QUARANTINED_ZERO_JOB_RUN_ID: '33654881418', QUARANTINED_ZERO_JOB_RUN_ID_2: '34377182662',
       QUARANTINED_ZERO_JOB_RUN_ID_3: '34495606530', QUARANTINED_ZERO_JOB_RUN_ID_4: '35364203547',
-      QUARANTINED_ZERO_JOB_RUN_ID_5: '35374125567',
+      QUARANTINED_ZERO_JOB_RUN_ID_5: '35374125567', QUARANTINED_ZERO_JOB_RUN_ID_6: '35461429670',
       ...envChanges}});
   assert.ifError(result.error);
   return {...result, state: JSON.parse(fs.readFileSync(statePath, 'utf8')), output: fs.readFileSync(output, 'utf8')};
@@ -156,9 +156,13 @@ try {
   const sameRelease = execute(authorize, {run: orphan, jobs: [], main: base}, {GITHUB_SHA: base});
   assert.notEqual(sameRelease.status, 0, 'same release cannot quarantine a possible duplicate deployment');
 
+  for (const uncancellable of [
+    {...defaultRun, id: 35374125567, head_sha: '245b0915d895d83f1ceaed32460ad95a4a3d79be', created_at: '2026-09-18T17:24:14Z', updated_at: '2026-09-18T17:24:14Z'},
+    {...defaultRun, id: 35461429670, head_sha: '57c8d0264bdd828e6b3b53a8c5cb8b1b841e8f61', created_at: '2026-09-19T18:30:44Z', updated_at: '2026-09-19T18:30:44Z'}
+  ]) {
   const recovered = execute(authorize, {run: uncancellable, jobs: []});
   assert.equal(recovered.status, 0, recovered.stderr);
-  assert.match(recovered.stdout, /ZERO_JOB_QUARANTINE=35374125567/);
+  assert.match(recovered.stdout, new RegExp(`ZERO_JOB_QUARANTINE=${uncancellable.id}`));
   assert.match(recovered.stdout, /RELEASE_AUTHORIZED=/);
   for (const changes of [
     {run: {...uncancellable, id: 35374125568}},
@@ -188,6 +192,8 @@ try {
   const sameOrphanRelease = execute(authorize, {run: uncancellable, jobs: [], main: uncancellable.head_sha},
     {GITHUB_SHA: uncancellable.head_sha});
   assert.notEqual(sameOrphanRelease.status, 0, 'recovery requires a descendant release');
+
+  }
 
   if (process.argv.includes('--orphan-scope')) {
     assert.equal(execFileSync('git', ['merge-base', repairBase, 'HEAD'], {encoding: 'utf8'}).trim(), repairBase);
