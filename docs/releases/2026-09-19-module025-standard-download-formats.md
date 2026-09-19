@@ -63,3 +63,11 @@ Synthetic UAT fixtures now explicitly review phase work packages and preserve
 project names before confirmation. No generation or deployed acceptance run was
 started. The deployment hold above continues to apply: a generation-free deployment
 path must be reviewed before merging this application change.
+
+## Authorized generation-free Protected UAT release
+
+The owner authorized merging and prioritizing Protected UAT deployment on September 19, then approved the recommended generation-free deployment repair. The automatic Module025 supervisor now selects `sow_exports`. It retains exact-main admission, the protected Test environment, immutable API/web images, migration verification, deployment identity and health checks, concurrency, sealed admissions and existing rollback behavior.
+
+The new acceptance verifies a normal SA can create one synthetic draft, save two fractional-hour tasks in each phase, read back reconciled totals, open the actual workspace, download authenticated branded draft files, reject anonymous downloads, and archive its own record. Its API request allowlist blocks generation, confirmation, SELL publication and unrelated records. My Role browser acceptance remains required. This scope does not qualify generation quality, final confirmation or retained-version publication. Existing `full` and `sow_role` acceptance modes remain available by explicit selection.
+
+No AI provider calls are required by this deployment path. Runtime recovery and provider qualification are rejected with `sow_exports`. Production and provider configuration are unchanged.

@@ -513,6 +513,10 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);
       execFileSync('python3', ['tests/module025-provider-qualification.test.py']);
     }
+    if (module025StandardExports) {
+      protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);
+      execFileSync('node', ['tests/module025-standard-download-formats-scope.mjs']);
+    }
     if (privateGenerationCorrection) {
       protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);
       execFileSync('python3', ['tests/module025-private-generation-scope.py']);

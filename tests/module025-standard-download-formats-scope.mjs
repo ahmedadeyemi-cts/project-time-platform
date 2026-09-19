@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { verifyReadOnlyWorkflow } from './flowhive-psa-scope.mjs';
 const base = "fd38a04d2e0dc171bbf52c9066db7dc3d99e72b9";
 const expected = [
+  ".github/workflows/module025-protected-uat-control.yml",
+  ".github/workflows/projectpulse-deploy-test.yml",
+  "scripts/release-test/run-module025-export-uat.py",
+  "tests/module025-export-deploy.test.py",
   ".github/workflows/flowhive-psa-release-control-ci.yml",
   ".github/workflows/module025-export-ci.yml",
   "docs/releases/2026-09-19-module025-standard-download-formats.md",
@@ -56,6 +61,7 @@ const registrations = {
     ]
   ],
   "tests/flowhive-psa-admission.test.mjs": [
+    ["    if (privateGenerationCorrection) {", "    if (module025StandardExports) {\n      protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);\n      execFileSync('node', ['tests/module025-standard-download-formats-scope.mjs']);\n    }\n    if (privateGenerationCorrection) {"],
     [
       "const privateGenerationCorrection =",
       "const module025StandardExports = process.env.GITHUB_HEAD_REF === 'fix/module025-standard-download-formats-20260919';\nconst privateGenerationCorrection ="
@@ -100,23 +106,28 @@ const registrations = {
     ]
   ]
 };
+expected.sort();
 const git = (...args) => execFileSync('git', args, {encoding:'utf8'}).trim();
 const original = name => execFileSync('git', ['show', `${base}:${name}`], {encoding:'utf8'});
 assert.equal(git('merge-base', base, 'HEAD'), base);
 const verify = files => assert.deepEqual([...files].sort(), expected);
 verify(git('diff', '--name-only', base).split(/\r?\n/));
 for (const path of expected) assert.throws(() => verify(expected.filter(p => p !== path)));
-assert.throws(() => verify([...expected, '.github/workflows/projectpulse-deploy-test.yml']));
+assert.throws(() => verify([...expected, '.github/workflows/unapproved.yml']));
 for (const [path, changes] of Object.entries(registrations)) {
   let allowed = original(path);
   for (const [before, after] of changes) allowed = allowed.replace(before, after);
   assert.equal(fs.readFileSync(path, 'utf8'), allowed, `Registration exceeded scope: ${path}`);
 }
-for (const name of expected.filter(p => p.endsWith('.yml'))) verifyReadOnlyWorkflow(fs.readFileSync(name,'utf8'), name);
-for (const path of ['.github/workflows/projectpulse-deploy-test.yml', '.github/workflows/projectpulse-deploy-production.yml', '.github/workflows/module025-protected-uat-control.yml', '.github/flowhive-psa-protected-test-candidate.json', 'scripts/release-test/flowhive-psa-admission.mjs', 'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs'])
+for (const name of expected.filter(p => p.endsWith('.yml') && !['.github/workflows/projectpulse-deploy-test.yml', '.github/workflows/module025-protected-uat-control.yml'].includes(p))) verifyReadOnlyWorkflow(fs.readFileSync(name,'utf8'), name);
+for (const path of ['.github/workflows/projectpulse-deploy-production.yml', '.github/flowhive-psa-protected-test-candidate.json', 'scripts/release-test/flowhive-psa-admission.mjs', 'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs'])
   assert.equal(fs.readFileSync(path, 'utf8'), original(path), `Protected behavior changed: ${path}`);
 const project = 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj';
 const resource = '    <EmbeddedResource Include="Assets/Templates/Module025StandardGsd.xlsx" LogicalName="ProjectTime.Api.Assets.Templates.Module025StandardGsd.xlsx" />\n';
 assert.equal(fs.readFileSync(project, 'utf8').replace(resource, ''), original(project));
 assert.equal(git('diff', '--name-only', base, '--', 'database', 'deployment', 'src/backend/ProjectTime.Api/Ai'), '');
 console.log('MODULE025_STANDARD_DOWNLOAD_FORMATS_SCOPE=PASS generation_engine=unchanged retained_versions=unchanged deployment_authority=unchanged');
+
+assert.equal(createHash('sha256').update(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml')).digest('hex'), '276d23806215df92246a8b37eb7291f55f1dd1b7938ec38cdaff45570bebd2c3', 'Authorized export acceptance controller changed');
+
+assert.equal(createHash('sha256').update(fs.readFileSync('.github/workflows/module025-protected-uat-control.yml')).digest('hex'), '50e0ab92d90f49f2c79cbeadbacadc4ecd5c03b47fe7268c92646d07b2ff2657', 'Authorized export acceptance controller changed');

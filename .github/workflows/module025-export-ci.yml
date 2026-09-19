@@ -22,6 +22,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: '10.0.x'
@@ -39,3 +40,7 @@ jobs:
           node "$RUNNER_TEMP/module025-browser/node_modules/playwright/cli.js" install --with-deps chromium
       - name: Verify task editing, autosave, reload and draft downloads
         run: PLAYWRIGHT_MODULE_PATH="$RUNNER_TEMP/module025-browser/node_modules/playwright" node tests/module025-task-editor.test.mjs
+      - name: Verify generation-free deployment guards
+        run: |
+          python3 -m pip install PyYAML==6.0.2
+          python3 tests/module025-export-deploy.test.py

@@ -12,13 +12,14 @@ on:
         type: choice
         options: [none, claude, openai]
       acceptance_scope:
-        description: 'full runs system-wide UAT; sow_role runs normal SA SOW/GSD and My Role without FlowHive generation'
+        description: 'full runs system-wide UAT; sow_role runs normal SA SOW/GSD and My Role without FlowHive generation; sow_exports verifies saved task exports without any generation'
         required: true
         default: full
         type: choice
         options:
           - full
           - sow_role
+          - sow_exports
       recover_private_runtime:
         description: Run authenticated Oracle Test recovery before deployment
         required: false
@@ -132,11 +133,15 @@ jobs:
           fi
           case "$ACCEPTANCE_SCOPE" in
             full) ;;
-            sow_role)
+            sow_role|sow_exports)
               [[ "$RELEASE_BRANCH_INPUT" == main ]] || fail 'Scoped Module 025 deployment requires exact merged main.'
               ;;
             *) fail 'Unsupported deployment acceptance scope.' ;;
           esac
+          if [[ "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
+            [[ '${{ inputs.recover_private_runtime }}' != true && '${{ inputs.qualification_provider }}' != claude && '${{ inputs.qualification_provider }}' != openai ]] \
+              || fail 'Export acceptance cannot perform runtime recovery or provider qualification.'
+          fi
           case "$GITHUB_EVENT_NAME:$RELEASE_BRANCH_INPUT" in
             workflow_dispatch:release/flowhive-sow-successor-20260908)
               [[ "$EXPECTED_CONTROLLER_SHA" == "$GITHUB_SHA" ]] || fail 'PSA admission controller identity changed before deployment.'
@@ -206,7 +211,7 @@ jobs:
         run: python3 scripts/release-test/check-flowhive-acceptance-inputs.py --read-only
 
       - name: Install isolated live-browser acceptance dependencies
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true' || inputs.acceptance_scope == 'sow_role') }}
+        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true' || (inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports')) }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -916,7 +921,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          if [[ "$ACCEPTANCE_SCOPE" == sow_role ]]; then
+          if [[ "$ACCEPTANCE_SCOPE" == sow_role || "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
             bash scripts/release-test/build-and-run-module025-retention-migration-106.sh
           fi
           if [[ "$TARGET_RELEASE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
@@ -1095,7 +1100,7 @@ jobs:
 
       - name: Verify Module 025 scoped deployment identity and lifecycle
         id: sow_role_uat
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (inputs.acceptance_scope == 'sow_role') }}
+        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && ((inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports')) }}
         timeout-minutes: 50
         shell: bash
         working-directory: release
@@ -1136,20 +1141,28 @@ jobs:
           jq -n --arg source "$TARGET_RELEASE_COMMIT" '{deploymentHealthVerified:true,sourceCommit:$source,productionMutation:false}' > "$EVIDENCE_DIR/deployment-health-verified.json"
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/verify-flowhive-installed-identity.py
           sow_result=0
-          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py || sow_result=$?
+          if [[ "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
+            "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-export-uat.py || sow_result=$?
+          else
+            "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py || sow_result=$?
+          fi
           if (( sow_result == 130 || sow_result == 143 )); then exit "$sow_result"; fi
           my_role_result=0
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-my-role-browser.py || my_role_result=$?
           jq -n --argjson sowExit "$sow_result" --argjson myRoleExit "$my_role_result" \
             '{sowLifecycleExit:$sowExit,myRoleExit:$myRoleExit,fullRequestedScopePassed:false}' > "$EVIDENCE_DIR/module025-scoped-results.json"
           (( sow_result == 0 && my_role_result == 0 ))
-          jq -e '.status == "passed"' "$EVIDENCE_DIR/module025-installed-sa-uat.json" >/dev/null
+          if [[ "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
+            jq -e '.status == "passed" and .generationPosts == 0 and .draftExportsVerified == true' "$EVIDENCE_DIR/module025-export-uat.json" >/dev/null
+          else
+            jq -e '.status == "passed"' "$EVIDENCE_DIR/module025-installed-sa-uat.json" >/dev/null
+          fi
           jq -e '.status == "passed"' "$EVIDENCE_DIR/flowhive-my-role-browser.json" >/dev/null
           echo 'MODULE025_SCOPED_DEPLOYMENT_ACCEPTANCE=PASSED'
 
       - name: Run protected-Test authenticated functional UAT
         id: uat
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role') }}
+        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role' && inputs.acceptance_scope != 'sow_exports') }}
         shell: bash
         env:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
@@ -1833,7 +1846,7 @@ jobs:
 
       - name: Enable exact-run Module 025 protected-Test authorization fixture
         id: module025_fixture
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && steps.psa_admission.outputs.authorized != 'true' && (steps.uat.outcome == 'success' || steps.sow_role_uat.outcome == 'success')) }}
+        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && inputs.acceptance_scope != 'sow_exports' && steps.psa_admission.outputs.authorized != 'true' && (steps.uat.outcome == 'success' || steps.sow_role_uat.outcome == 'success')) }}
         shell: bash
         working-directory: release
         run: |
@@ -1998,6 +2011,11 @@ jobs:
               echo '- Full enterprise PSA feature acceptance: incomplete; this is not a release-completion claim'
             fi
             echo '- Target: https://phd-west-test.onenecklab.com'
+            if [[ "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
+              echo '- Acceptance scope: saved task editing, draft SOW/GSD exports and My Role; no AI generation'
+              echo '- Generation quality, confirmation and SELL publication: not exercised in this scope'
+              echo '- Export acceptance outcome: ${{ steps.sow_role_uat.outcome }}'
+            fi
             if [[ "$ACCEPTANCE_SCOPE" == sow_role ]]; then
               echo '- Acceptance scope: Module 025 SOW/GSD and My Role; FlowHive generation was not invoked'
               if [[ '${{ steps.sow_role_uat.outcome }}' == success ]]; then
