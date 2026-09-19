@@ -29,7 +29,8 @@ public sealed record Module025SowGsdPhaseSaveRequest(
     IReadOnlyList<string>? AcceptanceCriteria,
     IReadOnlyList<string>? ValidationSteps,
     IReadOnlyList<string>? Risks,
-    string? LoeRationale);
+    string? LoeRationale,
+    IReadOnlyList<Module025TaskEstimate>? Tasks = null);
 
 public sealed record Module025SowGsdSaveRequest(
     int ExpectedRevision,
@@ -118,7 +119,8 @@ internal sealed record Module025PhaseRow(
     string LoeRationale,
     IReadOnlyList<int> SourceCitationIds,
     bool AiGenerated,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    IReadOnlyList<Module025TaskEstimate>? Tasks = null);
 
 internal sealed record Module025DocumentModel(
     Module025EngagementRow Engagement,

@@ -255,7 +255,7 @@ jobs:
             '{ref:$ref,inputs:{
               release_sha:$release_sha,
               release_branch:$release_branch,
-              acceptance_scope:"sow_role",
+              acceptance_scope:"sow_exports",
               qualification_provider:"none",
               recover_private_runtime:"false",
               admission_controller_sha:""
@@ -347,7 +347,7 @@ jobs:
 
           - Release SHA: \`$RELEASE_SHA\`
           - Deployment run: $DEPLOYMENT_RUN_URL
-          - Required live gate: authorized Solution Architect → temporary SOW → Celar generation → persisted \`review_ready\` P/D/I/V/R → archive cleanup
+          - Required live gate: authorized Solution Architect → synthetic task save/readback → draft SOW/GSD downloads → archive cleanup; no generation
           - Deployment workflow admissions: \`disabled_manually\`
           - Production mutation: none"
 
@@ -417,7 +417,7 @@ jobs:
           - Release SHA: \`${RELEASE_SHA:-unavailable}\`
           - Deployment run: $run_reference
           - Conclusion: \`$conclusion\`
-          - Required live gate: authorized Solution Architect → temporary SOW → Celar generation → persisted \`review_ready\` P/D/I/V/R → archive cleanup
+          - Required live gate: authorized Solution Architect → synthetic task save/readback → draft SOW/GSD downloads → archive cleanup; no generation
           - Deployment workflow: \`disabled_manually\`
           - Production mutation: none"
 

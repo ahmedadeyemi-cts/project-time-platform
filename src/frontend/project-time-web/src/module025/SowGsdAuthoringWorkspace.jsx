@@ -3,6 +3,7 @@ import USSignalLogo from '../enterprise/USSignalLogo.jsx';
 import { downloadProtected } from './protected-download.js';
 import { formatGenerationProgress, formatGenerationFailure, generationConfidence } from './generation-feedback.js';
 import './sow-gsd-workspace.css';
+import { taskTotal, seedTasks, withTasks, exportChecks } from './task-estimates.js';
 
 const PHASE_FIELDS = [
   ['detailedActivities', 'Detailed activities'],
@@ -182,6 +183,9 @@ function WorkList({ rows, selectedId, onSelect, emptyLabel }) {
 }
 
 function PhaseEditor({ phase, readOnly, onChange }) {
+  const [taskError, setTaskError] = useState('');
+  const tasks = phase?.tasks || [];
+  const total = taskTotal(tasks);
   const variance = Number(phase?.finalHours || 0) - Number(phase?.suggestedHours || 0);
   return (
     <article className="m025-phase-card">
@@ -201,13 +205,39 @@ function PhaseEditor({ phase, readOnly, onChange }) {
               min="0"
               step="0.25"
               value={phase?.finalHours ?? 0}
-              disabled={readOnly}
+              disabled={readOnly || tasks.length > 0}
               onChange={(event) => onChange('finalHours', Number(event.target.value || 0))}
             />
           </Field>
           <div><span>Variance</span><strong>{variance >= 0 ? '+' : ''}{variance.toFixed(2)}h</strong></div>
         </div>
       </header>
+
+      <section className="m025-task-estimates" aria-label={`${phase?.label || phase?.phaseCode} task estimates`}>
+        <h4>Task breakdown and reviewed hours</h4>
+        <p>Enter hours for each task. Completed task estimates calculate the phase total. Blank hours remain incomplete.</p>
+        {taskError ? <p role="alert">{taskError}</p> : null}
+        {!tasks.length ? <Button disabled={readOnly} onClick={() => {
+          try { onChange('tasks', seedTasks(phase)); setTaskError(''); }
+          catch (error) { setTaskError(error.message); }
+        }}>Create task rows from saved scope</Button> : null}
+        {tasks.length > 0 ? <>
+          <div className="m025-task-table-scroll"><table>
+            <thead><tr><th>Task name</th><th>Engineering hours</th><th>Notes</th><th>Action</th></tr></thead>
+            <tbody>{tasks.map((task, index) => <tr key={task.taskId}>
+              <td><textarea aria-label={`Task ${index + 1} description`} rows={2} maxLength={6000} disabled={readOnly} value={task.description || ''}
+                onChange={event => onChange('tasks', tasks.map((t, i) => i === index ? { ...t, description: event.target.value } : t))} /></td>
+              <td><input aria-label={`Task ${index + 1} hours`} type="number" min="0" max="100000" step="0.01" disabled={readOnly} value={task.hours ?? ''}
+                onChange={event => onChange('tasks', tasks.map((t, i) => i === index ? { ...t, hours: event.target.value === '' ? null : Number(event.target.value) } : t))} /></td>
+              <td><textarea aria-label={`Task ${index + 1} notes`} rows={2} maxLength={4000} disabled={readOnly} value={task.notes || ''}
+                onChange={event => onChange('tasks', tasks.map((t, i) => i === index ? { ...t, notes: event.target.value } : t))} /></td>
+              <td><Button disabled={readOnly} onClick={() => onChange('tasks', tasks.filter((_, i) => i !== index))}>Remove task {index + 1}</Button></td>
+            </tr>)}</tbody>
+          </table></div>
+          <p role="status">{total === null ? 'Task estimates are incomplete. Complete each description and hours before confirmation.' : `Reviewed phase total: ${total.toFixed(2)} hours`}</p>
+        </> : null}
+        <Button disabled={readOnly || tasks.length >= 200} onClick={() => onChange('tasks', [...tasks, { taskId: crypto.randomUUID(), description: 'New task', hours: null, notes: '' }])}>Add task</Button>
+      </section>
 
       <Field label="Phase objective" hint="Describe the expected outcome and what completion of this phase means.">
         <textarea
@@ -387,7 +417,8 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
             acceptanceCriteria: phase.acceptanceCriteria,
             validationSteps: phase.validationSteps,
             risks: phase.risks,
-            loeRationale: phase.loeRationale
+            loeRationale: phase.loeRationale,
+            tasks: phase.tasks
           }))
         })
       });
@@ -552,7 +583,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   const updateTopLevel = (key, value) => markChanged((current) => ({ ...current, [key]: value }));
   const updatePhase = (phaseCode, key, value) => markChanged((current) => ({
     ...current,
-    phases: (current.phases || []).map((phase) => phase.phaseCode === phaseCode ? { ...phase, [key]: value } : phase)
+    phases: (current.phases || []).map((phase) => phase.phaseCode === phaseCode ? (key === 'tasks' ? withTasks(phase, value) : { ...phase, [key]: value }) : phase)
   }));
 
   const selectedCustomerValue = engagement?.customerEntryMode === 'manual'
@@ -575,11 +606,12 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   const downloadReady = engagement?.status === 'confirmed' && !dirty && !detailLoading && !actionState.busy;
   const phaseReviewComplete = (engagement?.phases || []).length === 5
     && (engagement?.phases || []).every((phase) => String(phase.objective || '').trim().length > 0);
+  const exportReadiness = exportChecks(engagement);
+  const missingExportFields = exportReadiness.filter(item => !item.complete);
+  const draftDownloadReady = Boolean(engagement?.isActive) && !['confirmed', 'archived'].includes(engagement?.status) && !dirty && !detailLoading && !actionState.busy;
   const confirmChecks = engagement ? [
+    ...exportReadiness,
     { key: 'generation', label: 'Detailed P/D/I/V/R scope generated', complete: Boolean(engagement.lastGeneratedAt) },
-    { key: 'customer', label: 'Customer selected', complete: Boolean(String(engagement.customerName || '').trim()) },
-    { key: 'account-executive', label: 'Account Executive selected', complete: Boolean(engagement.accountExecutiveUserId) },
-    { key: 'inside-sales', label: 'Inside Sales Representative selected', complete: Boolean(engagement.resaleUserId) },
     { key: 'phases', label: 'All five phase objectives reviewed', complete: phaseReviewComplete },
     { key: 'loe', label: 'SA Final LOE is greater than 0 hours', complete: reviewedHours > 0 }
   ] : [];
@@ -610,16 +642,16 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
     const number = String(engagement?.engagementNumber || '').replace(/^SOW-/i, '');
     const project = String(engagement?.projectName || 'Project').trim()
       .replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'Project';
-    return `SOW#${number}_${project}_${artifact === 'sow.docx' ? 'SOW.docx' : 'GSD.xlsx'}`;
+    return `SOW#${number}_${project}_${artifact.startsWith('draft-') ? 'DRAFT_' : ''}${artifact.endsWith('sow.docx') ? 'SOW.docx' : 'GSD.xlsx'}`;
   }
 
   async function downloadDocument(artifact) {
-    if (!downloadReady) return;
+    if (artifact.startsWith('draft-') ? !draftDownloadReady : !downloadReady) return;
     setActionState({ busy: 'download', message: '', error: '' });
     try {
       await downloadProtected(`/api/module025/sow-gsd/${engagement.engagementId}/${artifact}`,
         documentFileName(artifact));
-      setActionState({ busy: '', message: `${artifact === 'sow.docx' ? 'SOW' : 'GSD'} downloaded.`, error: '' });
+      setActionState({ busy: '', message: `${artifact.startsWith('draft-') ? 'Draft ' : ''}${artifact.endsWith('sow.docx') ? 'SOW' : 'GSD'} downloaded.`, error: '' });
     } catch (error) {
       setActionState({ busy: '', message: '', error: error.message });
     }
@@ -659,7 +691,15 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
       <section className="m025-section m025-document-actions" aria-label="Documents and ConnectWise SELL">
         <div className="m025-section-heading"><div><h2>Documents &amp; ConnectWise SELL handoff</h2></div></div>
         <p id="m025-document-readiness" role="status">{documentReadiness}</p>
+        {engagement && !['confirmed', 'archived'].includes(engagement.status) ? <div className="m025-export-readiness" role="status">
+          {missingExportFields.length ? <p>Before final confirmation: {missingExportFields.map(item => item.label).join(', ')}.</p> : <p>Export information and task totals are complete.</p>}
+          <p>Draft downloads use the last saved information, are marked DRAFT, and do not generate content or create a retained version.</p>
+        </div> : null}
         <div className="m025-review-actions" aria-describedby="m025-document-readiness">
+          {engagement && !['confirmed', 'archived'].includes(engagement.status) ? <>
+            <Button disabled={!draftDownloadReady} onClick={() => downloadDocument('draft-sow.docx')}>Download draft SOW</Button>
+            <Button disabled={!draftDownloadReady} onClick={() => downloadDocument('draft-gsd.xlsx')}>Download draft GSD</Button>
+          </> : null}
           <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('sow.docx')}>Download SOW (.docx)</Button>
           <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('gsd.xlsx')}>Download GSD (.xlsx)</Button>
           <Button disabled={!engagement || detailLoading || Boolean(actionState.busy) || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Send to ConnectWise SELL</Button>

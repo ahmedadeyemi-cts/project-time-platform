@@ -1,0 +1,46 @@
+name: Module025 standard document exports
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/Module025*Exporter.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module025TaskEstimates.cs'
+      - 'src/frontend/project-time-web/src/module025/**'
+      - 'tests/module025-task-*.mjs'
+      - 'src/backend/ProjectTime.Api/Modules/InvoiceBrandingAssets.cs'
+      - 'src/backend/ProjectTime.Api/Assets/Templates/**'
+      - 'src/backend/ProjectTime.Api/Assets/Branding/**'
+      - 'tests/Module025ExportTests/**'
+      - '.github/workflows/module025-export-ci.yml'
+permissions:
+  contents: read
+jobs:
+  exports:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify template mapping and branded documents without model calls
+        run: dotnet run --project tests/Module025ExportTests -- /tmp/module025-exports
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Validate task arithmetic and readiness
+        run: node tests/module025-task-estimates.test.mjs
+      - name: Install browser test dependencies
+        run: |
+          npm ci --prefix src/frontend/project-time-web --no-audit --no-fund
+          npm install --prefix "$RUNNER_TEMP/module025-browser" playwright@1.57.0 --no-audit --no-fund
+          node "$RUNNER_TEMP/module025-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Verify task editing, autosave, reload and draft downloads
+        run: PLAYWRIGHT_MODULE_PATH="$RUNNER_TEMP/module025-browser/node_modules/playwright" node tests/module025-task-editor.test.mjs
+      - name: Verify generation-free deployment guards
+        run: |
+          python3 -m pip install PyYAML==6.0.2
+          python3 tests/module025-export-deploy.test.py
