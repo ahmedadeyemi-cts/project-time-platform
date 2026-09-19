@@ -1,0 +1,2017 @@
+{
+  "schema_version": 1,
+  "note": "Review inventory only, never an execution plan. Hash changes require re-review. Candidates still require dependency and clean-install validation.",
+  "scripts": [
+    {
+      "path": "database/demo/019m-august-demo-users.sql",
+      "sha256": "7716c312df8ff820f2b3ef54c31dbb619853d425ba43f9f44906de04160d866d",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "exclude_from_production",
+      "rationale": "Explicit demo-data directory. Preserve in UAT; do not execute for production initialization."
+    },
+    {
+      "path": "database/demo/019m-demo-seed.sql",
+      "sha256": "5bc9b637f3ce63c664ed94164fd359a9c9bf25c87b9f0a8c012802fa321a8292",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "exclude_from_production",
+      "rationale": "Explicit demo-data directory. Preserve in UAT; do not execute for production initialization."
+    },
+    {
+      "path": "database/demo/019m-p-project-intake-demo-seed.sql",
+      "sha256": "6540b2938e4e325bc2d982fc19b6dabe371aea7ae0b7de8e24eccc11fd7010a5",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "exclude_from_production",
+      "rationale": "Explicit demo-data directory. Preserve in UAT; do not execute for production initialization."
+    },
+    {
+      "path": "database/migrations/001_initial_schema.sql",
+      "sha256": "6937bf411ac3a492f4bc4de796a5cf713f88fac8511d26aa122c9ec929fbbaba",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/002_non_project_time_and_hour_types.sql",
+      "sha256": "412873a0147846e718698e5c2313188b9a05b3603dee36d33e61b320d4fe02d2",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/003_task_based_project_assignments.sql",
+      "sha256": "8abe3bc4242eb8739924b4c38ad374d0b9f603be5511a25dd4eb104f49ae3300",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/004_resource_profiles_and_work_locations.sql",
+      "sha256": "56bc7d19a83a87d938b5f5f70de01b219a07c19555a34ffe3e0c36b4a6701a97",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/005_utilization_policy_model.sql",
+      "sha256": "449d1413b75306353f568f75e21c7a3f0a1f48456116efd9470f81a23fd3dd9b",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/006_timesheet_persistence_location_columns.sql",
+      "sha256": "c3f5247e7a85ad8d296cacb50673d0869a94fd6cf62fafffc346985378c68af8",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/007_timesheet_day_submission_status.sql",
+      "sha256": "a523f861e57b2db590fe0523479eb0eb96fb5622931780ada3bfbd5063f5c6c1",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/008_manager_approval_day_fields.sql",
+      "sha256": "2cbe3934d6a3f1b627a7248368fe6bea7c21fc6c26a69a19dcac603f0a78c513",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/009_project_task_assignment_foundation_seed.sql",
+      "sha256": "dc1a55c9b6dd1cf957d59a5d8138f2c71f3c2b4f51067265d1d80b0ba1d33070",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "exclude_from_production",
+      "rationale": "Creates development identities, USS-PSA-2026, sample tasks and assignments. Validate dependencies before defining production initialization order."
+    },
+    {
+      "path": "database/migrations/010_psa_demo_assignment_visibility.sql",
+      "sha256": "76db72360e91150a6af196500b46d37beea906b72f89e5b680bb5189040db252",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "exclude_from_production",
+      "rationale": "Adjusts dates on the sample PSA assignments created by 009; not a production business-data requirement."
+    },
+    {
+      "path": "database/migrations/011_remaining_psa_module_foundation.sql",
+      "sha256": "cffaf86e2d7439dda3250943f51f8a68c5e61429ab0c5e352b775faf41e1f150",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/012_personalized_timesheet_holidays_reminders.sql",
+      "sha256": "d1f6e5889f51f8d88d77680c2e70bf51174ef2f7ae8667fae22a2b87e42a1b8d",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/013_role_based_access_control.sql",
+      "sha256": "1669fd72ad37a9c9acb16c7f73025f5c70654ac3883734303f103f5f867273f3",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/014_project_management_role_and_role_admin.sql",
+      "sha256": "e0d73faf4d38c932fa9da95e4a10adb16e52fac980f512a9894c442f8ae44dfa",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/015_department_manager_and_user_switcher.sql",
+      "sha256": "339bae3a83be9f27453b2b36108a6acfb030d3ff78556f7bd2a15d0ba9b15682",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/015_role_enforcement_and_user_switcher.sql",
+      "sha256": "20d7333e72b67c60446a7b226f4f102771fd8acdbbc7396d6de958306d0f23f8",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": "Mixed permission/catalog changes and development personas. Requires separation or an explicitly reviewed production equivalent; do not blindly skip or apply."
+    },
+    {
+      "path": "database/migrations/016_auth_identity_foundation.sql",
+      "sha256": "ff47c5ccd88fc2519cca515946d0b7d2f5c0c47fd77b9b5f85991caf77cbea69",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019_local_password_sessions.sql",
+      "sha256": "b371f0d5eb2cd858909ab6817b170526ccaf1eabbc11f48be5a5af7f903ce956",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019h1_user_administration.sql",
+      "sha256": "f421afde7c4726e0bb9da4671870988750b94d0d49f221bd5863a4349bc108fd",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019h_azure_admin_entra_sync_foundation.sql",
+      "sha256": "6df84b81b88588a8a8221116e474b2ccd0477b20ea73196f6208bd54d67227fd",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019i_project_allocation_info.sql",
+      "sha256": "1c4e983238d106c562bbc70310dd0a80fa00b2b4ce750b0dd730e04dc95c6a30",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019k_project_allocation_used_hours.sql",
+      "sha256": "85bca863bc427c99a0ab2929fd35494c2ebdb6eef6f6188711d6fac4f67872e9",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-aa-holiday-ui-and-engineer-task-bridge.sql",
+      "sha256": "d0496bde1b80275ac5fde1a9d72b3821a7ec81464b5c7cff081bd9a902ba805a",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ag-customer-directory-intake-cost-foundation.sql",
+      "sha256": "ae6f2b2d11a26ed3a6203c44de08c5ccca02414242cb612b9229ffce82176eb7",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ah-customer-directory-management-ui.sql",
+      "sha256": "e36e2221e729d598c72e3784c6cf643406419b5f215fc8229cc73810b627409b",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ai-cost-overrun-alert-foundation.sql",
+      "sha256": "ee9b4ea6fde60e2481d195eff78340deffe1a1033345dd7382b5b7ef42efe5d9",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-aj-cost-alert-ack-routing-controls.sql",
+      "sha256": "bf1ed9520a0ae891bce74a8ab00a464710ae7e576995e4d129985ad2b01c3ac4",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ak-project-manager-workload-dashboard.sql",
+      "sha256": "75e21a7d69e9a906398f899298c11c2ca75e8dacc0029cdde1a482554a0e9ecb",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-al-approval-export-audit-workflow-foundation.sql",
+      "sha256": "6a309f1b5fdd7b384af63b5ab21eddfcd83059113e0c2bdf029d12a54a7ced19",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-am-project-workload-pm-scope-selector.sql",
+      "sha256": "46a63c7e1e0fbe38f6bbb1696d0b5917b197025875e2b4d95942c5d9002b4b5a",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-an-post-intake-editability-signed-date-aging.sql",
+      "sha256": "c5b074425cd03b32463ef515b726844d8632c06a8d1dc4cc1164f8d6756f0b48",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ao-engineering-team-lead-utilization-scope.sql",
+      "sha256": "fcd5331a822ed2d7dc799618ba6c35285a605491178fc50925c1754d5574cf9b",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ap-work-task-builder-classification-foundation.sql",
+      "sha256": "264d3ccae633c8aaefc6e5951d411baa628e47abe1a99eb685e32108720f5e6b",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-aq-role-admin-directory-permission-visibility.sql",
+      "sha256": "1ab8c2058bb2d1deaaac1eabb2dbd044c90a05ae2e3908e336b6fab210cd8078",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ar-intake-work-task-handoff-readiness.sql",
+      "sha256": "cb0ebaee02e12ffd4190c4925ddf10078e0e49896a8217b19d7f315fce1fa996",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-as-intake-project-link-confirmation.sql",
+      "sha256": "ea5b2bbd6a9a508d79e5555bec0fdf3619adbecd41a2469f27d6791c8a97f620",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-at-resource-assignment-work-task-handoff.sql",
+      "sha256": "48c567bbee3cff2e7671e806469922b78756f87519c3cab43a6d597bf13844f9",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-au-resource-assignment-promotion-controls.sql",
+      "sha256": "e39a8a66d0a860cbf1c25d69b9e27ba66c6128fed07a1757ffafb05169834f35",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-av-approval-export-audit-workflow-hardening.sql",
+      "sha256": "c577e869d6968a07afa6e9c5a1c852cb841bb7b48e4080755e4b38313ef7c1b9",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-aw-ax-ay-export-dashboard-audit-sprint.sql",
+      "sha256": "11f10911cf5f365b33e14636d3b75f4919b84fbd20b1809909b62e32bdec949a",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-az-through-bj-workflow-operations-mega-sprint.sql",
+      "sha256": "8741ea388a1ec00b9429a010f3c694aee11b353e1803ef183e2c076611d116e3",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-bl-through-bu-production-hardening.sql",
+      "sha256": "0b80609ca73acb9af6ae34a904d2ccea4ea4dcc85985ab046721cf95c0d8ff73",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ce-time-compliance-preview-response-wording.sql",
+      "sha256": "d2c973647a8415c9b04f6b76371189c839c8b2d84cdd18b0e0d389de159a9487",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ci-production-operations-acknowledgments.sql",
+      "sha256": "1df90749ad49edbba4e99145edb09875e9e768dd668bf65386d86b4d501e1047",
+      "signals": [
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-cj-time-compliance-automatic-email-notifications.sql",
+      "sha256": "0bb2c4c9caae63e27a265f972aceefd2743fa68ff682a004820f0161855cc5fa",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-ck-shared-email-provider-configuration.sql",
+      "sha256": "ecb7a45e1da089b4f9c190ad0134efd7ce7f3367baffb37c434045086101ea4a",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-cl-shared-email-provider-test-harness.sql",
+      "sha256": "32a422ea2b6787c584cf71dcc82fba7c6c81ba0bfaef19c35bacc4f0ed699c9b",
+      "signals": [
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-o-time-compliance-defaults.sql",
+      "sha256": "0849e0c941e73e13de605e9a7b912892a49c89c04f183f631b4365bd20c39b5b",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-p-intake-source-and-documents.sql",
+      "sha256": "44c03bd101a6e38eb7050ca7378465cdca7457adb3a97ab0ded08acfbd950456",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-p-project-documents-engineering-context.sql",
+      "sha256": "490e0ec01f61142fbd500e098f5b264d34d7163b58baac7302e4c7fe3e540a28",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-p-project-intake-resource-requests.sql",
+      "sha256": "4ce04c021d3e9182db7c6d93e5acdc461a93c2dd83eaa78ea89816e231594a1a",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-p-q-runtime-permissions-and-15-engineers.sql",
+      "sha256": "b888f89930f81fd3120a34ec56041479ea32f95227ddadc1a4e272c4f7d509fc",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-p-resource-request-multi-engineer-assignments.sql",
+      "sha256": "e03a52b20cd5eabce6b1318397649eebe87e7e4cd5632de72915411625714c10",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-q-project-workspace-documents.sql",
+      "sha256": "a9af9d6b702f6889358df4571b3bef46b49d3fc44a743218457103287aa52eb7",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-r-role-foundation-and-intake-queue-ux.sql",
+      "sha256": "2d9b296c2301368f1bc38cfeb9bdebf26fd09a107e8606d543b87b384e957484",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-s-role-scope-foundation-intake-queue.sql",
+      "sha256": "73f35f4bd4cbbbb15e9250d5efadf3e16524a10c139017480ac0d3b4184208f6",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-t-workspace-role-scope-enforcement.sql",
+      "sha256": "9211c1b7eb308059064b8db473930feef365a2ab3222b002ed308f56e1b9baf8",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-u-admin-view-as-preview.sql",
+      "sha256": "53a372d296616912e27be71ddb6ff4f9890ad075a2b0fe8e81425da19b42180a",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-y-role-cleanup-workspace-hours.sql",
+      "sha256": "555748df87a34d6c9e383e61dbb6e5835887835fdd3add249e431753fc5da3fc",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m-z-holiday-dashboard-assigned-tasks.sql",
+      "sha256": "6492d8a10bb900f15a82725a2cdbb4180d6d7cf7757a844462a945d3507f5c1e",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m_b_azure_graph_selective_import.sql",
+      "sha256": "d780f7fdcb92a67fe714f6a4df499ed9a907f929992d8357b92df8e039c28140",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m_entra_sso_foundation.sql",
+      "sha256": "679b7e89ce6f156a503b819b30e2f2807b6560424e45b8b1c9192a7c78abc9c4",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019n_restrict_manual_cloud_domain_users.sql",
+      "sha256": "19bc01e5bae99b7cbcc4a77b3e9bf333303ccf5a02b26753f6fddaa7b336d9fc",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/020j-shared-email-recipient-safety-review.sql",
+      "sha256": "17a620463070bd47945566efbdad27b5f27f4d6e353006d2acb2a39ae60d3528",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/021c-production-readiness-permission-rename.sql",
+      "sha256": "03872ac1a4c4ab470399e681ff224ce9db62994281644df40499bfb1896dd841",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/022a-production-notification-center-foundation.sql",
+      "sha256": "745f126c81e31f7b28e1057f06b9df5e324137f2d4d152231de9870863e5e9e7",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/022c-production-notification-preferences-routing.sql",
+      "sha256": "3aaafa9b019371d4c553a40affaf051ec62470caef117a62f0a4bb772d03766e",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/024-sales-to-delivery-intake-foundation.sql",
+      "sha256": "75d03c71ee91292860c6de84a8ebf8dd017ce549668e7aa8b338cedd7cfdd704",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/026-crm-integration-framework.sql",
+      "sha256": "b9d5fbcb6e61f16a42e62d11fff1851bc94340b05baa2268fcecb5d371301d10",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/027-signed-sow-handoff-assignment-trigger.sql",
+      "sha256": "a82def37fd7361ff7321c1fe7051d15ede39fb907884276a5def05fc03bf0ed0",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/028-sow-aware-ai-time-entry-generator.sql",
+      "sha256": "675c2471d08244b88080b8a39045674f0cf5689b8332740f9622088d0fa2a2ab",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/029-uat-role-workflow-validation-center.sql",
+      "sha256": "05a41eedfb942f1417a626a842da494893dad505d0293f994b4b520b4e849935",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/030-reporting-accounting-invoicing-analytics.sql",
+      "sha256": "d6db28356a386ce68f53e5dbcf380972754e66bee693de1cde25102b5e4b458a",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/030R-canonical-role-model-cleanup.sql",
+      "sha256": "8012ec7d6ce448f5ebd5a79e6dc6fb233565986556799f0aefb56531837578f9",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/030S-reporting-runtime-table-grants.sql",
+      "sha256": "683ce669f67f5f7a47e3e3eafd599292eeb577c548b36d0780ae4eef153803c9",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/031_modules_071_072_native_persistence.sql",
+      "sha256": "8c98f3454b8bc7263589ef087160707b7056d19d7d602afac5e2f01ed15fcb24",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/032_projectpulse_native_administration_documents.sql",
+      "sha256": "68609ac0ec302a85c6b93452d87697775cd0d9cb66bab36016b1c6c1bb3e75b8",
+      "signals": [
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/033_security_diagnostics_native_operations.sql",
+      "sha256": "0d721e3e628c6dbdc2a79b239ac7dd6161140fd4a5bf5cd68d6296b02c8737b9",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/034_module_026_crm_erp_integrations.sql",
+      "sha256": "275c2f3f5ad56d80f303327baeb665506bc41014d52af8a2b7082c6e451974b9",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/035_work_register_055c_055d_split.sql",
+      "sha256": "87c6fcea07a25b829ca58c62c18992c9f01d8477a48b55f70aa1c710807b180d",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/036_work_register_role_scope_and_closeout_handoff.sql",
+      "sha256": "b8f9dab7d7465ce06af2ee287867759ee718f6b7d1fc96d4b8629e65b58d80f3",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/037_work_register_dates_and_contract_types.sql",
+      "sha256": "00bd6bc9e4f63701831c03e75eb76b09914d7682a8511df27157feed22c311c5",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/038_work_to_cash_lifecycle_and_audit.sql",
+      "sha256": "19f4843d3501c9162ab04e50f820d921c026fb316ea565a0290d1409e53c790f",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/039_work_to_cash_reactivation_lock_order.sql",
+      "sha256": "04a192736864c30ad60af7a4259d40159ceaddbf16c9dec2d7b5b6c6be4fb35c",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions.sql",
+      "sha256": "5ed561de521f448f6f4f3db5179fc7b7dae457d4ed107541d731b0222f77a67c",
+      "signals": [
+        "client_include"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/00_schema.sql",
+      "sha256": "ec5e5e784886bbd24deab1ff6b95fe79a5b767abf1c4c738fe1ae01c264ff622",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/10_workbook_cells.sql",
+      "sha256": "530918cccd116dbf22e42bc54c254a21f77f60edad97da241d3fc09243b8d630",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/12_super_administrator_override.sql",
+      "sha256": "5d7dfc8059d0fc94662ee563e6253aa9db9548e158a0653e09ffbc946ee89c76",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/15_workbook_metadata.sql",
+      "sha256": "b3a9ba54c4ccda16e9f24a66ecbdc411873aeb793ba42fd7685a393447c4fc44",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/20_standard_grants.sql",
+      "sha256": "96ac3fd99a1e8b0da82f230e56d0827bed0acc3a167531d0ef78ce0e49474f7b",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/30_time_entry.sql",
+      "sha256": "c24e8caa6f33bb545f1ada5222bac1a04ea32ae9f68348bd1f0dd19c98f3128f",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/40_approval_inbox.sql",
+      "sha256": "f03337a6a86e359388f873935f94f1d17f29e7976c26c329e2c3bd485d88be9c",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/50_utilization.sql",
+      "sha256": "79ca09923abd51d83e350ef9902252fe2733adbf7a9a78b659bdf01226e66529",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/60_role_administration.sql",
+      "sha256": "89b8c217f6063e27ea2cc990f99d8de1711e052b6e914df55465ef56be56b76d",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/70_read_only_matrix.sql",
+      "sha256": "aeaa8be059ae1b9b69b7b6b3ffd0d8cad5a1b7c6992308320b3a9718de140870",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/040_scoped_role_policy_versions/80_finalize.sql",
+      "sha256": "88019b66bd376b2840157464d545710691d983dedcc26fa35b4da63ce99dceec",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/041_module_001_timesheet_timer_and_task_association.sql",
+      "sha256": "350a7fd942c192876c12e359038f8e4aac71e5622504c99d7c78f10c9099e8cc",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/042_module_availability_controls.sql",
+      "sha256": "b69fcecfa2238b4233e57495dddb18d0247ce6e15e300bcbcab81291240c5ef5",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/043_ptc_time_steward_permissions.sql",
+      "sha256": "eead28c833151bf7f065a423d3ffd92b4028fbbfef82afc2c4ec851c78a368f5",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/044_project_expense_upload_certify_connection.sql",
+      "sha256": "ad415fd061ba50e0bc40916f892157b33893b56fabffa4099a93ec833a2620b7",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/044a_project_expense_self_certify_permission.sql",
+      "sha256": "b792f9b2308689dcf80cada96ec633383cbc7bf4150ea8ed640a207f45485bbf",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/045_microsoft_integration_consolidation.sql",
+      "sha256": "1e682d136ae3c1dc5243ef3a4f32bc17dc9efab17ff0db1b3590a854004e4b26",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/046_microsoft_sso_connection_profiles.sql",
+      "sha256": "2e64d589be119a5e4e77d290a8d0402c5d5676dd7846d6add70d1595adea8465",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/047_microsoft_integration_connection_carryover.sql",
+      "sha256": "2d34d8d71fb1eb17a00e98068170b5629b8e219226e334f17fa225bf7d17043f",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/048_admin_audit_and_manager_team_scope.sql",
+      "sha256": "5c865daa8e5279bf380b2600803b0592d90049f2cc0b353aa12b52de542b7cec",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/049_module_021_sell_customer_sync.sql",
+      "sha256": "34a5d79b48bb13ef1e9d42dfdca8d261c75bb3b088a675842a333a6740ec9734",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/050_project_notification_routing_and_schedules.sql",
+      "sha256": "6df67118f64beeacb589d1246d5d54856721464b16330cf6583724939ff864e6",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/051_financial_operations_reporting_recovery.sql",
+      "sha256": "427dd8d36a88f6a75acfbd796fabcd4f85d843b4daa53b421155174c1740f7f0",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/051a_pending_approval_day_status_lifecycle.sql",
+      "sha256": "43c0a6c00b757b25ec9777bd0e4eebda104376e28c59977b92fc8d2a0be7edbb",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/052_document_intelligence_runtime.sql",
+      "sha256": "ec288ec4a73369c32bcbde60eedfc1fa7fe55ca5bf8114b18e7ea3f9e2024cb2",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/053_intelligence_answer_orchestration.sql",
+      "sha256": "382f89ac2f303e7fa09cbccf6691e7f97a71420024b3372f2c1f6020974afa67",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/054_pulse_ai_system_intelligence_conversations.sql",
+      "sha256": "7b6c825335ac27089382b4a29072dbaf0b85ea116724d03627f6d91eabfa7946",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/055_analytics_center.sql",
+      "sha256": "bb5b7804f2e88a91b9ffa01975b26ec230682cd49028e8a2950d1c4804ca851d",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/056_role_workspace_entra_crm_governance.sql",
+      "sha256": "602a3285a2a40d27468d83a7f775077d41d754188351c788b82c6f03d73bf631",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/056a_role_workspace_permission_scope_guard.sql",
+      "sha256": "e6dec88cf5ba22e214f1c8edc8992e090b7120066d7edc499bd4537cc71f8975",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/057_module_001_multi_timer_document_grounded_ai.sql",
+      "sha256": "0ec0aa8b49372250262e94099ecb5dfa07ea2a7bb6b38765a80e42d823809bb2",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/060_analytics_center_enterprise_experience.sql",
+      "sha256": "ae7e03f23c38d599798af00abdf533f19051c3f11a83ade84ee129798f16dc3c",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/061_celar_ai_capability_routing.sql",
+      "sha256": "1ba9e3a14ad7006b40b8eef404fad64119d5f09a597ee39aaaaaa7c91f1e7e96",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/062_super_administrator_permanent_full_control.sql",
+      "sha256": "663d970271f13bcfff89d219e3f812da6de3a8d4150fab56335e3dfcdb01dbaa",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/063_project_management_billing_role_access_repair.sql",
+      "sha256": "44e43095763fa974d1939466ec55d0f9df669d9b369e8010fcbb9b68695fd341",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/064_module_065_enterprise_notification_orchestration.sql",
+      "sha256": "19ed84ac82c0b4fe140f3e4520eebec94f7eb12e6389f1d2fdc67318118f7718",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/065_enterprise_notification_runtime_completion.sql",
+      "sha256": "631915e8bbfd5844efade5398e84d4c2a515665af6cef000522f5e910fb1b84d",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/066_immutable_project_numbers.sql",
+      "sha256": "7bae8aa21d05523dfe04a3df17b8a826638fca937f5b93d501e1f8e0d727b64e",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/067_uat_expense_lifecycle_work_identifiers.sql",
+      "sha256": "1a9bcf21a88d98110ce08dc59f0e9145d920ecb1953503d14df16a08545a0686",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/068_module006_standalone_pipeline_management.sql",
+      "sha256": "dc478a64c9b132b8d6eb7fdcfbb2feb9efa5f94f7b4668c279fd5281333d1e07",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/069_module006_customer_pipeline_expansion.sql",
+      "sha256": "e3c69cc56d40e9394d7438aa0863059f6feee7c8c42ff43281be843a3c62716c",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/070_module_033_project_forge.sql",
+      "sha256": "c1bf12593eadb939a58b1bc92ba9e75282271dd0f77cd1e59dda81ec65ff7432",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/071_ai_runtime_production_hardening.sql",
+      "sha256": "108f898a0f5e7f76833d42741ba1caa9a0f1ff427db17728cf5a5008a91ee6e7",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/072_celar_ai_conversation_attachments.sql",
+      "sha256": "b1a898d72916027f02f7ea5578facd7d9149436b2db9e11dca833d74a7cecf1f",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/073_module_033_project_forge_interactive.sql",
+      "sha256": "e4280b1f020f9aaed4376da4d6e687706ba9805e70bc2adb8cb23ffdb30ec4c6",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/074_module_066_project_flowhive_production.sql",
+      "sha256": "44395e1b9ce09fd443380b89382c33ff4ffa594015e78c4316fb9408a8d5fce9",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/075_pulse_product_rebrand.sql",
+      "sha256": "524decbbf13c0aef05f16971b87797dbeec1b30d6fde552a18316bb1bdca0b5d",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/076_module_081_lab_equipment_tracker.sql",
+      "sha256": "0fd7addecfb43c8d7341c6882e02affd3b6c6f4eb8eea49c4b7aa086270ae47d",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/077_module_082_enterprise_project_risk_register.sql",
+      "sha256": "22725eb63bb57d82f23f431d6a7c007740b758040c16b294590947901072dada",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/078_module_001a_engineer_request_closeout.sql",
+      "sha256": "de2e814fb3a96fc45bb9e15e7074b1b88b1c9d13b4b0b2cc9191379bcdc97162",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/079_coordinated_runtime_ai_document_rbac_repair.sql",
+      "sha256": "5959dc299cb6fbd248db6a69bf0a21bc9f65340bd437a44b5cf5e388a22ae52c",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/080_celar_ai_internal_data_intelligence.sql",
+      "sha256": "5751d0a27552a3bf0c90ec4ef82eccebc1485e839e89c498bec2f5c04e0914b4",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/081_celar_ai_private_runtime_activation.sql",
+      "sha256": "319b53067208fe72786f40a76357a97e326363ecc28880eaf6e362bebfc34c6c",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/082_module_083_full_future_loop.sql",
+      "sha256": "c1050fd1787bb081ba814d8dc63e0e1b462f183c9fc9ca1669a8d5d4379ec755",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/083_module_083_autonomous_control_plane.sql",
+      "sha256": "8521a80d2a8f130e259f7a29be94e18e01c39dc86c3319b491ce546be7da314b",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/084_module_076_celar_ai_defect_operations.sql",
+      "sha256": "d1510d1613de25e21cfcb98d32633f6a51ecabc47650d05e7ca94d78273f9f17",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/085_module_019_document_access_storage_repair.sql",
+      "sha256": "0d90ebd0983db8903c31eb2ae66a5679d06de9f573d015932ebbe5f7df59b689",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/086_module_066_flowhive_enterprise_pm.sql",
+      "sha256": "b7e20b2c754ef590d5ae6c23e402360ff9d9dc1fe5c30678ceb7d19a4b26b500",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/087_activate_approved_local_logins.sql",
+      "sha256": "98f14f15893f2c49a360258a6d818d08d60f01b1c58079185a32da27a6d6f771",
+      "signals": [
+        "data_mutation",
+        "sample_data_marker"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/088_systemwide_enterprise_reliability.sql",
+      "sha256": "5db700b413666d47b9fd5c5b97d6f21858acf322b6cf2299badda04cf53b2438",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/089_module_catalog_role_administration_reconciliation.sql",
+      "sha256": "fe76aa6d388916bee9a8a8c3189467b2f7ac9225966677bc6641340e4d0cb52b",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/090_module_management_table_and_ownership.sql",
+      "sha256": "fe30ef4ac379b03448db7556db86444b970c3054a55afb3441208dffbf90389e",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/091_module_management_owner_storage_repair.sql",
+      "sha256": "7775dc010808a3186605858275facbbecaa12f14bbe9c08bbb3e493f9bcaca2e",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/092_module_loading_assignment_visibility_repair.sql",
+      "sha256": "346d824bb2d51d733bfe5fb7562db457c4746ef7d12ec575696987bbd5e9be51",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/093_assigned_work_canonical_visibility_repair.sql",
+      "sha256": "32ac201bdca62f92f8bc7a6ddfffc84a30b198958c8b58d34e69abc77c857c91",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/094_flowhive_canonical_sow_authority.sql",
+      "sha256": "0e788e561023917480f1f465fc875809f656c34e39c2cca0d6f35d62b5a9fbb8",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/095_project_planning_collaboration_access.sql",
+      "sha256": "84f13fe85dff5757918425ba8bbfb88f0fb0ecfd73e64b0e8fbc269d15838143",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/096_project_planning_document_authority.sql",
+      "sha256": "7e3af6fbf847ec40a9f8eb96ccf1be6da7af36b9353c4e19fb5bc561b48c61a2",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/097_project_planning_identity_safe_admission.sql",
+      "sha256": "b1cf5aa0e1cf21a065d1bfc19c4fb1d15b3fbf7e17c57b8df3743163cff96260",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/098_customer_directory_source_authority.sql",
+      "sha256": "8de8aafb6ec2cb57f480654d564a7cd7a0736395fe7cf6c39eb2ff2dd296db49",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/098_module_management_owner_storage_reconciliation.sql",
+      "sha256": "5e199dce4b5ac3777351db06fa521f81530c07c7f0bacd042b998bdf069b94c4",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/099_module025_sow_gsd_workspace.sql",
+      "sha256": "2545259952a651b83a98707c0175bd76ebdcfd7abd3e472ada123bc685585edc",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/100_module001b_catalog_ownership_reconciliation.sql",
+      "sha256": "107cbf4e78e1e21ab2fbd1089d8a9067ed222781ff748a9916f564048e9fb834",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/101_deepseek_v4_provider.sql",
+      "sha256": "4aa9273e7b7e13ea44056c5b082baa350713a4a83f9d97e5cd5a444686366c0e",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/102_deepseek_legacy_provider_constraints.sql",
+      "sha256": "e788e71c8bd9397d5aabc4e6c93609569667110b0709096d69566c94e95b38c2",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql",
+      "sha256": "d0f11a62f081f26b6bbc9eb589f6387f6098674353c27d6b7f8cce4ddd89229a",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/104_flowhive_bounded_ai_execution.sql",
+      "sha256": "53897dcac37294599339770a3ade51d6af3c26b240d5706c939d443eacad5486",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/105_flowhive_reviewed_regeneration.sql",
+      "sha256": "64c1a1c0ca77816207be2d0c873367c8e6d3a61a38cc41b1df88923774da688e",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/106_module025_sow_sell_register.sql",
+      "sha256": "7b0db0d4b2851344edcc5cc2703f130c70d00460a5859065ca420ffdf14e1dd3",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/107_module_066_operation_authorization_and_raid_actor.sql",
+      "sha256": "61a293640223899f187d0e74be263c4a97c9fae7919aac6ddca5ab0fa683f386",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/108_builtin_module_catalog_reconciliation.sql",
+      "sha256": "41e4b41469d8a96f6653b059da8bafb6a1c982804d5cf3e136a21edbb04d0bf3",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/109_module025_project_name.sql",
+      "sha256": "8157f2742e6f70fd3f22aca3878b9e7acdc3393f966a0b17fb82e1b3b882c3aa",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/110_module025_ungenerated_draft_delete.sql",
+      "sha256": "7769bcac29bee763986cbfeaf4c80bcdf3e706e81658aea0ae48004040bd3377",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/111_connectwise_sell_provider.sql",
+      "sha256": "0c32330575d1adcf7b444e3f237cecdb75c87bc2f88b5ec4c05ea47810868f45",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/seed-data/001_non_project_time_categories.sql",
+      "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": "Contains reference defaults; business owner must validate categories, locations, policy and approvals. Seed filename alone does not mean disposable test data."
+    },
+    {
+      "path": "database/seed-data/002_default_work_locations.sql",
+      "sha256": "b6771a09ee327afa8e7610443ed997d67efcca3cba2b8f848e9c3b5dbf366a42",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": "Contains reference defaults; business owner must validate categories, locations, policy and approvals. Seed filename alone does not mean disposable test data."
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-053f-project-workspace-permissions.sql",
+      "sha256": "c09a8e04150c2ec7e0e2bdcf6df10828a1bb37cfcca3688c3b8f18db0c2d7299",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-053i-intake-ae-sa.sql",
+      "sha256": "8f545ec3427ab5d7b9acd6fc493b07cb1483de54bdebf70691d002315654d127",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-054d-export-snapshot-audit.sql",
+      "sha256": "e7de47fa388d577f65884fcac25b104971986c1b1942ba99bdd2d1321535bd03",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055b-rate-card-administration-foundation.sql",
+      "sha256": "b6a285157a433e4bef761de95125f6e52e38bd07863b0ab3a729fee5d7a29988",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055c10-local-document-upload.sql",
+      "sha256": "22e7fe318c6b351a877e8148143fab6d9bcc98ef75e14723d7b25b5311a82bbf",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055c2-work-register-edit-drawer.sql",
+      "sha256": "ed66a0f63d566905c1b3dbcd176bfdefd0b16b5eec7e2e7f5b483145f017f2f9",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055c6-task-engineer-assignment.sql",
+      "sha256": "d0117510844c8184f80507fef8a93f6c466c851d96510899d8dabcdc0aa77beb",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055c7-multi-engineer-roster.sql",
+      "sha256": "cfe074e814f163304aea2557a518bdec40a671fc444cb46798a5d5f34ea09674",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055c8-change-order-costing.sql",
+      "sha256": "d8eaa50542846a28a8200ab40d67ae9dd1b4b58b98a5f1fd41376d902da9b00d",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055c9-document-management.sql",
+      "sha256": "de368edd4d35ba833f706d1531a13d1c7fd3b3c24fe6f122c880937cbbf3ce18",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d1-intake-wizard-gsd-sow.sql",
+      "sha256": "f254fcd70054644e998519f6176d4356b8ea43bd1305206a703826a13da55752",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2-gsd-extraction-review-mapping.sql",
+      "sha256": "1fc26d65981fb4b07f43cd839015a681bedfa2c6fcb9782f0c621d850a415a00",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2a-xlsx-intake-repair.sql",
+      "sha256": "efff1ea4f3f9871f1869b227ed16a37a2df537ff6a2812d4e0900d6e97f33977",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2b-intake-ui-parser-repair.sql",
+      "sha256": "58a4e1e1ae8d94a67bc858978941f8542c15fe57432f518f9178f59d1c29ddd5",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2c-current-extraction-repair.sql",
+      "sha256": "a2b2e29c0e71255ab64de43d125fc270ca816070180bd85655e8669ea2f5187f",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2d-upload-insert-repair.sql",
+      "sha256": "5efc486f7868e98cd6cf71d571aa609eb984f1fc9f986ab6be406f8c0a725de2",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2e-upload-extract-current-gsd.sql",
+      "sha256": "722afd23bc2ec0aaed67eb94b2812c19fe3f10a3fbe9c8692d4a63312c6b3d92",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2f-rate-task-review-tables.sql",
+      "sha256": "40c852db0cef22e0da7e5d88ea5189adcfb979caa563775127e1ec69cb76c0f4",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2g-consolidated-gsd-parser.sql",
+      "sha256": "8858c6a88a7cddf67a15110237286a19f0b7432bc133062f99666426e9c38690",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2h-hyundai-toyota-rate-task-repair.sql",
+      "sha256": "ca2c7fcc8501b6f31294181b9e5c6d922f2e864770db40a56e0acca68358e081",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2i-toyota-hyundai-pricing-rollup.sql",
+      "sha256": "57fbb8d078183df2ed777d9282df56f3d9246d94ac9fa5bcccd793278c3eb83a",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d2j-repair-gsd-totals-rollup.sql",
+      "sha256": "12cd100be43154adf1c639856c1615411dc4e38d18bf0e7e743ecab49b2e5e24",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d3-intake-assignment-review.sql",
+      "sha256": "9ea176fa10b6787b0fb4d406ede1f3923de0e419d200a23ac1cf2563d4f72aac",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d3a-assignment-pool-repair.sql",
+      "sha256": "0319d3713628675e61c456db7a9e03fece7ea529cdc9390299670abeb561bf9b",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d3b-role-based-assignment-pools.sql",
+      "sha256": "5d2c3af0c2d62d31bcf785633e439f24e71c741e8269fc4dc67079b1b78e97a0",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4c-stabilize-standard-gsd-and-save.sql",
+      "sha256": "b1bc24e533b8c96f9f41a2ffe43ec284b2a56f46469a17f9cf2c632e7e8d4cd6",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4d-standard-pricing-and-save-stability.sql",
+      "sha256": "67138562a5bbee4768fac10bb90d5606190333b2cf94ba89cb572e1f1ac7c551",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4g-final-save-trigger-and-allocation-sync.sql",
+      "sha256": "0ef98bc1292b9a305ce1aa44a6644cecec479ae36b48ad6881aa14df49aa130f",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4h-save-schema-temp-cloud-allocation.sql",
+      "sha256": "98835f76abb6219e065cec19b27b916de8943bf149eaa06cc8217eec3de7ff69",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4i-allow-temp-cloud-stakeholders.sql",
+      "sha256": "5d6e4ffba671f22257f621a2e1910a4b62cd3d44ebc9db784904a1cbc95047d0",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4j-save-banner-and-temp-cloud-guardrails.sql",
+      "sha256": "8ab5430f62ea7500c0380391f65e699b30dd4b4756e58cbb4c6c76f3c6339ab5",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4k-financial-card-and-project-team-notifications.sql",
+      "sha256": "5b7ff5c0dea59760b423f3b04eae6f7ecdeda2e4d6b48618ae431f3f2f4d7d7f",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4l-recover-ui-and-guard-project-edit.sql",
+      "sha256": "30f33f6bd3648000b9f5391661ce2ee3642ed22e2fcbc1e99c3a40b56a104894",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4m-repair-project-edit-save.sql",
+      "sha256": "cb3bd01d792c50157843fd354dc0812cdfc00b178a2ed00905b7046ac123657e",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4q-repair-edit-save-project-identity.sql",
+      "sha256": "bcf6db7238d004b3101c5af95153adfdf34e27683552fe6e5e306951d38bca73",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4r1-visible-edit-persistence-fix.sql",
+      "sha256": "61c5898639bab0c6c36c1594f2d89e1f993b3458bc50c21c1c8c79da9b66b996",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4s1-saa-cost-visible-save-fix.sql",
+      "sha256": "9989d6161d88037c4fb7bf4812f8647903c674c352bbc1999315a5aaf740d260",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4t-edit-save-saa-sow-cost-audit.sql",
+      "sha256": "41a4ec858880d86fc359c100cae7ee50b2b577fd0834c77f9ee08c1655f78f75",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4u-saa-cost-quote-salesforce-certinia-backfill.sql",
+      "sha256": "a42038f3b018576c33b796cccd572df12cd4d2d64c7bedf06cd2b303094e8f68",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d4w1-finish-project-alias-trigger-repair.sql",
+      "sha256": "2f886b3610f227b35753f6a80d27d10c531c0d6592b565aaf73c933046b18f4e",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d5a-billing-identifiers-create-edit-ui.sql",
+      "sha256": "09618f8a12b22604c673a4156df8cdfbdf70ec93c9036a15b08d142d7b725082",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d6b5b-project-lifecycle-sidecar.sql",
+      "sha256": "2bb8dc66c3944d9e2629840f9a1b1d742a18722994fa6255cf68fea833826b3a",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d7-intake-finalization-time-entry-rollback.sql",
+      "sha256": "afc0e6ac1b5d8a11324d09aba5a82ffe39208bcbec81ba47134c08ac4668eccf",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d7-intake-finalization-time-entry.sql",
+      "sha256": "64367c00977eb7b6038d3c11a9aa0ed2e301ea48ec9bd6888f68e1081173c384",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "deployment/rocky-linux/projectpulse-055d7-verify-readonly.sql",
+      "sha256": "b20abf1775730e65c2e5a8c37b08c4ec3e30474a2d55e1c0df0f2a4c2c7c8dac",
+      "signals": [],
+      "decision": "review_required",
+      "rationale": ""
+    }
+  ]
+}
