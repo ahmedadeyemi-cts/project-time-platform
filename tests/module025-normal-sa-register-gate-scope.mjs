@@ -16,6 +16,7 @@ const expected = [
   "scripts/release-test/verify-module025-sa-register-evidence.py",
   "tests/flowhive-psa-admission.test.mjs",
   "tests/flowhive-psa-installed-acceptance.test.py",
+  "tests/flowhive-psa-release-workflow.test.py",
   "tests/module025-normal-sa-register-gate-scope.mjs",
   "tests/module025-register-browser.test.py",
   "tests/module025-sow-register-browser.py",
@@ -59,6 +60,7 @@ export function verifyModule025NormalSaRegisterScope() {
     for (const [before, after] of Object.entries(changes)) source = source.replace(before, after);
     assert.equal(fs.readFileSync(name, 'utf8'), source);
   }
+  assert.equal(fs.readFileSync('tests/flowhive-psa-release-workflow.test.py','utf8'), original('tests/flowhive-psa-release-workflow.test.py').replace("        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-complete-acceptance-20260917':", "        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-normal-sa-register-gate-20260919':\n            previous = copy.deepcopy(self.doc)\n            step = next(step for step in previous['jobs']['deploy']['steps'] if step.get('id') == 'module025_uat')\n            self.assertEqual(step['env'].pop('MODULE025_NORMAL_SA_REGISTER_REQUIRED'),\n                             \"${{ inputs.acceptance_scope == 'sow_role' }}\")\n            self.assertEqual(previous, old)\n            return\n        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-complete-acceptance-20260917':"));
   const controller = '.github/workflows/projectpulse-deploy-test.yml';
   const flag = "          MODULE025_NORMAL_SA_REGISTER_REQUIRED: ${{ inputs.acceptance_scope == 'sow_role' }}\n";
   assert.equal(fs.readFileSync(controller,'utf8').replace(flag,''), original(controller));

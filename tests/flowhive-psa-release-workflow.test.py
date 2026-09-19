@@ -474,6 +474,13 @@ class WorkflowContract(unittest.TestCase):
         base=os.environ.get('CONTROL_BASE')
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
+        if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-normal-sa-register-gate-20260919':
+            previous = copy.deepcopy(self.doc)
+            step = next(step for step in previous['jobs']['deploy']['steps'] if step.get('id') == 'module025_uat')
+            self.assertEqual(step['env'].pop('MODULE025_NORMAL_SA_REGISTER_REQUIRED'),
+                             "${{ inputs.acceptance_scope == 'sow_role' }}")
+            self.assertEqual(previous, old)
+            return
         if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-complete-acceptance-20260917':
             # Only the exact migration-106 invocation and independent SOW/My
             # Role result collection may differ; compare every other field.
