@@ -10,6 +10,9 @@ spec = importlib.util.spec_from_file_location('exports', ROOT/'scripts/release-t
 exports = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(exports)
 BASE = '7183068e8b48b019d9f607c281486e0888ce49f4'
+# Main already contains migrations 112-114 in the immutable image build.
+# Pin that inherited step exactly; export preparation grants no runner changes.
+MIGRATION_IMAGE_BASE = '373b37e9c76e430355ed2dc5f71ec6a133ead3aa'
 
 class ExportReleaseTests(unittest.TestCase):
     def test_transport_blocks_generation_confirmation_sell_and_unrelated_records(self):
@@ -36,6 +39,7 @@ class ExportReleaseTests(unittest.TestCase):
         changed = {
             'Verify admitted controller identity before deployment mutations',
             'Install isolated live-browser acceptance dependencies',
+            'Build immutable API, web, and migration images',
             'Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network',
             'Verify Module 025 scoped deployment identity and lifecycle',
             'Run protected-Test authenticated functional UAT',
@@ -43,11 +47,15 @@ class ExportReleaseTests(unittest.TestCase):
             'Publish protected-Test release summary',
         }
         actual = {a['name'] for a,b in zip(old_job['steps'],new_job['steps']) if a!=b}
-        # Assert exact changed steps below; everything else, including image identity,
-        # environment authorization, migrations and rollback bodies, stays identical.
+        # Assert exact historical changed steps below; the inherited image-build
+        # step is pinned separately and all other controller steps stay identical.
         self.assertEqual(len(old_job['steps']),len(new_job['steps']))
         self.assertEqual(actual,changed)
         steps = {s['name']:s for s in new_job['steps']}
+        inherited = yaml.safe_load(subprocess.check_output(['git','show',MIGRATION_IMAGE_BASE+':'+path],cwd=ROOT))
+        inherited_steps = {s['name']:s for s in inherited['jobs']['deploy']['steps']}
+        build_step = 'Build immutable API, web, and migration images'
+        self.assertEqual(steps[build_step],inherited_steps[build_step])
         scoped = steps['Verify Module 025 scoped deployment identity and lifecycle']
         self.assertIn('run-module025-export-uat.py',scoped['run'])
         self.assertIn('run-module025-installed-sa-uat.py',scoped['run'])

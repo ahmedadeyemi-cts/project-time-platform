@@ -65,7 +65,7 @@ public static partial class Module025SowGsdModule
         {
             status = "module025_template_catalog", schemaReady,
             migration = schemaReady ? null : TemplateCandidateMigration,
-            canStage = schemaReady && CanStageTemplate(access), canActivate = false,
+            canStage = schemaReady && await HasTemplateManagementScopeAsync(connection, access, cancellationToken), canActivate = false,
             maximumFileBytes = Module025TemplatePackage.MaximumFileBytes,
             catalogLimit = 200,
             activeExporters = new[]
@@ -90,7 +90,7 @@ public static partial class Module025SowGsdModule
         await using var connection = opened.Connection!;
         var access = await ResolveAccessAsync(connection, context, cancellationToken);
         if (access is null) return SessionRequired();
-        if (!CanStageTemplate(access)) return Forbidden(access.IsViewAs ? "view_as_read_only" : "module025_template_manager");
+        if (!await HasTemplateManagementScopeAsync(connection, access, cancellationToken)) return Forbidden(access.IsViewAs ? "view_as_read_only" : "module025_template_manager");
         if (!await TemplateCatalogSchemaReadyAsync(connection, cancellationToken)) return TemplateCatalogMigrationRequired();
 
         // Read manually with a hard bound, including chunked requests, before decoding base64.
@@ -182,6 +182,24 @@ public static partial class Module025SowGsdModule
 
     internal static bool CanStageTemplate(Module025AccessContext access) => !access.IsViewAs
         && (access.IsAdministrator || access.IsManager && access.VisibleSolutionArchitectIds.Any(id => id != access.EffectiveUserId));
+
+    private static async Task<bool> HasTemplateManagementScopeAsync(NpgsqlConnection connection, Module025AccessContext access, CancellationToken cancellationToken)
+    {
+        if (!CanStageTemplate(access)) return false;
+        if (access.IsAdministrator) return true;
+        // Read visibility through a team-lead relationship does not grant the
+        // manager's authority to maintain the team's master template candidates.
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS(SELECT 1 FROM reporting_relationships relationship
+              WHERE relationship.manager_user_id=@manager
+                AND relationship.employee_user_id=ANY(@visible)
+                AND relationship.effective_start_date<=CURRENT_DATE
+                AND (relationship.effective_end_date IS NULL OR relationship.effective_end_date>=CURRENT_DATE));
+            """, connection);
+        command.Parameters.AddWithValue("manager", access.EffectiveUserId);
+        command.Parameters.AddWithValue("visible", access.VisibleSolutionArchitectIds.Where(id => id != access.EffectiveUserId).ToArray());
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
     private static void AddTemplateScope(NpgsqlCommand command, Module025AccessContext access)
     {
         command.Parameters.AddWithValue("administrator", access.IsAdministrator);

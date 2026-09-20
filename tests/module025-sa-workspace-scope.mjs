@@ -16,6 +16,7 @@ const expected = [
   'database/migrations/117_module025_template_candidates.sql',
   'database/rollback/116_module025_governed_ownership_transfer_rollback.sql',
   'database/rollback/117_module025_template_candidates_rollback.sql',
+  'docs/production-readiness/foundation/initialization-review.json',
   'scripts/release-test/validate-module025-governed-release.sh',
   'scripts/release-test/validate-protected-test-controller-branches.sh',
   'src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs',
@@ -45,6 +46,9 @@ const expected = [
   'tests/module025-task-editor.test.mjs',
   'tests/module025-task-estimates.test.mjs',
   'tests/module025-team-workspace.test.mjs',
+  'tests/module025-export-deploy.test.py',
+  'tests/module025-installed-browser-harness.mjs',
+  'tests/flowhive-psa-admission.test.mjs',
 ].sort();
 
 const registrations = [

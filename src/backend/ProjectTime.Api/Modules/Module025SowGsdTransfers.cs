@@ -199,8 +199,8 @@ public static partial class Module025SowGsdModule
                     WHERE a.user_id=teammate.user_id AND a.is_active=TRUE AND r.is_active=TRUE AND upper(r.role_code)=ANY(@roles))
                 AND (@administrator OR (@self AND owner.user_id=@actor)
                     OR (teammate.user_id=ANY(@visible_ids) AND owner.user_id=ANY(@visible_ids)
-                        AND (source.manager_user_id=@actor OR source.team_lead_user_id=@actor)
-                        AND (target.manager_user_id=@actor OR target.team_lead_user_id=@actor)))
+                        AND source.manager_user_id=@actor
+                        AND target.manager_user_id=@actor))
             GROUP BY teammate.user_id,teammate.display_name,teammate.email,teammate.department_name,teammate.department,teammate.team_name
             ORDER BY 2,teammate.user_id;
             """;

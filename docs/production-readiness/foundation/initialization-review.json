@@ -1665,6 +1665,25 @@
       "rationale": "New FlowHive task-event policies and checkpoint schema; pending production migration review. Owner-authorized Protected UAT payload verifies test_only or locked policies; production initialization remains unapproved."
     },
     {
+      "path": "database/migrations/116_module025_governed_ownership_transfer.sql",
+      "sha256": "f9a5403f9af546dbd022ce43e66da81776cd9ec86693c2e21c14d098288215f0",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": "Staged SOW/GSD ownership-transfer schema for the SA workspace preparation PR. Requires explicit migration and environment review before execution; not approved or admitted for Production."
+    },
+    {
+      "path": "database/migrations/117_module025_template_candidates.sql",
+      "sha256": "cce3ccb20b7a6d0f91fcabcd0f0dfb4c0f012a067ec584b6668669a1de698697",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": "Staged immutable template-candidate storage for the SA workspace preparation PR. Export activation and governed migration execution require later review; not approved or admitted for Production."
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [

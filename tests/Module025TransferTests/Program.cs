@@ -55,6 +55,11 @@ try
     var manager = Access(10, manager: true, visible: [1,2,9]);
     var otherManager = Access(11, manager: true, visible: [3]);
     var admin = Access(12, admin: true, visible: [1,2,3,9]);
+    var teamLead = Access(8, manager: true, visible: [1,2,9]);
+    await Sql(connection, $"UPDATE reporting_relationships SET team_lead_user_id='{User(8)}' WHERE manager_user_id='{User(10)}';");
+    Check(!(await Destinations(connection, teamLead, User(1))).Any(), "team-lead read scope does not grant manager transfer authority");
+    Check((bool)(await Invoke("HasTemplateManagementScopeAsync", connection, manager, CancellationToken.None))!, "current reporting manager may maintain template candidates");
+    Check(!(bool)(await Invoke("HasTemplateManagementScopeAsync", connection, teamLead, CancellationToken.None))!, "team-lead read scope does not grant manager template authority");
     var options = await Destinations(connection, owner, User(1));
     Check(options.Order().SequenceEqual(new[] { User(2), User(9) }.Order()), "destinations use current manager relationships, not matching team labels; inactive, non-SA, expired, future and unassigned users excluded");
     var systems = (IReadOnlySet<Guid>)(await Invoke("LoadDirectReportSolutionArchitectIdsAsync", connection, User(10), "Engineering", CancellationToken.None))!;

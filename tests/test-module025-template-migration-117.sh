@@ -52,7 +52,7 @@ if psql -v ON_ERROR_STOP=1 -f "$repository_root/database/rollback/117_module025_
   echo "Rollback should refuse retained template evidence." >&2
   exit 1
 fi
-if ! rg -q 'Rollback refused: retained template candidates exist' "$rollback_log"; then
+if ! grep -Fq 'Rollback refused: retained template candidates exist' "$rollback_log"; then
   cat "$rollback_log"
   rm -f "$rollback_log"
   exit 1
