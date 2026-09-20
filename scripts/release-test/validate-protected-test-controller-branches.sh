@@ -12,7 +12,11 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == fix/protected-test-flowhive-recovery-20260920 ]]; then
+if [[ "$HEAD_BRANCH" == fix/flowhive-migration-runner-20260920 ]]; then
+  python3 tests/flowhive-psa-migration-scope.py
+  python3 tests/flowhive-migration-package.test.py
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/protected-test-flowhive-recovery-20260920 ]]; then
   python3 tests/protected-test-flowhive-recovery-scope.py
   node tests/module025-deployment-startup-recovery.test.mjs
   node tests/validate-systemwide-image-build-controller.mjs

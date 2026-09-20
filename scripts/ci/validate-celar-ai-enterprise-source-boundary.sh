@@ -4,7 +4,10 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
-if [[ "$HEAD_BRANCH" == feature/flowhive-auto-first-draft-20260920 ]]; then
+if [[ "$HEAD_BRANCH" == fix/flowhive-migration-runner-20260920 ]]; then
+  python3 tests/flowhive-psa-migration-scope.py
+  exit 0
+elif [[ "$HEAD_BRANCH" == feature/flowhive-auto-first-draft-20260920 ]]; then
   python3 tests/flowhive-psa-automatic-scope.py
   exit 0
 elif [[ "$HEAD_BRANCH" == feature/flowhive-sequential-wbs-20260920 ]]; then
