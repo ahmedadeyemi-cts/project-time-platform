@@ -129,6 +129,12 @@ async def main():
         await page.wait_for_timeout(1100)
         assert await page.get_by_role('timer',name='Design elapsed time').inner_text()=='00:01:05 elapsed'
         assert await page.get_by_text('Stopped',exact=True).count()==1
+        await page.evaluate("""() => window.mountPhases({phases:['Plan','Design','Implement','Validate','Release'].map((name,index)=>({name,number:index+1,status:'completed'}))})""")
+        await page.get_by_text('All five stages generated. Checking the WBS and schedule.',exact=True).wait_for()
+        await page.evaluate("""() => window.mountPhases({...window.phaseProps,phases:[window.phaseProps.phases[0],{...window.phaseProps.phases[1],status:'retrying'}]})""")
+        await page.get_by_text('Waiting for provider retry',exact=True).wait_for()
+        await page.evaluate('window.retryTimer=document.querySelector("[aria-label=\\"Design elapsed time\\"]").textContent')
+        await page.wait_for_function('document.querySelector("[aria-label=\\"Design elapsed time\\"]").textContent !== window.retryTimer')
         await page.set_viewport_size({'width':390,'height':844})
         assert await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
         await page.screenshot(path='/tmp/flowhive-sequential-mobile.png',full_page=True)

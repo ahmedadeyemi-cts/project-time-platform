@@ -24,6 +24,14 @@ block = '''          if [[ "$GITHUB_HEAD_REF" == feature/flowhive-sequential-wbs
             python3 tests/flowhive-psa-sequential-scope.py
           elif'''
 assert Path(workflow).read_text().replace(block, '          if', 1) == git('show', BASE + ':' + workflow)
+for path, added, restored in [
+    ('scripts/ci/validate-celar-ai-enterprise-source-boundary.sh',
+     'if [[ "$HEAD_BRANCH" == feature/flowhive-sequential-wbs-20260920 ]]; then\n  python3 tests/flowhive-psa-sequential-scope.py\n  exit 0\nelif', 'if'),
+    ('.github/workflows/module-management-owner-drawer-ci.yml',
+     '          if [[ "$HEAD_BRANCH" == feature/flowhive-sequential-wbs-20260920 ]]; then\n            python3 tests/flowhive-psa-sequential-scope.py\n            exit 0\n          fi\n', ''),
+    ('tests/validate-celar-ai-pr630-consolidated.mjs',
+     "const flowHiveSequentialMode = branchName === 'feature/flowhive-sequential-wbs-20260920';\nif (flowHiveSequentialMode) childProcess.execFileSync('python3', ['tests/flowhive-psa-sequential-scope.py'], {stdio:'inherit'});\nconst scopedCompatibilityMode = flowHiveSequentialMode ||", 'const scopedCompatibilityMode =')]:
+    assert Path(path).read_text().replace(added, restored, 1) == git('show', BASE + ':' + path), path
 for path in ['.github/workflows/projectpulse-deploy-test.yml', '.github/workflows/projectpulse-deploy-production.yml',
              '.github/workflows/module025-protected-uat-control.yml', '.github/flowhive-psa-protected-test-candidate.json',
              '.github/flowhive-psa-release-control-files.txt', 'scripts/release-test/flowhive-psa-admission.mjs']:

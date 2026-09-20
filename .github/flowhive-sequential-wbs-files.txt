@@ -1,9 +1,12 @@
 .github/flowhive-sequential-wbs-files.txt
 .github/workflows/flowhive-enterprise-psa-ci.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
+.github/workflows/module-management-owner-drawer-ci.yml
 database/migrations/121_flowhive_sequential_phase_checkpoints.sql
 database/rollback/121_flowhive_sequential_phase_checkpoints_rollback.sql
 docs/flowhive-sequential-wbs.md
+docs/production-readiness/foundation/initialization-review.json
+scripts/ci/validate-celar-ai-enterprise-source-boundary.sh
 scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
 scripts/release-test/validate-protected-test-controller-branches.sh
 scripts/release-test/verify-flowhive-sequential-checkpoints.sql
@@ -21,6 +24,7 @@ src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
 src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentPreparation.cs
 src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
 src/backend/ProjectTime.Api/Properties/AssemblyInfo.cs
+src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
 src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
 src/frontend/project-time-web/src/ProjectForgeCenter.jsx
 src/frontend/project-time-web/src/ai/AiPhaseProgress.jsx
@@ -33,3 +37,5 @@ tests/flowhive-psa-admission.test.mjs
 tests/flowhive-psa-sequential-scope.py
 tests/flowhive-team-calendar-browser-bundle.mjs
 tests/flowhive-team-calendar-browser.py
+tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-shared-project-document-planning.mjs

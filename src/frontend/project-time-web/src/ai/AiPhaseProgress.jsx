@@ -8,7 +8,7 @@ export default function AiPhaseProgress({ phases, terminal = false, completedAt 
   const [clock, setClock] = useState(Date.now());
   const rows = planningPhases.map((name, index) => phases?.find(p => p.name === name)
     || { name, number: index + 1, status: 'pending' });
-  const running = !terminal && rows.some(p => p.status === 'processing');
+  const running = !terminal && rows.some(p => ['processing', 'retrying'].includes(p.status));
   useEffect(() => {
     setClock(Date.now());
     if (!running) return undefined;
@@ -19,7 +19,8 @@ export default function AiPhaseProgress({ phases, terminal = false, completedAt 
   const active = rows.find(p => ['processing', 'retrying', 'needs_attention'].includes(p.status));
   return <section className="ai-phase-progress" aria-label="Five-stage WBS generation">
     <p role="status">{terminal ? `${finished} of 5 stages completed` : active
-      ? `Stage ${active.number} of 5: ${active.name}` : 'Five stages queued after document preparation'}</p>
+      ? `Stage ${active.number} of 5: ${active.name}` : finished === 5
+        ? 'All five stages generated. Checking the WBS and schedule.' : 'Five stages queued after document preparation'}</p>
     <ol>{rows.map(row => {
       const status = terminal && row.status === 'processing' ? 'stopped' : row.status;
       const label = { retrying: 'Waiting for provider retry', pending: 'Not started', processing: 'Processing', completed: 'Complete', needs_attention: 'Needs attention', stopped: 'Stopped' }[status] || status;

@@ -160,7 +160,7 @@ public sealed partial class PulseAiPrivateRagService
                         + FlowHiveSequentialExecution.PhasePurpose(phase)
                         + "\nCreate distinct actionable WBS tasks for this phase. Cite the supplied citation IDs; never assume citation 1. Include positive effort hours and business-day duration estimates, roles, dependencies, steps, inputs, outputs, acceptance and validation. Estimates are proposals for PM review. Do not invent customer versions, quantities or requirements. Do not create milestones automatically."
                         + "\nEarlier validated WBS references and deliverables (proposed planning data): " + prior,
-                    UserInstruction = $"Stage {index + 1} of 5: {phase}. Using the same project SOW/GSD scope, {FlowHiveSequentialExecution.PhasePurpose(phase)} Return only {phase} tasks using WBS {index + 1}.1 onward. {feedback}"
+                    UserInstruction = request.UserInstruction + "\nFor this request, generate ONLY the following stage.\n" + $"Stage {index + 1} of 5: {phase}. Using the same project SOW/GSD scope, {FlowHiveSequentialExecution.PhasePurpose(phase)} Return only {phase} tasks using WBS {index + 1}.1 onward. {feedback}"
                 };
                 try
                 {
@@ -192,7 +192,7 @@ public sealed partial class PulseAiPrivateRagService
             }
             if (state.Status != "completed")
             {
-                state = state with { Status = "retrying", CompletedAt = DateTimeOffset.UtcNow,
+                state = state with { Status = "retrying", CompletedAt = null,
                     DiagnosticCode = string.IsNullOrEmpty(state.DiagnosticCode) ? "flowhive_phase_attempts_exhausted" : state.DiagnosticCode };
                 await SavePhaseAsync(state, token);
                 return new("private_model_failed", last?.Provider ?? "celar_ai", last?.Model ?? "", "",

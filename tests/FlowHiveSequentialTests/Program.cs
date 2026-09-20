@@ -132,6 +132,7 @@ var completed = await PulseAiPrivateRagService.GenerateFlowHiveSequentialAsync(r
     var current = JsonSerializer.Serialize(r.Sources); snapshot ??= current;
     Check(current==snapshot, "same pinned SOW/GSD for " + phase);
     Check(r.SystemInstruction.Contains("Service Overview or Scope") && r.UserInstruction.Contains(FlowHiveSequentialExecution.PhasePurpose(phase)), "phase scope and purpose " + phase);
+    Check(r.UserInstruction.Contains(request.UserInstruction), "PM requested outcome preserved " + phase);
     if(index>0) Check(r.SystemInstruction.Contains($"{index}.2"), "prior outputs available " + phase);
     calls.Add(phase); return Task.FromResult(Result(Payload(phase)));
 }, default);
@@ -139,6 +140,13 @@ Check(completed.Succeeded && calls.Count==5, "five phases assemble successfully"
 var plan=JsonSerializer.Deserialize<PulseAiPrivateFlowHivePlan>(completed.Content)!;
 Check(plan.Tasks.Count==10 && plan.Tasks.All(t=>t.EstimatedHours>0 && t.EstimatedDurationDays>0), "complete executable WBS retains positive estimates");
 Check(plan.Tasks.Count(t=>t.CitationIds.Contains(2))==5, "GSD citations preserved through shared detail validation");
+var query=new PulseAiPrivateRetrievalQuery(Guid.NewGuid(),Guid.NewGuid(),CelarAiCapabilityCatalog.ProjectFlowHivePlan,"planning","CUCM upgrade",project,null,null,"fixture","fixture",false,true,[],20,40,1m,0m,0m,null,[],"fixture");
+var outerParser=typeof(PulseAiPrivateRagService).GetMethod("ParseFlowHive",BindingFlags.NonPublic|BindingFlags.Static)!;
+var answer=(PulseAiPrivateRagAnswer)outerParser.Invoke(null,[Guid.NewGuid(),query,execution.State.Evidence,completed,
+    PulseAiPrivateRagOptions.FromEnvironment() with { MinimumEvidenceScore=0m,MinimumConfidence=0m },true,null,true])!;
+Check(answer.Status=="completed" && answer.FlowHivePlan!.Tasks.Count(t=>t.CitationIds.Contains(2))==5
+    && answer.Citations.Any(c=>c.DocumentId==gsd.DocumentId),"production RAG parser preserves phase detail and GSD citation identities");
+
 Check(plan.Tasks.Single(t=>t.Wbs=="3.1").Predecessors.Contains("2.2"), "cross-phase dependencies preserved");
 Check(execution.State.Phases.All(p=>p.CompletedAt>=p.StartedAt), "all phase timers finish");
 var serialized=JsonSerializer.Serialize(execution.State);

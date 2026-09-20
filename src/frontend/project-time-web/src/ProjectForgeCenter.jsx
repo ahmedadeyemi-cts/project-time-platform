@@ -617,7 +617,7 @@ export default function ProjectForgeCenter() {
         if (result?.progress) {
           planningRunId = result.progress.runId || planningRunId;
           setAiOperation(current => ({ ...current, phases: result.progress.phases,
-            runId: planningRunId, completedAt: result.progress.completedAt || null }));
+            runId: planningRunId, startedAt: result.progress.createdAt || current.startedAt, completedAt: result.progress.completedAt || null }));
         }
         const status = normalize(result?.status);
         if (result?.progress?.terminal && !['completed', 'completed_with_schedule_overrun'].includes(result.progress.status))
