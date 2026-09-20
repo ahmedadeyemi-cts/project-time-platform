@@ -473,6 +473,7 @@ public static class CelarAiCapabilityRoutingModule
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: false, cancellationToken);
         if (authorization is not null) return authorization;
         var routes = await store.LoadRoutesAsync(cancellationToken);
+        var privateProfile = await store.LoadPrivateModelProfileAsync(cancellationToken);
         var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         return Results.Ok(new
         {
@@ -482,6 +483,7 @@ public static class CelarAiCapabilityRoutingModule
             defaultOrder = CelarAiCapabilityTargets.DefaultOrder,
             availableTargets = new object[]
             {
+                new { code = CelarAiCapabilityTargets.DeepSeek, displayName = "DeepSeek v4", kind = "private_inference", publicProvider = false },
                 new { code = CelarAiCapabilityTargets.CelarAi, displayName = "Celar AI", kind = "private_orchestrator", publicProvider = false },
                 new { code = CelarAiCapabilityTargets.Claude, displayName = "Claude", kind = "sanitized_external", publicProvider = true },
                 new { code = CelarAiCapabilityTargets.OpenAi, displayName = "OpenAI", kind = "sanitized_external", publicProvider = true },
@@ -489,7 +491,7 @@ public static class CelarAiCapabilityRoutingModule
                 new { code = CelarAiCapabilityTargets.Copilot, displayName = "Microsoft Copilot Studio", kind = "sanitized_external", publicProvider = true },
                 new { code = CelarAiCapabilityTargets.Local, displayName = "Governed local template", kind = "deterministic_fallback", publicProvider = false }
             },
-            routes = routes.Select(route => route.ToPublicResponse()).ToArray(),
+            routes = routes.Select(route => route.ToPublicResponse(privateProfile)).ToArray(),
             controls = new
             {
                 localFallbackRequired = true,
@@ -524,21 +526,27 @@ public static class CelarAiCapabilityRoutingModule
         var actor = ActualSessionUserId(context)!.Value;
         try
         {
+            var privateProfile = await store.LoadPrivateModelProfileAsync(cancellationToken);
             var route = await store.SaveRouteAsync(
                 featureCode,
                 request.Targets ?? [],
                 request.ExpectedRevision,
                 actor,
-                cancellationToken);
+                cancellationToken,
+                request.SanitizedExternalGenerationApproved);
             return Results.Ok(new
             {
                 module = "064",
                 status = "celar_ai_capability_route_saved",
-                route = route.ToPublicResponse(),
-                message = $"{route.DisplayName} now uses {string.Join(" → ", route.Targets.Select(DisplayTarget))}.",
+                route = route.ToPublicResponse(privateProfile),
+                message = $"Saved {route.DisplayName} preference: {string.Join(" → ", route.Targets.Select(DisplayTarget))}. Effective routing and policy restrictions are shown below.",
                 secretValuesReturned = false,
                 stateChanged = true
             });
+        }
+        catch (CelarAiRouteSchemaUnavailableException exception)
+        {
+            return Results.Json(new { status = "module064_route_migration_required", message = exception.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         catch (CelarAiConfigurationConflictException exception)
         {
@@ -570,6 +578,7 @@ public static class CelarAiCapabilityRoutingModule
         if (ReleaseMutationBlocked() is { } blocked) return blocked;
         try
         {
+            var privateProfile = await store.LoadPrivateModelProfileAsync(cancellationToken);
             var route = await store.ResetRouteAsync(
                 featureCode,
                 request.ExpectedRevision,
@@ -579,10 +588,14 @@ public static class CelarAiCapabilityRoutingModule
             {
                 module = "064",
                 status = "celar_ai_capability_route_reset",
-                route = route.ToPublicResponse(),
-                message = $"{route.DisplayName} was reset to Celar AI → Claude → OpenAI → Governed local template.",
+                route = route.ToPublicResponse(privateProfile),
+                message = $"{route.DisplayName} was reset to {string.Join(" → ", route.Targets.Select(DisplayTarget))}. External SOW generation approval was revoked.",
                 stateChanged = true
             });
+        }
+        catch (CelarAiRouteSchemaUnavailableException exception)
+        {
+            return Results.Json(new { status = "module064_route_migration_required", message = exception.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         catch (CelarAiConfigurationConflictException exception)
         {
@@ -1518,9 +1531,12 @@ public static class CelarAiCapabilityRoutingModule
 
     private static string DisplayTarget(string target) => target switch
     {
+        CelarAiCapabilityTargets.DeepSeek => "DeepSeek v4",
         CelarAiCapabilityTargets.CelarAi => "Celar AI",
         CelarAiCapabilityTargets.Claude => "Claude",
         CelarAiCapabilityTargets.OpenAi => "OpenAI",
+        CelarAiCapabilityTargets.Gemini => "Gemini",
+        CelarAiCapabilityTargets.Copilot => "Microsoft Copilot Studio",
         _ => "Governed local template"
     };
 

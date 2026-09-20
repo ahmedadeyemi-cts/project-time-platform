@@ -6,6 +6,8 @@
   color: var(--text-color, #172033);
 }
 
+.ai-provider-center > * { min-width: 0; }
+
 .ai-provider-center__header,
 .ai-provider-center__section-heading,
 .ai-provider-center__provider-heading,
@@ -241,8 +243,33 @@
 .ai-provider-center__provider-controls { border-top: 1px solid var(--ai064-border); margin-top: .8rem; padding-top: .8rem; }
 .ai-provider-center__enable-control { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
 .ai-provider-center__enable-control strong, .ai-provider-center__enable-control small { display: block; }
+.ai-provider-center__enable-control > div { min-width: 0; }
+.ai-provider-center__enable-control > button { flex-shrink: 0; white-space: nowrap; }
 .ai-provider-center__enable-control small { margin-top: .2rem; color: #475569; }
 .ai-provider-center .ai-provider-center__danger-button { border-color: #b91c1c; background: #fff; color: #b91c1c; }
+
+.ai-provider-center__model-catalog,
+.ai-provider-center__health-explanation {
+  display: grid;
+  gap: .5rem;
+  margin-top: .8rem;
+  padding: .8rem;
+  border: 1px solid var(--ai064-border);
+  border-radius: .55rem;
+  background: color-mix(in srgb, #eff6ff 65%, var(--ai064-surface));
+  font-size: .82rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ai-provider-center__model-catalog p,
+.ai-provider-center__health-explanation p { margin: 0; }
+.ai-provider-center__catalog-heading { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; justify-content: space-between; }
+.ai-provider-center__catalog-heading button { font-size: .8rem; padding: .4rem .65rem; }
+.ai-provider-center__model-catalog a,
+.ai-provider-center__health-explanation a { color: #1559a0; text-underline-offset: .15rem; }
+.ai-provider-center__catalog-error { color: #991b1b; }
+.ai-provider-center__health-explanation { border-color: #e7c57f; background: color-mix(in srgb, #fff8e7 75%, var(--ai064-surface)); }
 
 .ai-provider-center__routes {
   display: grid;
@@ -307,4 +334,7 @@
   .ai-provider-center__routes {
     grid-template-columns: 1fr;
   }
+
+  .ai-provider-center__model-form > div,
+  .ai-provider-center__secret-form > div { flex-wrap: wrap; }
 }

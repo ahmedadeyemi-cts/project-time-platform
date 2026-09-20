@@ -22,7 +22,8 @@ with tempfile.TemporaryDirectory(prefix='flowhive-package-') as directory:
     (release/'database/migrations').symlink_to(ROOT/'database/migrations', target_is_directory=True)
     scripts = release/'scripts/release-test'; scripts.mkdir(parents=True)
     for name in ('reconcile-module-catalog.mjs', 'verify-flowhive-task-notifications.sql',
-                 'verify-flowhive-sequential-checkpoints.sql', 'verify-flowhive-automatic-first-draft.sql'):
+                 'verify-flowhive-sequential-checkpoints.sql', 'verify-flowhive-automatic-first-draft.sql',
+                 'verify-module064-external-generation-approval.sql'):
         (scripts/name).symlink_to(ROOT/'scripts/release-test'/name)
     runner = scripts/'run-project-planning-document-authority-migration-job.sh'
     runner.write_text('#!/bin/bash\nset -euo pipefail\n[[ "$RELIABILITY_MIGRATION_IMAGE" == *"@sha256:"* ]]\n[[ "${FAIL_PRIVATE_JOB:-0}" != 1 ]]\necho PRIVATE_JOB_VERIFIED\n')

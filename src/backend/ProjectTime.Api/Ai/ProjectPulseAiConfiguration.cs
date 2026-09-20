@@ -97,13 +97,49 @@ public sealed class ProjectPulseAiConfiguration
                 : string.Equals(providerCode, ProjectPulseAiProviders.OpenAi, StringComparison.OrdinalIgnoreCase)
                     ? _openAi
                     : throw new ArgumentOutOfRangeException(nameof(providerCode));
-            if (!current.ApprovedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
+            // Persisted Gemini choices have already passed account discovery and
+            // an isolated inference test in Module 064. Preserve them on restart;
+            // the bootstrap default is not a permanent model catalogue.
+            var isGemini = string.Equals(providerCode, ProjectPulseAiProviders.Gemini, StringComparison.OrdinalIgnoreCase);
+            var discoveredGemini = isGemini && GeminiModelPermitted(model);
+            if (isGemini ? !discoveredGemini : !current.ApprovedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
                 throw new ArgumentException("The selected model is not in the provider allowlist.");
-            var updated = current with { Model = model };
+            var updated = current with
+            {
+                Model = model,
+                ApprovedModels = discoveredGemini
+                    ? current.ApprovedModels.Append(model).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                    : current.ApprovedModels
+            };
             if (_optional.ContainsKey(providerCode)) _optional[providerCode] = updated;
             else if (string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase)) _deepSeek = updated;
             else if (string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)) _claude = updated;
             else _openAi = updated;
+        }
+    }
+
+    public static bool GeminiModelPermitted(string model)
+    {
+        if (string.IsNullOrWhiteSpace(model) || model.Length > 150
+            || !System.Text.RegularExpressions.Regex.IsMatch(model, @"\Agemini-[a-z0-9][a-z0-9._-]*\z",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant)) return false;
+        var configuredAllowlist = Environment.GetEnvironmentVariable("PROJECTPULSE_GEMINI_APPROVED_MODELS");
+        return string.IsNullOrWhiteSpace(configuredAllowlist)
+            || configuredAllowlist.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Contains(model, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public bool TryApplyVerifiedModel(ProjectPulseAiProviderConfiguration expected, string model)
+    {
+        lock (_providerLock)
+        {
+            var current = Provider(expected.Code);
+            if (current.ApiKey != expected.ApiKey || current.Secret.Version != expected.Secret.Version
+                || current.Secret.Source != expected.Secret.Source || current.Model != expected.Model
+                || current.Enabled != expected.Enabled || current.Endpoint != expected.Endpoint)
+                return false;
+            ApplyStoredModel(expected.Code, model);
+            return true;
         }
     }
 

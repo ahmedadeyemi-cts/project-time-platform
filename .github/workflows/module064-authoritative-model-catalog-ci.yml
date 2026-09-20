@@ -1,0 +1,94 @@
+name: Module 064 authoritative routing and model catalog
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Ai/**'
+      - 'src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs'
+      - 'src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx'
+      - 'src/frontend/project-time-web/src/ai-provider-configuration-center.css'
+      - 'src/frontend/project-time-web/src/celar-ai-capability-routing-panel.css'
+      - 'database/migrations/123_module064_external_generation_approval.sql'
+      - 'database/rollback/123_module064_external_generation_approval_rollback.sql'
+      - 'tests/Module064*/**'
+      - 'tests/module064-*'
+      - '.github/module064-authoritative-model-catalog-files.txt'
+      - '.github/workflows/module064-authoritative-model-catalog-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: module064-authoritative-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  behavior:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          # Run-scoped credential for this disposable, unaffiliated test database.
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-module064
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Verify exact preparation scope and retained release authority
+        if: github.head_ref == 'fix/module064-authoritative-model-catalog-20260920'
+        run: python3 tests/module064-authoritative-model-catalog-scope.py
+      - name: Verify scope rejects additional or missing source
+        run: python3 tests/module064-authoritative-model-catalog-scope.py --self-test
+      - name: Verify immutable migration packaging and fail-closed private job execution
+        run: python3 tests/module064-migration-rollout.test.py
+      - name: Build actual API and generated consumers
+        run: dotnet build src/backend/ProjectTime.Api --configuration Release
+      - name: Verify catalog, saved model isolation and Gemini structured generation
+        run: |
+          dotnet run --project tests/Module064ModelCatalogTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/Module064ModelSelectionTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/Module064GeminiTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/EnterpriseCompletionTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/DeepSeekProviderTests --configuration Release -p:BuildProjectReferences=false
+      - name: Verify route approval persistence, audit, revision conflicts and migration replay
+        env:
+          MODULE064_TEST_DATABASE_CONNECTION_STRING: Host=127.0.0.1;Port=${{ job.services.postgres.ports[5432] }};Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-module064;Database=postgres
+        run: dotnet run --project tests/Module064RoutePersistenceTests --configuration Release -p:BuildProjectReferences=false
+      - name: Verify routing, sanitized SOW contracts and five-phase generation regressions
+        run: dotnet run --project tests/FlowHiveDetailedPlannerTests --configuration Release -p:BuildProjectReferences=false
+      - name: Install frontend and isolated browser dependencies
+        run: |
+          npm ci --prefix src/frontend/project-time-web --no-audit --no-fund
+          npm install --prefix "$RUNNER_TEMP/module064-browser" playwright@1.57.0 --no-audit --no-fund
+          node "$RUNNER_TEMP/module064-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Verify discovery, model selection, quota explanations and route approval in the browser
+        env:
+          MODULE064_PLAYWRIGHT_PATH: ${{ runner.temp }}/module064-browser/node_modules/playwright/index.mjs
+        run: node tests/module064-provider-models-browser.mjs
+      - name: Verify existing Module 064 contract and build the complete frontend
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm run validate:module064
+          npm run build
+      - name: Restore the existing frontend build transaction
+        if: always()
+        run: node src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs
+      - name: Verify generated builds preserve tracked source
+        run: git diff --exit-code

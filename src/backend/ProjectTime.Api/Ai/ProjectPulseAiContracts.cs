@@ -76,6 +76,7 @@ public sealed record ProjectPulseAiProviderResult(
     ProjectPulseAiRateLimits? RateLimits = null)
 {
     public Module025ProviderDiagnostics? SowDiagnostics { get; init; }
+    public DateTimeOffset? RetryAfterUtc { get; init; }
 
     public bool IsSuccess =>
         string.Equals(Outcome, ProjectPulseAiOutcomes.Success, StringComparison.Ordinal);
@@ -106,7 +107,12 @@ public sealed record ProjectPulseAiProbeResult(
     string Code,
     string Message,
     int? HttpStatusCode,
-    string? RequestId);
+    string? RequestId)
+{
+    public DateTimeOffset? RetryAfterUtc { get; init; }
+    public ProjectPulseAiRateLimits? RateLimits { get; init; }
+    internal string? CredentialFingerprint { get; init; }
+}
 
 public sealed record ProjectPulseAiProviderHealthSnapshot(
     string Provider,
@@ -133,7 +139,12 @@ public sealed record ProjectPulseAiProviderHealthSnapshot(
     string? LastProbeFailureCode,
     long ProbeSuccessCount,
     long ProbeFailureCount,
-    string? LastProbeRequestId);
+    string? LastProbeRequestId)
+{
+    public DateTimeOffset? RetryAfterUtc { get; init; }
+    public string? LastFailureMessage { get; init; }
+    public string? LastProbeFailureMessage { get; init; }
+}
 
 public interface IProjectPulseAiProvider
 {

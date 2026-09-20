@@ -69,8 +69,27 @@ public sealed class ProjectPulseAiHealthRegistry
         {
             var wasEnabled = state.Enabled;
             var wasConfigured = state.Configured;
+            var credentialChanged = !string.Equals(state.SecretFingerprint, configuration.Secret.Fingerprint, StringComparison.Ordinal);
+            state.SecretFingerprint = configuration.Secret.Fingerprint;
             state.Enabled = configuration.Enabled;
             state.Configured = configuration.Configured;
+
+            // A newly rotated key may belong to a different Google project.
+            // Quota cooldowns belong to the old credential, unlike model edits
+            // which can still share the same project-wide limits.
+            if (credentialChanged)
+            {
+                state.CircuitOpenUntil = null;
+                state.RetryAfterUtc = null;
+                state.RateLimits = null;
+                state.ConsecutiveFailures = 0;
+                state.LastFailureCode = null;
+                state.LastProbeFailureCode = null;
+                state.LastProbeAt = null;
+                state.LastProbeRequestId = null;
+                state.Status = "checking";
+                state.ProbeStatus = "checking";
+            }
 
             if (!configuration.Enabled)
             {
@@ -106,6 +125,8 @@ public sealed class ProjectPulseAiHealthRegistry
         lock (state.Sync)
         {
             if (!state.Enabled || !state.Configured) return false;
+            // Manual refresh must not bypass a provider's quota cooldown.
+            if (state.RetryAfterUtc is { } retryAfter && retryAfter > DateTimeOffset.UtcNow) return false;
             if (force) return true;
             if (state.ProbeStatus == "checking") return state.LastProbeAt is null;
             if (state.LastProbeAt is null) return true;
@@ -141,6 +162,20 @@ public sealed class ProjectPulseAiHealthRegistry
         }
     }
 
+    public void DiscardStaleProbe(string provider)
+    {
+        if (!_states.TryGetValue(provider, out var state)) return;
+        lock (state.Sync)
+        {
+            // Preserve a newer result recorded by a model/key save while the
+            // old request was in flight. Otherwise make a fresh check due.
+            if (state.ProbeStatus != "checking") return;
+            state.ProbeStatus = "probe_due";
+            state.LastProbeAt = null;
+            if (state.Status == "checking") state.Status = "probe_due";
+        }
+    }
+
     public void RecordSuccess(
         string provider,
         ProjectPulseAiUsage? usage,
@@ -158,7 +193,18 @@ public sealed class ProjectPulseAiHealthRegistry
             state.LastCheckedAt = now;
             state.LastSuccessAt = now;
             state.LastFailureCode = null;
-            state.CircuitOpenUntil = null;
+            // An older successful request may finish after a newer quota
+            // rejection. Success does not cancel Google's explicit retry time.
+            if (state.RetryAfterUtc is { } retryAfter && retryAfter > now)
+            {
+                state.CircuitOpenUntil = Later(state.CircuitOpenUntil, retryAfter);
+                state.Status = "circuit_open";
+            }
+            else
+            {
+                state.CircuitOpenUntil = null;
+                state.RetryAfterUtc = null;
+            }
             state.ConsecutiveFailures = 0;
             state.SuccessCount++;
             state.InputTokens = Add(state.InputTokens, usage?.InputTokens);
@@ -184,7 +230,21 @@ public sealed class ProjectPulseAiHealthRegistry
         }
     }
 
-    public void RecordFailure(string provider, string code, string? requestId)
+    // A candidate-model check can encounter account-wide quota limits without
+    // implying that the active model failed. Preserve counters/model evidence.
+    public void RecordProviderCooldown(string provider, DateTimeOffset retryAfterUtc)
+    {
+        if (!TryGetRecordableState(provider, out var state) || retryAfterUtc <= DateTimeOffset.UtcNow) return;
+        lock (state.Sync)
+        {
+            state.RetryAfterUtc = Later(state.RetryAfterUtc, retryAfterUtc);
+            state.CircuitOpenUntil = Later(state.CircuitOpenUntil, state.RetryAfterUtc.Value);
+            state.RateLimits = new(null, null, state.RetryAfterUtc.Value.ToString("O"), null);
+            state.Status = "circuit_open";
+        }
+    }
+
+    public void RecordFailure(string provider, string code, string? requestId, DateTimeOffset? retryAfterUtc = null)
     {
         if (!TryGetRecordableState(provider, out var state)) return;
 
@@ -198,11 +258,16 @@ public sealed class ProjectPulseAiHealthRegistry
             state.FailureCount++;
             state.ConsecutiveFailures++;
             state.LastRequestId = requestId;
+            if (retryAfterUtc is { } retryAfter && retryAfter > now)
+            {
+                state.RetryAfterUtc = Later(state.RetryAfterUtc, retryAfter);
+                state.RateLimits = new(null, null, state.RetryAfterUtc.Value.ToString("O"), null);
+            }
 
-            if (state.ConsecutiveFailures >= _configuration.FailureThreshold)
+            if (state.ConsecutiveFailures >= _configuration.FailureThreshold || state.RetryAfterUtc > now)
             {
                 state.Status = "circuit_open";
-                state.CircuitOpenUntil = now.AddSeconds(_configuration.CircuitBreakSeconds);
+                state.CircuitOpenUntil = Later(state.RetryAfterUtc, now.AddSeconds(_configuration.CircuitBreakSeconds));
             }
             else
             {
@@ -233,10 +298,15 @@ public sealed class ProjectPulseAiHealthRegistry
 
         lock (state.Sync)
         {
+            // A probe started before a key rotation must not put the new
+            // credential back into the old project's quota cooldown.
+            if (result.CredentialFingerprint is { } fingerprint
+                && !string.Equals(fingerprint, state.SecretFingerprint, StringComparison.Ordinal)) return;
             var now = DateTimeOffset.UtcNow;
             state.LastProbeAt = now;
             state.LastProbeRequestId = result.RequestId;
             state.LastCheckedAt = now;
+            if (result.RateLimits is not null) state.RateLimits = result.RateLimits;
 
             if (result.Available)
             {
@@ -244,9 +314,18 @@ public sealed class ProjectPulseAiHealthRegistry
                 state.LastProbeSuccessAt = now;
                 state.LastProbeFailureCode = null;
                 state.ProbeSuccessCount++;
-                state.CircuitOpenUntil = null;
+                if (state.RetryAfterUtc is { } retryAfter && retryAfter > now)
+                {
+                    state.CircuitOpenUntil = Later(state.CircuitOpenUntil, retryAfter);
+                    state.Status = "circuit_open";
+                }
+                else
+                {
+                    state.CircuitOpenUntil = null;
+                    state.RetryAfterUtc = null;
+                    state.Status = "available";
+                }
                 state.ConsecutiveFailures = 0;
-                state.Status = "available";
                 if (state.LastOutcome == "none") state.LastOutcome = "health_probe_success";
                 return;
             }
@@ -267,7 +346,9 @@ public sealed class ProjectPulseAiHealthRegistry
             state.ProbeFailureCount++;
             // A failed readiness probe is already evidence of unavailability;
             // do not spend the next user's request rediscovering the outage.
-            state.CircuitOpenUntil = now.AddSeconds(_configuration.CircuitBreakSeconds);
+            if (result.RetryAfterUtc is { } probeRetryAfter && probeRetryAfter > now)
+                state.RetryAfterUtc = Later(state.RetryAfterUtc, probeRetryAfter);
+            state.CircuitOpenUntil = Later(state.RetryAfterUtc, now.AddSeconds(_configuration.CircuitBreakSeconds));
             state.Status = "circuit_open";
         }
     }
@@ -326,12 +407,20 @@ public sealed class ProjectPulseAiHealthRegistry
                 state.LastProbeFailureCode,
                 state.ProbeSuccessCount,
                 state.ProbeFailureCount,
-                state.LastProbeRequestId);
+                state.LastProbeRequestId)
+            {
+                RetryAfterUtc = state.RetryAfterUtc,
+                LastFailureMessage = ProjectPulseGeminiErrors.Message(state.LastFailureCode),
+                LastProbeFailureMessage = ProjectPulseGeminiErrors.Message(state.LastProbeFailureCode)
+            };
         }
     }
 
     private static long? Add(long? current, long? increment) =>
         increment is null ? current : (current ?? 0) + increment.Value;
+
+    private static DateTimeOffset Later(DateTimeOffset? left, DateTimeOffset right) =>
+        left is { } current && current > right ? current : right;
 
     private bool TryGetRecordableState(string provider, out ProviderState state)
     {
@@ -369,6 +458,7 @@ public sealed class ProjectPulseAiHealthRegistry
         public DateTimeOffset? LastFailureAt { get; set; }
         public string? LastFailureCode { get; set; }
         public DateTimeOffset? CircuitOpenUntil { get; set; }
+        public DateTimeOffset? RetryAfterUtc { get; set; }
         public int ConsecutiveFailures { get; set; }
         public long SuccessCount { get; set; }
         public long FailureCount { get; set; }
@@ -377,6 +467,7 @@ public sealed class ProjectPulseAiHealthRegistry
         public long? OutputTokens { get; set; }
         public string? LastRequestId { get; set; }
         public ProjectPulseAiRateLimits? RateLimits { get; set; }
+        public string? SecretFingerprint { get; set; }
         public required string ProbeStatus { get; set; }
         public DateTimeOffset? LastProbeAt { get; set; }
         public DateTimeOffset? LastProbeSuccessAt { get; set; }
@@ -391,6 +482,7 @@ public sealed class ProjectPulseAiHealthRegistry
             Provider = configuration.Code,
             Enabled = configuration.Enabled,
             Configured = configuration.Configured,
+            SecretFingerprint = configuration.Secret.Fingerprint,
             Status = !configuration.Enabled
                 ? "disabled"
                 : configuration.Configured

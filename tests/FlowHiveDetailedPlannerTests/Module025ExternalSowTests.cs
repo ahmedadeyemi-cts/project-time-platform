@@ -283,8 +283,9 @@ internal static class Module025ExternalSowTests
                 true, true, false, true, false, [evidence.CustomerName], "025", "test",
                 StructuredSowPhase: true, BeforeStructuredSowAttempt: phase.BeforeAttemptAsync)
                 { ExternalSow = adapter, ObserveStructuredSowAttempt = phase.ObserveProviderAsync };
-            var result = await router.GenerateAsync(request with { UserPrompt = evidence.ServiceOverview }, execution,
-                () => throw new InvalidOperationException("Local template cannot complete a SOW"));
+            var result = await router.GenerateForRouteAsync(request with { UserPrompt = evidence.ServiceOverview }, execution,
+                Module064RouteOrderTests.Route(true),
+                () => throw new InvalidOperationException("Local template cannot complete a SOW"), false, null);
             Check(result.Provider == "openai" && result.Outcome == "success" && first.Calls == 1 && second.Calls == 1,
                 "external_sow_real_router_falls_back_after_contract_failure");
             Check(first.LastRequest!.UserPrompt == request.UserPrompt && second.LastRequest!.UserPrompt == request.UserPrompt,
@@ -302,6 +303,7 @@ internal static class Module025ExternalSowTests
                 "external_sow_router_and_journal_projection_preserve_failure_metadata");
             Check(!JsonSerializer.Serialize(events).Contains("Zyxperson"), "external_sow_progress_never_retains_rejected_response");
             await Module025ProviderFallbackTests.RunAsync(fixture, evidence, sanitizer);
+            await Module064RouteOrderTests.RunAsync(fixture, evidence, sanitizer);
             Console.WriteLine("MODULE025_EXTERNAL_SOW_TESTS=PASS");
         }
         finally

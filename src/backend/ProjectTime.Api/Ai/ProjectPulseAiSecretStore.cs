@@ -111,6 +111,7 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
         await connection.OpenAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await LockProviderMutationAsync(connection, transaction, providerCode, cancellationToken);
         const string upsert = """
             INSERT INTO ai_provider_secrets (provider_code, ciphertext, nonce, tag, encryption_key_id, version, rotated_at, rotated_by)
             VALUES (@provider, @ciphertext, @nonce, @tag, @key_id, @version, @rotated_at, @actor)
@@ -192,6 +193,7 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
         await connection.OpenAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await LockProviderMutationAsync(connection, transaction, providerCode, cancellationToken);
         const string upsert = """
             INSERT INTO ai_provider_settings (provider_code, model, updated_at, updated_by)
             VALUES (@provider, @model, CURRENT_TIMESTAMP, @actor)
@@ -216,6 +218,81 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
         await transaction.CommitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Commits a tested model only while the database still contains the exact
+    /// credential and settings that were tested. The provider lock also covers
+    /// first inserts, so another replica cannot rotate a key between validation
+    /// and the model/audit write. Inference runs before this short transaction.
+    /// </summary>
+    public async Task<bool> TrySaveVerifiedModelAsync(
+        string providerCode,
+        string model,
+        ProjectPulseAiProviderConfiguration expected,
+        Guid actorUserId,
+        CancellationToken cancellationToken)
+    {
+        ProjectPulseAiReleaseRuntimePolicy.RejectReleaseConfigurationMutation("Public-provider model mutation");
+        if (!Available) throw new InvalidOperationException(UnavailableReason);
+        // An environment-only credential has no shared database version to
+        // compare across replicas. Save it through Module 064 before selection.
+        if (expected.Code != providerCode || expected.Secret.Source != "encrypted_database"
+            || string.IsNullOrEmpty(expected.Secret.Version) || !expected.Configured)
+            return false;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await EnsureSchemaAsync(connection, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await LockProviderMutationAsync(connection, transaction, providerCode, cancellationToken);
+        const string secretSql = """
+            SELECT ciphertext, nonce, tag, encryption_key_id, version
+            FROM ai_provider_secrets WHERE provider_code = @provider FOR UPDATE;
+            """;
+        await using (var command = new NpgsqlCommand(secretSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("provider", providerCode);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken) || reader.GetString(4) != expected.Secret.Version)
+                return false;
+            // Versions historically use millisecond timestamps. Compare the
+            // full decrypted credential too, even when two rotations collide.
+            var actualKey = Decrypt(providerCode, reader.GetString(3), (byte[])reader[0], (byte[])reader[1], (byte[])reader[2]);
+            if (!string.Equals(actualKey, expected.ApiKey, StringComparison.Ordinal)) return false;
+        }
+        const string settingsSql = "SELECT model, enabled FROM ai_provider_settings WHERE provider_code = @provider FOR UPDATE;";
+        await using (var command = new NpgsqlCommand(settingsSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("provider", providerCode);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken)
+                && (reader.GetString(0) != expected.Model || reader.GetBoolean(1) != expected.Enabled))
+                return false;
+        }
+        const string upsert = """
+            INSERT INTO ai_provider_settings (provider_code, model, enabled, updated_at, updated_by)
+            VALUES (@provider, @model, @enabled, CURRENT_TIMESTAMP, @actor)
+            ON CONFLICT (provider_code) DO UPDATE SET model = EXCLUDED.model,
+                updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by;
+            """;
+        await using (var command = new NpgsqlCommand(upsert, connection, transaction))
+        {
+            command.Parameters.AddWithValue("provider", providerCode);
+            command.Parameters.AddWithValue("model", model);
+            command.Parameters.AddWithValue("enabled", expected.Enabled);
+            command.Parameters.AddWithValue("actor", actorUserId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        const string audit = "INSERT INTO ai_provider_settings_audit (provider_code, action, model, actor_user_id) VALUES (@provider, 'model_changed', @model, @actor);";
+        await using (var command = new NpgsqlCommand(audit, connection, transaction))
+        {
+            command.Parameters.AddWithValue("provider", providerCode);
+            command.Parameters.AddWithValue("model", model);
+            command.Parameters.AddWithValue("actor", actorUserId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
     public async Task SaveEnabledAsync(
         string providerCode,
         bool enabled,
@@ -230,6 +307,7 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
         await connection.OpenAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await LockProviderMutationAsync(connection, transaction, providerCode, cancellationToken);
         const string upsert = """
             INSERT INTO ai_provider_settings (provider_code, model, enabled, updated_at, updated_by)
             VALUES (@provider, @model, @enabled, CURRENT_TIMESTAMP, @actor)
@@ -254,6 +332,17 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static async Task LockProviderMutationAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, string providerCode, CancellationToken cancellationToken)
+    {
+        // All Module 064 credential/model/enabled writers use the same lock.
+        // Transaction scope releases it on success, conflict, failure or cancel.
+        const string sql = "SELECT pg_advisory_xact_lock(hashtextextended('module064_provider:' || @provider, 0));";
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("provider", providerCode.ToLowerInvariant());
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task EnsureSchemaAsync(
