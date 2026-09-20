@@ -298,10 +298,10 @@ function workflowSteps(selectedProject, lifecycle, closeoutForm) {
     {
       number: 2,
       title: 'Resolve every server blocker',
-      detail: blockers.length
+      detail: !selectedProject || !lifecycle ? 'Select a project and wait for server verification.' : blockers.length
         ? `${blockers.length} item(s) still require action before the project can close.`
         : 'The server currently reports no closeout blockers.',
-      state: blockers.length ? 'active' : 'complete'
+      state: !selectedProject || !lifecycle ? 'pending' : blockers.length ? 'active' : 'complete'
     },
     {
       number: 3,
@@ -781,7 +781,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
               <h2 id="module040-blockers-title">Server-validated blockers</h2>
               <p>These checks come from the selected project lifecycle, not from browser estimates.</p>
             </div>
-            <StatusPill value={lifecycleState.error ? 'unavailable' : blockers.length ? 'blocked' : 'ready'} />
+            <StatusPill value={lifecycleState.error ? 'unavailable' : !selectedProject || !lifecycle || lifecycleState.loading ? 'pending' : blockers.length ? 'blocked' : 'ready'} />
           </div>
 
           {lifecycleState.loading ? <div className="project-closeout-loading">Verifying tasks, time, billing, invoices, and prior closeout state…</div> : null}
@@ -793,7 +793,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
             </div>
           ) : null}
 
-          {!lifecycleState.loading && !lifecycleState.error && blockers.length === 0 ? (
+          {selectedProject && lifecycle && !lifecycleState.loading && !lifecycleState.error && blockers.length === 0 ? (
             <div className="project-closeout-clear-state">
               <span>✓</span>
               <div><strong>No server blockers remain</strong><small>Complete the confirmations and save the governed closeout decision.</small></div>

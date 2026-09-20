@@ -1,6 +1,6 @@
 # FlowHive enterprise PSA revamp
 
-Status: draft implementation and release contract, 2026-09-19.
+Status: draft implementation and release contract, updated 2026-09-20.
 Owner request: Ahmed Adeyemi. Module 066. Target: Protected UAT after review.
 
 ## Product outcome
@@ -50,7 +50,7 @@ Implemented in PR #1114:
   source eligibility are rechecked. Drafts cannot publish notifications.
 - Project notification history and PM/engineer delivery overview expose overdue,
   due-soon, blocked, unassigned and critical-path work without inventing capacity.
-- Migration 112 registers policies at test_only, preserves existing settings, and
+- Migration 115 registers policies at test_only, preserves existing settings, and
   records restart-safe source state. Rollback disables policies and preserves audit.
 
 The [PSA benchmark](flowhive-psa-benchmark.md) maps ten reference products to
@@ -184,14 +184,57 @@ unknown calendars, week/month navigation, refresh and project-switch races.
 Protected UAT must additionally verify SQL against the real migration set, project
 scope for PM/engineer/AE/SA/admin/View-As, private-event redaction, calendar permissions,
 20+ mailboxes and partial Graph failures. No external messages are sent by this
-PR. The Module 065 worker now scans approved WBS tasks, but migration 112 and
-controlled live-provider acceptance remain required. Teams transport, meeting
+PR. The Module 065 worker now scans approved WBS tasks, but migration 115 and
+controlled live-provider acceptance remain required. Teams tenant acceptance, meeting
 booking and full capacity forecasting remain release blockers above.
 
 Rollout must preserve existing project IDs, task IDs, time entries and baseline
 history. No destructive test-data cleanup or production deployment is part of this PR.
 
-## Task event contract for the concurrent Module 065 Teams implementation
+### Notification deployment handoff
+
+Merging or deploying the application alone does not activate task notifications.
+The existing protected-test migration image/apply script does not package or apply
+migration 115. The initialization inventory deliberately marks it `review_required`.
+The release owner must include 115 in the next reviewed migration payload and its
+verification gate through the existing release process; this PR does not expand an
+older release approval or bypass its exact migration allowlist.
+The pre-release FlowHive migration was renumbered from 112 to 115 after PR #1116
+merged migrations 112–114. All FlowHive runtime checks, rollback, fixtures and
+review inventory use 115; the earlier FlowHive migration was not deployed here.
+
+Before enabling notifications in Protected UAT:
+
+1. Confirm the Module 065 orchestration schema (migration 064), FlowHive reminder
+   preferences (103), and reviewed WBS version/baseline schema already exist. Include
+   `115_module_066_task_notifications.sql` with its reviewed checksum in the governed
+   release payload, and verify its schema migration entry, notification state table
+   and both `FLOWHIVE_TASK_ASSIGNED` / `FLOWHIVE_TASK_DUE` policies after applying it.
+2. Keep the project and Module 065 delivery boundaries at `test_only`. Verify the
+   workspace reports dispatcher readiness and the worker reports the
+   `flowhive_approved_wbs` source healthy. Readiness alone is not provider delivery.
+3. On an approved fixture project, publish a reviewed baseline with one assigned
+   task. Verify one assignment event; a repeated scan must not duplicate it. Check
+   three-day, due-day and overdue cases, completion/reassignment suppression after
+   publication, quiet hours, and safe retry diagnostics in notification history.
+   The existing isolated CI fixture exercises these without contacting a provider.
+4. Validate actual email and the separate Teams transport only through Module 065's
+   governed test controls and approved destinations. Record channel-specific results
+   before claiming either delivery channel is available. Calendar tenant consent and
+   project access require their own acceptance; notification readiness does not prove them.
+5. If rollback is required, use
+   `115_module_066_task_notifications_rollback.sql` to disable both policies while
+   retaining source state and delivery history. Reapplying 115 intentionally leaves
+   those policies disabled; reactivation is an explicit Module 065 administration step.
+
+## Task event contract for the Module 065 Teams implementation
+
+PR #1116 is incorporated from main. Its Module 065 personal Teams activity adapter
+and separate delivery records remain intact. The shared dispatcher invokes that
+adapter after successful email delivery, subject to its configured app, tenant and
+delivery boundary. It currently sends a generic dashboard link; independent channel
+retry and task-specific cards remain acceptance gaps. This integration is present
+in code but has not been validated against a live tenant by this PR.
 
 Source module `066`, contract `flowhive-task-events-v1`, policies
 `FLOWHIVE_TASK_ASSIGNED` / `FLOWHIVE_TASK_DUE`. Recipients are active canonical
@@ -210,6 +253,11 @@ Operational semantics: the existing worker normally scans every five minutes;
 quiet hours defer detection/delivery. Initial enablement observes current approved
 assignments (there is no historical message replay). Unchanged baselines retain
 transition keys. New/reassigned owners and changed due dates receive new keys.
+While project notifications are enabled, opting out of assigned-team due reminders
+does not suppress assignment notices. Explicit project disablement, locked delivery,
+quiet hours and Module 065 policy still apply. An invalid project source produces a
+retryable `FLOWHIVE_TASK_SOURCE_UNAVAILABLE` diagnostic before provider resolution,
+so other claimed events can continue; cancellation still stops the worker promptly.
 Old lead-day events become stale when their local-date window passes; overdue is
 once per due-date/recipient transition. The latest non-archived reviewed baseline
 is the notification authority even while a newer draft is being edited. Progress

@@ -300,8 +300,9 @@ function friendlyErrorItem(value, context = {}) {
 
 function isTechnicalErrorText(text) {
   const value = cleanTechnicalDetail(text);
-  return RAW_HTTP_ERROR_PATTERN.test(value)
-    || RAW_STATUS_ERROR_PATTERN.test(value)
+  const status = parseStatusFromText(value);
+  const failedStatus = status != null && status >= 400 && status <= 599;
+  return (failedStatus && (RAW_HTTP_ERROR_PATTERN.test(value) || RAW_STATUS_ERROR_PATTERN.test(value)))
     || RAW_API_FAILURE_PATTERN.test(value)
     || (/\/api\//i.test(value) && /\b(?:401|403|404|409|422|429|5\d\d)\b/.test(value))
     || RAW_PERMISSION_PATTERN.test(value);

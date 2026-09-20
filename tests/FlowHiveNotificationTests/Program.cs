@@ -12,6 +12,9 @@ var task = new Policy.Task(Guid.NewGuid(), "1.1", "Validate migration prerequisi
 var first = Policy.Evaluate(project,"v1",[task],pm,settings,new Dictionary<Guid,Policy.State>(),now);
 Check(first.Events.Count(e => e.Kind == "assigned") == 1, "assignment only to new owner");
 Check(first.Events.Count(e => e.Kind == "due_in_3_days") == 2, "three-day reminder reaches owner and PM");
+var withoutTeamReminders = Policy.Evaluate(project,"v1",[task],pm,settings with { IncludeTeam=false },new Dictionary<Guid,Policy.State>(),now);
+Check(withoutTeamReminders.Events.Single(e => e.Kind == "assigned").Recipient == owner,"team reminder opt-out preserves assignment notice");
+Check(withoutTeamReminders.Events.Single(e => e.Kind != "assigned").Recipient == pm,"team reminder opt-out still excludes owner from due reminders");
 var repeat = Policy.Evaluate(project,"v2",[task],pm,settings,first.State,now);
 Check(!repeat.Events.Any(e => e.Kind == "assigned"), "unchanged rebaseline does not notify again");
 Check(repeat.Events.All(e => first.Events.Any(f => f.Key == e.Key)), "due keys stable across unchanged rebaseline");
@@ -75,7 +78,7 @@ async System.Threading.Tasks.Task Database()
         CREATE TABLE project_flowhive_plan_reviews(plan_id UUID,version_number INTEGER,decision TEXT);
         """);
     await Sql(Table("database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql","project_flowhive_task_reminder_preferences"));
-    var migration=File.ReadAllText("database/migrations/112_module_066_task_notifications.sql");
+    var migration=File.ReadAllText("database/migrations/115_module_066_task_notifications.sql");
     await Sql(migration); await Sql(migration);
     Check(await ProjectFlowHiveNotificationSource.ReadyAsync(db,default),"migration replay is ready");
     var planId=Guid.NewGuid();
@@ -118,6 +121,17 @@ async System.Threading.Tasks.Task Database()
     var reclaimed=await EnterpriseNotificationRepository.ClaimDueEventsAsync(db,100,default);
     Check(reclaimed.Length==3 && reclaimed.All(e=>e.AttemptCount==2),"crashed processing leases can be reclaimed");
     Check((await EnterpriseNotificationRepository.ClaimDueEventsAsync(db,100,default)).Length==0,"live processing lease cannot be double claimed");
+    var assignmentEvent=events.Single(e=>e.PolicyCode==ProjectFlowHiveNotificationSource.AssignmentPolicy);
+    var ownerDueEvent=events.Single(e=>e.PolicyCode==ProjectFlowHiveNotificationSource.DuePolicy && e.SubjectUserId==owner);
+    await Sql("UPDATE project_flowhive_task_reminder_preferences SET include_assigned_team_members=FALSE;");
+    Check((await ProjectFlowHiveNotificationSource.ValidateAsync(db,assignmentEvent,default)).Current,"assignment remains eligible after team reminders disabled");
+    Check(!(await ProjectFlowHiveNotificationSource.ValidateAsync(db,ownerDueEvent,default)).Current,"queued team reminder suppressed after opt-out");
+    await Sql("UPDATE project_flowhive_task_reminder_preferences SET include_assigned_team_members=TRUE,timezone_name='Invalid/FixtureTimezone';");
+    var failedSource=await EnterpriseNotificationOrchestrationService.ProcessEventAsync(db,assignmentEvent,null,null,"fixture-invalid-source",default);
+    Check(failedSource.Status=="failed" && failedSource.DiagnosticCode=="FLOWHIVE_TASK_SOURCE_UNAVAILABLE","invalid project source returns isolated failure before provider call");
+    Check(await Number("SELECT count(*) FROM enterprise_notification_events WHERE event_status='failed' AND last_error_code='FLOWHIVE_TASK_SOURCE_UNAVAILABLE' AND available_at>NOW() AND last_error_message NOT LIKE '%FixtureTimezone%'")==1,"source failure retains retry backoff and safe diagnostic");
+    await Sql("UPDATE project_flowhive_task_reminder_preferences SET timezone_name='UTC';");
+    Check((await ProjectFlowHiveNotificationSource.ValidateAsync(db,assignmentEvent,default)).Current,"source can recover after settings corrected");
     await Sql($"UPDATE app_users SET is_active=FALSE WHERE user_id='{owner}';");
     var ownerEvent=events.First(e=>e.SubjectUserId==owner);
     Check(!(await ProjectFlowHiveNotificationSource.ValidateAsync(db,ownerEvent,default)).Current,"inactive recipient suppressed before delivery");
@@ -136,7 +150,7 @@ async System.Threading.Tasks.Task Database()
     Check(!(await ProjectFlowHiveNotificationSource.ValidateAsync(db,events[0],default)).Current,"completed before dispatch suppresses");
     var suppressed=await EnterpriseNotificationOrchestrationService.ProcessEventAsync(db,ownerEvent,null,null,"fixture-stale",default);
     Check(suppressed.Status=="suppressed" && suppressed.DiagnosticCode=="FLOWHIVE_TASK_EVENT_STALE","real dispatcher suppresses completed source without provider call");
-    await Sql(File.ReadAllText("database/rollback/112_module_066_task_notifications_rollback.sql"));
+    await Sql(File.ReadAllText("database/rollback/115_module_066_task_notifications_rollback.sql"));
     Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3 && await Number("SELECT count(*) FROM enterprise_notification_policies WHERE enabled")==0,"rollback retains evidence and disables policies");
     await Sql(migration);
     Check(await Number("SELECT count(*) FROM enterprise_notification_policies WHERE enabled")==0,"migration replay cannot reactivate disabled policies");

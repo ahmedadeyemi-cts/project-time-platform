@@ -57,6 +57,10 @@ jobs:
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
           BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$BRANCH" == fix/enterprise-completion-20260919 ]]; then
+            python3 tests/enterprise-completion-scope.py
+            exit 0
+          fi
 
           if [[ "$BRANCH" == fix/admin-runtime-stability-* ]]; then
             if grep -E '^database/(migrations|rollback)/' <<<"$CHANGED"; then

@@ -202,13 +202,16 @@ export default function ContractsCenter() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [schedule, setSchedule] = useState(null);
   const fileRef = useRef(null);
+  const loadSequence = useRef(0);
 
   async function load() {
+    const sequence = ++loadSequence.current;
     setLoading(true);
     setError('');
 
     try {
       const payload = await request('/api/contracts/prepaid/overview');
+      if (sequence !== loadSequence.current) return;
       setOverview(payload);
 
       const nextExpanded = {};
@@ -219,6 +222,7 @@ export default function ContractsCenter() {
 
       if (payload?.permissions?.canManage) {
         const management = await request('/api/contracts/prepaid/options');
+        if (sequence !== loadSequence.current) return;
         setOptions(management);
         setSchedule(management.schedule || null);
       } else {
@@ -226,14 +230,26 @@ export default function ContractsCenter() {
         setSchedule(null);
       }
     } catch (loadError) {
-      setError(loadError.message);
+      if (sequence === loadSequence.current) setError(loadError.message);
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }
 
   useEffect(() => {
+    const invalidate = () => {
+      setOverview(null); setOptions(null); setDetails(null); setSchedule(null);
+      setCreateOpen(false); setUploadOpen(false); setScheduleOpen(false);
+      void load();
+    };
+    window.addEventListener('projectpulse:identity-profile-changed', invalidate);
+    window.addEventListener('projectpulse:view-as-changed', invalidate);
     void load();
+    return () => {
+      loadSequence.current++;
+      window.removeEventListener('projectpulse:identity-profile-changed', invalidate);
+      window.removeEventListener('projectpulse:view-as-changed', invalidate);
+    };
   }, []);
 
   const permissions = overview?.permissions || {};

@@ -238,6 +238,13 @@ function decorateLegacyPageHeader(main, route) {
     candidate = heading?.closest('header, [class*="page-header"], [class*="workspace-header"], [class*="module-header"]') || heading || null;
   }
 
+  // A duplicate title is presentation; the header's actions are functional UI.
+  // Never hide admin buttons, filters, uploads, or navigation with that title.
+  if (candidate?.querySelector('button, input, select, textarea, a[href]')) {
+    candidate.classList.remove('pulse-enterprise-legacy-page-header');
+    delete candidate.dataset.pulseLegacyHeaderRoute;
+    candidate = candidate.querySelector('h1, h2');
+  }
   if (candidate && candidate !== main) {
     candidate.classList.add('pulse-enterprise-legacy-page-header');
     candidate.dataset.pulseLegacyHeaderRoute = route;

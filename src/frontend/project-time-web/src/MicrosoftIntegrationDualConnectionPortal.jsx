@@ -1,3 +1,4 @@
+import MicrosoftTeamsNotificationPanel from './MicrosoftTeamsNotificationPanel.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import './microsoft-integration-portal.css';
 import './microsoft-integration-dual-connections.css';
@@ -698,6 +699,7 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
             <div className="microsoft-integration-fact"><strong>Live delivery</strong><span>{activeMail.recipientBoundary === 'production_governed' && activeMail.providerTarget !== 'locked' ? 'Eligible after readiness validation' : 'Disabled by recipient boundary; readiness testing remains available'}</span></div>
           </article>
 
+          <MicrosoftTeamsNotificationPanel environment={activeTenant.environmentMode} />
           <article className="microsoft-integration-card wide">
             <p className="eyebrow">Compatibility contract</p><h2>Existing integrations remain connected</h2>
             <div className="microsoft-compatibility-grid">

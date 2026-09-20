@@ -1,8 +1,8 @@
 .github/flowhive-psa-workspace-files.txt
 .github/workflows/flowhive-enterprise-psa-ci.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
-database/migrations/112_module_066_task_notifications.sql
-database/rollback/112_module_066_task_notifications_rollback.sql
+database/migrations/115_module_066_task_notifications.sql
+database/rollback/115_module_066_task_notifications_rollback.sql
 docs/architecture/flowhive-enterprise-psa-revamp.md
 docs/architecture/flowhive-psa-benchmark.md
 docs/production-readiness/foundation/initialization-review.json
@@ -28,7 +28,6 @@ tests/FlowHiveNotificationTests/FlowHiveNotificationTests.csproj
 tests/FlowHiveNotificationTests/Program.cs
 tests/flowhive-psa-admission.test.mjs
 tests/flowhive-psa-overview.test.mjs
-tests/flowhive-psa-release-workflow.test.py
 tests/flowhive-psa-workspace-scope.py
 tests/flowhive-team-calendar-browser-bundle.mjs
 tests/flowhive-team-calendar-browser.py

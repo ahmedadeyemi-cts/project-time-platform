@@ -126,7 +126,7 @@ internal static partial class ProjectFlowHivePsaModule
                     {
                         registered = dispatcherReady,
                         mode = dispatcherReady ? "module_065" : "migration_required",
-                        message = "Approved WBS task events use Module 065 policies and delivery boundaries. Apply migration 112 to enable the source."
+                        message = "Approved WBS task events use Module 065 policies and delivery boundaries. Apply migration 115 to enable the source."
                     },
                     transcription = new
                     {
@@ -432,8 +432,8 @@ internal static partial class ProjectFlowHivePsaModule
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
         var dispatcherReady = await ProjectFlowHiveNotificationSource.ReadyAsync(connection, cancellationToken);
         if (request.Enabled && !dispatcherReady)
-            return Results.Conflict(new { status = "migration_112_required", stateChanged = false,
-                message = "Apply migration 112 to register FlowHive task events with Module 065." });
+            return Results.Conflict(new { status = "migration_115_required", stateChanged = false,
+                message = "Apply migration 115 to register FlowHive task events with Module 065." });
         var leadDays = (request.LeadDays ?? [3, 0]).Distinct().OrderByDescending(value => value).ToArray();
         if (leadDays.Length is < 1 or > 8 || leadDays.Any(value => value is < 0 or > 60))
             return Results.BadRequest(new { message = "Choose up to eight lead days between 0 and 60." });

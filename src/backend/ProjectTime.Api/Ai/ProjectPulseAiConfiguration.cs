@@ -11,6 +11,7 @@ public sealed class ProjectPulseAiConfiguration
     private ProjectPulseAiProviderConfiguration _deepSeek;
     private ProjectPulseAiProviderConfiguration _claude;
     private ProjectPulseAiProviderConfiguration _openAi;
+    private readonly Dictionary<string, ProjectPulseAiProviderConfiguration> _optional = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ValidModes =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -34,6 +35,8 @@ public sealed class ProjectPulseAiConfiguration
         _deepSeek = BuildDeepSeek();
         _claude = BuildClaude();
         _openAi = BuildOpenAi();
+        _optional[ProjectPulseAiProviders.Gemini] = BuildOptional(ProjectPulseAiProviders.Gemini, "Gemini", "GEMINI", "gemini-3.8-flash", "https://generativelanguage.googleapis.com/v1beta/openai");
+        _optional[ProjectPulseAiProviders.Copilot] = BuildOptional(ProjectPulseAiProviders.Copilot, "Microsoft Copilot Studio", "COPILOT_STUDIO", "published-agent", "https://directline.botframework.com/v3/directline");
         FeatureRoutes = ProjectPulseAiFeatures.All.ToDictionary(
             feature => feature,
             ResolveFeatureRoute,
@@ -54,6 +57,7 @@ public sealed class ProjectPulseAiConfiguration
     public IReadOnlyDictionary<string, IReadOnlyList<string>> FeatureRoutes { get; }
 
     public ProjectPulseAiProviderConfiguration Provider(string code) =>
+        code is ProjectPulseAiProviders.Gemini or ProjectPulseAiProviders.Copilot ? OptionalProvider(code) :
         string.Equals(code, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase) ? DeepSeek :
         string.Equals(code, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)
             ? Claude
@@ -65,7 +69,7 @@ public sealed class ProjectPulseAiConfiguration
     {
         lock (_providerLock)
         {
-            var current = string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase) ? _deepSeek :
+            var current = _optional.TryGetValue(providerCode, out var optional) ? optional : string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase) ? _deepSeek :
                 string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)
                 ? _claude
                 : string.Equals(providerCode, ProjectPulseAiProviders.OpenAi, StringComparison.OrdinalIgnoreCase)
@@ -76,7 +80,8 @@ public sealed class ProjectPulseAiConfiguration
                 ApiKey = apiKey,
                 Secret = new ProjectPulseAiSecretMetadata(true, "encrypted_database", version, rotatedAt, null, Fingerprint(apiKey))
             };
-            if (string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase)) _deepSeek = updated;
+            if (_optional.ContainsKey(providerCode)) _optional[providerCode] = updated;
+            else if (string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase)) _deepSeek = updated;
             else if (string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)) _claude = updated;
             else _openAi = updated;
         }
@@ -86,7 +91,7 @@ public sealed class ProjectPulseAiConfiguration
     {
         lock (_providerLock)
         {
-            var current = string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase) ? _deepSeek :
+            var current = _optional.TryGetValue(providerCode, out var optional) ? optional : string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase) ? _deepSeek :
                 string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)
                 ? _claude
                 : string.Equals(providerCode, ProjectPulseAiProviders.OpenAi, StringComparison.OrdinalIgnoreCase)
@@ -95,7 +100,8 @@ public sealed class ProjectPulseAiConfiguration
             if (!current.ApprovedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
                 throw new ArgumentException("The selected model is not in the provider allowlist.");
             var updated = current with { Model = model };
-            if (string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase)) _deepSeek = updated;
+            if (_optional.ContainsKey(providerCode)) _optional[providerCode] = updated;
+            else if (string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase)) _deepSeek = updated;
             else if (string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)) _claude = updated;
             else _openAi = updated;
         }
@@ -105,14 +111,15 @@ public sealed class ProjectPulseAiConfiguration
     {
         lock (_providerLock)
         {
-            var current = string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase) ? _deepSeek :
+            var current = _optional.TryGetValue(providerCode, out var optional) ? optional : string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase) ? _deepSeek :
                 string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)
                 ? _claude
                 : string.Equals(providerCode, ProjectPulseAiProviders.OpenAi, StringComparison.OrdinalIgnoreCase)
                     ? _openAi
                     : throw new ArgumentOutOfRangeException(nameof(providerCode));
             var updated = current with { Enabled = enabled };
-            if (string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase)) _deepSeek = updated;
+            if (_optional.ContainsKey(providerCode)) _optional[providerCode] = updated;
+            else if (string.Equals(providerCode, ProjectPulseAiProviders.DeepSeek, StringComparison.OrdinalIgnoreCase)) _deepSeek = updated;
             else if (string.Equals(providerCode, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)) _claude = updated;
             else _openAi = updated;
         }
@@ -153,6 +160,8 @@ public sealed class ProjectPulseAiConfiguration
                 DeepSeek.ToSanitizedResponse(),
                 Claude.ToSanitizedResponse(),
                 OpenAi.ToSanitizedResponse(),
+                Provider(ProjectPulseAiProviders.Gemini).ToSanitizedResponse(),
+                Provider(ProjectPulseAiProviders.Copilot).ToSanitizedResponse(),
                 new
                 {
                     code = ProjectPulseAiProviders.Local,
@@ -183,6 +192,20 @@ public sealed class ProjectPulseAiConfiguration
                 reason = "Administrators can replace provider keys through a write-only encrypted store. Secret values are never returned."
             }
         };
+    }
+
+    private ProjectPulseAiProviderConfiguration OptionalProvider(string code)
+    {
+        lock (_providerLock) return _optional[code];
+    }
+
+    private static ProjectPulseAiProviderConfiguration BuildOptional(string code, string label, string prefix, string defaultModel, string endpoint)
+    {
+        var key = FirstValue($"PROJECTPULSE_{prefix}_API_KEY");
+        var model = Value($"PROJECTPULSE_{prefix}_MODEL", defaultModel);
+        return new(code, label, Boolean($"PROJECTPULSE_AI_{prefix}_ENABLED", false), key, model, endpoint,
+            code == ProjectPulseAiProviders.Gemini ? "chat-completions-v1" : "directline-v3",
+            ApprovedModels($"PROJECTPULSE_{prefix}_APPROVED_MODELS", model, [defaultModel]), null, null, SecretMetadata(prefix, key));
     }
 
     private ProjectPulseAiProviderConfiguration BuildDeepSeek()

@@ -201,7 +201,23 @@ internal static class EnterpriseNotificationOrchestrationService
         string? sourceBoundary = null;
         if (notificationEvent.PolicyCode is ProjectFlowHiveNotificationSource.AssignmentPolicy or ProjectFlowHiveNotificationSource.DuePolicy)
         {
-            var source = await ProjectFlowHiveNotificationSource.ValidateAsync(connection, notificationEvent, cancellationToken);
+            (bool Current, bool Defer, string Boundary) source;
+            try
+            {
+                source = await ProjectFlowHiveNotificationSource.ValidateAsync(connection, notificationEvent, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception)
+            {
+                // A malformed project source must not strand unrelated claimed events.
+                // Preserve retry/backoff and avoid exposing source content in diagnostics.
+                const string message = "The FlowHive task source could not be validated. Delivery will retry through Module 065.";
+                await EnterpriseNotificationRepository.CompleteEventAsync(connection, notificationEvent, "failed",
+                    null, releasedByUserId, "FLOWHIVE_TASK_SOURCE_UNAVAILABLE", message,
+                    new { sourceValidated = false, providerInvoked = false }, correlationId, cancellationToken);
+                return new(notificationEvent.EventId, null, policy.PolicyCode, "failed", "module_065", "locked", 0,
+                    "FLOWHIVE_TASK_SOURCE_UNAVAILABLE", message);
+            }
             sourceBoundary = source.Boundary;
             if (!source.Current)
             {
@@ -304,6 +320,9 @@ internal static class EnterpriseNotificationOrchestrationService
                 correlationId,
                 cancellationToken);
         }
+
+        if (dispatch is not null && deliveryResult.Sent)
+            await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection, dispatch, context, cancellationToken);
 
         var eventStatus = deliveryResult.Status == "failed"
             ? "failed"

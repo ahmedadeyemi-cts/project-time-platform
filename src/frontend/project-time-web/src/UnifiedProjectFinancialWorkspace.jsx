@@ -595,6 +595,16 @@ export default function UnifiedProjectFinancialWorkspace({
       const parameters = new URLSearchParams({ workspace, limit: '250' });
       if (projectManagerUserId) parameters.set('projectManagerUserId', projectManagerUserId);
       const data = await readJson(`/api/project-financials/portfolio?${parameters}`);
+      let page = data;
+      const collected = [...(data.projects || [])];
+      while (page.hasMore) {
+        if (requestId !== requestSequence.current) return;
+        parameters.set('offset', String(collected.length));
+        page = await readJson(`/api/project-financials/portfolio?${parameters}`);
+        if (!page.projects?.length) throw new Error('Project paging stopped before the full portfolio loaded. Refresh to retry.');
+        collected.push(...page.projects);
+      }
+      data.projects = [...new Map(collected.map(project => [project.projectId, project])).values()];
       if (requestId !== requestSequence.current) return;
       setState({ loading: false, data, error: '' });
       setSelectedProjectId((current) => {

@@ -1,0 +1,47 @@
+name: Enterprise completion validation
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/**'
+      - 'src/frontend/project-time-web/src/**'
+      - 'database/migrations/11[234]_*.sql'
+      - 'tests/EnterpriseCompletionTests/**'
+      - 'tests/enterprise-completion-migrations.sh'
+      - 'tests/api-error-status.test.mjs'
+      - '.github/workflows/enterprise-completion-ci.yml'
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: enterprise_completion_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Provider and route behavior
+        run: dotnet run --project tests/EnterpriseCompletionTests --configuration Release
+      - name: Autosave and API error behavior
+        run: node --test tests/api-error-status.test.mjs tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs
+      - name: Migration behavior on disposable PostgreSQL
+        env:
+          ENTERPRISE_COMPLETION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/enterprise_completion_test
+        run: bash tests/enterprise-completion-migrations.sh

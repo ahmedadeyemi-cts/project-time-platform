@@ -27,6 +27,6 @@ VALUES
    'flowhive-task-events-v1','scanner')
 ON CONFLICT(policy_code) DO NOTHING;
 INSERT INTO schema_migrations(migration_id, description, applied_at)
-VALUES ('112_module_066_task_notifications','FlowHive approved-WBS assignment and due-date events through Module 065',NOW())
+VALUES ('115_module_066_task_notifications','FlowHive approved-WBS assignment and due-date events through Module 065',NOW())
 ON CONFLICT(migration_id) DO NOTHING;
 COMMIT;

@@ -104,6 +104,8 @@ public static class ContractsPrepaidModule
             connection,
             actorUserId.Value);
 
+        if (AdminExperienceCommon.IsViewAs(context)) access = access with { CanManage = false };
+
         if (!access.CanView)
         {
             return Forbidden(
@@ -252,6 +254,7 @@ public static class ContractsPrepaidModule
         CreditRequest request,
         HttpContext context)
     {
+        if (AdminExperienceCommon.IsViewAs(context)) return Forbidden("Exit Administrator View-As before changing a contract.");
         var actorUserId = SessionUserId(context);
 
         if (actorUserId is null)
@@ -352,6 +355,7 @@ public static class ContractsPrepaidModule
         NoteRequest request,
         HttpContext context)
     {
+        if (AdminExperienceCommon.IsViewAs(context)) return Forbidden("Exit Administrator View-As before changing a contract.");
         var actorUserId = SessionUserId(context);
 
         if (actorUserId is null)
@@ -758,14 +762,14 @@ public static class ContractsPrepaidModule
         HttpContext context)
     {
         if (context.Items.TryGetValue(
-                "ProjectPulseSessionUserId",
+                "ProjectPulseEffectiveUserId",
                 out var value)
             && value is Guid userId)
         {
             return userId;
         }
 
-        return null;
+        return context.Items.TryGetValue("ProjectPulseSessionUserId", out var actual) && actual is Guid actualId ? actualId : null;
     }
 
     private static IResult SessionRequired()

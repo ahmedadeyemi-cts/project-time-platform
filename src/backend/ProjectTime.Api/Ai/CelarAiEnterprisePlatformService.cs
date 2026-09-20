@@ -201,7 +201,7 @@ public sealed class CelarAiEnterprisePlatformService
 
             if (privateResult is null
                 && routed.Outcome == ProjectPulseAiOutcomes.Success
-                && routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Local
+                && routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot or CelarAiCapabilityTargets.Local
                 && capability is CelarAiCapabilityCatalog.ProjectFlowHivePlan or CelarAiCapabilityCatalog.ProjectForgePlanEstimate)
             {
                 // Provider eligibility must not gate permission-scoped evidence
@@ -249,7 +249,7 @@ public sealed class CelarAiEnterprisePlatformService
             });
 
             CelarAiExternalReasoningResult? external = null;
-            if (routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+            if (routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot
                 && externalCapsuleReady && externalSow?.AcceptedAnswer is null)
             {
                 external = ToExternalAssistance(routed);
@@ -274,10 +274,10 @@ public sealed class CelarAiEnterprisePlatformService
                 {
                     CelarAiCapabilityTargets.DeepSeek => "private_deepseek_rag_and_deterministic_composer",
                     CelarAiCapabilityTargets.CelarAi => "private_celar_rag_and_deterministic_composer",
-                    CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                    CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot
                         when privateResult?.FlowHivePlan is not null || privateResult?.Answer is not null
                         => "private_celar_rag_with_sanitized_generic_module064_assistance",
-                    CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi => "sanitized_generic_module064_assistance",
+                    CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot => "sanitized_generic_module064_assistance",
                     _ when privateResult?.FlowHivePlan is not null || privateResult?.Answer is not null
                         => "private_evidence_composer_after_governed_local_route",
                     _ => "governed_local_template"
@@ -539,7 +539,7 @@ public sealed class CelarAiEnterprisePlatformService
         ProjectPulseAiRouteResult routed)
     {
         var externalAttempted = routed.AttemptedProviders.Any(target =>
-            target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi);
+            target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot);
         var refused = routed.Outcome == ProjectPulseAiOutcomes.Refusal;
         return new CelarAiExternalReasoningResult(
             Status: refused

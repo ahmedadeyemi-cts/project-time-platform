@@ -485,6 +485,8 @@ public static class CelarAiCapabilityRoutingModule
                 new { code = CelarAiCapabilityTargets.CelarAi, displayName = "Celar AI", kind = "private_orchestrator", publicProvider = false },
                 new { code = CelarAiCapabilityTargets.Claude, displayName = "Claude", kind = "sanitized_external", publicProvider = true },
                 new { code = CelarAiCapabilityTargets.OpenAi, displayName = "OpenAI", kind = "sanitized_external", publicProvider = true },
+                new { code = CelarAiCapabilityTargets.Gemini, displayName = "Gemini", kind = "sanitized_external", publicProvider = true },
+                new { code = CelarAiCapabilityTargets.Copilot, displayName = "Microsoft Copilot Studio", kind = "sanitized_external", publicProvider = true },
                 new { code = CelarAiCapabilityTargets.Local, displayName = "Governed local template", kind = "deterministic_fallback", publicProvider = false }
             },
             routes = routes.Select(route => route.ToPublicResponse()).ToArray(),
@@ -690,10 +692,9 @@ public static class CelarAiCapabilityRoutingModule
         var routesReady = requiredRoutes.Length == requiredFeatures.Count
             && requiredRoutes.All(route =>
                 (route.Persisted || route.DeploymentManaged)
-                && route.Targets.Count == CelarAiCapabilityTargets.DefaultOrder.Length
-                && route.Targets.SequenceEqual(
-                    release.IsReleaseScoped ? release.RouteOrder : CelarAiCapabilityTargets.DefaultOrder,
-                    StringComparer.OrdinalIgnoreCase));
+                && (release.IsReleaseScoped
+                    ? route.Targets.SequenceEqual(release.RouteOrder, StringComparer.OrdinalIgnoreCase)
+                    : ValidEditableRoute(route.Targets)));
 
         // A single policy flag cannot silently create a half-enabled public
         // failover path. When either external-fallback control is requested,
@@ -739,7 +740,7 @@ public static class CelarAiCapabilityRoutingModule
         if (!profile.AuthenticationConfigured) blockers.Add("Bearer authentication is not configured for the private Celar AI target.");
         if (!profile.RequirePrivateModelForDocuments) blockers.Add("Private inference is not required for document-grounded answers.");
         if (policy != "private_endpoint_dns_verified") blockers.Add($"The private inference endpoint did not pass HTTPS, allowlist, and private-DNS verification ({policy}).");
-        if (!routesReady) blockers.Add("All eight central AI capability routes must use the exact governed deployment order with governed local template last.");
+        if (!routesReady) blockers.Add("All central AI capability routes must be persisted and valid, with governed local template last. Immutable releases must match the approved release order.");
         if (sanitizedExternalFallbackRequired && !sanitizedExternalFallbackEnabled)
             blockers.Add("Sanitized external fallback requires both PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION and PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED.");
         if (sanitizedExternalFallbackRequired && !providerConfiguration.Claude.Enabled)
@@ -831,6 +832,15 @@ public static class CelarAiCapabilityRoutingModule
                             ?? privateTargetHealth?.LastProbeFailureCode
                             ?? string.Empty
                 },
+                privateTargetUsage = new
+                {
+                    scope = "current_api_process",
+                    successes = privateTargetHealth?.SuccessCount ?? 0,
+                    failures = privateTargetHealth?.FailureCount ?? 0,
+                    refusals = privateTargetHealth?.RefusalCount ?? 0,
+                    inputTokens = privateTargetHealth?.InputTokens,
+                    outputTokens = privateTargetHealth?.OutputTokens
+                },
                 privateDocumentRuntimeReady = runtimeReadiness.Status == "private_document_runtime_ready",
                 allCentralCapabilityRoutesReady = routesReady,
                 requiredTimesheetRoutesPersisted = routesReady,
@@ -916,6 +926,12 @@ public static class CelarAiCapabilityRoutingModule
             generatedAt = DateTimeOffset.UtcNow,
             stateChanged = false
         });
+    }
+
+    private static bool ValidEditableRoute(IReadOnlyList<string> targets)
+    {
+        try { CelarAiCapabilityCatalog.ValidateTargets(targets); return true; }
+        catch (ArgumentException) { return false; }
     }
 
     private static async Task<IResult> SavePrivateModelSettingsAsync(

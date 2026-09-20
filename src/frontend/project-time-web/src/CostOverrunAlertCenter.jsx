@@ -67,6 +67,7 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
   const [filter, setFilter] = useState('action');
   const [actionStatus, setActionStatus] = useState('');
   const [notes, setNotes] = useState({});
+  const [selectedProjectId, setSelectedProjectId] = useState('');
 
   async function load() {
     setState((current) => ({ ...current, loading: true, errors: [] }));
@@ -119,6 +120,8 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
         .some((value) => String(value || '').toLowerCase().includes(query));
     });
   }, [filter, rows, search]);
+
+  const selectedRow = filtered.find(row => row.project.projectId === selectedProjectId) || filtered[0];
 
   const summary = useMemo(() => ({
     over: rows.filter((row) => row.posture.key === 'over_budget').length,
@@ -184,11 +187,15 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
       <section className="cost-alert-panel cost-alert-filter-panel" aria-label="Cost alert filters">
         <label>Search projects<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Customer, project, or Project Manager" /></label>
         <label>Financial posture<select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="action">Needs attention</option><option value="over_budget">Over budget</option><option value="approaching_budget">Approaching budget</option><option value="data_incomplete">Data incomplete</option><option value="within_budget">Within budget</option><option value="all">All visible projects</option></select></label>
+        <label>Project to review<select value={selectedRow?.project.projectId || ''} onChange={event => setSelectedProjectId(event.target.value)} disabled={!filtered.length}>
+          {!filtered.length && <option value="">No matching projects</option>}
+          {filtered.map(row => <option key={row.project.projectId} value={row.project.projectId}>{row.project.customerName} · {row.project.projectName} · {row.posture.label}</option>)}
+        </select></label>
         <span>{filtered.length} of {rows.length} project(s)</span>
       </section>
 
       <div className="cost-alert-card-list">
-        {filtered.map(({ project, posture, budget, forecast, variance, variancePercent, persisted }) => (
+        {(selectedRow ? [selectedRow] : []).map(({ project, posture, budget, forecast, variance, variancePercent, persisted }) => (
           <article className={`cost-alert-card posture-${posture.tone}`} key={project.projectId}>
             <div className="cost-alert-card-header">
               <div><span>{project.customerName || 'Customer not recorded'}</span><strong>{project.projectCode} · {project.projectName}</strong><small>Project Manager: {project.projectManagerName || 'Unassigned'}</small></div>
@@ -197,7 +204,7 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
             <p className="cost-alert-posture-reason">{posture.reason}</p>
             <div className="cost-alert-financial-grid">
               <span>Approved budget<strong>{money(budget)}</strong><small>Labor + expense budget</small></span>
-              <span>Actual / committed cost<strong>{money(project.committedCost)}</strong><small>Labor and uploaded expenses</small></span>
+              <span>Estimated cost to date<strong>{money(project.committedCost)}</strong><small>Rate-based labor estimate and uploaded expenses</small></span>
               <span>Forecast at completion<strong>{money(forecast)}</strong><small>Governed forecast basis</small></span>
               <span>Remaining budget<strong>{money(variance)}</strong><small>{variance != null && variance < 0 ? 'Negative indicates forecast overrun' : 'Budget less forecast'}</small></span>
               <span>Forecast variance<strong>{percent(variancePercent)}</strong><small>Relative to approved budget</small></span>

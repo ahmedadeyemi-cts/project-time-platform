@@ -50,7 +50,8 @@ internal static class ProjectFlowHiveNotificationPolicy
                 user => old?.Assignments.GetValueOrDefault(user) ?? revision);
             states.Add(task.Id, new(due, dueToken, assignments));
             foreach (var user in assignments.Keys)
-                if (settings.IncludeTeam && old?.Assignments.ContainsKey(user) != true)
+                // The team preference controls due reminders, never assignment notices.
+                if (old?.Assignments.ContainsKey(user) != true)
                     Add("assigned", user, assignments[user]);
             var kind = DueKind(task.Due, today, settings);
             if (kind is null) continue;

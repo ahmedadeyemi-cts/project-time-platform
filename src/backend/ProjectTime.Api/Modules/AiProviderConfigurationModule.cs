@@ -59,8 +59,8 @@ public static class AiProviderConfigurationModule
         if (ReleaseConfigurationMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
-        if (providerCode is not (ProjectPulseAiProviders.DeepSeek or ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
-            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be deepseek_v4, claude, or openai." });
+        if (!ProjectPulseAiProviders.Remote.Contains(providerCode, StringComparer.OrdinalIgnoreCase))
+            return Results.BadRequest(new { status = "invalid_provider", message = "Select a registered remote AI provider." });
 
         ReplaceModelRequest? request;
         try
@@ -153,8 +153,8 @@ public static class AiProviderConfigurationModule
         if (ReleaseConfigurationMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
-        if (providerCode is not (ProjectPulseAiProviders.DeepSeek or ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
-            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be deepseek_v4, claude, or openai." });
+        if (!ProjectPulseAiProviders.Remote.Contains(providerCode, StringComparer.OrdinalIgnoreCase))
+            return Results.BadRequest(new { status = "invalid_provider", message = "Select a registered remote AI provider." });
 
         SetEnabledRequest? request;
         try
@@ -232,8 +232,8 @@ public static class AiProviderConfigurationModule
         if (ReleaseConfigurationMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
-        if (providerCode is not (ProjectPulseAiProviders.DeepSeek or ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
-            return Results.BadRequest(new { status = "invalid_provider", message = "Provider must be deepseek_v4, claude, or openai." });
+        if (!ProjectPulseAiProviders.Remote.Contains(providerCode, StringComparer.OrdinalIgnoreCase))
+            return Results.BadRequest(new { status = "invalid_provider", message = "Select a registered remote AI provider." });
         if (!secretStore.Available)
             return Results.Json(
                 new { status = "secure_store_unavailable", message = secretStore.UnavailableReason },
@@ -561,7 +561,7 @@ public static class AiProviderConfigurationModule
         return null;
     }
 
-    private static bool SameOrigin(HttpContext context)
+    internal static bool SameOrigin(HttpContext context)
     {
         var origin = context.Request.Headers.Origin.ToString();
         if (string.IsNullOrWhiteSpace(origin)

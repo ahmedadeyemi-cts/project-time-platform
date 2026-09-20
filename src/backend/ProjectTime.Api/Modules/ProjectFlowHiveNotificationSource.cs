@@ -35,8 +35,8 @@ internal static class ProjectFlowHiveNotificationSource
     {
         const string source = "flowhive_approved_wbs";
         if (!await ReadyAsync(connection, token))
-            return EnterpriseNotificationSourceObservation.Unavailable(source, "066", "MIGRATION_112_REQUIRED",
-                "FlowHive task notification migration 112 is required.");
+            return EnterpriseNotificationSourceObservation.Unavailable(source, "066", "MIGRATION_115_REQUIRED",
+                "FlowHive task notification migration 115 is required.");
         var projects = new List<Guid>();
         await using (var query = new NpgsqlCommand("SELECT DISTINCT project_id FROM project_flowhive_plans WHERE baseline_version_number IS NOT NULL AND plan_status <> 'archived';", connection))
         await using (var reader = await query.ExecuteReaderAsync(token))
@@ -121,13 +121,13 @@ internal static class ProjectFlowHiveNotificationSource
         var payload = item.Payload;
         string Value(string name) => payload.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : "";
         var kind = Value("kind");
-        var isAssignee = snapshot.Settings.IncludeTeam && task.Assignees.Contains(user);
+        var isAssignee = task.Assignees.Contains(user);
         var expected = kind == "assigned" ? state.Assignments.GetValueOrDefault(user)
             : state.DueToken + ":" + state.Assignments.GetValueOrDefault(user, "pm");
         var current = Value("transition") == expected && Value("dueDate") == task.Due.ToString("yyyy-MM-dd")
             && (kind == "assigned" ? isAssignee && item.PolicyCode == AssignmentPolicy
                 : item.PolicyCode == DuePolicy && kind == DueKind(task.Due, LocalDate(DateTimeOffset.UtcNow, snapshot.Settings), snapshot.Settings)
-                    && (isAssignee || snapshot.Settings.IncludePm && snapshot.Pm == user));
+                    && (snapshot.Settings.IncludeTeam && isAssignee || snapshot.Settings.IncludePm && snapshot.Pm == user));
         // Never promote a test event when either the project or global policy becomes live later.
         var boundary = Value("deliveryBoundary") == "production_governed" && snapshot.Settings.Boundary == "production_governed"
             ? "production_governed" : "test_only";
