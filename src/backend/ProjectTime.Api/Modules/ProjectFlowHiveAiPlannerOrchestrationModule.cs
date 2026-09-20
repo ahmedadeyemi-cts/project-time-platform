@@ -772,6 +772,12 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using (var timeout = new NpgsqlCommand("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='15s';", connection, transaction))
             await timeout.ExecuteNonQueryAsync(cancellationToken);
+        if (!await ProjectFlowHiveLifecycle.LockActiveAsync(connection, transaction, projectId, cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            await StopRunAsync(connection, runId, "project_archived", "The project closed during generation. Its archived plan was preserved.", cancellationToken);
+            return;
+        }
         PlannerRun? current;
         await using (var guard = new NpgsqlCommand($"SELECT run_id FROM {RunTable} WHERE run_id=@run AND status IN ('queued','processing','generating') AND deadline_at>clock_timestamp() FOR UPDATE;", connection, transaction))
         {

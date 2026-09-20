@@ -81,8 +81,40 @@ async def main():
         await page.get_by_role('button',name='Unassigned 1',exact=True).click()
         assert 'Verify test service' in await page.locator('tbody').inner_text()
         await page.screenshot(path='/tmp/flowhive-delivery-overview-preview.png',full_page=True)
+        await page.evaluate("""() => {
+          window.mountReadiness({projectId:'ready-project',getJson:async()=>({projectId:'ready-project',preparation:{
+            label:'Ready for AI',status:'ready',message:'Current source documents are prepared.',readyCount:2,totalCount:2,
+            documents:[{documentId:'sow',category:'SOW',fileName:'Fixture SOW.pdf',status:'Ready'}]}}),onState:()=>{}});
+        }""")
+        await page.get_by_text('Ready for AI',exact=True).wait_for()
+        await page.get_by_text('Document details',exact=True).click()
+        assert await page.get_by_text('SOW: Fixture SOW.pdf',exact=True).is_visible()
+        await page.evaluate("""() => window.mountReadiness({projectId:'slow-project',getJson:()=>new Promise(resolve=>window.resolveOldReadiness=resolve),onState:()=>{}})""")
+        await page.wait_for_function('typeof window.resolveOldReadiness === "function"')
+        await page.evaluate("""() => window.mountReadiness({projectId:'new-project',getJson:async()=>({projectId:'new-project',preparation:{label:'Preparing documents',status:'preparing',documents:[]}}),onState:()=>{}})""")
+        await page.get_by_text('Preparing documents',exact=True).wait_for()
+        await page.evaluate("window.resolveOldReadiness({projectId:'slow-project',preparation:{label:'Stale private document',documents:[]}})")
+        await page.evaluate('() => new Promise(resolve => requestAnimationFrame(resolve))')
+        assert await page.get_by_text('Stale private document',exact=True).count()==0
+        await page.evaluate("""() => window.mountReadiness({projectId:'error-project',getJson:async()=>{throw new Error('fixture');},onState:()=>{}})""")
+        await page.get_by_text('Readiness unavailable',exact=True).wait_for()
+        await page.evaluate("""() => {
+          window.timerStart=Date.now()-65000;
+          window.mountTimer({title:'AI Studio',startedAt:window.timerStart,active:true,stage:'Preparing documents'});
+        }""")
+        await page.get_by_role('timer').wait_for()
+        await page.evaluate('window.initialTimer=document.querySelector("[role=timer]").textContent')
+        await page.wait_for_function('document.querySelector("[role=timer]").textContent !== window.initialTimer')
+        await page.evaluate("""() => window.mountTimer({title:'AI Studio',startedAt:window.timerStart,completedAt:window.timerStart+90000,active:false,stage:'Review draft ready'})""")
+        await page.get_by_text('00:01:30 elapsed',exact=True).wait_for()
+        await page.wait_for_timeout(1100)
+        assert await page.get_by_role('timer').inner_text()=='00:01:30 elapsed'
+        # Restoring a server run retains its start and finish rather than resetting to zero.
+        await page.evaluate("""() => window.mountTimer({title:'AI Planner',startedAt:'2026-09-20T01:00:00Z',completedAt:'2026-09-20T01:05:09Z',active:false,stage:'Working draft ready'})""")
+        await page.get_by_text('00:05:09 elapsed',exact=True).wait_for()
         assert not errors, errors
         await browser.close()
         print('FLOWHIVE_TEAM_CALENDAR_BROWSER=PASS (navigation, unknown state, member filter, refresh, race, failure)')
+        print('FLOWHIVE_PREPARATION_AND_TIMER_BROWSER=PASS (readiness, privacy race, outage, ticking, completion, restored duration)')
 
 asyncio.run(main())

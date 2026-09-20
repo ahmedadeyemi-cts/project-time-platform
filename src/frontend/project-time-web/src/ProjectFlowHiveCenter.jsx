@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import ProjectFlowHivePlannerReview from './ProjectFlowHivePlannerReview.jsx';
 import ProjectFlowHiveOverview from './ProjectFlowHiveOverview.jsx';
+import ProjectFlowHiveDocumentReadiness from './ProjectFlowHiveDocumentReadiness.jsx';
+import { isFlowHiveArchived, filterFlowHiveProjects } from './flowhive-project-lifecycle.js';
+import AiOperationProgress from './ai/AiOperationProgress.jsx';
 import { flowHiveProjectLink } from './flowhive-psa-overview.js';
 import ProjectFlowHivePsaWorkspace from './ProjectFlowHivePsaWorkspace.jsx';
 import { boundedFetch, canApplyPlannerResult, observePlanner } from './flowhive-planner-operation.js';
@@ -12,9 +15,11 @@ import { FlowHiveCustomerSharingPanel, FlowHiveEvidenceReadiness, FlowHiveFinanc
 import './project-flowhive-center.css';
 import './project-flowhive-ai-confidence.css';
 import './projectpulse-module-standard.css';
+/* CELAR_AI_PRODUCTION_PLATFORM_INTEGRATION */
 
 const views = [
   { id: 'portfolio', label: 'Portfolio' },
+  { id: 'archive', label: 'Archive' },
   { id: 'overview', label: 'Delivery overview' },
   { id: 'planner', label: 'Planner' },
   { id: 'kanban', label: 'Kanban' },
@@ -318,6 +323,7 @@ export default function ProjectFlowHiveCenter() {
   const [customer, setCustomer] = useState('all');
   const [projectStatus, setProjectStatus] = useState('all');
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [documentReadiness, setDocumentReadiness] = useState(null);
   const [draftPlan, setDraftPlan] = useState(null);
   const [schedule, setSchedule] = useState(null);
   const [validation, setValidation] = useState(null);
@@ -350,7 +356,7 @@ export default function ProjectFlowHiveCenter() {
   const plannerObservation = useRef(null);
   const workspaceLoadSequence = useRef(0);
   const [plannerObserved, setPlannerObserved] = useState(false);
-  const [clock, setClock] = useState(Date.now());
+  const [plannerRequestStartedAt, setPlannerRequestStartedAt] = useState(null);
   function setDirty(value) {
     if (value === true) editEpoch.current += 1;
     setDirtyState(value);
@@ -419,6 +425,14 @@ export default function ProjectFlowHiveCenter() {
     if (!isCurrent()) return;
     if (readback?.applied) setActiveView('planner');
     else if (readback?.status === 'empty') setError('This project has no saved working copy yet. Your current edits were preserved.');
+  }
+
+  function updateDocumentReadiness(result) {
+    if (result && result.projectId !== projectRef.current) return;
+    setDocumentReadiness(result);
+    if (!result?.projectStatus) return;
+    setPortfolio(current => !current ? current : { ...current, projects: current.projects.map(project =>
+      project.projectId === result.projectId ? { ...project, status: result.projectStatus, isArchived: result.isArchived } : project) });
   }
 
   async function loadEnterpriseWorkspace(projectId, applyWorkingCopy = false, expectedEdit = editEpoch.current, expectedSavedVersion = null) {
@@ -517,11 +531,6 @@ export default function ProjectFlowHiveCenter() {
   }, [selectedProjectId]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
     const controller = new AbortController();
     plannerObservation.current?.abort();
     plannerObservation.current = controller;
@@ -546,9 +555,10 @@ export default function ProjectFlowHiveCenter() {
   const assignments = portfolio?.assignments ?? [];
   const capabilities = capabilityResponse?.capabilities ?? [];
   const selectedProject = projects.find((project) => project.projectId === selectedProjectId) || null;
-  const canEditPlanner = Boolean(enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canEditPlanner && !enterprise?.access?.isViewAs);
-  const canAdministerPlanner = Boolean(enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdministerPlanner && !enterprise?.access?.isViewAs);
-  const canAdoptBaseline = Boolean(enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdoptBaseline && !enterprise?.access?.isViewAs);
+  const isArchived = documentReadiness?.projectId === selectedProjectId ? documentReadiness.isArchived : isFlowHiveArchived(selectedProject);
+  const canEditPlanner = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canEditPlanner && !enterprise?.access?.isViewAs);
+  const canAdministerPlanner = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdministerPlanner && !enterprise?.access?.isViewAs);
+  const canAdoptBaseline = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdoptBaseline && !enterprise?.access?.isViewAs);
   const capabilityLabel = enterprise?.access?.capabilityLabel || 'Project scope resolving';
   const scheduleByWbs = useMemo(() => new Map(
     (schedule?.tasks || []).map((task) => [task.wbsNumber, task])
@@ -580,16 +590,9 @@ export default function ProjectFlowHiveCenter() {
   const statusOptions = useMemo(() => [...new Set(projects.map((project) => project.status).filter(Boolean))]
     .sort((left, right) => left.localeCompare(right)), [projects]);
 
-  const filteredProjects = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return projects.filter((project) => {
-      if (customer !== 'all' && project.customerName !== customer) return false;
-      if (projectStatus !== 'all' && project.status !== projectStatus) return false;
-      if (!query) return true;
-      return [project.projectCode, project.projectName, project.customerName, project.projectManagerName, project.accountExecutiveName, project.status]
-        .some((value) => String(value ?? '').toLowerCase().includes(query));
-    });
-  }, [customer, projectStatus, projects, search]);
+  const filteredProjects = useMemo(() => filterFlowHiveProjects(projects, {
+    archived: activeView === 'archive', customer, status: projectStatus, search
+  }), [activeView, customer, projectStatus, projects, search]);
 
   function createLocalDraft() {
     if (!canEditPlanner) return;
@@ -1121,6 +1124,8 @@ export default function ProjectFlowHiveCenter() {
     plannerObservation.current = controller;
     const startedEdit = editEpoch.current;
     const isCurrent = captureWorkspaceOperation();
+    setPlannerRequestStartedAt(Date.now());
+    if (!aiPreview?.runId || aiPreview.terminal || aiPreview.projectId !== projectId) setAiPreview(null);
     setBusy('ai-planner'); setError('');
     try {
       let result;
@@ -1148,7 +1153,7 @@ export default function ProjectFlowHiveCenter() {
     } catch (failure) {
       if (!controller.signal.aborted && isCurrent()) setError(failure.message);
     } finally {
-      if (isCurrent() && plannerObservation.current === controller) setBusy('');
+      if (isCurrent() && plannerObservation.current === controller) { setBusy(''); setPlannerRequestStartedAt(null); }
     }
   }
 
@@ -1296,6 +1301,19 @@ export default function ProjectFlowHiveCenter() {
       {error ? <div className="flowhive-error" role="alert"><strong>Project FlowHive needs attention.</strong><span>{error}</span></div> : null}
       {notice ? <div className="flowhive-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice('')}>Dismiss</button></div> : null}
 
+      {(busy === 'ai-planner' || aiPreview?.runId) ? <AiOperationProgress
+        key={aiPreview?.runId || plannerRequestStartedAt}
+        title="AI Planner"
+        startedAt={aiPreview?.createdAt || plannerRequestStartedAt}
+        completedAt={aiPreview?.completedAt}
+        active={busy === 'ai-planner' || (Boolean(aiPreview?.runId) && !aiPreview.terminal)}
+        stage={busy === 'ai-planner' && !aiPreview?.runId ? 'Starting your request' : labelFrom(aiPreview?.phase || 'Processing')}
+        progress={aiPreview?.progressPercent}
+        message={aiPreview?.terminal ? 'Processing finished. Review the result and any items that need attention.' : plannerObserved || busy === 'ai-planner'
+          ? 'Processing is underway. Elapsed time includes document preparation and AI generation.'
+          : 'The last server status was still processing. Resume status below to check for completion.'}
+      /> : null}
+
       <nav className="flowhive-view-tabs" aria-label="Project FlowHive views">
         {views.map((view) => (
           <button type="button" key={view.id} aria-pressed={activeView === view.id} className={activeView === view.id ? 'active' : ''} onClick={() => setActiveView(view.id)}>
@@ -1304,8 +1322,11 @@ export default function ProjectFlowHiveCenter() {
         ))}
       </nav>
 
-      {activeView === 'portfolio' ? (
+      {selectedProjectId ? <ProjectFlowHiveDocumentReadiness key={selectedProjectId} projectId={selectedProjectId} getJson={getJson} onState={updateDocumentReadiness} /> : null}
+
+      {activeView === 'portfolio' || activeView === 'archive' ? (
         <div className="flowhive-view-panel">
+          {activeView === 'archive' ? <header><h3>Archived project plans</h3><p>Closed, completed and cancelled projects appear here automatically. Open a plan to view its work breakdown, saved versions and history. Reopening a project in Work Register returns it to the active portfolio.</p></header> : <p>Active projects. Closed projects and their plans are available in Archive.</p>}
           <div className="flowhive-filter-bar">
             <label>Search<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Project, customer, PM, AE, or status" /></label>
             <label>Customer<select value={customer} onChange={(event) => setCustomer(event.target.value)}><option value="all">All authorized customers</option>{customerOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
@@ -1324,7 +1345,7 @@ export default function ProjectFlowHiveCenter() {
               <article className={`flowhive-project-card ${selectedProjectId === project.projectId ? 'selected' : ''}`} key={project.projectId}>
                 <div className="flowhive-project-card-heading"><div><span>{project.customerName}</span><h3>{project.projectCode} · {project.projectName}</h3></div><span className={`flowhive-status ${statusTone(project.status)}`}>{labelFrom(project.status)}</span></div>
                 <dl><div><dt>Project Manager</dt><dd>{project.projectManagerName}</dd></div><div><dt>Account Executive</dt><dd>{project.accountExecutiveName || 'Unassigned'}</dd></div><div><dt>Documents</dt><dd>{Number.isFinite(project.documentCount) ? `${project.documentCount} attached` : 'Checking availability'}</dd></div><div><dt>Current dates</dt><dd>{formatDate(project.startDate)} – {formatDate(project.endDate)}</dd></div><div><dt>Tasks</dt><dd>{project.taskCount}</dd></div><div><dt>Assignments</dt><dd>{project.assignmentCount}</dd></div></dl>
-                <p className="flowhive-document-readiness">{project.documentCount === 0 ? 'Upload a project document before using AI Planner.' : 'AI Planner checks the approved SOW and its processing status before generation.'}</p><footer><button type="button" onClick={() => chooseProject(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => chooseProject(project.projectId, true)}>Open planner</button></footer>
+                <p className="flowhive-document-readiness">{isFlowHiveArchived(project) ? 'Archived automatically when the project closed. Plan history is preserved.' : project.documentCount === 0 ? 'Upload a project document before using AI Planner.' : 'Project documents are prepared in the background. Select this project to see readiness.'}</p><footer><button type="button" onClick={() => chooseProject(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => chooseProject(project.projectId, true)}>{isFlowHiveArchived(project) ? 'View archived plan' : 'Open planner'}</button></footer>
               </article>
             ))}
           </div>
@@ -1430,8 +1451,8 @@ export default function ProjectFlowHiveCenter() {
         </div>
       ) : null}
 
-      {aiPreview?.runId && activeView !== 'portfolio' ? <section className="flowhive-ai-operation-progress" aria-live="polite" aria-label="Durable planner status">
-        <header><strong>{labelFrom(aiPreview.phase)}</strong><span>{Math.max(0, Math.floor(((aiPreview.completedAt ? Date.parse(aiPreview.completedAt) : clock) - Date.parse(aiPreview.createdAt)) / 1000))} seconds elapsed</span><span>AI attempts: {aiPreview.attemptCount || 0} / {aiPreview.maximumAttempts || 2}</span></header>
+      {aiPreview?.runId ? <section className="flowhive-ai-operation-progress" aria-live="polite" aria-label="Durable planner status">
+        <header><strong>{labelFrom(aiPreview.phase)}</strong><span>AI attempts: {aiPreview.attemptCount || 0} / {aiPreview.maximumAttempts || 2}</span></header>
         <p>{aiPreview.terminal ? 'Operation finished. Review the result and any blockers.' : `Overall deadline: ${aiPreview.deadlineAt ? new Date(aiPreview.deadlineAt).toLocaleTimeString() : 'Checking'}. Existing work is preserved until a validated save.`}</p>
         {!aiPreview.terminal ? <div><button type="button" onClick={cancelPlanner} disabled={!canEditPlanner || busy === 'cancel-planner'}>Cancel generation</button>{!plannerObserved ? <button type="button" onClick={previewAiRequest} disabled={!canEditPlanner || Boolean(busy)}>Resume status</button> : null}</div> : null}
         <button type="button" onClick={() => setActiveView('ai')}>View evidence and diagnostics</button>
@@ -1480,7 +1501,7 @@ export default function ProjectFlowHiveCenter() {
               {(aiPreview.warnings || []).length ? <div><h4>Warnings and open questions</h4><ul>{aiPreview.warnings.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
               {(aiPreview.generationLogs || []).length ? <details><summary>Generation logs</summary><ol>{aiPreview.generationLogs.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ol></details> : null}
               {(aiPreview.scheduleAssessment?.criticalPath || []).length ? <details><summary>Critical path</summary><ol>{aiPreview.scheduleAssessment.criticalPath.map((item) => <li key={item.wbsNumber}><strong>{item.wbsNumber} · {item.name}</strong><span>{formatDate(item.startDate)} – {formatDate(item.endDate)}</span></li>)}</ol></details> : null}
-            </section> : <EmptyState>Run AI Planner from Planner to begin automatic SOW/GSD processing and generation.</EmptyState>}
+            </section> : <EmptyState>Documents are prepared in the background after association. Run AI Planner from Planner when you want to build the project work breakdown.</EmptyState>}
 
           </div>
           <FlowHiveEvidenceReadiness enterprise={enterprise} canManage={Boolean(enterprise?.access?.canManage)} busy={busy} onPrepare={prepareSowEvidence} />

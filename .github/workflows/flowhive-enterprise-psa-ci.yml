@@ -15,6 +15,11 @@ on:
       - 'tests/FlowHiveExecutablePlanTests/**'
       - 'tests/FlowHiveExecutionTests/**'
       - 'tests/FlowHiveNotificationTests/**'
+      - 'tests/FlowHivePreparationTests/**'
+      - 'src/frontend/project-time-web/src/ai/AiOperationProgress.jsx'
+      - 'src/frontend/project-time-web/src/ai/operation-progress.js'
+      - 'src/frontend/project-time-web/src/ai/ai-operation-progress.css'
+      - 'src/frontend/project-time-web/src/ProjectForgeCenter.jsx'
       - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
       - 'scripts/release-test/verify-flowhive-task-notifications.sql'
       - 'tests/flowhive-team-calendar*'
@@ -197,6 +202,8 @@ jobs:
         run: dotnet run --project tests/FlowHiveExecutionTests/FlowHiveExecutionTests.csproj --configuration Release
       - name: Execute approved-WBS task notification policy and database regressions
         run: dotnet run --project tests/FlowHiveNotificationTests --configuration Release -- --database
+      - name: Verify document association queue and archive transaction fences
+        run: dotnet run --project tests/FlowHivePreparationTests --configuration Release -- --database
       - name: Execute Module 066 operation authorization and RAID actor regression
         run: bash tests/test-module-066-operation-authorization-migration-107.sh
       - name: Remove isolated PostgreSQL fixture

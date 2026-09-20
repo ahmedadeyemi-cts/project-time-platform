@@ -410,7 +410,7 @@ public sealed class PostgresProjectFlowHivePlanRepository : IProjectFlowHivePlan
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid actor, Guid projectId,
         CancellationToken cancellationToken)
     {
-        _ = transaction;
+        if (!await ProjectFlowHiveLifecycle.LockActiveAsync(connection, transaction, projectId, cancellationToken)) return false;
         var access = await ProjectPlanningAccessResolver.ResolveForActorAsync(
             connection, actor, projectId, "066", cancellationToken);
         return access.CanEditPlanner;
@@ -420,7 +420,7 @@ public sealed class PostgresProjectFlowHivePlanRepository : IProjectFlowHivePlan
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid actor, Guid projectId,
         CancellationToken cancellationToken)
     {
-        _ = transaction;
+        if (!await ProjectFlowHiveLifecycle.LockActiveAsync(connection, transaction, projectId, cancellationToken)) return false;
         var access = await ProjectPlanningAccessResolver.ResolveForActorAsync(
             connection, actor, projectId, "066", cancellationToken);
         return access.CanAdoptBaseline;

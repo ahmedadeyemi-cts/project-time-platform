@@ -66,8 +66,13 @@ async def main(readback_mode=None):
                 elif path.endswith('/capabilities'):body={'capabilities':[],'databaseMutationEnabled':True}
                 elif path.endswith('/portfolio'):
                     body={'projects':[{'projectId':pid,'projectCode':'TEST-'+label,'projectName':'Project '+label,'customerName':'Synthetic customer',
-                        'projectManagerName':'Synthetic PM','startDate':'2026-09-08','endDate':'2026-10-30','taskCount':5,'assignmentCount':0,'status':'active'} for pid,label in [(A,'A'),(B,'B')]],
+                        'projectManagerName':'Synthetic PM','startDate':'2026-09-08','endDate':'2026-10-30','taskCount':5,'assignmentCount':0,'status':'closed' if readback_mode=='archive' and pid==B else 'active'} for pid,label in [(A,'A'),(B,'B')]],
                         'tasks':[],'assignments':[],'summary':{'projectCount':2,'taskCount':10},'access':{'displayName':'Synthetic PM'}}
+                elif path.endswith('/documents/readiness'):
+                    pid=path.split('/')[4];archived=readback_mode=='archive' and pid==B
+                    body={'projectId':pid,'projectStatus':'closed' if archived else 'active','isArchived':archived,
+                          'preparation':{'status':'archived' if archived else 'ready','label':'Archived plan' if archived else 'Ready for AI',
+                                         'message':'Synthetic readiness','readyCount':1,'totalCount':1,'documents':[]}}
                 elif path.endswith('/readiness'):body={'ready':True,'status':'ready'}
                 elif path.endswith('/psa'):
                     pid=path.split('/')[4];state['psa_calls'].append(pid)
@@ -196,6 +201,20 @@ async def main(readback_mode=None):
                 await page.add_style_tag(content=(Path(offline)/'app.css').read_text())
                 await page.add_script_tag(content=(Path(offline)/'app.js').read_text())
             await reload_page()
+            if readback_mode=='archive':
+                await page.get_by_role('button',name='Open planner',exact=True).wait_for()
+                assert await page.locator('.flowhive-project-card').count()==1
+                await page.get_by_role('button',name='Archive',exact=True).click()
+                await page.get_by_role('button',name='View archived plan',exact=True).click()
+                await page.get_by_text('Archived plan',exact=True).wait_for()
+                assert await page.get_by_role('button',name='AI Planner',exact=True).is_disabled()
+                assert all([await button.is_disabled() for button in await page.get_by_role('button',name='Save immutable version',exact=True).all()])
+                assert await page.get_by_role('button',name='Establish reviewed baseline',exact=True).is_disabled()
+                await page.get_by_label('Plan name',exact=True).wait_for()
+                assert await page.get_by_label('Plan name',exact=True).input_value()=='Stored plan B'
+                assert not state['posts'] and not state['errors']
+                print('PASSED: active portfolio excludes closed projects; Archive preserves the plan and disables writes',flush=True)
+                return
             await page.get_by_role('button',name='Kanban',exact=True).click()
             await page.get_by_role('heading',name='Kanban task board',exact=True).wait_for()
             await page.get_by_role('button',name='Monthly calendar',exact=True).click()
@@ -353,7 +372,7 @@ async def main(readback_mode=None):
         finally:await browser.close()
 
 async def run_all():
-    for mode in (None,'unavailable','newer_revision','wrong_project','review_proposal'):
+    for mode in (None,'unavailable','newer_revision','wrong_project','review_proposal','archive'):
         await main(mode)
 
 if __name__=='__main__':
