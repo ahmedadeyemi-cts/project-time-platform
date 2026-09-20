@@ -83,6 +83,8 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         await using var transaction = await connection.BeginTransactionAsync(token);
         await using (var timeout = new NpgsqlCommand("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='15s';", connection, transaction))
             await timeout.ExecuteNonQueryAsync(token);
+        if (!await ProjectFlowHiveLifecycle.LockActiveAsync(connection, transaction, projectId, token))
+            return ProjectFlowHiveLifecycle.Archived();
         await using (var schema = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id=@id);", connection, transaction))
         {
             schema.Parameters.AddWithValue("id", ProjectFlowHivePlannerReview.Migration);

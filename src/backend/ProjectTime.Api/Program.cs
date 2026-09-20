@@ -3964,6 +3964,7 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
             await auditCommand.ExecuteNonQueryAsync();
         }
 
+        await ProjectPlanningDocumentPreparation.QueueAssociatedAsync(connection, transaction, httpContext, projectId: projectId);
         await transaction.CommitAsync();
         /* 053I_PROJECT_LINK_AE_SA_SYNC_START */
         await using (var projectPulse053IOwnerSyncCommand = new NpgsqlCommand("""
@@ -5589,6 +5590,7 @@ app.MapPost("/api/project-intake/{intakeId:guid}/supporting-documents/upload", a
 
     await InsertAuditLogAsync(connection, transaction, sessionUserId.Value, "project_intake_post_intake_document_uploaded", "project_intake", intakeId);
 
+    await ProjectPlanningDocumentPreparation.QueueAssociatedAsync(connection, transaction, httpContext, documentId: documentId);
     await transaction.CommitAsync();
 
     return Results.Ok(new
@@ -9041,11 +9043,13 @@ app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext h
         await auditCommand.ExecuteNonQueryAsync();
     }
 
+    var preparationQueued = await ProjectPlanningDocumentPreparation.QueueAssociatedAsync(connection, transaction, httpContext, projectId: projectId.Value);
     await transaction.CommitAsync();
 
     return Results.Ok(new
     {
         status = "document_uploaded",
+        preparationQueued,
         projectId = projectId.Value,
         documentId = workRegisterDocumentId,
         workRegisterDocumentId,

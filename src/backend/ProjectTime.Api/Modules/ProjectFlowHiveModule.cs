@@ -1211,7 +1211,11 @@ internal sealed record ProjectFlowHiveProject(
     string Source,
     Guid? AccountExecutiveUserId = null,
     string AccountExecutiveName = "Unassigned",
-    long DocumentCount = 0);
+    long DocumentCount = 0)
+{
+    public bool IsArchived => ProjectFlowHiveLifecycle.IsArchived(Status);
+    public string ArchiveReason => IsArchived ? "Project closed in Work Register. Plan and history retained." : "";
+}
 
 internal sealed record ProjectFlowHiveTask(
     Guid TaskId,

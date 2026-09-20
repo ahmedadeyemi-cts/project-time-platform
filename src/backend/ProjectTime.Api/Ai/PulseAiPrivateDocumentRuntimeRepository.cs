@@ -311,6 +311,8 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                       ON service_user.user_id = @service_principal_user_id
                      AND COALESCE(service_user.is_active, FALSE) = TRUE
                     WHERE d.is_active = TRUE
+                      AND lower(trim(COALESCE(p.status,''))) NOT IN ('closed','completed','cancelled','canceled','archived')
+                      AND COALESCE(d.upload_source,'') <> 'celar_ai_chat_attachment'
                       AND COALESCE(d.engineering_visible, FALSE) = TRUE
                       AND COALESCE(d.ai_timesheet_context_enabled, FALSE) = TRUE
                       AND COALESCE(d.pulse_ai_processing_status, 'not_requested') = 'not_requested'
@@ -328,10 +330,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                             AND service_assignment.is_active = TRUE
                             AND service_permission.permission_code = 'QUEUE_PULSE_AI_DOCUMENT_PROCESSING'
                       )
-                      AND LOWER(COALESCE(d.document_category, d.document_type, '')) IN (
-                          'sow','statement_of_work','gsd','global_solution_design',
-                          'architecture','design','order','order_form','quote','proposal','supporting'
-                      )
+                      AND replace(replace(lower(trim(COALESCE(d.document_category,d.document_type,''))),'-','_'),' ','_')=ANY(@planning_categories)
                       AND NOT EXISTS (
                           SELECT 1
                           FROM pulse_ai_document_processing_jobs existing
@@ -370,6 +369,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 command.Parameters.AddWithValue("maximum_attempts", options.MaximumAttempts);
                 command.Parameters.AddWithValue("correlation_id", correlationId);
                 command.Parameters.AddWithValue("service_principal_user_id", options.DocumentServicePrincipalUserId!.Value);
+                command.Parameters.AddWithValue("planning_categories", ProjectTime.Api.Modules.ProjectPlanningDocumentPreparation.Categories);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 queued = await reader.ReadAsync(cancellationToken)
                     ? new AutoQueueResult(

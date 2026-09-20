@@ -4,3 +4,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("FlowHiveDetailedPlannerTests")]
 
 [assembly: InternalsVisibleTo("FlowHiveNotificationTests")]
+[assembly: InternalsVisibleTo("FlowHivePreparationTests")]

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import AiOperationProgress from './ai/AiOperationProgress.jsx';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import ProjectForgeTaskDialog from './project-forge/ProjectForgeTaskDialog.jsx';
 import {
@@ -215,6 +216,8 @@ export default function ProjectForgeCenter() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiOutcome, setAiOutcome] = useState('Create a detailed, reviewable project plan with tasks, dependencies, realistic engineering estimates, acceptance criteria, risks, handoff, and closeout based on the authorized project documents.');
   const [generatedDraft, setGeneratedDraft] = useState(null);
+  const [aiOperation, setAiOperation] = useState(null);
+  const aiRequest = useRef(null);
   const [reviewerId, setReviewerId] = useState('');
 
   function commitData(next) {
@@ -296,6 +299,18 @@ export default function ProjectForgeCenter() {
   const activity = data?.activity || data?.activityEvents || [];
   const currentProject = projects.find((item) => String(projectId(item)) === String(selectedProject)) || projects[0] || null;
   const currentProjectId = currentProject ? projectId(currentProject) : '';
+  useEffect(() => {
+    setAiOperation(null);
+    setBusy(current => current === 'ai' ? '' : current);
+    const stopObservation = () => { aiRequest.current?.abort(); setAiOperation(null); setBusy(current => current === 'ai' ? '' : current); };
+    window.addEventListener('projectpulse:view-as-changed', stopObservation);
+    window.addEventListener('projectpulse:auth-session-ready', stopObservation);
+    return () => {
+      aiRequest.current?.abort();
+      window.removeEventListener('projectpulse:view-as-changed', stopObservation);
+      window.removeEventListener('projectpulse:auth-session-ready', stopObservation);
+    };
+  }, [currentProjectId, data?.access?.effectiveUserId]);
   const projectPlans = plans.filter((plan) => String(plan.projectId) === String(currentProjectId));
   const currentPlan = projectPlans.find((plan) => String(plan.planId) === String(selectedPlan)) || projectPlans[0] || null;
   const projectTasks = allTasks.filter((task) => belongsToProject(task, currentProjectId) && task.active !== false && task.isActive !== false && !task.archivedAt && taskStatus(task) !== 'cancelled');
@@ -578,7 +593,12 @@ export default function ProjectForgeCenter() {
   }
 
   async function generateAiDraft() {
-    if (!currentProjectId) return;
+    if (!currentProjectId || busy === 'ai' || aiOperation?.active) return;
+    aiRequest.current?.abort();
+    const controller = new AbortController();
+    aiRequest.current = controller;
+    const active = () => !controller.signal.aborted && aiRequest.current === controller;
+    setAiOperation({ projectId: currentProjectId, startedAt: Date.now(), active: true, stage: 'Preparing documents and generating a review draft' });
     setBusy('ai'); setError(''); setNotice('');
     try {
       const payload = {
@@ -588,12 +608,15 @@ export default function ProjectForgeCenter() {
       };
       let result = null;
       for (let attempt = 1; attempt <= 60; attempt += 1) {
-        result = await projectForgeSend(`/api/project-forge/projects/${currentProjectId}/ai-drafts`, 'POST', payload);
+        if (!active()) return;
+        result = await projectForgeSend(`/api/project-forge/projects/${currentProjectId}/ai-drafts`, 'POST', payload, { signal: controller.signal });
+        if (!active()) return;
         const status = normalize(result?.status);
         const processing = result?.retryable === true
           || status === 'project_planning_documents_processing'
           || status === 'project_planning_ai_temporarily_unavailable';
         if (!processing) break;
+        setAiOperation(current => ({ ...current, stage: status === 'project_planning_documents_processing' ? 'Preparing project documents' : 'Waiting for the AI service to retry' }));
         setNotice(`${title(status)}. Project Forge is automatically preparing the project's current SOW, GSD, and supporting documents. Attempt ${attempt} of 60.`);
         await waitForProjectPlanning(Math.min(10_000, 2_000 + attempt * 250));
       }
@@ -609,13 +632,19 @@ export default function ProjectForgeCenter() {
         setSelectedPlan(String(draft.planId));
       }
       setNotice(aiDraftNotice(result));
+      setAiOperation(current => ({ ...current, active: false, completedAt: Date.now(), stage: 'Review draft ready' }));
       await load({
         pm: selectedPm,
         project: currentProjectId,
         workspaceValue: draft.planId ? 'review_plan' : workspace,
         planIdValue: draft.planId || (workspace === 'review_plan' ? selectedPlan : '')
       });
-    } catch (generationError) { setError(generationError.message); } finally { setBusy(''); }
+    } catch (generationError) {
+      if (active()) {
+        setError(generationError.message);
+        setAiOperation(current => ({ ...current, active: false, completedAt: Date.now(), stage: 'Needs attention' }));
+      }
+    } finally { if (active()) setBusy(''); }
   }
 
   async function assignReviewer() {
@@ -745,6 +774,10 @@ export default function ProjectForgeCenter() {
           {canUseAi ? <button type="button" className="forge-ai-button" onClick={() => setAiOpen((value) => !value)}>✦ AI plan & estimate</button> : null}
         </div>
       </header>
+
+      {aiOperation?.projectId === currentProjectId ? <AiOperationProgress title="AI Studio"
+        startedAt={aiOperation.startedAt} completedAt={aiOperation.completedAt} active={aiOperation.active}
+        stage={aiOperation.stage} message={aiOperation.active ? 'Your request is processing. Keep this page open until the review draft is ready. Document preparation continues in the background.' : 'The request finished. Review the result or the message below.'} /> : null}
 
       <div className="forge-workspace-banner"><b>{workspace === 'canonical' ? 'Live Project' : 'Review Plan'}</b><span>{workspace === 'canonical' ? 'Changes update canonical project records.' : 'Changes stay in this proposal until an authorized PM adopts it.'}</span></div>
       {aiConnection ? (
