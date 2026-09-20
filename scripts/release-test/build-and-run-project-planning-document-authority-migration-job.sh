@@ -57,6 +57,7 @@ install -m 0444 "$CUSTOMER_SOURCE_MIGRATION_FILE" "$CONTEXT/database/migrations/
 install -m 0444 "$MODULE025_MIGRATION_FILE" "$CONTEXT/database/migrations/099_module025_sow_gsd_workspace.sql"
 install -m 0444 "$MODULE001B_CATALOG_MIGRATION_FILE" "$CONTEXT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 install -m 0444 "$ROOT/database/migrations/101_deepseek_v4_provider.sql" "$CONTEXT/database/migrations/101_deepseek_v4_provider.sql"
+install -m 0444 "$ROOT/database/migrations/112_optional_ai_providers.sql" "$CONTEXT/database/migrations/112_optional_ai_providers.sql"
 node "$ROOT/scripts/release-test/reconcile-module-catalog.mjs" "$RELEASE_COMMIT" "$CONTEXT/database/migrations/108_builtin_module_catalog_reconciliation.sql"
 install -m 0444 "$MODULE025_PROJECT_NAME_MIGRATION_FILE" "$CONTEXT/database/migrations/109_module025_project_name.sql"
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
@@ -93,7 +94,12 @@ psql -X -v ON_ERROR_STOP=1 --file "$MODULE025_MIGRATION"
 MODULE001B_CATALOG_MIGRATION="$ROOT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 [[ -f "$MODULE001B_CATALOG_MIGRATION" ]] || { echo 'ERROR: Module 001B catalog migration 100 source is missing from the immutable image.' >&2; exit 1; }
 psql -X -v ON_ERROR_STOP=1 --file "$MODULE001B_CATALOG_MIGRATION"
-psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/101_deepseek_v4_provider.sql"
+# Never replay the older, narrower constraint once migration 101 has run.
+# Reapply 112 even when ledgered, repairing the previously deployed replay order.
+if [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='101_deepseek_v4_provider')")" != t ]]; then
+  psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/101_deepseek_v4_provider.sql"
+fi
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/112_optional_ai_providers.sql"
 [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='101_deepseek_v4_provider')")" == t ]] || exit 1
 echo 'MIGRATION_101_DEEPSEEK_V4=APPLIED_AND_VERIFIED'
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/108_builtin_module_catalog_reconciliation.sql"

@@ -67,6 +67,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
+          if [[ "$GITHUB_HEAD_REF" == fix/module064-optional-provider-controls ]]; then
+            python3 tests/module064-provider-controls-scope.py
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == fix/enterprise-completion-20260919 ]]; then
             python3 tests/enterprise-completion-scope.py
           elif [[ "$GITHUB_HEAD_REF" == fix/module025-export-retention-scope ]]; then
