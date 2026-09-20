@@ -331,3 +331,15 @@ body.projectpulse-microsoft-integration-active .microsoft-integration-portal {
     width: 100%;
   }
 }
+
+/* Module 065 is rendered after the shell. Keep assistant clearance at the end
+   of the actual workspace instead of reserving it twice before the portal. */
+body.projectpulse-microsoft-integration-active main.app-shell {
+  padding-bottom: 0 !important;
+}
+body.projectpulse-microsoft-integration-active #modules-directory-portal-host:empty {
+  min-height: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}

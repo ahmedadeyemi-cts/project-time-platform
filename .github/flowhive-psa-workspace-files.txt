@@ -27,8 +27,10 @@ src/frontend/project-time-web/src/flowhive-team-calendar.js
 src/frontend/project-time-web/src/project-flowhive-psa-workspace.css
 tests/FlowHiveNotificationTests/FlowHiveNotificationTests.csproj
 tests/FlowHiveNotificationTests/Program.cs
+tests/TimesheetNotificationRecipients/Program.cs
 tests/flowhive-psa-admission.test.mjs
 tests/flowhive-psa-overview.test.mjs
+tests/flowhive-psa-release-workflow.test.py
 tests/flowhive-psa-workspace-scope.py
 tests/flowhive-team-calendar-browser-bundle.mjs
 tests/flowhive-team-calendar-browser.py

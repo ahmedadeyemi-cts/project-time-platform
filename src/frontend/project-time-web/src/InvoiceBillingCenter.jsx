@@ -7,7 +7,7 @@ const columns = [
   ['customer', 'Customer', 'Essential', true],
   ['project', 'Project', 'Essential', true],
   ['workType', 'Work type', 'Essential', false],
-  ['billingModel', 'Contract type', 'Essential', true],
+  ['billingModel', 'Contract type', 'Essential', false],
   ['status', 'Work status', 'Essential', true],
   ['projectManager', 'Project Manager', 'Ownership', false],
   ['coordinator', 'Project Team Coordinator', 'Ownership', false],
@@ -17,8 +17,8 @@ const columns = [
   ['commercialSource', 'Commercial source', 'Billing data', false],
   ['salesforceId', 'Salesforce ID / Quote', 'External IDs', true],
   ['purchaseOrder', 'Purchase order', 'External IDs', false],
-  ['approvedLines', 'Approved billing lines', 'Billing data', false],
-  ['approvedHours', 'Approved billing hours', 'Billing data', true],
+  ['approvedLines', 'Approved billing lines', 'Billing data', true],
+  ['approvedHours', 'Approved billing hours', 'Billing data', false],
   ['effectiveRate', 'Effective rate', 'Billing data', false],
   ['candidateAmount', 'Candidate amount', 'Billing data', true]
 ].map(([key, label, group, defaultVisible]) => ({ key, label, group, defaultVisible }));
@@ -613,18 +613,18 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         <ol><li>Find and select the customer project below.</li><li>Review approved billing lines, rates, expenses, and external references.</li><li>Use Generate Partial Invoice for eligible work, or Generate Final Invoice after closeout requirements are met. Download the saved invoice from invoice history.</li></ol>
       </section>
 
-      <section className="m042-preview-mode m042-live-mode" aria-label="Module 042 live data status">
+      <details className="m042-preview-mode m042-live-mode" aria-label="Module 042 live data status"><summary>Commercial source details</summary>
         <strong>Commercial source guard</strong>
         <span>
           ConnectWise SELL quote and rate readiness are now evaluated from the canonical project and rate-card read model. Invoice calculations remain on current stored rates until ConnectWise SELL synchronization and guarded cutover are explicitly enabled. Current scope: {payload.scope || 'Loading'}.
         </span>
-      </section>
+      </details>
 
       {payload.error ? <div className="m042-notice m042-error" role="alert">{payload.error}</div> : null}
       {action.error ? <div className="m042-notice m042-error" role="alert">{action.error}</div> : null}
       {action.success ? <div className="m042-notice" role="status">{action.success}</div> : null}
 
-      <section className="m042-output-commandbar" aria-label="Invoice customer-output controls">
+      <details className="m042-output-commandbar" aria-label="Invoice customer-output controls"><summary>Invoice output and privacy options</summary>
         <div>
           <strong>{invoiceDetail?.header?.invoiceNumber || 'No immutable invoice selected'}</strong>
           <span>{invoiceDetail ? 'PDF, Excel, screen preview, and Certinia use these privacy choices.' : 'Select a project with invoice history or create an invoice to enable downloads.'}</span>
@@ -636,15 +636,9 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
           <label><input type="checkbox" checked={outputPrivacy.projectCoordinatorName} onChange={(event) => setOutputPrivacy((current) => ({ ...current, projectCoordinatorName: event.target.checked }))} />Project Coordinator</label>
           <button type="button" className="secondary-action" disabled={!Object.values(outputPrivacy).some(Boolean)} onClick={() => setOutputPrivacy({ ...hiddenOutputPrivacy })}>Hide all names</button>
         </fieldset>
-      </section>
+      </details>
 
-      <section className="m042-workflow-explainer" aria-label="Billing workflow">
-        <article><span>1</span><div><strong>Approved system time</strong><small>Only invoice-eligible, uninvoiced entries are shown.</small></div></article>
-        <b aria-hidden="true">→</b>
-        <article><span>2</span><div><strong>Stored rate selection</strong><small>Ambiguous rates require an explicit user choice.</small></div></article>
-        <b aria-hidden="true">→</b>
-        <article><span>3</span><div><strong>Immutable invoice</strong><small>Creates PULSE-XXXXXX-N history without rewriting source time.</small></div></article>
-      </section>
+
 
       <section className="m042-metrics" aria-label="Live billing summary">
         <article><span>Accessible projects</span><strong>{candidates.length}</strong><small>Current role and project scope</small></article>
@@ -726,7 +720,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
             <div className="m042-card">
               <header className="m042-card-head">
                 <div>
-                  <h2>{view === 'closed' ? 'Recently closed project billing candidates' : 'Active project billing candidates'}</h2>
+                  <h2>1. Choose a project</h2>
                   <p>Every row is loaded from the shared server-side billing contract.</p>
                 </div>
                 <span>{filtered.length} shown</span>
@@ -748,7 +742,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                       >
                         {visibleDefinitions.map((column) => (
                           <td key={`${candidate.projectId}-${column.key}`}>
-                            {candidateCellValue(candidate, column.key, selections)}
+                            {column.key === 'projectCode' ? <button type="button" className="m042-link-button" onClick={() => { setSelectedId(candidate.projectId); setAction({ running: false, error: '', success: '' }); }}>{candidate.projectCode}</button> : candidateCellValue(candidate, column.key, selections)}
                           </td>
                         ))}
                       </tr>
@@ -776,10 +770,15 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                 </div>
               ) : selected ? (
                 <div className="m042-invoice">
+                  <dl className="m042-reference-summary" aria-label="Project billing references">
+                    <div><dt>SELL Quote</dt><dd>{text(selected.sellQuoteNumber, text(selected.commercial?.sellQuoteNumber, missingValue))}</dd></div>
+                    <div><dt>Certinia ID</dt><dd>{text(selected.certiniaId, missingValue)}</dd></div>
+                    <div><dt>Salesforce ID / Quote</dt><dd>{text(selected.salesforceId, missingValue)}</dd></div>
+                  </dl>
                   <header className="m042-invoice-head">
                     <div className="m042-brand">
                       {usSignalLogoUrl ? <img src={usSignalLogoUrl} alt="US Signal" /> : <strong>US Signal</strong>}
-                      <span>Invoice candidate review</span>
+                      <span>2. Review billing lines and references</span>
                     </div>
                     <div>
                       <span>{selected.invoiceHistory?.[0]?.invoiceNumber || 'Invoice not created'}</span>
@@ -981,6 +980,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                   </section>
 
                   <footer className="m042-invoice-foot">
+                    <h3>3. Generate invoice</h3>
                     <div className="m042-actions">
                       <button
                         type="button"

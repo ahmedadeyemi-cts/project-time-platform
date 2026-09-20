@@ -95,8 +95,8 @@ public static class ModuleAvailabilityModule
 
     public static WebApplication MapModuleAvailabilityEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/module-availability", GetAvailabilityAsync);
-        app.MapGet("/api/module-availability/audit", GetAuditAsync);
+        app.MapGet("/api/module-availability", (Func<HttpContext, Task<IResult>>)GetAvailabilityAsync);
+        app.MapGet("/api/module-availability/audit", (Func<HttpContext, Task<IResult>>)GetAuditAsync);
         app.MapPut("/api/module-availability/{moduleNumber}", UpdateAvailabilityAsync);
         return app;
     }

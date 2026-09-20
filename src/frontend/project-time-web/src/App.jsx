@@ -4190,6 +4190,7 @@ export default function App() {
   const [profileSettingsStatus, setProfileSettingsStatus] = useState('');
   const [sessionWarning, setSessionWarning] = useState({ visible: false, remainingMs: 0 });
   const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.hash));
+  const [costRoutingOpen, setCostRoutingOpen] = useState(false);
 
   /* 056A_SHARED_ROUTE_DATASET_START */
   useLayoutEffect(() => {
@@ -7877,6 +7878,7 @@ Analytics - Variphy / Infortel`}
         'financial-operations-workbench',
         'notification-delivery-monitor',
         'project-closeout',
+        'invoice-billing-center',
         'entra-secret-administration',
         'global-mail-configuration',
         'system-architecture',
@@ -7947,7 +7949,7 @@ Analytics - Variphy / Infortel`}
         </aside>
       </section>
 
-      {activeRoute === 'dashboard' ? <>
+      {activeRoute === 'dashboard' ? (
       <section className="status-grid" aria-label="Platform status">
         <article className="status-card">
           <span className="status-label">API</span>
@@ -7967,7 +7969,9 @@ Analytics - Variphy / Infortel`}
           <small>PostgreSQL platform schema validation</small>
         </article>
       </section>
+      ) : null}
 
+      {activeRoute === 'dashboard' ? (
       <section className="panel role-workspace-panel" aria-label="Role-based workspace">
         <div className="section-header compact">
           <div>
@@ -7987,8 +7991,7 @@ Analytics - Variphy / Infortel`}
           ))}
         </div>
       </section>
-
-      </> : null}
+      ) : null}
 
       {activeRoute === 'timesheet' ? (
       <section id="timesheet" className="panel timesheet-page">
@@ -8745,11 +8748,11 @@ Analytics - Variphy / Infortel`}
 
       {(activeRoute === 'cost-alerts' && canSeeAny(['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="cost-alerts" className="panel cost-alert-route-panel">
-          <CostOverrunAlertCenter canManageCostAlerts={canSeeAny(['MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
           {/* GROUP_4_MODULE_022_CONFIGURABLE_RULES */}
-          <details className="panel">
-            <summary>Manage notification rules and recipients</summary>
-            <ProjectNotificationAutomationCenter workspace="routing" authSession={authSession} />
+          <CostOverrunAlertCenter canManageCostAlerts={canSeeAny(['MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
+          <details open={costRoutingOpen} onToggle={(event) => setCostRoutingOpen(event.currentTarget.open)}>
+            <summary>Notification routing and escalation settings</summary>
+            {costRoutingOpen ? <ProjectNotificationAutomationCenter workspace="routing" authSession={authSession} /> : null}
           </details>
         </section>
       ) : null}
