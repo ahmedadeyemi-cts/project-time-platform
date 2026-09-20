@@ -1,0 +1,22 @@
+.m025-templates { color: #1e293b; display: grid; gap: 1rem; }
+.m025-templates h2, .m025-templates h3, .m025-templates h4, .m025-templates p { margin: 0; }
+.m025-templates header { display: grid; gap: .55rem; max-width: 80rem; }
+.m025-templates-kicker { color: #475569; font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+.m025-template-grid, .m025-template-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+.m025-template-card { background: #fff; border: 1px solid #d7e0eb; border-radius: 12px; padding: 1.1rem; display: grid; gap: .7rem; align-content: start; }
+.m025-template-card p { line-height: 1.5; color: #475569; }
+.m025-template-card-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .7rem; }
+.m025-template-badge { justify-self: start; border-radius: 20px; color: #166534; background: #ecfdf3; padding: .25rem .6rem; font-size: .8rem; font-weight: 700; }
+.m025-template-badge--review { color: #854d0e; background: #fef9c3; }
+.m025-template-upload { display: grid; gap: .9rem; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 12px; padding: 1.2rem; }
+.m025-template-upload label { display: grid; gap: .4rem; font-weight: 600; }
+.m025-template-upload input, .m025-template-upload select, .m025-template-upload textarea { font: inherit; color: #0f172a; border: 1px solid #94a3b8; border-radius: 7px; background: white; min-width: 0; padding: .65rem; width: 100%; box-sizing: border-box; }
+.m025-template-upload :is(input, select, textarea):focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.m025-template-help { font-size: .9rem; color: #475569; line-height: 1.5; }
+.m025-template-list { display: grid; gap: .8rem; }
+.m025-template-list code { overflow-wrap: anywhere; }
+.m025-template-list button, .m025-template-upload button { justify-self: start; }
+.m025-template-message { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: .9rem; }
+.m025-template-message--error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.m025-template-next { border-top: 1px solid #d7e0eb; padding-top: 1rem; }
+.m025-templates summary { cursor: pointer; font-weight: 600; }

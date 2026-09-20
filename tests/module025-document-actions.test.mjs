@@ -19,7 +19,7 @@ const server = await createServer({ configFile: false, root: web, plugins: [reac
 }], server: { host: '127.0.0.1', port: 0 } });
 await server.listen();
 const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, ...(process.env.MODULE025_TEST_CHROMIUM ? { executablePath: process.env.MODULE025_TEST_CHROMIUM } : {}) });
 try {
   for (const state of ['draft', 'review_ready', 'confirmed', 'archived']) {
     const context = await browser.newContext({ acceptDownloads: true });

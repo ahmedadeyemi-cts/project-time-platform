@@ -13,6 +13,7 @@ internal static class Module025StandardGsdExporter
             ?? throw new InvalidOperationException("The standard GSD export template is missing.");
         using var book = new XLWorkbook(template);
         var e = model.Engagement;
+        var allTasksReviewed = model.Phases.All(Module025TaskEstimates.Reconciled);
         var summary = book.Worksheet("Summary");
         if (draft) summary.Cell("E1").Value = "DRAFT - General Services Delivery Worksheet";
         summary.Cell("C11").Value = e.CustomerName;
@@ -31,16 +32,16 @@ internal static class Module025StandardGsdExporter
         // to the Solution Architect's reviewed phase totals.
         summary.Cell("F4").FormulaA1 = "IF(COUNT('Totals Sheet'!C15:C19)=5,SUM('Totals Sheet'!C15:C19),\"\")";
         summary.Cell("F7").FormulaA1 = "IF(ISNUMBER(F4),F4,\"\")";
-        summary.Cell("E7").Value = "Reviewed Phase Hours";
+        summary.Cell("E7").Value = allTasksReviewed ? "Reviewed Phase Hours" : "Working Phase Hours";
         summary.Cell("F9").Clear(XLClearOptions.Contents);
         summary.Cell("M4").Value = "Rates pending";
         summary.Cell("N6").Value = "Not set";
-        summary.Cell("M14").Value = "Overtime requires review";
+        summary.Cell("M14").Value = "After-hours allocations are separate from premium pricing.";
         summary.Cell("M14").Style.Font.FontColor = XLColor.Black;
         var phases = new[] { ("plan", "Plan"), ("design", "Design"), ("implement", "Implement"), ("validate", "Validate"), ("release", "Release") };
         var totals = book.Worksheet("Totals Sheet");
         var breakdown = book.Worksheet("Phase Breakdown");
-        var notes = new List<(string, string)> { ("Estimate basis", "Reviewed task hours roll up to phase totals. Legacy phase-only estimates are identified separately. Blank task hours, engineering roles, overtime, reserve, travel and prices are unknown. Prices require approved commercial inputs.") };
+        var notes = new List<(string, string)> { ("Estimate basis", "Task hours roll up to phase totals once, including regular and after-hours effort. Proposed allocations require SA review. Legacy phase-only estimates are identified separately. Engineering roles, premium rates, reserve, travel and prices are not inferred. Prices require approved commercial inputs.") };
         var risks = new List<(string, string)>();
         var assumptions = new List<(string, string)>();
         for (var index = 0; index < phases.Length; index++)
@@ -49,7 +50,9 @@ internal static class Module025StandardGsdExporter
             var sheet = book.Worksheet(name);
             var phase = model.Phases.SingleOrDefault(p => p.PhaseCode == code);
             sheet.Cell("A2").Value = name + " tasks";
-            sheet.Cell("G2").Value = phase?.Tasks is { Count: > 0 } ? "Task hours saved and reviewed in Pulse." : "Phase-only estimate; task allocations require review.";
+            sheet.Cell("B1").Value = "Regular Hours";
+            sheet.Cell("C1").Value = "After-hours Hours";
+            sheet.Cell("G2").Value = phase is not null && Module025TaskEstimates.Reconciled(phase) ? "Task hours saved and reviewed in Pulse." : "Working estimate; task allocations require review.";
             sheet.Cell("A3").Value = "Task breakdown below; phase hours appear once.";
             sheet.Cell("A4").Value = name + " reviewed phase total";
             var lastTask = 4;
@@ -76,13 +79,22 @@ internal static class Module025StandardGsdExporter
                     for (var t = 0; t < tasks.Count; t++)
                     {
                         sheet.Cell(t + 4, 1).Value = tasks[t].Description;
-                        if (tasks[t].Hours.HasValue) sheet.Cell(t + 4, 2).Value = tasks[t].Hours!.Value;
-                        sheet.Cell(t + 4, 7).Value = tasks[t].Notes ?? "";
+                        if (Module025TaskEstimates.RegularAllocation(tasks[t]) is { } regular) sheet.Cell(t + 4, 2).Value = regular;
+                        if (Module025TaskEstimates.AfterHoursAllocation(tasks[t]) is { } after) sheet.Cell(t + 4, 3).Value = after;
+                        sheet.Cell(t + 4, 7).Value = string.Join("\n", new[] {
+                            tasks[t].Notes,
+                            tasks[t].Reviewed == false ? "PROPOSED - SA review required." : null,
+                            tasks[t].EstimateBasis,
+                            tasks[t].AfterHoursRequired ? "After-hours required. Maintenance window and premium pricing require separate confirmation." : null,
+                            tasks[t].AfterHoursSuggested && !tasks[t].AfterHoursRequired ? "After-hours suggested; not approved." : null,
+                            tasks[t].AfterHoursReason
+                        }.Where(value => !string.IsNullOrWhiteSpace(value)));
                     }
-                    sheet.Cell(totalRow, 1).Value = "Reviewed phase hours";
-                    sheet.Cell(totalRow, 2).FormulaA1 = $"IF(COUNT(B4:B{lastTask})={tasks.Count},SUM(B4:B{lastTask}),\"\")";
+                    sheet.Cell(totalRow, 1).Value = "Total phase hours (regular + after-hours)";
+                    sheet.Cell(totalRow, 2).FormulaA1 = $"IF(COUNT(B4:C{lastTask})={tasks.Count * 2},SUM(B4:C{lastTask}),\"\")";
+                    sheet.Cell(totalRow, 3).FormulaA1 = $"IF(COUNT(C4:C{lastTask})={tasks.Count},SUM(C4:C{lastTask}),\"\")";
                     sheet.Cell("A3").Value = "Task hours roll up to the phase total.";
-                    if (!Module025TaskEstimates.Reconciled(phase)) sheet.Cell("G2").Value = "DRAFT - Complete and reconcile all task hours before confirmation.";
+                    if (!Module025TaskEstimates.Reconciled(phase)) sheet.Cell("G2").Value = "DRAFT - " + Module025TaskEstimates.PhaseReadiness(phase);
                 }
                 totals.Cell(15 + index, 3).FormulaA1 = $"IF(ISNUMBER('{name}'!B{totalRow}),'{name}'!B{totalRow},\"\")";
                 var baseRow = index switch { 0 or 1 => 8, 2 or 3 => 28, _ => 48 };
@@ -127,7 +139,7 @@ internal static class Module025StandardGsdExporter
             sheet.PageSetup.PrintAreas.Clear();
             sheet.PageSetup.PrintAreas.Add(1, 1, lastTask, 7);
         }
-        totals.Cell("B11").Value = "Reviewed phase hours";
+        totals.Cell("B11").Value = allTasksReviewed ? "Reviewed phase hours" : "Working phase hours; review required";
         totals.Cell("C11").FormulaA1 = "IF(COUNT(C15:C19)=5,SUM(C15:C19),\"\")";
         totals.Cell("C24").FormulaA1 = "IF(COUNT(C15:C16,C19)=3,SUM(C15:C16,C19),\"\")";
         totals.Cell("C25").FormulaA1 = "IF(COUNT(C17:C18)=2,SUM(C17:C18),\"\")";
@@ -161,7 +173,7 @@ internal static class Module025StandardGsdExporter
         ConfigurePrint(breakdown, "B2:R64", XLPageOrientation.Landscape);
         breakdown.PageSetup.FitToPages(1, 1);
         breakdown.Range("B2:R64").Style.Alignment.WrapText = true;
-        foreach (var address in new[] { "C7", "L7", "C27", "L27", "C47" }) breakdown.Cell(address).Value = "Reviewed";
+        foreach (var address in new[] { "C7", "L7", "C27", "L27", "C47" }) breakdown.Cell(address).Value = allTasksReviewed ? "Reviewed" : "Review required";
         breakdown.Range("C8:N53").Style.NumberFormat.Format = "0.##";
         ConfigurePrint(totals, "B1:G34", XLPageOrientation.Landscape);
         totals.Column(2).Width = 44;

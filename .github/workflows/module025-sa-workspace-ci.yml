@@ -1,0 +1,102 @@
+name: Module025 SA workspace preparation
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/Module025*'
+      - 'src/frontend/project-time-web/src/module025/**'
+      - 'database/migrations/116_module025_governed_ownership_transfer.sql'
+      - 'database/migrations/117_module025_template_candidates.sql'
+      - 'database/rollback/116_module025_governed_ownership_transfer_rollback.sql'
+      - 'database/rollback/117_module025_template_candidates_rollback.sql'
+      - 'tests/Module025TransferTests/**'
+      - 'tests/Module025TemplateCatalogTests/**'
+      - 'tests/test-module025-template-migration-117.sh'
+      - 'tests/module025-sa-workspace-scope.mjs'
+      - '.github/workflows/module025-sa-workspace-ci.yml'
+permissions:
+  contents: read
+jobs:
+  preparation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Verify preparation scope without deployment admission
+        if: github.head_ref == 'feat/sa-workspace-redesign-20260920'
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: node tests/module025-sa-workspace-scope.mjs
+      - name: Verify the exact scope rejects added or missing files
+        run: node tests/module025-sa-workspace-scope.mjs --self-test
+      - name: Validate template candidate behavior
+        run: dotnet run --project tests/Module025TemplateCatalogTests --configuration Release
+      - name: Install browser test dependencies
+        run: |
+          npm ci --prefix src/frontend/project-time-web --no-audit --no-fund
+          npm install --prefix "$RUNNER_TEMP/module025-browser" playwright@1.57.0 --no-audit --no-fund
+          node "$RUNNER_TEMP/module025-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Verify team work, transfers, task review and retained document actions
+        env:
+          PLAYWRIGHT_MODULE_PATH: ${{ runner.temp }}/module025-browser/node_modules/playwright
+        run: |
+          node tests/module025-task-estimates.test.mjs
+          node tests/module025-task-editor.test.mjs
+          node tests/module025-team-workspace.test.mjs
+          node tests/module025-document-actions.test.mjs
+      - name: Install PostgreSQL client for isolated migration tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+      - name: Start disposable PostgreSQL for transfer and staged migration tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          name="module025-sa-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ "$name" =~ ^module025-sa-ci-[0-9]+-[0-9]+$ ]]
+          echo "MODULE025_SA_POSTGRES_CONTAINER=$name" >> "$GITHUB_ENV"
+          env_file="$(mktemp "$RUNNER_TEMP/module025-sa-postgres-XXXXXX")"
+          trap 'rm -f -- "$env_file"' EXIT
+          trap 'docker rm -f "$name" >/dev/null 2>&1 || true' ERR
+          password="$(openssl rand -hex 32)"
+          echo "::add-mask::$password"
+          printf 'POSTGRES_USER=postgres\nPOSTGRES_DB=module025_transfer_test\nPOSTGRES_PASSWORD=%s\n' "$password" > "$env_file"
+          docker run --detach --rm --name "$name" --publish 127.0.0.1::5432 \
+            --env-file "$env_file" --health-cmd 'pg_isready -U postgres -d module025_transfer_test' \
+            --health-interval 2s --health-timeout 2s --health-retries 30 postgres:16 >/dev/null
+          health='starting'
+          for attempt in {1..30}; do
+            health="$(timeout 5s docker inspect --format '{{.State.Health.Status}}' "$name")"
+            [[ "$health" != healthy ]] || break
+            [[ "$health" != unhealthy ]] || exit 1
+            sleep 2
+          done
+          [[ "$health" == healthy ]] || { echo 'CI PostgreSQL readiness expired.' >&2; exit 1; }
+          address="$(timeout 5s docker port "$name" 5432/tcp)"
+          [[ "$address" =~ ^127\.0\.0\.1:([0-9]{1,5})$ ]]
+          port="${BASH_REMATCH[1]}"
+          printf 'PGHOST=127.0.0.1\nPGPORT=%s\nPGUSER=postgres\nPGDATABASE=module025_transfer_test\nPGPASSWORD=%s\n' "$port" "$password" >> "$GITHUB_ENV"
+          trap - ERR
+      - name: Verify ownership transfer, authorization, revision conflicts and retained history
+        run: dotnet run --project tests/Module025TransferTests --configuration Release
+      - name: Verify staged template migration apply, immutability and rollback
+        run: bash tests/test-module025-template-migration-117.sh
+      - name: Remove disposable PostgreSQL
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          name="${MODULE025_SA_POSTGRES_CONTAINER:-}"
+          [[ -n "$name" ]] || exit 0
+          [[ "$name" == "module025-sa-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]
+          docker rm -f "$name" >/dev/null 2>&1 || true

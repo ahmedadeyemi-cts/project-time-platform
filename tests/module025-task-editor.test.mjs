@@ -22,7 +22,12 @@ try {
   await page.route('**/api/**',async route=>{
     const request=route.request(),url=new URL(request.url()),method=request.method();
     let body;
-    if (method!=='GET') {writes.push(url.pathname);assert.equal(method,'PUT','Only autosave is allowed');assert.ok(url.pathname.endsWith('/task-fixture'));const saved=request.postDataJSON();assert.equal(saved.expectedRevision,e.revision);e={...e,...saved,revision:e.revision+1};body={engagement:{engagement:e,access:{canEdit:true}},revision:e.revision};}
+    if (method!=='GET') {writes.push(url.pathname);assert.equal(method,'PUT','Only autosave is allowed');assert.ok(url.pathname.endsWith('/task-fixture'));const saved=request.postDataJSON();assert.equal(saved.expectedRevision,e.revision);
+      for (const phase of saved.phases || []) for (const task of phase.tasks || []) {
+        assert.equal(task.regularHours != null, task.afterHours != null, 'autosave sends either both split values or neither');
+        if (task.regularHours != null) assert.equal(Math.round((task.regularHours + task.afterHours) * 100), Math.round(task.hours * 100), 'saved split reconciles with total');
+      }
+      e={...e,...saved,revision:e.revision+1};body={engagement:{engagement:e,access:{canEdit:true}},revision:e.revision};}
     else if(url.pathname.endsWith('/bootstrap'))body={currentUser:{userId:'sa'},access:{canCreate:true,isSolutionArchitect:true},solutionArchitects:[{userId:'sa',displayName:'Example SA'}],accountExecutives:[{userId:'ae',displayName:'Example AE'}],insideSalesRepresentatives:[{userId:'saa',displayName:'Example SAA'}],commercialModels:[{key:'fixed',label:'Fixed Price'}],customerPrograms:[{key:'standard',label:'Standard'}],customers:[]};
     else if(url.pathname.endsWith('/task-fixture'))body={engagement:e,access:{canEdit,canConfirm:canEdit}};
     else if(url.pathname.endsWith('/history'))body={events:[]};
@@ -34,31 +39,56 @@ try {
   await page.goto(origin+'/__tasks');
   await page.locator('.m025-work-card').click();
   const phase=page.getByRole('region',{name:'plan task estimates',exact:true});
-  await phase.getByRole('button',{name:'Create task rows from saved scope'}).click();
-  await phase.getByLabel('Task 1 hours',{exact:true}).fill('0.1');
-  await phase.getByLabel('Task 2 hours',{exact:true}).fill('0.2');
-  await phase.getByText('Reviewed phase total: 0.30 hours',{exact:true}).waitFor();
+  await phase.getByRole('button',{name:'Propose tasks and hours'}).click();
+  assert.equal(await phase.getByLabel('plan task 1 total hours',{exact:true}).inputValue(),'0.5');
+  assert.equal(await phase.getByLabel('plan task 2 total hours',{exact:true}).inputValue(),'0.5');
+  const reviewed=phase.getByRole('checkbox',{name:'I reviewed this phase’s task estimates and work windows',exact:true});
+  assert.equal(await reviewed.isChecked(),false,'automated allocations require explicit SA review');
+  await phase.getByLabel('plan task 1 total hours',{exact:true}).fill('0.1');
+  await phase.getByLabel('plan task 2 total hours',{exact:true}).fill('0.2');
+  await phase.getByText('0.30 total hours',{exact:true}).waitFor();
+  const firstTask=phase.locator('.m025-task-review__item').first();
+  await firstTask.getByRole('checkbox',{name:'After-hours required',exact:true}).check();
+  await phase.getByLabel('plan task 1 after-hours portion',{exact:true}).fill('0.05');
+  await firstTask.getByText('Regular: 0.05h',{exact:true}).waitFor();
+  await reviewed.check();
+  await phase.getByText('Phase reviewed. 0.05 after-hours hours included in the total.',{exact:true}).waitFor();
   const firstDownload=page.waitForEvent('download');
   await page.getByRole('button',{name:'Download draft GSD',exact:true}).click();
   await firstDownload;
   assert.equal(e.phases[0].finalHours,0.3);
   assert.deepEqual(e.phases[0].tasks.map(t=>t.hours),[0.1,0.2]);
+  assert.equal(e.phases[0].tasks[0].regularHours,0.05);
+  assert.equal(e.phases[0].tasks[0].afterHours,0.05);
+  assert.equal(e.phases[0].tasks[0].afterHoursRequired,true);
+  assert.ok(e.phases[0].tasks.every(task=>task.reviewed===true));
   await page.reload();await page.locator('.m025-work-card').click();
-  assert.equal(await phase.getByLabel('Task 1 hours',{exact:true}).inputValue(),'0.1');
-  await phase.getByLabel('Task 1 hours',{exact:true}).fill('');
-  await phase.getByText('Task estimates are incomplete. Complete each description and hours before confirmation.',{exact:true}).waitFor();
+  assert.equal(await phase.getByLabel('plan task 1 total hours',{exact:true}).inputValue(),'0.1');
+  assert.equal(await phase.getByLabel('plan task 1 after-hours portion',{exact:true}).inputValue(),'0.05');
+  assert.equal(await reviewed.isChecked(),true);
+  await phase.getByLabel('plan task 1 after-hours portion',{exact:true}).fill('');
+  assert.equal(await reviewed.isDisabled(),true,'unknown required after-hours portion cannot be reviewed');
+  await phase.getByLabel('plan task 1 after-hours portion',{exact:true}).fill('0');
+  assert.equal(await reviewed.isDisabled(),true,'required after-hours must have positive allocation');
+  await phase.getByLabel('plan task 1 after-hours portion',{exact:true}).fill('0.05');
+  assert.equal(await reviewed.isChecked(),false,'editing an allocation invalidates its review');
+  await phase.getByLabel('plan task 1 total hours',{exact:true}).fill('');
+  assert.equal(await page.getByRole('navigation',{name:'Workspace audience'}).getByRole('button',{name:'Templates',exact:true}).isDisabled(),true,'template switch cannot discard unsaved task input');
+  await phase.getByText('Hours incomplete',{exact:true}).waitFor();
   const confirmation=page.getByRole('button',{name:'Review Requirements to Confirm',exact:true});
   await confirmation.waitFor();
   const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download draft SOW',exact:true}).click();await pending;
   assert.equal(e.phases[0].tasks[0].hours,null);
+  assert.equal(e.phases[0].tasks[0].regularHours,null);
+  assert.equal(e.phases[0].tasks[0].afterHours,null);
   assert.ok(downloads.length===2);
   assert.ok(!writes.some(p=>/generate|confirm|sell/.test(p)));
   canEdit=false;
   const savesBeforeReadOnly=writes.length;
   await page.reload();await page.locator('.m025-work-card').click();
-  assert.equal(await phase.getByLabel('Task 1 hours',{exact:true}).isDisabled(),true);
+  assert.equal(await phase.getByLabel('plan task 1 total hours',{exact:true}).isDisabled(),true);
   assert.equal(await phase.getByRole('button',{name:'Add task',exact:true}).isDisabled(),true);
   assert.equal(writes.length,savesBeforeReadOnly);
   assert.deepEqual(errors,[]);
-  console.log('MODULE025_TASK_EDITOR=PASS autosave=verified reload=verified drafts=authenticated generationPosts=0');
+  console.log('MODULE025_TASK_EDITOR=PASS proposals=reviewed afterhours=verified autosave=verified reload=verified drafts=authenticated generationPosts=0');
 } finally {await browser.close();await server.close();}

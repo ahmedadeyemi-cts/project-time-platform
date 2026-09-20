@@ -1,0 +1,273 @@
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
+using Npgsql;
+using NpgsqlTypes;
+
+namespace ProjectTime.Api.Modules;
+
+public static partial class Module025SowGsdModule
+{
+    private const string TemplateCandidateMigration = "117_module025_template_candidates";
+    private const int TemplateRequestLimit = 6 * 1024 * 1024;
+    private const string TemplateVisibilitySql = """
+        (@administrator OR candidate.organization_visible OR candidate.owner_user_id=@user_id OR EXISTS (
+            SELECT 1 FROM reporting_relationships relationship
+            WHERE relationship.employee_user_id=@user_id
+              AND (relationship.manager_user_id=candidate.owner_user_id OR relationship.team_lead_user_id=candidate.owner_user_id)
+              AND relationship.effective_start_date<=CURRENT_DATE
+              AND (relationship.effective_end_date IS NULL OR relationship.effective_end_date>=CURRENT_DATE)))
+        """;
+
+    private static void MapModule025TemplateCatalogEndpoints(WebApplication app)
+    {
+        app.MapGet("/api/module025/sow-gsd/templates", (Func<HttpContext, CancellationToken, Task<IResult>>)TemplateCatalogAsync);
+        app.MapPost("/api/module025/sow-gsd/templates", (Func<HttpContext, CancellationToken, Task<IResult>>)StageTemplateCandidateAsync);
+        app.MapGet("/api/module025/sow-gsd/templates/{versionId:guid}/file", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)DownloadTemplateCandidateAsync);
+    }
+
+    private static async Task<IResult> TemplateCatalogAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        var authorization = await AuthorizeViewAsync(context);
+        if (authorization is not null) return authorization;
+        var opened = await OpenConnectionAsync(context, cancellationToken);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        var access = await ResolveAccessAsync(connection, context, cancellationToken);
+        if (access is null) return SessionRequired();
+        var schemaReady = await TemplateCatalogSchemaReadyAsync(connection, cancellationToken);
+        var candidates = new List<object>();
+        if (schemaReady)
+        {
+            await using var command = new NpgsqlCommand($"""
+                SELECT template_version_id, owner_display_name, owner_team_name, document_kind, customer_program,
+                       version_number, label, change_notes, file_name, content_sha256, octet_length(file_content),
+                       created_at, validation_json::text, organization_visible
+                FROM module025_template_candidates candidate
+                WHERE {TemplateVisibilitySql}
+                ORDER BY created_at DESC LIMIT 200;
+                """, connection);
+            AddTemplateScope(command, access);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken)) candidates.Add(new
+            {
+                versionId = reader.GetGuid(0), ownerDisplayName = reader.GetString(1), teamName = reader.GetString(2),
+                documentKind = reader.GetString(3), customerProgram = reader.GetString(4), version = reader.GetInt32(5),
+                label = reader.GetString(6), changeNotes = reader.GetString(7), fileName = reader.GetString(8),
+                sha256 = reader.GetString(9), sizeBytes = reader.GetInt32(10), createdAt = reader.GetFieldValue<DateTimeOffset>(11),
+                validation = ParseJson(reader.GetString(12), JsonValueKind.Object), organizationVisible = reader.GetBoolean(13),
+                status = "awaiting_mapping", usedForExports = false
+            });
+        }
+        return Results.Ok(new
+        {
+            status = "module025_template_catalog", schemaReady,
+            migration = schemaReady ? null : TemplateCandidateMigration,
+            canStage = schemaReady && CanStageTemplate(access), canActivate = false,
+            maximumFileBytes = Module025TemplatePackage.MaximumFileBytes,
+            catalogLimit = 200,
+            activeExporters = new[]
+            {
+                new { key = "sow_document", label = "SOW document", programs = "Standard, Toyota and Hyundai", implementation = "Built-in document layout", readiness = "Current export format. Uploaded Word templates require approved field mappings before use." },
+                new { key = "standard_gsd", label = "Standard GSD", programs = "Standard", implementation = "Embedded standard workbook", readiness = "Current exporter populates the embedded workbook and maintains formulas in code. Arbitrary uploaded formulas are not yet supported." },
+                new { key = "haea_gsd", label = "Toyota / Hyundai GSD", programs = "Toyota and Hyundai", implementation = "Built-in workbook layout", readiness = "Current workbook is generated by code. Customer originals and verified input mappings are required before replacing it." }
+            },
+            candidates,
+            activationRequirements = new[] { "Agree writable cells or document fields", "Validate formulas, task capacity, regular and after-hours allocations", "Verify populated SOW/GSD outputs", "Pin approved template versions to future document packages" },
+            stateChanged = false
+        });
+    }
+
+    private static async Task<IResult> StageTemplateCandidateAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        if (!SameOrigin(context)) return OriginRejected();
+        var authorization = await AuthorizeViewAsync(context);
+        if (authorization is not null) return authorization;
+        var opened = await OpenConnectionAsync(context, cancellationToken);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        var access = await ResolveAccessAsync(connection, context, cancellationToken);
+        if (access is null) return SessionRequired();
+        if (!CanStageTemplate(access)) return Forbidden(access.IsViewAs ? "view_as_read_only" : "module025_template_manager");
+        if (!await TemplateCatalogSchemaReadyAsync(connection, cancellationToken)) return TemplateCatalogMigrationRequired();
+
+        // Read manually with a hard bound, including chunked requests, before decoding base64.
+        if (context.Request.ContentLength > TemplateRequestLimit) return TemplateUploadTooLarge();
+        using var body = new MemoryStream();
+        var buffer = new byte[16384];
+        int count;
+        while ((count = await context.Request.Body.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            if (body.Length + count > TemplateRequestLimit) return TemplateUploadTooLarge();
+            await body.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+        }
+        Module025TemplateUploadRequest? request;
+        try { request = JsonSerializer.Deserialize<Module025TemplateUploadRequest>(body.ToArray(), new JsonSerializerOptions(JsonSerializerDefaults.Web)); }
+        catch (JsonException) { return Results.BadRequest(new { message = "Enter the template details and select an original .docx or .xlsx file." }); }
+        if (request is null || request.DocumentKind is not ("sow" or "gsd") || request.CustomerProgram is not ("standard" or "toyota" or "hyundai")
+            || string.IsNullOrWhiteSpace(request.Label) || request.Label.Length > 160
+            || string.IsNullOrWhiteSpace(request.ChangeNotes) || request.ChangeNotes.Length > 2000)
+            return Results.BadRequest(new { message = "Select SOW or GSD and a customer program. Enter a label (160 characters maximum) and change notes (2,000 characters maximum)." });
+        byte[] content;
+        try { content = Convert.FromBase64String(request.ContentBase64 ?? string.Empty); }
+        catch (FormatException) { return Results.BadRequest(new { message = "The uploaded file could not be decoded. Select the file again." }); }
+        var validation = Module025TemplatePackage.Validate(request.DocumentKind, request.FileName, content);
+        if (!validation.Valid) return Results.BadRequest(new { status = "template_package_invalid", message = validation.Message });
+
+        var versionId = Guid.NewGuid();
+        var sha256 = Convert.ToHexStringLower(SHA256.HashData(content));
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        // Keep per-owner version assignment and duplicate detection atomic.
+        await using (var guard = new NpgsqlCommand("SELECT pg_advisory_xact_lock(250117);", connection, transaction))
+            await guard.ExecuteNonQueryAsync(cancellationToken);
+        await using (var duplicate = new NpgsqlCommand("SELECT template_version_id FROM module025_template_candidates WHERE owner_user_id=@owner AND document_kind=@kind AND customer_program=@program AND content_sha256=@hash", connection, transaction))
+        {
+            duplicate.Parameters.AddWithValue("owner", access.EffectiveUserId);
+            duplicate.Parameters.AddWithValue("kind", request.DocumentKind);
+            duplicate.Parameters.AddWithValue("program", request.CustomerProgram);
+            duplicate.Parameters.AddWithValue("hash", sha256);
+            if (await duplicate.ExecuteScalarAsync(cancellationToken) is Guid existing)
+                return Results.Conflict(new { status = "template_already_staged", versionId = existing, message = "This exact file is already retained for this program. Upload a changed original to create a new version." });
+        }
+        await using var insert = new NpgsqlCommand("""
+            INSERT INTO module025_template_candidates
+                (template_version_id,owner_user_id,owner_display_name,owner_team_name,organization_visible,document_kind,
+                 customer_program,version_number,label,change_notes,file_name,content_sha256,file_content,validation_json)
+            SELECT @id,@owner,@owner_name,@team,@organization,@kind,@program,
+                   COALESCE(MAX(version_number),0)+1,@label,@notes,@file,@hash,@content,@validation
+            FROM module025_template_candidates WHERE owner_user_id=@owner AND document_kind=@kind AND customer_program=@program
+            RETURNING version_number;
+            """, connection, transaction);
+        insert.Parameters.AddWithValue("id", versionId);
+        insert.Parameters.AddWithValue("owner", access.EffectiveUserId);
+        insert.Parameters.AddWithValue("owner_name", access.DisplayName);
+        insert.Parameters.AddWithValue("team", Clean(access.TeamName, 255));
+        insert.Parameters.AddWithValue("organization", access.IsAdministrator);
+        insert.Parameters.AddWithValue("kind", request.DocumentKind);
+        insert.Parameters.AddWithValue("program", request.CustomerProgram);
+        insert.Parameters.AddWithValue("label", request.Label.Trim());
+        insert.Parameters.AddWithValue("notes", request.ChangeNotes.Trim());
+        insert.Parameters.AddWithValue("file", request.FileName!);
+        insert.Parameters.AddWithValue("hash", sha256);
+        insert.Parameters.AddWithValue("content", NpgsqlDbType.Bytea, content);
+        insert.Parameters.AddWithValue("validation", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(new { packageValidated = true, formulaCount = validation.FormulaCount, worksheetCount = validation.WorksheetCount, mappingValidated = false, outputVerified = false }));
+        var version = (int)(await insert.ExecuteScalarAsync(cancellationToken))!;
+        await transaction.CommitAsync(cancellationToken);
+        return Results.Ok(new { status = "template_staged", versionId, version, sha256, usedForExports = false, stateChanged = true, message = "Original retained as an immutable review candidate. Current document exports are unchanged." });
+    }
+
+    private static async Task<IResult> DownloadTemplateCandidateAsync(Guid versionId, HttpContext context, CancellationToken cancellationToken)
+    {
+        var authorization = await AuthorizeViewAsync(context);
+        if (authorization is not null) return authorization;
+        var opened = await OpenConnectionAsync(context, cancellationToken);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        var access = await ResolveAccessAsync(connection, context, cancellationToken);
+        if (access is null) return SessionRequired();
+        if (!await TemplateCatalogSchemaReadyAsync(connection, cancellationToken)) return TemplateCatalogMigrationRequired();
+        await using var command = new NpgsqlCommand($"SELECT file_name,document_kind,file_content FROM module025_template_candidates candidate WHERE template_version_id=@id AND {TemplateVisibilitySql};", connection);
+        command.Parameters.AddWithValue("id", versionId);
+        AddTemplateScope(command, access);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return Results.NotFound();
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return Results.File(reader.GetFieldValue<byte[]>(2), reader.GetString(1) == "sow"
+            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", reader.GetString(0));
+    }
+
+    internal static bool CanStageTemplate(Module025AccessContext access) => !access.IsViewAs
+        && (access.IsAdministrator || access.IsManager && access.VisibleSolutionArchitectIds.Any(id => id != access.EffectiveUserId));
+    private static void AddTemplateScope(NpgsqlCommand command, Module025AccessContext access)
+    {
+        command.Parameters.AddWithValue("administrator", access.IsAdministrator);
+        command.Parameters.AddWithValue("user_id", access.EffectiveUserId);
+    }
+    private static async Task<bool> TemplateCatalogSchemaReadyAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("SELECT to_regclass('public.module025_template_candidates') IS NOT NULL;", connection);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+    private static IResult TemplateCatalogMigrationRequired() => Results.Json(new { status = "module025_template_migration_required", migration = TemplateCandidateMigration, message = "Template storage is not available until its database migration is installed." }, statusCode: 503);
+    private static IResult TemplateUploadTooLarge() => Results.Json(new { message = "Template files must be 4 MB or smaller." }, statusCode: 413);
+}
+
+internal sealed record Module025TemplateUploadRequest(string? FileName, string? ContentBase64, string? DocumentKind, string? CustomerProgram, string? Label, string? ChangeNotes);
+internal sealed record Module025TemplatePackageValidation(bool Valid, string Message, int FormulaCount = 0, int WorksheetCount = 0);
+
+/// <summary>Structural staging validation, not approval of mappings, formulas, or generated output.</summary>
+internal static class Module025TemplatePackage
+{
+    internal const int MaximumFileBytes = 4 * 1024 * 1024;
+    private const long MaximumExpandedBytes = 32 * 1024 * 1024;
+    private const long MaximumPartBytes = 8 * 1024 * 1024;
+    internal static Module025TemplatePackageValidation Validate(string kind, string? fileName, byte[] content)
+    {
+        Module025TemplatePackageValidation Invalid(string reason) => new(false, reason);
+        if (kind is not ("sow" or "gsd")) return Invalid("Select SOW or GSD.");
+        var suffix = kind == "sow" ? ".docx" : ".xlsx";
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.Length > 200 || fileName.Any(c => char.IsControl(c) || "\\/:*?\"<>|".Contains(c))
+            || !fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return Invalid($"Select an original {suffix} file with a valid file name. Macro-enabled files are not accepted.");
+        if (content.Length == 0 || content.Length > MaximumFileBytes) return Invalid("Template files must be between 1 byte and 4 MB.");
+        try
+        {
+            using var stream = new MemoryStream(content, writable: false);
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+            if (archive.Entries.Count is 0 or > 1024) return Invalid("The document package contains too many parts or is empty.");
+            long expanded = 0;
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var xmlParts = new Dictionary<string, XDocument>(StringComparer.Ordinal);
+            foreach (var entry in archive.Entries)
+            {
+                var name = entry.FullName;
+                if (name.StartsWith('/') || name.Contains('\\') || name.Split('/').Any(part => part is ".." or ".") || !names.Add(name)) return Invalid("The document package contains invalid or duplicate paths.");
+                expanded += entry.Length;
+                if (entry.Length > MaximumPartBytes || expanded > MaximumExpandedBytes) return Invalid("The expanded document exceeds the template size limit.");
+                if (name.Contains("vba", StringComparison.OrdinalIgnoreCase) || name.Contains("activex", StringComparison.OrdinalIgnoreCase)
+                    || name.Contains("embeddings/", StringComparison.OrdinalIgnoreCase) || name.Contains("externallinks/", StringComparison.OrdinalIgnoreCase)
+                    || name.Contains("connections", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return Invalid("Remove macros, embedded objects, external data connections, and active content before staging the template.");
+                // Read every entry to enforce decompression integrity, even non-XML media parts.
+                using var source = entry.Open();
+                using var part = new MemoryStream();
+                var buffer = new byte[16384];
+                int read;
+                while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    if (part.Length + read > MaximumPartBytes || part.Length + read > entry.Length) return Invalid("A document part exceeded its declared size.");
+                    part.Write(buffer, 0, read);
+                }
+                if (part.Length != entry.Length) return Invalid("The document package is incomplete.");
+                if (!name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && !name.EndsWith(".rels", StringComparison.OrdinalIgnoreCase)) continue;
+                part.Position = 0;
+                using var xmlReader = XmlReader.Create(part, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = MaximumPartBytes });
+                var xml = XDocument.Load(xmlReader);
+                if (name.EndsWith(".rels", StringComparison.OrdinalIgnoreCase) && xml.Descendants().Any(node =>
+                        string.Equals(node.Attribute("TargetMode")?.Value, "External", StringComparison.OrdinalIgnoreCase)
+                        || node.Attribute("Target")?.Value is { } target && (target.StartsWith("//") || target.Contains('\\') || Uri.TryCreate(target, UriKind.Absolute, out var uri) && uri.IsAbsoluteUri)))
+                    return Invalid("Remove external document links and data relationships before staging the template.");
+                if (xml.Descendants().Any(node => node.Name.LocalName is "oleObject" or "altChunk" or "object")) return Invalid("Remove embedded or active objects before staging the template.");
+                xmlParts.Add(name, xml);
+            }
+            var mainPart = kind == "sow" ? "word/document.xml" : "xl/workbook.xml";
+            var expectedContentType = kind == "sow" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
+            if (!xmlParts.TryGetValue("[Content_Types].xml", out var types) || !xmlParts.ContainsKey(mainPart)
+                || !xmlParts.ContainsKey("_rels/.rels") || !types.Descendants().Any(node => node.Name.LocalName == "Override"
+                    && node.Attribute("PartName")?.Value == "/" + mainPart && node.Attribute("ContentType")?.Value == expectedContentType))
+                return Invalid("This file is not a supported Word document or Excel workbook package.");
+            var expectedRoot = kind == "sow" ? XName.Get("document", "http://schemas.openxmlformats.org/wordprocessingml/2006/main") : XName.Get("workbook", "http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+            if (xmlParts[mainPart].Root?.Name != expectedRoot) return Invalid("The document's primary XML part is invalid.");
+            if (types.Descendants().Any(node => (node.Attribute("ContentType")?.Value ?? "").Contains("macroEnabled", StringComparison.OrdinalIgnoreCase))) return Invalid("Macro-enabled templates are not accepted.");
+            var worksheets = xmlParts.Where(pair => pair.Key.StartsWith("xl/worksheets/", StringComparison.Ordinal) && pair.Key.EndsWith(".xml", StringComparison.Ordinal)).ToArray();
+            if (kind == "gsd" && worksheets.Length == 0) return Invalid("The workbook must include at least one worksheet.");
+            // Formula cells are counted but never recalculated or modified. Originals remain byte-for-byte identical.
+            return new(true, "Package structure validated; mapping and output review remain required.", worksheets.Sum(pair => pair.Value.Descendants().Count(node => node.Name.LocalName == "f")), worksheets.Length);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or XmlException or IOException or ArgumentException)
+        { return Invalid("The file is damaged, encrypted, or not a supported Office Open XML document."); }
+    }
+}

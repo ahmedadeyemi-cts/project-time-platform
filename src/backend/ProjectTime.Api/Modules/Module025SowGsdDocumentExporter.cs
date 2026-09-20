@@ -51,9 +51,11 @@ internal static class Module025SowGsdDocumentExporter
                 ? "Level of effort pending task review."
                 : $"Reviewed level of effort: {phase.FinalHours:0.##} hour(s).", "Strong");
 
-            AppendDetailedSection(body, "Reviewed Tasks", (phase.Tasks ?? Array.Empty<Module025TaskEstimate>()).Select(t => t.Description));
-            AppendDetailedSection(body, "Detailed Activities", phase.DetailedActivities);
-            AppendDetailedSection(body, "Technical Tasks / Configuration", phase.TechnicalTasks);
+            // The customer document contains the execution approach. Detailed task
+            // instructions, allocations and estimating notes belong in the GSD.
+            AppendDetailedSection(body, "Execution Approach", phase.DetailedActivities);
+            if (phase.Tasks?.Any(task => task.AfterHoursRequired) == true)
+                BodyParagraph(body, "Some activities require an agreed after-hours maintenance window. Scheduling and any premium pricing remain subject to the customer agreement.");
             AppendDetailedSection(body, "Deliverables", phase.Deliverables);
             AppendDetailedSection(body, "US Signal Responsibilities", phase.UsSignalResponsibilities);
             AppendDetailedSection(body, "Customer Responsibilities", phase.CustomerResponsibilities);
@@ -190,7 +192,7 @@ internal static class Module025SowGsdDocumentExporter
 
         summary.Cell("A14").Value = "Phase";
         summary.Cell("B14").Value = "AI Suggested Hours";
-        summary.Cell("C14").Value = "SA Final Hours";
+        summary.Cell("C14").Value = model.Phases.Any(phase => phase.Tasks?.Any(task => task.Reviewed == false) == true) ? "Working Hours (review required)" : "SA Final Hours";
         summary.Cell("D14").Value = "Variance";
         summary.Cell("E14").Value = "Level-of-Effort Rationale";
         var row = 15;
@@ -263,6 +265,7 @@ internal static class Module025SowGsdDocumentExporter
         details.Column(3).Style.Alignment.WrapText = true;
         details.SheetView.FreezeRows(3);
 
+        AddTaskAllocations(workbook, model);
         var scope = workbook.AddWorksheet("Scope & Assumptions");
         scope.Cell("A1").Value = "Service Overview";
         scope.Cell("B1").Value = engagement.ServiceOverview;
@@ -289,6 +292,58 @@ internal static class Module025SowGsdDocumentExporter
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
         return stream.ToArray();
+    }
+
+    private static void AddTaskAllocations(XLWorkbook workbook, Module025DocumentModel model)
+    {
+        var sheet = workbook.AddWorksheet("Task Estimates");
+        var headers = new[] { "Phase", "Detailed Task", "Total Hours", "Regular Hours", "After-hours Hours", "Review Status", "After-hours", "Estimate Basis / Notes" };
+        for (var column = 0; column < headers.Length; column++) sheet.Cell(1, column + 1).Value = headers[column];
+        var row = 2;
+        foreach (var phase in model.Phases.OrderBy(value => value.SortOrder))
+        {
+            if (phase.Tasks is not { Count: > 0 })
+            {
+                sheet.Cell(row, 1).Value = PhaseLabel(phase.PhaseCode);
+                sheet.Cell(row, 2).Value = "Legacy phase-only estimate; task allocation requires review.";
+                sheet.Cell(row, 6).Value = "Task allocation pending";
+                row++;
+                continue;
+            }
+            foreach (var task in phase.Tasks)
+            {
+                sheet.Cell(row, 1).Value = PhaseLabel(phase.PhaseCode);
+                sheet.Cell(row, 2).Value = task.Description;
+                if (task.Hours is { } total) sheet.Cell(row, 3).Value = total;
+                if (Module025TaskEstimates.RegularAllocation(task) is { } regular) sheet.Cell(row, 4).Value = regular;
+                if (Module025TaskEstimates.AfterHoursAllocation(task) is { } after) sheet.Cell(row, 5).Value = after;
+                sheet.Cell(row, 6).Value = Module025TaskEstimates.Complete(new[] { task }) ? "Reviewed" : "SA review required";
+                sheet.Cell(row, 7).Value = task.AfterHoursRequired ? "Required; confirm maintenance window" : task.AfterHoursSuggested ? "Suggested; SA approval required" : "Not required";
+                sheet.Cell(row, 8).Value = string.Join("\n", new[] { task.EstimateBasis, task.Notes, task.AfterHoursReason }.Where(value => !string.IsNullOrWhiteSpace(value)));
+                row++;
+            }
+        }
+        if (row > 2)
+        {
+            sheet.Cell(row, 2).Value = "Allocated hours (regular + after-hours; no premium assumed)";
+            for (var column = 3; column <= 5; column++)
+            {
+                var letter = column == 3 ? "C" : column == 4 ? "D" : "E";
+                sheet.Cell(row, column).FormulaA1 = $"IF(COUNT({letter}2:{letter}{row - 1})={row - 2},SUM({letter}2:{letter}{row - 1}),\"\")";
+            }
+        }
+        sheet.Row(1).Style.Font.Bold = true;
+        sheet.Column(1).Width = 16;
+        sheet.Column(2).Width = 65;
+        sheet.Columns(3, 5).Width = 15;
+        sheet.Columns(3, 5).Style.NumberFormat.Format = "0.##";
+        sheet.Columns(6, 7).Width = 28;
+        sheet.Column(8).Width = 70;
+        sheet.Style.Alignment.WrapText = true;
+        sheet.SheetView.FreezeRows(1);
+        sheet.PageSetup.PageOrientation = XLPageOrientation.Landscape;
+        sheet.PageSetup.FitToPages(1, 0);
+        sheet.PageSetup.SetRowsToRepeatAtTop(1, 1);
     }
 
     private static void AppendDetailRows(IXLWorksheet sheet, ref int row, Module025PhaseRow phase, string category, IEnumerable<string> values)
