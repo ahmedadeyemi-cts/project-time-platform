@@ -218,6 +218,29 @@ static void RunExportTests(string output)
     Directory.CreateDirectory(output);
     File.WriteAllBytes(Path.Combine(output, "Standard-GSD.xlsx"), bytes);
     File.WriteAllBytes(Path.Combine(output, "US-Signal-SOW.docx"), docx);
+    // Real typed serialization and real exporters for the Python installed-gate
+    // contract regression. These files are offline synthetic fixtures, not UAT evidence.
+    var gatePhases = phases.Select(phase => phase with {
+        SuggestedHours = 0.3m, FinalHours = 0.3m,
+        Objective = "Synthetic reviewed " + phase.PhaseCode + " scope",
+        DetailedActivities = new[] { "Synthetic " + phase.PhaseCode + " execution approach" },
+        TechnicalTasks = new[] { "INTERNAL_EXPORT_TECHNICAL_TASK " + phase.PhaseCode },
+        Deliverables = new[] { "Synthetic " + phase.PhaseCode + " deliverable" },
+        AcceptanceCriteria = new[] { "Synthetic " + phase.PhaseCode + " acceptance" },
+        Tasks = new[] {
+            new ProjectTime.Api.Modules.Module025TaskEstimate(Guid.NewGuid().ToString(), "Synthetic reviewed " + phase.PhaseCode + " task", 0.1m,
+                "INTERNAL_EXPORT_TEST_NOTE", RegularHours: 0.05m, AfterHours: 0.05m, AfterHoursRequired: true,
+                AfterHoursReason: "Synthetic after-hours designation for export acceptance.", Reviewed: true,
+                EstimateBasis: "Synthetic reviewed labor allocation."),
+            new ProjectTime.Api.Modules.Module025TaskEstimate(Guid.NewGuid().ToString(), "Synthetic second " + phase.PhaseCode + " task", 0.2m, "")
+        }
+    }).ToArray();
+    var gateModel = model with { Phases = gatePhases, FinalHours = 1.5m, SuggestedHours = 1.5m,
+        Engagement = e with { Phases = gatePhases } };
+    File.WriteAllBytes(Path.Combine(output, "Acceptance-Contract-SOW.docx"), ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateSowDocx(gateModel, draft: true));
+    File.WriteAllBytes(Path.Combine(output, "Acceptance-Contract-GSD.xlsx"), ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(gateModel, draft: true));
+    File.WriteAllText(Path.Combine(output, "Acceptance-Contract-Tasks.json"), System.Text.Json.JsonSerializer.Serialize(gatePhases,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
     Console.WriteLine("MODULE025_EXPORT_TESTS=PASS modelCalls=0");
 }
 
