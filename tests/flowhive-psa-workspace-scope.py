@@ -1,7 +1,7 @@
 """Exact feature scope; existing deployment authority remains byte-for-byte unchanged."""
 from pathlib import Path
 import subprocess
-BASE = 'efaf7371e3c4b587346c1f5645fc755bee70a8d8'
+BASE = '18f192c9d3737e630308321e8067dedfc580f0e9'
 def git(*args): return subprocess.check_output(['git', *args]).decode()
 manifest = Path('.github/flowhive-psa-workspace-files.txt').read_text().splitlines()
 assert manifest == sorted(set(manifest)), 'Manifest must be exact, sorted and unique'

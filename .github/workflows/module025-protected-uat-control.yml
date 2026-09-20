@@ -190,12 +190,12 @@ jobs:
               fi
             fi
             # Exact export-release orphan: normal cancel, force-cancel and delete
-            # were rejected. A descendant with the identical deployment controller
+            # were rejected. A descendant with an exact reviewed deployment controller
             # makes this old release fail its exact-main guard before Azure login.
             if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_6" && \
                   "$requested_sha" != '57c8d0264bdd828e6b3b53a8c5cb8b1b841e8f61' ]] && \
                git merge-base --is-ancestor '57c8d0264bdd828e6b3b53a8c5cb8b1b841e8f61' HEAD && \
-               git diff --quiet '57c8d0264bdd828e6b3b53a8c5cb8b1b841e8f61' HEAD -- "$DEPLOY_WORKFLOW_PATH" && \
+               python3 scripts/release-test/verify-module025-quarantine-controller.py --base '57c8d0264bdd828e6b3b53a8c5cb8b1b841e8f61' && \
                verify_zero_job_quarantine "$run_id" \
                  '57c8d0264bdd828e6b3b53a8c5cb8b1b841e8f61' \
                  'main' \
@@ -207,12 +207,12 @@ jobs:
                 continue
               fi
             fi
-            # Exact foundation-release orphan: normal cancellation was rejected. A descendant with the identical deployment controller
+            # Exact foundation-release orphan: normal cancellation was rejected. A descendant with an exact reviewed deployment controller
             # makes this old release fail its exact-main guard before Azure login.
             if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_7" && \
                   "$requested_sha" != 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17' ]] && \
                git merge-base --is-ancestor 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17' HEAD && \
-               git diff --quiet 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17' HEAD -- "$DEPLOY_WORKFLOW_PATH" && \
+               python3 scripts/release-test/verify-module025-quarantine-controller.py --base 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17' && \
                verify_zero_job_quarantine "$run_id" \
                  'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17' \
                  'main' \

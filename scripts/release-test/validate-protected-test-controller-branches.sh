@@ -15,6 +15,10 @@ is_planner_release_control_branch() {
 if [[ "$HEAD_BRANCH" == feature/flowhive-psa-team-workspace-20260919 ]]; then
   python3 tests/flowhive-psa-workspace-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/uat-enterprise-controller-review-20260920 ]]; then
+  python3 tests/uat-enterprise-controller-review.py
+  node tests/module025-deployment-startup-recovery.test.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/enterprise-completion-20260919 ]]; then
   [[ "$PR_NUMBER" == '1116' ]] || fail 'Enterprise completion registration is restricted to PR #1116.'
   python3 tests/enterprise-completion-scope.py
