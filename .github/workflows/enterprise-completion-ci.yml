@@ -56,5 +56,5 @@ jobs:
           node --test tests/project-financial-portfolio.test.mjs
       - name: Assigned timesheet notification recipients
         env:
-          RECIPIENT_TEST_CONNECTION: Host=127.0.0.1;Port=5432;Database=enterprise_completion_test;Username=postgres;Password=postgres
+          PGPASSWORD: postgres
         run: dotnet run --project tests/TimesheetNotificationRecipients --configuration Release

@@ -5,11 +5,11 @@ using Npgsql;
 using ProjectTime.Api.Modules;
 
 // Disposable PostgreSQL only. Temporary fixtures cannot touch application tables.
-var cs = Environment.GetEnvironmentVariable("RECIPIENT_TEST_CONNECTION") ?? throw new Exception("Disposable test connection required");
-var settings = new NpgsqlConnectionStringBuilder(cs);
-if (settings.Host is not ("127.0.0.1" or "localhost") || settings.Database != "enterprise_completion_test")
-    throw new Exception("Only the local disposable enterprise_completion_test database is permitted");
-await using var connection = new NpgsqlConnection(cs);
+var settings = new NpgsqlConnectionStringBuilder {
+    Host = "127.0.0.1", Port = 5432, Database = "enterprise_completion_test", Username = "postgres",
+    Password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? throw new Exception("Disposable PostgreSQL password required")
+};
+await using var connection = new NpgsqlConnection(settings.ConnectionString);
 await connection.OpenAsync();
 async Task Sql(string sql) { await using var command = new NpgsqlCommand(sql, connection); await command.ExecuteNonQueryAsync(); }
 await Sql("""
