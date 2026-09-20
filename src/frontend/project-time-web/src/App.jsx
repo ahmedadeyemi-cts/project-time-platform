@@ -8750,7 +8750,7 @@ Analytics - Variphy / Infortel`}
         <section id="cost-alerts" className="panel cost-alert-route-panel">
           {/* GROUP_4_MODULE_022_CONFIGURABLE_RULES */}
           <CostOverrunAlertCenter canManageCostAlerts={canSeeAny(['MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
-          <details onToggle={(event) => setCostRoutingOpen(event.currentTarget.open)}>
+          <details open={costRoutingOpen} onToggle={(event) => setCostRoutingOpen(event.currentTarget.open)}>
             <summary>Notification routing and escalation settings</summary>
             {costRoutingOpen ? <ProjectNotificationAutomationCenter workspace="routing" authSession={authSession} /> : null}
           </details>
