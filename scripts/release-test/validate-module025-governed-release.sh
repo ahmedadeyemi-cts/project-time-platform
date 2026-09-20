@@ -9,7 +9,11 @@ HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
   [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
 fi
-if [[ "$HEAD_BRANCH" == feat/sa-workspace-redesign-20260920 ]]; then
+if [[ "$HEAD_BRANCH" == feat/module025-phase-progress-20260920 ]]; then
+  node tests/module025-phase-progress-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+  exit 0
+elif [[ "$HEAD_BRANCH" == feat/sa-workspace-redesign-20260920 ]]; then
   node tests/module025-sa-workspace-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
   exit 0

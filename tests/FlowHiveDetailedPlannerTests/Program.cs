@@ -1430,6 +1430,7 @@ foreach (var artifactKind in new[] { "timeline-risk", "raid", "decision-matrix",
 }
 
 await Module025ExternalSowTests.RunAsync(parsedModule025);
+Module025GenerationStatusTests.Run();
 await Module025GenerationEngineTests.RunAsync(parsedModule025);
 await Module025WorkerAuthorizationTests.RunAsync();
 Console.WriteLine("FLOWHIVE_DETAILED_PLANNER_TESTS=PASS");

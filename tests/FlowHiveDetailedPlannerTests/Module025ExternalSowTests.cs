@@ -41,6 +41,20 @@ internal static class Module025ExternalSowTests
                 && reportedRequest.UserPrompt.Contains("Requested operations: upgrade.")
                 && reportedRequest.UserPrompt.Contains("Requested version transition: 14.0 to 15.0."),
                 "reported_scope_preserves_canonical_technology_operation_and_versions");
+            foreach (var currentPhase in Module025GenerationEngine.Phases)
+            {
+                var phaseRequest = Module025ExternalSowAdapter.TryCreate(evidence with {
+                    ServiceOverview = "Upgrading Cisco CUCM from 14.0 to 15.0.",
+                    PhaseExecution = new Module025PhaseExecution(currentPhase, 0, Persist)
+                })!.Prepare(sanitizer, out _)!;
+                Check(phaseRequest.UserPrompt == reportedRequest.UserPrompt
+                    && phaseRequest.SystemPrompt.Contains(PulseAiPrivateRagService.Module025PhasePurpose(currentPhase))
+                    && phaseRequest.SystemPrompt.Contains("project scope does not")
+                    && phaseRequest.SystemPrompt.Contains("not Solution Architect approval")
+                    && phaseRequest.SystemPrompt.Contains("after-hours maintenance")
+                    && phaseRequest.SowPhase == currentPhase && phaseRequest.MaxOutputTokens == 12288,
+                    "module025_external_phases_reuse_closed_cucm_scope_with_distinct_purpose_" + currentPhase);
+            }
             foreach (var verb in new[] { "upgrade", "Upgrading", "upgraded", "upgrades" })
             foreach (var technology in new[] { "Cisco CallManager", "Cisco Call manager", "CallManager", "CUCM", "Cisco Unified Communications Manager" })
             {
