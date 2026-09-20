@@ -80,15 +80,24 @@ public sealed class ProjectPulseAiHealthMonitor : BackgroundService
     private readonly ProjectPulseAiConfiguration _configuration;
     private readonly ProjectPulseAiHealthCoordinator _coordinator;
     private readonly ILogger<ProjectPulseAiHealthMonitor> _logger;
+    private readonly CelarAiCapabilityRoutingStore _privateStore;
+    private readonly CelarAiPrivateGenerationTarget _privateTarget;
+    private readonly ProjectPulseAiHealthRegistry _health;
 
     public ProjectPulseAiHealthMonitor(
         ProjectPulseAiConfiguration configuration,
         ProjectPulseAiHealthCoordinator coordinator,
-        ILogger<ProjectPulseAiHealthMonitor> logger)
+        ILogger<ProjectPulseAiHealthMonitor> logger,
+        CelarAiCapabilityRoutingStore privateStore,
+        CelarAiPrivateGenerationTarget privateTarget,
+        ProjectPulseAiHealthRegistry health)
     {
         _configuration = configuration;
         _coordinator = coordinator;
         _logger = logger;
+        _privateStore = privateStore;
+        _privateTarget = privateTarget;
+        _health = health;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -117,6 +126,26 @@ public sealed class ProjectPulseAiHealthMonitor : BackgroundService
         try
         {
             await _coordinator.RefreshAsync(false, cancellationToken);
+            // A private readiness phrase carries no customer content. Keep its
+            // evidence fresh even when no administrator has this page open.
+            using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            bounded.CancelAfter(TimeSpan.FromSeconds(45));
+            var profile = await _privateStore.LoadPrivateModelProfileAsync(bounded.Token);
+            ProjectPulseAiProbeResult result;
+            try
+            {
+                result = await _privateTarget.ProbeAsync(profile, bounded.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                result = new("celar_ai", false, "private_probe_timeout", "Private readiness check timed out.", null, null);
+            }
+            _health.RecordProbe(result);
+            await _privateStore.SavePrivateProbeEvidenceAsync(profile, result,
+                TimeSpan.FromSeconds(Math.Max(_configuration.HealthIntervalSeconds * 2, 60)),
+                cancellationToken);
+            if (!result.Available)
+                _logger.LogWarning("Module 064 Celar AI availability check failed: {Code}", result.Code);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

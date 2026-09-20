@@ -15,6 +15,8 @@ on:
       - 'tests/FlowHiveExecutablePlanTests/**'
       - 'tests/FlowHiveExecutionTests/**'
       - 'tests/FlowHiveNotificationTests/**'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+      - 'scripts/release-test/verify-flowhive-task-notifications.sql'
       - 'tests/flowhive-team-calendar*'
       - 'src/backend/ProjectTime.Api/Modules/EnterpriseNotification*.cs'
       - 'database/migrations/115_module_066_task_notifications.sql'

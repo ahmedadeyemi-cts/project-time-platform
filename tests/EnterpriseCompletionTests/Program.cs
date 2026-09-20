@@ -15,6 +15,10 @@ foreach (var code in new[] { ProjectPulseAiProviders.Gemini, ProjectPulseAiProvi
     Check(configuration.Provider(code).Configured && configuration.Provider(code).Enabled, code + " configuration independent");
     Check(configuration.OpenAi == originalOpenAi, code + " never overwrites OpenAI");
 }
+Check(configuration.Provider("gemini").Enabled && configuration.Provider("copilot_studio").Enabled, "Gemini and Copilot enabled together");
+configuration.ApplyStoredEnabled("gemini", false);
+Check(configuration.Provider("copilot_studio").Enabled, "disabling Gemini leaves Copilot enabled");
+configuration.ApplyStoredEnabled("gemini", true);
 var order = new[] { "copilot_studio", "gemini", "celar_ai", "deepseek_v4", "openai", "claude", "local_template" };
 Check(CelarAiCapabilityCatalog.ValidateTargets(order).SequenceEqual(order), "custom priorities preserved");
 foreach (var invalid in new[] { order.Reverse().ToArray(), order.Select(x => x == "gemini" ? "openai" : x).ToArray(), order.Where(x => x != "celar_ai").ToArray() })
@@ -38,6 +42,10 @@ health.RecordProbe(new(ProjectPulseAiProviders.Gemini, false, "http_503", "faile
 Check(!health.CanAttempt(ProjectPulseAiProviders.Gemini, out _), "failed provider skipped");
 health.RecordProbe(new(ProjectPulseAiProviders.Gemini, true, "ok", "ok", 200, null));
 Check(health.CanAttempt(ProjectPulseAiProviders.Gemini, out _), "successful recovery probe restores provider");
+health.RecordProbe(new("celar_ai", false, "private_runtime_unavailable", "unavailable", 503, null));
+Check(!health.CanAttempt("celar_ai", out _), "offline Celar cannot be attempted");
+health.RecordProbe(new("celar_ai", true, "ready", "ready", 200, null));
+Check(health.CanAttempt("celar_ai", out _), "Celar health recovers after successful probe");
 Console.WriteLine($"{checks} checks passed");
 sealed class Factory(FakeHandler handler) : IHttpClientFactory { public HttpClient CreateClient(string name) => new(handler, false); }
 sealed class FakeHandler(string body) : HttpMessageHandler

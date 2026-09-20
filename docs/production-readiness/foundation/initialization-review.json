@@ -1662,7 +1662,7 @@
       ],
       "review_default": "review_required",
       "decision": "review_required",
-      "rationale": "New FlowHive task-event policies and checkpoint schema; pending production migration review. Defaults remain test_only; no deployment authorized."
+      "rationale": "New FlowHive task-event policies and checkpoint schema; pending production migration review. Owner-authorized Protected UAT payload verifies test_only or locked policies; production initialization remains unapproved."
     },
     {
       "path": "database/seed-data/001_non_project_time_categories.sql",

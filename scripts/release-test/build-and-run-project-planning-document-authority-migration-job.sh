@@ -57,8 +57,12 @@ install -m 0444 "$CUSTOMER_SOURCE_MIGRATION_FILE" "$CONTEXT/database/migrations/
 install -m 0444 "$MODULE025_MIGRATION_FILE" "$CONTEXT/database/migrations/099_module025_sow_gsd_workspace.sql"
 install -m 0444 "$MODULE001B_CATALOG_MIGRATION_FILE" "$CONTEXT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 install -m 0444 "$ROOT/database/migrations/101_deepseek_v4_provider.sql" "$CONTEXT/database/migrations/101_deepseek_v4_provider.sql"
+install -m 0444 "$ROOT/database/migrations/112_optional_ai_providers.sql" "$CONTEXT/database/migrations/112_optional_ai_providers.sql"
 node "$ROOT/scripts/release-test/reconcile-module-catalog.mjs" "$RELEASE_COMMIT" "$CONTEXT/database/migrations/108_builtin_module_catalog_reconciliation.sql"
 install -m 0444 "$MODULE025_PROJECT_NAME_MIGRATION_FILE" "$CONTEXT/database/migrations/109_module025_project_name.sql"
+install -m 0444 "$ROOT/database/migrations/115_module_066_task_notifications.sql" "$CONTEXT/database/migrations/115_module_066_task_notifications.sql"
+install -m 0444 "$ROOT/scripts/release-test/verify-flowhive-task-notifications.sql" "$CONTEXT/database/verify-flowhive-task-notifications.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/115_module_066_task_notifications.sql database/verify-flowhive-task-notifications.sql > database/flowhive-notifications.sha256)
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -93,13 +97,24 @@ psql -X -v ON_ERROR_STOP=1 --file "$MODULE025_MIGRATION"
 MODULE001B_CATALOG_MIGRATION="$ROOT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 [[ -f "$MODULE001B_CATALOG_MIGRATION" ]] || { echo 'ERROR: Module 001B catalog migration 100 source is missing from the immutable image.' >&2; exit 1; }
 psql -X -v ON_ERROR_STOP=1 --file "$MODULE001B_CATALOG_MIGRATION"
-psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/101_deepseek_v4_provider.sql"
+# Never replay the older, narrower constraint once migration 101 has run.
+# Reapply 112 even when ledgered, repairing the previously deployed replay order.
+if [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='101_deepseek_v4_provider')")" != t ]]; then
+  psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/101_deepseek_v4_provider.sql"
+fi
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/112_optional_ai_providers.sql"
 [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='101_deepseek_v4_provider')")" == t ]] || exit 1
 echo 'MIGRATION_101_DEEPSEEK_V4=APPLIED_AND_VERIFIED'
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/108_builtin_module_catalog_reconciliation.sql"
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/109_module025_project_name.sql"
 [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='module025_sow_gsd_engagements' AND column_name='project_name')")" == t ]] || exit 1
 echo 'MIGRATION_109_MODULE025_PROJECT_NAME=APPLIED_AND_VERIFIED'
+# Migration 115 checks its existing 064/103 prerequisites and preserves saved policies.
+# Verify the exact packaged bytes, then fail closed if UAT policies permit live delivery.
+(cd "$ROOT" && sha256sum --check --status database/flowhive-notifications.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/115_module_066_task_notifications.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-task-notifications.sql"
+echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='096_project_planning_document_authority')::text || '|' ||
@@ -255,6 +270,14 @@ export RELIABILITY_MIGRATION_IMAGE="$ACR_NAME.azurecr.io/$REPOSITORY@$DIGEST"
 export RELIABILITY_MIGRATION_JOB_NAME="pp096-${RUN_ID}-${RUN_ATTEMPT}"
 export RELIABILITY_MIGRATION_SCOPE="project-planning-document-authority-test"
 bash "$MIGRATION_RUNNER"
+echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'
+if [[ -n "$EVIDENCE_ROOT" ]]; then
+  install -d -m 0700 "$EVIDENCE_ROOT"
+  migration_sha256="$(sha256sum "$ROOT/database/migrations/115_module_066_task_notifications.sql" | cut -d ' ' -f 1)"
+  jq -n --arg releaseCommit "$RELEASE_COMMIT" --arg image "$RELIABILITY_MIGRATION_IMAGE" --arg sha256 "$migration_sha256" \
+    '{status:"applied_and_verified",migration:"115_module_066_task_notifications",sha256:$sha256,releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,deliveryBoundary:"test_only_or_locked",productionMutation:false}' \
+    > "$EVIDENCE_ROOT/migration-115.json"
+fi
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED'

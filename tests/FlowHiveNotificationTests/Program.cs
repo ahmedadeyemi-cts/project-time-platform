@@ -81,6 +81,14 @@ async System.Threading.Tasks.Task Database()
     var migration=File.ReadAllText("database/migrations/115_module_066_task_notifications.sql");
     await Sql(migration); await Sql(migration);
     Check(await ProjectFlowHiveNotificationSource.ReadyAsync(db,default),"migration replay is ready");
+    var deploymentVerification=File.ReadAllText("scripts/release-test/verify-flowhive-task-notifications.sql");
+    await Sql(deploymentVerification);
+    Check(true,"Protected Test deployment verifies the actual migration and policy contract");
+    await Sql("UPDATE enterprise_notification_policies SET delivery_boundary='production_governed' WHERE policy_code='FLOWHIVE_TASK_DUE';");
+    var rejectedLivePolicy=false;
+    try { await Sql(deploymentVerification); } catch (PostgresException e) when (e.SqlState=="P0001") { rejectedLivePolicy=true; }
+    Check(rejectedLivePolicy,"Protected Test deployment rejects live notification policies");
+    await Sql("UPDATE enterprise_notification_policies SET delivery_boundary='test_only' WHERE policy_code='FLOWHIVE_TASK_DUE';");
     var planId=Guid.NewGuid();
     await Sql($"INSERT INTO app_users VALUES('{owner}','Fixture engineer','engineer@example.invalid',TRUE),('{pm}','Fixture PM','pm@example.invalid',TRUE); INSERT INTO projects VALUES('{project}','NOTIFY-FIXTURE','active','{pm}');");
     await Sql($"INSERT INTO project_flowhive_task_reminder_preferences(project_id,enabled,lead_days,timezone_name,quiet_hours_start,quiet_hours_end,updated_by_user_id) VALUES('{project}',TRUE,ARRAY[3,0]::SMALLINT[],'UTC',NULL,NULL,'{pm}');");
@@ -154,4 +162,6 @@ async System.Threading.Tasks.Task Database()
     Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3 && await Number("SELECT count(*) FROM enterprise_notification_policies WHERE enabled")==0,"rollback retains evidence and disables policies");
     await Sql(migration);
     Check(await Number("SELECT count(*) FROM enterprise_notification_policies WHERE enabled")==0,"migration replay cannot reactivate disabled policies");
+    await Sql(deploymentVerification);
+    Check(true,"deployment verification preserves intentionally disabled policies after rollback");
 }

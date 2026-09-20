@@ -1,7 +1,7 @@
 # FlowHive enterprise PSA revamp
 
-Status: draft implementation and release contract, updated 2026-09-20.
-Owner request: Ahmed Adeyemi. Module 066. Target: Protected UAT after review.
+Status: first increment authorized for Protected UAT, updated 2026-09-20.
+Owner request: Ahmed Adeyemi. Module 066. Target: Protected UAT after green CI.
 
 ## Product outcome
 
@@ -12,7 +12,8 @@ scope. Engineers, PMs, Account Executives, Solution Architects, and leadership s
 the same project facts through their authorized role views.
 
 This is a coordinated redesign, delivered in reviewable increments. The first
-increment is not the completed PSA release. Keep its PR draft while the full release acceptance gates remain incomplete. Do not represent
+increment is not the completed PSA release. The owner authorized merging and deploying
+this increment to Protected UAT for acceptance; the broader release gaps remain below. Do not represent
 unimplemented integrations as available, successful, or delivering messages.
 
 ## Current implementation inventory
@@ -194,11 +195,16 @@ history. No destructive test-data cleanup or production deployment is part of th
 ### Notification deployment handoff
 
 Merging or deploying the application alone does not activate task notifications.
-The existing protected-test migration image/apply script does not package or apply
-migration 115. The initialization inventory deliberately marks it `review_required`.
-The release owner must include 115 in the next reviewed migration payload and its
-verification gate through the existing release process; this PR does not expand an
-older release approval or bypass its exact migration allowlist.
+The owner authorized Protected UAT deployment of this increment. The existing
+cumulative private-network migration image now packages migration 115 and a read-only
+verification script, with SHA-256 checks before execution. Migration 115 requires
+the existing 064/103 schema and preserves saved policy settings. Verification fails
+if the migration, state table, or either task policy is missing or if a task policy
+permits production delivery. Successful execution produces `migration-115.json`
+with the exact source commit, migration checksum and immutable image digest.
+The initialization inventory retains `review_required` for production. Deployment
+controllers, Test environment protection, stale-run guards and Production remain
+unchanged; the historical PSA candidate approval is not reused for this release.
 The pre-release FlowHive migration was renumbered from 112 to 115 after PR #1116
 merged migrations 112–114. All FlowHive runtime checks, rollback, fixtures and
 review inventory use 115; the earlier FlowHive migration was not deployed here.
@@ -207,8 +213,8 @@ Before enabling notifications in Protected UAT:
 
 1. Confirm the Module 065 orchestration schema (migration 064), FlowHive reminder
    preferences (103), and reviewed WBS version/baseline schema already exist. Include
-   `115_module_066_task_notifications.sql` with its reviewed checksum in the governed
-   release payload, and verify its schema migration entry, notification state table
+   `115_module_066_task_notifications.sql` is included with its checksum in the governed
+   release payload. Verify its schema migration entry, notification state table
    and both `FLOWHIVE_TASK_ASSIGNED` / `FLOWHIVE_TASK_DUE` policies after applying it.
 2. Keep the project and Module 065 delivery boundaries at `test_only`. Verify the
    workspace reports dispatcher readiness and the worker reports the

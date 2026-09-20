@@ -7,7 +7,9 @@ database/rollback/115_module_066_task_notifications_rollback.sql
 docs/architecture/flowhive-enterprise-psa-revamp.md
 docs/architecture/flowhive-psa-benchmark.md
 docs/production-readiness/foundation/initialization-review.json
+scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
 scripts/release-test/validate-protected-test-controller-branches.sh
+scripts/release-test/verify-flowhive-task-notifications.sql
 src/backend/ProjectTime.Api/Modules/CalendarCapacityModule.cs
 src/backend/ProjectTime.Api/Modules/EnterpriseNotificationOrchestrationService.cs
 src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRepository.cs
