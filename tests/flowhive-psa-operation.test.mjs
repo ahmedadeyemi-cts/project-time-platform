@@ -101,3 +101,14 @@ test('malformed terminal flags cannot masquerade as a completed operation', asyn
     assert.equal(calls, 1); assert.deepEqual(updates, [initial]);
   }
 });
+
+
+test('default observation follows all sequential stages beyond the former batch window', async () => {
+  let time = 0; let reads = 0;
+  const initial = { projectId: 'p', runId: 'r', terminal: false };
+  const result = await observePlanner({ projectId: 'p', initial, now: () => time,
+    delay: async () => { time += 13 * 60 * 1000; }, onUpdate: () => {},
+    read: async () => ({ ...initial, terminal: ++reads === 2 }) });
+  assert.equal(reads, 2);
+  assert.equal(result.terminal, true);
+});

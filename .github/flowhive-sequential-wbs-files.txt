@@ -29,13 +29,16 @@ src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
 src/frontend/project-time-web/src/ProjectForgeCenter.jsx
 src/frontend/project-time-web/src/ai/AiPhaseProgress.jsx
 src/frontend/project-time-web/src/ai/ai-operation-progress.css
+src/frontend/project-time-web/src/flowhive-planner-operation.js
 tests/FlowHiveExecutionTests/Program.cs
 tests/FlowHivePreparationTests/Program.cs
 tests/FlowHiveSequentialTests/FlowHiveSequentialTests.csproj
 tests/FlowHiveSequentialTests/Program.cs
 tests/flowhive-psa-admission.test.mjs
+tests/flowhive-psa-operation.test.mjs
 tests/flowhive-psa-sequential-scope.py
 tests/flowhive-team-calendar-browser-bundle.mjs
 tests/flowhive-team-calendar-browser.py
 tests/validate-celar-ai-pr630-consolidated.mjs
+tests/validate-flowhive-sow-evidence-autoadmission.mjs
 tests/validate-shared-project-document-planning.mjs
