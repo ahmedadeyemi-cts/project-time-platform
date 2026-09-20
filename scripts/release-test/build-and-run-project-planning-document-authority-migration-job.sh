@@ -96,7 +96,7 @@ MODULE001B_CATALOG_MIGRATION="$ROOT/database/migrations/100_module001b_catalog_o
 psql -X -v ON_ERROR_STOP=1 --file "$MODULE001B_CATALOG_MIGRATION"
 # Never replay the older, narrower constraint once migration 101 has run.
 # Reapply 112 even when ledgered, repairing the previously deployed replay order.
-if [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='112_optional_ai_providers')")" != t ]]; then
+if [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='101_deepseek_v4_provider')")" != t ]]; then
   psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/101_deepseek_v4_provider.sql"
 fi
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/112_optional_ai_providers.sql"
