@@ -369,16 +369,16 @@ export default function RateCardAdministrationCenter() {
   return (
     <section className="rate-card-admin-center">
       {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START */}
-      <details onToggle={event => setShowFinancialContext(event.currentTarget.open)}><summary>Project rate coverage and financial context</summary>
+      <details onToggle={(event) => setShowFinancialContext(event.currentTarget.open)}><summary>Project rate coverage and financial context</summary>
       {showFinancialContext ? <UnifiedProjectFinancialWorkspace workspace="rate-card" /> : null}
       </details>
       {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_END */}
       <div className="rate-card-admin-header">
         <div>
           <p className="eyebrow">Rate Card Administration</p>
-          <h2>Customer, service request, emergency, and standard rates</h2>
+          <h2>SELL and manual rates</h2>
           <p className="muted">
-            Manage editable rate cards for standard work, Toyota, Hyundai, service requests, emergency support, travel, and future customer-specific pricing.
+            Find a rate card, review its rates, or choose Add / edit rates to maintain manual pricing. ConnectWise SELL connection and synchronization are managed in Module 026.
           </p>
         </div>
         <span className="rate-card-admin-mode">Super Admin / PTC / Solution Architect</span>
@@ -410,8 +410,8 @@ export default function RateCardAdministrationCenter() {
         </article>
       </div>
 
-      <div className="rate-card-priority-panel">
-        <h3>Rate selection priority during intake</h3>
+      <details className="rate-card-priority-panel">
+        <summary>How rates are selected</summary>
         <ol>
           {(payload.data?.ratePriority ?? [
             'GSD-imported rate',
@@ -421,7 +421,8 @@ export default function RateCardAdministrationCenter() {
             'Manual override with required reason'
           ]).map((item) => <li key={item}>{item}</li>)}
         </ol>
-      </div>
+        <a href="#crm-integration">Manage ConnectWise SELL connection</a>
+      </details>
 
 
       {/* 055B_2_COMPACT_RATE_CARD_TABS_START */}

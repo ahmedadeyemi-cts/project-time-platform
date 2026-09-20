@@ -28,8 +28,8 @@ export default function WorkIntakeCreationCenter() {
       </header>
 
       <div className="work-intake-boundary" role="note">
-        <strong>Why this module remains required</strong>
-        <span>It preserves the original opportunity/request evidence and separates intake approval from project creation. It does not duplicate the 055C/055D work register.</span>
+        <strong>What belongs here today</strong>
+        <span>Historical request evidence, intake aging, and resource handoff remain here. Use 055D for new projects and 055C for existing projects. Use Module 022 to review cost alerts and Module 031 to follow up on financial exceptions.</span>
       </div>
 
       <nav className="work-intake-tabs" aria-label="Work intake views">

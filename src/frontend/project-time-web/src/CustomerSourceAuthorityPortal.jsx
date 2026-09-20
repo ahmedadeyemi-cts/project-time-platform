@@ -74,6 +74,8 @@ export default function CustomerSourceAuthorityPortal() {
   useEffect(() => {
     void loadSource();
     const reload = () => {
+      setPreview([]); setSelectedIds(new Set()); setActionMessage('');
+      setSaving(false); setPreviewLoading(false); setImportLoading(false);
       setState({ loading: true, source: null, providers: [], canManage: false, migrationApplied: true, error: '' });
       void loadSource();
     };
@@ -125,6 +127,7 @@ export default function CustomerSourceAuthorityPortal() {
   const saveSource = async () => {
     if (!state.canManage || saving) return;
     setSaving(true);
+    const sequence = requestSequence.current;
     setActionMessage('');
     try {
       const payload = await requestJson('/api/customers/source', {
@@ -134,6 +137,7 @@ export default function CustomerSourceAuthorityPortal() {
           providerKey: draftMode === 'crm' ? draftProviderKey : null
         })
       });
+      if (sequence !== requestSequence.current) return;
       const source = payload?.source || null;
       setState((current) => ({ ...current, source, error: '' }));
       setDraftMode(source?.mode || draftMode);
@@ -142,31 +146,35 @@ export default function CustomerSourceAuthorityPortal() {
       setSelectedIds(new Set());
       setActionMessage(payload?.message || 'Customer source updated.');
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       setActionMessage(error?.message || 'Customer source could not be updated.');
     } finally {
-      setSaving(false);
+      if (sequence === requestSequence.current) setSaving(false);
     }
   };
 
   const previewCustomers = async () => {
     if (previewLoading || !activeSelectionMatchesDraft || state.source?.mode !== 'crm') return;
     setPreviewLoading(true);
+    const sequence = requestSequence.current;
     setActionMessage('');
     try {
       const payload = await requestJson('/api/customers/source/preview', {
         method: 'POST',
         body: JSON.stringify({ search, page: 1, pageSize: 100 })
       });
+      if (sequence !== requestSequence.current) return;
       const customers = Array.isArray(payload?.customers) ? payload.customers : [];
       setPreview(customers);
       setSelectedIds(new Set());
       setActionMessage(payload?.message || `${customers.length} customer(s) loaded.`);
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       setPreview([]);
       setSelectedIds(new Set());
       setActionMessage(error?.message || 'Customer preview could not be loaded.');
     } finally {
-      setPreviewLoading(false);
+      if (sequence === requestSequence.current) setPreviewLoading(false);
     }
   };
 
@@ -182,20 +190,23 @@ export default function CustomerSourceAuthorityPortal() {
   const importCustomers = async () => {
     if (importLoading || selectedIds.size === 0) return;
     setImportLoading(true);
+    const sequence = requestSequence.current;
     setActionMessage('');
     try {
       const payload = await requestJson('/api/customers/source/import', {
         method: 'POST',
         body: JSON.stringify({ sourceRecordIds: Array.from(selectedIds) })
       });
+      if (sequence !== requestSequence.current) return;
       setActionMessage(payload?.message || 'Selected customers were imported.');
       setSelectedIds(new Set());
       setPreview([]);
-      window.setTimeout(() => window.location.reload(), 350);
+      window.setTimeout(() => { if (sequence === requestSequence.current) window.location.reload(); }, 350);
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       setActionMessage(error?.message || 'Selected customers could not be imported.');
     } finally {
-      setImportLoading(false);
+      if (sequence === requestSequence.current) setImportLoading(false);
     }
   };
 

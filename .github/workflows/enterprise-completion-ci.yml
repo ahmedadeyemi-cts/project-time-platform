@@ -6,6 +6,10 @@ on:
       - 'src/frontend/project-time-web/src/**'
       - 'database/migrations/11[234]_*.sql'
       - 'tests/EnterpriseCompletionTests/**'
+      - 'tests/TimesheetNotificationRecipients/**'
+      - 'tests/ProjectBudgetAssessment/**'
+      - 'tests/ModuleAvailabilityHttp/**'
+      - 'tests/project-financial-portfolio.test.mjs'
       - 'tests/enterprise-completion-migrations.sh'
       - 'tests/api-error-status.test.mjs'
       - '.github/workflows/enterprise-completion-ci.yml'
@@ -45,3 +49,12 @@ jobs:
         env:
           ENTERPRISE_COMPLETION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/enterprise_completion_test
         run: bash tests/enterprise-completion-migrations.sh
+      - name: Reconciled budget, pagination and HTTP behavior
+        run: |
+          dotnet run --project tests/ProjectBudgetAssessment --configuration Release
+          dotnet run --project tests/ModuleAvailabilityHttp --configuration Release
+          node --test tests/project-financial-portfolio.test.mjs
+      - name: Assigned timesheet notification recipients
+        env:
+          RECIPIENT_TEST_CONNECTION: Host=127.0.0.1;Port=5432;Database=enterprise_completion_test;Username=postgres;Password=postgres
+        run: dotnet run --project tests/TimesheetNotificationRecipients --configuration Release
