@@ -10,6 +10,7 @@ namespace ProjectTime.Api.Modules;
 /// </summary>
 public static class AiProviderConfigurationModule
 {
+    private static readonly SemaphoreSlim GeminiModelChangeLock = new(1, 1);
     private static readonly HashSet<string> AdditionalModuleAdministratorRoles =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -24,6 +25,9 @@ public static class AiProviderConfigurationModule
         app.MapGet(
             "/api/ai-configuration/health",
             (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiHealthRegistry, Task<IResult>>)GetHealthAsync);
+        app.MapGet(
+            "/api/ai-configuration/providers/{providerCode}/models",
+            (Func<string, HttpContext, ProjectPulseAiModelCatalog, CancellationToken, Task<IResult>>)GetModelsAsync);
         app.MapPost(
             "/api/ai-configuration/health/refresh",
             (Func<HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiHealthCoordinator, CancellationToken, Task<IResult>>)RefreshHealthAsync);
@@ -38,6 +42,19 @@ public static class AiProviderConfigurationModule
             (Func<string, HttpContext, ProjectPulseAiConfiguration, ProjectPulseAiSecretStore, ProjectPulseAiHealthRegistry, ProjectPulseAiHealthCoordinator, CancellationToken, Task<IResult>>)SetEnabledAsync);
 
         return app;
+    }
+
+    private static async Task<IResult> GetModelsAsync(
+        string providerCode, HttpContext context, ProjectPulseAiModelCatalog catalog, CancellationToken cancellationToken)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var authorization = await AuthorizeAdministratorAsync(context);
+        if (authorization is not null) return authorization;
+        providerCode = providerCode.Trim().ToLowerInvariant();
+        if (providerCode != ProjectPulseAiProviders.Gemini)
+            return Results.BadRequest(new { status = "unsupported_provider", message = "Live model discovery is available for Gemini." });
+        var refresh = bool.TryParse(context.Request.Query["refresh"], out var requested) && requested;
+        return Results.Ok(await catalog.GetAsync(providerCode, refresh, cancellationToken));
     }
 
     private static async Task<IResult> ReplaceModelAsync(
@@ -74,6 +91,8 @@ public static class AiProviderConfigurationModule
 
         var model = request?.Model?.Trim();
         var current = configuration.Provider(providerCode);
+        if (providerCode == ProjectPulseAiProviders.Gemini)
+            return await ReplaceGeminiModelAsync(model, context, configuration, store, healthRegistry, cancellationToken);
         if (string.IsNullOrWhiteSpace(model)
             || !current.ApprovedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
             return Results.BadRequest(new { status = "model_not_approved", message = "Select a model from the approved list." });
@@ -132,6 +151,69 @@ public static class AiProviderConfigurationModule
                 new { status = "model_change_error", message = "The model could not be saved and tested." },
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
+    }
+
+    private static async Task<IResult> ReplaceGeminiModelAsync(
+        string? model, HttpContext context, ProjectPulseAiConfiguration configuration,
+        ProjectPulseAiSecretStore store, ProjectPulseAiHealthRegistry health, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(model) || !ProjectPulseAiConfiguration.GeminiModelPermitted(model))
+            return Results.BadRequest(new { status = "model_not_approved", message = "Select an available Gemini model allowed by this deployment." });
+        if (!await GeminiModelChangeLock.WaitAsync(0, cancellationToken))
+            return Results.Conflict(new { status = "model_test_in_progress", message = "A Gemini model is already being verified. Try again after it finishes." });
+        try
+        {
+            var current = configuration.Provider(ProjectPulseAiProviders.Gemini);
+            if (!current.Configured)
+                return Results.BadRequest(new { status = "provider_not_configured", message = "Save the Gemini API key before changing its model." });
+            if (current.Secret.Source != "encrypted_database" || string.IsNullOrEmpty(current.Secret.Version))
+                return Results.BadRequest(new { status = "provider_key_must_be_saved", message = "Save the Gemini key securely in Module 064 before changing its model, so every API instance can verify the same credential." });
+            var snapshot = health.Snapshot(ProjectPulseAiProviders.Gemini);
+            if (snapshot.RetryAfterUtc is { } retryAt && retryAt > DateTimeOffset.UtcNow)
+                return Results.Json(new { status = "provider_rate_limited", retryAfterUtc = retryAt,
+                    message = "Google asked Pulse to pause requests. Wait until the retry time, then test the model." }, statusCode: 429);
+            var catalog = context.RequestServices.GetRequiredService<ProjectPulseAiModelCatalog>();
+            if (!await catalog.IsAvailableAsync(ProjectPulseAiProviders.Gemini, model, cancellationToken))
+                return Results.BadRequest(new { status = "model_unavailable", message = "This model could not be confirmed in Google's current model catalogue. Refresh available models and try again." });
+            var candidate = current with
+            {
+                Model = model,
+                Enabled = true,
+                ApprovedModels = current.ApprovedModels.Append(model).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            };
+            var provider = context.RequestServices.GetRequiredService<ProjectPulseGeminiProvider>();
+            // Test an isolated candidate. Running jobs and other API replicas
+            // must never consume a model that has not yet been verified.
+            var probe = await provider.ProbeModelAsync(candidate, cancellationToken);
+            var latest = configuration.Provider(ProjectPulseAiProviders.Gemini);
+            if (latest.ApiKey != current.ApiKey || latest.Secret.Version != current.Secret.Version
+                || latest.Secret.Source != current.Secret.Source || latest.Model != current.Model
+                || latest.Enabled != current.Enabled || latest.Endpoint != current.Endpoint)
+                return Results.Conflict(new { status = "provider_changed", message = "Gemini settings changed while the model was being tested. Refresh the page and try again." });
+            if (!probe.Available)
+            {
+                if (probe.RetryAfterUtc is { } candidateRetryAt)
+                    health.RecordProviderCooldown(ProjectPulseAiProviders.Gemini, candidateRetryAt);
+                return Results.BadRequest(new { status = "model_test_failed", activeModel = current.Model,
+                    diagnostic = probe.Code, retryAfterUtc = probe.RetryAfterUtc,
+                    message = "The selected model failed its inference test. The active model was preserved. " + probe.Message });
+            }
+            if (!await store.TrySaveVerifiedModelAsync(ProjectPulseAiProviders.Gemini, model, current,
+                ActualSessionUserId(context)!.Value, cancellationToken)
+                || !configuration.TryApplyVerifiedModel(current, model))
+                return Results.Conflict(new { status = "provider_changed", message = "Gemini settings changed before the verified model could be activated. Refresh the page to see the current saved settings and try again." });
+            health.ApplyConfiguration(configuration.Provider(ProjectPulseAiProviders.Gemini));
+            if (current.Enabled) health.RecordProbe(probe);
+            return Results.Ok(new { status = "model_changed", provider = ProjectPulseAiProviders.Gemini, model,
+                tested = true, probeStatus = "available", message = $"{model} was verified and is now selected." });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception)
+        {
+            // Never include provider response bodies, credentials or URLs in errors.
+            return Results.Json(new { status = "model_change_error", message = "The Gemini model could not be saved and tested. Refresh the page to confirm its active model." }, statusCode: 503);
+        }
+        finally { GeminiModelChangeLock.Release(); }
     }
 
     private static async Task<IResult> SetEnabledAsync(

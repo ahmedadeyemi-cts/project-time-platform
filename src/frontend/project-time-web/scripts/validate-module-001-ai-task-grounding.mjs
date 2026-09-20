@@ -22,6 +22,7 @@ const timesheetResolver = readBackend('Ai', 'ProjectPulseAiTimesheetContextResol
 const serviceRegistration = readBackend('Ai', 'ProjectPulseAiServiceCollectionExtensions.cs');
 const timesheetSuggestion = readBackend('ProjectPulseAiTimeEntrySuggestionService.cs');
 const capabilityRouting = readBackend('Ai', 'CelarAiCapabilityRouting.cs');
+const routeExecutionPolicy = readBackend('Ai', 'CelarAiRouteExecutionPolicy.cs');
 const providerContracts = readBackend('Ai', 'ProjectPulseAiContracts.cs');
 const privateRagContracts = readBackend('Ai', 'PulseAiPrivateRagContracts.cs');
 const privateRagService = readBackend('Ai', 'PulseAiPrivateRagService.cs');
@@ -394,16 +395,19 @@ check(
     && containsAll(centralRoute, [
       'var route = await _store.LoadRouteAsync(',
       'privatePolicyProfile?.RequirePrivateModelForDocuments == true',
-      'var orderedTargets = requirePrivateTargetBeforeExternal',
-      '!RuntimeFlag("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED")',
-      'module025_paid_fallback_disabled',
-      'route.Targets.Where(IsPrivateTarget)',
-      'route.Targets.Where(target => !IsPrivateTarget(target))',
+      'var orderedTargets = CelarAiRouteExecutionPolicy.Order(route,',
+      'execution.StructuredSowPhase, approvedSowRequest is not null',
+      'module025_external_generation_approval_required',
       'CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi'
     ])
-    && !centralRoute.includes('var externalSowReady =')
+    && containsAll(routeExecutionPolicy, [
+      'privateContextRequiresPrecedence && !closedSowMayUseSavedOrder',
+      'structuredSowPhase && closedCapsuleReady && ExternalGenerationApproved(route)',
+      'route.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning',
+      'Module025ExternalSowAdapter.PolicyEnabled && !route.DeploymentManaged'
+    ])
     && !timesheetSuggestion.includes('_router.IsFirstTargetAsync('),
-  'the central router owns persisted order and conditionally forces private document inference'
+  'the central router owns persisted order; the narrowly approved structured SOW exception does not alter private-document precedence for Timesheet requests'
 );
 check(
   'MODULE001_AI_PRIVATE_TARGET_NOT_RETRIED',

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import CelarAiProviderBridgePanel from './CelarAiProviderBridgePanel.jsx';
 import CelarAiCapabilityRoutingPanel from './CelarAiCapabilityRoutingPanel.jsx';
@@ -44,14 +44,130 @@ async function readJson(response) {
   return payload;
 }
 
+export function AiProviderModelSelector({ provider, onSaved, onNotice }) {
+  const [model, setModel] = useState(provider.model);
+  const [catalog, setCatalog] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const requestSequence = useRef(0);
+  const discoverable = provider.code === 'gemini';
+
+  useEffect(() => { setModel(provider.model); }, [provider.model]);
+
+  const loadCatalog = useCallback(async (refresh = false) => {
+    const sequence = ++requestSequence.current;
+    setLoading(true);
+    setError('');
+    try {
+      const result = await readJson(await fetch(`/api/ai-configuration/providers/${encodeURIComponent(provider.code)}/models${refresh ? '?refresh=true' : ''}`, {
+        credentials: 'include', cache: 'no-store',
+      }));
+      if (sequence === requestSequence.current) setCatalog(result);
+    } catch (failure) {
+      if (sequence === requestSequence.current) setError(failure instanceof Error ? failure.message : 'Available models could not be loaded.');
+    } finally {
+      if (sequence === requestSequence.current) setLoading(false);
+    }
+  }, [provider.code]);
+
+  useEffect(() => {
+    setCatalog(null);
+    setError('');
+    setLoading(false);
+    if (discoverable && provider.configured) void loadCatalog();
+    return () => { requestSequence.current += 1; };
+  }, [discoverable, provider.configured, provider.secret?.version, loadCatalog]);
+
+  const availableModels = discoverable
+    ? catalog?.models ?? []
+    : (provider.approvedModels || [provider.model]).map((id) => ({ id, displayName: id }));
+  const selected = availableModels.find((item) => item.id === model);
+  const options = availableModels.some((item) => item.id === provider.model)
+    ? availableModels
+    : [{ id: provider.model, displayName: catalog?.status === 'available' ? 'Current model; not listed in this catalog' : 'Current model' }, ...availableModels];
+  const selectionUnavailable = model !== provider.model && !selected;
+  const catalogUnverified = discoverable && (!catalog || error || catalog.status !== 'available');
+
+  async function saveModel(event) {
+    event.preventDefault();
+    if (!model || model === provider.model || selectionUnavailable || catalogUnverified) return;
+    setSaving(true);
+    onNotice('');
+    try {
+      const result = await readJson(await fetch(`/api/ai-configuration/providers/${provider.code}/model`, {
+        method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model }),
+      }));
+      onNotice(result.message || 'Model saved and tested.');
+      await onSaved();
+    } catch (failure) {
+      onNotice(failure instanceof Error ? failure.message : 'The model could not be saved and tested.');
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <form className="ai-provider-center__model-form" onSubmit={saveModel}>
+      <label htmlFor={`provider-model-${provider.code}`}>Active model</label>
+      <div>
+        <select
+          id={`provider-model-${provider.code}`}
+          value={model}
+          onChange={(event) => setModel(event.target.value)}
+          disabled={!provider.configured || saving || loading}
+        >
+          {selectionUnavailable ? <option value={model}>{model} (no longer listed)</option> : null}
+          {options.map((item) => <option value={item.id} key={item.id}>{item.displayName && item.displayName !== item.id ? `${item.displayName} — ${item.id}` : item.id}</option>)}
+        </select>
+        <button type="submit" disabled={!provider.configured || saving || loading || model === provider.model || selectionUnavailable || Boolean(catalogUnverified)}>
+          {saving ? 'Testing…' : 'Save and test'}
+        </button>
+      </div>
+      <small>{provider.configured ? 'The new model activates only after the saved key verifies it.' : 'Save an API key before changing the model.'}</small>
+      {discoverable ? (
+        <section className="ai-provider-center__model-catalog" aria-label={`${provider.displayName || 'Gemini'} model availability`} aria-busy={loading}>
+          <div className="ai-provider-center__catalog-heading">
+            <strong>Models available to your account</strong>
+            <button type="button" onClick={() => loadCatalog(true)} disabled={!provider.configured || loading || saving}>
+              {loading ? 'Loading models…' : 'Refresh models'}
+            </button>
+          </div>
+          <p>Loaded using the saved server credential. Refreshing keeps the active model unchanged; choose a model, then save and test.</p>
+          {error ? <p className="ai-provider-center__catalog-error" role="alert">{error} The active model is unchanged.</p> : null}
+          {catalog ? <p role="status">{catalog.message || `${catalog.models?.length ?? 0} compatible models returned.`}{catalog.diagnostic ? ` Diagnostic: ${catalog.diagnostic}.` : ''} Checked {formatDate(catalog.checkedAt)}.</p> : null}
+          {selectionUnavailable ? <p className="ai-provider-center__catalog-error" role="alert">The selected model is no longer listed. Choose another available model before saving.</p> : null}
+          <p>{selected?.costGuidance || 'The model catalog does not provide prices. Compare current provider pricing before choosing a model.'}</p>
+          <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noreferrer">Compare official Gemini pricing</a>
+          {(selected?.inputTokenLimit || selected?.outputTokenLimit) ? <small>Input limit: {selected.inputTokenLimit?.toLocaleString() || 'Not reported'} tokens · Output limit: {selected.outputTokenLimit?.toLocaleString() || 'Not reported'} tokens</small> : null}
+          <small>Model availability does not verify remaining quota or guarantee generation speed.</small>
+        </section>
+      ) : null}
+    </form>
+  );
+}
+
+export function GeminiHealthNotice({ health }) {
+  const quotaFailure = (code) => String(code || '').replace(/^module025_external_/, '').startsWith('gemini_http_429');
+  const probeLimited = health.probeStatus !== 'available' && quotaFailure(health.lastProbeFailureCode);
+  const generationLimited = health.status !== 'available' && quotaFailure(health.lastFailureCode);
+  if (!probeLimited && !generationLimited) return null;
+  const retryAt = health.retryAfterUtc || health.circuitOpenUntil;
+  return (
+    <aside className="ai-provider-center__health-explanation" aria-label="Gemini quota or rate limit">
+      <strong>Google is limiting requests (HTTP 429)</strong>
+      <p>{(probeLimited ? health.lastProbeFailureMessage : health.lastFailureMessage) || 'This can mean a request or token rate limit, an exhausted quota, or no available quota for this project and model. The response does not identify which limit was reached.'}</p>
+      {probeLimited ? <p>{health.probeFailureCount ?? 0} failed readiness probes are separate from SOW generation attempts. Generation failures: {health.failureCount ?? 0}.</p> : null}
+      <p>{retryAt ? `Routing pauses until at least ${formatDate(retryAt)}. ` : ''}Check the Google project&apos;s model quota and billing status. Repeated health refreshes do not restore exhausted quota.</p>
+      <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" rel="noreferrer">Review Gemini quota and rate limits</a>
+    </aside>
+  );
+}
+
 export default function AiProviderConfigurationCenter() {
   const [state, setState] = useState({ loading: true, error: '', payload: null });
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
   const [keys, setKeys] = useState({ deepseek_v4: '', claude: '', openai: '' });
-  const [models, setModels] = useState({});
   const [savingProvider, setSavingProvider] = useState('');
-  const [savingModel, setSavingModel] = useState('');
   const [changingState, setChangingState] = useState('');
 
   const load = useCallback(async ({ quiet = false } = {}) => {
@@ -168,28 +284,6 @@ export default function AiProviderConfigurationCenter() {
     }
   }
 
-  async function saveModel(event, providerCode, activeModel) {
-    event.preventDefault();
-    const model = models[providerCode] || activeModel;
-    if (!model || model === activeModel) return;
-    setSavingModel(providerCode);
-    setNotice('');
-    try {
-      const result = await readJson(await fetch(`/api/ai-configuration/providers/${providerCode}/model`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model }),
-      }));
-      setNotice(result.message || 'Model saved and tested.');
-      await load({ quiet: true });
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'The model could not be saved and tested.');
-    } finally {
-      setSavingModel('');
-    }
-  }
-
   async function setProviderEnabled(providerCode, enabled) {
     setChangingState(providerCode);
     setNotice('');
@@ -218,8 +312,8 @@ export default function AiProviderConfigurationCenter() {
           <h1>AI Provider Configuration Center</h1>
           <p>
             Celar AI uses Module 064 as the governed provider gateway. Module 064 checks provider health automatically,
-            controls approved models and feature routes, and preserves the private-first boundary. Claude and OpenAI remain
-            optional sanitized fallbacks, and a safety refusal never triggers another provider.
+            controls active models and each capability&apos;s saved provider order. Execution policies and blockers are shown
+            alongside each route. Private content stays protected, and a safety refusal never triggers another provider.
           </p>
         </div>
         <button type="button" onClick={refreshHealth} disabled={refreshing || state.loading}>
@@ -233,7 +327,7 @@ export default function AiProviderConfigurationCenter() {
       <div className="ai-provider-center__automatic-health" role="status">
         <strong>Automatic provider health is active.</strong>
         <span>
-          Configured providers are checked when the API starts, after configuration changes, and every {configuration?.execution?.healthIntervalSeconds ?? 120} seconds. The button remains available for an immediate recheck.
+          Configured providers are checked when the API starts, after configuration changes, and every {configuration?.execution?.healthIntervalSeconds ?? 120} seconds. Checks respect provider retry windows; the button requests a recheck when the cooldown allows.
         </span>
       </div>
       {governance ? (
@@ -244,10 +338,10 @@ export default function AiProviderConfigurationCenter() {
           <strong>Routed generation policy: {governance.sanitizedExternalExecutionEnabled && governance.enterpriseSanitizedExternalFallbackEnabled ? 'Enabled' : 'Action required'}</strong>
           <span>
             {!governance.sanitizedExternalExecutionEnabled
-              ? 'Provider probes can succeed while generation remains blocked. Set PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true on the API runtime to allow eligible, deidentified Claude/OpenAI fallback requests.'
+              ? 'Provider probes can succeed while generation remains blocked. Set PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true on the API runtime to allow eligible, deidentified external requests.'
               : !governance.enterpriseSanitizedExternalFallbackEnabled
                 ? 'Timesheet generic fallback is enabled, but enterprise AI consumers remain blocked. Set PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true on the API runtime.'
-                : 'Eligible, deidentified requests may reach Claude or OpenAI after the private Celar AI target. Private SOW and GSD text remains inside the private boundary.'}
+                : 'Eligible external requests are enabled. Each capability below shows its effective provider order and any additional approval requirements. Private SOW and GSD text remains inside the private boundary.'}
           </span>
         </div>
       ) : null}
@@ -295,6 +389,7 @@ export default function AiProviderConfigurationCenter() {
                         {statusLabel(health.probeStatus)}
                       </span>
                     </div>
+                    {provider.code === 'gemini' ? <GeminiHealthNotice health={health} /> : null}
                     <dl>
                       <div><dt>Enabled</dt><dd>{provider.enabled ? 'Yes' : 'No'}</dd></div>
                       <div><dt>Configured</dt><dd>{provider.configured ? 'Yes' : 'No'}</dd></div>
@@ -333,23 +428,7 @@ export default function AiProviderConfigurationCenter() {
                             {changingState === provider.code ? 'Updating…' : provider.enabled ? 'Disable' : 'Enable'}
                           </button>
                         </div>
-                        <form className="ai-provider-center__model-form" onSubmit={(event) => saveModel(event, provider.code, provider.model)}>
-                          <label htmlFor={`provider-model-${provider.code}`}>Active model</label>
-                          <div>
-                            <select
-                              id={`provider-model-${provider.code}`}
-                              value={models[provider.code] || provider.model}
-                              onChange={(event) => setModels((current) => ({ ...current, [provider.code]: event.target.value }))}
-                              disabled={!provider.configured || savingModel === provider.code}
-                            >
-                              {(provider.approvedModels || [provider.model]).map((model) => <option value={model} key={model}>{model}</option>)}
-                            </select>
-                            <button type="submit" disabled={!provider.configured || savingModel === provider.code || (models[provider.code] || provider.model) === provider.model}>
-                              {savingModel === provider.code ? 'Testing…' : 'Save and test'}
-                            </button>
-                          </div>
-                          <small>{provider.configured ? 'The new model activates only after the saved key verifies it.' : 'Save an API key before changing the model.'}</small>
-                        </form>
+                        <AiProviderModelSelector provider={provider} onNotice={setNotice} onSaved={() => load({ quiet: true })} />
                       </div>
                     ) : null}
                     {provider.secret ? (
@@ -389,28 +468,12 @@ export default function AiProviderConfigurationCenter() {
           <CelarAiProviderBridgePanel />
           <CelarAiCapabilityRoutingPanel />
 
-          <section className="ai-provider-center__section">
-            <div className="ai-provider-center__section-heading">
-              <div><p className="ai-provider-center__eyebrow">Feature routing</p><h2>One governed route per AI capability</h2></div>
-              <span>Local fallback is always last</span>
-            </div>
-            <div className="ai-provider-center__routes">
-              {(configuration.featureRoutes ?? []).map((route) => (
-                <article key={route.feature}>
-                  <strong>{route.feature.replaceAll('_', ' ')}</strong>
-                  <span>{route.providers.map((provider) => PROVIDER_LABELS[provider] || provider).join(' → ')}</span>
-                  <small>Duplicate requests: {route.duplicateRequests ? 'enabled' : 'blocked'}</small>
-                </article>
-              ))}
-            </div>
-          </section>
-
           <section className="ai-provider-center__locked" aria-label="Controlled configuration boundary">
             <div>
               <p className="ai-provider-center__eyebrow">Protected change controls</p>
               <h2>Provider keys are write-only</h2>
               <p>
-                Administrators can add or replace Claude and OpenAI keys. Keys are encrypted before database
+                Administrators can add or replace provider keys. Keys are encrypted before database
                 storage, tested automatically, and never returned by the API after submission.
               </p>
             </div>

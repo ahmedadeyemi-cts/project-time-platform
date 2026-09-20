@@ -12,6 +12,7 @@ function assert(name, condition, evidence) {
 }
 
 const routing = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs');
+const routeExecutionPolicy = read('src/backend/ProjectTime.Api/Ai/CelarAiRouteExecutionPolicy.cs');
 const contracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs');
 const ragContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs');
 const systemAccessContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs');
@@ -497,18 +498,20 @@ assert(
 
 assert(
   'MODULE064_PERSISTED_ORDER_IS_RUNTIME_AUTHORITY',
-  routing.includes('var route = await _store.LoadRouteAsync(feature, cancellationToken);')
-    && !routing.includes('var externalSowReady =')
-    && routing.includes('var orderedTargets = requirePrivateTargetBeforeExternal')
-    && routing.includes('route.Targets.Where(IsPrivateTarget)')
-    && routing.includes('route.Targets.Where(target => !IsPrivateTarget(target))')
-    && routing.includes('!RuntimeFlag("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED")')
-    && routing.includes('module025_paid_fallback_disabled')
-    && routing.includes(': route.Targets;')
+  routing.includes('_store.LoadRouteAsync(CelarAiCapabilityCatalog.NormalizeFeature(request.Feature), cancellationToken)')
+    && routing.includes('var orderedTargets = CelarAiRouteExecutionPolicy.Order(route,')
+    && routing.includes('execution.ExternalSow.Prepare(_sanitizer, out _)')
+    && routing.includes('execution.StructuredSowPhase, approvedSowRequest is not null')
+    && routeExecutionPolicy.includes('structuredSowPhase && closedCapsuleReady && ExternalGenerationApproved(route)')
+    && routeExecutionPolicy.includes('route.Persisted && route.ExternalGenerationApprovalSchemaReady && route.SanitizedExternalGenerationApproved')
+    && routeExecutionPolicy.includes('Module025ExternalSowAdapter.PolicyEnabled && !route.DeploymentManaged')
+    && routeExecutionPolicy.includes('privateContextRequiresPrecedence && !closedSowMayUseSavedOrder')
+    && routing.includes('sanitizedExternalGenerationApproved.HasValue && !expectedRevision.HasValue')
+    && routing.includes('previous_external_generation_approved, new_external_generation_approved')
     && routing.includes('foreach (var target in orderedTargets)')
     && routing.includes('var validated = CelarAiCapabilityCatalog.ValidateTargets(targets);')
     && module064.includes('var route = await store.SaveRouteAsync('),
-  'every request reloads saved Module 064 targets and preserves private-data precedence; SOW paid fallback requires a separate explicit opt-in and never overrides private-first order'
+  'every request loads the saved Module 064 route; only an audited approval plus a valid closed SOW capsule and enabled privacy policy can use external targets in saved order, while raw private-context precedence remains enforced'
 );
 
 assert(

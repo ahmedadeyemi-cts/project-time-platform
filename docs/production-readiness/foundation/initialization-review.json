@@ -1733,6 +1733,15 @@
       "rationale": "Adds explicit project opt-in and an initially disabled prospective administrator default. Preserves existing plans and immutable generation history; first-draft notifications remain governed by Module 065. Requires the protected migration verifier. This classification does not authorize production deployment."
     },
     {
+      "path": "database/migrations/123_module064_external_generation_approval.sql",
+      "sha256": "3cb51148d6c4e8ae76fc7c95890ce2c676b1a0ecc3eb1a2337a472822d5e0bf4",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [

@@ -18,8 +18,8 @@ replaceRequired(
   'provider_routing_import');
 
 replaceRequired(
-  `          <CelarAiProviderBridgePanel />\n\n          <section className="ai-provider-center__section">`,
-  `          <CelarAiProviderBridgePanel />\n          <CelarAiCapabilityRoutingPanel />\n\n          <section className="ai-provider-center__section">`,
+  `          <CelarAiProviderBridgePanel />`,
+  `          <CelarAiProviderBridgePanel />\n          <CelarAiCapabilityRoutingPanel />`,
   'provider_routing_mount');
 
 fs.writeFileSync(target, content, 'utf8');

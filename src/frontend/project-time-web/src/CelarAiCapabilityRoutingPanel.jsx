@@ -44,6 +44,7 @@ function routeDraft(route) {
   return {
     targets: [...(route.targets ?? ['deepseek_v4', 'celar_ai', 'claude', 'openai', 'local_template'])],
     revision: route.revision ?? 0,
+    sanitizedExternalGenerationApproved: route.sanitizedExternalGenerationApproved === true,
   };
 }
 
@@ -127,6 +128,7 @@ export default function CelarAiCapabilityRoutingPanel() {
 
   async function saveRoute(feature) {
     const draft = drafts[feature];
+    const route = state.routes.find((item) => item.feature === feature);
     if (!draft) return;
     setSavingRoute(feature);
     setNotice('');
@@ -135,7 +137,11 @@ export default function CelarAiCapabilityRoutingPanel() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targets: draft.targets, expectedRevision: draft.revision }),
+        body: JSON.stringify({
+          targets: draft.targets,
+          expectedRevision: draft.revision,
+          ...(route?.externalGenerationApprovalEditable ? { sanitizedExternalGenerationApproved: draft.sanitizedExternalGenerationApproved } : {}),
+        }),
       }));
       setNotice(payload.message || 'Capability route saved.');
       await load({ quiet: true });
@@ -247,12 +253,11 @@ export default function CelarAiCapabilityRoutingPanel() {
       <header className="celar-ai-routing__header">
         <div>
           <p>Celar AI and Module 064 control plane</p>
-          <h2 id="celar-ai-routing-title">Private-first targets and capability routing</h2>
+          <h2 id="celar-ai-routing-title">Provider order and generation policy</h2>
           <span>
-            The backend follows each capability&apos;s stored priority among eligible targets. When Require private inference
-            for document-grounded answers is on, document-grounded requests force private Celar AI first. After private
-            failure, Claude and OpenAI keep their stored relative order and receive only fixed, backend-owned, identity-free
-            capsules. The governed local template remains the deterministic final fallback.
+            Module 064 is the control source for each capability&apos;s provider order. Each route shows its saved effective
+            order and policy restrictions. Approved external SOW generation receives only a validated technical capsule;
+            raw documents, identities, and commercial values remain private. Other private document requests retain their privacy policy.
           </span>
         </div>
         <button type="button" onClick={() => load()} disabled={state.loading}>
@@ -271,10 +276,10 @@ export default function CelarAiCapabilityRoutingPanel() {
       ) : null}
       {state.loading && !state.routes.length ? <div className="celar-ai-routing__loading">Loading Celar AI routing and private-model readiness…</div> : null}
 
-      <div className="celar-ai-routing__architecture" aria-label="Celar AI routing architecture">
-        {targetOptions.map((target, index) => (
-          <article key={target} className={target === 'deepseek_v4' ? 'is-primary' : target === 'local_template' ? 'is-local' : ''}>
-            <span>{index === 0 ? 'Default primary' : index === 1 ? 'Default secondary' : index === 2 ? 'Default tertiary' : index === 3 ? 'Default fourth' : target === 'local_template' ? 'Final fallback' : 'Optional provider'}</span>
+      <div className="celar-ai-routing__architecture" aria-label="Available provider roles">
+        {targetOptions.map((target) => (
+          <article key={target} className={target === 'local_template' ? 'is-local' : ''}>
+            <span>{['deepseek_v4', 'celar_ai'].includes(target) ? 'Private provider' : target === 'local_template' ? 'Template fallback' : 'External provider'}</span>
             <strong>{TARGET_LABELS[target]}</strong>
             <small>{TARGET_DESCRIPTIONS[target]}</small>
           </article>
@@ -442,13 +447,16 @@ export default function CelarAiCapabilityRoutingPanel() {
       <section className="celar-ai-routing__routes" aria-labelledby="capability-route-title">
         <div className="celar-ai-routing__subheading">
           <div><p>Capability routing</p><h3 id="capability-route-title">Provider priority and final fallback</h3></div>
-          <span>Stored priority among eligible targets. Default: DeepSeek v4 → Celar AI → Claude → OpenAI → Governed local template</span>
+          <span>Set the order here. Unavailable or unsupported targets are skipped; policy blockers are shown with each saved route.</span>
         </div>
         <div className="celar-ai-routing__route-grid">
           {state.routes.map((route) => {
             const draft = drafts[route.feature] ?? routeDraft(route);
             const duplicate = new Set(draft.targets).size !== draft.targets.length;
             const localLast = draft.targets.length >= 5 && draft.targets.at(-1) === 'local_template';
+            const sowRoute = route.feature === 'sow_gsd_planning';
+            const unsaved = draft.sanitizedExternalGenerationApproved !== (route.sanitizedExternalGenerationApproved === true)
+              || JSON.stringify(draft.targets) !== JSON.stringify(route.targets);
             return (
               <article key={route.feature} className="celar-ai-routing__route-card">
                 <header>
@@ -469,8 +477,33 @@ export default function CelarAiCapabilityRoutingPanel() {
                     </label>
                   ); })}
                 </div>
-                <div>{['gemini', 'copilot_studio'].map(target => <label key={target}><input type="checkbox" disabled={routeReadOnly} checked={draft.targets.includes(target)} onChange={event => setDrafts(current => ({ ...current, [route.feature]: { ...draft, targets: event.target.checked ? [...draft.targets.slice(0, -1), target, 'local_template'] : draft.targets.filter(value => value !== target) } }))} /> Include {TARGET_LABELS[target]}</label>)}</div>
+                <div className="celar-ai-routing__checks">{['gemini', 'copilot_studio'].map(target => <label key={target}><input type="checkbox" disabled={routeReadOnly || savingRoute === route.feature} checked={draft.targets.includes(target)} onChange={event => setDrafts(current => ({ ...current, [route.feature]: { ...draft, targets: event.target.checked ? [...draft.targets.slice(0, -1), target, 'local_template'] : draft.targets.filter(value => value !== target) } }))} /> Include {TARGET_LABELS[target]}</label>)}</div>
                 <p><strong>External policy:</strong> {title(route.externalContextPolicy)}</p>
+                {sowRoute ? (
+                  <div className="celar-ai-routing__external-approval">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={draft.sanitizedExternalGenerationApproved}
+                        disabled={routeReadOnly || !route.externalGenerationApprovalEditable || savingRoute === route.feature}
+                        onChange={(event) => setDrafts((current) => ({ ...current, [route.feature]: { ...current[route.feature], sanitizedExternalGenerationApproved: event.target.checked } }))}
+                      />
+                      <span>Authorize paid providers for validated, sanitized SOW/GSD generation</span>
+                    </label>
+                    <small>Allows eligible external providers in the saved order. Provider charges may apply. Raw documents, identities, and commercial values remain private. Save the route to apply this approval.</small>
+                  </div>
+                ) : null}
+                {route.executionPolicy ? (
+                  <section className={`celar-ai-routing__effective-policy is-${route.executionPolicy.status}`} aria-label={`${route.displayName} saved execution policy`}>
+                    <strong>Saved execution policy: {title(route.executionPolicy.status)}</strong>
+                    <p>{route.executionPolicy.message}</p>
+                    <p><strong>Effective order:</strong> {(route.effectiveTargets ?? route.targets ?? []).map((target) => TARGET_LABELS[target] || target).join(' → ')}</p>
+                    {(route.executionPolicy.blockers ?? []).length ? <ul>{(route.executionPolicy.blockerDetails ?? route.executionPolicy.blockers.map(title)).map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : null}
+                    {route.executionPolicy.generationMode === 'private_evidence_wbs_with_generic_external_assistance' ? <p>External providers offer generic planning guidance for FlowHive. Detailed WBS generation still uses the private planning runtime.</p> : null}
+                    {sowRoute ? <p>A SOW phase completes only with a validated generation result. The local template does not mark a failed phase complete.</p> : null}
+                  </section>
+                ) : null}
+                {unsaved ? <p className="celar-ai-routing__unsaved" role="status">Unsaved changes. The effective order above reflects the saved policy.</p> : null}
                 {!localLast ? <p className="is-error">Governed local template must remain final.</p> : null}
                 {duplicate ? <p className="is-error">Every route position must be unique.</p> : null}
                 <footer>
@@ -511,7 +544,7 @@ export default function CelarAiCapabilityRoutingPanel() {
         <strong>Non-editable enterprise guardrails</strong>
         <ul>
           <li>Raw SOW, GSD, IQS, email, customer, project, employee, contract, rate, and financial context never goes directly to a public provider.</li>
-          <li>Claude and OpenAI keep their stored relative order after private failure and receive only fixed, backend-owned, identity-free capsules.</li>
+          <li>External providers receive only approved, backend-owned, identity-free capsules. The saved route reports when a privacy policy requires private providers first.</li>
           <li>A safety refusal stops routing; a later provider is not used to bypass it.</li>
           <li>No AI route automatically saves or submits time, publishes a SOW, baselines a plan, sends a closeout message, changes financial data, or deploys software.</li>
         </ul>

@@ -10,6 +10,7 @@ const read = (...parts) => fs.readFileSync(path.join(repositoryRoot, ...parts), 
 
 const sanitizer = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'PulseAiEscalationSanitizer.cs');
 const routing = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'CelarAiCapabilityRouting.cs');
+const routeExecutionPolicy = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'CelarAiRouteExecutionPolicy.cs');
 const privateModel = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'PulseAiPrivateModelClient.cs');
 const privateRag = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'PulseAiPrivateRagService.cs');
 const timesheet = read('src', 'backend', 'ProjectTime.Api', 'ProjectPulseAiTimeEntrySuggestionService.cs');
@@ -347,19 +348,25 @@ check(
 check(
   'CELAR_EXTERNAL_STORED_ROUTE_AND_PRIVATE_DOCUMENT_ORDER',
   containsAll(centralRouteExecution, [
-    '_store.LoadRouteAsync(feature, cancellationToken)',
+    '_store.LoadRouteAsync(CelarAiCapabilityCatalog.NormalizeFeature(request.Feature), cancellationToken)',
     '_store.LoadPrivateModelProfileAsync(cancellationToken)',
     'privatePolicyProfile?.RequirePrivateModelForDocuments == true',
-    'route.Targets.Where(IsPrivateTarget)',
+    'var orderedTargets = CelarAiRouteExecutionPolicy.Order(route,',
+    'execution.StructuredSowPhase, approvedSowRequest is not null',
     'CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi',
-    '.Concat(route.Targets.Where(',
     '"deferred"',
     '"private_document_private_target_mandatory"',
     'privateTargetOverride is not null',
     'mandatoryConsumerPrivateTarget',
     'skipPrivateTarget\n                && !requirePrivateTargetBeforeExternal'
+  ]) && containsAll(routeExecutionPolicy, [
+    'privateContextRequiresPrecedence && !closedSowMayUseSavedOrder',
+    'route.Targets.Where(CelarAiCapabilityTargets.IsPrivate)',
+    'structuredSowPhase && closedCapsuleReady && ExternalGenerationApproved(route)',
+    'route.Persisted && route.ExternalGenerationApprovalSchemaReady && route.SanitizedExternalGenerationApproved',
+    'Module025ExternalSowAdapter.PolicyEnabled && !route.DeploymentManaged'
   ]),
-  'stored order remains authoritative for generic work while persisted document policy forces Celar before public targets without disabling the private RAG callback'
+  'stored order remains authoritative for generic work; private document policy retains precedence except for explicitly approved and validated closed SOW capsules, without disabling private RAG or exposing raw source'
 );
 check(
   'CELAR_EXTERNAL_REFUSAL_TERMINAL_AND_ASSURANCE_ONCE',

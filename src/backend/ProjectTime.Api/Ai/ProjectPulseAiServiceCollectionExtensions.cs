@@ -89,6 +89,9 @@ public static class ProjectPulseAiServiceCollectionExtensions
             UseCookies = false
         });
         services.AddSingleton<ProjectPulseAiConfiguration>();
+        services.AddHttpClient(ProjectPulseAiModelCatalog.ClientName, client => client.Timeout = TimeSpan.FromSeconds(20))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
+        services.AddSingleton<ProjectPulseAiModelCatalog>();
         services.AddSingleton<ProjectPulseAiSecretStore>();
         services.AddSingleton<ProjectPulseAiEncryptionRotationService>();
         services.AddHostedService<ProjectPulseAiSecretLoader>();
@@ -102,7 +105,8 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<IProjectPulseAiProvider>(provider => provider.GetRequiredService<ProjectPulseOpenAiProvider>());
         services.AddHttpClient("OptionalAiProviders", client => client.Timeout = TimeSpan.FromSeconds(40))
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
-        services.AddSingleton<IProjectPulseAiProvider, ProjectPulseGeminiProvider>();
+        services.AddSingleton<ProjectPulseGeminiProvider>();
+        services.AddSingleton<IProjectPulseAiProvider>(provider => provider.GetRequiredService<ProjectPulseGeminiProvider>());
         services.AddSingleton<IProjectPulseAiProvider, ProjectPulseCopilotStudioProvider>();
         services.AddSingleton<ProjectPulseAiRouter>();
         services.AddSingleton<ProjectPulseAiHealthCoordinator>();

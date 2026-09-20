@@ -196,8 +196,8 @@ function rebrandCelarValue(value) {
     `            ProjectPulse checks provider health automatically and routes each AI request once through Claude,
             then OpenAI, then the governed local fallback. A safety refusal never triggers another provider.`,
     `            Celar AI uses Module 064 as the governed provider gateway. Module 064 checks provider health automatically,
-            controls approved models and feature routes, and preserves the private-first boundary. Claude and OpenAI remain
-            optional sanitized fallbacks, and a safety refusal never triggers another provider.`,
+            controls active models and each capability&apos;s saved provider order. Execution policies and blockers are shown
+            alongside each route. Private content stays protected, and a safety refusal never triggers another provider.`,
     'provider_header_copy');
 
   const featureSection = `          <section className="ai-provider-center__section">

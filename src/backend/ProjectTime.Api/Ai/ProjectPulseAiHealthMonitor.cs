@@ -63,6 +63,15 @@ public sealed class ProjectPulseAiHealthCoordinator
                         null);
                 }
 
+                var currentConfiguration = _configuration.Provider(provider.Code);
+                if (liveConfiguration.Model != currentConfiguration.Model
+                    || liveConfiguration.Endpoint != currentConfiguration.Endpoint
+                    || liveConfiguration.Secret.Fingerprint != currentConfiguration.Secret.Fingerprint)
+                {
+                    _health.ApplyConfiguration(currentConfiguration);
+                    _health.DiscardStaleProbe(provider.Code);
+                    continue;
+                }
                 _health.RecordProbe(result);
             }
 

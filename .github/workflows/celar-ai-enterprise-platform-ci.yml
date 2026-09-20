@@ -207,7 +207,7 @@ jobs:
             'Download SVG' \
             'Fresh chat — no previous conversation context' \
             'Add project, person/team, or date context' \
-            'Private-first targets and capability routing' \
+            'Provider order and generation policy' \
             '/api/ai-configuration/routes' \
             '/api/ai-configuration/private-model/settings' \
             '/api/ai-configuration/consumers' \

@@ -17,10 +17,10 @@ internal static class Module025GenerationEngine
     internal const int ProviderTimeoutSeconds = 180;
     // External closed-capsule providers stay on the tighter interactive budget.
     internal const int ExternalProviderTimeoutSeconds = 120;
-    // Permit each of the four configured model providers one bounded route
-    // attempt. The persisted document deadline still limits all phase work;
-    // two rejected cloud outputs must not consume the private fallback slots.
-    internal const int AttemptsPerPhase = 4;
+    // Permit each registered model provider one bounded route attempt. Optional
+    // Gemini/Copilot targets must not consume the final private fallback slot.
+    // The persisted document deadline and each provider timeout stay unchanged.
+    internal const int AttemptsPerPhase = 6;
     internal const int MaximumOutputTokens = 6144;
     // The live OpenAI Plan response exhausted 6144 tokens before completion.
     // Cloud phases get a separate bounded allowance; private inference, the

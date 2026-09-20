@@ -8,3 +8,4 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("FlowHiveSequentialTests")]
 [assembly: InternalsVisibleTo("FlowHiveExecutionTests")]
+[assembly: InternalsVisibleTo("Module064GeminiTests")]

@@ -63,7 +63,11 @@ internal static class Module025ProviderFallbackTests
                 if (scenario == "cancelled") cancel.Cancel();
                 try
                 {
-                    var result = await router.GenerateWithPrivateTargetAsync(request, execution, token => {
+                    var approved = scenario is not ("paid_unset" or "paid_false" or "paid_invalid" or "deepseek_success" or "private_refusal");
+                    var result = await router.GenerateForRouteAsync(request, execution,
+                        Module064RouteOrderTests.Route(approved),
+                        () => throw new InvalidOperationException("Local template must never complete a detailed SOW."),
+                        false, token => {
                         token.ThrowIfCancellationRequested();
                         var target = ProjectPulseDeepSeekProvider.PrivateTarget!;
                         privateCalls.Add(target);
@@ -74,7 +78,7 @@ internal static class Module025ProviderFallbackTests
                         return Task.FromResult(new ProjectPulseAiProviderResult(target, success ? "success" : "failure",
                             success ? "synthetic validated private phase" : null,
                             success ? null : "private_model_unavailable", null, null, null, 200));
-                    }, () => throw new InvalidOperationException("Local template must never complete a detailed SOW."), cancel.Token);
+                    }, cancel.Token);
                     var started = events.Where(e => e.Stage == "provider_started").Select(e => e.Provider).ToArray();
                     if (scenario == "refusal")
                         Check(result.Outcome == "refusal" && openai.Calls == 0 && claude.Calls == 1
@@ -87,10 +91,12 @@ internal static class Module025ProviderFallbackTests
                     {
                         Check(claude.Calls == 1 && openai.Calls == 1 && deepseek.Calls == 0
                             && started.SequenceEqual(new[] { "deepseek_v4", "celar_ai", "claude", "openai" }),
-                            "paid_opt_in_preserves_private_first_order");
+                            "explicit_route_approval_preserves_saved_private_first_order");
                         Check(result.Outcome != "success", "all_failed_never_returns_template_success");
-                        Check(!await phase.BeforeAttemptAsync("openai", CancellationToken.None),
-                            "route_cannot_spend_a_fifth_attempt");
+                        Check(await phase.BeforeAttemptAsync("gemini", CancellationToken.None)
+                            && await phase.BeforeAttemptAsync("copilot_studio", CancellationToken.None)
+                            && !await phase.BeforeAttemptAsync("openai", CancellationToken.None),
+                            "route_cannot_exceed_registered_provider_attempt_budget");
                         Check(claude.Request!.UserPrompt == request.UserPrompt && openai.Request!.UserPrompt == request.UserPrompt
                             && !openai.Request.SystemPrompt.Contains(secretSentinel)
                             && !JsonSerializer.Serialize(events).Contains(secretSentinel),
@@ -106,14 +112,14 @@ internal static class Module025ProviderFallbackTests
                         Check(started.SequenceEqual(scenario == "deepseek_success" ? new[] { "deepseek_v4" }
                             : new[] { "deepseek_v4", "celar_ai" }), "private_provider_attempt_order_" + scenario);
                         if (!succeeded)
-                            Check(result.TargetDecisions!.Count(d => d.ReasonCode == "module025_paid_fallback_disabled") == 2,
+                            Check(result.TargetDecisions!.Count(d => d.ReasonCode == "module025_external_generation_approval_required") == 2,
                                 "paid_denial_is_explicit_" + scenario);
                     }
                 }
                 catch (OperationCanceledException) when (scenario == "cancelled")
                 { Check(claude.Calls == 0 && openai.Calls == 0 && privateCalls.Count == 0, "deadline_cancellation_stops_before_any_provider"); }
             }
-            Console.WriteLine("MODULE025_PROVIDER_FALLBACK_TESTS=PASS scenarios=9 privacy=unchanged deadline=bounded paid_default=disabled");
+            Console.WriteLine("MODULE025_PROVIDER_FALLBACK_TESTS=PASS scenarios=9 privacy=unchanged deadline=bounded explicit_route_approval_default=disabled");
         }
         finally { foreach (var pair in previous) Environment.SetEnvironmentVariable(pair.Key, pair.Value); }
     }

@@ -2,10 +2,6 @@
   display: none;
 }
 
-.celar-ai-capability-routing + .ai-provider-center__section {
-  display: none;
-}
-
 .celar-ai-routing {
   display: grid;
   gap: 1.25rem;
@@ -17,7 +13,11 @@
     linear-gradient(145deg, #ffffff 0%, #f4f9fc 100%);
   color: #102643;
   box-shadow: 0 20px 50px rgba(18, 48, 78, 0.08);
+  min-width: 0;
 }
+
+.celar-ai-routing > *,
+.celar-ai-routing__route-card { min-width: 0; }
 
 .celar-ai-routing button,
 .celar-ai-routing input,
@@ -119,17 +119,6 @@
   border: 1px solid #d1e0eb;
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.9);
-}
-
-.celar-ai-routing__architecture article::after {
-  content: '→';
-  position: absolute;
-  right: -0.7rem;
-  top: calc(50% - 0.7rem);
-  z-index: 2;
-  color: #1ca4c5;
-  font-size: 1.3rem;
-  font-weight: 900;
 }
 
 .celar-ai-routing__architecture article {
@@ -487,6 +476,27 @@
   color: #9c2f2f;
   font-weight: 800;
 }
+
+.celar-ai-routing__external-approval,
+.celar-ai-routing__effective-policy {
+  display: grid;
+  gap: .55rem;
+  padding: .8rem;
+  border: 1px solid #cddfeb;
+  border-radius: .75rem;
+  background: #f5f9fc;
+  font-size: .84rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.celar-ai-routing__external-approval label { display: flex; align-items: flex-start; gap: .6rem; font-weight: 750; }
+.celar-ai-routing__external-approval input { width: 1rem; height: 1rem; flex: 0 0 1rem; margin-top: .2rem; }
+.celar-ai-routing__external-approval small { color: #536b84; }
+.celar-ai-routing__effective-policy ul { margin: 0; padding-left: 1.2rem; color: #855400; }
+.celar-ai-routing__effective-policy.is-external_generation_blocked,
+.celar-ai-routing__effective-policy.is-private_first_policy { background: #fffaf0; border-color: #e8ce96; }
+.celar-ai-routing__route-card p.celar-ai-routing__unsaved { color: #855400; font-weight: 700; }
 
 .celar-ai-routing__route-card footer {
   align-items: center;
