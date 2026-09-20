@@ -20,6 +20,7 @@ const expected = [
   "src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs",
   "src/backend/ProjectTime.Api/Modules/Module025GenerationStatus.cs",
   "src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs",
+  "src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs",
   "src/frontend/project-time-web/src/module025/GenerationProgress.jsx",
   "src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx",
   "src/frontend/project-time-web/src/module025/generation-feedback.js",
@@ -33,7 +34,8 @@ const expected = [
   "tests/flowhive-psa-admission.test.mjs",
   "tests/module025-generation-feedback.test.mjs",
   "tests/module025-generation-progress.test.mjs",
-  "tests/module025-phase-progress-scope.mjs"
+  "tests/module025-phase-progress-scope.mjs",
+  "tests/validate-systemwide-image-build-controller.mjs"
 ].sort();
 
 const registrations = [

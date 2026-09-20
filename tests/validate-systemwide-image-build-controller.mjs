@@ -49,6 +49,7 @@ const module025Workspace = [
   fs.readFileSync(module025WorkspacePath, 'utf8'),
   fs.readFileSync(module025AuthoringWorkspacePath, 'utf8')
 ].join('\n');
+const module025GenerationMonitor = fs.readFileSync('src/frontend/project-time-web/src/module025/useGenerationMonitor.js', 'utf8');
 const celarContracts = fs.readFileSync(celarContractsPath, 'utf8');
 const celarService = fs.readFileSync(celarServicePath, 'utf8');
 const privateRagContracts = fs.readFileSync(privateRagContractsPath, 'utf8');
@@ -263,9 +264,15 @@ assert.match(module025Module, /RecordGenerationStartedAsync\(connectionString/);
 assert.match(module025Module, /RecordGenerationTerminalAsync\(\s*connectionString/);
 assert.doesNotMatch(module025Module, /IValueHttpResult|IStatusCodeHttpResult/);
 assert.match(apiProgram, /AddHostedService<Module025SowGsdGenerationWorker>\(\)/);
-assert.match(module025Workspace, /waitForDetailedScopeGeneration/);
-assert.match(module025Workspace, /\/generations\/\$\{generationId\}/);
-assert.match(module025Workspace, /payload\?\.terminal === true/);
+assert.match(module025Workspace, /import useGenerationMonitor from '\.\/useGenerationMonitor\.js'/);
+assert.match(module025Workspace, /const generationMonitor = useGenerationMonitor\(\{/);
+assert.match(module025Workspace, /generationMonitor\.track\(payload\)/, 'the explicit Generate action must attach the queued job to monitoring');
+assert.match(module025GenerationMonitor, /callbacks\.current\.request\(`\/api\/module025\/sow-gsd\/\$\{engagementId\}\/generations\/latest`, \{ signal: controller\.signal \}\)/, 'opening a record must discover its durable job through an abortable read');
+assert.match(module025GenerationMonitor, /callbacks\.current\.request\(`\/api\/module025\/sow-gsd\/\$\{engagementId\}\/generations\/\$\{generationId\}`, \{ signal: controller\.signal \}\)/, 'polling must identify both the engagement and generation');
+assert.match(module025GenerationMonitor, /if \(payload\?\.terminal === true\) \{\s*callbacks\.current\.onComplete\?\.\(payload, engagementId\);\s*return;/, 'terminal jobs must notify the workspace and stop polling');
+assert.match(module025GenerationMonitor, /token === epoch\.current && !controller\.signal\.aborted/, 'late responses must remain isolated to the current monitor');
+assert.match(module025GenerationMonitor, /return \(\) => \{ controller\.abort\(\); window\.clearTimeout\(timer\); \}/, 'leaving a record must cancel its requests and polling timer');
+assert.doesNotMatch(module025GenerationMonitor, /method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i, 'discovery and monitoring must not start AI generation or mutate documents');
 assert.match(celarService, /authoritativeScopeEvidence: null/);
 assert.match(celarService, /internal Task<CelarAiComposeResult> ComposeModule025SowAsync/);
 assert.match(celarService, /GenerateModule025SowPlanAsync\(/);

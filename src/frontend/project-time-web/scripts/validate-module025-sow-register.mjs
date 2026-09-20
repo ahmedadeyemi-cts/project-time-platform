@@ -25,6 +25,7 @@ const policy = backend('Modules', 'Module025SowSellPolicy.cs');
 const protectedUat = read('scripts', 'release-test', 'run-module025-sow-gsd-protected-test-uat.sh');
 const browserLifecycle = read('tests', 'module025-sow-register-browser.py');
 const editor = frontend('src', 'module025', 'SowGsdAuthoringWorkspace.jsx');
+const generationMonitor = frontend('src', 'module025', 'useGenerationMonitor.js');
 const shell = frontend('src', 'module025', 'SowGsdWorkspace.jsx');
 const register = frontend('src', 'module025', 'SowRegister.jsx');
 
@@ -54,7 +55,9 @@ requireText(generator, 'builder.Services.AddModule025SowSell();', 'generated Pro
 requireText(generator, 'app.MapModule025SowSellEndpoints();', 'generated Program must map retained-version endpoints');
 
 for (const marker of [
-  'waitForDetailedScopeGeneration',
+  "import useGenerationMonitor from './useGenerationMonitor.js';",
+  'const generationMonitor = useGenerationMonitor({',
+  'generationMonitor.track(payload)',
   'module025_detailed_scope_generation_queued',
   'Generate detailed scope',
   "action === 'generate'",
@@ -63,6 +66,16 @@ for (const marker of [
   "downloadDocument('sow.docx')",
   "downloadDocument('gsd.xlsx')"
 ]) requireText(editor, marker, `original SOW editor behavior missing: ${marker}`);
+for (const marker of [
+  'callbacks.current.request(`/api/module025/sow-gsd/${engagementId}/generations/latest`, { signal: controller.signal })',
+  'callbacks.current.request(`/api/module025/sow-gsd/${engagementId}/generations/${generationId}`, { signal: controller.signal })',
+  'token === epoch.current && !controller.signal.aborted',
+  'return () => { controller.abort(); window.clearTimeout(timer); }'
+]) requireText(generationMonitor, marker, `durable generation monitoring missing: ${marker}`);
+assert.match(generationMonitor, /if \(payload\?\.terminal === true\) \{\s*callbacks\.current\.onComplete\?\.\(payload, engagementId\);\s*return;/,
+  'terminal jobs must update the authoring workspace and stop polling');
+assert.doesNotMatch(generationMonitor, /method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i,
+  'reopening and monitoring a SOW/GSD must not automatically generate or mutate content');
 for (const marker of [
   "import SowGsdAuthoringWorkspace from './SowGsdAuthoringWorkspace.jsx';",
   "import SowRegister from './SowRegister.jsx';",
