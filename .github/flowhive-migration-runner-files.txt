@@ -1,4 +1,5 @@
 .github/flowhive-migration-runner-files.txt
+.github/workflows/flowhive-enterprise-psa-ci.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
 .github/workflows/module-management-owner-drawer-ci.yml
 scripts/ci/validate-celar-ai-enterprise-source-boundary.sh

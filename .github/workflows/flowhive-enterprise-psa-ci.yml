@@ -29,6 +29,7 @@ on:
       - 'scripts/release-test/verify-flowhive-task-notifications.sql'
       - 'tests/flowhive-team-calendar*'
       - 'tests/flowhive-automatic-*'
+      - 'tests/flowhive-migration-package.test.py'
       - 'database/migrations/122_flowhive_automatic_first_draft.sql'
       - 'scripts/release-test/verify-flowhive-automatic-first-draft.sql'
       - 'src/backend/ProjectTime.Api/Modules/EnterpriseNotification*.cs'
@@ -238,6 +239,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Verify private-network migration packaging and reject host SQL
+        run: python3 tests/flowhive-migration-package.test.py
       - name: Test resumable observation, identity fencing and bounded network requests
         run: node --test tests/flowhive-psa-*.test.mjs tests/flowhive-team-calendar.test.mjs
       - name: Install locked frontend dependencies

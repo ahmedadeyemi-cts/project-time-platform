@@ -37,8 +37,8 @@ for path in ['.github/workflows/projectpulse-deploy-test.yml', '.github/workflow
              '.github/workflows/module025-protected-uat-control.yml', '.github/flowhive-psa-protected-test-candidate.json',
              '.github/flowhive-psa-release-control-files.txt', 'scripts/release-test/flowhive-psa-admission.mjs']:
     assert Path(path).read_bytes() == subprocess.check_output(['git', 'show', BASE + ':' + path]), path
-print('FLOWHIVE_MIGRATION_SCOPE=PASS release_authority=unchanged')
 
 builder = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
 def entrypoint(source): return source.split("<<'ENTRYPOINT'\n",1)[1].split('\nENTRYPOINT\n',1)[0]
 assert entrypoint(Path(builder).read_text()) == entrypoint(git('show', BASE+':'+builder)), 'Private-network SQL and verification must remain unchanged'
+print('FLOWHIVE_MIGRATION_SCOPE=PASS release_authority=unchanged')
