@@ -352,6 +352,8 @@ internal static class ProjectNotificationProcessingService
                 dispatch.AttemptCount);
         }
 
+        await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection, dispatch, context, cancellationToken);
+
         return new(
             delivery.Sent,
             delivery.Status,

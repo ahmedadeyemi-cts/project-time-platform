@@ -11,9 +11,8 @@ public sealed class ProjectPulseAiHealthRegistry
     public ProjectPulseAiHealthRegistry(ProjectPulseAiConfiguration configuration)
     {
         _configuration = configuration;
-        _states[ProjectPulseAiProviders.DeepSeek] = ProviderState.Remote(configuration.DeepSeek);
-        _states[ProjectPulseAiProviders.Claude] = ProviderState.Remote(configuration.Claude);
-        _states[ProjectPulseAiProviders.OpenAi] = ProviderState.Remote(configuration.OpenAi);
+        foreach (var code in ProjectPulseAiProviders.Remote)
+            _states[code] = ProviderState.Remote(configuration.Provider(code));
         _states[ProjectPulseAiProviders.Local] = ProviderState.Local();
     }
 

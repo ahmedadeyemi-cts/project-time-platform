@@ -10,6 +10,8 @@ const PROVIDER_LABELS = {
   deepseek_v4: 'DeepSeek v4',
   claude: 'Claude',
   openai: 'OpenAI',
+  gemini: 'Gemini',
+  copilot_studio: 'Microsoft Copilot Studio',
   local_template: 'Governed local template',
 };
 const AUTOMATIC_HEALTH_POLL_MS = 2000;
@@ -355,7 +357,7 @@ export default function AiProviderConfigurationCenter() {
                         <span>Rotation: {formatDate(provider.secret.rotatedAt)}</span>
                         <span>Expiry: {formatDate(provider.secret.expiresAt)}</span>
                         <form className="ai-provider-center__secret-form" onSubmit={(event) => saveKey(event, provider.code)}>
-                          <label htmlFor={`provider-key-${provider.code}`}>{provider.configured ? 'Replace API key' : 'Add API key'}</label>
+                          <label htmlFor={`provider-key-${provider.code}`}>{provider.code === 'copilot_studio' ? 'Copilot Studio Direct Line secret' : provider.configured ? 'Replace API key' : 'Add API key'}</label>
                           <div>
                             <input
                               id={`provider-key-${provider.code}`}

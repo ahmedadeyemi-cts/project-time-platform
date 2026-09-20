@@ -34,6 +34,7 @@ public static class GlobalMailConfigurationModule
         app.MapMicrosoftServicesRuntimeProfileEndpoints();
         app.MapMicrosoftMailRuntimeConfigurationEndpoints();
         app.MapMicrosoftMailTransportTestEndpoints();
+        app.MapMicrosoftTeamsNotificationEndpoints();
         AzureDirectoryImportModule.MapEndpoints(app);
         app.MapMicrosoftDirectorySyncEndpoints();
 

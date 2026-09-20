@@ -143,6 +143,7 @@ export default function RateCardAdministrationCenter() {
   const [cardForm, setCardForm] = useState(emptyCardForm);
   const [lineForm, setLineForm] = useState(emptyLineForm);
   const [actionStatus, setActionStatus] = useState('');
+  const [showFinancialContext, setShowFinancialContext] = useState(false);
   const [activePanel, setActivePanel] = useState('rates'); // 055B_2_COMPACT_RATE_CARD_TABS
 
   /* 055B_3_RATE_CARD_ROUTE_FOCUS_START */
@@ -368,8 +369,8 @@ export default function RateCardAdministrationCenter() {
   return (
     <section className="rate-card-admin-center">
       {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START */}
-      <details><summary>Project rate coverage and financial context</summary>
-      <UnifiedProjectFinancialWorkspace workspace="rate-card" />
+      <details onToggle={event => setShowFinancialContext(event.currentTarget.open)}><summary>Project rate coverage and financial context</summary>
+      {showFinancialContext ? <UnifiedProjectFinancialWorkspace workspace="rate-card" /> : null}
       </details>
       {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_END */}
       <div className="rate-card-admin-header">

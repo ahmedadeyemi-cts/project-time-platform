@@ -124,6 +124,13 @@ internal static class ProjectNotificationFinancialSnapshotLoader
             if (project.ProjectTeamCoordinator is null || string.IsNullOrWhiteSpace(project.ProjectTeamCoordinator.Email))
                 missing.Add("project_team_coordinator_email");
 
+            if (sources.Any(source => source.Required && source.Status != "healthy"))
+            {
+                committedCost = null;
+                forecastedFinalCost = null;
+                currentVariance = null;
+                missing.Add("required_financial_source_unavailable");
+            }
             var budgetStatus = DetermineBudgetStatus(
                 knownTotalBudget,
                 forecastedFinalCost,
@@ -377,7 +384,7 @@ internal static class ProjectNotificationFinancialSnapshotLoader
         if (!totalBudget.HasValue || !forecast.HasValue)
             return missingCount > 0 ? "missing_financial_information" : "not_recorded";
         if (forecast.Value > totalBudget.Value) return "over_budget";
-        if (totalBudget.Value > 0 && forecast.Value / totalBudget.Value >= 0.8m)
+        if (totalBudget.Value > 0 && forecast.Value / totalBudget.Value >= 0.85m)
             return "approaching_budget";
         return "on_track";
     }
@@ -429,10 +436,9 @@ internal static class ProjectNotificationFinancialSnapshotLoader
 
     private static decimal? SumKnown(params decimal?[] values)
     {
-        var known = values.Where(value => value.HasValue)
-            .Select(value => value!.Value)
-            .ToArray();
-        return known.Length == 0 ? null : known.Sum();
+        // A partial sum is not a complete project cost. Missing is distinct from zero.
+        return values.Length == 0 || values.Any(value => !value.HasValue)
+            ? null : values.Sum(value => value!.Value);
     }
 
     private static int Count<T>(T value) => value switch

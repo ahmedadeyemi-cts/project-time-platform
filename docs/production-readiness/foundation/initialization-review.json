@@ -1637,6 +1637,24 @@
       "rationale": ""
     },
     {
+      "path": "database/migrations/112_optional_ai_providers.sql",
+      "sha256": "8c4eb85b9ccd504a18adc23a7c96ab1ae755c9a74e51d8a012ff5600e47e495e",
+      "decision": "review_required",
+      "rationale": "Additive enterprise integration schema. Review before production initialization; does not enable providers or notification delivery."
+    },
+    {
+      "path": "database/migrations/113_module065_teams_notifications.sql",
+      "sha256": "8857170b6f0038d96f17506fa0c263b19d03d1abee776619bafa1a2f84fc311a",
+      "decision": "review_required",
+      "rationale": "Additive enterprise integration schema. Review before production initialization; does not enable providers or notification delivery."
+    },
+    {
+      "path": "database/migrations/114_module064_private_admin_override.sql",
+      "sha256": "7d746705ad5e0a373995180033393daf64557c3be5b9c5dca9d25d47feb392c2",
+      "decision": "review_required",
+      "rationale": "Additive enterprise integration schema. Review before production initialization; does not enable providers or notification delivery."
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [
