@@ -24,6 +24,22 @@
 .m025-transfer { padding: 1rem; margin: 1rem 0; background: #f7f9fc; border: 1px solid #d6e0eb; border-radius: .65rem; }
 .m025-transfer summary { cursor: pointer; font-weight: 600; color: #173b60; }
 .m025-transfer label { margin: .8rem 0; }
+.m025-queue-controls { display: flex; align-items: end; flex-wrap: wrap; gap: .8rem; padding: .8rem 1rem; border: 1px solid #d6e0eb; border-radius: .65rem; background: #f8fafc; margin: .8rem 0; }
+.m025-queue-summary { flex: 1 1 240px; align-self: center; font-weight: 600; color: #304d6b; }
+.m025-queue-controls small { flex: 1 1 100%; color: #526477; }
+.m025-work-card__tracking { display: grid; gap: .35rem; border-top: 1px solid #d6e0eb; padding-top: .5rem; margin-top: .3rem; }
+.m025-priority { font-size: .78rem; font-weight: 700; text-transform: capitalize; }
+.m025-priority--urgent, .m025-overdue { color: #a52720 !important; }
+.m025-priority--high, .m025-blocked { color: #81540d !important; }
+.m025-blocked { overflow-wrap: anywhere; }
+.m025-handoff-state { padding: .75rem; border-radius: .5rem; background: #eef4fa; margin: .75rem 0; }
+.m025-handoff-state dl { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr; gap: .5rem; margin: .65rem 0; }
+.m025-handoff-state dt { color: #526477; }
+.m025-handoff-state dd { margin: 0; }
+.m025-handoff-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+.m025-transfer input[type='date'] { border: 1px solid #bdcbd9; border-radius: .4rem; padding: .65rem; background: white; color: #18324b; font: inherit; }
+.m025-notification-status { font-size: .85rem; color: #526477; border-top: 1px solid #d6e0eb; margin-top: 1rem; padding-top: .75rem; }
+.m025-notification-status ul { margin: .5rem 0; padding-left: 1.2rem; }
 .m025-task-blockers button { text-align: left; border: 0; background: transparent; color: #075985; font: inherit; text-decoration: underline; padding: .3rem 0; cursor: pointer; }
 .m025-workspace-views button:focus-visible, .m025-stage-nav a:focus-visible, .m025-task-review input:focus-visible, .m025-task-review textarea:focus-visible, .m025-transfer select:focus-visible, .m025-transfer textarea:focus-visible { outline: 3px solid #56a3ce; outline-offset: 2px; }
 @media (max-width: 700px) { .m025-task-review { padding: .7rem; } .m025-task-review__allocation { grid-template-columns: 1fr; } }

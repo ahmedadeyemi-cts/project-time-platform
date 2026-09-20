@@ -12,8 +12,13 @@ export default function TemplateCatalog({ identityKey = '' }) {
   const [form, setForm] = useState({ documentKind: 'gsd', customerProgram: 'standard', label: '', changeNotes: '' });
   const [file, setFile] = useState(null);
   const [refresh, setRefresh] = useState(0);
+  const [preview, setPreview] = useState(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const session = useRef(0);
   const uploadController = useRef(null);
+  const previewController = useRef(null);
+  const previewRequest = useRef(0);
   const fileInput = useRef(null);
 
   useEffect(() => {
@@ -23,9 +28,13 @@ export default function TemplateCatalog({ identityKey = '' }) {
     setNotice('');
     setFile(null);
     setBusy(false);
+    setPreview(null);
+    setPreviewBusy(false);
+    setPreviewError('');
+    previewRequest.current += 1;
     setForm({ documentKind: 'gsd', customerProgram: 'standard', label: '', changeNotes: '' });
     if (fileInput.current) fileInput.current.value = '';
-    return () => { session.current += 1; uploadController.current?.abort(); };
+    return () => { session.current += 1; uploadController.current?.abort(); previewController.current?.abort(); };
   }, [identityKey]);
 
   useEffect(() => {
@@ -94,6 +103,41 @@ export default function TemplateCatalog({ identityKey = '' }) {
     } catch (failure) { if (currentSession === session.current) setError(failure.message); }
   }
 
+  async function previewOriginal(candidate, sheetId = '') {
+    previewController.current?.abort();
+    const controller = new AbortController();
+    previewController.current = controller;
+    const requestId = ++previewRequest.current;
+    const currentSession = session.current;
+    setPreview((current) => current?.candidate.versionId === candidate.versionId ? current : { candidate, data: null });
+    setPreviewBusy(true);
+    setPreviewError('');
+    try {
+      const query = sheetId ? `?sheetId=${encodeURIComponent(sheetId)}` : '';
+      const response = await fetch(`/api/module025/sow-gsd/templates/${candidate.versionId}/preview${query}`, {
+        credentials: 'include', headers: sessionHeaders({ Accept: 'application/json' }), signal: controller.signal
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || 'Unable to preview this template original.');
+      if (controller.signal.aborted || currentSession !== session.current || requestId !== previewRequest.current) return;
+      if (payload.versionId !== candidate.versionId || payload.sha256 !== candidate.sha256 || !payload.originalHashVerified)
+        throw new Error('The preview did not match the selected original. Reload the catalog before reviewing it.');
+      setPreview({ candidate, data: payload });
+    } catch (failure) {
+      if (!controller.signal.aborted && currentSession === session.current && requestId === previewRequest.current) setPreviewError(failure.message);
+    } finally {
+      if (!controller.signal.aborted && currentSession === session.current && requestId === previewRequest.current) setPreviewBusy(false);
+    }
+  }
+
+  function closePreview() {
+    previewController.current?.abort();
+    previewRequest.current += 1;
+    setPreview(null);
+    setPreviewBusy(false);
+    setPreviewError('');
+  }
+
   return <section className="m025-templates" aria-labelledby="m025-templates-title">
     <header>
       <p className="m025-templates-kicker">Shared document standards</p>
@@ -135,11 +179,44 @@ export default function TemplateCatalog({ identityKey = '' }) {
           <p>{candidate.changeNotes}</p>
           {candidate.documentKind === 'gsd' && <p>{candidate.validation.worksheetCount} worksheets · {candidate.validation.formulaCount} formula cells retained</p>}
           <details><summary>Original file details</summary><p>{candidate.fileName} · {Math.ceil(candidate.sizeBytes / 1024)} KB</p><code>{candidate.sha256}</code></details>
-          <button type="button" className="m025-button m025-button--secondary" onClick={() => downloadOriginal(candidate)}>Download original</button>
+          <div className="m025-template-actions">
+            <button type="button" className="m025-button m025-button--primary" aria-expanded={preview?.candidate.versionId === candidate.versionId} aria-controls={`template-preview-${candidate.versionId}`} onClick={() => preview?.candidate.versionId === candidate.versionId ? closePreview() : previewOriginal(candidate)}>Preview original</button>
+            <button type="button" className="m025-button m025-button--secondary" onClick={() => downloadOriginal(candidate)}>Download original</button>
+          </div>
+          {preview?.candidate.versionId === candidate.versionId && <section id={`template-preview-${candidate.versionId}`} className="m025-template-preview" aria-label={`Preview ${candidate.label}`}>
+            <div className="m025-template-card-title"><h4>Review this original</h4><button type="button" className="m025-button m025-button--secondary" onClick={closePreview}>Close preview</button></div>
+            {previewBusy && <p role="status">Reading the retained original…</p>}
+            {previewError && <p role="alert" className="m025-template-message m025-template-message--error">{previewError}</p>}
+            {preview.data && <TemplateContentPreview data={preview.data} busy={previewBusy} onSelectSheet={(sheetId) => previewOriginal(candidate, sheetId)} />}
+          </section>}
         </article>)}
       </div>}
       {catalog.candidates.length === catalog.catalogLimit && <p>Showing the latest {catalog.catalogLimit} retained candidates in your reporting scope.</p>}
       <details className="m025-template-next"><summary>What is required before a template can become active?</summary><ol>{catalog.activationRequirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ol></details>
     </>}
   </section>;
+}
+
+function TemplateContentPreview({ data, busy, onSelectSheet }) {
+  const content = data.preview;
+  return <>
+    <p><strong>{data.label} · Version {data.version}</strong> · {data.fileName}</p>
+    <p className="m025-template-help">Original fingerprint verified. Content preview only; the final document layout and populated output still require review before this template can be activated.</p>
+    <details><summary>Verified original fingerprint</summary><code>{data.sha256}</code></details>
+    <ul className="m025-template-preview-notices">{content.notices.map((message) => <li key={message}>{message}</li>)}</ul>
+    {content.truncated && <p role="status" className="m025-template-message">This preview has reached its size limit. Download the original to inspect all remaining content.</p>}
+    {data.documentKind === 'gsd' ? <>
+      <label className="m025-template-sheet-picker">Worksheet<select disabled={busy} value={content.selectedSheetId || ''} onChange={(event) => onSelectSheet(event.target.value)}>{content.sheets.map((sheet) => <option key={sheet.id} value={sheet.id}>{sheet.name}{sheet.visibility !== 'visible' ? ` (${sheet.visibility})` : ''}</option>)}</select></label>
+      <div className="m025-template-preview-scroll" tabIndex={0} role="region" aria-label="Worksheet cells and formulas">
+        <table className="m025-template-preview-table"><caption>Stored worksheet values and formulas. Formulas have not been recalculated.</caption><thead><tr><th scope="col">Cell</th><th scope="col">Stored value</th><th scope="col">Formula</th></tr></thead><tbody>
+          {content.cells.map((cell, index) => <tr key={`${cell.address}-${index}`}><th scope="row">{cell.address || 'Unspecified'}</th><td>{cell.value || <span className="m025-template-empty">No stored value</span>}</td><td>{cell.formula ? <><code>{cell.formula}</code>{cell.formulaRange && <small>Range: {cell.formulaRange}</small>}</> : <span className="m025-template-empty">No formula</span>}</td></tr>)}
+        </tbody></table>
+        {content.cells.length === 0 && <p>No cells with stored values or formulas were found in this sheet.</p>}
+      </div>
+    </> : <div className="m025-template-document" tabIndex={0} role="region" aria-label="Word document text and tables">
+      {content.blocks.map((block, index) => block.kind === 'table' ? <table className="m025-template-preview-table" key={index}><caption>Document table {index + 1}</caption><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell || '\u00a0'}</td>)}</tr>)}</tbody></table>
+        : <p key={index} className={/^heading[1-6]$|^title$/i.test(block.style) ? 'm025-template-document-heading' : ''}>{block.text || '\u00a0'}</p>)}
+      {content.blocks.length === 0 && <p>No document paragraphs or tables were found.</p>}
+    </div>}
+  </>;
 }

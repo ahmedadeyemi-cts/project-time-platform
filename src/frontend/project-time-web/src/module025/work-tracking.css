@@ -1,0 +1,25 @@
+.m025-tracking { border: 1px solid #d6e0eb; border-radius: .75rem; padding: 1rem; margin: 1rem 0; background: #f8fafc; color: #173b60; }
+.m025-tracking__heading { display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
+.m025-tracking h3 { margin: 0; font-size: 1.05rem; }
+.m025-tracking p { margin: .5rem 0; }
+.m025-tracking__heading > span { flex-shrink: 0; font-size: .85rem; }
+.m025-tracking__summary { display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; padding: .75rem 0; font-size: .9rem; }
+.m025-tracking__summary .is-overdue { color: #9f3519; }
+.m025-tracking fieldset { padding: 0; margin: .5rem 0; border: 0; min-width: 0; }
+.m025-tracking__legend { font-weight: 600; margin-bottom: .65rem; }
+.m025-tracking__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.m025-tracking__blocker { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; margin: .9rem 0; }
+.m025-tracking label { display: grid; align-content: start; gap: .4rem; font-size: .9rem; }
+.m025-tracking input, .m025-tracking select, .m025-tracking textarea { width: 100%; box-sizing: border-box; border: 1px solid #bdcbd9; border-radius: .4rem; padding: .65rem; font: inherit; color: #18324b; background: white; }
+.m025-tracking :disabled { cursor: not-allowed; }
+.m025-tracking fieldset:disabled { opacity: .8; }
+.m025-tracking input:focus-visible, .m025-tracking select:focus-visible, .m025-tracking textarea:focus-visible { outline: 3px solid #56a3ce; outline-offset: 2px; }
+.m025-tracking__help, .m025-tracking__actions > span { color: #526477; font-size: .85rem; line-height: 1.5; }
+.m025-tracking__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: .75rem; }
+.m025-tracking__error { background: #fff1ed; border-radius: .4rem; padding: .6rem .8rem; color: #9f3519; }
+.m025-tracking__saved { color: #176844; }
+.m025-tracking__history { margin-top: 1rem; font-size: .9rem; }
+.m025-tracking__history summary { cursor: pointer; font-weight: 600; }
+.m025-tracking__history li { padding: .5rem 0; }
+.m025-tracking__history li > span { display: block; color: #526477; }
+@media (max-width: 750px) { .m025-tracking__heading { flex-direction: column; gap: .2rem; } .m025-tracking__grid, .m025-tracking__blocker { grid-template-columns: 1fr; } }

@@ -23,7 +23,7 @@ const browser = await chromium.launch({ headless: true, ...(process.env.MODULE02
 try {
   const context = await browser.newContext();
   const page = await context.newPage();
-  const errors = [], writes = [], lists = [], details = [], openedOptions = [];
+  const errors = [], writes = [], trackingWrites = [], lists = [], details = [], openedOptions = [];
   page.on('pageerror', error => errors.push(error.message));
   const saA = { userId: '11111111-1111-4111-8111-111111111111', displayName: 'Alex System', teamName: 'System SA' };
   const saB = { userId: '22222222-2222-4222-8222-222222222222', displayName: 'Bea System', teamName: 'System SA' };
@@ -39,9 +39,22 @@ try {
     phases: []
   };
   const other = { ...record, engagementId: '44444444-4444-4444-8444-444444444444', engagementNumber: 'SOW-TEAM-002', ownerUserId: saB.userId, ownerDisplayName: saB.displayName, projectName: 'Storage discovery' };
+  let coordination = { engagementId: record.engagementId, revision: 1, targetDate: '2000-01-01', priority: 'high', blockerReason: 'Waiting for customer input',
+    blockerOwnerUserId: '55555555-5555-4555-8555-555555555555', blockerOwnerDisplayName: 'System SA manager', authoringHours: 3, workflowIdleDays: 2 };
+  const secondaryTracking = { engagementId: other.engagementId, revision: 0, targetDate: '9999-12-31', priority: 'normal', blockerReason: '', authoringHours: null };
+  const trackingPayload = () => ({ schemaReady: true, canEdit: !isViewAs && record.isActive, tracking: coordination, workflowIdleDays: 2,
+    blockerOwners: [{userId:record.ownerUserId,displayName:record.ownerDisplayName},{userId:'55555555-5555-4555-8555-555555555555',displayName:'System SA manager'}],history:[] });
   await page.route('**/api/**', async route => {
     const req = route.request(), url = new URL(req.url());
     let body;
+    if (url.pathname === `/api/module025/sow-gsd/${record.engagementId}/work-tracking`) {
+      if (req.method() === 'PUT') {
+        assert.equal(isViewAs,false);const saved=req.postDataJSON();trackingWrites.push(saved);
+        assert.equal(saved.expectedRevision,coordination.revision);
+        coordination={...coordination,...saved,revision:coordination.revision+1};
+      } else assert.equal(req.method(),'GET');
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(trackingPayload())});return;
+    }
     if (req.method() !== 'GET') {
       writes.push({ path: url.pathname, method: req.method(), body: req.postDataJSON() });
       assert.equal(isViewAs, false, 'View-As performs no writes');
@@ -58,12 +71,17 @@ try {
     } else if (url.pathname.endsWith('/bootstrap')) {
       body = { currentUser: { userId: isOwnerSession ? saB.userId : '55555555-5555-4555-8555-555555555555', displayName: isOwnerSession ? saB.displayName : 'System SA manager' },
         access: { canCreate: isOwnerSession && !isViewAs, isManager: !isOwnerSession, isSolutionArchitect: isOwnerSession, managerScopeReadOnly: !isOwnerSession, isViewAs },
-        solutionArchitects: [saA, saB], commercialModels: [], customerPrograms: [] };
+        capabilities: {workTracking:true,handoffNotifications:true}, solutionArchitects: [saA, saB], commercialModels: [], customerPrograms: [] };
     } else if (url.pathname.endsWith('/transfer-options')) {
       openedOptions.push(url.pathname);
       body = { engagementId: record.engagementId, revision: record.revision, canTransfer: !isViewAs && ['draft','review_ready'].includes(record.status), scope: 'same_reporting_manager',
         blockedReason: isViewAs ? 'Your role or current view does not allow transferring this record.' : null,
         destinations: isViewAs ? [] : [record.ownerUserId === saA.userId ? saB : saA] };
+    } else if (url.pathname === '/api/module025/sow-gsd/work-tracking') {
+      const requested=(url.searchParams.get('engagementIds')||'').split(',');
+      body={schemaReady:true,tracking:[coordination,secondaryTracking].filter(item=>requested.includes(item.engagementId))};
+    } else if (url.pathname.endsWith('/handoff-notifications')) {
+      body={message:'Delivery is queued under the Test profile, not confirmed.',items:[{eventId:'event-1',kind:'ownership_handoff',status:'queued',deliveryBoundary:'test_only',occurredAt:'2026-09-20T00:00:00Z'}]};
     } else if (url.pathname.endsWith('/history')) {
       body = { events: [] };
     } else if (url.pathname === `/api/module025/sow-gsd/${record.engagementId}`) {
@@ -85,6 +103,16 @@ try {
   assert.equal(await audience.getByRole('button', { name: 'Team Work', exact: true }).getAttribute('aria-pressed'), 'true', 'manager starts in Team Work');
   assert.ok(lists.some(url => url.startsWith('/api/module025/sow-gsd/team-work?') && !url.includes('ownerUserId')), 'team request uses server-scoped team endpoint');
   assert.equal(await page.locator('.m025-work-card').count(), 2);
+  await page.getByText('Loaded queue: 1 overdue · 1 blocked · 0 urgent',{exact:true}).waitFor();
+  const focusQueue=page.getByLabel(/^Focus queue/);
+  await focusQueue.selectOption('overdue');
+  assert.equal(await page.locator('.m025-work-card').count(),1);
+  assert.ok((await page.locator('.m025-work-card').innerText()).includes('SOW-TEAM-001'));
+  await focusQueue.selectOption('blocked');
+  assert.equal(await page.locator('.m025-work-card').count(),1);
+  assert.ok((await page.locator('.m025-work-card').innerText()).includes('Waiting for customer input'));
+  await focusQueue.selectOption('all');
+  assert.equal(await page.locator('.m025-work-card').count(),2);
   const owner = page.locator('.m025-filters select');
   assert.deepEqual(await owner.locator('option').allTextContents(), ['All authorized team members', 'Alex System', 'Bea System'], 'filter contains only supplied authorized SAs');
   await owner.selectOption(saB.userId);
@@ -111,6 +139,24 @@ try {
   assert.equal(await editor.getByRole('button', { name: 'Review Requirements to Confirm', exact: true }).isDisabled(), true);
   const transfer = page.locator('.m025-transfer');
   await transfer.locator('summary').click();
+  const trackingPanel=page.getByRole('region',{name:'Work tracking',exact:true});
+  const trackingPriority=trackingPanel.getByLabel(/^Priority/);
+  await trackingPanel.getByText('Tracking revision 1',{exact:true}).waitFor();
+  assert.equal(await trackingPriority.isEnabled(),true,'manager may coordinate workload while SOW content remains read-only');
+  await trackingPriority.selectOption('urgent');
+  await page.getByText('Save or discard your work-tracking changes before switching records or completing another action.',{exact:true}).waitFor();
+  assert.equal(await audience.getByRole('button',{name:'Templates',exact:true}).isDisabled(),true,'dirty tracking locks template navigation');
+  assert.equal(await owner.isDisabled(),true,'dirty tracking locks owner navigation');
+  assert.equal(await transfer.getByLabel(/^New responsible Solution Architect/).isDisabled(),true,'dirty tracking blocks ownership transfer');
+  await trackingPanel.getByRole('button',{name:'Save work tracking',exact:true}).click();
+  await trackingPanel.getByText('Tracking revision 2',{exact:true}).waitFor();
+  assert.equal(record.revision,7,'coordination updates do not alter document revision');
+  assert.equal(trackingWrites.length,1);
+  assert.equal(writes.length,0,'manager tracking update never edits SOW content');
+  await page.getByText('Loaded queue: 1 overdue · 1 blocked · 1 urgent',{exact:true}).waitFor();
+  const notificationPanel=transfer.getByRole('region',{name:'Handoff notification delivery'});
+  assert.ok((await notificationPanel.innerText()).includes('Test delivery boundary'));
+  assert.equal(/\bsent\b|\bdelivered\b/i.test(await notificationPanel.innerText()),false);
   const target = transfer.getByLabel(/^New responsible Solution Architect/);
   await target.waitFor();
   assert.deepEqual(await target.locator('option').allTextContents(), ['Choose a teammate', 'Bea System · System SA']);
@@ -151,6 +197,8 @@ try {
   assert.equal(await transfer.getByRole('button', { name: 'Transfer this SOW / GSD', exact: true }).count(), 0);
   assert.equal(await editor.getByLabel(/^Project Name/).isDisabled(), true);
   assert.equal(writes.length, 1, 'View-As inspection issues no writes');
+  assert.equal(trackingWrites.length,1);
+  assert.equal(await trackingPanel.getByLabel(/^Priority/).isDisabled(),true,'View-As cannot update operational tracking');
 
   // An owner can hand off their draft, and a pending transfer freezes every edit path.
   isViewAs = false; isOwnerSession = true;
@@ -164,6 +212,7 @@ try {
   await submit.click();
   await deferredTransferStarted;
   assert.equal(await editor.getByLabel(/^Project Name/).isDisabled(), true, 'owner editor locked while transfer is pending');
+  assert.equal(await trackingPanel.getByLabel(/^Priority/).isDisabled(),true,'tracking is locked alongside content during ownership transfer');
   assert.equal(await audience.getByRole('button', { name: 'Templates', exact: true }).isDisabled(), true, 'template navigation locked while transferring');
   assert.equal(await audience.getByRole('button', { name: 'My Work', exact: true }).isDisabled(), true, 'queue navigation locked while transferring');
   assert.equal(await page.getByRole('button', { name: 'New SOW / GSD', exact: true }).isDisabled(), true);
@@ -174,6 +223,6 @@ try {
   await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).waitFor({ state: 'detached' });
   assert.equal(writes.length, 2, 'only the two explicit transfers changed state');
   assert.deepEqual(errors, []);
-  console.log('MODULE025_TEAM_WORKSPACE=PASS managerDefault=team filters=serverScoped transfer=stableRecord lifecycle=retained viewAsWrites=0 transferLock=verified');
+  console.log('MODULE025_TEAM_WORKSPACE=PASS managerDefault=team filters=serverScoped transfer=stableRecord lifecycle=retained viewAsWrites=0 transferLock=verified trackingCoordination=verified queueFocus=verified');
   await context.close();
 } finally { await browser.close(); await server.close(); }

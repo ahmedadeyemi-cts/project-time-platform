@@ -14,11 +14,24 @@ const expected = [
   '.github/workflows/module025-sa-workspace-ci.yml',
   'database/migrations/116_module025_governed_ownership_transfer.sql',
   'database/migrations/117_module025_template_candidates.sql',
+  'database/migrations/118_module025_work_tracking.sql',
+  'database/migrations/119_module025_temporary_handoffs.sql',
+  'database/migrations/120_module025_handoff_notifications.sql',
   'database/rollback/116_module025_governed_ownership_transfer_rollback.sql',
   'database/rollback/117_module025_template_candidates_rollback.sql',
+  'database/rollback/118_module025_work_tracking_rollback.sql',
+  'database/rollback/119_module025_temporary_handoffs_rollback.sql',
+  'database/rollback/120_module025_handoff_notifications_rollback.sql',
+  'docs/module025/sa-workspace-redesign.md',
+  'docs/module025/sa-workspace-uat-rollout.md',
   'docs/production-readiness/foundation/initialization-review.json',
+  'scripts/release-test/build-and-run-module025-retention-migration-106.sh',
   'scripts/release-test/validate-module025-governed-release.sh',
   'scripts/release-test/validate-protected-test-controller-branches.sh',
+  'src/backend/ProjectTime.Api/Modules/EnterpriseNotificationOrchestrationService.cs',
+  'src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRecipientResolver.cs',
+  'src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRepository.cs',
+  'src/backend/ProjectTime.Api/Modules/Module025HandoffNotifications.cs',
   'src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs',
   'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs',
   'src/backend/ProjectTime.Api/Modules/Module025SowGsdTransfers.cs',
@@ -26,29 +39,41 @@ const expected = [
   'src/backend/ProjectTime.Api/Modules/Module025TaskDrafts.cs',
   'src/backend/ProjectTime.Api/Modules/Module025TaskEstimates.cs',
   'src/backend/ProjectTime.Api/Modules/Module025TemplateCatalog.cs',
+  'src/backend/ProjectTime.Api/Modules/Module025WorkTracking.cs',
+  'src/frontend/project-time-web/src/module025/OwnershipTransfer.jsx',
   'src/frontend/project-time-web/src/module025/PhaseTaskReview.jsx',
   'src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx',
   'src/frontend/project-time-web/src/module025/TemplateCatalog.jsx',
+  'src/frontend/project-time-web/src/module025/WorkTrackingPanel.jsx',
+  'src/frontend/project-time-web/src/module025/sa-workspace-redesign.css',
   'src/frontend/project-time-web/src/module025/task-estimates.js',
   'src/frontend/project-time-web/src/module025/template-catalog.css',
+  'src/frontend/project-time-web/src/module025/work-queue.js',
+  'src/frontend/project-time-web/src/module025/work-tracking.css',
+  'src/frontend/project-time-web/src/module025/work-tracking.js',
   'tests/Module025ExportTests/Module025ExportTests.csproj',
   'tests/Module025ExportTests/Program.cs',
+  'tests/Module025HandoffNotificationTests/Module025HandoffNotificationTests.csproj',
+  'tests/Module025HandoffNotificationTests/Program.cs',
   'tests/Module025TemplateCatalogTests/Module025TemplateCatalogTests.csproj',
   'tests/Module025TemplateCatalogTests/Program.cs',
   'tests/Module025TransferTests/Module025TransferTests.csproj',
   'tests/Module025TransferTests/Program.cs',
-  'tests/module025-sa-workspace-scope.mjs',
-  'tests/test-module025-template-migration-117.sh',
-  'docs/module025/sa-workspace-redesign.md',
-  'src/frontend/project-time-web/src/module025/OwnershipTransfer.jsx',
-  'src/frontend/project-time-web/src/module025/sa-workspace-redesign.css',
+  'tests/Module025WorkTrackingTests/Module025WorkTrackingTests.csproj',
+  'tests/Module025WorkTrackingTests/Program.cs',
+  'tests/flowhive-psa-admission.test.mjs',
+  'tests/module025-coverage.test.mjs',
   'tests/module025-document-actions.test.mjs',
+  'tests/module025-export-deploy.test.py',
+  'tests/module025-installed-browser-harness.mjs',
+  'tests/module025-sa-rollout.test.py',
+  'tests/module025-sa-workspace-scope.mjs',
   'tests/module025-task-editor.test.mjs',
   'tests/module025-task-estimates.test.mjs',
   'tests/module025-team-workspace.test.mjs',
-  'tests/module025-export-deploy.test.py',
-  'tests/module025-installed-browser-harness.mjs',
-  'tests/flowhive-psa-admission.test.mjs',
+  'tests/module025-work-queue.test.mjs',
+  'tests/module025-work-tracking.test.mjs',
+  'tests/test-module025-template-migration-117.sh',
 ].sort();
 
 const registrations = [
@@ -111,7 +136,6 @@ export function verifyModule025SaWorkspaceScope() {
     '.github/workflows/flowhive-psa-installed-acceptance.yml',
     'scripts/release-test/flowhive-psa-admission.mjs',
     'scripts/release-test/dispatch-flowhive-psa-test.mjs',
-    'scripts/release-test/build-and-run-module025-retention-migration-106.sh',
     'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh',
     'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs',
     'src/backend/ProjectTime.Api/Modules/Module025SowSellPolicy.cs',
@@ -120,9 +144,13 @@ export function verifyModule025SaWorkspaceScope() {
     'database/migrations/110_module025_ungenerated_draft_delete.sql',
   ]) assert.deepEqual(fs.readFileSync(file), execFileSync('git', ['show', `${base}:${file}`]), `Release or retained lifecycle boundary changed: ${file}`);
 
+  // The only migration-runner increment is its exact 116–120 payload and schema
+  // verification. Its original deployment authority is byte-for-byte pinned.
+  execFileSync('python3', ['tests/module025-sa-rollout.test.py', '--source-only'], { stdio: 'pipe' });
+
   assert.equal(git('rev-parse', 'HEAD:deployment'), git('rev-parse', `${base}:deployment`), 'Deployment infrastructure must remain unchanged.');
   execFileSync('git', ['diff', '--check', base], { stdio: 'pipe' });
-  console.log(`MODULE025_SA_WORKSPACE_SCOPE=PASS files=${expected.length} deployment_authority=unchanged migrations=staged_only production=unchanged`);
+  console.log(`MODULE025_SA_WORKSPACE_SCOPE=PASS files=${expected.length} deployment_authority=unchanged migrations=prepared_not_applied production=unchanged`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

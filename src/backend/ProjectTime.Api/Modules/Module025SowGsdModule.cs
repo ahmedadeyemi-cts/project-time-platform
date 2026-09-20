@@ -62,9 +62,13 @@ public static class Module025SowGsdModule
     public static WebApplication MapModule025SowGsdEndpoints(this WebApplication app)
     {
         MapModule025TemplateCatalogEndpoints(app);
+        MapModule025WorkTrackingEndpoints(app);
+        app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/handoff-notifications", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)HandoffNotificationStatusAsync);
         app.MapGet("/api/module025/sow-gsd/team-work", (Func<string?, string?, HttpContext, CancellationToken, Task<IResult>>)TeamWorkAsync);
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/transfer-options", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)TransferOptionsAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/transfer", (Func<Guid, Module025SowGsdTransferRequest, HttpContext, CancellationToken, Task<IResult>>)TransferAsync);
+        app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/handoff/acknowledge", (Func<Guid, Module025HandoffAcknowledgeRequest, HttpContext, CancellationToken, Task<IResult>>)AcknowledgeHandoffAsync);
+        app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/handoff/return", (Func<Guid, Module025HandoffReturnRequest, HttpContext, CancellationToken, Task<IResult>>)ReturnHandoffAsync);
         app.MapGet("/api/module025/sow-gsd/bootstrap", (Func<HttpContext, CancellationToken, Task<IResult>>)BootstrapAsync);
         app.MapGet("/api/module025/sow-gsd", (Func<string?, Guid?, string?, HttpContext, CancellationToken, Task<IResult>>)ListAsync);
         app.MapPost("/api/module025/sow-gsd", (Func<Module025SowGsdCreateRequest, HttpContext, CancellationToken, Task<IResult>>)CreateAsync);
@@ -111,6 +115,7 @@ public static class Module025SowGsdModule
             module = ModuleNumber,
             migration = MigrationId,
             contract = WorkspaceContract,
+            capabilities = new { workTracking = true, temporaryCoverage = true, handoffNotifications = true },
             currentUser = new
             {
                 userId = access.EffectiveUserId,

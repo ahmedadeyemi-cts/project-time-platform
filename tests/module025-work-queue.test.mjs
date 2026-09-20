@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { localDateKey, calendarDate, queueFlags, selectQueue } from '../src/frontend/project-time-web/src/module025/work-queue.js';
+const rows = [{ engagementId: 'no-date', status: 'draft' }, { engagementId: 'a', status: 'draft' }, { engagementId: 'b', status: 'confirmed' }, { engagementId: 'closed', status: 'archived' }];
+const tracking = { a: { targetDate: '2026-09-19', priority: 'urgent', blockerReason: 'Waiting for customer', authoringHours: 2 }, b: { targetDate: '2026-09-20', priority: 'high' }, closed: { targetDate: '2026-09-18', priority: 'urgent', blockerReason: 'Historic blocker' } };
+assert.equal(localDateKey(new Date(2026, 8, 20, 1)), '2026-09-20');
+assert.notEqual(calendarDate('2026-09-20'), 'Not set');
+assert.equal(calendarDate(null), 'Not set');
+assert.deepEqual(queueFlags(rows[0], undefined, '2026-09-20'), { overdue: false, blocked: false, urgent: false });
+assert.equal(queueFlags(rows[2], tracking.b, '2026-09-20').overdue, false, 'due today is not overdue');
+assert.deepEqual(queueFlags(rows[3], tracking.closed, '2026-09-20'), { overdue: false, blocked: false, urgent: false });
+for (const filter of ['overdue', 'blocked', 'urgent']) assert.deepEqual(selectQueue(rows, tracking, filter, 'updated', '2026-09-20').map(r => r.engagementId), ['a']);
+assert.deepEqual(selectQueue(rows, tracking, 'all', 'target').map(r => r.engagementId), ['closed', 'a', 'b', 'no-date']);
+assert.deepEqual(selectQueue(rows, tracking, 'all', 'priority').map(r => r.engagementId), ['a', 'closed', 'b', 'no-date']);
+assert.equal(rows[0].engagementId, 'no-date', 'sorting does not mutate the server queue');
+console.log('MODULE025_WORK_QUEUE=PASS dueDates=calendarOnly inactiveFlags=excluded unknownTracking=honest sorting=stable');

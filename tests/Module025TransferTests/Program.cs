@@ -22,7 +22,7 @@ var count = 0;
 try
 {
     await using var connection = await Open();
-    foreach (var migration in new[] { "001_initial_schema", "099_module025_sow_gsd_workspace", "106_module025_sow_sell_register", "109_module025_project_name", "110_module025_ungenerated_draft_delete", "116_module025_governed_ownership_transfer", "116_module025_governed_ownership_transfer" })
+    foreach (var migration in new[] { "001_initial_schema", "099_module025_sow_gsd_workspace", "106_module025_sow_sell_register", "109_module025_project_name", "110_module025_ungenerated_draft_delete", "116_module025_governed_ownership_transfer", "116_module025_governed_ownership_transfer", "118_module025_work_tracking", "119_module025_temporary_handoffs", "119_module025_temporary_handoffs" })
         await Sql(connection, await File.ReadAllTextAsync(Path.Combine(root, "database", "migrations", migration + ".sql")));
     await Sql(connection, """
         ALTER TABLE app_users ADD COLUMN department_name text, ADD COLUMN team_name text;
@@ -140,6 +140,91 @@ try
     Check(await RetainedEvidence(connection, retained) == retainedBefore, "handoff preserves released bytes/hashes, source author and SELL receipt/link identity");
     await RejectSql(connection, $"UPDATE module025_sow_gsd_versions SET actor_user_id='{User(2)}' WHERE engagement_id='{retained}';", "retained document author remains immutable");
 
+    var blockedWork=await Draft(connection);
+    Check(await SaveTracking(connection,blockedWork,owner,User(1))==200,"SA records an unresolved authoring blocker");
+    Check(await Transfer(connection,blockedWork,owner,2)==200,"handoff with an assigned blocker succeeds atomically");
+    Check(await Scalar<Guid>(connection,"SELECT blocker_owner_user_id FROM module025_work_tracking_events WHERE engagement_id=@id ORDER BY tracking_revision DESC LIMIT 1;",blockedWork)==User(2)
+        && await Scalar<Guid>(connection,"SELECT blocker_owner_user_id FROM module025_work_tracking_events WHERE engagement_id=@id AND tracking_revision=1;",blockedWork)==User(1),
+        "unresolved blocker follows new owner while the original tracking snapshot remains immutable");
+    Check(await Scalar<int>(connection,"SELECT max(tracking_revision) FROM module025_work_tracking_events WHERE engagement_id=@id;",blockedWork)==2
+        && await Scalar<int>(connection,"SELECT revision FROM module025_sow_gsd_engagements WHERE engagement_id=@id;",blockedWork)==2,
+        "blocker handoff advances independent tracking once without extra document revisions");
+    var managerBlocker=await Draft(connection);
+    Check(await SaveTracking(connection,managerBlocker,owner,User(10))==200 && await Transfer(connection,managerBlocker,owner,2)==200,
+        "manager-owned blocker can remain assigned during handoff");
+    Check(await Scalar<Guid>(connection,"SELECT blocker_owner_user_id FROM module025_work_tracking_events WHERE engagement_id=@id ORDER BY tracking_revision DESC LIMIT 1;",managerBlocker)==User(10),
+        "handoff does not overwrite a manager's separate blocker responsibility");
+
+    var coverage = await Draft(connection);
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    Check(await Transfer(connection, coverage, owner, 2, mode: "temporary") == 400, "temporary coverage requires a return date");
+    Check(await Transfer(connection, coverage, owner, 2, mode: "temporary", returnDate: today.AddDays(-1)) == 400, "new coverage rejects a past return date");
+    Check(await Transfer(connection, coverage, owner, 2, returnDate: today) == 400, "permanent transfer cannot hide a coverage return date");
+    Check(await Transfer(connection, coverage, owner, 2, mode: "temporary", returnDate: today) == 200, "SA starts explicit temporary PTO coverage");
+    var handoff = await Handoff(connection,coverage);
+    var handoffId = handoff.GetProperty("HandoffId").GetGuid();
+    Check(handoff.GetProperty("Active").GetBoolean() && handoff.GetProperty("ReturnDue").GetBoolean()
+        && handoff.GetProperty("PreviousOwnerUserId").GetGuid()==User(1), "coverage stores original owner and marks the return date due without changing ownership");
+    Check(await Scalar<Guid>(connection,"SELECT owner_user_id FROM module025_sow_gsd_engagements WHERE engagement_id=@id;",coverage)==User(2), "due coverage never reassigns its owner automatically");
+    Check(await Acknowledge(connection,coverage,handoffId,manager,2)==403, "manager cannot acknowledge receipt on the teammate's behalf");
+    Check(await Acknowledge(connection,coverage,handoffId,owner,2)==403, "previous owner cannot acknowledge successor receipt");
+    Check(await Acknowledge(connection,coverage,handoffId,Access(2,viewAs:true),2)==403, "View As cannot acknowledge handoffs");
+    Check(await Acknowledge(connection,coverage,handoffId,Access(2),1)==409, "acknowledgement checks current working revision");
+    await Sql(connection,$"UPDATE app_users SET is_active=FALSE WHERE user_id='{User(2)}';");
+    Check(await Acknowledge(connection,coverage,handoffId,Access(2),2)==403, "inactive assignee cannot acknowledge even with stale access snapshot");
+    await Sql(connection,$"UPDATE app_users SET is_active=TRUE WHERE user_id='{User(2)}';");
+    Check(await Acknowledge(connection,coverage,handoffId,Access(2),2)==200, "assigned active SA acknowledges the handoff");
+    Check(await Acknowledge(connection,coverage,handoffId,Access(2),2)==200, "duplicate acknowledgement is idempotent");
+    Check(await Scalar<long>(connection,"SELECT count(*) FROM module025_sow_gsd_events WHERE engagement_id=@id AND event_type='handoff_acknowledged';",coverage)==1,
+        "duplicate receipt creates one immutable acknowledgement event");
+    handoff=await Handoff(connection,coverage);
+    Check(handoff.GetProperty("AcknowledgedByUserId").GetGuid()==User(2) && handoff.GetProperty("AcknowledgedAt").ValueKind==JsonValueKind.String,
+        "handoff receipt exposes the acknowledging SA and time");
+    Check(await Transfer(connection,coverage,manager,9,revision:2)==409, "active coverage cannot be silently replaced by a permanent transfer");
+    Check(await Transfer(connection,coverage,Access(2),9,revision:2,mode:"temporary",returnDate:today.AddDays(2))==409,
+        "nested coverage cannot overwrite original return responsibility");
+    await RejectSql(connection,$"UPDATE module025_sow_gsd_handoffs SET return_date=CURRENT_DATE+10 WHERE handoff_id='{handoffId}';",
+        "coverage dates and original-owner metadata are immutable");
+    await Sql(connection,$"UPDATE module025_sow_gsd_engagements SET service_overview='Successor completed new engineering detail',revision=revision+1 WHERE engagement_id='{coverage}';");
+    Check(await ReturnCoverage(connection,coverage,handoffId,Access(2),2)==409, "return rejects stale revision after successor edits");
+    await Sql(connection,$"UPDATE app_users SET is_active=FALSE WHERE user_id='{User(1)}';");
+    Check(await ReturnCoverage(connection,coverage,handoffId,Access(2),3)==403, "return never restores access to an inactive original owner");
+    await Sql(connection,$"UPDATE app_users SET is_active=TRUE WHERE user_id='{User(1)}'; UPDATE reporting_relationships SET manager_user_id='{User(11)}' WHERE employee_user_id='{User(1)}';");
+    Check(await ReturnCoverage(connection,coverage,handoffId,manager,3)==403, "return respects changed reporting team instead of restoring historical authority");
+    await Sql(connection,$"UPDATE reporting_relationships SET manager_user_id='{User(10)}' WHERE employee_user_id='{User(1)}';");
+    Check(await ReturnCoverage(connection,coverage,handoffId,otherManager,3)==403, "other team manager cannot return coverage");
+    Check(await ReturnCoverage(connection,coverage,handoffId,manager,3)==200, "current reporting manager explicitly returns PTO coverage");
+    Check(await Scalar<Guid>(connection,"SELECT owner_user_id FROM module025_sow_gsd_engagements WHERE engagement_id=@id;",coverage)==User(1)
+        && await Scalar<string>(connection,"SELECT service_overview FROM module025_sow_gsd_engagements WHERE engagement_id=@id;",coverage)=="Successor completed new engineering detail",
+        "return changes current owner while preserving intervening work");
+    var returned=await Handoff(connection,coverage,handoffId);
+    Check(!returned.GetProperty("Active").GetBoolean() && returned.GetProperty("ReturnedAt").ValueKind==JsonValueKind.String,
+        "completed coverage retains its original immutable metadata and explicit return time");
+    Check(await ReturnCoverage(connection,coverage,handoffId,manager,4)==409, "returned coverage cannot be replayed");
+    var returnReceipt=await Handoff(connection,coverage);
+    Check(returnReceipt.GetProperty("ReturnOfHandoffId").GetGuid()==handoffId
+        && await Acknowledge(connection,coverage,returnReceipt.GetProperty("HandoffId").GetGuid(),owner,4)==200,
+        "original owner can acknowledge the returned work with a linked receipt");
+    Check(await Acknowledge(connection,coverage,handoffId,Access(2),4)==403, "former cover assignee loses handoff authority after return");
+
+    var concurrentCoverage=await Draft(connection);
+    Check(await Transfer(connection,concurrentCoverage,manager,2,mode:"temporary",returnDate:today.AddDays(7))==200,"manager starts teammate PTO coverage");
+    var concurrentHandoff=(await Handoff(connection,concurrentCoverage)).GetProperty("HandoffId").GetGuid();
+    await using(var first=await Open())
+    await using(var second=await Open())
+    {
+        var returnedResults=await Task.WhenAll(ReturnCoverage(first,concurrentCoverage,concurrentHandoff,manager,2),ReturnCoverage(second,concurrentCoverage,concurrentHandoff,manager,2));
+        Check(returnedResults.Order().SequenceEqual(new[]{200,409}),"concurrent returns preserve one ownership transition and one revision winner");
+    }
+    Check(await Scalar<long>(connection,"SELECT count(*) FROM module025_sow_gsd_events WHERE engagement_id=@id AND event_type='handoff_returned';",concurrentCoverage)==1,
+        "concurrent return creates one immutable completion event");
+    await Sql(connection,await File.ReadAllTextAsync(Path.Combine(root,"database","rollback","119_module025_temporary_handoffs_rollback.sql")));
+    Check(await Scalar<long>(connection,"SELECT count(*) FROM module025_sow_gsd_handoffs WHERE engagement_id=@id;",coverage)==2,
+        "coverage rollback preserves historical metadata and ownership");
+    await Sql(connection,await File.ReadAllTextAsync(Path.Combine(root,"database","migrations","119_module025_temporary_handoffs.sql")));
+    Check(await Scalar<long>(connection,"SELECT count(*) FROM schema_migrations WHERE migration_id='119_module025_temporary_handoffs';")==1,
+        "coverage migration replay is idempotent");
+
     var deletable = await Draft(connection);
     Check(await DeleteDraft(connection, deletable, owner) == 200, "actual delete operation permits untouched ungenerated draft");
     Check(await Scalar<long>(connection, "SELECT count(*) FROM module025_sow_gsd_engagements WHERE engagement_id=@id;", deletable) == 0, "untouched ungenerated drafts remain deletable");
@@ -193,10 +278,31 @@ static async Task<Guid[]> Destinations(NpgsqlConnection connection,object actor,
     var rows=(IEnumerable)(await Invoke("LoadTransferDestinationsAsync",connection,null,actor,owner,CancellationToken.None))!;
     return rows.Cast<object>().Select(row=>(Guid)row.GetType().GetProperty("UserId")!.GetValue(row)!).ToArray();
 }
-static async Task<int> Transfer(NpgsqlConnection connection,Guid id,object actor,int target,int revision=1)
+static async Task<int> Transfer(NpgsqlConnection connection,Guid id,object actor,int target,int revision=1,string mode="permanent",DateOnly? returnDate=null)
 {
     var result=(IResult)(await Invoke("TransferOwnershipAsync",connection,id,
-        new Module025SowGsdTransferRequest(User(target),revision,"PTO coverage for estimate completion"),actor,CancellationToken.None))!;
+        new Module025SowGsdTransferRequest(User(target),revision,"PTO coverage for estimate completion",mode,returnDate),actor,CancellationToken.None))!;
+    return ((IStatusCodeHttpResult)result).StatusCode??200;
+}
+static async Task<int> SaveTracking(NpgsqlConnection connection,Guid id,object actor,Guid blockerOwner)
+{
+    var result=(IResult)(await Invoke("SaveWorkTrackingCoreAsync",connection,id,
+        new Module025WorkTrackingRequest(0,null,"normal","Waiting for customer inventory",blockerOwner,2m),actor,CancellationToken.None))!;
+    return ((IStatusCodeHttpResult)result).StatusCode??200;
+}
+static async Task<JsonElement> Handoff(NpgsqlConnection connection,Guid id,Guid? handoff=null)
+{
+    var value=await Invoke("LoadHandoffAsync",connection,null,id,handoff,CancellationToken.None,false);
+    return JsonSerializer.SerializeToElement(value,value!.GetType());
+}
+static async Task<int> Acknowledge(NpgsqlConnection connection,Guid id,Guid handoff,object actor,int revision)
+{
+    var result=(IResult)(await Invoke("AcknowledgeHandoffCoreAsync",connection,id,new Module025HandoffAcknowledgeRequest(handoff,revision),actor,CancellationToken.None))!;
+    return ((IStatusCodeHttpResult)result).StatusCode??200;
+}
+static async Task<int> ReturnCoverage(NpgsqlConnection connection,Guid id,Guid handoff,object actor,int revision)
+{
+    var result=(IResult)(await Invoke("TransferOwnershipCoreAsync",connection,id,new Module025SowGsdTransferRequest(Guid.Empty,revision,"PTO coverage complete; return reviewed working draft"),actor,handoff,CancellationToken.None))!;
     return ((IStatusCodeHttpResult)result).StatusCode??200;
 }
 static async Task<int> DeleteDraft(NpgsqlConnection connection,Guid id,object actor,int revision=1)

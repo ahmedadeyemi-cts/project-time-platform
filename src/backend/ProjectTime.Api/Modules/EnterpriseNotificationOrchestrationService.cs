@@ -262,6 +262,28 @@ internal static class EnterpriseNotificationOrchestrationService
                 ? "held"
                 : "queued";
         var eventKey = DispatchEventKey(notificationEvent);
+        if (policy.ProducerContract == "module025-handoff-v1" && notificationEvent.SourceModule == "025")
+        {
+            // Preserve the original recipients and provider outcome when recovery
+            // finds a dispatch whose provider boundary was already claimed.
+            await using var prior = new NpgsqlCommand("SELECT project_notification_dispatch_id FROM project_notification_dispatches WHERE event_key=@key AND delivery_status IN ('sent','sending');", connection);
+            prior.Parameters.AddWithValue("key", eventKey);
+            if (await prior.ExecuteScalarAsync(cancellationToken) is Guid priorId)
+            {
+                var retained = await ProjectNotificationRepository.LoadDispatchAsync(connection, priorId, cancellationToken);
+                if (retained is not null)
+                {
+                    var sent = retained.DeliveryStatus == "sent";
+                    var diagnostic = sent ? "" : "DELIVERY_IN_PROGRESS";
+                    var message = sent ? "This handoff notification was already delivered. Duplicate delivery was prevented."
+                        : "The existing delivery claim is retained. Review Module 032 if its outcome requires reconciliation.";
+                    await EnterpriseNotificationRepository.CompleteEventAsync(connection, notificationEvent, "dispatched",
+                        priorId, releasedByUserId, diagnostic, message, new { providerInvoked = false, retainedDispatch = true }, correlationId, cancellationToken);
+                    return new(notificationEvent.EventId, priorId, policy.PolicyCode, sent ? "sent" : "sending",
+                        retained.ProviderSource, retained.DeliveryBoundary, retained.Recipients.Length, diagnostic, message);
+                }
+            }
+        }
         var dispatchId = await ProjectNotificationRepository.UpsertDispatchAsync(
             connection,
             null,
@@ -294,6 +316,26 @@ internal static class EnterpriseNotificationOrchestrationService
                 directBrevoAuthorized = false
             },
             cancellationToken);
+
+        // SOW/GSD handoffs reuse the durable Module 065 dispatch claim and
+        // outcome-reconciliation path. An event replay must not invoke the
+        // provider again after a sent or still-in-flight dispatch.
+        if (policy.ProducerContract == "module025-handoff-v1" && notificationEvent.SourceModule == "025"
+            && recipientResolution.Recipients.Length > 0)
+        {
+            var outcome = await ProjectNotificationProcessingService.DeliverDispatchAsync(
+                connection, dispatchId, releasedByUserId,
+                $"SOW/GSD handoff policy {policy.PolicyCode} processed through Module 065.", context, cancellationToken);
+            var status = outcome.Status == "failed" ? "failed"
+                : outcome.Status == "suppressed" ? "suppressed" : "dispatched";
+            await EnterpriseNotificationRepository.CompleteEventAsync(connection, notificationEvent, status,
+                dispatchId, releasedByUserId, outcome.DiagnosticCode, outcome.Message,
+                new { dispatchId, outcome.Sent, outcome.Status, deliveryAuthority = "module_065", guardedDispatch = true },
+                correlationId, cancellationToken);
+            return new(notificationEvent.EventId, dispatchId, policy.PolicyCode,
+                outcome.Sent ? "sent" : outcome.Status, outcome.Provider, outcome.RecipientBoundary,
+                recipientResolution.Recipients.Length, outcome.DiagnosticCode, outcome.Message);
+        }
 
         var delivery = DeliveryDecision(
             policy,

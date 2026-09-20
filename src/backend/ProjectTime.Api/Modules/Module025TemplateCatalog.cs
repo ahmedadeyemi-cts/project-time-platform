@@ -26,6 +26,7 @@ public static partial class Module025SowGsdModule
         app.MapGet("/api/module025/sow-gsd/templates", (Func<HttpContext, CancellationToken, Task<IResult>>)TemplateCatalogAsync);
         app.MapPost("/api/module025/sow-gsd/templates", (Func<HttpContext, CancellationToken, Task<IResult>>)StageTemplateCandidateAsync);
         app.MapGet("/api/module025/sow-gsd/templates/{versionId:guid}/file", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)DownloadTemplateCandidateAsync);
+        app.MapGet("/api/module025/sow-gsd/templates/{versionId:guid}/preview", (Func<Guid, string?, HttpContext, CancellationToken, Task<IResult>>)PreviewTemplateCandidateAsync);
     }
 
     private static async Task<IResult> TemplateCatalogAsync(HttpContext context, CancellationToken cancellationToken)
@@ -180,6 +181,40 @@ public static partial class Module025SowGsdModule
             : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", reader.GetString(0));
     }
 
+    private static async Task<IResult> PreviewTemplateCandidateAsync(Guid versionId, string? sheetId, HttpContext context, CancellationToken cancellationToken)
+    {
+        var authorization = await AuthorizeViewAsync(context);
+        if (authorization is not null) return authorization;
+        var opened = await OpenConnectionAsync(context, cancellationToken);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        var access = await ResolveAccessAsync(connection, context, cancellationToken);
+        if (access is null) return SessionRequired();
+        if (!await TemplateCatalogSchemaReadyAsync(connection, cancellationToken)) return TemplateCatalogMigrationRequired();
+        await using var command = new NpgsqlCommand($"""
+            SELECT file_name,document_kind,file_content,content_sha256,version_number,label,customer_program
+            FROM module025_template_candidates candidate WHERE template_version_id=@id AND {TemplateVisibilitySql};
+            """, connection);
+        command.Parameters.AddWithValue("id", versionId);
+        AddTemplateScope(command, access);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return Results.NotFound();
+        var content = reader.GetFieldValue<byte[]>(2);
+        var hash = reader.GetString(3);
+        if (!string.Equals(hash, Convert.ToHexStringLower(SHA256.HashData(content)), StringComparison.Ordinal))
+            return Results.Conflict(new { status = "template_integrity_mismatch", message = "This stored original does not match its retained fingerprint. Contact an administrator before using it." });
+        var preview = Module025TemplatePackage.Preview(reader.GetString(1), reader.GetString(0), content, sheetId);
+        if (!preview.Valid) return Results.UnprocessableEntity(new { status = "template_preview_unavailable", message = preview.Message });
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return Results.Ok(new
+        {
+            status = "template_content_preview", versionId, version = reader.GetInt32(4), label = reader.GetString(5),
+            fileName = reader.GetString(0), documentKind = reader.GetString(1), customerProgram = reader.GetString(6),
+            sha256 = hash, originalHashVerified = true, usedForExports = false, canActivate = false, preview, stateChanged = false
+        });
+    }
+
     internal static bool CanStageTemplate(Module025AccessContext access) => !access.IsViewAs
         && (access.IsAdministrator || access.IsManager && access.VisibleSolutionArchitectIds.Any(id => id != access.EffectiveUserId));
 
@@ -216,6 +251,13 @@ public static partial class Module025SowGsdModule
 
 internal sealed record Module025TemplateUploadRequest(string? FileName, string? ContentBase64, string? DocumentKind, string? CustomerProgram, string? Label, string? ChangeNotes);
 internal sealed record Module025TemplatePackageValidation(bool Valid, string Message, int FormulaCount = 0, int WorksheetCount = 0);
+internal sealed record Module025TemplatePreviewSheet(string Id, string Name, string Visibility);
+internal sealed record Module025TemplatePreviewCell(string Address, string Value, string ValueType, string Formula, string FormulaKind, string FormulaRange);
+internal sealed record Module025TemplatePreviewBlock(string Kind, string Text, string Style, IReadOnlyList<IReadOnlyList<string>> Rows);
+internal sealed record Module025TemplatePreview(bool Valid, string Message, string DocumentKind,
+    IReadOnlyList<Module025TemplatePreviewSheet> Sheets, string? SelectedSheetId,
+    IReadOnlyList<Module025TemplatePreviewCell> Cells, IReadOnlyList<Module025TemplatePreviewBlock> Blocks,
+    bool Truncated, IReadOnlyList<string> Notices);
 
 /// <summary>Structural staging validation, not approval of mappings, formulas, or generated output.</summary>
 internal static class Module025TemplatePackage
@@ -223,6 +265,147 @@ internal static class Module025TemplatePackage
     internal const int MaximumFileBytes = 4 * 1024 * 1024;
     private const long MaximumExpandedBytes = 32 * 1024 * 1024;
     private const long MaximumPartBytes = 8 * 1024 * 1024;
+    private static readonly XNamespace Spreadsheet = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    private static readonly XNamespace Word = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    private static readonly XNamespace DocumentRelationship = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+    internal static Module025TemplatePreview Preview(string kind, string? fileName, byte[] content, string? sheetId = null)
+    {
+        Module025TemplatePreview Unavailable(string message) => new(false, message, kind, [], null, [], [], false, []);
+        var validated = Validate(kind, fileName, content);
+        if (!validated.Valid) return Unavailable(validated.Message);
+        try
+        {
+            using var stream = new MemoryStream(content, writable: false);
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+            XDocument? ReadPart(string name)
+            {
+                var entry = archive.GetEntry(name);
+                if (entry is null) return null;
+                using var source = entry.Open();
+                using var reader = XmlReader.Create(source, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = MaximumPartBytes });
+                return XDocument.Load(reader);
+            }
+
+            var budget = new TemplatePreviewBudget();
+            if (kind == "sow")
+            {
+                var body = ReadPart("word/document.xml")?.Root?.Element(Word + "body");
+                if (body is null) return Unavailable("The Word document has no readable body.");
+                var blocks = new List<Module025TemplatePreviewBlock>();
+                var elements = body.Descendants().Where(node => (node.Name == Word + "p" || node.Name == Word + "tbl") && !node.Ancestors(Word + "tbl").Any()).Take(201).ToArray();
+                if (elements.Length > 200) budget.Truncated = true;
+                var tableCellBudget = 600;
+                foreach (var node in elements.Take(200))
+                {
+                    if (node.Name == Word + "p")
+                    {
+                        blocks.Add(new("paragraph", budget.Text(WordText(node), 2500), budget.Text(node.Element(Word + "pPr")?.Element(Word + "pStyle")?.Attribute(Word + "val")?.Value ?? "", 120), []));
+                        continue;
+                    }
+                    var rows = new List<IReadOnlyList<string>>();
+                    foreach (var row in node.Elements(Word + "tr"))
+                    {
+                        if (rows.Count >= 100 || tableCellBudget <= 0) { budget.Truncated = true; break; }
+                        var tableCells = row.Elements(Word + "tc").Take(Math.Min(tableCellBudget, 20) + 1).ToArray();
+                        var allowed = Math.Min(tableCellBudget, 20);
+                        if (tableCells.Length > allowed) budget.Truncated = true;
+                        var values = tableCells.Take(allowed).Select(cell => budget.Text(string.Join("\n", cell.Descendants(Word + "p").Select(WordText)), 1200)).ToArray();
+                        tableCellBudget -= values.Length;
+                        rows.Add(values);
+                    }
+                    blocks.Add(new("table", "", "", rows));
+                }
+                return new(true, "Original document content preview", kind, [], null, [], blocks, budget.Truncated,
+                    ["Content is shown as text and tables. Page layout, fonts, images, headers, footers, and tracked changes are not rendered.", "This is the retained original, before field mapping or sample data population. Download it to inspect the complete Word layout."]);
+            }
+
+            var workbook = ReadPart("xl/workbook.xml");
+            var workbookSheets = workbook?.Root?.Element(Spreadsheet + "sheets")?.Elements(Spreadsheet + "sheet").Take(201).ToArray() ?? [];
+            if (workbookSheets.Length == 0) return Unavailable("The workbook does not declare any sheets to preview.");
+            var sheetIds = workbookSheets.Select(sheet => sheet.Attribute("sheetId")?.Value ?? "").ToArray();
+            if (sheetIds.Any(id => id.Length is 0 or > 80) || sheetIds.Distinct(StringComparer.Ordinal).Count() != sheetIds.Length)
+                return Unavailable("The workbook has missing, oversized, or duplicate sheet identifiers.");
+            if (workbookSheets.Length > 200) budget.Truncated = true;
+            var sheets = workbookSheets.Take(200).Select(sheet => new Module025TemplatePreviewSheet(
+                budget.Text(sheet.Attribute("sheetId")?.Value ?? "", 80), budget.Text(sheet.Attribute("name")?.Value ?? "Untitled sheet", 200),
+                sheet.Attribute("state")?.Value is "hidden" or "veryHidden" ? sheet.Attribute("state")!.Value : "visible")).ToArray();
+            var selected = string.IsNullOrEmpty(sheetId)
+                ? workbookSheets.Take(200).FirstOrDefault(sheet => sheet.Attribute("state")?.Value is null or "visible") ?? workbookSheets[0]
+                : workbookSheets.Take(200).FirstOrDefault(sheet => sheet.Attribute("sheetId")?.Value == sheetId);
+            if (selected is null) return Unavailable("Select a sheet listed in this template version.");
+            var selectedId = selected.Attribute("sheetId")?.Value ?? "";
+            var relationshipId = selected.Attribute(DocumentRelationship + "id")?.Value;
+            var relationships = ReadPart("xl/_rels/workbook.xml.rels");
+            var relationship = relationships?.Root?.Elements().FirstOrDefault(node => node.Attribute("Id")?.Value == relationshipId
+                && node.Attribute("Type")?.Value == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet");
+            var worksheetPath = ResolveWorkbookPart(relationship?.Attribute("Target")?.Value);
+            if (worksheetPath is null) return Unavailable("This sheet does not have a supported worksheet relationship.");
+            var worksheet = ReadPart(worksheetPath);
+            if (worksheet?.Root?.Name != Spreadsheet + "worksheet") return Unavailable("The selected worksheet could not be read from the original package.");
+            // Strings and formulas remain plain text. No Office renderer, formula evaluator, or external resource is invoked.
+            var sharedStrings = ReadPart("xl/sharedStrings.xml")?.Root?.Elements(Spreadsheet + "si").Select(SpreadsheetText).ToArray() ?? [];
+            var cells = worksheet.Root.Element(Spreadsheet + "sheetData")?.Elements(Spreadsheet + "row").SelectMany(row => row.Elements(Spreadsheet + "c"))
+                .Where(cell => cell.Element(Spreadsheet + "v") is not null || cell.Element(Spreadsheet + "is") is not null || cell.Element(Spreadsheet + "f") is not null).Take(301).ToArray() ?? [];
+            if (cells.Length > 300) budget.Truncated = true;
+            var previewCells = new List<Module025TemplatePreviewCell>();
+            foreach (var cell in cells.Take(300))
+            {
+                var type = cell.Attribute("t")?.Value ?? "n";
+                var stored = cell.Element(Spreadsheet + "v")?.Value ?? "";
+                var value = type switch
+                {
+                    "s" => int.TryParse(stored, out var index) && index >= 0 && index < sharedStrings.Length ? sharedStrings[index] : "[Shared string unavailable]",
+                    "inlineStr" => SpreadsheetText(cell.Element(Spreadsheet + "is")),
+                    "b" => stored == "1" ? "TRUE" : stored == "0" ? "FALSE" : stored,
+                    _ => stored
+                };
+                var formula = cell.Element(Spreadsheet + "f");
+                var formulaKind = formula is null ? "" : formula.Attribute("t")?.Value ?? "normal";
+                var formulaText = formula?.Value ?? "";
+                if (formula is not null && formulaText.Length == 0 && formulaKind == "shared") formulaText = $"Shared formula group {formula.Attribute("si")?.Value ?? "unspecified"}";
+                previewCells.Add(new(budget.Text(cell.Attribute("r")?.Value ?? "", 40), budget.Text(value, 2000), type,
+                    budget.Text(formulaText, 2000), budget.Text(formulaKind, 80), budget.Text(formula?.Attribute("ref")?.Value ?? "", 100)));
+            }
+            return new(true, "Original workbook content preview", kind, sheets, selectedId, previewCells, [], budget.Truncated,
+                ["Up to 300 cells with stored values or formulas are shown for the selected sheet. Empty cells, formatting, merged-cell layout, charts, and images are not rendered.",
+                 "Formula results are cached values saved in the original file, not recalculated or verified. Numbers and dates may appear as raw Excel values.",
+                 "This original is awaiting writable-cell mapping and populated-output review; it is not active for GSD exports."]);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or XmlException or IOException or ArgumentException)
+        { return Unavailable("The original could not be previewed safely. Download it for review and contact an administrator if the problem persists."); }
+    }
+
+    private static string WordText(XElement node) => string.Concat(node.Descendants().Select(part =>
+        part.Name == Word + "t" ? part.Value : part.Name == Word + "tab" ? "\t" : part.Name == Word + "br" ? "\n" : ""));
+    private static string SpreadsheetText(XElement? node) => node is null ? "" : string.Concat(node.Descendants(Spreadsheet + "t")
+        .Where(text => !text.Ancestors(Spreadsheet + "rPh").Any()).Select(text => text.Value));
+    private static string? ResolveWorkbookPart(string? target)
+    {
+        if (string.IsNullOrEmpty(target) || target.Contains('\\') || target.Contains('%') || target.Contains(':') || target.StartsWith("//")) return null;
+        var segments = new List<string>();
+        foreach (var part in (target.StartsWith('/') ? target.TrimStart('/') : "xl/" + target).Split('/'))
+        {
+            if (part is "" or ".") continue;
+            if (part == "..") { if (segments.Count == 0) return null; segments.RemoveAt(segments.Count - 1); }
+            else segments.Add(part);
+        }
+        var path = string.Join('/', segments);
+        return path.StartsWith("xl/", StringComparison.Ordinal) && path.EndsWith(".xml", StringComparison.Ordinal) ? path : null;
+    }
+    private sealed class TemplatePreviewBudget
+    {
+        private int remainingCharacters = 80000;
+        internal bool Truncated { get; set; }
+        internal string Text(string text, int limit)
+        {
+            var count = Math.Min(text.Length, Math.Min(limit, remainingCharacters));
+            if (count > 0 && count < text.Length && char.IsHighSurrogate(text[count - 1]) && char.IsLowSurrogate(text[count])) count--;
+            remainingCharacters -= count;
+            if (count < text.Length) Truncated = true;
+            return text[..count];
+        }
+    }
     internal static Module025TemplatePackageValidation Validate(string kind, string? fileName, byte[] content)
     {
         Module025TemplatePackageValidation Invalid(string reason) => new(false, reason);

@@ -10,13 +10,21 @@ The interface presents My Work, Team Work, and Templates. A selected record show
 
 ## Two SA teams and ownership
 
-Current, active reporting relationships govern access, not editable department/team labels or inferred job titles. Each manager sees their scoped SAs. Team Work shows owner, team, customer, AE, delivery LOE, status, and last update. The bounded queue reports its total and tells the user when filters are needed; it does not present a limited page as a complete team workload.
+Current, active reporting relationships govern access, not editable department/team labels or inferred job titles. Each manager sees their scoped SAs. Team Work shows owner, team, customer, AE, delivery LOE, status, and last update. Target completion date, priority, blocker and remaining SA authoring effort provide separate operational context; the queue can highlight work needing attention. The bounded queue reports its total and tells the user when filters are needed; it does not present a limited page as a complete team workload.
 
 An SA may transfer their own active, editable package to an active SA sharing the same reporting manager. A manager may transfer a scoped member's work to another scoped member under that reporting manager. Cross-team handoffs are not silently granted by the selector. Administrators retain existing support authority, but destinations still require the source owner's authoritative reporting-team relationship. A team lead's read visibility does not implicitly grant manager ownership-transfer power.
 
 Transfers require an explicit destination, handoff reason, and expected revision. The operation serializes against generation, locks the record, revalidates ownership, and writes the previous/new owner and reporting-team evidence in the same transaction. The previous owner loses write authority. Pending AI work and unsettled SELL publishing block transfer so work cannot continue under a stale owner. Confirmed packages must be reopened; archived packages must first return to active. Retained versions and SELL receipts remain unchanged.
 
 Untouched, ungenerated drafts remain deletable. Once a transfer has been recorded, archive is used instead of deletion to preserve ownership evidence. This is an intentional refinement of the existing draft-delete exception, not removal of draft deletion.
+
+## Work tracking and coverage
+
+Target date, priority, blocker explanation/responsible person and remaining authoring hours are stored as separate, append-only scheduling snapshots. Tracking has its own revision and records the document identity, owner, document revision, actor and timestamp. Scheduling changes do not invalidate a confirmed document package or rewrite delivery LOE. Empty authoring effort means unknown; zero is an explicit estimate. A competing tracking change requires refresh rather than overwriting another person's update. Retained tracking history survives otherwise eligible draft deletion.
+
+Temporary coverage records a planned return date and the same explicit ownership-transfer evidence as a permanent handoff. A return date is a prompt, not an automatic reassignment. Coverage starts and returns only on active draft/review-ready packages. Confirmed or archived packages still require the existing owner/administrator reopen or return-to-active action; managers do not gain content-editing authority. A second handoff is blocked until active temporary coverage is explicitly returned. Acknowledgement and return append new events; previous ownership, document versions and handoff history remain intact. Current reporting relationships and expected revision are rechecked when ownership changes. The current assigned SA acknowledges receipt; viewing the record alone does not count as acknowledgement.
+
+Handoff, coverage start, coverage return and acknowledgement create durable Module065 events in the same transaction as the corresponding action. New-owner and responsible-manager recipients are resolved using current identity/reporting scope; transport, permissions, retries and delivery boundaries remain Module065's responsibility. Migration 120 adds policies with the existing test-only default and preserves administrator configuration on replay. No email or Teams message is sent by applying a migration or running a PR test.
 
 ## Generation and review
 
@@ -36,7 +44,7 @@ Each task has total hours, an optional regular/after-hours split, a required-wor
 
 Managers and administrators can stage versioned SOW DOCX and GSD XLSX candidates for Standard, Toyota, or Hyundai. The stored original bytes, SHA-256, uploader, program, version, and change notes are immutable. Visibility follows the template-owning manager's reporting scope; administrator-staged organization candidates are explicitly labeled shared.
 
-Staged candidates are marked **awaiting mapping** and never replace an active exporter. Bounded OOXML validation rejects macros, external relationships, malformed packages, and excessive archive expansion. It validates document structure, not business correctness, formulas, rendering, or customer approval.
+Staged candidates are marked **awaiting mapping** and never replace an active exporter. A read-only original-content preview shows Word paragraphs, tables and content controls, or workbook sheets, cell addresses, formulas and stored cached values. It does not evaluate formulas or render the final exported layout, and reports truncation for large originals. The same scoped access and stored SHA-256 protect download and preview. Bounded OOXML validation rejects macros, external relationships, malformed packages, and excessive archive expansion. It validates document structure, not business correctness, formulas, rendering, or customer approval.
 
 Current production exporters remain the source of documents: Standard uses the bundled workbook with its existing mapping; Toyota/Hyundai uses the existing generated profile. This preparation does not claim complete formula preservation by those exporters. Activating manager-maintained templates requires the approved originals, input-cell/field mapping, formula and row-expansion validation, document previews, authorized publication rules, and template-version pinning at confirmation. SOW layout/template substitution is also pending that mapping stage.
 
@@ -53,21 +61,19 @@ Current production exporters remain the source of documents: Standard uses the b
 | Version/register views | Retained |
 | Autosave and conflict handling | Retained; transfer revision prevents stale-owner saves |
 | Administrator View As | Read-only, including transfer and template staging |
-| Existing Microsoft 065 integration | Retained; this PR does not enable delivery or send messages |
+| Existing Module065 email/Teams integration | Retained as the transport authority; handoff events use its governed queue and delivery policies |
 
 ## Rollout and acceptance
 
-1. Review the feature source, migration116 transfer guard, and migration117 candidate catalog. Run behavioral and export tests, especially negative team access, concurrent transfer, draft deletion, and immutable evidence.
-2. Apply116/117 through a separately reviewed protected-UAT migration runner update before enabling these capabilities. Existing deployment/candidate/approval control files and migration runners are unchanged in this preparation PR. Missing migrations result in explicit unavailable states rather than partial ownership writes.
-3. Validate with an actual Systems SA/manager and Collaboration/Networking SA/manager: transfer, previous-owner stale save, cross-team read/transfer rejection, proposal review, after-hours allocation, confirm/download/reopen/archive and SELL version retention.
-4. Validate approved customer templates and implement activation/version pinning before promising arbitrary template exports.
+The prepared runner extends the existing protected Test migration chain with migrations 116–120 while retaining the original release authority, source identity, image integrity and private-network job controls. The PR does not change candidate admission or approval controls, and does not apply migrations. New SQL inventory entries remain review_required for Production.
 
-## Recommended next increments
+See [the concrete UAT rollout and recovery plan](sa-workspace-uat-rollout.md). PR checks execute the generated migration entrypoint and feature behavior in disposable PostgreSQL. Installed UAT still needs real Systems and Collaboration/Networking identity scopes, the retained confirm/download/reopen/archive/SELL lifecycle, and configured Module065 transport. User approval must precede merge or dispatch because the existing main-branch supervisor may initiate UAT after merge.
 
-- Target completion date, priority, blocker owner, and stage aging so managers can act on delays.
-- Optional temporary coverage/return date and a handoff acknowledgement; notify the new owner and responsible manager through Module065 after an explicit delivery policy is approved.
-- Authoring workload estimates kept separate from engineering delivery LOE.
-- Controlled template activation, rollback to a prior approved version, and per-team versus organization publication authority.
-- Structured missing-input questions before generation, and targeted phase revision with a full scope comparison, building on existing checkpoints rather than replacing the AI router.
+## Remaining requirements
 
-These are explicit follow-up requirements, not capabilities claimed by this preparation PR.
+- Approved Standard and Toyota/Hyundai originals, reviewed writable cell/field mappings and formula validation before any uploaded template becomes active.
+- Controlled template activation, rollback to a prior approved version, per-team versus organization publication authority, and exact template-version pinning at confirmation.
+- Structured missing-input questions before generation, and targeted phase revision with a full scope comparison, building on existing checkpoints.
+- Dedicated stage-duration reporting based on lifecycle events, beyond existing status and last-update information.
+
+These remain explicit follow-up requirements. Target dates, priorities, blockers, separate authoring effort, temporary coverage, receipt acknowledgement and governed handoff events are included in the current increment.

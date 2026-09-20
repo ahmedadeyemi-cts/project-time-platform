@@ -1684,6 +1684,35 @@
       "rationale": "Staged immutable template-candidate storage for the SA workspace preparation PR. Export activation and governed migration execution require later review; not approved or admitted for Production."
     },
     {
+      "path": "database/migrations/118_module025_work_tracking.sql",
+      "sha256": "d156f5303dcfd9430211e66e12386e9509c79a3b458db43667000a90af39c35e",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": "Staged SA workspace preparation for PR 1123. Requires reviewed Protected UAT approval before application; not approved or admitted for Production."
+    },
+    {
+      "path": "database/migrations/119_module025_temporary_handoffs.sql",
+      "sha256": "ae091b423f8742acc47a08f6692968270b646cc478f253ad8f4f8bf3d8510384",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "decision": "review_required",
+      "rationale": "Staged SA workspace preparation for PR 1123. Requires reviewed Protected UAT approval before application; not approved or admitted for Production."
+    },
+    {
+      "path": "database/migrations/120_module025_handoff_notifications.sql",
+      "sha256": "789f768baaad18d3867300e55ad89fc7742801fcc219ae38b10dedace3782724",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": "Staged SA workspace preparation for PR 1123. Requires reviewed Protected UAT approval before application; not approved or admitted for Production."
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [
