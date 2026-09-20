@@ -27,6 +27,8 @@ PYBLOCK
   eval "$provider_block"
   unset -f psql
 }
+# The reliability job applies 112 before the document-authority job on first deployment.
+psql "$ENTERPRISE_COMPLETION_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f database/migrations/112_optional_ai_providers.sql >/dev/null
 replay_providers
 for attempt in 1 2; do
   for migration in database/migrations/{112_optional_ai_providers,113_module065_teams_notifications,114_module064_private_admin_override}.sql; do

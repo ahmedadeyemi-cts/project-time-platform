@@ -94,7 +94,7 @@ psql -X -v ON_ERROR_STOP=1 --file "$MODULE025_MIGRATION"
 MODULE001B_CATALOG_MIGRATION="$ROOT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 [[ -f "$MODULE001B_CATALOG_MIGRATION" ]] || { echo 'ERROR: Module 001B catalog migration 100 source is missing from the immutable image.' >&2; exit 1; }
 psql -X -v ON_ERROR_STOP=1 --file "$MODULE001B_CATALOG_MIGRATION"
-# Never replay the older, narrower constraint after optional providers exist.
+# Never replay the older, narrower constraint once migration 101 has run.
 # Reapply 112 even when ledgered, repairing the previously deployed replay order.
 if [[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='112_optional_ai_providers')")" != t ]]; then
   psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/101_deepseek_v4_provider.sql"
