@@ -7874,6 +7874,10 @@ Analytics - Variphy / Infortel`}
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
       {![
         'ai-provider-configuration',
+        'financial-operations-workbench',
+        'notification-delivery-monitor',
+        'project-closeout',
+        'invoice-billing-center',
         'entra-secret-administration',
         'global-mail-configuration',
         'system-architecture',
@@ -7944,6 +7948,7 @@ Analytics - Variphy / Infortel`}
         </aside>
       </section>
 
+      {activeRoute === 'dashboard' ? (
       <section className="status-grid" aria-label="Platform status">
         <article className="status-card">
           <span className="status-label">API</span>
@@ -7963,7 +7968,9 @@ Analytics - Variphy / Infortel`}
           <small>PostgreSQL platform schema validation</small>
         </article>
       </section>
+      ) : null}
 
+      {activeRoute === 'dashboard' ? (
       <section className="panel role-workspace-panel" aria-label="Role-based workspace">
         <div className="section-header compact">
           <div>
@@ -7983,6 +7990,7 @@ Analytics - Variphy / Infortel`}
           ))}
         </div>
       </section>
+      ) : null}
 
       {activeRoute === 'timesheet' ? (
       <section id="timesheet" className="panel timesheet-page">
@@ -9029,7 +9037,7 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      {(hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL')) ? (
+      {(activeRoute === 'role-admin' && (hasPermission('SYSTEM_ADMINISTRATION') || hasPermission('MANAGE_ALL'))) ? (
         <section id="role-admin" className="panel role-admin-panel">
           {/* 042F_ROLE_ADMIN_ROUTE_SIMPLIFIED */}
           <RoleAdminDirectoryPanel />
@@ -9047,6 +9055,7 @@ Analytics - Variphy / Infortel`}
       ) : null}
 
 
+      {activeRoute === 'dashboard' ? (
       <section className="module-grid" aria-label="Core workflow modules">
         {workflowCards.map((card) => (
           <article className="module-card" key={card.title}>
@@ -9058,6 +9067,7 @@ Analytics - Variphy / Infortel`}
           </article>
         ))}
       </section>
+      ) : null}
       <LocalAdminPasswordResetClearActions />
       <ProductionOperationsPanel />
       <ProductionOperationsAcknowledgmentsPanel />

@@ -51,3 +51,15 @@ Current rate-based forecast is `(logged hours + max(allocated hours - logged hou
 ## Integration and release gate
 
 Keep this work reviewable without copying another chat's uncommitted files. The active enterprise-completion branch overlaps financial source/paging changes as well as owning AI/Teams work; reconcile explicitly before merge. The full request is not complete until every outstanding workflow above is implemented and verified. Passing compilation or a SOW-only UAT run cannot close that gate.
+
+## Authenticated installed-main findings (September 20)
+
+An authenticated session became available during this work. In a separate browser tab:
+
+- Module021 source selector loaded and was editable; Open Module026 navigated to the correct CRM workspace. SELL mapping is still unverified and synchronization disabled; no source setting was changed.
+- Module065 non-delivery test passed Microsoft Graph authentication, sender mailbox resolution and Mail.Send application-role verification. Test-only boundary still suppresses normal delivery. No message sent.
+- Module029 reproduced a non-JSON availability response. The backend GET route bindings discarded IResult; explicit result-returning delegates now fix this. Two real Kestrel HTTP tests verify 401 JSON without a session instead of empty successful responses. Diagnostic status labels avoid the global error presenter misclassifying HTTP200 text as a failure.
+- Module031 still showed dashboard/status/role cards in the installed build. This follow-up now structurally gates dashboard cards and role administration and excludes standalone031/032/040/042 from the legacy fallback.
+- Module065 had two 112px assistant/empty-host reservations before its detached portal. Scoped CSS removes that excess space before the content.
+
+These observations describe installed main, not post-deployment acceptance of this PR. The new fixes require deployed verification.

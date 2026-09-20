@@ -105,6 +105,7 @@ jobs:
         if: github.head_ref == 'fix/complete-module-repairs-20260920'
         run: |
           dotnet run --project tests/ProjectBudgetAssessment/ProjectBudgetAssessment.csproj
+          dotnet run --project tests/ModuleAvailabilityHttp/ModuleAvailabilityHttp.csproj
           node --test tests/project-financial-portfolio.test.mjs tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs
 
       - name: Validate real Entra synchronization runtime
