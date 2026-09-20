@@ -1,4 +1,5 @@
 .github/flowhive-psa-workspace-files.txt
+.github/workflows/enterprise-completion-ci.yml
 .github/workflows/flowhive-enterprise-psa-ci.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
 database/migrations/115_module_066_task_notifications.sql
