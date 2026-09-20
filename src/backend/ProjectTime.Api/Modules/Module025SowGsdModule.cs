@@ -75,6 +75,7 @@ public static class Module025SowGsdModule
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetAsync);
         app.MapPut("/api/module025/sow-gsd/{engagementId:guid}", (Func<Guid, Module025SowGsdSaveRequest, HttpContext, CancellationToken, Task<IResult>>)SaveAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/generate", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GenerateAsync);
+        app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/generations/latest", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetLatestGenerationAsync);
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/generations/{generationId:guid}", (Func<Guid, Guid, HttpContext, CancellationToken, Task<IResult>>)GetGenerationAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/confirm", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)ConfirmAsync);
         app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/reopen", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)ReopenAsync);
@@ -482,6 +483,7 @@ public static class Module025SowGsdModule
         }
 
         var generationId = Guid.NewGuid();
+        var sourceHash = GenerationSourceHash(current);
         var correlationId = Clean(context.TraceIdentifier, 160);
         if (correlationId.Length == 0) correlationId = Guid.NewGuid().ToString("N");
         await InsertEventAsync(
@@ -495,6 +497,8 @@ public static class Module025SowGsdModule
             new
             {
                 generationId,
+                sourceHash,
+                contractVersion = Module025GenerationEngine.ContractVersion,
                 actualUserId = access.ActualUserId,
                 effectiveUserId = access.EffectiveUserId,
                 access.IsAdministrator,
@@ -522,13 +526,64 @@ public static class Module025SowGsdModule
         }, statusCode: StatusCodes.Status202Accepted);
     }
 
+    private static async Task<IResult> GetLatestGenerationAsync(Guid engagementId, HttpContext context, CancellationToken cancellationToken)
+    {
+        var readable = await LoadReadableStateAsync(engagementId, context, cancellationToken);
+        if (readable.Error is not null) return readable.Error;
+        await using var connection = readable.Connection!;
+        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
+        var snapshot = await ReadGenerationSnapshotAsync(connection, engagementId, context, cancellationToken);
+        if (snapshot.Error is not null) return snapshot.Error;
+        // Discover only after the same ownership/reporting-scope authorization
+        // used by direct status reads. Discovery never queues or retries work.
+        await using var command = new NpgsqlCommand("""
+            SELECT evidence_json->>'generationId' FROM module025_sow_gsd_events
+            WHERE engagement_id=@engagement_id AND event_type='ai_generation_queued'
+            ORDER BY event_id DESC LIMIT 1;
+            """, connection);
+        command.Parameters.AddWithValue("engagement_id", engagementId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        if (value is not string candidate || !Guid.TryParse(candidate, out var generationId))
+            return Results.Ok(new { status = "module025_no_generation", generationId = (Guid?)null,
+                engagementId, currentRevision = snapshot.Engagement!.Revision, terminal = true,
+                phaseTimeline = Array.Empty<Module025PhaseTimeline>() });
+        return await GenerationStatusResultAsync(connection, snapshot.Engagement!, snapshot.Access!, generationId, cancellationToken);
+    }
+
     private static async Task<IResult> GetGenerationAsync(Guid engagementId, Guid generationId, HttpContext context, CancellationToken cancellationToken)
     {
         var readable = await LoadReadableStateAsync(engagementId, context, cancellationToken);
         if (readable.Error is not null) return readable.Error;
         await using var connection = readable.Connection!;
-        var engagement = readable.Engagement!;
+        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
+        var snapshot = await ReadGenerationSnapshotAsync(connection, engagementId, context, cancellationToken);
+        if (snapshot.Error is not null) return snapshot.Error;
+        return await GenerationStatusResultAsync(connection, snapshot.Engagement!, snapshot.Access!, generationId, cancellationToken);
+    }
 
+    private static async Task<(Module025EngagementRow? Engagement, Module025AccessContext? Access, IResult? Error)> ReadGenerationSnapshotAsync(
+        NpgsqlConnection connection, Guid engagementId, HttpContext context, CancellationToken cancellationToken)
+    {
+        // The engagement and its events must share one snapshot. Publication
+        // increments the revision atomically with the completed event; mixing an
+        // earlier engagement read with that event falsely marks success obsolete.
+        // Refresh ownership/reporting authority in this same snapshot as well.
+        var access = await ResolveAccessAsync(connection, context, cancellationToken);
+        if (access is null) return (null, null, SessionRequired());
+        var engagement = await LoadEngagementAsync(connection, engagementId, cancellationToken);
+        if (engagement is null) return (null, null, Results.NotFound());
+        if (!access.CanViewOwned(engagement.OwnerUserId)) return (null, null, Forbidden("module025_owner_scope"));
+        return (engagement, access, null);
+    }
+
+    private static string GenerationSourceHash(Module025EngagementRow engagement) =>
+        PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(new CelarAiAuthoritativeScopeEvidence(
+            engagement.EngagementId, engagement.Revision, engagement.EngagementNumber,
+            engagement.CustomerName, engagement.ServiceOverview, engagement.UpdatedAt))?.SourceSha256 ?? string.Empty;
+
+    private static async Task<IResult> GenerationStatusResultAsync(NpgsqlConnection connection,
+        Module025EngagementRow engagement, Module025AccessContext access, Guid generationId, CancellationToken cancellationToken)
+    {
         const string sql = """
             SELECT event_type,engagement_revision,evidence_json::text,created_at
             FROM module025_sow_gsd_events
@@ -539,88 +594,70 @@ public static class Module025SowGsdModule
         var events = new List<Module025GenerationEvent>();
         await using (var command = new NpgsqlCommand(sql, connection))
         {
-            command.Parameters.AddWithValue("engagement_id", engagementId);
+            command.Parameters.AddWithValue("engagement_id", engagement.EngagementId);
             command.Parameters.AddWithValue("generation_id", generationId.ToString());
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                events.Add(new Module025GenerationEvent(
-                    reader.GetString(0),
-                    reader.GetInt32(1),
-                    ParseJson(reader.GetString(2), JsonValueKind.Object),
-                    reader.GetFieldValue<DateTimeOffset>(3)));
+                events.Add(new Module025GenerationEvent(reader.GetString(0), reader.GetInt32(1),
+                    ParseJson(reader.GetString(2), JsonValueKind.Object), reader.GetFieldValue<DateTimeOffset>(3)));
             }
         }
-
-        if (events.Count == 0) return Results.NotFound(new { status = "module025_generation_not_found", generationId, engagementId });
+        if (events.Count == 0) return Results.NotFound(new { status = "module025_generation_not_found", generationId, engagementId = engagement.EngagementId });
         var first = events[0];
         var latest = events[^1];
-        var terminal = latest.EventType is "ai_generation_completed" or "ai_generation_failed" or "ai_generation_obsolete";
-        var completed = latest.EventType == "ai_generation_completed";
-        var started = events.Any(item => item.EventType == "ai_generation_started");
-        var progress = events.Where(item => item.EventType == "ai_generation_progress")
-            .Select(item => item.Evidence.GetProperty("progress").Deserialize<Module025GenerationProgress>())
-            .Where(item => item is not null).Select(item => item!).ToArray();
-        var completedPhases = progress.Where(item => item.Stage is "phase_completed" or "phase_resumed")
-            .Select(item => item.Phase).Distinct().ToArray();
-        var currentProgress = progress.LastOrDefault();
-        var apiStatus = JsonString(latest.Evidence, "apiStatus");
-        var status = terminal && apiStatus.Length > 0
-            ? apiStatus
-            : started
-                ? "module025_detailed_scope_generation_running"
-                : "module025_detailed_scope_generation_queued";
-        var message = JsonString(latest.Evidence, "message");
-        if (message.Length == 0)
+        var editable = engagement.IsActive && engagement.Status is not ("confirmed" or "archived") && access.CanWriteOwned(engagement.OwnerUserId);
+        var projected = Module025GenerationStatus.Project(events, engagement.Revision, editable, GenerationSourceHash(engagement), DateTimeOffset.UtcNow);
+        var finalEvidence = projected.TerminalEvent?.Evidence ?? latest.Evidence;
+        var completedPhases = projected.PhaseTimeline.Where(item => item.Status is "completed" or "resumed").Select(item => item.Phase).ToArray();
+        var currentProgress = projected.Progress.LastOrDefault()?.Progress;
+        var apiStatus = JsonString(finalEvidence, "apiStatus");
+        var status = projected.PreviousGenerationCompleted ? "module025_previous_generation_completed"
+            : projected.Stage == "obsolete" ? "module025_generation_obsolete"
+            : projected.Terminal && apiStatus.Length > 0 ? apiStatus
+            : projected.StartedAt.HasValue ? "module025_detailed_scope_generation_running"
+            : "module025_detailed_scope_generation_queued";
+        var message = projected.Stage switch
         {
-            message = terminal
-                ? completed
-                    ? "Detailed P/D/I/V/R scope is ready for Solution Architect review."
-                    : "Detailed scope generation did not complete. The existing SOW/GSD draft was preserved."
-                : started
-                    ? "Celar AI is preparing the detailed P/D/I/V/R review draft."
-                    : "Detailed scope generation is waiting for the governed background worker.";
-        }
-
-        if (!terminal && currentProgress is not null)
-            message = $"{completedPhases.Length}/5 phases saved. Preparing {currentProgress.Phase}.";
-        if (terminal && !completed && completedPhases.Length > 0)
-            message += $" {completedPhases.Length}/5 validated phases are saved; retry generation to resume the remaining work.";
-        var correlationId = JsonString(latest.Evidence, "correlationId");
+            "obsolete" when projected.PreviousGenerationCompleted => "The previous generation completed successfully. This workspace has since been edited; review the current draft or generate again if the project scope changed.",
+            "obsolete" => "This generation belongs to an earlier saved revision. Generate again from the current scope; the existing draft is preserved.",
+            "queued" => "Waiting for the background worker. Your saved scope will be used for all five phases.",
+            "preparing" => "Preparing the saved scope for Plan, Design, Implement, Validate, and Release.",
+            "assembly" => "5/5 phases saved. Checking and assembling the SOW and detailed GSD for review.",
+            "phase" or "retry" => $"{completedPhases.Length}/5 phases saved. {(projected.Stage == "retry" ? "Retrying" : "Generating")} {currentProgress?.Phase}.",
+            _ => JsonString(finalEvidence, "message")
+        };
+        if (message.Length == 0) message = projected.Completed
+            ? "Detailed P/D/I/V/R scope is ready for Solution Architect review."
+            : "Detailed scope generation did not complete. The existing SOW/GSD draft was preserved.";
+        if (projected.CanResume) message += $" {projected.ResumablePhases.Length}/5 validated phases can be reused; resume to generate the remaining work.";
+        var correlationId = JsonString(finalEvidence, "correlationId");
         if (correlationId.Length == 0) correlationId = JsonString(first.Evidence, "correlationId");
-        var diagnosticCode = terminal ? JsonString(latest.Evidence, "diagnosticCode") : string.Empty;
-        var failureStage = terminal ? JsonString(latest.Evidence, "failureStage") : string.Empty;
         return Results.Ok(new
         {
-            status,
-            generationId,
-            engagementId,
-            phase = completed ? "completed" : terminal ? "failed" : started ? "generating" : "queued",
-            terminal,
-            stateChanged = completed,
-            revision = latest.Revision,
-            currentRevision = engagement.Revision,
-            correlationId,
-            diagnosticCode,
-            targetDecisions = JsonArray(latest.Evidence, "targetDecisions").ToArray(),
-            failureStage,
-            message,
-            completedPhases,
-            currentPhase = currentProgress?.Phase ?? string.Empty,
-            currentProvider = progress.LastOrDefault(item => item.Provider.Length > 0)?.Provider ?? string.Empty,
-            deadlineAt = first.CreatedAt.AddSeconds(Module025GenerationEngine.DeadlineSeconds),
-            elapsedSeconds = Math.Max(0, (int)Math.Ceiling((latest.CreatedAt - first.CreatedAt).TotalSeconds)),
+            status, generationId, engagementId = engagement.EngagementId,
+            phase = projected.Completed ? "completed" : projected.Stage == "obsolete" ? "obsolete" : projected.Terminal ? "failed" : projected.StartedAt.HasValue ? "generating" : "queued",
+            projected.Stage, projected.Terminal, stateChanged = projected.Completed,
+            revision = latest.Revision, currentRevision = engagement.Revision,
+            correlationId, diagnosticCode = projected.Terminal ? JsonString(finalEvidence, "diagnosticCode") : string.Empty,
+            targetDecisions = JsonArray(finalEvidence, "targetDecisions").ToArray(),
+            failureStage = projected.Terminal ? JsonString(finalEvidence, "failureStage") : string.Empty,
+            message, completedPhases, currentPhase = currentProgress?.Phase ?? string.Empty,
+            currentProvider = projected.Progress.LastOrDefault(item => item.Progress.Provider.Length > 0)?.Progress.Provider ?? string.Empty,
+            deadlineAt = projected.QueuedAt.AddSeconds(Module025GenerationEngine.DeadlineSeconds),
+            projected.ElapsedSeconds, projected.ServerNow, projected.StartedAt, projected.CompletedAt,
+            projected.PhaseTimeline, projected.ScopeMatches, projected.CanResume, projected.CanRetry,
+            projected.ResumablePhases, projected.PreviousGenerationCompleted,
             maximumProviderAttempts = Module025GenerationEngine.AttemptsPerPhase * 5,
             maximumOutputTokensPerAttempt = Module025GenerationEngine.MaximumOutputTokens,
-            progress = progress.Select(item => new
+            progress = projected.Progress.Select(timed => new
             {
-                item.Stage, item.Phase, item.Provider, item.Attempt, item.DiagnosticCode,
-                item.Model, item.InputCharacters, item.OutputCharacters, item.ElapsedMilliseconds,
-                item.InputTokens, item.OutputTokens, item.RequestedModel, item.ReasoningTokens, item.SowDiagnostics,
-                item.TargetDecisions
+                timed.Progress.Stage, timed.Progress.Phase, timed.Progress.Provider, timed.Progress.Attempt, timed.Progress.DiagnosticCode,
+                timed.Progress.Model, timed.Progress.InputCharacters, timed.Progress.OutputCharacters, timed.Progress.ElapsedMilliseconds,
+                timed.Progress.InputTokens, timed.Progress.OutputTokens, timed.Progress.RequestedModel, timed.Progress.ReasoningTokens, timed.Progress.SowDiagnostics,
+                timed.Progress.TargetDecisions, timed.RecordedAt
             }).ToArray(),
-            queuedAt = first.CreatedAt,
-            updatedAt = latest.CreatedAt
+            projected.QueuedAt, updatedAt = latest.CreatedAt
         });
     }
 
@@ -2038,11 +2075,12 @@ public static class Module025SowGsdModule
     }
 
     private static string BuildGenerationPrompt(Module025EngagementRow engagement) => $"""
-        Create an implementation-grade Statement of Work and General Solution Design effort draft from the Service Overview below.
-        Service Overview: {engagement.ServiceOverview}
+        Use the single saved project scope below for the current assigned delivery phase. The same scope is reused for Plan, Design, Implement, Validate, and Release in that order.
+        Saved project scope (Service Overview): {engagement.ServiceOverview}
         Commercial model: {(engagement.CommercialModel == "fixed" ? "Fixed Price" : "Time & Materials")}
         Customer program: {engagement.CustomerProgram}
-        Expand the services into Plan, Design, Implement, Validate, and Release. For every supported work package include the objective, detailed execution activities, technical tasks/configuration, inputs, outputs, deliverables, US Signal responsibilities, customer responsibilities, prerequisites, dependencies, assumptions, open questions, measurable acceptance criteria, validation steps, risks, and estimated engineering hours.
+        Follow the current phase instruction and generate only that phase, not all five phases in one response. Explain what this phase requires to deliver the saved scope. Keep the requested technologies, source and target versions, outcomes, and constraints consistent across phases.
+        Produce structured work that supports both a customer-facing SOW with high-level execution steps and a detailed GSD task and effort breakdown. For every supported work package include the objective, detailed execution activities, technical tasks/configuration, inputs, outputs, deliverables, US Signal responsibilities, customer responsibilities, prerequisites, dependencies, assumptions, open questions, measurable acceptance criteria, validation steps, risks, and estimated engineering hours.
         Do not use vague tasks such as 'implement solution' or 'validate system'. Describe the work that will actually be planned, designed, implemented, validated, and released.
         Do not fabricate products, versions, quantities, licensing, models, access, interfaces, customer decisions, dates, prices, or technical facts. Convert unsupported material into explicit assumptions or open questions.
         Estimated hours are a reviewable AI suggestion only. The Solution Architect must review and may change every hour value before confirmation.
@@ -2204,7 +2242,6 @@ public static class Module025SowGsdModule
 
     private sealed record CustomerSelection(Guid? CustomerId, string CustomerName, string Mode, IResult? Error);
     private sealed record PersonSelection(Guid? UserId, string DisplayName);
-    private sealed record Module025GenerationEvent(string EventType, int Revision, JsonElement Evidence, DateTimeOffset CreatedAt);
     private sealed record Module025QueuedGeneration(long EventId, Guid EngagementId, Guid ActorUserId, int ExpectedRevision, JsonElement Evidence);
     private sealed record Module025GenerationExecutionOutcome(int HttpStatus, string ApiStatus, string Message, string CorrelationId, bool Completed, string DiagnosticCode = "", IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null);
 

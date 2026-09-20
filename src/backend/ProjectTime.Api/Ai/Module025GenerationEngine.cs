@@ -6,7 +6,7 @@ namespace ProjectTime.Api.Ai;
 // never a published SOW, a confirmed version, or a generic fallback artifact.
 internal static class Module025GenerationEngine
 {
-    internal const string ContractVersion = "module025-detailed-phases-v2";
+    internal const string ContractVersion = "module025-shared-scope-phases-v3";
     // Five phases can each try DeepSeek (120s), then Celar (330s), with
     // 150s reserved for persistence and assembly. The deadline stays durable.
     internal const int DeadlineSeconds = 2400;
@@ -40,10 +40,11 @@ internal static class Module025GenerationEngine
         CancellationToken cancellationToken)
     {
         var results = new List<CelarAiComposeResult>();
+        var replayingPrefix = true;
         foreach (var phase in Phases)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (checkpoints.TryGetValue(phase, out var checkpoint))
+            if (replayingPrefix && checkpoints.TryGetValue(phase, out var checkpoint))
             {
                 // Revalidate stored data against today's contract and exact saved source.
                 PulseAiPrivateRagService.ValidateModule025Phase(checkpoint.FlowHivePlan, phase, evidence);
@@ -51,7 +52,12 @@ internal static class Module025GenerationEngine
                 await persist(new("phase_resumed", phase, checkpoint.SelectedTarget), cancellationToken);
                 continue;
             }
-            var execution = new Module025PhaseExecution(phase, attempts.GetValueOrDefault(phase), persist);
+            // Later checkpoints may depend on the missing phase's old proposal.
+            // Resume only a complete validated prefix; rebuild after the first
+            // gap instead of combining incompatible planning continuations.
+            replayingPrefix = false;
+            var execution = new Module025PhaseExecution(phase, attempts.GetValueOrDefault(phase), persist,
+                BuildPriorPhaseReferences(results));
             await persist(new("phase_started", phase), cancellationToken);
             var result = await generate(evidence with { PhaseExecution = execution }, cancellationToken);
             if (result.SowDraft is null || result.FlowHivePlan is null)
@@ -87,7 +93,22 @@ internal static class Module025GenerationEngine
             DiagnosticCode: "module025_assembly_completed"), cancellationToken);
         return assembled;
     }
+
+    // This deliberately carries no generated prose, source passages or customer
+    // facts. The same bounded structural context is safe for private providers
+    // and the existing closed external capsule. A validated proposal is not a
+    // customer decision, approved design or additional authoritative evidence.
+    private static IReadOnlyList<Module025PriorPhaseReferences> BuildPriorPhaseReferences(
+        IReadOnlyList<CelarAiComposeResult> results) => results.Select((result, index) =>
+            new Module025PriorPhaseReferences(Phases[index], result.FlowHivePlan!.Tasks.Count,
+                result.FlowHivePlan.Tasks.Select(task => task.Wbs)
+                    .Where(wbs => System.Text.RegularExpressions.Regex.IsMatch(wbs,
+                        $@"\A{index + 1}\.[1-9][0-9]?\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+                        TimeSpan.FromMilliseconds(100)))
+                    .Distinct(StringComparer.Ordinal).Take(20).ToArray())).ToArray();
 }
+
+internal sealed record Module025PriorPhaseReferences(string Phase, int WorkPackageCount, IReadOnlyList<string> WbsReferences);
 
 internal sealed record Module025GenerationProgress(
     string Stage, string Phase, string Provider = "", int Attempt = 0,
@@ -100,9 +121,11 @@ internal sealed record Module025GenerationProgress(
 
 internal sealed class Module025PhaseExecution(
     string phase, int attempts,
-    Func<Module025GenerationProgress, CancellationToken, Task> persist)
+    Func<Module025GenerationProgress, CancellationToken, Task> persist,
+    IReadOnlyList<Module025PriorPhaseReferences>? priorPhaseReferences = null)
 {
     internal string Phase { get; } = phase;
+    internal IReadOnlyList<Module025PriorPhaseReferences> PriorPhaseReferences { get; } = priorPhaseReferences ?? [];
     private int _attempts = attempts;
     private string _provider = string.Empty;
     private System.Diagnostics.Stopwatch? _elapsed;

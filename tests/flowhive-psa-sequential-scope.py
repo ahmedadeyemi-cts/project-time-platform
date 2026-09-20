@@ -4,8 +4,8 @@ from pathlib import Path
 import subprocess
 
 # A local equivalent commit is acceptable only with this identical trusted-main tree.
-BASE = os.getenv('FLOWHIVE_SEQUENTIAL_BASE', '35a442bee3724d7d4e5865f4abc2aaa910d55326')
-TREE = '33c6e1998b29050e0c14af43b6835c8320d4d465'
+BASE = os.getenv('FLOWHIVE_SEQUENTIAL_BASE', '3f55a0f62f44587d234a09a9f0ceabbe501da8c5')
+TREE = '7fa63f26ccef8aeef6c4d09bcdc4eb91f67704cf'
 def git(*args): return subprocess.check_output(['git', *args]).decode()
 assert git('rev-parse', BASE + '^{tree}').strip() == TREE
 assert git('merge-base', BASE, 'HEAD').strip() == BASE

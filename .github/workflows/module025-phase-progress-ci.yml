@@ -1,0 +1,45 @@
+name: Module025 shared scope and phase progress
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Ai/Module025*'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module025*'
+      - 'src/frontend/project-time-web/src/module025/**'
+      - 'tests/FlowHiveDetailedPlannerTests/**'
+      - 'tests/module025-generation-*.test.mjs'
+      - 'tests/module025-phase-progress-scope.mjs'
+      - '.github/workflows/module025-phase-progress-ci.yml'
+permissions:
+  contents: read
+jobs:
+  phase-progress:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Validate the source-only feature scope
+        if: github.head_ref == 'feat/module025-phase-progress-20260920'
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: node tests/module025-phase-progress-scope.mjs
+      - name: Verify unexpected scope changes are rejected
+        run: node tests/module025-phase-progress-scope.mjs --self-test
+      - name: Install browser test dependencies
+        run: |
+          npm ci --prefix src/frontend/project-time-web --no-audit --no-fund
+          npm install --prefix "$RUNNER_TEMP/module025-browser" playwright@1.57.0 --no-audit --no-fund
+          node "$RUNNER_TEMP/module025-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Verify progress, refresh recovery, failures and retained workflow actions
+        env:
+          PLAYWRIGHT_MODULE_PATH: ${{ runner.temp }}/module025-browser/node_modules/playwright
+        run: |
+          node tests/module025-generation-feedback.test.mjs
+          node tests/module025-generation-progress.test.mjs

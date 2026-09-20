@@ -109,7 +109,7 @@ internal sealed class Module025ExternalSowAdapter
         { diagnostic = "module025_external_identity_collision"; return null; }
         diagnostic = "module025_closed_technical_capsule_ready";
         return new(CelarAiCapabilityCatalog.SowGsdPlanning,
-            PulseAiPrivateRagService.Module025PhaseInstruction(_evidence.PhaseExecution!.Phase)
+            PulseAiPrivateRagService.Module025PhaseInstruction(_evidence.PhaseExecution!.Phase, _evidence.PhaseExecution)
             + "\nOnly the closed technical specification below is available. Do not infer customer identities, documents, locations, environment topology, commercial values or completion. "
             + "Use generic customer and delivery-team role names. Keep unknown requirements as explicit open questions. Any implementation detail and effort estimate is a proposed plan requiring review. "
             + "Organize this phase into two to four substantive work packages, grouping related actions into ordered technical steps. Keep each review field concise and task-specific so the complete JSON fits the output budget; do not omit required fields or authorized work. "
