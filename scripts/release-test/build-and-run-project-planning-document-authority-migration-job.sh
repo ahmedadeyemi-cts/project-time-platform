@@ -66,6 +66,9 @@ install -m 0444 "$ROOT/scripts/release-test/verify-flowhive-task-notifications.s
 install -m 0444 "$ROOT/database/migrations/121_flowhive_sequential_phase_checkpoints.sql" "$CONTEXT/database/migrations/121_flowhive_sequential_phase_checkpoints.sql"
 install -m 0444 "$ROOT/scripts/release-test/verify-flowhive-sequential-checkpoints.sql" "$CONTEXT/database/verify-flowhive-sequential-checkpoints.sql"
 (cd "$CONTEXT" && sha256sum database/migrations/121_flowhive_sequential_phase_checkpoints.sql database/verify-flowhive-sequential-checkpoints.sql > database/flowhive-sequential.sha256)
+install -m 0444 "$ROOT/database/migrations/122_flowhive_automatic_first_draft.sql" "$CONTEXT/database/migrations/122_flowhive_automatic_first_draft.sql"
+install -m 0444 "$ROOT/scripts/release-test/verify-flowhive-automatic-first-draft.sql" "$CONTEXT/database/verify-flowhive-automatic-first-draft.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/122_flowhive_automatic_first_draft.sql database/verify-flowhive-automatic-first-draft.sql > database/flowhive-automatic.sha256)
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -122,6 +125,10 @@ echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/121_flowhive_sequential_phase_checkpoints.sql"
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-sequential-checkpoints.sql"
 echo 'MIGRATION_121_FLOWHIVE_SEQUENTIAL_CHECKPOINTS=APPLIED_AND_VERIFIED'
+(cd "$ROOT" && sha256sum --check --status database/flowhive-automatic.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/122_flowhive_automatic_first_draft.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-automatic-first-draft.sql"
+echo 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED'
 
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
@@ -283,6 +290,10 @@ echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/121_flowhive_sequential_phase_checkpoints.sql"
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-sequential-checkpoints.sql"
 echo 'MIGRATION_121_FLOWHIVE_SEQUENTIAL_CHECKPOINTS=APPLIED_AND_VERIFIED'
+(cd "$ROOT" && sha256sum --check --status database/flowhive-automatic.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/122_flowhive_automatic_first_draft.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-automatic-first-draft.sql"
+echo 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED'
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"

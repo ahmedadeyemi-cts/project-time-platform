@@ -198,6 +198,16 @@ internal static class EnterpriseNotificationOrchestrationService
                 message);
         }
 
+        if (notificationEvent.PolicyCode == ProjectFlowHiveAiPlannerOrchestrationModule.AutomationNotification
+            && !await ProjectFlowHiveAiPlannerOrchestrationModule.AutomaticNotificationCurrentAsync(connection, notificationEvent, cancellationToken))
+        {
+            const string message = "The automatic draft, Project Manager or project status changed. This notification is no longer current.";
+            await EnterpriseNotificationRepository.CompleteEventAsync(connection, notificationEvent, "suppressed",
+                null, releasedByUserId, "FLOWHIVE_FIRST_DRAFT_STALE", message, new { sourceCurrent = false }, correlationId, cancellationToken);
+            return new(notificationEvent.EventId, null, policy.PolicyCode, "suppressed", "module_065", "locked", 0,
+                "FLOWHIVE_FIRST_DRAFT_STALE", message);
+        }
+
         string? sourceBoundary = null;
         if (notificationEvent.PolicyCode is ProjectFlowHiveNotificationSource.AssignmentPolicy or ProjectFlowHiveNotificationSource.DuePolicy)
         {

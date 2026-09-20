@@ -20,7 +20,18 @@ internal sealed class ProjectFlowHiveAiPlannerWorker : BackgroundService
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
-        Task.WhenAll(ProcessAsync(stoppingToken), WatchdogAsync(stoppingToken));
+        Task.WhenAll(ProcessAsync(stoppingToken), WatchdogAsync(stoppingToken), AutomationAsync(stoppingToken));
+
+    private async Task AutomationAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try { await ProjectFlowHiveAiPlannerOrchestrationModule.ProcessAutomationsAsync(stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception exception) { _logger.LogWarning(exception, "FlowHive automatic draft scan deferred; existing plans and run claims are preserved."); }
+            await DelayAsync(TimeSpan.FromSeconds(10), stoppingToken);
+        }
+    }
 
     private async Task WatchdogAsync(CancellationToken stoppingToken)
     {

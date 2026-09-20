@@ -38,6 +38,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             "/api/project-flowhive/projects/{projectId:guid}/ai-planner/runs/{runId:guid}/cancel",
             (Func<Guid, Guid, HttpContext, CancellationToken, Task<IResult>>)CancelAsync);
         MapReviewEndpoints(endpoints);
+        MapAutomationEndpoints(endpoints);
         return endpoints;
     }
 
@@ -412,7 +413,8 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
 
         var currentAccess = await ProjectPlanningAccessResolver.ResolveForActorAsync(
             connection, stored.ActualUserId, stored.ProjectId, "066", cancellationToken);
-        if (stored.ActualUserId != stored.EffectiveUserId || !currentAccess.CanEditPlanner)
+        if (stored.ActualUserId != stored.EffectiveUserId || !currentAccess.CanEditPlanner
+            || !await AutomaticRunAllowedAsync(connection, stored.RunId, stored.ActualUserId, stored.ProjectId, cancellationToken))
         {
             await StopRunAsync(connection, stored.RunId, "access_revoked", "Planning permission changed. No generated work was applied.", cancellationToken);
             return;
@@ -794,12 +796,19 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         var authority = await ProjectPlanningAccessResolver.ResolveForActorAsync(connection, actor, projectId, "066", cancellationToken);
         var evidence = await ProjectPlanningDocumentResolver.ReadCurrentAsync(connection, projectId, cancellationToken);
         if (current is null || !authority.CanEditPlanner || !evidence.ReadyForGeneration
+            || !await AutomaticRunAllowedAsync(connection, runId, actor, projectId, cancellationToken)
             || evidence.SelectedDocuments.Any(document => !document.EngineeringVisible)
             || ProjectFlowHiveExecutionPolicy.SelectionFingerprint(evidence) != current.SourceSelectionFingerprint
             || ProjectFlowHiveExecutionPolicy.VersionFingerprint(evidence) != current.SourceVersionFingerprint)
         {
             await transaction.RollbackAsync(cancellationToken);
             await StopRunAsync(connection, runId, "authority_changed", "Permission or current document authority changed; the generated candidate was not applied.", cancellationToken);
+            return;
+        }
+        if (await AutomaticDraftWouldReplacePlanAsync(connection, runId, projectId, cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            await StopRunAsync(connection, runId, "working_copy_changed", "A plan was created while automatic generation was running. Existing work was preserved; review it before generating again.", cancellationToken);
             return;
         }
         if (ProjectFlowHivePlannerReview.RequiresReview(current.Plan, current.ExpectedWorkingRowVersion))
@@ -975,6 +984,16 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         CancellationToken cancellationToken)
     {
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var run = await GetOrCreateRunInTransactionAsync(connection, transaction, projectId, request, access, correlationId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return run;
+    }
+
+    private static async Task<Guid> GetOrCreateRunInTransactionAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid projectId,
+        ProjectFlowHiveAiPlannerRunRequest request, PlannerAccess access,
+        string correlationId, CancellationToken cancellationToken)
+    {
         await using (var timeout = new NpgsqlCommand("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='15s';", connection, transaction))
             await timeout.ExecuteNonQueryAsync(cancellationToken);
         await using (var guard = new NpgsqlCommand(
@@ -984,6 +1003,18 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         {
             guard.Parameters.AddWithValue("project_id", projectId);
             await guard.ExecuteNonQueryAsync(cancellationToken);
+        }
+        if (await AutomationReadyAsync(connection, cancellationToken))
+        {
+            await using var automatic = new NpgsqlCommand($"""
+                SELECT EXISTS(SELECT 1 FROM project_flowhive_auto_plans a JOIN {RunTable} r ON r.run_id=a.run_id
+                    WHERE a.project_id=@project AND r.status IN ('queued','processing','generating')
+                        AND r.actual_actor_user_id<>@actor);
+                """, connection, transaction);
+            automatic.Parameters.AddWithValue("project", projectId);
+            automatic.Parameters.AddWithValue("actor", access.ActualUserId);
+            if (await automatic.ExecuteScalarAsync(cancellationToken) is true)
+                throw new PlannerConflict("automatic_planner_active", "The first automatic AI plan is already running. Check AI Planner settings for progress or ask the PM to cancel it before generating again.");
         }
         var documents = await ProjectPlanningDocumentResolver.ReadCurrentAsync(connection, projectId, cancellationToken);
         var selection = ProjectFlowHiveExecutionPolicy.SelectionFingerprint(documents);
@@ -1005,7 +1036,6 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                 if (reader.GetString(1) != fingerprint || reader.GetGuid(2) != access.EffectiveUserId)
                     throw new PlannerConflict("planner_input_conflict", "A run with different dates, scope, or source documents is active. Resume or cancel that operation before starting another.");
                 await reader.DisposeAsync();
-                await transaction.CommitAsync(cancellationToken);
                 return found;
             }
         }
@@ -1048,7 +1078,6 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             insert.Parameters.AddWithValue("logs", JsonSerializer.Serialize(new[] { "AI Planner operation created." }, Json));
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
-        await transaction.CommitAsync(cancellationToken);
         return runId;
     }
 

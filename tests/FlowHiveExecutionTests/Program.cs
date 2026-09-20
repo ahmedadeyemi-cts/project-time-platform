@@ -544,4 +544,5 @@ try
     Check(true,"protected migration schema verification executes against PostgreSQL");
 }
 finally { Environment.SetEnvironmentVariable(ProjectPulseUploadStorage.CanonicalEnvironmentVariable,oldUploadRoot); Directory.Delete(fixtureRoot,true); }
+count += await AutomaticPlanningTests.RunAsync(cs, root, actor, projectManagerRole);
 Console.WriteLine($"FLOWHIVE_EXECUTION_ASSERTIONS_PASSED={count}");

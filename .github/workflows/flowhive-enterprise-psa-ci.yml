@@ -28,6 +28,9 @@ on:
       - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
       - 'scripts/release-test/verify-flowhive-task-notifications.sql'
       - 'tests/flowhive-team-calendar*'
+      - 'tests/flowhive-automatic-*'
+      - 'database/migrations/122_flowhive_automatic_first_draft.sql'
+      - 'scripts/release-test/verify-flowhive-automatic-first-draft.sql'
       - 'src/backend/ProjectTime.Api/Modules/EnterpriseNotification*.cs'
       - 'database/migrations/115_module_066_task_notifications.sql'
       - 'database/rollback/115_module_066_task_notifications_rollback.sql'
@@ -289,3 +292,7 @@ jobs:
         run: |
           node tests/flowhive-psa-review-browser-bundle.mjs
           python tests/flowhive-psa-review-browser.py
+      - name: Exercise PM opt-in, administrator default, automatic progress and project isolation
+        run: |
+          node tests/flowhive-automatic-browser-bundle.mjs
+          python tests/flowhive-automatic-browser.py
