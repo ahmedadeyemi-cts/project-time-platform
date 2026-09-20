@@ -1330,7 +1330,7 @@ export default function ProjectFlowHiveCenter() {
       </nav>
 
       {selectedProjectId ? <ProjectFlowHiveDocumentReadiness key={selectedProjectId} projectId={selectedProjectId} getJson={getJson} onState={updateDocumentReadiness} /> : null}
-      {selectedProjectId && ['planner', 'ai'].includes(activeView) ? <ProjectFlowHiveAutomation key={selectedProjectId}
+      {selectedProjectId && ['planner', 'ai'].includes(activeView) ? <ProjectFlowHiveAutomation key={`automation-${selectedProjectId}`}
         projectId={selectedProjectId} getJson={getJson} putJson={putJson} onLoadDraft={loadWorkingCopy}
         onState={setAutomaticPlan} /> : null}
 

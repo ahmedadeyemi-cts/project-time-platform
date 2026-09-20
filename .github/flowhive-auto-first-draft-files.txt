@@ -25,4 +25,5 @@ tests/flowhive-automatic-browser-bundle.mjs
 tests/flowhive-automatic-browser.py
 tests/flowhive-psa-admission.test.mjs
 tests/flowhive-psa-automatic-scope.py
+tests/flowhive-psa-react-browser.py
 tests/validate-celar-ai-pr630-consolidated.mjs
