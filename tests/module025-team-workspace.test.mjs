@@ -72,6 +72,11 @@ try {
       body = { currentUser: { userId: isOwnerSession ? saB.userId : '55555555-5555-4555-8555-555555555555', displayName: isOwnerSession ? saB.displayName : 'System SA manager' },
         access: { canCreate: isOwnerSession && !isViewAs, isManager: !isOwnerSession, isSolutionArchitect: isOwnerSession, managerScopeReadOnly: !isOwnerSession, isViewAs },
         capabilities: {workTracking:true,handoffNotifications:true}, solutionArchitects: [saA, saB], commercialModels: [], customerPrograms: [] };
+    } else if (url.pathname === `/api/module025/sow-gsd/${record.engagementId}/generations/latest`) {
+      // The opened record is in this fixture's authorized owner/manager scope.
+      // Discovery remains GET-only, including when inspecting through View-As.
+      body = { status: 'module025_no_generation', generationId: null, engagementId: record.engagementId,
+        currentRevision: record.revision, terminal: true, phaseTimeline: [] };
     } else if (url.pathname.endsWith('/transfer-options')) {
       openedOptions.push(url.pathname);
       body = { engagementId: record.engagementId, revision: record.revision, canTransfer: !isViewAs && ['draft','review_ready'].includes(record.status), scope: 'same_reporting_manager',
@@ -97,6 +102,12 @@ try {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 
+  const openRecord = async () => {
+    const latest = page.waitForResponse(response => new URL(response.url()).pathname === `/api/module025/sow-gsd/${record.engagementId}/generations/latest` && response.request().method() === 'GET');
+    await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).click();
+    assert.equal((await latest).status(), 200, 'opening the authorized record discovers generation status through a read');
+    await page.getByRole('region', { name: 'AI generation progress', exact: true }).getByText('One scope. Five connected phases.', { exact: true }).waitFor();
+  };
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/__team`);
   const audience = page.getByRole('navigation', { name: 'Workspace audience' });
   await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).waitFor();
@@ -126,7 +137,7 @@ try {
   assert.ok(lists.some(url => url.includes('search=Datacenter')));
   await page.getByPlaceholder('SOW-2026-000123 or customer…').fill('');
   await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-002' }).waitFor();
-  await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).click();
+  await openRecord();
   const editor = page.locator('.m025-editor-panel');
   await editor.getByText('Manager view · read only', { exact: true }).waitFor();
   assert.equal(await editor.getByLabel(/^Project Name/).isDisabled(), true, 'manager can inspect content without editing it');
@@ -170,27 +181,29 @@ try {
   await editor.getByText('Select a SOW/GSD package', { exact: true }).waitFor();
   await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).getByText(/SA: Bea System/).waitFor();
   assert.equal(writes.length, 1, 'one audited transfer; no content save or generation');
-  await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).click();
+  const refreshedOptions = page.waitForResponse(response => new URL(response.url()).pathname === `/api/module025/sow-gsd/${record.engagementId}/transfer-options` && response.request().method() === 'GET');
+  await openRecord();
+  await refreshedOptions;
   await editor.getByText(/Owned by Bea System · Revision 8/).waitFor();
   assert.ok(details.length >= 2 && details.every(id => id === record.engagementId), 'transfer refresh preserves stable engagement ID');
   assert.ok(openedOptions.length >= 2, 'permissions/options reload after transfer');
 
   // Canonical lifecycle controls remain discoverable for each record state.
   record = { ...record, status: 'draft', lastGeneratedAt: null };
-  await page.reload(); await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).click();
+  await page.reload(); await openRecord();
   assert.equal(await editor.getByRole('button', { name: 'Delete Draft', exact: true }).isDisabled(), true);
   record = { ...record, status: 'confirmed', lastGeneratedAt: '2026-09-19T00:00:00Z' };
-  await page.reload(); await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).click();
+  await page.reload(); await openRecord();
   assert.equal(await editor.getByRole('button', { name: 'Reopen for editing', exact: true }).isDisabled(), true);
   assert.equal(await actions.getByRole('button', { name: 'Download SOW (.docx)', exact: true }).isEnabled(), true);
   record = { ...record, status: 'archived', isActive: false };
   await page.reload(); await page.getByRole('button', { name: 'Archived', exact: true }).click();
-  await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).click();
+  await openRecord();
   assert.equal(await editor.getByRole('button', { name: 'Return to Active', exact: true }).isDisabled(), true);
 
   isViewAs = true;
   record = { ...record, status: 'review_ready', isActive: true };
-  await page.reload(); await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).click();
+  await page.reload(); await openRecord();
   await page.getByText('Administrator View-As is read-only', { exact: true }).waitFor();
   await transfer.locator('summary').click();
   await transfer.getByText('Your role or current view does not allow transferring this record.', { exact: true }).waitFor();
@@ -202,7 +215,7 @@ try {
 
   // An owner can hand off their draft, and a pending transfer freezes every edit path.
   isViewAs = false; isOwnerSession = true;
-  await page.reload(); await page.locator('.m025-work-card').filter({ hasText: 'SOW-TEAM-001' }).click();
+  await page.reload(); await openRecord();
   assert.equal(await audience.getByRole('button', { name: 'My Work', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.equal(await audience.getByRole('button', { name: 'Team Work', exact: true }).count(), 0);
   assert.equal(await editor.getByLabel(/^Project Name/).isEnabled(), true);

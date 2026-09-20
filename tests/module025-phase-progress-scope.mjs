@@ -34,7 +34,9 @@ const expected = [
   "tests/flowhive-psa-admission.test.mjs",
   "tests/module025-generation-feedback.test.mjs",
   "tests/module025-generation-progress.test.mjs",
+  "tests/module025-installed-browser-harness.mjs",
   "tests/module025-phase-progress-scope.mjs",
+  "tests/module025-team-workspace.test.mjs",
   "tests/validate-systemwide-image-build-controller.mjs"
 ].sort();
 

@@ -101,6 +101,13 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
         versions: [{ versionId: 'version-1', versionNumber: 1, sourceRevision: 5,
           sowSha256: digest(bytes('sow')), gsdSha256: digest(bytes('gsd')), submissions: [] }] };
       else if (registerMode && url.pathname.endsWith('/history')) body = { events: [] };
+      else if (url.pathname === '/api/module025/sow-gsd/fixture-025/generations/latest' && req.method === 'GET') {
+        // Status discovery follows the same authenticated fixture boundary as
+        // the opened record and cannot enqueue a synthetic or real AI job.
+        if (!authenticated || denyModule) { res.statusCode = authenticated ? 403 : 401; body = { message: 'Session and Module 025 access required' }; }
+        else body = { status: 'module025_no_generation', generationId: null, engagementId: engagement.engagementId,
+          currentRevision: engagement.revision, terminal: true, phaseTimeline: [] };
+      }
       else if (url.pathname.endsWith('/fixture-025/transfer-options') && req.method === 'GET') body = {
         canTransfer: false, revision: engagement.revision, destinations: [],
         blockedReason: 'This synthetic document-lifecycle fixture has no eligible teammate.'
