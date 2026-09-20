@@ -45,7 +45,11 @@ public sealed record CelarAiComposeRequest(
     Guid? ProjectId = null,
     Guid? TaskId = null,
     Guid? AssignmentId = null,
-    string? CapabilityCode = null);
+    string? CapabilityCode = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal FlowHiveSequentialExecution? FlowHiveExecution { get; init; }
+}
 
 /// <summary>
 /// Server-owned evidence for a Module 025 draft that does not have a Project ID

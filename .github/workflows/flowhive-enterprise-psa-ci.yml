@@ -16,6 +16,11 @@ on:
       - 'tests/FlowHiveExecutionTests/**'
       - 'tests/FlowHiveNotificationTests/**'
       - 'tests/FlowHivePreparationTests/**'
+      - 'tests/FlowHiveSequentialTests/**'
+      - 'src/backend/ProjectTime.Api/Ai/FlowHiveSequentialGeneration.cs'
+      - 'src/frontend/project-time-web/src/ai/AiPhaseProgress.jsx'
+      - 'database/migrations/121_flowhive_sequential_phase_checkpoints.sql'
+      - 'scripts/release-test/verify-flowhive-sequential-checkpoints.sql'
       - 'src/frontend/project-time-web/src/ai/AiOperationProgress.jsx'
       - 'src/frontend/project-time-web/src/ai/operation-progress.js'
       - 'src/frontend/project-time-web/src/ai/ai-operation-progress.css'
@@ -86,6 +91,8 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Execute native WBS behavior regressions against the real API
         run: dotnet run --project tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj --configuration Release
+      - name: Verify sequential phases, pinned evidence, resume, failure and cancellation
+        run: dotnet run --project tests/FlowHiveSequentialTests --configuration Release
       - name: Preserve existing detailed-planner and Module 025 regressions
         env:
           FLOWHIVE_EXPORT_EVIDENCE_DIR: ${{ runner.temp }}/flowhive-export-evidence

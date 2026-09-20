@@ -221,7 +221,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         await using var command = new NpgsqlCommand($"""
             UPDATE {RunTable} SET status='needs_attention',phase='deadline_exceeded',progress_percent=100,
                 completed_at=NOW(),updated_at=NOW(),row_version=gen_random_uuid(),
-                blockers='["The twelve-minute planner deadline expired. Existing work is preserved; inspect the last stage before an explicit retry."]'::jsonb
+                blockers='["The forty-minute planner deadline expired. Existing work is preserved; inspect the last stage before an explicit retry."]'::jsonb
             WHERE status IN ('queued','processing','generating') AND (deadline_at IS NULL OR deadline_at<=clock_timestamp());
             """, connection);
         command.CommandTimeout = 5;
@@ -297,7 +297,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             FROM {RunTable}
             WHERE status IN ('queued','processing','generating')
               AND deadline_at > clock_timestamp()
-              AND execution_contract='flowhive-bounded-execution-v1-20260906'
+              AND execution_contract='{ProjectFlowHiveExecutionPolicy.Contract}'
               AND next_attempt_at <= clock_timestamp()
             ORDER BY CASE status
                          WHEN 'generating' THEN 0
@@ -510,8 +510,8 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             connection,
             stored.RunId,
             "generating",
-            "extract_and_expand_work_packages",
-            65,
+            "generate_delivery_phases",
+            20,
             [],
             documents.Warnings,
             ["The current authoritative Work Register SOW and supporting project documents are citation ready. Background plan generation started."],
@@ -559,7 +559,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                     deadline,
                     DateTimeOffset.UtcNow);
             var retryLog = retry
-                ? $"AI route retry {attempt} is scheduled within the fixed two-attempt and twelve-minute budgets."
+                ? $"AI route retry {attempt} is scheduled within the fixed two-attempt and forty-minute deadline."
                 : transient
                     ? "The bounded AI route retry limit was reached. Review the evidence status and start AI Planner again when private generation is available."
                     : generation.Message;
@@ -619,7 +619,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
     }
 
     private static async Task<ProjectPlanningGenerationResult> GenerateBoundedAsync(
-        NpgsqlConnection connectionUnused, PlannerRun run, CelarAiEnterprisePlatformService enterprise,
+        NpgsqlConnection connection, PlannerRun run, CelarAiEnterprisePlatformService enterprise,
         Guid actual, Guid effective, ProjectFlowHivePlanRequest seed, ProjectPlanningDocumentResolution documents,
         string outcome, string detail, string capability, bool allowSanitizedExternalFallback,
         HttpContext context, CancellationToken token)
@@ -628,8 +628,10 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         generationToken.CancelAfter(ProjectFlowHiveExecutionPolicy.InferenceBudget);
         using var observation = CancellationTokenSource.CreateLinkedTokenSource(generationToken.Token);
         var observer = ObserveCancellationAsync(run.RunId, generationToken, observation.Token);
+        var sequential = new FlowHiveSequentialExecution(documents, run.PhaseCheckpoint,
+            (state, ct) => PersistPhaseCheckpointAsync(connection, run, state, ct));
         var generation = ProjectPlanningAiOrchestrator.GenerateAsync(enterprise, actual, effective, seed, documents,
-            outcome, detail, capability, allowSanitizedExternalFallback, context, generationToken.Token);
+            outcome, detail, capability, allowSanitizedExternalFallback, context, generationToken.Token, sequential);
         try
         {
             return await generation.WaitAsync(generationToken.Token);
@@ -1154,7 +1156,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                    operation_logs::text,correlation_id,created_at,updated_at,completed_at,
                    deadline_at,expected_working_row_version,input_fingerprint,source_selection_fingerprint,
                    source_version_fingerprint,attempt_count,phase_started_at,retry_document_processing,
-                   saved_working_row_version,saved_working_revision
+                   saved_working_row_version,saved_working_revision,phase_checkpoint::text
             FROM {RunTable}
             WHERE run_id=@run_id AND project_id=@project_id;
             """, connection);
@@ -1189,7 +1191,8 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             reader.IsDBNull(21) ? null : reader.GetGuid(21),
             reader.GetString(22), reader.GetString(23), reader.GetString(24), reader.GetInt16(25),
             reader.GetFieldValue<DateTimeOffset>(26), reader.GetBoolean(27),
-            reader.IsDBNull(28) ? null : reader.GetGuid(28), reader.IsDBNull(29) ? null : reader.GetInt32(29));
+            reader.IsDBNull(28) ? null : reader.GetGuid(28), reader.IsDBNull(29) ? null : reader.GetInt32(29),
+            reader.GetString(30) == "{}" ? null : Deserialize<FlowHiveSequentialState>(reader.GetString(30)));
     }
 
     private static object ToResponse(PlannerRun run)
@@ -1220,6 +1223,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             runId = run.RunId,
             projectId = run.ProjectId,
             phase = run.Phase,
+            phases = (run.PhaseCheckpoint ?? FlowHiveSequentialState.Empty(run.SourceVersionFingerprint)).Progress(run.Terminal, run.CompletedAt),
             progressPercent = run.ProgressPercent,
             terminal = run.Terminal,
             plan = workingDraftPersisted ? run.GeneratedPlan : null,
@@ -1319,9 +1323,9 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                 await connection.DisposeAsync();
                 return OpenOutcome.Fail(Results.Json(new
                 {
-                    status = "migration_104_required",
+                    status = "flowhive_phase_migration_required",
                     requiredMigration = MigrationId,
-                    message = "Apply the bounded FlowHive execution migration before starting AI Planner.",
+                    message = "Apply the FlowHive phase checkpoint migration before starting AI Planner.",
                     stateChanged = false
                 }, statusCode: StatusCodes.Status503ServiceUnavailable));
             }
@@ -1424,7 +1428,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         DateTimeOffset PhaseStartedAt,
         bool RetryDocumentProcessing,
         Guid? SavedWorkingRowVersion,
-        int? SavedWorkingRevision);
+        int? SavedWorkingRevision, FlowHiveSequentialState? PhaseCheckpoint);
 
     private sealed class PlannerConflict(string code, string message) : Exception(message)
     {

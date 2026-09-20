@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace ProjectTime.Api.Ai;
 
-public sealed class PulseAiPrivateRagService
+public sealed partial class PulseAiPrivateRagService
 {
     private const int Module025SowMaximumOutputTokens = 12_000;
     private const int Module025SowMaximumAnswerCharacters = Module025GenerationEngine.MaximumDocumentCharacters;
@@ -519,7 +519,8 @@ public sealed class PulseAiPrivateRagService
             usePrivateModelWhenAvailable: usePrivateModelWhenAvailable,
             cancellationToken,
             authoritativeSource,
-            phaseExecution: authoritativeScopeEvidence?.PhaseExecution);
+            phaseExecution: authoritativeScopeEvidence?.PhaseExecution,
+            flowHiveExecution: request.FlowHiveExecution);
     }
 
     public async Task<bool> SaveFeedbackAsync(
@@ -563,7 +564,8 @@ public sealed class PulseAiPrivateRagService
         CancellationToken cancellationToken,
         PulseAiPrivateRetrievedChunk? authoritativeSource = null,
         string? structuredContext = null,
-        Module025PhaseExecution? phaseExecution = null)
+        Module025PhaseExecution? phaseExecution = null,
+        FlowHiveSequentialExecution? flowHiveExecution = null)
     {
         var options = Options();
         if (!string.IsNullOrEmpty(structuredContext))
@@ -581,7 +583,9 @@ public sealed class PulseAiPrivateRagService
                 detailLevel,
                 query.CorrelationId,
                 cancellationToken);
-            var retrieval = authoritativeSource is not null
+            var retrieval = flowHiveExecution?.State.Evidence is { } pinnedEvidence
+                ? flowHiveExecution.PinEvidence(pinnedEvidence)
+                : authoritativeSource is not null
                 ? Module025AuthoritativeScopeRetrieval(query, authoritativeSource)
                 : retrieveAuthorizedDocuments
                     ? await _retrieval.RetrieveAsync(
@@ -648,7 +652,11 @@ public sealed class PulseAiPrivateRagService
                     : flowHive ? 0.15m : query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature ? 0.05m : 0.10m,
                 CorrelationId: query.CorrelationId);
             var boundedPhasePlan = ShouldGenerateBoundedPhasePlan(flowHive, authoritativeSource is not null);
-            var model = usePrivateModelWhenAvailable && phaseExecution is not null
+            var model = usePrivateModelWhenAvailable && flowHiveExecution is not null
+                ? await GenerateFlowHiveSequentialAsync(modelRequest, retrieval, flowHiveExecution,
+                    (phaseRequest, token) => _model.GenerateAsync(phaseRequest,
+                        options with { MaximumAnswerCharacters = Module025SowMaximumAnswerCharacters }, token), cancellationToken)
+                : usePrivateModelWhenAvailable && phaseExecution is not null
                 ? await GenerateModule025SinglePhaseAsync(modelRequest, retrieval, phaseExecution,
                     (phaseRequest, token) => _model.GenerateAsync(phaseRequest,
                         options with { MaximumAnswerCharacters = Module025SowMaximumAnswerCharacters }, token), cancellationToken)
@@ -679,6 +687,7 @@ public sealed class PulseAiPrivateRagService
                     cancellationToken)
                 : EmptyModel("private_model_disabled_by_request");
 
+            if (flowHiveExecution?.State.Evidence is { } snapshot) retrieval = snapshot;
             PulseAiPrivateRagAnswer answer;
             if (model.Succeeded)
             {
@@ -690,7 +699,8 @@ public sealed class PulseAiPrivateRagService
                         model,
                         options,
                         validateModule025DetailedPlan: authoritativeSource is not null || flowHive,
-                        module025Phase: phaseExecution?.Phase)
+                        module025Phase: phaseExecution?.Phase,
+                        sequentialFlowHive: flowHiveExecution is not null)
                     : ParseDetailedAnswer(answerRunId, query, retrieval, model, options);
             }
             else if ((flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode))
@@ -744,7 +754,7 @@ public sealed class PulseAiPrivateRagService
                 return AttachmentInvalidated(answerRunId, query);
             return answer;
         }
-        catch (OperationCanceledException) when (phaseExecution is not null && cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when ((phaseExecution is not null || flowHiveExecution is not null) && cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -869,12 +879,17 @@ public sealed class PulseAiPrivateRagService
         PulseAiPrivateModelResult model,
         PulseAiPrivateRagOptions options,
         bool validateModule025DetailedPlan = false,
-        string? module025Phase = null)
+        string? module025Phase = null,
+        bool sequentialFlowHive = false)
     {
         try
         {
             PulseAiPrivateFlowHivePlan plan;
-            if (validateModule025DetailedPlan)
+            if (sequentialFlowHive)
+            {
+                plan = ParseFlowHivePhase(model.Content, retrieval, FlowHiveSequentialExecution.Phases);
+            }
+            else if (validateModule025DetailedPlan)
             {
                 plan = module025Phase is null
                     ? ParseModule025DetailedPlan(model.Content, retrieval)

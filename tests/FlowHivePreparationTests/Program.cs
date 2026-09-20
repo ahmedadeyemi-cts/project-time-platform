@@ -91,6 +91,7 @@ async Task Database()
         Check(await Queue(await Document(state:state)) == 0, "does not automatically retry " + state);
     Check(await Queue(await Document(visible:false)) == 0 && await Queue(await Document(consent:false)) == 0, "visibility and AI consent are preserved");
     Check(await Queue(await Document("requirements_document")) == 1 && await Queue(await Document("supporting_document")) == 1, "supporting planning categories are prepared");
+    Check(await Queue(await Document("other")) == 1, "Other project attachments are prepared without reclassification");
     Check(await Queue(await Document("unrelated_admin_record")) == 0, "unrelated categories are excluded");
     await Sql($"UPDATE projects SET status='closed' WHERE project_id='{project}';");
     Check(await Queue(await Document()) == 0, "closed projects do not enqueue new preparation");

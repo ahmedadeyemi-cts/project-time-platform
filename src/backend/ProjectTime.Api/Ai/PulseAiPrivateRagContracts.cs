@@ -45,7 +45,9 @@ public static class PulseAiPrivateRagPolicy
         "runbook",
         "method_of_procedure",
         "mop",
-        "supporting"
+        "supporting",
+        "supporting_document",
+        "other"
     ];
 
     public static readonly string[] AnswerSections =
@@ -531,7 +533,12 @@ public sealed record PulseAiPrivateFlowHiveRequest(
     string? FeatureCode = null,
     Guid? ProjectId = null,
     Guid? TaskId = null,
-    Guid? AssignmentId = null);
+    Guid? AssignmentId = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal FlowHiveSequentialExecution? FlowHiveExecution { get; init; }
+}
+
 
 public sealed record PulseAiPrivateFeedbackRequest(
     string? FeedbackType,

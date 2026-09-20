@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AiOperationProgress from './ai/AiOperationProgress.jsx';
+import AiPhaseProgress from './ai/AiPhaseProgress.jsx';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import ProjectForgeTaskDialog from './project-forge/ProjectForgeTaskDialog.jsx';
 import {
@@ -607,17 +608,27 @@ export default function ProjectForgeCenter() {
         allowSanitizedExternalFallback: true
       };
       let result = null;
-      for (let attempt = 1; attempt <= 60; attempt += 1) {
+      let planningRunId = null;
+      const observationDeadline = Date.now() + 42 * 60 * 1000;
+      for (let attempt = 1; Date.now() < observationDeadline; attempt += 1) {
         if (!active()) return;
-        result = await projectForgeSend(`/api/project-forge/projects/${currentProjectId}/ai-drafts`, 'POST', payload, { signal: controller.signal });
+        result = await projectForgeSend(`/api/project-forge/projects/${currentProjectId}/ai-drafts`, 'POST', { ...payload, planningRunId }, { signal: controller.signal });
         if (!active()) return;
+        if (result?.progress) {
+          planningRunId = result.progress.runId || planningRunId;
+          setAiOperation(current => ({ ...current, phases: result.progress.phases,
+            runId: planningRunId, completedAt: result.progress.completedAt || null }));
+        }
         const status = normalize(result?.status);
+        if (result?.progress?.terminal && !['completed', 'completed_with_schedule_overrun'].includes(result.progress.status))
+          throw new Error(result.message || 'The planner stopped. Review the project status before retrying.');
+        if (status === 'project_planning_stopped') throw new Error(result.message);
         const processing = result?.retryable === true
           || status === 'project_planning_documents_processing'
           || status === 'project_planning_ai_temporarily_unavailable';
         if (!processing) break;
-        setAiOperation(current => ({ ...current, stage: status === 'project_planning_documents_processing' ? 'Preparing project documents' : 'Waiting for the AI service to retry' }));
-        setNotice(`${title(status)}. Project Forge is automatically preparing the project's current SOW, GSD, and supporting documents. Attempt ${attempt} of 60.`);
+        setAiOperation(current => ({ ...current, stage: status === 'project_planning_documents_processing' ? 'Preparing project documents' : 'Generating the five project phases' }));
+        setNotice(result?.message || 'The project documents and five-stage WBS are processing in the background.');
         await waitForProjectPlanning(Math.min(10_000, 2_000 + attempt * 250));
       }
       if (!result || result?.retryable === true
@@ -777,7 +788,10 @@ export default function ProjectForgeCenter() {
 
       {aiOperation?.projectId === currentProjectId ? <AiOperationProgress title="AI Studio"
         startedAt={aiOperation.startedAt} completedAt={aiOperation.completedAt} active={aiOperation.active}
-        stage={aiOperation.stage} message={aiOperation.active ? 'Your request is processing. Keep this page open until the review draft is ready. Document preparation continues in the background.' : 'The request finished. Review the result or the message below.'} /> : null}
+        stage={aiOperation.stage} message={aiOperation.active ? 'Your request is processing. This view follows the shared FlowHive planner. Document preparation and accepted phases are saved in the background.' : 'The request finished. Review the result or the message below.'} /> : null}
+
+      {aiOperation?.projectId === currentProjectId && <AiPhaseProgress phases={aiOperation.phases}
+        terminal={!aiOperation.active} completedAt={aiOperation.completedAt} />}
 
       <div className="forge-workspace-banner"><b>{workspace === 'canonical' ? 'Live Project' : 'Review Plan'}</b><span>{workspace === 'canonical' ? 'Changes update canonical project records.' : 'Changes stay in this proposal until an authorized PM adopts it.'}</span></div>
       {aiConnection ? (

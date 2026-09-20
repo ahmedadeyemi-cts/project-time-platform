@@ -615,7 +615,7 @@ public static partial class ProjectForgeModule
             CelarAiCapabilityCatalog.ProjectForgePlanEstimate,
             request.AllowSanitizedExternalFallback,
             context,
-            cancellationToken);
+            cancellationToken, observedRunId: request.PlanningRunId);
 
         if (!generation.Succeeded
             || generation.Plan is null
@@ -632,6 +632,7 @@ public static partial class ProjectForgeModule
                 projectId,
                 documentAuthority = ProjectPlanningDocumentResolver.Contract,
                 planningContract = ProjectPlanningAiOrchestrator.Contract,
+                generation.Progress,
                 generation.MissingEvidence,
                 generation.Warnings,
                 correlationId = generation.Composition?.CorrelationId ?? correlationId,
@@ -804,6 +805,7 @@ public static partial class ProjectForgeModule
             schedule = generation.Schedule,
             generation.Composition.Citations,
             generation.Warnings,
+            generation.Progress,
             generation.MissingEvidence,
             generation.Composition.Conflicts,
             generation.Composition.Confidence,
