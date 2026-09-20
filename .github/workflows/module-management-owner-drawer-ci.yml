@@ -48,6 +48,10 @@ jobs:
           git diff --name-only origin/main...HEAD | LC_ALL=C sort -u > "$RUNNER_TEMP/module-management-actual.txt"
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == feature/flowhive-psa-team-workspace-20260919 ]]; then
+            python3 tests/flowhive-psa-workspace-scope.py
+            exit 0
+          fi
           if [[ "$HEAD_BRANCH" == fix/module064-optional-provider-controls ]]; then
             python3 tests/module064-provider-controls-scope.py
             exit 0

@@ -27,3 +27,13 @@ print('FLOWHIVE_WORKSPACE_SCOPE=PASS release_authority=unchanged')
 workflow = '.github/workflows/flowhive-psa-release-control-ci.yml'
 block = '          if [[ "$GITHUB_HEAD_REF" == feature/flowhive-psa-team-workspace-20260919 ]]; then\n            python3 tests/flowhive-psa-workspace-scope.py\n          elif'
 assert Path(workflow).read_text().replace(block,'          if',1) == git('show',BASE+':'+workflow)
+
+# The shared cumulative migration builder also triggers Module Management CI.
+# Register this exact feature while preserving every subsequent regression step.
+workflow = '.github/workflows/module-management-owner-drawer-ci.yml'
+block = '''          if [[ "$HEAD_BRANCH" == feature/flowhive-psa-team-workspace-20260919 ]]; then
+            python3 tests/flowhive-psa-workspace-scope.py
+            exit 0
+          fi
+'''
+assert Path(workflow).read_text().replace(block,'',1) == git('show',BASE+':'+workflow)

@@ -2,6 +2,7 @@
 .github/workflows/enterprise-completion-ci.yml
 .github/workflows/flowhive-enterprise-psa-ci.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
+.github/workflows/module-management-owner-drawer-ci.yml
 database/migrations/115_module_066_task_notifications.sql
 database/rollback/115_module_066_task_notifications_rollback.sql
 docs/architecture/flowhive-enterprise-psa-revamp.md
