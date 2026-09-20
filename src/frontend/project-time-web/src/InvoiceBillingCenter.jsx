@@ -771,7 +771,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
               ) : selected ? (
                 <div className="m042-invoice">
                   <dl className="m042-reference-summary" aria-label="Project billing references">
-                    <div><dt>SELL Quote</dt><dd>{text(selected.sellQuoteId, text(selected.commercial?.sellQuoteNumber, missingValue))}</dd></div>
+                    <div><dt>SELL Quote</dt><dd>{text(selected.sellQuoteNumber, text(selected.commercial?.sellQuoteNumber, missingValue))}</dd></div>
                     <div><dt>Certinia ID</dt><dd>{text(selected.certiniaId, missingValue)}</dd></div>
                     <div><dt>Salesforce ID / Quote</dt><dd>{text(selected.salesforceId, missingValue)}</dd></div>
                   </dl>
