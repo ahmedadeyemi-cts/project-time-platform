@@ -11,6 +11,8 @@ on:
       - 'src/backend/ProjectTime.Api/Assets/Templates/**'
       - 'src/backend/ProjectTime.Api/Assets/Branding/**'
       - 'tests/Module025ExportTests/**'
+      - 'scripts/release-test/run-module025-export-uat.py'
+      - 'tests/module025-export-uat-contract.test.py'
       - '.github/workflows/module025-export-ci.yml'
 permissions:
   contents: read
@@ -41,6 +43,9 @@ jobs:
       - name: Verify task editing, autosave, reload and draft downloads
         run: PLAYWRIGHT_MODULE_PATH="$RUNNER_TEMP/module025-browser/node_modules/playwright" node tests/module025-task-editor.test.mjs
       - name: Verify generation-free deployment guards
+        env:
+          MODULE025_REAL_EXPORT_DIR: /tmp/module025-exports
         run: |
           python3 -m pip install PyYAML==6.0.2
           python3 tests/module025-export-deploy.test.py
+          python3 tests/module025-export-uat-contract.test.py
