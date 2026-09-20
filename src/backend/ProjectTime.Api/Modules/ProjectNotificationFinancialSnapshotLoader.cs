@@ -74,7 +74,7 @@ internal static class ProjectNotificationFinancialSnapshotLoader
                 "expenseBudget",
                 "expense_budget",
                 "plannedExpenseBudget",
-                "planned_expense_budget");
+                "planned_expense_budget", "planned_travel_cost");
             var contractedValue = JsonDecimal(
                 project.Json,
                 "contractedValue",
@@ -85,13 +85,9 @@ internal static class ProjectNotificationFinancialSnapshotLoader
                 "sow_value",
                 "sellAmount",
                 "sell_amount");
-            var knownTotalBudget = SumKnown(laborBudget, expenseBudget)
-                ?? JsonDecimal(
-                    project.Json,
-                    "plannedTotalProjectCost",
-                    "planned_total_project_cost",
-                    "projectBudget",
-                    "project_budget");
+            // A partial budget is not a total. The historic planned_total_project_cost
+            // column is engineering + PM labor (migration 019m-ag), excluding travel.
+            var knownTotalBudget = ProjectBudgetAssessment.CompleteTotal(laborBudget, expenseBudget);
 
             var uploadedExpenses = expensesByProject.TryGetValue(project.ProjectId, out var expense)
                 ? expense.TotalAmount
@@ -104,10 +100,12 @@ internal static class ProjectNotificationFinancialSnapshotLoader
             var laborCost = effectiveRate.HasValue
                 ? Math.Round(usedHours * effectiveRate.Value, 2)
                 : (decimal?)null;
-            var committedCost = SumKnown(laborCost, uploadedExpenses);
-            var forecastedFinalCost = effectiveRate.HasValue
-                ? SumKnown(Math.Round((usedHours + remainingHours) * effectiveRate.Value, 2), uploadedExpenses)
-                : committedCost;
+            decimal? committedCost = laborCost.HasValue && uploadedExpenses.HasValue
+                ? laborCost + uploadedExpenses : null;
+            decimal? forecastedFinalCost = effectiveRate.HasValue && uploadedExpenses.HasValue
+                && assignments.State.Status == "healthy"
+                ? Math.Round((usedHours + remainingHours) * effectiveRate.Value, 2) + uploadedExpenses
+                : null;
             var currentVariance = knownTotalBudget.HasValue && forecastedFinalCost.HasValue
                 ? Math.Round(knownTotalBudget.Value - forecastedFinalCost.Value, 2)
                 : (decimal?)null;
@@ -268,25 +266,29 @@ internal static class ProjectNotificationFinancialSnapshotLoader
                     SUM(entry.hours)::numeric AS used_hours
                 FROM time_entries entry
                 WHERE entry.project_id IS NOT NULL
-                  AND lower(COALESCE(entry.status, '')) NOT IN ('voided', 'rejected', 'declined')
+                  AND lower(COALESCE(entry.status, '')) NOT IN ('voided', 'rejected', 'declined', 'manager_declined', 'pm_declined')
                 GROUP BY entry.project_id, entry.user_id
+            ), planned AS (
+                SELECT project_id, user_id, SUM(assigned_hours)::numeric AS assigned_hours
+                FROM project_assignments
+                WHERE effective_start_date <= CURRENT_DATE
+                  AND (effective_end_date IS NULL OR effective_end_date >= CURRENT_DATE)
+                GROUP BY project_id, user_id
             )
             SELECT
-                assignment.project_id,
-                assignment.user_id,
+                COALESCE(planned.project_id, used_time.project_id) AS project_id,
+                COALESCE(planned.user_id, used_time.user_id) AS user_id,
                 COALESCE(app_user.display_name, app_user.email, '') AS display_name,
                 COALESCE(app_user.email, '') AS email,
-                COALESCE(SUM(assignment.assigned_hours), 0)::numeric AS assigned_hours,
-                COALESCE(MAX(used_time.used_hours), 0)::numeric AS used_hours
-            FROM project_assignments assignment
-            JOIN app_users app_user ON app_user.user_id = assignment.user_id
-            LEFT JOIN used_time
-              ON used_time.project_id = assignment.project_id
-             AND used_time.user_id = assignment.user_id
-            WHERE assignment.effective_start_date <= CURRENT_DATE
-              AND (assignment.effective_end_date IS NULL OR assignment.effective_end_date >= CURRENT_DATE)
-            GROUP BY assignment.project_id, assignment.user_id, app_user.display_name, app_user.email
-            ORDER BY assignment.project_id, display_name;
+                COALESCE(planned.assigned_hours, 0)::numeric AS assigned_hours,
+                COALESCE(used_time.used_hours, 0)::numeric AS used_hours
+            FROM planned
+            FULL OUTER JOIN used_time
+              ON used_time.project_id = planned.project_id
+             AND used_time.user_id = planned.user_id
+            LEFT JOIN app_users app_user
+              ON app_user.user_id = COALESCE(planned.user_id, used_time.user_id)
+            ORDER BY project_id, display_name;
             """, connection);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -311,7 +313,8 @@ internal static class ProjectNotificationFinancialSnapshotLoader
         await using var command = new NpgsqlCommand("""
             SELECT
                 upload.project_id,
-                SUM(upload.total_amount)::numeric AS total_amount,
+                CASE WHEN bool_and(upper(upload.currency) = 'USD')
+                     THEN SUM(upload.total_amount)::numeric ELSE NULL END AS total_amount,
                 COUNT(*)::integer AS upload_count
             FROM project_expense_uploads upload
             WHERE upload.is_current = TRUE
@@ -320,7 +323,7 @@ internal static class ProjectNotificationFinancialSnapshotLoader
             """, connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
-            rows.Add(new(reader.GetGuid(0), reader.GetDecimal(1), reader.GetInt32(2)));
+            rows.Add(new(reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetDecimal(1), reader.GetInt32(2)));
         return rows;
     }
 
@@ -381,12 +384,7 @@ internal static class ProjectNotificationFinancialSnapshotLoader
         decimal? forecast,
         int missingCount)
     {
-        if (!totalBudget.HasValue || !forecast.HasValue)
-            return missingCount > 0 ? "missing_financial_information" : "not_recorded";
-        if (forecast.Value > totalBudget.Value) return "over_budget";
-        if (totalBudget.Value > 0 && forecast.Value / totalBudget.Value >= 0.85m)
-            return "approaching_budget";
-        return "on_track";
+        return ProjectBudgetAssessment.Classify(totalBudget, forecast);
     }
 
     private static int BudgetOrder(string status) => status switch
@@ -484,7 +482,7 @@ internal static class ProjectNotificationFinancialSnapshotLoader
         decimal AssignedHours,
         decimal UsedHours);
 
-    private sealed record ExpenseRow(Guid ProjectId, decimal TotalAmount, int UploadCount);
+    private sealed record ExpenseRow(Guid ProjectId, decimal? TotalAmount, int UploadCount);
     private sealed record RateRow(Guid ProjectId, decimal AverageRate);
     private sealed record OptionalResult<T>(T Value, ProjectNotificationSourceState State);
 }

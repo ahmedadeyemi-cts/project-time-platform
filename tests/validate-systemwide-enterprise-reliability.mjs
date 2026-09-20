@@ -86,8 +86,10 @@ for (const marker of [
   'Forecast at completion',
   'Data incomplete',
   'Missing authoritative evidence',
-  '/api/project-financials/portfolio?workspace=pm&limit=250'
+  "loadFinancialPortfolio(request, { workspace: 'pm', limit: '250' }"
 ]) requireText(costAlerts, marker, 'Module 022 financial alert contract');
+requireText(read('src/frontend/project-time-web/src/project-financial-portfolio.js'), '/api/project-financials/portfolio?', 'shared financial portfolio API');
+requireText(read('tests/project-financial-portfolio.test.mjs'), 'identity change discards all old pages', 'portfolio behavioral regression coverage');
 rejectText(costAlerts, 'completionPercentage) * 100', 'double-scaled project completion');
 
 requireText(sow, "import SowGsdWorkspace from '../module025/SowGsdWorkspace.jsx';", 'Module 025 live workspace import');
