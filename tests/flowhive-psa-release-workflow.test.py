@@ -237,6 +237,8 @@ class WorkflowContract(unittest.TestCase):
             if 'source scripts/release-test/validate-protected-test-controller-branches.sh' in controller_script:
                 controller_script += '\n' + branch_script.read_text()
             self.assertEqual([line.strip() for line in controller_script.splitlines() if '"$PR_NUMBER"' in line], [
+                '[[ "$PR_NUMBER" == \'1116\' ]] || fail \'Enterprise completion registration is restricted to PR #1116.\'',
+                '[[ "$PR_NUMBER" == \'1111\' ]] || fail \'Enterprise repair registration is restricted to PR #1111.\'',
                 "[[ \"$PR_NUMBER\" == '1090' ]] || fail 'Module 019 scope is registered only for PR #1090.'",
                 "elif [[ \"$PR_NUMBER\" == '734' && -f .github/flowhive-pr734-governed-release-files.txt ]]; then",
                 "elif [[ \"$PR_NUMBER\" == '777' ]]; then",
@@ -551,6 +553,23 @@ class WorkflowContract(unittest.TestCase):
         revised={'assigned_work_uat','utilization_uat','module025_fixture','module025_uat'}
         for step in after:
             a=copy.deepcopy(old_steps[step['name']]);b=copy.deepcopy(step)
+            if os.environ.get('GITHUB_HEAD_REF') == 'fix/enterprise-completion-20260919' and b.get('name') == 'Build immutable API, web, and migration images':
+                # Only the reviewed migration packaging, execution and verification
+                # additions may differ; every existing command and step stays bound.
+                migrations = ['112_optional_ai_providers', '113_module065_teams_notifications', '114_module064_private_admin_override']
+                anchor = 'install -m 0644 database/migrations/093_assigned_work_canonical_visibility_repair.sql "$MIGRATION_CONTEXT/database/migrations/093_assigned_work_canonical_visibility_repair.sql"\n'
+                self.assertEqual(a['run'].count(anchor), 1)
+                additions = ''.join(f'install -m 0644 database/migrations/{name}.sql "$MIGRATION_CONTEXT/database/migrations/{name}.sql"\n' for name in migrations)
+                expected = a['run'].replace(anchor, anchor + additions)
+                loop = '"$ROOT/database/migrations/093_assigned_work_canonical_visibility_repair.sql"; do'
+                self.assertEqual(expected.count(loop), 1)
+                replacement = '"$ROOT/database/migrations/093_assigned_work_canonical_visibility_repair.sql" \\\n  "$ROOT/database/migrations/112_optional_ai_providers.sql" \\\n  "$ROOT/database/migrations/113_module065_teams_notifications.sql" \\\n  "$ROOT/database/migrations/114_module064_private_admin_override.sql"; do'
+                expected = expected.replace(loop, replacement)
+                marker = "echo 'MIGRATION_093=APPLIED_AND_VERIFIED'\n"
+                self.assertEqual(expected.count(marker), 1)
+                expected = expected.replace(marker, marker + 'enterprise_verified="$(psql -X -At -v ON_ERROR_STOP=1 <<\'SQL\'\nSELECT (\n  (SELECT count(*) FROM schema_migrations WHERE migration_id IN (\'112_optional_ai_providers\',\'113_module065_teams_notifications\',\'114_module064_private_admin_override\')) = 3\n  AND to_regclass(\'public.module065_teams_configuration\') IS NOT NULL\n  AND to_regclass(\'public.module065_teams_delivery\') IS NOT NULL\n  AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=\'public\' AND table_name=\'ai_private_model_profiles\' AND column_name=\'administrator_override\')\n)::text;\nSQL\n)"\n[[ "$enterprise_verified" == true ]] || { echo \'ERROR: Enterprise integration migrations failed verification.\' >&2; exit 1; }\necho \'MIGRATIONS_112_113_114=APPLIED_AND_VERIFIED\'\n\n')
+                self.assertEqual(b['run'], expected)
+                a['run'] = expected
             if module025_auto and b.get('id') in {'release','migration'}:
                 continue
             if b.get('id') in revised:
