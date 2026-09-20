@@ -13,6 +13,7 @@ is_planner_release_control_branch() {
   esac
 }
 if [[ "$HEAD_BRANCH" == fix/reconcile-module-repairs-20260920 ]]; then
+  [[ "$PR_NUMBER" == '1118' ]] || fail 'Reconciled repairs are restricted to PR #1118.'
   python3 tests/reconciled-module-repairs-scope.py
   node --test tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs tests/api-error-status.test.mjs tests/project-financial-portfolio.test.mjs
   node tests/validate-systemwide-image-build-controller.mjs
