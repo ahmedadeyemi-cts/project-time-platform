@@ -48,6 +48,10 @@ jobs:
           git diff --name-only origin/main...HEAD | LC_ALL=C sort -u > "$RUNNER_TEMP/module-management-actual.txt"
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == feature/flowhive-auto-first-draft-20260920 ]]; then
+            python3 tests/flowhive-psa-automatic-scope.py
+            exit 0
+          fi
           if [[ "$HEAD_BRANCH" == feature/flowhive-sequential-wbs-20260920 ]]; then
             python3 tests/flowhive-psa-sequential-scope.py
             exit 0

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import ProjectFlowHivePlannerReview from './ProjectFlowHivePlannerReview.jsx';
 import ProjectFlowHiveOverview from './ProjectFlowHiveOverview.jsx';
 import ProjectFlowHiveDocumentReadiness from './ProjectFlowHiveDocumentReadiness.jsx';
+import ProjectFlowHiveAutomation from './ProjectFlowHiveAutomation.jsx';
 import { isFlowHiveArchived, filterFlowHiveProjects } from './flowhive-project-lifecycle.js';
 import AiOperationProgress from './ai/AiOperationProgress.jsx';
 import AiPhaseProgress from './ai/AiPhaseProgress.jsx';
@@ -325,6 +326,7 @@ export default function ProjectFlowHiveCenter() {
   const [projectStatus, setProjectStatus] = useState('all');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [documentReadiness, setDocumentReadiness] = useState(null);
+  const [automaticPlan, setAutomaticPlan] = useState(null);
   const [draftPlan, setDraftPlan] = useState(null);
   const [schedule, setSchedule] = useState(null);
   const [validation, setValidation] = useState(null);
@@ -557,6 +559,7 @@ export default function ProjectFlowHiveCenter() {
   const capabilities = capabilityResponse?.capabilities ?? [];
   const selectedProject = projects.find((project) => project.projectId === selectedProjectId) || null;
   const isArchived = documentReadiness?.projectId === selectedProjectId ? documentReadiness.isArchived : isFlowHiveArchived(selectedProject);
+  const automaticPlanRunning = automaticPlan?.projectId === selectedProjectId && automaticPlan?.status === 'generating';
   const canEditPlanner = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canEditPlanner && !enterprise?.access?.isViewAs);
   const canAdministerPlanner = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdministerPlanner && !enterprise?.access?.isViewAs);
   const canAdoptBaseline = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdoptBaseline && !enterprise?.access?.isViewAs);
@@ -1327,6 +1330,9 @@ export default function ProjectFlowHiveCenter() {
       </nav>
 
       {selectedProjectId ? <ProjectFlowHiveDocumentReadiness key={selectedProjectId} projectId={selectedProjectId} getJson={getJson} onState={updateDocumentReadiness} /> : null}
+      {selectedProjectId && ['planner', 'ai'].includes(activeView) ? <ProjectFlowHiveAutomation key={`automation-${selectedProjectId}`}
+        projectId={selectedProjectId} getJson={getJson} putJson={putJson} onLoadDraft={loadWorkingCopy}
+        onState={setAutomaticPlan} /> : null}
 
       {activeView === 'portfolio' || activeView === 'archive' ? (
         <div className="flowhive-view-panel">
@@ -1362,7 +1368,7 @@ export default function ProjectFlowHiveCenter() {
         <div className="flowhive-view-panel">
           <div className="flowhive-planner-toolbar">
             <button type="button" onClick={createLocalDraft} disabled={!selectedProject || !canEditPlanner}>Create/reset draft</button><button type="button" onClick={loadWorkingCopy} disabled={!selectedProjectId || busy}>Load working copy</button>
-            <button type="button" className="primary flowhive-ai-planner-button" aria-label="AI Planner" onClick={previewAiRequest} disabled={!selectedProjectId || selectedProject?.documentCount === 0 || Boolean(busy) || plannerObserved || !canEditPlanner}>{busy === 'ai-planner' ? 'Building from SOW…' : 'AI Planner'}</button>
+            <button type="button" className="primary flowhive-ai-planner-button" aria-label="AI Planner" onClick={previewAiRequest} disabled={!selectedProjectId || selectedProject?.documentCount === 0 || Boolean(busy) || plannerObserved || automaticPlanRunning || !canEditPlanner}>{busy === 'ai-planner' ? 'Building from SOW…' : 'AI Planner'}</button>
             <button type="button" onClick={validatePlan} disabled={!selectedProjectId || busy}>Validate</button>
             <button type="button" onClick={calculateSchedule} disabled={!draftPlan || busy}>Calculate schedule</button>
             <button type="button" onClick={saveDraft} disabled={!draftPlan || busy || !canEditPlanner}>{busy === 'save' ? 'Saving…' : 'Save immutable version'}</button>
@@ -1512,7 +1518,7 @@ export default function ProjectFlowHiveCenter() {
           <section className="flowhive-enterprise-card flowhive-ai-operation-control">
             <header><div><span>AI Planner automation</span><h3>Start or resume project-grounded planning</h3></div><strong>{selectedProject ? selectedProject.projectCode : 'Select project'}</strong></header>
             <p>FlowHive automatically uses the selected project's existing active Work Register SOW, current GSD, and authorized supporting documents. No pasted excerpt, duplicate upload, or manual preparation step is required.</p>
-            <button type="button" className="primary" onClick={previewAiRequest} disabled={!selectedProjectId || selectedProject?.documentCount === 0 || Boolean(busy) || plannerObserved || !canEditPlanner}>{busy === 'ai-planner' ? 'Resolving evidence and building plan…' : aiPreview?.runId && !aiPreview?.terminal ? 'Resume AI Planner' : 'Start AI Planner'}</button>
+            <button type="button" className="primary" onClick={previewAiRequest} disabled={!selectedProjectId || selectedProject?.documentCount === 0 || Boolean(busy) || plannerObserved || automaticPlanRunning || !canEditPlanner}>{busy === 'ai-planner' ? 'Resolving evidence and building plan…' : aiPreview?.runId && !aiPreview?.terminal ? 'Resume AI Planner' : 'Start AI Planner'}</button>
           </section>
         </div>
       ) : null}

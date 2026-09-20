@@ -68,6 +68,10 @@ async def main(readback_mode=None):
                     body={'projects':[{'projectId':pid,'projectCode':'TEST-'+label,'projectName':'Project '+label,'customerName':'Synthetic customer',
                         'projectManagerName':'Synthetic PM','startDate':'2026-09-08','endDate':'2026-10-30','taskCount':5,'assignmentCount':0,'status':'closed' if readback_mode=='archive' and pid==B else 'active'} for pid,label in [(A,'A'),(B,'B')]],
                         'tasks':[],'assignments':[],'summary':{'projectCount':2,'taskCount':10},'access':{'displayName':'Synthetic PM'}}
+                elif path.endswith('/ai-planner/automation'):
+                    pid=path.split('/')[4]
+                    body={'projectId':pid,'enabled':False,'rowVersion':None,'status':'disabled','message':'Automatic planning is off.',
+                          'canManage':not state['view_as'],'defaults':{'enabled':False,'rowVersion':V1,'canManage':False}}
                 elif path.endswith('/documents/readiness'):
                     pid=path.split('/')[4];archived=readback_mode=='archive' and pid==B
                     body={'projectId':pid,'projectStatus':'closed' if archived else 'active','isArchived':archived,
@@ -355,6 +359,8 @@ async def main(readback_mode=None):
             await page.locator('input[value="Immutable reviewed task Plan"]').wait_for()
             await page.wait_for_timeout(200)
             assert await page.locator('input[value="Immutable reviewed task Plan"]').count()==1
+            assert await page.locator('.flowhive-document-preparation').count()==1,'Project switching must not duplicate readiness panels'
+            assert await page.locator('.flowhive-automation').count()==1,'Project switching must not duplicate automation panels'
             print('PASSED: immutable version is not replaced by the working-copy refresh',flush=True)
             await page.get_by_role('button',name='Load working copy',exact=True).click()
             await page.locator('input[value="Generated unique task Plan"]').wait_for()

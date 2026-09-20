@@ -1,0 +1,10 @@
+.flowhive-automation{margin:1rem 0;padding:1rem;border:1px solid var(--border-color,#cbd5e1);border-radius:12px;background:var(--surface-color,transparent)}
+.flowhive-automation header{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.flowhive-automation h3{margin:0 0 .35rem}.flowhive-automation p{margin:.6rem 0;line-height:1.5}
+.flowhive-automation-toggle{display:flex!important;align-items:flex-start;gap:.65rem;cursor:pointer;margin:1rem 0}
+.flowhive-automation-toggle input[type=checkbox]{flex:0 0 auto;width:1.2rem;height:1.2rem;margin:.15rem 0 0;accent-color:#147a88}
+.flowhive-automation-toggle span{display:grid;gap:.3rem}.flowhive-automation small{display:block;line-height:1.5;opacity:.85}
+.flowhive-automation-actions{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-top:1rem}
+.flowhive-automation-defaults{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border-color,#cbd5e1)}
+.flowhive-automation-defaults summary{cursor:pointer;font-weight:600}
+@media(max-width:600px){.flowhive-automation{padding:.8rem}.flowhive-automation-actions button{width:100%}}

@@ -24,6 +24,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         var access = await ProjectPlanningAccessResolver.ResolveForActorAsync(connection, run.ActualUserId, run.ProjectId, "066", token);
         var current = await ProjectPlanningDocumentResolver.ReadCurrentAsync(connection, run.ProjectId, token);
         if (run.ActualUserId != run.EffectiveUserId || !access.CanEditPlanner
+            || !await AutomaticRunAllowedAsync(connection, run.RunId, run.ActualUserId, run.ProjectId, token)
             || !await ProjectFlowHiveLifecycle.LockActiveAsync(connection, transaction, run.ProjectId, token)
             || !current.ReadyForGeneration
             || ProjectFlowHiveExecutionPolicy.VersionFingerprint(current) != state.SourceFingerprint
