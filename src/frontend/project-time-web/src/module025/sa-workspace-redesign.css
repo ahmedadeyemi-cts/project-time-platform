@@ -1,0 +1,45 @@
+.m025-workspace-views, .m025-stage-nav { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
+.m025-workspace-views button, .m025-stage-nav a { border: 1px solid #cbd5e1; border-radius: .65rem; background: #fff; color: #173b60; padding: .7rem 1rem; font: inherit; text-decoration: none; }
+.m025-workspace-views button[aria-pressed='true'], .m025-stage-nav a[aria-current='step'] { background: #123a60; border-color: #123a60; color: white; }
+.m025-workspace [hidden] { display: none !important; }
+.m025-team-help, .m025-task-review__basis { color: #526477; font-size: .9rem; line-height: 1.5; }
+.m025-stage-nav { padding: .75rem; background: #f2f6fa; border-radius: .8rem; }
+.m025-stage-nav a { flex: 1 1 135px; font-size: .9rem; }
+.m025-phase-card, #m025-setup, #m025-generation, #m025-task-review, #m025-review { scroll-margin-top: 5rem; }
+.m025-task-review { margin: 1.2rem 0; border: 1px solid #d6e0eb; border-radius: .8rem; padding: 1rem; background: #f8fafc; }
+.m025-task-review__heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
+.m025-task-review h4 { margin: 0; font-size: 1.05rem; }
+.m025-task-review p { margin: .5rem 0; }
+.m025-task-review__list { display: grid; gap: .85rem; margin: 1rem 0; }
+.m025-task-review__item { display: grid; gap: .75rem; border: 1px solid #dbe3ed; background: white; border-radius: .6rem; padding: 1rem; }
+.m025-task-review__number { display: flex; justify-content: space-between; color: #304d6b; font-weight: 600; }
+.m025-task-review__number span { font-weight: 400; font-size: .85rem; }
+.m025-task-review label, .m025-transfer label { display: grid; gap: .35rem; font-size: .9rem; color: #304d6b; }
+.m025-task-review input:not([type='checkbox']), .m025-task-review textarea, .m025-transfer select, .m025-transfer textarea { box-sizing: border-box; width: 100%; padding: .65rem; border: 1px solid #bdcbd9; border-radius: .4rem; font: inherit; background: white; color: #18324b; }
+.m025-task-review__allocation { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); align-items: center; gap: 1rem; }
+.m025-task-review label.m025-task-review__check { display: flex; align-items: center; gap: .6rem; }
+.m025-task-review__check input { width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
+.m025-task-review__footer { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
+.m025-task-review__suggestion { padding: .65rem; background: #fff6dd; border-radius: .4rem; color: #715312; }
+.m025-transfer { padding: 1rem; margin: 1rem 0; background: #f7f9fc; border: 1px solid #d6e0eb; border-radius: .65rem; }
+.m025-transfer summary { cursor: pointer; font-weight: 600; color: #173b60; }
+.m025-transfer label { margin: .8rem 0; }
+.m025-queue-controls { display: flex; align-items: end; flex-wrap: wrap; gap: .8rem; padding: .8rem 1rem; border: 1px solid #d6e0eb; border-radius: .65rem; background: #f8fafc; margin: .8rem 0; }
+.m025-queue-summary { flex: 1 1 240px; align-self: center; font-weight: 600; color: #304d6b; }
+.m025-queue-controls small { flex: 1 1 100%; color: #526477; }
+.m025-work-card__tracking { display: grid; gap: .35rem; border-top: 1px solid #d6e0eb; padding-top: .5rem; margin-top: .3rem; }
+.m025-priority { font-size: .78rem; font-weight: 700; text-transform: capitalize; }
+.m025-priority--urgent, .m025-overdue { color: #a52720 !important; }
+.m025-priority--high, .m025-blocked { color: #81540d !important; }
+.m025-blocked { overflow-wrap: anywhere; }
+.m025-handoff-state { padding: .75rem; border-radius: .5rem; background: #eef4fa; margin: .75rem 0; }
+.m025-handoff-state dl { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr; gap: .5rem; margin: .65rem 0; }
+.m025-handoff-state dt { color: #526477; }
+.m025-handoff-state dd { margin: 0; }
+.m025-handoff-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+.m025-transfer input[type='date'] { border: 1px solid #bdcbd9; border-radius: .4rem; padding: .65rem; background: white; color: #18324b; font: inherit; }
+.m025-notification-status { font-size: .85rem; color: #526477; border-top: 1px solid #d6e0eb; margin-top: 1rem; padding-top: .75rem; }
+.m025-notification-status ul { margin: .5rem 0; padding-left: 1.2rem; }
+.m025-task-blockers button { text-align: left; border: 0; background: transparent; color: #075985; font: inherit; text-decoration: underline; padding: .3rem 0; cursor: pointer; }
+.m025-workspace-views button:focus-visible, .m025-stage-nav a:focus-visible, .m025-task-review input:focus-visible, .m025-task-review textarea:focus-visible, .m025-transfer select:focus-visible, .m025-transfer textarea:focus-visible { outline: 3px solid #56a3ce; outline-offset: 2px; }
+@media (max-width: 700px) { .m025-task-review { padding: .7rem; } .m025-task-review__allocation { grid-template-columns: 1fr; } }

@@ -387,7 +387,8 @@ internal static class EnterpriseNotificationRepository
                     JOIN enterprise_notification_policies policy
                       ON policy.policy_code = event.policy_code
                     WHERE (event.event_status IN ('pending', 'failed')
-                        OR (event.policy_code IN ('FLOWHIVE_TASK_ASSIGNED','FLOWHIVE_TASK_DUE')
+                        OR (event.policy_code IN ('FLOWHIVE_TASK_ASSIGNED','FLOWHIVE_TASK_DUE',
+                            'MODULE025_HANDOFF','MODULE025_COVERAGE_STARTED','MODULE025_COVERAGE_RETURNED','MODULE025_HANDOFF_ACKNOWLEDGED')
                             AND event.event_status='processing' AND event.updated_at < NOW()-INTERVAL '30 minutes'))
                       AND event.available_at <= NOW()
                       AND event.attempt_count < 8
@@ -504,6 +505,21 @@ internal static class EnterpriseNotificationRepository
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    internal static async Task<EnterpriseNotificationEventRow?> LoadEventAsync(
+        NpgsqlConnection connection, Guid eventId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT enterprise_notification_event_id,policy_code,source_module,source_event_id,idempotency_key,
+                entity_type,entity_id,project_id,subject_user_id,occurred_at,available_at,payload::text,
+                ingestion_source,event_status,dispatch_id,attempt_count,last_error_code,last_error_message,
+                processed_at,created_at,updated_at
+            FROM enterprise_notification_events WHERE enterprise_notification_event_id=@id;
+            """, connection);
+        command.Parameters.AddWithValue("id", eventId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadEvent(reader) : null;
     }
 
     internal static async Task<EnterpriseNotificationEventRow[]> LoadRecentEventsAsync(

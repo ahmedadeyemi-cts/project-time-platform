@@ -286,13 +286,19 @@ internal static class ProjectNotificationProcessingService
         }
         dispatch = dispatch with { DeliveryStatus = "sending" };
 
-        var readiness = await Module065ProjectNotificationDelivery.GetReadinessAsync(
-            context,
-            cancellationToken);
+        var handoff = await Module025SowGsdModule.ValidateHandoffDispatchAsync(connection, dispatch, cancellationToken);
+        var readiness = handoff.Current
+            ? await Module065ProjectNotificationDelivery.GetReadinessAsync(context, cancellationToken)
+            : Module065MailReadiness.Locked("The current SOW/GSD handoff recipients or policy could not be verified.");
         var effectiveBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(
             dispatch.DeliveryBoundary,
             readiness.RecipientBoundary);
-        var delivery = effectiveBoundary == "production_governed"
+        effectiveBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(effectiveBoundary, handoff.Boundary);
+        var delivery = !handoff.Current
+            ? new Module065MailDeliveryResult(false,"suppressed",readiness.ConfiguredProvider,effectiveBoundary,
+                string.Empty,handoff.DiagnosticCode,
+                "SOW/GSD handoff delivery was suppressed because its current recipients or policy could not be verified. No provider was invoked.")
+            : effectiveBoundary == "production_governed"
             ? await Module065ProjectNotificationDelivery.DeliverAsync(
                 dispatch.Subject,
                 dispatch.TextBody,
@@ -352,7 +358,9 @@ internal static class ProjectNotificationProcessingService
                 dispatch.AttemptCount);
         }
 
-        await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection, dispatch, context, cancellationToken);
+        if (handoff.Current)
+            await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection,
+                dispatch with { DeliveryBoundary = effectiveBoundary }, context, cancellationToken);
 
         return new(
             delivery.Sent,

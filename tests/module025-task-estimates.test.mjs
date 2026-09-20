@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { taskTotal, seedTasks, withTasks, exportChecks } from '../src/frontend/project-time-web/src/module025/task-estimates.js';
+import { taskTotal, seedTasks, withTasks, exportChecks, phaseTaskIssues } from '../src/frontend/project-time-web/src/module025/task-estimates.js';
 let id = 0;
 const seeded = seedTasks({ detailedActivities: ['Discover scope', 'Design solution'], technicalTasks: ['Supporting detail'] }, () => `task-${++id}`);
 assert.equal(seeded.length, 2);
@@ -16,6 +16,17 @@ assert.equal(withTasks({ finalHours:5 }, tasks).finalHours, 0.3);
 assert.equal(withTasks({ finalHours:5 }, seeded).finalHours, 5);
 assert.equal(taskTotal([{ ...tasks[0], hours:0 }]), 0);
 assert.equal(taskTotal([tasks[0],tasks[0]]), null);
+const split = { taskId:'split',description:'Perform cutover',hours:3,regularHours:1,afterHours:2,afterHoursRequired:true,reviewed:false };
+assert.equal(taskTotal([split]),3,'split hours count once');
+assert.equal(taskTotal([{...split,afterHours:null}]),null,'partial split rejected');
+assert.equal(taskTotal([{...split,afterHoursRequired:false}]),null,'afterhours requires explicit designation');
+assert.equal(taskTotal([{...split,regularHours:3,afterHours:0}]),null,'required afterhours needs positive allocation');
+assert.equal(taskTotal([{...split,regularHours:null,afterHours:null}]),null,'missing required allocation remains unknown');
+assert.equal(taskTotal([{...split,regularHours:2,afterHours:2}]),null,'mismatched allocation rejected');
+assert.equal(taskTotal([{...split,regularHours:'',afterHours:''}]),null,'blank allocations do not coerce to zero');
+assert.ok(phaseTaskIssues({tasks:[split],finalHours:3}).some(issue=>issue.includes('confirm the proposed estimate')));
+assert.deepEqual(phaseTaskIssues({tasks:[{...split,reviewed:true}],finalHours:3}),[]);
+
 assert.throws(() => seedTasks({ detailedActivities:Array.from({length:201},(_,i)=>`Task ${i}`) }));
 const e = { customerName:'Customer', projectName:'Project', commercialModel:'fixed', ownerDisplayName:'SA', accountExecutiveUserId:'ae', resaleUserId:'saa', customerProgram:'standard', phases:Array.from({length:5},()=>({ tasks, finalHours:0.3 })) };
 assert.ok(exportChecks(e).every(x=>x.complete));

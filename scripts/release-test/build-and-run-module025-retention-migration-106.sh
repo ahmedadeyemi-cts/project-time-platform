@@ -21,8 +21,13 @@ trap 'rm -rf -- "$CONTEXT"' EXIT
 install -m 0444 "$ROOT/database/migrations/106_module025_sow_sell_register.sql" "$CONTEXT/migration-106.sql"
 install -m 0444 "$ROOT/database/migrations/110_module025_ungenerated_draft_delete.sql" "$CONTEXT/migration-110.sql"
 install -m 0444 "$ROOT/database/migrations/111_connectwise_sell_provider.sql" "$CONTEXT/migration-111.sql"
+install -m 0444 "$ROOT/database/migrations/116_module025_governed_ownership_transfer.sql" "$CONTEXT/migration-116.sql"
+install -m 0444 "$ROOT/database/migrations/117_module025_template_candidates.sql" "$CONTEXT/migration-117.sql"
+install -m 0444 "$ROOT/database/migrations/118_module025_work_tracking.sql" "$CONTEXT/migration-118.sql"
+install -m 0444 "$ROOT/database/migrations/119_module025_temporary_handoffs.sql" "$CONTEXT/migration-119.sql"
+install -m 0444 "$ROOT/database/migrations/120_module025_handoff_notifications.sql" "$CONTEXT/migration-120.sql"
 printf '%s\n' "$RELEASE" > "$CONTEXT/release-commit"
-(cd "$CONTEXT" && sha256sum migration-106.sql migration-110.sql migration-111.sql release-commit > SHA256SUMS)
+(cd "$CONTEXT" && sha256sum migration-106.sql migration-110.sql migration-111.sql migration-116.sql migration-117.sql migration-118.sql migration-119.sql migration-120.sql release-commit > SHA256SUMS)
 cat > "$CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -33,6 +38,11 @@ sha256sum --check --status SHA256SUMS
 psql -X -v ON_ERROR_STOP=1 --file migration-106.sql
 psql -X -v ON_ERROR_STOP=1 --file migration-110.sql
 psql -X -v ON_ERROR_STOP=1 --file migration-111.sql
+psql -X -v ON_ERROR_STOP=1 --file migration-116.sql
+psql -X -v ON_ERROR_STOP=1 --file migration-117.sql
+psql -X -v ON_ERROR_STOP=1 --file migration-118.sql
+psql -X -v ON_ERROR_STOP=1 --file migration-119.sql
+psql -X -v ON_ERROR_STOP=1 --file migration-120.sql
 verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT (
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='106_module025_sow_sell_register')
@@ -48,6 +58,34 @@ SELECT (
   AND EXISTS(SELECT 1 FROM crm_integration_providers WHERE provider_key='connectwise_sell' AND provider_name='ConnectWise SELL' AND auth_model='api_key')
   AND NOT EXISTS(SELECT 1 FROM crm_integration_providers WHERE provider_key='zendesk_sell' AND is_enabled)
   AND pg_get_functiondef('module025_reject_evidence_mutation()'::regprocedure) LIKE '%projectpulse.module025_allow_draft_delete%'
+  -- SA workspace schema is verified before the unchanged job can report success.
+  AND NOT EXISTS (
+    SELECT 1 FROM unnest(ARRAY['116_module025_governed_ownership_transfer','117_module025_template_candidates',
+      '118_module025_work_tracking','119_module025_temporary_handoffs','120_module025_handoff_notifications']) AS m(id)
+    WHERE NOT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id=m.id))
+  AND pg_get_functiondef('module025_protect_sow_gsd_identity()'::regprocedure) LIKE '%transferTransactionId%'
+  AND pg_get_functiondef('module025_reject_evidence_mutation()'::regprocedure) LIKE '%ownership_transferred%'
+  AND NOT EXISTS (
+    SELECT 1 FROM unnest(ARRAY['module025_template_candidates','module025_work_tracking_events',
+      'module025_sow_gsd_handoffs']) AS t(name)
+    WHERE to_regclass('public.' || t.name) IS NULL)
+  AND NOT EXISTS (
+    SELECT 1 FROM (VALUES
+      ('module025_sow_gsd_engagements','trg_module025_protect_sow_gsd_identity'),
+      ('module025_template_candidates','trg_module025_protect_template_candidate'),
+      ('module025_work_tracking_events','trg_module025_protect_work_tracking'),
+      ('module025_work_tracking_events','trg_module025_protect_work_tracking_truncate'),
+      ('module025_work_tracking_events','trg_module025_validate_work_tracking_insert'),
+      ('module025_sow_gsd_handoffs','module025_handoff_metadata_check'),
+      ('module025_sow_gsd_handoffs','module025_handoff_no_change'),
+      ('module025_sow_gsd_handoffs','module025_handoff_no_truncate')) AS required(table_name,trigger_name)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid=to_regclass('public.' || required.table_name)
+      AND tgname=required.trigger_name AND NOT tgisinternal AND tgenabled IN ('O','A')))
+  AND (SELECT count(*) FROM enterprise_notification_policies
+    WHERE policy_code IN ('MODULE025_HANDOFF','MODULE025_COVERAGE_STARTED',
+      'MODULE025_COVERAGE_RETURNED','MODULE025_HANDOFF_ACKNOWLEDGED')
+      AND owner_module='065' AND source_module='025'
+      AND recipient_strategy='module025_handoff' AND producer_contract='module025-handoff-v1')=4
 )::text;
 SQL
 )"
@@ -55,13 +93,18 @@ SQL
 echo 'MODULE025_RETENTION_MIGRATION_106=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_110_MODULE025_DRAFT_DELETE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_111_CONNECTWISE_SELL=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_116_MODULE025_GOVERNED_OWNERSHIP_TRANSFER=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_117_MODULE025_TEMPLATE_CANDIDATES=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_118_MODULE025_WORK_TRACKING=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_119_MODULE025_TEMPORARY_HANDOFFS=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_120_MODULE025_HANDOFF_NOTIFICATIONS=APPLIED_AND_VERIFIED'
 ENTRYPOINT
 cat > "$CONTEXT/Dockerfile" <<'DOCKERFILE'
 FROM postgres:16-alpine
 RUN apk add --no-cache bash coreutils ca-certificates
 WORKDIR /opt/projectpulse/release
-COPY migration-106.sql migration-110.sql migration-111.sql release-commit SHA256SUMS entrypoint.sh ./
-RUN chmod 0444 migration-106.sql migration-110.sql migration-111.sql release-commit SHA256SUMS && chmod 0555 entrypoint.sh
+COPY migration-106.sql migration-110.sql migration-111.sql migration-116.sql migration-117.sql migration-118.sql migration-119.sql migration-120.sql release-commit SHA256SUMS entrypoint.sh ./
+RUN chmod 0444 migration-106.sql migration-110.sql migration-111.sql migration-116.sql migration-117.sql migration-118.sql migration-119.sql migration-120.sql release-commit SHA256SUMS && chmod 0555 entrypoint.sh
 ENTRYPOINT ["/opt/projectpulse/release/entrypoint.sh"]
 DOCKERFILE
 TAG="module025-retention-migrator:${RELEASE:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -82,5 +125,5 @@ export MAIN_RELEASE_MIGRATION_MODE=apply
 bash "$ROOT/scripts/release-test/run-migration-job.sh"
 mkdir -p "${EVIDENCE_DIR:?}"
 jq -n --arg source "$RELEASE" --arg image "$MAIN_RELEASE_MIGRATION_IMAGE" \
-  '{status:"applied_and_verified",migrations:["106_module025_sow_sell_register","110_module025_ungenerated_draft_delete","111_connectwise_sell_provider"],sourceCommit:$source,image:$image,productionMutation:false}' \
+  '{status:"applied_and_verified",migrations:["106_module025_sow_sell_register","110_module025_ungenerated_draft_delete","111_connectwise_sell_provider","116_module025_governed_ownership_transfer","117_module025_template_candidates","118_module025_work_tracking","119_module025_temporary_handoffs","120_module025_handoff_notifications"],sourceCommit:$source,image:$image,productionMutation:false}' \
   > "$EVIDENCE_DIR/module025-retention-migration.json"

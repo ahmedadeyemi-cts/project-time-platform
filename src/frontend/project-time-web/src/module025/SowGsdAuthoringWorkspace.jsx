@@ -3,7 +3,13 @@ import USSignalLogo from '../enterprise/USSignalLogo.jsx';
 import { downloadProtected } from './protected-download.js';
 import { formatGenerationProgress, formatGenerationFailure, generationConfidence } from './generation-feedback.js';
 import './sow-gsd-workspace.css';
-import { taskTotal, seedTasks, withTasks, exportChecks } from './task-estimates.js';
+import { withTasks, exportChecks, phaseTaskIssues } from './task-estimates.js';
+import PhaseTaskReview from './PhaseTaskReview.jsx';
+import OwnershipTransfer from './OwnershipTransfer.jsx';
+import TemplateCatalog from './TemplateCatalog.jsx';
+import WorkTrackingPanel from './WorkTrackingPanel.jsx';
+import { calendarDate, queueFlags, selectQueue } from './work-queue.js';
+import './sa-workspace-redesign.css';
 
 const PHASE_FIELDS = [
   ['detailedActivities', 'Detailed activities'],
@@ -149,7 +155,7 @@ function Notice({ tone = 'info', title, children }) {
   );
 }
 
-function WorkList({ rows, selectedId, onSelect, emptyLabel }) {
+function WorkList({ rows, selectedId, onSelect, emptyLabel, disabled, trackingById = {} }) {
   if (!rows.length) {
     return (
       <div className="m025-empty">
@@ -164,6 +170,7 @@ function WorkList({ rows, selectedId, onSelect, emptyLabel }) {
         <button
           type="button"
           role="listitem"
+          disabled={disabled}
           key={row.engagementId}
           className={selectedId === row.engagementId ? 'm025-work-card is-selected' : 'm025-work-card'}
           onClick={() => onSelect(row.engagementId)}
@@ -174,21 +181,28 @@ function WorkList({ rows, selectedId, onSelect, emptyLabel }) {
           </div>
           <strong>{row.customerName || 'Customer not selected'}</strong>
           <span>{row.projectName || 'Project name not set'}</span>
-          <span>{commercialLabel(row.commercialModel)} · {row.finalHours ?? 0} reviewed hour(s)</span>
+          <span>{commercialLabel(row.commercialModel)} · {row.finalHours ?? 0} delivery LOE hour(s)</span>
+          <small>{[row.ownerDepartmentName, row.ownerTeamName].filter(Boolean).join(' · ')}</small>
+          <small>AE: {row.accountExecutiveName || 'Unassigned'}</small>
           <small>SA: {row.ownerDisplayName || 'Unassigned'} · Updated {formatTime(row.updatedAt)}</small>
+          {trackingById[row.engagementId] && <span className="m025-work-card__tracking">
+            <span className={`m025-priority m025-priority--${trackingById[row.engagementId].priority || 'normal'}`}>{trackingById[row.engagementId].priority || 'normal'} priority</span>
+            <small className={queueFlags(row, trackingById[row.engagementId]).overdue ? 'm025-overdue' : ''}>Target: {calendarDate(trackingById[row.engagementId].targetDate)}{queueFlags(row, trackingById[row.engagementId]).overdue ? ' · Overdue' : ''}</small>
+            {trackingById[row.engagementId].blockerReason && <small className="m025-blocked">Blocked: {trackingById[row.engagementId].blockerReason} · {trackingById[row.engagementId].blockerOwnerDisplayName || 'Owner needs review'}</small>}
+            {trackingById[row.engagementId].authoringHours != null && <small>SA authoring remaining: {trackingById[row.engagementId].authoringHours}h</small>}
+            {trackingById[row.engagementId].workflowIdleDays != null && <small>{trackingById[row.engagementId].workflowIdleDays} day(s) since workflow activity</small>}
+          </span>}
         </button>
       ))}
     </div>
   );
 }
 
-function PhaseEditor({ phase, readOnly, onChange }) {
-  const [taskError, setTaskError] = useState('');
+function PhaseEditor({ phase, proposals, readOnly, onChange }) {
   const tasks = phase?.tasks || [];
-  const total = taskTotal(tasks);
   const variance = Number(phase?.finalHours || 0) - Number(phase?.suggestedHours || 0);
   return (
-    <article className="m025-phase-card">
+    <article className="m025-phase-card" id={`m025-phase-${phase.phaseCode}`}>
       <header>
         <div>
           <span className="m025-phase-sequence">{String(phase?.sortOrder || '').padStart(2, '0')}</span>
@@ -213,31 +227,7 @@ function PhaseEditor({ phase, readOnly, onChange }) {
         </div>
       </header>
 
-      <section className="m025-task-estimates" aria-label={`${phase?.label || phase?.phaseCode} task estimates`}>
-        <h4>Task breakdown and reviewed hours</h4>
-        <p>Enter hours for each task. Completed task estimates calculate the phase total. Blank hours remain incomplete.</p>
-        {taskError ? <p role="alert">{taskError}</p> : null}
-        {!tasks.length ? <Button disabled={readOnly} onClick={() => {
-          try { onChange('tasks', seedTasks(phase)); setTaskError(''); }
-          catch (error) { setTaskError(error.message); }
-        }}>Create task rows from saved scope</Button> : null}
-        {tasks.length > 0 ? <>
-          <div className="m025-task-table-scroll"><table>
-            <thead><tr><th>Task name</th><th>Engineering hours</th><th>Notes</th><th>Action</th></tr></thead>
-            <tbody>{tasks.map((task, index) => <tr key={task.taskId}>
-              <td><textarea aria-label={`Task ${index + 1} description`} rows={2} maxLength={6000} disabled={readOnly} value={task.description || ''}
-                onChange={event => onChange('tasks', tasks.map((t, i) => i === index ? { ...t, description: event.target.value } : t))} /></td>
-              <td><input aria-label={`Task ${index + 1} hours`} type="number" min="0" max="100000" step="0.01" disabled={readOnly} value={task.hours ?? ''}
-                onChange={event => onChange('tasks', tasks.map((t, i) => i === index ? { ...t, hours: event.target.value === '' ? null : Number(event.target.value) } : t))} /></td>
-              <td><textarea aria-label={`Task ${index + 1} notes`} rows={2} maxLength={4000} disabled={readOnly} value={task.notes || ''}
-                onChange={event => onChange('tasks', tasks.map((t, i) => i === index ? { ...t, notes: event.target.value } : t))} /></td>
-              <td><Button disabled={readOnly} onClick={() => onChange('tasks', tasks.filter((_, i) => i !== index))}>Remove task {index + 1}</Button></td>
-            </tr>)}</tbody>
-          </table></div>
-          <p role="status">{total === null ? 'Task estimates are incomplete. Complete each description and hours before confirmation.' : `Reviewed phase total: ${total.toFixed(2)} hours`}</p>
-        </> : null}
-        <Button disabled={readOnly || tasks.length >= 200} onClick={() => onChange('tasks', [...tasks, { taskId: crypto.randomUUID(), description: 'New task', hours: null, notes: '' }])}>Add task</Button>
-      </section>
+      <PhaseTaskReview phase={phase} proposals={proposals} readOnly={readOnly} onChange={onChange} />
 
       <Field label="Phase objective" hint="Describe the expected outcome and what completion of this phase means.">
         <textarea
@@ -280,6 +270,10 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   const [bootstrap, setBootstrap] = useState(null);
   const [bootError, setBootError] = useState('');
   const [activeTab, setActiveTab] = useState('active');
+  const [workspaceView, setWorkspaceView] = useState('my');
+  const [listTotal, setListTotal] = useState(0);
+  const [listTruncated, setListTruncated] = useState(false);
+  const listRequest = useRef(0);
   const [ownerUserId, setOwnerUserId] = useState('');
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState([]);
@@ -291,6 +285,13 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState({ state: 'idle', message: '', at: null });
   const [actionState, setActionState] = useState({ busy: '', message: '', error: '' });
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [trackingDirty, setTrackingDirty] = useState(false);
+  const [trackingBusy, setTrackingBusy] = useState(false);
+  const [trackingById, setTrackingById] = useState({});
+  const [trackingQueueError, setTrackingQueueError] = useState('');
+  const [queueFilter, setQueueFilter] = useState('all');
+  const [queueSort, setQueueSort] = useState('updated');
   const [generationStartedAt, setGenerationStartedAt] = useState(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [lastGenerationDurationSeconds, setLastGenerationDurationSeconds] = useState(null);
@@ -304,6 +305,9 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
       const payload = await requestJson('/api/module025/sow-gsd/bootstrap');
       setBootstrap(payload);
       setOwnerUserId(payload?.currentUser?.userId || '');
+      if (payload?.access?.isManager && !payload?.access?.isSolutionArchitect) {
+        setWorkspaceView('team'); setOwnerUserId('__team__');
+      }
       setBootError('');
     } catch (error) {
       setBootError(error?.message || 'Module 025 could not be initialized.');
@@ -319,31 +323,67 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   }, [bootstrap, onWorkspaceReady]);
 
   const loadList = useCallback(async () => {
-    if (!ownerUserId) return;
+    if (!ownerUserId || workspaceView === 'templates') return;
+    const requestId = ++listRequest.current;
     setListLoading(true);
     try {
       const query = new URLSearchParams({ state: activeTab, ownerUserId });
       if (search.trim()) query.set('search', search.trim());
-      const payload = await requestJson(`/api/module025/sow-gsd?${query.toString()}`);
+      const endpoint = workspaceView === 'team' && ownerUserId === '__team__' ? '/api/module025/sow-gsd/team-work' : '/api/module025/sow-gsd';
+      if (ownerUserId === '__team__') query.delete('ownerUserId');
+      const payload = await requestJson(`${endpoint}?${query.toString()}`);
+      if (requestId !== listRequest.current) return;
+      setListTotal(payload.totalCount ?? payload.engagements?.length ?? 0);
+      setListTruncated(Boolean(payload.truncated));
       const nextRows = Array.isArray(payload?.engagements) ? payload.engagements : [];
       setRows(nextRows);
+      setTrackingById({}); setTrackingQueueError('');
       if (selectedId && !nextRows.some((row) => row.engagementId === selectedId)) {
         selectedEngagementRef.current = '';
         setSelectedId('');
         setEngagement(null);
         setAccess(null);
       }
+      if (bootstrap?.capabilities?.workTracking && nextRows.length) {
+        try {
+          // Keep each read below request-line limits while avoiding a request per record.
+          const batches = [];
+          for (let offset = 0; offset < nextRows.length; offset += 100)
+            batches.push(nextRows.slice(offset, offset + 100).map(row => row.engagementId).join(','));
+          const results = await Promise.all(batches.map(ids => requestJson(`/api/module025/sow-gsd/work-tracking?engagementIds=${encodeURIComponent(ids)}`)));
+          if (requestId !== listRequest.current) return;
+          if (results.some(result => !result.schemaReady)) {
+            setTrackingQueueError('Work tracking is awaiting its database update. Queue deadlines and blockers are unavailable.');
+            setQueueFilter('all'); setQueueSort('updated');
+          }
+          else setTrackingById(Object.fromEntries(results.flatMap(result => result.tracking || []).map(item => [item.engagementId, item])));
+        } catch (error) {
+          if (requestId === listRequest.current) {
+            setTrackingQueueError(error.message || 'Queue tracking could not be loaded.');
+            setQueueFilter('all'); setQueueSort('updated');
+          }
+        }
+      }
     } catch (error) {
+      if (requestId !== listRequest.current) return;
+      setRows([]); setListTotal(0); setListTruncated(false);
       setActionState({ busy: '', message: '', error: error?.message || 'The SOW/GSD work list could not be loaded.' });
     } finally {
-      setListLoading(false);
+      if (requestId === listRequest.current) setListLoading(false);
     }
-  }, [activeTab, ownerUserId, search, selectedId]);
+  }, [activeTab, ownerUserId, search, selectedId, workspaceView, bootstrap?.capabilities?.workTracking]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadList(), search ? 250 : 0);
     return () => window.clearTimeout(timer);
   }, [loadList, search]);
+
+  useEffect(() => {
+    if (!dirty && !trackingDirty && !trackingBusy && !transferBusy) return undefined;
+    const protect = event => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', protect);
+    return () => window.removeEventListener('beforeunload', protect);
+  }, [dirty, trackingDirty, trackingBusy, transferBusy]);
 
   const openEngagement = useCallback(async (engagementId) => {
     if (!engagementId) return;
@@ -457,7 +497,8 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   }, [dirty, access, saveNow, bootstrap]);
 
   const createEngagement = async () => {
-    if (!bootstrap?.access?.canCreate || actionState.busy) return;
+    if (!bootstrap?.access?.canCreate || actionState.busy || transferBusy || trackingBusy || trackingDirty) return;
+    if (!await saveNow()) return;
     setActionState({ busy: 'create', message: '', error: '' });
     try {
       const payload = await requestJson('/api/module025/sow-gsd', {
@@ -490,7 +531,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   }, [actionState.busy, generationStartedAt]);
 
   const runAction = async (action, successMessage) => {
-    if (!engagement || actionState.busy) return;
+    if (!engagement || actionState.busy || transferBusy || trackingBusy || trackingDirty) return;
     const actionRecordId = engagement.engagementId;
     const localGenerationStart = action === 'generate' ? Date.now() : null;
     if (localGenerationStart) {
@@ -548,7 +589,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   };
 
   const archiveSelected = async () => {
-    if (!engagement) return;
+    if (!engagement || actionState.busy || transferBusy || trackingBusy || trackingDirty || !await saveNow()) return;
     setActionState({ busy: 'archive', message: '', error: '' });
     try {
       await requestJson(`/api/module025/sow-gsd/${engagement.engagementId}/archive`, { method: 'POST' });
@@ -563,7 +604,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   };
 
   const deleteDraft = async () => {
-    if (!engagement || engagement.status !== 'draft' || engagement.lastGeneratedAt || actionState.busy) return;
+    if (!engagement || engagement.status !== 'draft' || engagement.lastGeneratedAt || actionState.busy || transferBusy || trackingBusy || trackingDirty) return;
     const confirmed = window.confirm(`Delete draft ${engagement.engagementNumber}? This permanently removes the ungenerated draft and cannot be undone.`);
     if (!confirmed) return;
     setActionState({ busy: 'delete', message: '', error: '' });
@@ -597,18 +638,26 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
     () => (engagement?.phases || []).reduce((sum, phase) => sum + Number(phase.suggestedHours || 0), 0),
     [engagement]
   );
-  const readOnly = actionState.busy === 'generate' || !access?.canEdit || engagement?.status === 'confirmed' || engagement?.status === 'archived' || !engagement?.isActive;
+  const operationBusy = transferBusy || trackingBusy || Boolean(actionState.busy);
+  const navigationBlocked = dirty || trackingDirty || operationBusy;
+  const visibleRows = selectQueue(rows, trackingById, queueFilter, queueSort);
+  const queueCounts = rows.reduce((counts, row) => {
+    const flags = queueFlags(row, trackingById[row.engagementId]);
+    for (const key of ['overdue', 'blocked', 'urgent']) if (flags[key]) counts[key]++;
+    return counts;
+  }, { overdue: 0, blocked: 0, urgent: 0 });
+  const readOnly = transferBusy || trackingBusy || actionState.busy === 'generate' || !access?.canEdit || engagement?.status === 'confirmed' || engagement?.status === 'archived' || !engagement?.isActive;
   const isSpecialGsd = engagement?.customerProgram === 'toyota' || engagement?.customerProgram === 'hyundai';
   const warnings = Array.isArray(engagement?.aiMetadata?.warnings) ? engagement.aiMetadata.warnings : [];
   const missingEvidence = Array.isArray(engagement?.aiMetadata?.missingEvidence) ? engagement.aiMetadata.missingEvidence : [];
   const generationInputReady = Boolean(String(engagement?.customerName || '').trim())
     && meaningfulServiceOverview(engagement?.serviceOverview);
-  const downloadReady = engagement?.status === 'confirmed' && !dirty && !detailLoading && !actionState.busy;
+  const downloadReady = engagement?.status === 'confirmed' && !dirty && !detailLoading && !actionState.busy && !transferBusy && !trackingBusy;
   const phaseReviewComplete = (engagement?.phases || []).length === 5
     && (engagement?.phases || []).every((phase) => String(phase.objective || '').trim().length > 0);
   const exportReadiness = exportChecks(engagement);
   const missingExportFields = exportReadiness.filter(item => !item.complete);
-  const draftDownloadReady = Boolean(engagement?.isActive) && !['confirmed', 'archived'].includes(engagement?.status) && !dirty && !detailLoading && !actionState.busy;
+  const draftDownloadReady = Boolean(engagement?.isActive) && !['confirmed', 'archived'].includes(engagement?.status) && !dirty && !detailLoading && !actionState.busy && !transferBusy && !trackingBusy;
   const confirmChecks = engagement ? [
     ...exportReadiness,
     { key: 'generation', label: 'Detailed P/D/I/V/R scope generated', complete: Boolean(engagement.lastGeneratedAt) },
@@ -617,6 +666,8 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   ] : [];
   const confirmReady = confirmChecks.length > 0 && confirmChecks.every((item) => item.complete);
   const incompleteConfirmChecks = confirmChecks.filter((item) => !item.complete);
+  const taskReviewIssues = (engagement?.phases || []).flatMap(phase => phaseTaskIssues(phase).map(message => ({ phaseCode: phase.phaseCode, label: phase.label || phase.phaseCode, message })));
+  const currentStage = !engagement ? 0 : engagement.status === 'confirmed' || engagement.status === 'archived' ? 4 : !generationInputReady ? 0 : !engagement.lastGeneratedAt ? 1 : !confirmReady ? 2 : 3;
   const documentReadiness = !engagement
     ? 'Select a SOW/GSD record to review its documents and ConnectWise SELL handoff.'
     : engagement.status === 'confirmed'
@@ -678,17 +729,24 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
           <div>
             <p className="m025-eyebrow"><span>Module 025</span><i /> <span>Sales &amp; Opportunities</span></p>
             <h1>SOW &amp; GSD Workspace</h1>
-            <p>Create, review, autosave, confirm, archive, and export detailed Statements of Work and General Solution Designs from one governed record.</p>
+            <p>Prepare customer scope and detailed delivery estimates in one record. Review the proposed work, confirm the package, and complete the sales handoff.</p>
           </div>
         </div>
         <div className="m025-header__actions">
-          <Button kind="primary" onClick={createEngagement} disabled={!bootstrap?.access?.canCreate || Boolean(actionState.busy)}>
+          <Button kind="primary" onClick={createEngagement} disabled={!bootstrap?.access?.canCreate || (operationBusy || trackingDirty)}>
             {actionState.busy === 'create' ? 'Creating…' : 'New SOW / GSD'}
           </Button>
         </div>
       </header>
 
-      <section className="m025-section m025-document-actions" aria-label="Documents and ConnectWise SELL">
+      <nav className="m025-workspace-views" aria-label="Workspace audience">
+        <button type="button" disabled={navigationBlocked} aria-pressed={workspaceView === 'my'} onClick={() => { setWorkspaceView('my'); setOwnerUserId(bootstrap.currentUser.userId); }}>My Work</button>
+        {(bootstrap.access.isManager || bootstrap.access.isAdministrator) && <button type="button" disabled={navigationBlocked} aria-pressed={workspaceView === 'team'} onClick={() => { setWorkspaceView('team'); setOwnerUserId('__team__'); }}>Team Work</button>}
+        <button type="button" disabled={navigationBlocked} aria-pressed={workspaceView === 'templates'} onClick={() => setWorkspaceView('templates')}>Templates</button>
+      </nav>
+      {workspaceView === 'templates' && <TemplateCatalog identityKey={`${bootstrap.currentUser.userId}:${Boolean(bootstrap.access.isViewAs)}`} />}
+      <div hidden={workspaceView === 'templates'}>
+      <section id="m025-documents" className="m025-section m025-document-actions" aria-label="Documents and ConnectWise SELL">
         <div className="m025-section-heading"><div><h2>Documents &amp; ConnectWise SELL handoff</h2></div></div>
         <p id="m025-document-readiness" role="status">{documentReadiness}</p>
         {engagement && !['confirmed', 'archived'].includes(engagement.status) ? <div className="m025-export-readiness" role="status">
@@ -702,38 +760,53 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
           </> : null}
           <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('sow.docx')}>Download SOW (.docx)</Button>
           <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('gsd.xlsx')}>Download GSD (.xlsx)</Button>
-          <Button disabled={!engagement || detailLoading || Boolean(actionState.busy) || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Send to ConnectWise SELL</Button>
-          <Button disabled={!engagement || detailLoading || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Version history</Button>
+          <Button disabled={!engagement || detailLoading || navigationBlocked || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Send to ConnectWise SELL</Button>
+          <Button disabled={!engagement || detailLoading || navigationBlocked || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Version history</Button>
         </div>
         <p className="m025-document-help">Send to ConnectWise SELL opens this record’s retained versions and submission readiness. It does not send documents until you confirm an available submission.</p>
       </section>
 
       <section className="m025-metrics" aria-label="Module 025 summary">
-        <Metric label="Your role" value={bootstrap?.access?.isSolutionArchitect ? 'Solution Architect' : bootstrap?.access?.isManager ? 'Manager' : 'Administrator'} detail={bootstrap?.access?.managerScopeReadOnly ? 'Direct-report visibility is read-only' : 'Governed workspace access'} />
-        <Metric label="Active records" value={activeTab === 'active' ? rows.length : '—'} detail="Searchable by immutable SOW/GSD ID" />
+        <Metric label="Your role" value={bootstrap?.access?.isSolutionArchitect ? 'Solution Architect' : bootstrap?.access?.isManager ? 'Manager' : 'Administrator'} detail={bootstrap?.access?.managerScopeReadOnly ? 'Team content is read-only; authorized transfers are recorded' : 'Governed workspace access'} />
+        <Metric label="Active records" value={activeTab === 'active' ? listTotal : '—'} detail="Searchable by immutable SOW/GSD ID" />
         <Metric label="Autosave" value="On" detail="Optimistic revision protection" />
         <Metric label="AI scope" value="P / D / I / V / R" detail="Suggested LOE remains editable" />
       </section>
 
       <nav className="m025-tabs" aria-label="SOW and GSD views">
-        <button type="button" className={activeTab === 'active' ? 'is-active' : ''} onClick={() => setActiveTab('active')}>Active SOW / GSD</button>
-        <button type="button" className={activeTab === 'archived' ? 'is-active' : ''} onClick={() => setActiveTab('archived')}>Archived</button>
+        <button type="button" disabled={navigationBlocked} className={activeTab === 'active' ? 'is-active' : ''} onClick={() => setActiveTab('active')}>Active SOW / GSD</button>
+        <button type="button" disabled={navigationBlocked} className={activeTab === 'archived' ? 'is-active' : ''} onClick={() => setActiveTab('archived')}>Archived</button>
       </nav>
 
       <section className="m025-filters">
         <Field label="Solution Architect">
-          <select value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)}>
-            {(bootstrap?.solutionArchitects || []).map((person) => (
+          <select value={ownerUserId} disabled={navigationBlocked} onChange={(event) => setOwnerUserId(event.target.value)}>
+            {workspaceView === 'team' && <option value="__team__">All authorized team members</option>}
+            {(bootstrap?.solutionArchitects || []).filter(person => workspaceView === 'team' || person.userId === bootstrap.currentUser.userId).map((person) => (
               <option key={person.userId} value={person.userId}>{person.displayName}{person.userId === bootstrap?.currentUser?.userId ? ' (You)' : ''}</option>
             ))}
           </select>
         </Field>
         <Field label="Search" hint="Project Name, Customer, Service Overview, or immutable SOW/GSD ID">
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="SOW-2026-000123 or customer…" />
+          <input value={search} disabled={navigationBlocked} onChange={(event) => setSearch(event.target.value)} placeholder="SOW-2026-000123 or customer…" />
         </Field>
         <div className="m025-filter-status">{listLoading ? 'Refreshing…' : `${rows.length} record(s)`}</div>
       </section>
 
+      {workspaceView === 'team' && <p className="m025-team-help">Visibility follows your current reporting relationships. Delivery LOE is the project estimate, not the SA’s authoring workload. Select a member to focus their queue.</p>}
+      {bootstrap.capabilities?.workTracking && <section className="m025-queue-controls" aria-label="Work queue priorities">
+        <div className="m025-queue-summary" aria-live="polite">{listLoading ? 'Loading work tracking…' : trackingQueueError ? 'Tracking unavailable' : `Loaded queue: ${queueCounts.overdue} overdue · ${queueCounts.blocked} blocked · ${queueCounts.urgent} urgent`}</div>
+        <Field label="Focus queue"><select value={queueFilter} disabled={navigationBlocked || Boolean(trackingQueueError) || listLoading} onChange={event => setQueueFilter(event.target.value)}>
+          <option value="all">All loaded work</option><option value="overdue">Overdue</option><option value="blocked">Blocked</option><option value="urgent">Urgent</option>
+        </select></Field>
+        <Field label="Sort queue"><select value={queueSort} disabled={navigationBlocked || Boolean(trackingQueueError) || listLoading} onChange={event => setQueueSort(event.target.value)}>
+          <option value="updated">Recently updated</option><option value="target">Target date</option><option value="priority">Priority</option>
+        </select></Field>
+        <small>Filters and counts apply to the {rows.length} loaded records. {visibleRows.length} shown.</small>
+      </section>}
+      {trackingQueueError && <Notice tone="warning" title="Work tracking unavailable"><p>{trackingQueueError}</p></Notice>}
+      {trackingDirty && <p className="m025-team-help" role="status">Save or discard your work-tracking changes before switching records or completing another action.</p>}
+      {listTruncated && <p role="status">Showing the latest {rows.length} of {listTotal} matching records. Filter by SA or search to narrow the queue.</p>}
       {actionState.error ? <Notice tone="critical" title="Action needs attention"><p>{actionState.error}</p></Notice> : null}
       {actionState.message ? <Notice tone={actionState.busy ? 'info' : 'success'} title={actionState.busy ? 'In progress' : 'Completed'}><p>{actionState.message}</p></Notice> : null}
 
@@ -743,9 +816,11 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
             <div><span>{activeTab === 'archived' ? 'ARCHIVE' : 'ACTIVE WORK'}</span><h2>{activeTab === 'archived' ? 'Archived packages' : 'SOW / GSD work queue'}</h2></div>
           </div>
           <WorkList
-            rows={rows}
+            disabled={operationBusy || trackingDirty}
+            rows={visibleRows}
+            trackingById={trackingById}
             selectedId={selectedId}
-            onSelect={openEngagement}
+            onSelect={async id => { if (!operationBusy && !trackingDirty && await saveNow()) await openEngagement(id); }}
             emptyLabel={activeTab === 'archived' ? 'No archived SOW/GSD packages' : 'No active SOW/GSD packages'}
           />
         </aside>
@@ -774,10 +849,23 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
                 </div>
               </header>
 
+              <nav className="m025-stage-nav" aria-label="SOW and GSD process">
+                {['Define request', 'Generate draft', 'Review tasks & hours', 'Confirm package', 'Download & hand off'].map((label, index) => <a key={label} aria-current={currentStage === index ? 'step' : undefined} href={`#${['m025-setup', 'm025-generation', 'm025-task-review', 'm025-review', 'm025-documents'][index]}`} onClick={event => { event.preventDefault(); document.getElementById(['m025-setup', 'm025-generation', 'm025-task-review', 'm025-review', 'm025-documents'][index])?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{index + 1}. {label}</a>)}
+              </nav>
+              {bootstrap.capabilities?.workTracking && <WorkTrackingPanel engagementId={engagement.engagementId}
+                identityKey={`${bootstrap.currentUser.userId}:${Boolean(bootstrap.access.isViewAs)}`} request={requestJson}
+                readOnly={Boolean(bootstrap.access.isViewAs) || operationBusy || detailLoading}
+                onDirtyChanged={setTrackingDirty} onBusyChanged={setTrackingBusy} onSaved={() => void loadList()} />}
+              <OwnershipTransfer key={engagement.engagementId} engagement={engagement} disabled={navigationBlocked || saveState.state === 'saving'} request={requestJson}
+                notificationsEnabled={bootstrap.capabilities?.handoffNotifications === true}
+                onBusyChanged={setTransferBusy} onTransferred={result => {
+                selectedEngagementRef.current = ''; setSelectedId(''); setEngagement(null); setAccess(null); dirtyRef.current = false; setDirty(false);
+                setActionState({ busy: '', error: '', message: `Ownership transferred to ${result.ownerDisplayName}. The same record and history are retained.${result.notification?.message ? ` ${result.notification.message}` : ''}` }); void loadList();
+              }} />
               {access?.isViewAs ? <Notice tone="warning" title="Administrator View-As is read-only"><p>Exit View-As before editing, generating, confirming, or archiving this SOW/GSD.</p></Notice> : null}
               {isSpecialGsd ? <Notice tone="info" title="Toyota / Hyundai GSD profile selected"><p>GSD output will use the <strong>HAEA Staff Aug GSD KUS UVO Telematics 1</strong> profile.</p></Notice> : null}
 
-              <section className="m025-section">
+              <section id="m025-setup" className="m025-section">
                 <div className="m025-section-heading">
                   <div><span>01</span><h2>Engagement setup</h2></div>
                   <p>Commercial and ownership metadata flows into both the SOW and GSD.</p>
@@ -839,7 +927,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
                 </div>
               </section>
 
-              <section className="m025-section">
+              <section id="m025-generation" className="m025-section">
                 <div className="m025-section-heading m025-section-heading--action">
                   <div><span>02</span><h2>Service Overview &amp; AI scope</h2></div>
                   <div className="m025-generation-control">
@@ -880,19 +968,19 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
                 {missingEvidence.length ? <Notice tone="warning" title="Information still needed"><ul>{missingEvidence.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul></Notice> : null}
               </section>
 
-              <section className="m025-section">
+              <section id="m025-task-review" className="m025-section">
                 <div className="m025-section-heading">
                   <div><span>03</span><h2>Plan · Design · Implement · Validate · Release</h2></div>
                   <p>AI suggestions are a starting point. The Solution Architect owns the final scope and effort.</p>
                 </div>
                 <div className="m025-phase-stack">
                   {(engagement.phases || []).map((phase) => (
-                    <PhaseEditor key={phase.phaseCode} phase={phase} readOnly={readOnly} onChange={(key, value) => updatePhase(phase.phaseCode, key, value)} />
+                    <PhaseEditor key={phase.phaseCode} phase={phase} proposals={engagement.sowSections?.taskProposals?.[phase.phaseCode]} readOnly={readOnly} onChange={(key, value) => updatePhase(phase.phaseCode, key, value)} />
                   ))}
                 </div>
               </section>
 
-              <section className="m025-section m025-review-section">
+              <section id="m025-review" className="m025-section m025-review-section">
                 <div className="m025-section-heading">
                   <div><span>04</span><h2>Review, confirm &amp; export</h2></div>
                   <p>Confirmation freezes the reviewed package for download. Reopen it explicitly if another revision is needed.</p>
@@ -913,37 +1001,39 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
                     <ul>
                       {confirmChecks.map((item) => <li key={item.key} className={item.complete ? 'is-complete' : 'is-incomplete'}>{item.complete ? '✓' : '○'} {item.label}</li>)}
                     </ul>
+                    {incompleteConfirmChecks.some(item => item.key === 'task-hours') && <div className="m025-task-blockers"><strong>Go to the item that needs review</strong><ul>{taskReviewIssues.slice(0, 10).map((issue, index) => <li key={`${issue.phaseCode}-${index}`}><button type="button" onClick={() => document.getElementById(`m025-phase-${issue.phaseCode}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{issue.label}: {issue.message}</button></li>)}</ul>{taskReviewIssues.length > 10 && <p>{taskReviewIssues.length - 10} more items appear in the phase editors.</p>}</div>}
                   </div>
                 ) : null}
 
                 <div className="m025-review-actions">
                   {engagement.status === 'confirmed' ? (
                     <>
-                      <Button onClick={() => runAction('reopen', 'SOW/GSD reopened for editing.') } disabled={!access?.canEdit || Boolean(actionState.busy)}>Reopen for editing</Button>
+                      <Button onClick={() => runAction('reopen', 'SOW/GSD reopened for editing.') } disabled={!access?.canEdit || (operationBusy || trackingDirty)}>Reopen for editing</Button>
                       <p>The confirmed documents are available in Documents &amp; ConnectWise SELL handoff at the top of this workspace.</p>
                     </>
                   ) : engagement.status !== 'archived' ? (
-                    <Button className="m025-confirm-button" kind="primary" onClick={confirmReviewed} disabled={!access?.canEdit || Boolean(actionState.busy)}>
+                    <Button className="m025-confirm-button" kind="primary" onClick={confirmReviewed} disabled={!access?.canEdit || (operationBusy || trackingDirty)}>
                       {actionState.busy === 'confirm' ? 'Confirming…' : confirmReady ? 'Confirm Reviewed SOW / GSD' : 'Review Requirements to Confirm'}
                     </Button>
                   ) : null}
 
                   {engagement.status === 'draft' && !engagement.lastGeneratedAt ? (
-                    <Button kind="danger" onClick={deleteDraft} disabled={!access?.canEdit || Boolean(actionState.busy)}>
+                    <Button kind="danger" onClick={deleteDraft} disabled={!access?.canEdit || (operationBusy || trackingDirty)}>
                       {actionState.busy === 'delete' ? 'Deleting…' : 'Delete Draft'}
                     </Button>
                   ) : null}
 
                   {engagement.status === 'archived' ? (
-                    <Button kind="primary" onClick={() => runAction('unarchive', 'SOW/GSD returned to Active.')} disabled={!access?.canArchive || Boolean(actionState.busy)}>Return to Active</Button>
+                    <Button kind="primary" onClick={() => runAction('unarchive', 'SOW/GSD returned to Active.')} disabled={!access?.canArchive || (operationBusy || trackingDirty)}>Return to Active</Button>
                   ) : (
-                    <Button kind="danger" onClick={archiveSelected} disabled={!access?.canArchive || Boolean(actionState.busy)}>Archive SOW / GSD</Button>
+                    <Button kind="danger" onClick={archiveSelected} disabled={!access?.canArchive || (operationBusy || trackingDirty)}>Archive SOW / GSD</Button>
                   )}
                 </div>
               </section>
             </>
           )}
         </main>
+      </div>
       </div>
     </section>
   );

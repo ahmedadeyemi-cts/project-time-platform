@@ -101,6 +101,10 @@ const server = await createServer({ configFile: false, root: path.join(root, 'sr
         versions: [{ versionId: 'version-1', versionNumber: 1, sourceRevision: 5,
           sowSha256: digest(bytes('sow')), gsdSha256: digest(bytes('gsd')), submissions: [] }] };
       else if (registerMode && url.pathname.endsWith('/history')) body = { events: [] };
+      else if (url.pathname.endsWith('/fixture-025/transfer-options') && req.method === 'GET') body = {
+        canTransfer: false, revision: engagement.revision, destinations: [],
+        blockedReason: 'This synthetic document-lifecycle fixture has no eligible teammate.'
+      };
       else if (/\/(sow\.docx|gsd\.xlsx)$/.test(url.pathname)) {
         if (process.env.MODULE025_TEST_DENY_DOWNLOAD === 'true' || req.headers.authorization !== 'Bearer synthetic-session-only' || req.headers['x-projectpulse-session'] !== 'synthetic-session-only') {
           res.statusCode = 401; body = { message: 'Session required' };

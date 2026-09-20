@@ -3,6 +3,7 @@
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.1" />
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/Module025TaskEstimates.cs" Link="TaskEstimates.cs" />
+    <Compile Include="../../src/backend/ProjectTime.Api/Modules/Module025TaskDrafts.cs" Link="TaskDrafts.cs" />
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs" Link="Contracts.cs" />
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs" Link="Exporter.cs" />
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/Module025StandardGsdExporter.cs" Link="Standard.cs" Condition="Exists('../../src/backend/ProjectTime.Api/Modules/Module025StandardGsdExporter.cs')" />

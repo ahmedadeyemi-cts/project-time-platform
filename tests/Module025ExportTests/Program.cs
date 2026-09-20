@@ -141,7 +141,8 @@ static void RunExportTests(string output)
     {
         using var reader = new StreamReader(cleanZip.GetEntry("word/document.xml")!.Open());
         var content = reader.ReadToEnd();
-        Check(content.Contains("Reviewed discovery task"), "SOW contains reviewed task scope");
+        Check(content.Contains("Execution Approach") && content.Contains("Review the agreed requirements"), "SOW contains high-level execution scope");
+        Check(!content.Contains("Reviewed discovery task") && !content.Contains("Record the configuration decisions"), "detailed task estimates and technical instructions stay in the GSD");
         Check(!content.Contains("AI suggestion:") && !content.Contains("Level-of-effort rationale:") && !content.Contains("INTERNAL NOTE ONLY"), "customer SOW excludes internal estimating commentary");
     }
     var draftDocx = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateSowDocx(allocated, draft: true);
@@ -150,6 +151,58 @@ static void RunExportTests(string output)
         using var reader = new StreamReader(draftZip.GetEntry("word/document.xml")!.Open());
         Check(reader.ReadToEnd().Contains("DRAFT - Not approved"), "SOW draft marked");
     }
+    using var packageJson = System.Text.Json.JsonDocument.Parse("""
+        [{"Name":"Production cutover", "Description":"Transition the customer service", "EstimatedHours":10,
+          "EstimatedDurationDays":5,"DetailedSteps":["Prepare the change", "Perform production cutover", "Validate service"]}]
+        """);
+    var proposed = ProjectTime.Api.Modules.Module025TaskDrafts.FromWorkPackages(packageJson.RootElement.EnumerateArray(), "implement");
+    Check(proposed.Count == 3 && proposed.Sum(task => task.Hours) == 10m, "generation materializes detailed tasks without another model call and preserves package effort");
+    Check(proposed.Select(task => task.Hours).SequenceEqual(new decimal?[] { 3.34m, 3.33m, 3.33m }), "rounded task allocations reconcile exactly");
+    Check(proposed.All(task => task.Reviewed == false && task.EstimateBasis!.Contains("equal allocation")), "proposed estimates never masquerade as SA-reviewed hours");
+    Check(!ProjectTime.Api.Modules.Module025TaskEstimates.Complete(proposed), "generated proposal requires explicit SA review");
+    Check(proposed.Any(task => task.AfterHoursSuggested) && proposed.All(task => !task.AfterHoursRequired && task.AfterHours == 0), "disruptive work suggests after-hours without inventing approved allocation or premium rate");
+    Check(proposed.SequenceEqual(ProjectTime.Api.Modules.Module025TaskDrafts.FromWorkPackages(packageJson.RootElement.EnumerateArray(), "implement")), "repeated materialization produces stable task identities");
+    var preserved = ProjectTime.Api.Modules.Module025TaskDrafts.PreserveExisting(allocatedPhases[0].Tasks, proposed);
+    Check(preserved.SequenceEqual(allocatedPhases[0].Tasks!), "regeneration preserves all existing SA task edits");
+    var editedProposal = new[] { proposed[0] with { Description = "SA has edited this unreviewed proposal" } };
+    Check(ProjectTime.Api.Modules.Module025TaskDrafts.PreserveExisting(editedProposal, proposed).SequenceEqual(editedProposal), "even unreviewed SA edits survive regeneration");
+    using var explicitJson = System.Text.Json.JsonDocument.Parse("""
+        [{"name":"Prepare change","estimatedHours":7,"detailedSteps":[{"description":"Back up configuration","estimatedHours":2},{"description":"Test rollback","estimatedHours":5}]}]
+        """);
+    var explicitTasks = ProjectTime.Api.Modules.Module025TaskDrafts.FromWorkPackages(explicitJson.RootElement.EnumerateArray(), "plan");
+    Check(explicitTasks.Select(task => task.Hours).SequenceEqual(new decimal?[] { 2m, 5m }), "explicit detailed-step effort is preserved");
+    using var unknownJson = System.Text.Json.JsonDocument.Parse("""
+        [{"Name":"Gather evidence","EstimatedDurationDays":3,"DetailedSteps":["Review inventory"]}]
+        """);
+    Check(ProjectTime.Api.Modules.Module025TaskDrafts.FromWorkPackages(unknownJson.RootElement.EnumerateArray(), "plan").Single().Hours is null, "elapsed duration never becomes invented labor hours");
+    using var conflictJson = System.Text.Json.JsonDocument.Parse("""
+        [{"name":"Prepare change","estimatedHours":9,"detailedSteps":[{"description":"Back up configuration","estimatedHours":2},{"description":"Test rollback","estimatedHours":5}]}]
+        """);
+    Check(ProjectTime.Api.Modules.Module025TaskDrafts.FromWorkPackages(conflictJson.RootElement.EnumerateArray(), "plan").All(task => task.Hours is null), "inconsistent explicit task estimates require review instead of silently changing effort");
+    var splitTask = new ProjectTime.Api.Modules.Module025TaskEstimate(Guid.NewGuid().ToString(), "Perform approved production cutover", 6m,
+        RegularHours: 2m, AfterHours: 4m, AfterHoursRequired: true, Reviewed: true);
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Validate(new[] { splitTask }) is null, "reviewed regular and after-hours split accepted");
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Validate(new[] { splitTask with { Hours = 7m } }) is not null, "mismatched split rejected");
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Validate(new[] { splitTask with { AfterHoursRequired = false } }) is not null, "after-hours allocation requires explicit designation");
+    Check(!ProjectTime.Api.Modules.Module025TaskEstimates.Complete(new[] { splitTask with { RegularHours = 6m, AfterHours = 0m } }), "after-hours designation with no allocation blocks confirmation");
+    var afterPhases = allocatedPhases.Select((phase, index) => index == 0 ? phase with { Tasks = new[] { splitTask }, FinalHours = 6m } : phase).ToArray();
+    var afterModel = allocated with { Phases = afterPhases, Engagement = allocated.Engagement with { Phases = afterPhases } };
+    using var afterBook = new XLWorkbook(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(afterModel)));
+    Check(afterBook.Worksheet("Plan").Cell("B4").GetDouble() == 2 && afterBook.Worksheet("Plan").Cell("C4").GetDouble() == 4, "standard GSD separates regular and after-hours effort");
+    Check(afterBook.Worksheet("Summary").Cell("F4").GetDouble() == (double)afterPhases.Sum(phase => phase.FinalHours), "after-hours included exactly once in project total");
+    using var afterSpecial = new XLWorkbook(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(afterModel with { Engagement = afterModel.Engagement with { GsdTemplateKey = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.HaeaGsdTemplateKey } })));
+    Check(afterSpecial.Worksheet("Task Estimates").Cell("D2").GetDouble() == 2 && afterSpecial.Worksheet("Task Estimates").Cell("E2").GetDouble() == 4, "Toyota Hyundai GSD retains detailed task split");
+    var proposalPhase = afterPhases[0] with { Tasks = proposed, FinalHours = 10m };
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.PhaseReadiness(proposalPhase)!.Contains("task 1"), "confirmation identifies the exact task needing review");
+    Check(ProjectTime.Api.Modules.Module025TaskEstimates.Readiness(afterModel.Engagement with {
+        GsdTemplateKey = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.HaeaGsdTemplateKey,
+        Phases = afterPhases.Select((phase, index) => index == 0 ? proposalPhase : phase).ToArray()
+    }) is not null, "Toyota Hyundai proposals require SA review too");
+    var proposalModel = allocated with { Phases = allocatedPhases.Select((phase, index) => index == 0 ? proposalPhase : phase).ToArray() };
+    using var proposalBook = new XLWorkbook(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(proposalModel, draft: true)));
+    Check(proposalBook.Worksheet("Plan").Cell("G2").GetString().Contains("Review and accept"), "draft workbook exposes pending SA review");
+    Check(proposalBook.Worksheet("Summary").Cell("E7").GetString() == "Working Phase Hours", "proposed project total is not labeled as reviewed");
+    Check(proposalBook.Worksheet("Plan").Cell("G4").GetString().Contains("PROPOSED") && proposalBook.Worksheet("Plan").Cell("G4").GetString().Contains("equal allocation"), "draft workbook carries honest estimate provenance");
     Directory.CreateDirectory(output);
     File.WriteAllBytes(Path.Combine(output, "Task-GSD.xlsx"), allocatedBytes);
     File.WriteAllBytes(Path.Combine(output, "Task-SOW.docx"), cleanDocx);

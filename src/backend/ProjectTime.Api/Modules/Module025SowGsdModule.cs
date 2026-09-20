@@ -61,6 +61,14 @@ public static class Module025SowGsdModule
 
     public static WebApplication MapModule025SowGsdEndpoints(this WebApplication app)
     {
+        MapModule025TemplateCatalogEndpoints(app);
+        MapModule025WorkTrackingEndpoints(app);
+        app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/handoff-notifications", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)HandoffNotificationStatusAsync);
+        app.MapGet("/api/module025/sow-gsd/team-work", (Func<string?, string?, HttpContext, CancellationToken, Task<IResult>>)TeamWorkAsync);
+        app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/transfer-options", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)TransferOptionsAsync);
+        app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/transfer", (Func<Guid, Module025SowGsdTransferRequest, HttpContext, CancellationToken, Task<IResult>>)TransferAsync);
+        app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/handoff/acknowledge", (Func<Guid, Module025HandoffAcknowledgeRequest, HttpContext, CancellationToken, Task<IResult>>)AcknowledgeHandoffAsync);
+        app.MapPost("/api/module025/sow-gsd/{engagementId:guid}/handoff/return", (Func<Guid, Module025HandoffReturnRequest, HttpContext, CancellationToken, Task<IResult>>)ReturnHandoffAsync);
         app.MapGet("/api/module025/sow-gsd/bootstrap", (Func<HttpContext, CancellationToken, Task<IResult>>)BootstrapAsync);
         app.MapGet("/api/module025/sow-gsd", (Func<string?, Guid?, string?, HttpContext, CancellationToken, Task<IResult>>)ListAsync);
         app.MapPost("/api/module025/sow-gsd", (Func<Module025SowGsdCreateRequest, HttpContext, CancellationToken, Task<IResult>>)CreateAsync);
@@ -107,6 +115,7 @@ public static class Module025SowGsdModule
             module = ModuleNumber,
             migration = MigrationId,
             contract = WorkspaceContract,
+            capabilities = new { workTracking = true, temporaryCoverage = true, handoffNotifications = true },
             currentUser = new
             {
                 userId = access.EffectiveUserId,
@@ -150,7 +159,13 @@ public static class Module025SowGsdModule
         });
     }
 
-    private static async Task<IResult> ListAsync(string? state, Guid? ownerUserId, string? search, HttpContext context, CancellationToken cancellationToken)
+    private static Task<IResult> ListAsync(string? state, Guid? ownerUserId, string? search, HttpContext context, CancellationToken cancellationToken) =>
+        LoadEngagementListAsync(state, ownerUserId, search, context, cancellationToken, false);
+
+    private static Task<IResult> TeamWorkAsync(string? state, string? search, HttpContext context, CancellationToken cancellationToken) =>
+        LoadEngagementListAsync(state, null, search, context, cancellationToken, true);
+
+    private static async Task<IResult> LoadEngagementListAsync(string? state, Guid? ownerUserId, string? search, HttpContext context, CancellationToken cancellationToken, bool teamWork)
     {
         var authorization = await AuthorizeViewAsync(context);
         if (authorization is not null) return authorization;
@@ -161,8 +176,10 @@ public static class Module025SowGsdModule
 
         var access = await ResolveAccessAsync(connection, context, cancellationToken);
         if (access is null) return SessionRequired();
+        if (teamWork && !(access.IsManager || access.IsAdministrator)) return Forbidden("module025_team_work");
         var selectedOwner = ownerUserId ?? access.EffectiveUserId;
-        if (!access.CanViewOwned(selectedOwner)) return Forbidden("module025_owner_scope");
+        if (!teamWork && !access.CanViewOwned(selectedOwner)) return Forbidden("module025_owner_scope");
+        var selectedOwners = teamWork ? access.VisibleSolutionArchitectIds.ToArray() : new[] { selectedOwner };
         var archived = string.Equals(state, "archived", StringComparison.OrdinalIgnoreCase);
         var normalizedSearch = Clean(search, MaximumSearchLength);
 
@@ -173,17 +190,18 @@ public static class Module025SowGsdModule
                    last_generated_at, confirmed_at, archived_at, created_at, updated_at,
                    COALESCE((SELECT sum(final_hours) FROM module025_sow_gsd_phases phase WHERE phase.engagement_id=engagement.engagement_id),0),
                    COALESCE((SELECT sum(suggested_hours) FROM module025_sow_gsd_phases phase WHERE phase.engagement_id=engagement.engagement_id),0),
-                   project_name
+                   project_name, owner_department_name, owner_team_name, count(*) OVER()
             FROM module025_sow_gsd_engagements engagement
-            WHERE owner_user_id=@owner_user_id
+            WHERE owner_user_id=ANY(@owner_user_ids)
               AND is_active=@is_active
               AND (@search='' OR engagement_number ILIKE '%' || @search || '%' OR customer_name ILIKE '%' || @search || '%' OR project_name ILIKE '%' || @search || '%' OR service_overview ILIKE '%' || @search || '%')
-            ORDER BY updated_at DESC
+            ORDER BY updated_at DESC, engagement_id
             LIMIT 300;
             """;
         var rows = new List<object>();
+        long totalCount = 0;
         await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("owner_user_id", selectedOwner);
+        command.Parameters.AddWithValue("owner_user_ids", selectedOwners);
         command.Parameters.AddWithValue("is_active", !archived);
         command.Parameters.AddWithValue("search", normalizedSearch);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -211,10 +229,13 @@ public static class Module025SowGsdModule
                 updatedAt = reader.GetFieldValue<DateTimeOffset>(17),
                 finalHours = reader.GetDecimal(18),
                 suggestedHours = reader.GetDecimal(19),
-                projectName = reader.GetString(20)
+                projectName = reader.GetString(20),
+                ownerDepartmentName = reader.GetString(21), ownerTeamName = reader.GetString(22)
             });
+            totalCount = reader.GetInt64(23);
         }
-        return Results.Ok(new { status = "module025_engagements_loaded", state = archived ? "archived" : "active", ownerUserId = selectedOwner, count = rows.Count, engagements = rows, stateChanged = false });
+        return Results.Ok(new { status = "module025_engagements_loaded", state = archived ? "archived" : "active", ownerUserId = teamWork ? (Guid?)null : selectedOwner,
+            scope = teamWork ? "reporting_team" : "owner", count = rows.Count, totalCount, truncated = totalCount > rows.Count, engagements = rows, stateChanged = false });
     }
 
     private static async Task<IResult> CreateAsync(Module025SowGsdCreateRequest request, HttpContext context, CancellationToken cancellationToken)
@@ -405,6 +426,21 @@ public static class Module025SowGsdModule
             generationLock.Parameters.AddWithValue("engagement_id", engagementId);
             await generationLock.ExecuteNonQueryAsync(cancellationToken);
         }
+
+        // A transfer can complete while this request waits for the generation lock.
+        // Revalidate the current owner and revision under the same row lock used
+        // by transfers before recording any work on the former owner's behalf.
+        await using (var rowLock = new NpgsqlCommand("SELECT revision FROM module025_sow_gsd_engagements WHERE engagement_id=@id FOR UPDATE", connection, transaction))
+        {
+            rowLock.Parameters.AddWithValue("id", engagementId);
+            await rowLock.ExecuteScalarAsync(cancellationToken);
+        }
+        var lockedEngagement = await LoadEngagementAsync(connection, engagementId, cancellationToken);
+        if (lockedEngagement is null) return Results.NotFound();
+        if (!access.CanWriteOwned(lockedEngagement.OwnerUserId)) return Forbidden("module025_edit");
+        if (lockedEngagement.Revision != current.Revision) return RevisionConflict(lockedEngagement.Revision);
+        if (!lockedEngagement.IsActive || lockedEngagement.Status is "confirmed" or "archived")
+            return StateConflict("record_not_editable", "Reopen this SOW/GSD before generating scope.");
 
         const string activeGenerationSql = """
             SELECT queued.evidence_json->>'generationId'
@@ -791,6 +827,8 @@ public static class Module025SowGsdModule
                 with { TargetDecisions = composition.TargetDecisions ?? [] };
 
         Dictionary<string, GeneratedPhase> generated;
+        Dictionary<string, IReadOnlyList<Module025TaskEstimate>> generatedTasks;
+        Dictionary<string, IReadOnlyList<Module025TaskEstimate>> workingTasks;
         JsonElement sowSections;
         JsonElement aiMetadata;
         try
@@ -849,8 +887,21 @@ public static class Module025SowGsdModule
                     "private_sow_phase_coverage_incomplete");
             }
 
+            generatedTasks = PhaseCodes.ToDictionary(code => code, code =>
+                Module025TaskDrafts.FromWorkPackages(workPackages.Where(package =>
+                    ClassifyPhase(JsonString(package, "Phase"), JsonString(package, "Name"), JsonString(package, "Description")) == code), code));
+            foreach (var proposal in generatedTasks.Values)
+                if (Module025TaskEstimates.Validate(proposal) is { } issue)
+                    throw new InvalidOperationException(issue);
+            workingTasks = PhaseCodes.ToDictionary(code => code, code =>
+                (IReadOnlyList<Module025TaskEstimate>)Module025TaskDrafts.PreserveExisting(
+                    current.Phases.FirstOrDefault(phase => phase.PhaseCode == code)?.Tasks, generatedTasks[code])
+                    .Select(task => task with { Reviewed = false }).ToArray());
+
             sowSections = JsonSerializer.SerializeToElement(new
             {
+                reviewedTasks = workingTasks,
+                taskProposals = generatedTasks,
                 executiveSummary = JsonString(sowDraft, "ExecutiveSummary"),
                 objectives = JsonStrings(sowDraft, "Objectives"),
                 inScope = JsonStrings(sowDraft, "InScope"),
@@ -867,7 +918,7 @@ public static class Module025SowGsdModule
                 citationIds = JsonIntegers(sowDraft, "CitationIds"),
                 reviewRequired = true,
                 contractuallyBinding = false
-            });
+            }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             aiMetadata = JsonSerializer.SerializeToElement(new
             {
                 generatedAt = DateTimeOffset.UtcNow,
@@ -977,7 +1028,14 @@ public static class Module025SowGsdModule
                 var phase = generated[phaseCode];
                 var objective = string.Join("\n\n", phase.DetailedActivities);
                 var rationale = BuildGeneratedEffortRationale(JsonArray(JsonSerializer.SerializeToElement(composition.SowDraft), "WorkPackages"), phaseCode);
-                await SaveGeneratedPhaseAsync(connection, transaction, engagementId, phase, objective, rationale, cancellationToken);
+                var existingPhase = current.Phases.FirstOrDefault(item => item.PhaseCode == phaseCode);
+                var phaseTasks = workingTasks[phaseCode];
+                var finalHours = existingPhase?.Tasks is { Count: > 0 }
+                    ? existingPhase.FinalHours
+                    : phaseTasks.Count > 0 && phaseTasks.All(task => task.Hours.HasValue)
+                        ? phaseTasks.Sum(task => task.Hours!.Value)
+                        : decimal.Round(phase.SuggestedHours, 2, MidpointRounding.AwayFromZero);
+                await SaveGeneratedPhaseAsync(connection, transaction, engagementId, phase, objective, rationale, finalHours, cancellationToken);
             }
             const string update = """
                 UPDATE module025_sow_gsd_engagements
@@ -1105,9 +1163,28 @@ public static class Module025SowGsdModule
         var writable = await LoadWritableStateAsync(engagementId, context, cancellationToken);
         if (writable.Error is not null) return writable.Error;
         await using var connection = writable.Connection!;
-        var engagement = writable.Engagement!;
+        return await DeleteDraftOwnershipCheckedAsync(connection, engagementId, writable.Engagement!.Revision, writable.Access!, cancellationToken);
+    }
 
-        if (engagement.Status != "draft" || engagement.LastGeneratedAt.HasValue)
+    private static async Task<IResult> DeleteDraftOwnershipCheckedAsync(NpgsqlConnection connection, Guid engagementId,
+        int expectedRevision, Module025AccessContext access, CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var generationLock = new NpgsqlCommand("SELECT pg_advisory_xact_lock(hashtextextended(@id::text,725));", connection, transaction))
+        {
+            generationLock.Parameters.AddWithValue("id", engagementId);
+            await generationLock.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using (var recordLock = new NpgsqlCommand("SELECT engagement_id FROM module025_sow_gsd_engagements WHERE engagement_id=@id FOR UPDATE;", connection, transaction))
+        {
+            recordLock.Parameters.AddWithValue("id", engagementId);
+            if (await recordLock.ExecuteScalarAsync(cancellationToken) is null) return Results.NotFound();
+        }
+        var engagement = await LoadEngagementAsync(connection, engagementId, cancellationToken, transaction);
+        if (engagement is null) return Results.NotFound();
+        if (!access.CanWriteOwned(engagement.OwnerUserId)) return Forbidden("module025_edit");
+        if (engagement.Revision != expectedRevision) return RevisionConflict(engagement.Revision);
+        if (!engagement.IsActive || engagement.Status != "draft" || engagement.LastGeneratedAt.HasValue)
             return StateConflict("draft_delete_not_allowed",
                 "Only an active draft that has never completed detailed-scope generation can be deleted. Archive generated or reviewed records instead.");
         if (!await SowSellSchemaReadyAsync(connection, cancellationToken)) return SowSellMigrationRequired();
@@ -1125,6 +1202,10 @@ public static class Module025SowGsdModule
                 OR EXISTS(
                     SELECT 1 FROM module025_sow_sell_submissions
                     WHERE engagement_id=@engagement_id
+                )
+                OR EXISTS(
+                    SELECT 1 FROM module025_sow_gsd_events
+                    WHERE engagement_id=@engagement_id AND event_type='ownership_transferred'
                 ) AS has_retained_evidence,
                 EXISTS(
                     SELECT 1
@@ -1142,7 +1223,7 @@ public static class Module025SowGsdModule
             """;
         bool hasEvidence;
         bool generationActive;
-        await using (var command = new NpgsqlCommand(eligibilitySql, connection))
+        await using (var command = new NpgsqlCommand(eligibilitySql, connection, transaction))
         {
             command.Parameters.AddWithValue("engagement_id", engagementId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1156,9 +1237,8 @@ public static class Module025SowGsdModule
             return StateConflict("generation_in_progress", "Wait for the current detailed-scope generation to stop before deleting this draft.");
         if (hasEvidence)
             return StateConflict("retained_evidence_exists",
-                "This SOW/GSD has retained generation or release evidence and cannot be deleted. Archive it instead.");
+                "This SOW/GSD has retained generation, release, or ownership-transfer evidence and cannot be deleted. Archive it instead.");
 
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using (var guard = new NpgsqlCommand(
             "SELECT set_config('projectpulse.module025_allow_draft_delete','on',true);",
             connection, transaction))
@@ -1350,11 +1430,11 @@ public static class Module025SowGsdModule
         return string.Join("\n\n", parts);
     }
 
-    private static async Task SaveGeneratedPhaseAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid engagementId, GeneratedPhase phase, string objective, string rationale, CancellationToken cancellationToken)
+    private static async Task SaveGeneratedPhaseAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid engagementId, GeneratedPhase phase, string objective, string rationale, decimal finalHours, CancellationToken cancellationToken)
     {
         const string sql = """
             UPDATE module025_sow_gsd_phases
-            SET final_hours=CASE WHEN ai_generated=FALSE OR final_hours=suggested_hours THEN @suggested_hours ELSE final_hours END,
+            SET final_hours=@final_hours,
                 suggested_hours=@suggested_hours, objective=@objective, detailed_activities=@detailed_activities::jsonb,
                 technical_tasks=@technical_tasks::jsonb, deliverables=@deliverables::jsonb,
                 customer_responsibilities=@customer_responsibilities::jsonb, us_signal_responsibilities=@us_signal_responsibilities::jsonb,
@@ -1368,6 +1448,7 @@ public static class Module025SowGsdModule
         command.Parameters.AddWithValue("engagement_id", engagementId);
         command.Parameters.AddWithValue("phase_code", phase.PhaseCode);
         command.Parameters.AddWithValue("suggested_hours", phase.SuggestedHours);
+        command.Parameters.AddWithValue("final_hours", finalHours);
         command.Parameters.AddWithValue("objective", Clean(objective, 12_000));
         command.Parameters.AddWithValue("detailed_activities", JsonSerializer.Serialize(phase.DetailedActivities));
         command.Parameters.AddWithValue("technical_tasks", JsonSerializer.Serialize(phase.TechnicalTasks));

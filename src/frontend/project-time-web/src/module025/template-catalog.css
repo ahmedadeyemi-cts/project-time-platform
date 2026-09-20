@@ -1,0 +1,40 @@
+.m025-templates { color: #1e293b; display: grid; gap: 1rem; }
+.m025-templates h2, .m025-templates h3, .m025-templates h4, .m025-templates p { margin: 0; }
+.m025-templates header { display: grid; gap: .55rem; max-width: 80rem; }
+.m025-templates-kicker { color: #475569; font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+.m025-template-grid, .m025-template-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+.m025-template-card { background: #fff; border: 1px solid #d7e0eb; border-radius: 12px; padding: 1.1rem; display: grid; gap: .7rem; align-content: start; }
+.m025-template-card p { line-height: 1.5; color: #475569; }
+.m025-template-card-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .7rem; }
+.m025-template-badge { justify-self: start; border-radius: 20px; color: #166534; background: #ecfdf3; padding: .25rem .6rem; font-size: .8rem; font-weight: 700; }
+.m025-template-badge--review { color: #854d0e; background: #fef9c3; }
+.m025-template-upload { display: grid; gap: .9rem; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 12px; padding: 1.2rem; }
+.m025-template-upload label { display: grid; gap: .4rem; font-weight: 600; }
+.m025-template-upload input, .m025-template-upload select, .m025-template-upload textarea { font: inherit; color: #0f172a; border: 1px solid #94a3b8; border-radius: 7px; background: white; min-width: 0; padding: .65rem; width: 100%; box-sizing: border-box; }
+.m025-template-upload :is(input, select, textarea):focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.m025-template-help { font-size: .9rem; color: #475569; line-height: 1.5; }
+.m025-template-list { display: grid; gap: .8rem; }
+.m025-template-list code { overflow-wrap: anywhere; }
+.m025-template-list button, .m025-template-upload button { justify-self: start; }
+.m025-template-message { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: .9rem; }
+.m025-template-message--error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.m025-template-next { border-top: 1px solid #d7e0eb; padding-top: 1rem; }
+.m025-templates summary { cursor: pointer; font-weight: 600; }
+.m025-template-actions { display: flex; flex-wrap: wrap; gap: .7rem; }
+.m025-template-preview { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 1rem; display: grid; gap: .9rem; min-width: 0; }
+.m025-template-preview-notices { margin: 0; padding-left: 1.3rem; color: #475569; line-height: 1.5; }
+.m025-template-sheet-picker { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; font-weight: 700; }
+.m025-template-sheet-picker select { padding: .6rem; border: 1px solid #94a3b8; border-radius: 6px; background: white; color: #0f172a; max-width: 100%; }
+.m025-template-preview-scroll, .m025-template-document { max-height: 30rem; overflow: auto; border: 1px solid #d7e0eb; border-radius: 7px; background: white; }
+.m025-template-preview-scroll:focus-visible, .m025-template-document:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.m025-template-preview-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: .9rem; }
+.m025-template-preview-table caption { text-align: left; padding: .6rem; color: #475569; background: #f1f5f9; }
+.m025-template-preview-table th, .m025-template-preview-table td { text-align: left; vertical-align: top; border: 1px solid #e2e8f0; padding: .6rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+.m025-template-preview-table thead { background: #eff6ff; position: sticky; top: 0; }
+.m025-template-preview-scroll .m025-template-preview-table th:first-child { width: 6rem; }
+.m025-template-preview-table code { white-space: pre-wrap; }
+.m025-template-preview-table small { display: block; color: #64748b; margin-top: .4rem; }
+.m025-template-empty { color: #64748b; font-style: italic; }
+.m025-template-document { padding: 1.2rem; display: grid; gap: .8rem; }
+.m025-template-document p { white-space: pre-wrap; color: #1e293b; }
+.m025-template-document-heading { font-size: 1.12rem; font-weight: 700; }

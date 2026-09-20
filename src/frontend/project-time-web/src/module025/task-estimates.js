@@ -8,6 +8,13 @@ export function taskTotal(tasks) {
     if (task.hours === null || task.hours === undefined || task.hours === '') return null;
     const hours = Number(task.hours);
     if (!Number.isFinite(hours) || hours < 0 || hours > 100000 || Math.abs(hours * 100 - Math.round(hours * 100)) > 0.000001) return null;
+    // Split fields are optional for legacy records, but must be supplied together.
+    // A required after-hours window needs a positive allocation before SA review.
+    if ((task.regularHours != null) !== (task.afterHours != null) || task.regularHours === '' || task.afterHours === '') return null;
+    const after = Number(task.afterHours ?? 0);
+    const regular = Number(task.regularHours ?? hours);
+    if (![after, regular].every(value => Number.isFinite(value) && value >= 0 && value <= 100000 && Math.abs(value * 100 - Math.round(value * 100)) <= 0.000001)) return null;
+    if (Math.round((regular + after) * 100) !== Math.round(hours * 100) || (!task.afterHoursRequired && after > 0) || (task.afterHoursRequired && after <= 0)) return null;
     cents += Math.round(hours * 100);
   }
   return cents > 99999999 ? null : cents / 100;
@@ -25,6 +32,37 @@ export function withTasks(phase, tasks) {
   return { ...phase, tasks, ...(total === null ? {} : { finalHours: total }) };
 }
 
+export function proposeTasks(phase, id = () => crypto.randomUUID()) {
+  // Existing tasks, including human edits, are never replaced by this action.
+  if (phase.tasks?.length) return phase.tasks;
+  const tasks = seedTasks(phase, id).map(task => ({ ...task, reviewed: false }));
+  const hours = Number(phase.finalHours ?? phase.suggestedHours);
+  if (!tasks.length || !Number.isFinite(hours) || hours < 0 || hours > 999999.99 || (hours === 0 && !phase.aiGenerated)) return tasks;
+  const cents = Math.round(hours * 100);
+  return tasks.map((task, index) => {
+    const allocated = (Math.floor(cents / tasks.length) + (index < cents % tasks.length ? 1 : 0)) / 100;
+    const suggested = /\b(cutover|outage|restart|reboot|production upgrade)\b/i.test(task.description);
+    return { ...task, hours: allocated, regularHours: allocated, afterHours: 0,
+      afterHoursRequired: false, afterHoursSuggested: suggested,
+      afterHoursReason: suggested ? 'Potential service disruption. Confirm the customer maintenance window.' : '',
+      reviewed: false, estimateBasis: 'Proposed equal allocation of the saved phase estimate. Review task complexity and dependencies before accepting.' };
+  });
+}
+
+export function phaseTaskIssues(phase) {
+  const tasks = phase.tasks || [];
+  const issues = [];
+  if (!tasks.length) return ['No task estimates. Propose tasks from the saved scope.'];
+  tasks.forEach((task, index) => {
+    if (taskTotal([task]) === null) issues.push(`Task ${index + 1}: complete its description and valid hours, including any after-hours allocation.`);
+    else if (task.reviewed === false) issues.push(`Task ${index + 1}: confirm the proposed estimate and work window.`);
+  });
+  const total = taskTotal(tasks);
+  if (!issues.length && total === null) issues.push('Task identifiers or the phase total are invalid. Reload the record before continuing.');
+  if (total !== null && total !== Number(phase.finalHours)) issues.push('Task hours must equal the phase total.');
+  return issues;
+}
+
 export function exportChecks(engagement) {
   if (!engagement) return [];
   const has = value => Boolean(String(value || '').trim());
@@ -36,8 +74,8 @@ export function exportChecks(engagement) {
     { key: 'ae', label: 'Account Executive', complete: Boolean(engagement.accountExecutiveUserId) },
     { key: 'saa', label: 'SAA / Inside Sales', complete: Boolean(engagement.resaleUserId) }
   ];
-  if (!['toyota', 'hyundai'].includes(engagement.customerProgram)) {
-    checks.push({ key: 'task-hours', label: 'Reviewed task hours in all five phases', complete: engagement.phases?.length === 5 && engagement.phases.every(p => taskTotal(p.tasks) !== null && taskTotal(p.tasks) === Number(p.finalHours)) });
+  if (!['toyota', 'hyundai'].includes(engagement.customerProgram) || engagement.phases?.some(p => p.tasks?.length)) {
+    checks.push({ key: 'task-hours', label: 'Task estimates and work windows reviewed in all five phases', complete: engagement.phases?.length === 5 && engagement.phases.every(p => phaseTaskIssues(p).length === 0) });
   }
   return checks;
 }

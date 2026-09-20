@@ -50,6 +50,9 @@ internal static class EnterpriseNotificationRecipientResolver
         EnterpriseNotificationEventRow notificationEvent,
         CancellationToken cancellationToken)
     {
+        if (policy.ProducerContract == "module025-handoff-v1")
+            return await Module025SowGsdModule.ResolveHandoffNotificationRecipientsAsync(
+                connection, notificationEvent, cancellationToken);
         var recipients = new List<ProjectNotificationUser>();
         var evidence = new List<string>();
 
