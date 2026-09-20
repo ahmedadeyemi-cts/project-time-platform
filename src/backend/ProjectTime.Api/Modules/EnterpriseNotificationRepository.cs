@@ -507,6 +507,21 @@ internal static class EnterpriseNotificationRepository
         }
     }
 
+    internal static async Task<EnterpriseNotificationEventRow?> LoadEventAsync(
+        NpgsqlConnection connection, Guid eventId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT enterprise_notification_event_id,policy_code,source_module,source_event_id,idempotency_key,
+                entity_type,entity_id,project_id,subject_user_id,occurred_at,available_at,payload::text,
+                ingestion_source,event_status,dispatch_id,attempt_count,last_error_code,last_error_message,
+                processed_at,created_at,updated_at
+            FROM enterprise_notification_events WHERE enterprise_notification_event_id=@id;
+            """, connection);
+        command.Parameters.AddWithValue("id", eventId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadEvent(reader) : null;
+    }
+
     internal static async Task<EnterpriseNotificationEventRow[]> LoadRecentEventsAsync(
         NpgsqlConnection connection,
         int maximum,

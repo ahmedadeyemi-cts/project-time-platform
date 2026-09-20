@@ -15,6 +15,9 @@ is_planner_release_control_branch() {
 if [[ "$HEAD_BRANCH" == feat/sa-workspace-redesign-20260920 ]]; then
   node tests/module025-sa-workspace-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == feature/flowhive-document-readiness-archive-20260920 ]]; then
+  python3 tests/flowhive-psa-preparation-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == feature/flowhive-psa-team-workspace-20260919 ]]; then
   python3 tests/flowhive-psa-workspace-scope.py
   node tests/validate-systemwide-image-build-controller.mjs

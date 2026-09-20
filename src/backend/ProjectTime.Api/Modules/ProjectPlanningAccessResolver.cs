@@ -267,6 +267,17 @@ internal static class ProjectPlanningAccessResolver
             && (administrator
                 || identity.Permissions.Contains("CREATE_FLOWHIVE_CUSTOMER_SHARE_066"));
 
+        var archived = normalizedModule == "066" && ProjectFlowHiveLifecycle.IsArchived(association.ProjectStatus);
+        if (archived)
+        {
+            canReviewPlanner = false;
+            canEditPlanner = false;
+            canAdministerPlanner = false;
+            canAdoptBaseline = false;
+            // Retained reviewed artifacts may still be shared or revoked under the
+            // existing PM permission. Archiving locks plan edits, not link revocation.
+        }
+
         var scopeReason = administrator ? "administrator_support"
             : projectCoordinatorRole && businessBroadRead ? "project_team_coordinator_business_scope"
             : executiveRole && businessBroadRead ? "executive_read_scope"
@@ -282,7 +293,8 @@ internal static class ProjectPlanningAccessResolver
             : solutionArchitect ? "associated_solution_architect"
             : "not_associated";
 
-        var capabilityLabel = canAdministerPlanner ? "Project Owner — Full Control"
+        var capabilityLabel = archived && canView ? "Archived project — Read Only"
+            : canAdministerPlanner ? "Project Owner — Full Control"
             : canEditPlanner ? "Engineering Collaborator — Planner Edit"
             : canReviewPlanner ? "Technical Reviewer — Review and Comment"
             : canView ? "Project Stakeholder — Read Only"
@@ -451,7 +463,8 @@ internal static class ProjectPlanningAccessResolver
                         OR (@team_name<>'' AND lower(COALESCE(team_member.team_name,''))=lower(@team_name))
                         OR (@department_name<>'' AND lower(COALESCE(team_member.department_name,team_member.department,''))=lower(@department_name))
                       )
-                ) AS engineering_lead_scope
+                ) AS engineering_lead_scope,
+                COALESCE(project.status,'') AS project_status
             FROM projects project
             WHERE project.project_id=@project_id;
             """;
@@ -471,7 +484,8 @@ internal static class ProjectPlanningAccessResolver
             reader.GetBoolean(3),
             reader.GetString(4),
             reader.GetBoolean(5),
-            reader.GetBoolean(6));
+            reader.GetBoolean(6),
+            reader.GetString(7));
     }
 
     private static IReadOnlySet<string> Split(string value) =>
@@ -498,7 +512,8 @@ internal static class ProjectPlanningAccessResolver
         bool DirectProjectAssignment,
         string ExplicitCollaborationLevel,
         bool ProjectManagementLeadScope,
-        bool EngineeringLeadScope);
+        bool EngineeringLeadScope,
+        string ProjectStatus);
 }
 
 internal sealed record ProjectPlanningAccess(

@@ -135,6 +135,44 @@ public static partial class Module025SowGsdModule
         !string.IsNullOrWhiteSpace(dispatchStatus) ? dispatchStatus
         : eventStatus == "pending" ? "queued" : eventStatus == "dispatched" ? "recorded" : eventStatus;
 
+    internal sealed record HandoffDispatchPreflight(bool Current, string Boundary, string DiagnosticCode);
+
+    // Covers Module 032 manual release/retry as well as the automatic worker.
+    // Stored recipients are evidence, not continuing authorization to email them.
+    internal static async Task<HandoffDispatchPreflight> ValidateHandoffDispatchAsync(
+        NpgsqlConnection connection, ProjectNotificationDispatchRow dispatch, CancellationToken cancellationToken)
+    {
+        if (dispatch.SourceModule != "025" || dispatch.NotificationType is not
+            ("module025_handoff" or "module025_coverage_started" or "module025_coverage_returned" or "module025_handoff_acknowledged"))
+            return new(true,dispatch.DeliveryBoundary,"");
+        try
+        {
+            if (dispatch.Metadata.ValueKind != JsonValueKind.Object
+                || !dispatch.Metadata.TryGetProperty("enterpriseNotificationEventId",out var idValue)
+                || idValue.ValueKind != JsonValueKind.String || !Guid.TryParse(idValue.GetString(),out var id))
+                return new(false,"locked","MODULE025_HANDOFF_SOURCE_INVALID");
+            var notification=await EnterpriseNotificationRepository.LoadEventAsync(connection,id,cancellationToken);
+            if (notification is null || notification.PolicyCode.ToLowerInvariant()!=dispatch.NotificationType)
+                return new(false,"locked","MODULE025_HANDOFF_SOURCE_INVALID");
+            var policy=await EnterpriseNotificationRepository.LoadPolicyAsync(connection,notification.PolicyCode,cancellationToken);
+            if (policy is null || policy.ProducerContract!="module025-handoff-v1" || !policy.Enabled)
+                return new(false,"locked","MODULE025_HANDOFF_POLICY_DISABLED");
+            var resolution=await ResolveHandoffNotificationRecipientsAsync(connection,notification,cancellationToken);
+            static string Identity(ProjectNotificationUser user) =>
+                $"{user.UserId:D}|{user.Email.Trim().ToLowerInvariant()}|{user.RecipientType}";
+            var expected=resolution.Recipients.Select(Identity).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var stored=dispatch.Recipients.Select(Identity).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return expected.Count>0 && expected.SetEquals(stored)
+                ? new(true,policy.DeliveryBoundary,"")
+                : new(false,policy.DeliveryBoundary,"MODULE025_HANDOFF_RECIPIENTS_CHANGED");
+        }
+        catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested) { throw; }
+        catch(Exception)
+        {
+            return new(false,"locked","MODULE025_HANDOFF_SOURCE_UNAVAILABLE");
+        }
+    }
+
     // Only a native audited producer can use this strategy. Ignore payload email
     // addresses and user-ID overrides; resolve current ownership and reporting
     // relationships afresh so an old event cannot notify a stale owner/team.

@@ -38,6 +38,9 @@ internal static class ProjectFlowHiveEnterpriseModule
         app.MapGet(
             "/api/project-flowhive/projects/{projectId:guid}/enterprise",
             (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetEnterpriseWorkspaceAsync);
+        app.MapGet(
+            "/api/project-flowhive/projects/{projectId:guid}/documents/readiness",
+            (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetDocumentReadinessAsync);
         app.MapPut(
             "/api/project-flowhive/projects/{projectId:guid}/working-copy",
             (Func<Guid, ProjectFlowHiveWorkingCopyRequest, HttpContext, CancellationToken, Task<IResult>>)SaveWorkingCopyAsync);
@@ -73,6 +76,24 @@ internal static class ProjectFlowHiveEnterpriseModule
         app.MapProjectFlowHiveAiPlannerOrchestrationEndpoints();
 
         return app;
+    }
+
+    private static async Task<IResult> GetDocumentReadinessAsync(Guid projectId, HttpContext context, CancellationToken token)
+    {
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.View, token);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        var resolution = await ProjectPlanningDocumentResolver.ReadCurrentAsync(connection, projectId, token);
+        await using var project = new NpgsqlCommand("SELECT status FROM projects WHERE project_id=@project;", connection);
+        project.Parameters.AddWithValue("project", projectId);
+        var projectStatus = await project.ExecuteScalarAsync(token) as string;
+        var archived = ProjectFlowHiveLifecycle.IsArchived(projectStatus);
+        return Results.Ok(new
+        {
+            projectId, projectStatus, isArchived = archived, stateChanged = false,
+            preparation = ProjectPlanningDocumentPreparation.Describe(resolution,
+                ProjectTime.Api.Ai.PulseAiPrivateRuntimeOptions.FromEnvironment().WorkerEnabled, archived)
+        });
     }
 
     private static async Task<IResult> GetEnterpriseWorkspaceAsync(
@@ -190,6 +211,8 @@ internal static class ProjectFlowHiveEnterpriseModule
             WHERE project_flowhive_working_copies.row_version=@expected_row_version
             RETURNING working_revision,row_version,updated_at;
             """;
+        if (!await ProjectFlowHiveLifecycle.LockActiveAsync(connection, transaction, projectId, cancellationToken))
+            return ProjectFlowHiveLifecycle.Archived();
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("project_id", projectId);
         command.Parameters.Add("plan_id", NpgsqlDbType.Uuid).Value =

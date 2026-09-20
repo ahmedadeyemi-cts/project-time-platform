@@ -34,7 +34,7 @@ try
               ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000006',CURRENT_DATE-7,NULL);
         """);
     var migration050=await File.ReadAllTextAsync(Path.Combine(root,"database","migrations","050_project_notification_routing_and_schedules.sql"));
-    foreach(var table in new[]{"project_cost_alert_routing_rules","project_notification_schedules","project_notification_dispatches","project_notification_configuration_audit"})
+    foreach(var table in new[]{"project_cost_alert_routing_rules","project_notification_schedules","project_notification_dispatches","project_notification_dispatch_recipients","project_notification_delivery_attempts","project_notification_configuration_audit"})
     {
         var definition=Regex.Match(migration050,$@"CREATE TABLE IF NOT EXISTS {table} \([\s\S]*?\n\);").Value;
         Check(!string.IsNullOrEmpty(definition),"production definition found for "+table);
@@ -100,6 +100,17 @@ try
     var reclaimed=(Array)await Invoke(typeof(Module025SowGsdModule).Assembly.GetType("ProjectTime.Api.Modules.EnterpriseNotificationRepository")!,"ClaimDueEventsAsync",connection,10,CancellationToken.None);
     Check(reclaimed.Length==1,"interrupted handoff processing is recoverable through the guarded dispatch path");
     var notification=await LoadEvent(connection,notificationId);
+    var releaseDispatchId=Guid.NewGuid();
+    await Sql(connection,$$"""
+        INSERT INTO project_notification_dispatches(project_notification_dispatch_id,event_key,notification_type,source_module,subject,text_body,delivery_status,delivery_boundary,metadata_json)
+          VALUES('{{releaseDispatchId}}','manual-release-preflight','module025_handoff','025','Synthetic handoff','Synthetic','queued','production_governed','{"enterpriseNotificationEventId":"{{notificationId}}"}');
+        INSERT INTO project_notification_dispatch_recipients(project_notification_dispatch_id,recipient_role,recipient_user_id,recipient_name,recipient_email,recipient_type,derivation_source)
+          VALUES('{{releaseDispatchId}}','SOLUTION_ARCHITECT','{{User(1)}}','User 1','user1@example.invalid','to','synthetic-authoritative-snapshot'),
+            ('{{releaseDispatchId}}','MANAGER','{{User(3)}}','User 3','user3@example.invalid','cc','synthetic-authoritative-snapshot');
+        """);
+    var releaseDispatch=await LoadDispatch(connection,releaseDispatchId);
+    var preflight=await Preflight(connection,releaseDispatch);
+    Check(Property<bool>(preflight,"Current") && Property<string>(preflight,"Boundary")=="test_only","unchanged recipients may continue only within the current policy boundary, even if the stored boundary is broader");
     var recipients=await Resolve(connection,notification);
     var rows=recipients.GetProperty("Recipients").EnumerateArray().ToArray();
     Check(rows.Length==2 && rows.Any(row=>row.GetProperty("UserId").GetGuid()==User(1)) && rows.Any(row=>row.GetProperty("UserId").GetGuid()==User(3)),
@@ -108,9 +119,16 @@ try
         && rows.Single(row=>row.GetProperty("UserId").GetGuid()==User(3)).GetProperty("RecipientType").GetString()=="cc","new owner is To and responsible manager is Cc");
     await Sql(connection,$"UPDATE app_user_role_assignments SET is_active=false WHERE user_id='{User(1)}';");
     Check((await Resolve(connection,notification)).GetProperty("Recipients").GetArrayLength()==0,"owner without current Solution Architect role cannot receive a stale handoff notification");
+    Check(!Property<bool>(await Preflight(connection,releaseDispatch),"Current"),"manual release rejects stored recipients after owner role revocation");
+    var suppressedDelivery=await Invoke(typeof(Module025SowGsdModule).Assembly.GetType("ProjectTime.Api.Modules.ProjectNotificationProcessingService")!,
+        "DeliverDispatchAsync",connection,releaseDispatchId,null,"Synthetic revoked-owner release",null,CancellationToken.None);
+    Check(!Property<bool>(suppressedDelivery,"Sent") && Property<string>(suppressedDelivery,"Status")=="suppressed"
+        && await Scalar<string>(connection,$"SELECT delivery_status FROM project_notification_dispatches WHERE project_notification_dispatch_id='{releaseDispatchId}';")=="suppressed",
+        "revoked-source release is finalized as suppressed instead of stranded sending, without reading transport configuration or invoking email/Teams");
     await Sql(connection,$"UPDATE app_user_role_assignments SET is_active=true WHERE user_id='{User(1)}';");
     await Sql(connection,$"UPDATE app_user_role_assignments SET is_active=false WHERE user_id='{User(3)}';");
     Check((await Resolve(connection,notification)).GetProperty("Recipients").GetArrayLength()==1,"reported manager without current workspace role is excluded");
+    Check(!Property<bool>(await Preflight(connection,releaseDispatch),"Current"),"manual retry rejects its stored manager after role revocation");
     await Sql(connection,$"UPDATE app_user_role_assignments SET is_active=true WHERE user_id='{User(3)}';");
     await Sql(connection,$"UPDATE enterprise_notification_events SET source_event_id='999999999' WHERE enterprise_notification_event_id='{notificationId}';");
     Check((await Resolve(connection,await LoadEvent(connection,notificationId))).GetProperty("Recipients").GetArrayLength()==0,"notification must match the retained handoff audit identity");
@@ -123,8 +141,10 @@ try
     Check((await Resolve(connection,await LoadEvent(connection,notificationId))).GetProperty("Recipients").GetArrayLength()==0,"external signed producers cannot impersonate a native SOW/GSD handoff");
     await Sql(connection,$"UPDATE enterprise_notification_events SET ingestion_source='native_bridge',subject_user_id='{User(2)}' WHERE enterprise_notification_event_id='{notificationId}';");
     Check((await Resolve(connection,await LoadEvent(connection,notificationId))).GetProperty("Recipients").GetArrayLength()==0,"stale owner event cannot notify previous owner or their manager");
+    Check(!Property<bool>(await Preflight(connection,releaseDispatch),"Current"),"stored dispatch is suppressed when the event no longer names the current owner");
     await Sql(connection,$"UPDATE enterprise_notification_events SET subject_user_id='{User(1)}' WHERE enterprise_notification_event_id='{notificationId}'; UPDATE app_users SET email='USER1@example.invalid' WHERE user_id='{User(3)}';");
     Check((await Resolve(connection,await LoadEvent(connection,notificationId))).GetProperty("Recipients").GetArrayLength()==1,"same mailbox across owner and manager is deduplicated");
+    Check(!Property<bool>(await Preflight(connection,releaseDispatch),"Current"),"manual retry rejects a changed directory mailbox instead of sending to the obsolete address");
     await Sql(connection,$"UPDATE app_users SET email='Display <outside@example.invalid>' WHERE user_id='{User(1)}'; UPDATE app_users SET email='Display <OUTSIDE@example.invalid>' WHERE user_id='{User(3)}';");
     Check((await Resolve(connection,await LoadEvent(connection,notificationId))).GetProperty("Recipients").GetArrayLength()==0,"malformed directory mailbox rejected without using client alternatives");
     await Sql(connection,"UPDATE enterprise_notification_policies SET enabled=false,delivery_boundary='locked' WHERE policy_code='MODULE025_COVERAGE_STARTED';");
@@ -149,6 +169,7 @@ try
         await transaction.CommitAsync();
     }
     await Sql(connection,await File.ReadAllTextAsync(Path.Combine(root,"database","rollback","120_module025_handoff_notifications_rollback.sql")));
+    Check(Property<string>(await Preflight(connection,releaseDispatch),"DiagnosticCode")=="MODULE025_HANDOFF_POLICY_DISABLED","manual release honors a subsequently disabled handoff policy");
     Check(await Scalar<long>(connection,"SELECT count(*) FROM enterprise_notification_events;")==4 && await Scalar<long>(connection,"SELECT count(*) FROM enterprise_notification_policies WHERE enabled;")==0,"rollback disables policies while retaining all delivery evidence");
     Check(Status("dispatched","")=="recorded" && Status("dispatched","queued")=="queued" && Status("dispatched","sent")=="sent" && Status("failed","")=="failed","status does not confuse orchestration dispatch with provider-confirmed delivery");
     Console.WriteLine($"{count} handoff notification checks passed; no email or Teams transport invoked.");
@@ -170,3 +191,5 @@ static async Task<object> LoadEvent(NpgsqlConnection connection,Guid id)
 static async Task<JsonElement> Resolve(NpgsqlConnection connection,object notification)=>JsonSerializer.SerializeToElement(await Invoke(typeof(Module025SowGsdModule),"ResolveHandoffNotificationRecipientsAsync",connection,notification,CancellationToken.None));
 static string Status(string eventStatus,string dispatchStatus)=>(string)typeof(Module025SowGsdModule).GetMethod("HandoffDeliveryStatus",BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,[eventStatus,dispatchStatus])!;
 static async Task<bool> Claim(NpgsqlConnection connection,Guid id)=>(bool)await Invoke(typeof(Module025SowGsdModule).Assembly.GetType("ProjectTime.Api.Modules.ProjectNotificationRepository")!,"TryClaimDispatchDeliveryAsync",connection,id,null,"Synthetic handoff claim test","synthetic-test",CancellationToken.None);
+static Task<object> LoadDispatch(NpgsqlConnection connection,Guid id)=>Invoke(typeof(Module025SowGsdModule).Assembly.GetType("ProjectTime.Api.Modules.ProjectNotificationRepository")!,"LoadDispatchAsync",connection,id,CancellationToken.None);
+static Task<object> Preflight(NpgsqlConnection connection,object dispatch)=>Invoke(typeof(Module025SowGsdModule),"ValidateHandoffDispatchAsync",connection,dispatch,CancellationToken.None);

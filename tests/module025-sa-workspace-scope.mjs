@@ -7,7 +7,7 @@ import { verifyReadOnlyWorkflow } from './flowhive-psa-scope.mjs';
 
 // Source preparation only. This registration neither authorizes a deployment
 // nor changes the existing candidate, approval, or release admission controls.
-const base = '373b37e9c76e430355ed2dc5f71ec6a133ead3aa';
+const base = 'ad98f30d0a86f12b89c6fb2239ac9afcfd0dac2e';
 const branch = 'feat/sa-workspace-redesign-20260920';
 const expected = [
   '.github/workflows/flowhive-psa-release-control-ci.yml',
@@ -40,6 +40,7 @@ const expected = [
   'src/backend/ProjectTime.Api/Modules/Module025TaskEstimates.cs',
   'src/backend/ProjectTime.Api/Modules/Module025TemplateCatalog.cs',
   'src/backend/ProjectTime.Api/Modules/Module025WorkTracking.cs',
+  'src/backend/ProjectTime.Api/Modules/ProjectNotificationProcessingService.cs',
   'src/frontend/project-time-web/src/module025/OwnershipTransfer.jsx',
   'src/frontend/project-time-web/src/module025/PhaseTaskReview.jsx',
   'src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx',

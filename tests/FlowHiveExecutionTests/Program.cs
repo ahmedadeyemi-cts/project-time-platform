@@ -471,4 +471,24 @@ var crossProjectResponse = await ExecuteResultAsync(await InvokeResultAsync(fina
 Check(crossProjectResponse.StatusCode == 403, "cross-project financial readback is denied by the real handler");
 var unauthenticatedResponse = await ExecuteResultAsync(await InvokeResultAsync(financialHandler, integrationProject, new DefaultHttpContext(), CancellationToken.None));
 Check(unauthenticatedResponse.StatusCode == 401, "unauthenticated financial readback is denied by the real handler");
+var closureRun = await Queue("closure during generation", reviewedVersion);
+var retainedWorkingVersion = (Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@p", ("p", project)))!;
+var retainedReviews = (long)(await Sql("SELECT count(*) FROM project_flowhive_ai_plan_reviews WHERE project_id=@p", ("p", project)))!;
+await Sql("UPDATE projects SET status='closed' WHERE project_id=@p", ("p", project));
+await using (var c = new NpgsqlConnection(cs))
+{
+    await c.OpenAsync();
+    await Invoke("PersistWorkingDraftAndCompleteAsync", c, closureRun, project, actor, seed, schedule, validation, Array.Empty<string>(), CancellationToken.None);
+    var resolver = typeof(ProjectFlowHiveExecutionPolicy).Assembly.GetType("ProjectTime.Api.Modules.ProjectPlanningAccessResolver")!;
+    var pending = (Task)resolver.GetMethod("ResolveForActorAsync", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, [c, actor, project, "066", CancellationToken.None])!;
+    await pending;
+    var permissions = JsonSerializer.SerializeToElement(pending.GetType().GetProperty("Result")!.GetValue(pending), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    Check(permissions.GetProperty("canView").GetBoolean() && !permissions.GetProperty("canEditPlanner").GetBoolean()
+        && !permissions.GetProperty("canAdoptBaseline").GetBoolean(), "archived project preserves scoped viewing while denying editor and baseline writes");
+}
+Check((string)(await Sql("SELECT phase FROM project_flowhive_ai_planner_runs WHERE run_id=@r", ("r", closureRun)))! == "project_archived", "AI finalization stops when the project closes");
+Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@p", ("p", project)))! == retainedWorkingVersion
+    && (long)(await Sql("SELECT count(*) FROM project_flowhive_ai_plan_reviews WHERE project_id=@p", ("p", project)))! == retainedReviews,
+    "archive retains the exact working copy and immutable review history");
+await Sql("UPDATE projects SET status='active' WHERE project_id=@p", ("p", project));
 Console.WriteLine($"FLOWHIVE_EXECUTION_ASSERTIONS_PASSED={count}");

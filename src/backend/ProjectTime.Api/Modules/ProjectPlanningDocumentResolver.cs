@@ -460,6 +460,7 @@ internal static class ProjectPlanningDocumentResolver
         {
             "statementofwork" or "statement_of_work" or "sow" => "sow",
             "generalsolutiondesign" or "general_solution_design" or "global_solution_design" or "gsd" => "gsd",
+            "supporting_document" => "supporting",
             "orderform" or "order_form" => "order_form",
             "technicalspecification" or "technical_specification" => "technical_specification",
             "methodofprocedure" or "method_of_procedure" => "method_of_procedure",
