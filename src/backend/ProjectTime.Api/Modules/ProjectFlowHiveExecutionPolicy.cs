@@ -7,16 +7,13 @@ namespace ProjectTime.Api.Modules;
 /// <summary>One finite budget and input identity for every durable planner operation.</summary>
 public static class ProjectFlowHiveExecutionPolicy
 {
-    public const string Contract = "flowhive-bounded-execution-v1-20260906";
-    public const string Migration = "104_flowhive_bounded_ai_execution";
+    public const string Contract = "flowhive-sequential-execution-v2-20260920";
+    public const string Migration = "121_flowhive_sequential_phase_checkpoints";
     public const int MaximumAttempts = 2;
-    public static readonly TimeSpan OverallBudget = TimeSpan.FromMinutes(12);
-    // A source-grounded five-phase plan is a bounded provider sequence: one
-    // request per phase, within the single durable operation budget. The
-    // previous four-minute slice expired while the private model was assembling
-    // one oversized response. Keep two minutes for bounded retry scheduling and
-    // persistence after the phase sequence.
-    public static readonly TimeSpan InferenceBudget = TimeSpan.FromMinutes(10);
+    public static readonly TimeSpan OverallBudget = TimeSpan.FromMinutes(40);
+    // Five sequential phase calls and their bounded retries share one durable deadline.
+    // Phase calls have their own 330-second cap; two minutes remain for admission/persistence.
+    public static readonly TimeSpan InferenceBudget = TimeSpan.FromMinutes(38);
     public static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
 
     public static string Fingerprint(ProjectFlowHivePlanRequest plan, Guid actual, Guid effective,

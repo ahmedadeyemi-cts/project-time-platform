@@ -4,6 +4,7 @@ import ProjectFlowHiveOverview from './ProjectFlowHiveOverview.jsx';
 import ProjectFlowHiveDocumentReadiness from './ProjectFlowHiveDocumentReadiness.jsx';
 import { isFlowHiveArchived, filterFlowHiveProjects } from './flowhive-project-lifecycle.js';
 import AiOperationProgress from './ai/AiOperationProgress.jsx';
+import AiPhaseProgress from './ai/AiPhaseProgress.jsx';
 import { flowHiveProjectLink } from './flowhive-psa-overview.js';
 import ProjectFlowHivePsaWorkspace from './ProjectFlowHivePsaWorkspace.jsx';
 import { boundedFetch, canApplyPlannerResult, observePlanner } from './flowhive-planner-operation.js';
@@ -1313,6 +1314,9 @@ export default function ProjectFlowHiveCenter() {
           ? 'Processing is underway. Elapsed time includes document preparation and AI generation.'
           : 'The last server status was still processing. Resume status below to check for completion.'}
       /> : null}
+
+      {(busy === 'ai-planner' || aiPreview?.runId) && <AiPhaseProgress phases={aiPreview?.phases}
+        terminal={Boolean(aiPreview?.terminal)} completedAt={aiPreview?.completedAt} />}
 
       <nav className="flowhive-view-tabs" aria-label="Project FlowHive views">
         {views.map((view) => (

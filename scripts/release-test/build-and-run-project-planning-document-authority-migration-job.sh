@@ -63,6 +63,9 @@ install -m 0444 "$MODULE025_PROJECT_NAME_MIGRATION_FILE" "$CONTEXT/database/migr
 install -m 0444 "$ROOT/database/migrations/115_module_066_task_notifications.sql" "$CONTEXT/database/migrations/115_module_066_task_notifications.sql"
 install -m 0444 "$ROOT/scripts/release-test/verify-flowhive-task-notifications.sql" "$CONTEXT/database/verify-flowhive-task-notifications.sql"
 (cd "$CONTEXT" && sha256sum database/migrations/115_module_066_task_notifications.sql database/verify-flowhive-task-notifications.sql > database/flowhive-notifications.sha256)
+install -m 0444 "$ROOT/database/migrations/121_flowhive_sequential_phase_checkpoints.sql" "$CONTEXT/database/migrations/121_flowhive_sequential_phase_checkpoints.sql"
+install -m 0444 "$ROOT/scripts/release-test/verify-flowhive-sequential-checkpoints.sql" "$CONTEXT/database/verify-flowhive-sequential-checkpoints.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/121_flowhive_sequential_phase_checkpoints.sql database/verify-flowhive-sequential-checkpoints.sql > database/flowhive-sequential.sha256)
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -115,6 +118,11 @@ echo 'MIGRATION_109_MODULE025_PROJECT_NAME=APPLIED_AND_VERIFIED'
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/115_module_066_task_notifications.sql"
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-task-notifications.sql"
 echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'
+(cd "$ROOT" && sha256sum --check --status database/flowhive-sequential.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/121_flowhive_sequential_phase_checkpoints.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-sequential-checkpoints.sql"
+echo 'MIGRATION_121_FLOWHIVE_SEQUENTIAL_CHECKPOINTS=APPLIED_AND_VERIFIED'
+
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='096_project_planning_document_authority')::text || '|' ||
@@ -271,6 +279,11 @@ export RELIABILITY_MIGRATION_JOB_NAME="pp096-${RUN_ID}-${RUN_ATTEMPT}"
 export RELIABILITY_MIGRATION_SCOPE="project-planning-document-authority-test"
 bash "$MIGRATION_RUNNER"
 echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'
+(cd "$ROOT" && sha256sum --check --status database/flowhive-sequential.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/121_flowhive_sequential_phase_checkpoints.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-sequential-checkpoints.sql"
+echo 'MIGRATION_121_FLOWHIVE_SEQUENTIAL_CHECKPOINTS=APPLIED_AND_VERIFIED'
+
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"
   migration_sha256="$(sha256sum "$ROOT/database/migrations/115_module_066_task_notifications.sql" | cut -d ' ' -f 1)"

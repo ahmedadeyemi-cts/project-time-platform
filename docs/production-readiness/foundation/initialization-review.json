@@ -1713,6 +1713,16 @@
       "rationale": "Staged SA workspace preparation for PR 1123. Requires reviewed Protected UAT approval before application; not approved or admitted for Production."
     },
     {
+      "path": "database/migrations/121_flowhive_sequential_phase_checkpoints.sql",
+      "sha256": "451433cde26ec6df482f986a4ef195cb76c402d9f4677820a4eea25150dafe28",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "candidate_schema_or_reference",
+      "rationale": "Adds a bounded private JSON phase checkpoint to existing FlowHive run history, with an object constraint. Stops only obsolete in-flight execution contracts; preserves tasks, plans and completed history. Requires existing FlowHive schema and protected migration verification. This classification does not authorize production deployment."
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [

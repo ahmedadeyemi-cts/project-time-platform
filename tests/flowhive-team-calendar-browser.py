@@ -112,6 +112,33 @@ async def main():
         # Restoring a server run retains its start and finish rather than resetting to zero.
         await page.evaluate("""() => window.mountTimer({title:'AI Planner',startedAt:'2026-09-20T01:00:00Z',completedAt:'2026-09-20T01:05:09Z',active:false,stage:'Working draft ready'})""")
         await page.get_by_text('00:05:09 elapsed',exact=True).wait_for()
+        await page.evaluate("""() => {
+          window.phaseNow=Date.now();
+          window.phaseProps={phases:[
+            {name:'Plan',number:1,status:'completed',startedAt:window.phaseNow-95000,completedAt:window.phaseNow-65000,taskCount:3},
+            {name:'Design',number:2,status:'processing',startedAt:window.phaseNow-65000}]};
+          window.mountPhases(window.phaseProps);
+        }""")
+        await page.get_by_text('Stage 2 of 5: Design',exact=True).wait_for()
+        assert await page.get_by_role('timer',name='Plan elapsed time').inner_text()=='00:00:30 elapsed'
+        assert await page.get_by_text('Not started',exact=True).count()==3
+        await page.evaluate('window.initialPhaseTimer=document.querySelector("[aria-label=\\"Design elapsed time\\"]").textContent')
+        await page.wait_for_function('document.querySelector("[aria-label=\\"Design elapsed time\\"]").textContent !== window.initialPhaseTimer')
+        await page.evaluate("""() => window.mountPhases({...window.phaseProps,terminal:true,completedAt:window.phaseNow})""")
+        await page.get_by_text('1 of 5 stages completed',exact=True).wait_for()
+        await page.wait_for_timeout(1100)
+        assert await page.get_by_role('timer',name='Design elapsed time').inner_text()=='00:01:05 elapsed'
+        assert await page.get_by_text('Stopped',exact=True).count()==1
+        await page.evaluate("""() => window.mountPhases({phases:['Plan','Design','Implement','Validate','Release'].map((name,index)=>({name,number:index+1,status:'completed'}))})""")
+        await page.get_by_text('All five stages generated. Checking the WBS and schedule.',exact=True).wait_for()
+        await page.evaluate("""() => window.mountPhases({...window.phaseProps,phases:[window.phaseProps.phases[0],{...window.phaseProps.phases[1],status:'retrying'}]})""")
+        await page.get_by_text('Waiting for provider retry',exact=True).wait_for()
+        await page.evaluate('window.retryTimer=document.querySelector("[aria-label=\\"Design elapsed time\\"]").textContent')
+        await page.wait_for_function('document.querySelector("[aria-label=\\"Design elapsed time\\"]").textContent !== window.retryTimer')
+        await page.set_viewport_size({'width':390,'height':844})
+        assert await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+        await page.screenshot(path='/tmp/flowhive-sequential-mobile.png',full_page=True)
+        print('FLOWHIVE_SEQUENTIAL_TIMERS=PASS (active, completed, pending, terminal, saved timestamps, mobile)')
         assert not errors, errors
         await browser.close()
         print('FLOWHIVE_TEAM_CALENDAR_BROWSER=PASS (navigation, unknown state, member filter, refresh, race, failure)')

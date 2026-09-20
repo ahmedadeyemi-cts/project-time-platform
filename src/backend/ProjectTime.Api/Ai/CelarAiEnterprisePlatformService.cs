@@ -449,7 +449,7 @@ public sealed class CelarAiEnterprisePlatformService
                 FeatureCode: planningCapability,
                 ProjectId: request.ProjectId,
                 TaskId: request.TaskId,
-                AssignmentId: request.AssignmentId),
+                AssignmentId: request.AssignmentId) { FlowHiveExecution = request.FlowHiveExecution },
             cancellationToken);
     }
 

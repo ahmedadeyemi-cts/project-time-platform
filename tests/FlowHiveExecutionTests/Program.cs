@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using ProjectTime.Api.Modules;
+using ProjectTime.Api.Ai;
 
 var count = 0;
 void Check(bool valid, string name) { if (!valid) throw new Exception("FAILED: " + name); Console.WriteLine("PASSED: " + name); count++; }
@@ -113,6 +114,9 @@ await Sql("""
     """);
 var migration = File.ReadAllText(Path.Combine(root, "database/migrations/104_flowhive_bounded_ai_execution.sql"));
 await Sql(migration); await Sql(migration);
+var phaseMigration = File.ReadAllText(Path.Combine(root, "database/migrations/121_flowhive_sequential_phase_checkpoints.sql"));
+await Sql(phaseMigration); await Sql(phaseMigration);
+Check((long)(await Sql("SELECT count(*) FROM schema_migrations WHERE migration_id='121_flowhive_sequential_phase_checkpoints'"))! == 1, "phase migration is idempotent");
 Check((long)(await Sql("SELECT count(*) FROM schema_migrations WHERE migration_id='104_flowhive_bounded_ai_execution';"))! == 1, "migration is idempotent");
 var project = Guid.NewGuid(); var actor = Guid.NewGuid();
 await Sql("INSERT INTO projects(project_id,project_code,project_name,status) VALUES(@p,'TEST-104','Synthetic execution project','active'); INSERT INTO app_users(user_id,display_name,email,is_active) VALUES(@a,'Synthetic Administrator','synthetic@example.invalid',TRUE);", ("p", project), ("a", actor));
@@ -135,9 +139,9 @@ Check(fingerprint != ProjectFlowHiveExecutionPolicy.Fingerprint(seed,Guid.NewGui
 Check(fingerprint != ProjectFlowHiveExecutionPolicy.Fingerprint(seed,actor,actor,"different","comprehensive","source"), "requested scope participates in identity");
 Check(!ProjectFlowHiveExecutionPolicy.CanAttempt(2,DateTimeOffset.UtcNow.AddMinutes(1),DateTimeOffset.UtcNow), "two-attempt budget is terminal");
 Check(!ProjectFlowHiveExecutionPolicy.CanAttempt(0,DateTimeOffset.UtcNow.AddSeconds(-1),DateTimeOffset.UtcNow), "expired operation cannot attempt inference");
-Check(ProjectFlowHiveExecutionPolicy.OverallBudget == TimeSpan.FromMinutes(12), "the durable planner deadline is twelve minutes and remains bounded");
-Check(ProjectFlowHiveExecutionPolicy.InferenceBudget == TimeSpan.FromMinutes(10), "the provider request may use the configured ten-minute background budget");
-Check(ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(11),DateTimeOffset.UtcNow), "a first transient failure can retry when the full bounded request still fits");
+Check(ProjectFlowHiveExecutionPolicy.OverallBudget == TimeSpan.FromMinutes(40), "the durable planner deadline is forty minutes and remains bounded");
+Check(ProjectFlowHiveExecutionPolicy.InferenceBudget == TimeSpan.FromMinutes(38), "the provider request may use the configured thirty-eight-minute background budget");
+Check(ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(39),DateTimeOffset.UtcNow), "a first transient failure can retry when the full bounded request still fits");
 Check(!ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(10).AddSeconds(20),DateTimeOffset.UtcNow), "a late transient failure cannot start a retry that would outlive the run");
 Check(!ProjectFlowHiveExecutionPolicy.CanRetry(2,DateTimeOffset.UtcNow.AddMinutes(12),DateTimeOffset.UtcNow), "the retry budget remains capped at two attempts");
 Check(!ProjectFlowHiveExecutionPolicy.MatchesWorkingCopy(null,Guid.NewGuid()), "null starting version is not an overwrite wildcard");
@@ -175,7 +179,7 @@ Check(await Queue("scope",currentVersion)==run,"duplicate clicks reuse the exact
 try { await Queue("changed scope",currentVersion); throw new Exception("A conflicting run was accepted"); }
 catch (Exception e) when(e.GetType().Name=="PlannerConflict") { Check(true,"different active inputs produce a conflict instead of another job"); }
 Check((long)(await Sql("SELECT count(*) FROM project_flowhive_ai_planner_runs"))! == 1,"one click sequence creates one durable operation");
-Check((double)(await Sql("SELECT EXTRACT(EPOCH FROM deadline_at-created_at)::double precision FROM project_flowhive_ai_planner_runs WHERE run_id=@r",("r",run)))! <= 721,"deadline is stored at creation within the twelve-minute bound");
+Check((double)(await Sql("SELECT EXTRACT(EPOCH FROM deadline_at-created_at)::double precision FROM project_flowhive_ai_planner_runs WHERE run_id=@r",("r",run)))! <= 2401,"deadline is stored at creation within the forty-minute bound");
 foreach(var sql in new[] {
     "UPDATE project_flowhive_ai_planner_runs SET deadline_at=deadline_at+INTERVAL '1 hour' WHERE run_id=@r",
     "UPDATE project_flowhive_ai_planner_runs SET attempt_count=3 WHERE run_id=@r",
@@ -491,4 +495,53 @@ Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies 
     && (long)(await Sql("SELECT count(*) FROM project_flowhive_ai_plan_reviews WHERE project_id=@p", ("p", project)))! == retainedReviews,
     "archive retains the exact working copy and immutable review history");
 await Sql("UPDATE projects SET status='active' WHERE project_id=@p", ("p", project));
+// Exercise phase persistence against actual permissions, source versions and cancellation fences.
+var oldUploadRoot=Environment.GetEnvironmentVariable(ProjectPulseUploadStorage.CanonicalEnvironmentVariable);
+var fixtureRoot=Path.Combine(Path.GetTempPath(),"flowhive-phase-fixture-"+Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(fixtureRoot);
+Environment.SetEnvironmentVariable(ProjectPulseUploadStorage.CanonicalEnvironmentVariable,fixtureRoot);
+try
+{
+    var fixtureFile=Path.Combine(fixtureRoot,"scope.txt"); File.WriteAllText(fixtureFile,"Synthetic SOW service overview");
+    var doc=Guid.NewGuid(); var version=Guid.NewGuid(); var register=Guid.NewGuid();
+    await Sql("""
+        INSERT INTO work_register_documents VALUES(@register,'sow','active','local_file',@file);
+        INSERT INTO pulse_ai_document_versions VALUES(@version,'canonical','ready',@hash,'1');
+        INSERT INTO pulse_ai_document_chunks VALUES(@version,TRUE,'ready','Scope','Service Overview','Synthetic scope of services');
+        INSERT INTO project_intake_documents VALUES(@doc,@p,'sow','scope.txt','ready','',@version,@register,NOW(),NOW(),TRUE,TRUE);
+        """,("register",register),("file",fixtureFile),("version",version),("hash",new string('a',64)),("doc",doc),("p",project));
+    await using var phaseDb=new NpgsqlConnection(cs); await phaseDb.OpenAsync();
+    var currentDocs=await ProjectPlanningDocumentResolver.ReadCurrentAsync(phaseDb,project,default);
+    Check(currentDocs.ReadyForGeneration,"phase fixture uses current approved and indexed SOW");
+    var checkpoint=FlowHiveSequentialState.Empty(ProjectFlowHiveExecutionPolicy.VersionFingerprint(currentDocs));
+    async Task<(Guid Id,object Run)> PhaseRun(string outcome)
+    {
+        var id=await Queue(outcome,retainedWorkingVersion);
+        await Sql("UPDATE project_flowhive_ai_planner_runs SET source_version_fingerprint=@v WHERE run_id=@r",("v",checkpoint.SourceFingerprint),("r",id));
+        return(id,(await Invoke("LoadRunAsync",phaseDb,project,id,CancellationToken.None))!);
+    }
+    var phaseRun=await PhaseRun("phase checkpoint");
+    await Invoke("PersistPhaseCheckpointAsync",phaseDb,phaseRun.Run,checkpoint,CancellationToken.None);
+    Check((bool)(await Sql("SELECT phase_checkpoint->>'sourceFingerprint'=@v FROM project_flowhive_ai_planner_runs WHERE run_id=@r",("v",checkpoint.SourceFingerprint),("r",phaseRun.Id)))!,"private checkpoint commits with exact source fingerprint");
+    var ownProgress=await ProjectFlowHiveAiPlannerOrchestrationModule.ReadPhaseProgressForActorAsync(phaseDb,project,phaseRun.Id,actor,actor,default);
+    Check(ownProgress is not null && !JsonSerializer.Serialize(ownProgress).Contains("sourceFingerprint"),"actor progress exposes stages without private checkpoint");
+    Check(await ProjectFlowHiveAiPlannerOrchestrationModule.ReadPhaseProgressForActorAsync(phaseDb,project,phaseRun.Id,Guid.NewGuid(),actor,default) is null,"other actor cannot observe run progress");
+    await Invoke("StopRunAsync",phaseDb,phaseRun.Id,"cancelled","fixture",CancellationToken.None);
+    try { await Invoke("PersistPhaseCheckpointAsync",phaseDb,phaseRun.Run,checkpoint,CancellationToken.None); throw new Exception("cancelled checkpoint accepted"); }
+    catch(OperationCanceledException) { Check(true,"cancelled run rejects late phase persistence"); }
+    var changedRun=await PhaseRun("source revision fence");
+    await Sql("UPDATE pulse_ai_document_versions SET source_sha256=@hash WHERE pulse_ai_document_version_id=@v",("hash",new string('b',64)),("v",version));
+    try { await Invoke("PersistPhaseCheckpointAsync",phaseDb,changedRun.Run,checkpoint,CancellationToken.None); throw new Exception("changed evidence accepted"); }
+    catch(OperationCanceledException) { Check(true,"changed source hash stops phase before commit"); }
+    await Sql("UPDATE pulse_ai_document_versions SET source_sha256=@hash WHERE pulse_ai_document_version_id=@v",("hash",new string('a',64)),("v",version));
+    var closedRun=await PhaseRun("archive phase fence");
+    await Sql("UPDATE projects SET status='closed' WHERE project_id=@p",("p",project));
+    try { await Invoke("PersistPhaseCheckpointAsync",phaseDb,closedRun.Run,checkpoint,CancellationToken.None); throw new Exception("closed project accepted"); }
+    catch(OperationCanceledException) { Check(true,"archive stops phase persistence and preserves history"); }
+    await Sql("UPDATE projects SET status='active' WHERE project_id=@p",("p",project));
+    Check((Guid)(await Sql("SELECT row_version FROM project_flowhive_working_copies WHERE project_id=@p",("p",project)))! == retainedWorkingVersion,"phase checkpoints never replace the working plan");
+    await Sql(File.ReadAllText(Path.Combine(root,"scripts/release-test/verify-flowhive-sequential-checkpoints.sql")));
+    Check(true,"protected migration schema verification executes against PostgreSQL");
+}
+finally { Environment.SetEnvironmentVariable(ProjectPulseUploadStorage.CanonicalEnvironmentVariable,oldUploadRoot); Directory.Delete(fixtureRoot,true); }
 Console.WriteLine($"FLOWHIVE_EXECUTION_ASSERTIONS_PASSED={count}");

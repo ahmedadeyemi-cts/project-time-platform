@@ -51,7 +51,7 @@ internal static class ProjectPlanningDocumentPreparation
     [
         "sow", "statement_of_work", "statementofwork", "gsd", "general_solution_design", "global_solution_design",
         "generalsolutiondesign", "architecture", "design", "order", "order_form", "orderform", "quote", "proposal",
-        "supporting", "supporting_document", "requirements", "requirements_document", "customer_requirements",
+        "other", "supporting", "supporting_document", "requirements", "requirements_document", "customer_requirements",
         "technical_specification", "technical_specs", "technicalspecification", "project_charter", "implementation_plan",
         "deployment_plan", "runbook", "method_of_procedure", "methodofprocedure", "mop"
     ];

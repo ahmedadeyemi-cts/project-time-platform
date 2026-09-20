@@ -299,7 +299,10 @@ for (const token of [
   'aiConnection.projectReadyDocumentCount',
   'Project Forge will automatically prepare the current project SOW, GSD, and supporting documents.',
   "disabled={!currentProjectId || busy === 'ai'}",
-  'for (let attempt = 1; attempt <= 60; attempt += 1)',
+  'const observationDeadline = Date.now() + 42 * 60 * 1000;',
+  'for (let attempt = 1; Date.now() < observationDeadline; attempt += 1)',
+  '{ ...payload, planningRunId }',
+  "status === 'project_planning_stopped'",
   "status === 'project_planning_documents_processing'",
   'waitForProjectPlanning('
 ]) requireText(center, token, 'Project Forge automatic project-document processing UI gate');

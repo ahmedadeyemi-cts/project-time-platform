@@ -80,7 +80,8 @@ public sealed record ProjectForgeAiDraftRequest(
     string? RequestedOutcome,
     DateOnly? StartDate,
     string? DetailLevel,
-    bool AllowSanitizedExternalFallback);
+    bool AllowSanitizedExternalFallback,
+    Guid? PlanningRunId = null);
 
 public sealed record ProjectForgeAssignReviewerRequest(
     Guid ReviewerUserId,

@@ -30,7 +30,8 @@ internal static class ProjectPlanningAiOrchestrator
         string capabilityCode,
         bool allowSanitizedExternalFallback,
         HttpContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        FlowHiveSequentialExecution? sequential = null, Guid? observedRunId = null)
     {
         if (!documents.ReadyForGeneration)
         {
@@ -63,7 +64,7 @@ internal static class ProjectPlanningAiOrchestrator
                 requestedOutcome?.Trim() ?? string.Empty,
                 detailLevel,
                 context,
-                cancellationToken);
+                cancellationToken, observedRunId);
         }
 
         CelarAiComposeResult composition;
@@ -82,7 +83,7 @@ internal static class ProjectPlanningAiOrchestrator
                     DiagramType: "flowchart",
                     AllowSanitizedExternalFallback: allowSanitizedExternalFallback,
                     ProjectId: seed.ProjectId,
-                    CapabilityCode: capabilityCode),
+                    CapabilityCode: capabilityCode) { FlowHiveExecution = sequential },
                 context,
                 cancellationToken);
         }
@@ -162,6 +163,11 @@ internal static class ProjectPlanningAiOrchestrator
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray());
         }
+
+        if (sequential is not null && sequential.State.Phases.Any(p => p.Status != "completed" || p.Plan is null))
+            return ProjectPlanningGenerationResult.Failed("project_planning_phases_incomplete",
+                "Five validated phases are required. Generation stopped without changing the project plan; inspect the saved stage progress.",
+                ["All five delivery phases must finish before WBS assembly."], documents.Warnings);
 
         var currentDocumentIds = documents.CurrentDocumentIds;
         var currentCitations = composition.Citations
@@ -286,7 +292,7 @@ internal static class ProjectPlanningAiOrchestrator
         string outcome,
         string? detailLevel,
         HttpContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? observedRunId)
     {
         if (!seed.ProjectId.HasValue)
         {
@@ -342,18 +348,20 @@ internal static class ProjectPlanningAiOrchestrator
                        completed_at
                   FROM {DurableRunTable}
                  WHERE project_id=@project_id
+                   AND (@observed::uuid IS NULL OR run_id=@observed)
                    AND actual_actor_user_id=@actual
                    AND effective_actor_user_id=@effective
                    AND requested_outcome=@outcome AND detail_level=@detail
                    AND execution_contract=@execution_contract
                    AND (source_version_fingerprint=@source_versions OR status IN ('queued','processing','generating'))
-                   AND status IN ('queued','processing','generating','completed','completed_with_schedule_overrun')
+                   AND (status IN ('queued','processing','generating','completed','completed_with_schedule_overrun') OR @observed::uuid IS NOT NULL)
                  ORDER BY created_at DESC
                  LIMIT 12
                  FOR UPDATE;
                 """, connection, transaction))
             {
                 command.Parameters.AddWithValue("project_id", projectId);
+                command.Parameters.Add("observed", NpgsqlTypes.NpgsqlDbType.Uuid).Value = (object?)observedRunId ?? DBNull.Value;
                 command.Parameters.AddWithValue("actual", actualUserId);
                 command.Parameters.AddWithValue("effective", effectiveUserId);
                 command.Parameters.AddWithValue("outcome", Clean(outcome, 4_000, string.Empty));
@@ -392,7 +400,7 @@ internal static class ProjectPlanningAiOrchestrator
                 }
 
                 await transaction.CommitAsync(cancellationToken);
-                return ReusedDurableResult(row, documents);
+                return ReusedDurableResult(row, documents) with { Progress = await Progress(row.RunId) };
             }
 
             var active = rows.FirstOrDefault(row => row.Status is "queued" or "processing" or "generating");
@@ -405,7 +413,15 @@ internal static class ProjectPlanningAiOrchestrator
                     [],
                     documents.Warnings.Concat([
                         "Project Forge did not start a second synchronous AI request while the shared planner was already running."
-                    ]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+                    ]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()) with { Progress = await Progress(active.RunId) };
+            }
+
+            if (observedRunId.HasValue)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return ProjectPlanningGenerationResult.Failed("project_planning_stopped",
+                    "The selected planner run stopped or its source documents changed. Review its status in FlowHive before starting another run.",
+                    [], documents.Warnings) with { Progress = await Progress(observedRunId.Value) };
             }
 
             // Release the read transaction before the shared queue captures its own starting revision.
@@ -419,7 +435,10 @@ internal static class ProjectPlanningAiOrchestrator
                 [],
                 documents.Warnings.Concat([
                     $"Shared planner run {runId:D} is queued for background generation."
-                ]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+                ]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()) with { Progress = await Progress(runId) };
+
+            Task<object?> Progress(Guid id) => ProjectFlowHiveAiPlannerOrchestrationModule.ReadPhaseProgressForActorAsync(
+                connection, projectId, id, actualUserId, effectiveUserId, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -617,7 +636,7 @@ internal sealed record ProjectPlanningGenerationResult(
     ProjectFlowHivePlanValidationResult? Validation,
     ProjectFlowHiveScheduleResult? Schedule,
     IReadOnlyList<string> MissingEvidence,
-    IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Warnings, object? Progress = null)
 {
     internal static ProjectPlanningGenerationResult NotReady(
         IReadOnlyList<string> blockers,

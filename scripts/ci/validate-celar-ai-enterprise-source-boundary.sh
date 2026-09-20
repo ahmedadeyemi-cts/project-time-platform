@@ -4,7 +4,10 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
-if [[ "$HEAD_BRANCH" == fix/module064-optional-provider-controls ]]; then
+if [[ "$HEAD_BRANCH" == feature/flowhive-sequential-wbs-20260920 ]]; then
+  python3 tests/flowhive-psa-sequential-scope.py
+  exit 0
+elif [[ "$HEAD_BRANCH" == fix/module064-optional-provider-controls ]]; then
   python3 tests/module064-provider-controls-scope.py
   exit 0
 elif [[ "$HEAD_BRANCH" == fix/enterprise-completion-20260919 ]]; then

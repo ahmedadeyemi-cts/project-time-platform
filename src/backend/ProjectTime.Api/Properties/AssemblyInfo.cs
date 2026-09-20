@@ -5,3 +5,6 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("FlowHiveNotificationTests")]
 [assembly: InternalsVisibleTo("FlowHivePreparationTests")]
+
+[assembly: InternalsVisibleTo("FlowHiveSequentialTests")]
+[assembly: InternalsVisibleTo("FlowHiveExecutionTests")]
