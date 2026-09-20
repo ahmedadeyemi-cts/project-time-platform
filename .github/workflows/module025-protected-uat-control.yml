@@ -54,6 +54,7 @@ jobs:
       QUARANTINED_ZERO_JOB_RUN_ID_5: '35374125567'
       QUARANTINED_ZERO_JOB_RUN_ID_6: '35461429670'
       QUARANTINED_ZERO_JOB_RUN_ID_7: '35473939797'
+      QUARANTINED_ZERO_JOB_RUN_ID_8: '35524946948'
 
     steps:
       - name: Check out exact current main controller
@@ -219,6 +220,23 @@ jobs:
                  '2026-09-19T22:39:09Z'; then
               pending_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/pending_deployments")" \
                 || fail 'Cannot verify pending approvals for the exact foundation orphan.'
+              if jq -e 'type == "array" and length == 0' <<<"$pending_json" >/dev/null; then
+                quarantined_runs+=("$run_id")
+                continue
+              fi
+            fi
+            # Exact FlowHive sequential-release orphan: normal cancellation was rejected. A descendant with an exact reviewed deployment controller
+            # makes this old release fail its exact-main guard before Azure login.
+            if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_8" && \
+                  "$requested_sha" != '045b66ca01baa68b2f5b3f6eb9e063c23c335981' ]] && \
+               git merge-base --is-ancestor '045b66ca01baa68b2f5b3f6eb9e063c23c335981' HEAD && \
+               git diff --quiet '045b66ca01baa68b2f5b3f6eb9e063c23c335981' HEAD -- .github/workflows/projectpulse-deploy-test.yml && \
+               verify_zero_job_quarantine "$run_id" \
+                 '045b66ca01baa68b2f5b3f6eb9e063c23c335981' \
+                 'main' \
+                 '2026-09-20T17:09:14Z'; then
+              pending_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/pending_deployments")" \
+                || fail 'Cannot verify pending approvals for the exact FlowHive sequential orphan.'
               if jq -e 'type == "array" and length == 0' <<<"$pending_json" >/dev/null; then
                 quarantined_runs+=("$run_id")
                 continue

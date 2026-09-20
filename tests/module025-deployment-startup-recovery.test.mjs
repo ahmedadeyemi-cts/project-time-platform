@@ -103,7 +103,7 @@ function execute(body, changes = {}, envChanges = {}) {
       REPAIRED_MODULE025_SHA: 'f7c86b45cff09741dd022c0e80bc1e6ad7d5c80b',
       QUARANTINED_ZERO_JOB_RUN_ID: '33654881418', QUARANTINED_ZERO_JOB_RUN_ID_2: '34377182662',
       QUARANTINED_ZERO_JOB_RUN_ID_3: '34495606530', QUARANTINED_ZERO_JOB_RUN_ID_4: '35364203547',
-      QUARANTINED_ZERO_JOB_RUN_ID_5: '35374125567', QUARANTINED_ZERO_JOB_RUN_ID_6: '35461429670', QUARANTINED_ZERO_JOB_RUN_ID_7: '35473939797',
+      QUARANTINED_ZERO_JOB_RUN_ID_5: '35374125567', QUARANTINED_ZERO_JOB_RUN_ID_6: '35461429670', QUARANTINED_ZERO_JOB_RUN_ID_7: '35473939797', QUARANTINED_ZERO_JOB_RUN_ID_8: '35524946948',
       ...envChanges}});
   assert.ifError(result.error);
   return {...result, state: JSON.parse(fs.readFileSync(statePath, 'utf8')), output: fs.readFileSync(output, 'utf8')};
@@ -159,7 +159,8 @@ try {
   for (const uncancellable of [
     {...defaultRun, id: 35374125567, head_sha: '245b0915d895d83f1ceaed32460ad95a4a3d79be', created_at: '2026-09-18T17:24:14Z', updated_at: '2026-09-18T17:24:14Z'},
     {...defaultRun, id: 35461429670, head_sha: '57c8d0264bdd828e6b3b53a8c5cb8b1b841e8f61', created_at: '2026-09-19T18:30:44Z', updated_at: '2026-09-19T18:30:44Z'},
-    {...defaultRun, id: 35473939797, head_sha: 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17', created_at: '2026-09-19T22:39:09Z', updated_at: '2026-09-19T22:39:09Z'}
+    {...defaultRun, id: 35473939797, head_sha: 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17', created_at: '2026-09-19T22:39:09Z', updated_at: '2026-09-19T22:39:09Z'},
+    {...defaultRun, id: 35524946948, head_sha: '045b66ca01baa68b2f5b3f6eb9e063c23c335981', created_at: '2026-09-20T17:09:14Z', updated_at: '2026-09-20T17:09:14Z'}
   ]) {
   const recovered = execute(authorize, {run: uncancellable, jobs: []});
   assert.equal(recovered.status, 0, recovered.stderr);

@@ -12,7 +12,11 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == feature/flowhive-auto-first-draft-20260920 ]]; then
+if [[ "$HEAD_BRANCH" == fix/protected-test-flowhive-recovery-20260920 ]]; then
+  python3 tests/protected-test-flowhive-recovery-scope.py
+  node tests/module025-deployment-startup-recovery.test.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == feature/flowhive-auto-first-draft-20260920 ]]; then
   python3 tests/flowhive-psa-automatic-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == feature/flowhive-sequential-wbs-20260920 ]]; then
