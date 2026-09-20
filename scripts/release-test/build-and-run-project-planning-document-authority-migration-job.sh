@@ -285,14 +285,10 @@ export RELIABILITY_MIGRATION_IMAGE="$ACR_NAME.azurecr.io/$REPOSITORY@$DIGEST"
 export RELIABILITY_MIGRATION_JOB_NAME="pp096-${RUN_ID}-${RUN_ATTEMPT}"
 export RELIABILITY_MIGRATION_SCOPE="project-planning-document-authority-test"
 bash "$MIGRATION_RUNNER"
+# The private-network entrypoint already applied and verified these migrations.
+# The host reports success only after that job succeeds; it must never run SQL.
 echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'
-(cd "$ROOT" && sha256sum --check --status database/flowhive-sequential.sha256)
-psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/121_flowhive_sequential_phase_checkpoints.sql"
-psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-sequential-checkpoints.sql"
 echo 'MIGRATION_121_FLOWHIVE_SEQUENTIAL_CHECKPOINTS=APPLIED_AND_VERIFIED'
-(cd "$ROOT" && sha256sum --check --status database/flowhive-automatic.sha256)
-psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/122_flowhive_automatic_first_draft.sql"
-psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-flowhive-automatic-first-draft.sql"
 echo 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED'
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
