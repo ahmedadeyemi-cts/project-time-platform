@@ -269,6 +269,14 @@ public static class AiProviderConfigurationModule
                 stored.RotatedAt);
             healthRegistry.ApplyConfiguration(configuration.Provider(providerCode));
 
+            if (!configuration.Provider(providerCode).Enabled)
+                return Results.Ok(new
+                {
+                    status = "secret_replaced_provider_disabled", provider = providerCode,
+                    configured = true, tested = false, available = false, valueReturned = false,
+                    message = $"{configuration.Provider(providerCode).DisplayName} credential was saved securely. Select Enable to activate and test this provider. Other providers remain independently enabled."
+                });
+
             var snapshots = await coordinator.RefreshAsync(true, cancellationToken);
             var probe = snapshots.First(item => string.Equals(
                 item.Provider,
@@ -292,6 +300,15 @@ public static class AiProviderConfigurationModule
                     ? $"{configuration.Provider(providerCode).DisplayName} API key was saved securely and verified automatically. The value cannot be viewed after saving."
                     : $"{configuration.Provider(providerCode).DisplayName} API key was saved securely, but the provider health check did not pass. The value cannot be viewed after saving."
             });
+        }
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.CheckViolation
+            && exception.ConstraintName is "ck_ai_provider_secrets_provider_code" or "ai_provider_secrets_provider_code_check")
+        {
+            return Results.Json(new
+            {
+                status = "provider_schema_outdated",
+                message = "The provider database restriction is out of date. Apply the Module 064 optional-provider migration repair, then save the credential again. No credential was saved."
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         catch (ArgumentException exception)
         {

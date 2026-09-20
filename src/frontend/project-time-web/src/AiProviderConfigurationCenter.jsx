@@ -4,6 +4,7 @@ import CelarAiProviderBridgePanel from './CelarAiProviderBridgePanel.jsx';
 import CelarAiCapabilityRoutingPanel from './CelarAiCapabilityRoutingPanel.jsx';
 import './ai-provider-configuration-center.css';
 import './projectpulse-module-standard.css';
+import CelarAiAvailabilityCard from './CelarAiAvailabilityCard.jsx';
 import AiProviderReadinessPanel from './ai/AiProviderReadinessPanel.jsx';
 
 const PROVIDER_LABELS = {
@@ -269,6 +270,8 @@ export default function AiProviderConfigurationCenter() {
             <article><span>Output limit</span><strong>{configuration.execution?.maxOutputTokens} tokens</strong></article>
           </section>
 
+          <CelarAiAvailabilityCard />
+
           <section className="ai-provider-center__section">
             <div className="ai-provider-center__section-heading">
               <div>
@@ -319,10 +322,11 @@ export default function AiProviderConfigurationCenter() {
                     {provider.code !== 'local_template' ? (
                       <div className="ai-provider-center__provider-controls">
                         <div className="ai-provider-center__enable-control">
-                          <div><strong>Provider routing</strong><small>Disabling preserves the saved key and model.</small></div>
+                          <div><strong>Provider routing</strong><small>Each provider is independent. Gemini and Copilot can both be enabled. Disabling preserves the saved credential and model.</small>{!provider.configured && <small>Save the credential below to unlock Enable.</small>}</div>
                           <button
                             type="button"
                             className={provider.enabled ? 'ai-provider-center__danger-button' : ''}
+                            aria-label={`${provider.enabled ? 'Disable' : 'Enable'} ${provider.displayName || PROVIDER_LABELS[provider.code]}`}
                             onClick={() => setProviderEnabled(provider.code, !provider.enabled)}
                             disabled={changingState === provider.code || (!provider.configured && !provider.enabled)}
                           >

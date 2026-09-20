@@ -12,7 +12,10 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == fix/cost-alert-disclosure-state-20260920 ]]; then
+if [[ "$HEAD_BRANCH" == fix/module064-optional-provider-controls ]]; then
+  python3 tests/module064-provider-controls-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/cost-alert-disclosure-state-20260920 ]]; then
   python3 tests/cost-alert-disclosure-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/reconcile-module-repairs-20260920 ]]; then
