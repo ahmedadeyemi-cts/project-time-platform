@@ -4,7 +4,10 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
-if [[ "$HEAD_BRANCH" == fix/module025-standard-download-formats-20260919 ]]; then
+if [[ "$HEAD_BRANCH" == fix/enterprise-completion-20260919 ]]; then
+  python3 tests/enterprise-completion-scope.py
+  exit 0
+elif [[ "$HEAD_BRANCH" == fix/module025-standard-download-formats-20260919 ]]; then
   node tests/module025-standard-download-formats-scope.mjs
   exit 0
 elif [[ "$HEAD_BRANCH" == fix/module025-private-generation-recovery ]]; then

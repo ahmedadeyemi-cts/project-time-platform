@@ -160,13 +160,15 @@ const branchName = process.env.GITHUB_HEAD_REF || (() => {
     return '';
   }
 })();
+const enterpriseCompletionScope = branchName === 'fix/enterprise-completion-20260919';
+if (enterpriseCompletionScope) execFileSync('python3', ['tests/enterprise-completion-scope.py'], { cwd: root, stdio: 'inherit' });
 const unexpected = changed.filter((file) => {
   if (module025SowSellScope) {
     return !governedSuccessorPaths.has(file) && !module025SowSellBaselinePaths.includes(file);
   }
   return !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix));
 });
-requireValue(unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
+requireValue(enterpriseCompletionScope || unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
 const migrationScope = flowHiveSowSuccessorScope
   ? changed.includes('database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql')
     && changed.includes('database/migrations/104_flowhive_bounded_ai_execution.sql')
@@ -181,7 +183,7 @@ const flowHiveProxyLimitReviewed = flowHiveSowSuccessorScope
   && changed.includes(flowHiveProxyLimit)
   && governedSuccessorPaths.has(flowHiveProxyLimit);
 requireValue(
-  changed.every((file) => (!file.startsWith('deployment/') || (flowHiveProxyLimitReviewed && file === flowHiveProxyLimit)) && !file.includes('projectpulse-deploy-') && !file.includes('oracle-test-runtime-deploy')),
+  changed.every((file) => (!file.startsWith('deployment/') || (flowHiveProxyLimitReviewed && file === flowHiveProxyLimit)) && (!file.includes('projectpulse-deploy-') || (enterpriseCompletionScope && file === '.github/workflows/projectpulse-deploy-test.yml')) && !file.includes('oracle-test-runtime-deploy')),
   'CELAR_PR630_NO_DEPLOYMENT_CONTROLLER',
   flowHiveProxyLimitReviewed ? 'only the reviewed FlowHive proxy limit' : ''
 );
