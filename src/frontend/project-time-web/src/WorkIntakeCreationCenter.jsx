@@ -29,7 +29,7 @@ export default function WorkIntakeCreationCenter() {
 
       <div className="work-intake-boundary" role="note">
         <strong>What belongs here today</strong>
-        <span>Historical request evidence, intake aging, and resource handoff remain here. Use 055D for new projects and 055C for existing projects. Cost alerts belong in Module 022. A useful future role for 020 is tracking corrective actions, owners, due dates, and resolution evidence against those alerts.</span>
+        <span>Historical request evidence, intake aging, and resource handoff remain here. Use 055D for new projects and 055C for existing projects. Use Module 022 to review cost alerts and Module 031 to follow up on financial exceptions.</span>
       </div>
 
       <nav className="work-intake-tabs" aria-label="Work intake views">

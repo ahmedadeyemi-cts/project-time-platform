@@ -4190,6 +4190,7 @@ export default function App() {
   const [profileSettingsStatus, setProfileSettingsStatus] = useState('');
   const [sessionWarning, setSessionWarning] = useState({ visible: false, remainingMs: 0 });
   const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.hash));
+  const [costRoutingOpen, setCostRoutingOpen] = useState(false);
 
   /* 056A_SHARED_ROUTE_DATASET_START */
   useLayoutEffect(() => {
@@ -8748,8 +8749,11 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'cost-alerts' && canSeeAny(['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="cost-alerts" className="panel cost-alert-route-panel">
           {/* GROUP_4_MODULE_022_CONFIGURABLE_RULES */}
-          <ProjectNotificationAutomationCenter workspace="routing" authSession={authSession} />
           <CostOverrunAlertCenter canManageCostAlerts={canSeeAny(['MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
+          <details onToggle={(event) => setCostRoutingOpen(event.currentTarget.open)}>
+            <summary>Notification routing and escalation settings</summary>
+            {costRoutingOpen ? <ProjectNotificationAutomationCenter workspace="routing" authSession={authSession} /> : null}
+          </details>
         </section>
       ) : null}
 
