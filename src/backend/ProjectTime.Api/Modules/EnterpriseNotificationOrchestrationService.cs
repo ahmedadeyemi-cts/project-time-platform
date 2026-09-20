@@ -281,6 +281,9 @@ internal static class EnterpriseNotificationOrchestrationService
                 cancellationToken);
         }
 
+        if (dispatch is not null && deliveryResult.Sent)
+            await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection, dispatch, context, cancellationToken);
+
         var eventStatus = deliveryResult.Status == "failed"
             ? "failed"
             : deliveryResult.Status == "suppressed"

@@ -55,15 +55,17 @@ public static partial class ProjectFinancialTruthModule
             1,
             250);
 
-        var projects = data.Projects
+        var offset = Math.Max(0, int.TryParse(context.Request.Query["offset"], out var requestedOffset) ? requestedOffset : 0);
+        var matchingProjects = data.Projects
             .Where(project => string.IsNullOrWhiteSpace(search)
                 || SearchText(project).Contains(search, StringComparison.OrdinalIgnoreCase))
             .Where(project => string.IsNullOrWhiteSpace(status)
                 || status == "all"
                 || project.BudgetStatus.Equals(status, StringComparison.OrdinalIgnoreCase)
                 || project.ProjectStatus.Equals(status, StringComparison.OrdinalIgnoreCase))
-            .Take(limit)
+            .OrderBy(project => project.ProjectId)
             .ToArray();
+        var projects = matchingProjects.Skip(offset).Take(limit).ToArray();
 
         return Results.Ok(new
         {
@@ -74,8 +76,10 @@ public static partial class ProjectFinancialTruthModule
             generatedAt = data.GeneratedAt,
             workspace,
             access = Access(data.Actor, workspace),
-            filters = new { search, status, limit },
-            summary = Summary(projects),
+            filters = new { search, status, limit, offset },
+            totalCount = matchingProjects.Length,
+            hasMore = offset + projects.Length < matchingProjects.Length,
+            summary = Summary(matchingProjects),
             projects,
             sources = data.Sources,
             calculationAuthority = "forecast_estimate_not_verified_internal_labor_cost",
@@ -870,7 +874,7 @@ public static partial class ProjectFinancialTruthModule
         var plannedPm = JsonDecimal([seed.Json, metadata], "planned_pm_cost");
         var laborBudget = First(
             JsonDecimal([seed.Json, metadata],
-                "labor_budget", "planned_total_project_cost", "project_labor_budget"),
+                "labor_budget", "project_labor_budget"),
             plannedEngineering.HasValue || plannedPm.HasValue
                 ? plannedEngineering.GetValueOrDefault() + plannedPm.GetValueOrDefault()
                 : null);

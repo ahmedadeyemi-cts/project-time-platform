@@ -100,6 +100,10 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<ProjectPulseOpenAiProvider>();
         services.AddSingleton<IProjectPulseAiProvider>(provider => provider.GetRequiredService<ProjectPulseClaudeProvider>());
         services.AddSingleton<IProjectPulseAiProvider>(provider => provider.GetRequiredService<ProjectPulseOpenAiProvider>());
+        services.AddHttpClient("OptionalAiProviders", client => client.Timeout = TimeSpan.FromSeconds(40))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
+        services.AddSingleton<IProjectPulseAiProvider, ProjectPulseGeminiProvider>();
+        services.AddSingleton<IProjectPulseAiProvider, ProjectPulseCopilotStudioProvider>();
         services.AddSingleton<ProjectPulseAiRouter>();
         services.AddSingleton<ProjectPulseAiHealthCoordinator>();
 

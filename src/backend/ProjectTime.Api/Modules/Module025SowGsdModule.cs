@@ -2068,7 +2068,7 @@ public static class Module025SowGsdModule
         // Report the last actual generation failure, including structured cloud
         // adapters. A refusal is terminal and must not be masked by fallback.
         var privateDecisions = decisions.Where(decision => CelarAiCapabilityTargets.IsPrivate(decision.Target)
-            || (decision.Target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+            || (decision.Target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot
                 && decision.ReasonCode.StartsWith("module025_", StringComparison.Ordinal)));
         var decision = privateDecisions.LastOrDefault(value => value.Outcome == "refused")
             ?? privateDecisions.LastOrDefault(value => value.Outcome == "failed");

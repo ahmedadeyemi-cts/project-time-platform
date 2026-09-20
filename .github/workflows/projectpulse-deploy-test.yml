@@ -796,6 +796,9 @@ jobs:
           install -m 0644 database/migrations/086_module_066_flowhive_enterprise_pm.sql "$MIGRATION_CONTEXT/database/migrations/086_module_066_flowhive_enterprise_pm.sql"
           install -m 0644 database/migrations/088_systemwide_enterprise_reliability.sql "$MIGRATION_CONTEXT/database/migrations/088_systemwide_enterprise_reliability.sql"
           install -m 0644 database/migrations/093_assigned_work_canonical_visibility_repair.sql "$MIGRATION_CONTEXT/database/migrations/093_assigned_work_canonical_visibility_repair.sql"
+          install -m 0644 database/migrations/112_optional_ai_providers.sql "$MIGRATION_CONTEXT/database/migrations/112_optional_ai_providers.sql"
+          install -m 0644 database/migrations/113_module065_teams_notifications.sql "$MIGRATION_CONTEXT/database/migrations/113_module065_teams_notifications.sql"
+          install -m 0644 database/migrations/114_module064_private_admin_override.sql "$MIGRATION_CONTEXT/database/migrations/114_module064_private_admin_override.sql"
           printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$MIGRATION_CONTEXT/release-commit"
           cat > "$MIGRATION_CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
           #!/usr/bin/env bash
@@ -810,7 +813,10 @@ jobs:
           for migration in \
             "$ROOT/database/migrations/086_module_066_flowhive_enterprise_pm.sql" \
             "$ROOT/database/migrations/088_systemwide_enterprise_reliability.sql" \
-            "$ROOT/database/migrations/093_assigned_work_canonical_visibility_repair.sql"; do
+            "$ROOT/database/migrations/093_assigned_work_canonical_visibility_repair.sql" \
+            "$ROOT/database/migrations/112_optional_ai_providers.sql" \
+            "$ROOT/database/migrations/113_module065_teams_notifications.sql" \
+            "$ROOT/database/migrations/114_module064_private_admin_override.sql"; do
             [[ -f "$migration" ]] || { echo "ERROR: Missing migration $migration" >&2; exit 1; }
             psql -X -v ON_ERROR_STOP=1 --file "$migration"
           done
@@ -868,6 +874,18 @@ jobs:
           echo 'MIGRATION_086=APPLIED_AND_VERIFIED'
           echo 'MIGRATION_088=APPLIED_AND_VERIFIED'
           echo 'MIGRATION_093=APPLIED_AND_VERIFIED'
+          enterprise_verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT (
+            (SELECT count(*) FROM schema_migrations WHERE migration_id IN ('112_optional_ai_providers','113_module065_teams_notifications','114_module064_private_admin_override')) = 3
+            AND to_regclass('public.module065_teams_configuration') IS NOT NULL
+            AND to_regclass('public.module065_teams_delivery') IS NOT NULL
+            AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='ai_private_model_profiles' AND column_name='administrator_override')
+          )::text;
+          SQL
+          )"
+          [[ "$enterprise_verified" == true ]] || { echo 'ERROR: Enterprise integration migrations failed verification.' >&2; exit 1; }
+          echo 'MIGRATIONS_112_113_114=APPLIED_AND_VERIFIED'
+
           ENTRYPOINT
           chmod 0555 "$MIGRATION_CONTEXT/entrypoint.sh"
 

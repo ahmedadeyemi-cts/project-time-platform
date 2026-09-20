@@ -17,9 +17,11 @@ public static class CelarAiCapabilityTargets
     public const string CelarAi = "celar_ai";
     public const string Claude = ProjectPulseAiProviders.Claude;
     public const string OpenAi = ProjectPulseAiProviders.OpenAi;
+    public const string Gemini = ProjectPulseAiProviders.Gemini;
+    public const string Copilot = ProjectPulseAiProviders.Copilot;
     public const string Local = ProjectPulseAiProviders.Local;
 
-    public static readonly string[] All = [DeepSeek, CelarAi, Claude, OpenAi, Local];
+    public static readonly string[] All = [DeepSeek, CelarAi, Claude, OpenAi, Gemini, Copilot, Local];
     public static readonly string[] DefaultOrder = [DeepSeek, CelarAi, Claude, OpenAi, Local];
 
     public static bool IsPrivate(string? target) => target is DeepSeek or CelarAi;
@@ -395,8 +397,10 @@ public static class CelarAiCapabilityCatalog
             .Select(value => value?.Trim().ToLowerInvariant() ?? string.Empty)
             .Where(value => value.Length > 0)
             .ToArray();
-        if (targets.Length != 5)
-            throw new ArgumentException("Select all five targets with the governed local template last.");
+        if (targets.Length < 5 || targets.Length > CelarAiCapabilityTargets.All.Length)
+            throw new ArgumentException("Keep the five core targets and optionally include Gemini and Copilot Studio, with the governed local template last.");
+        if (CelarAiCapabilityTargets.DefaultOrder.Any(required => !targets.Contains(required)))
+            throw new ArgumentException("Every core target must remain in the route.");
         if (targets.Distinct(StringComparer.OrdinalIgnoreCase).Count() != targets.Length)
             throw new ArgumentException("A capability route cannot contain duplicate targets.");
         if (targets.Any(target => !CelarAiCapabilityTargets.All.Contains(target, StringComparer.OrdinalIgnoreCase)))
@@ -804,25 +808,10 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
             };
         }
 
-        // Test and other deployment-managed environments may activate the
-        // private target without enabling the stricter release-candidate
-        // phase. An explicit authority switch prevents an old or incomplete
-        // database form row from shadowing the verified container settings.
-        if (bool.TryParse(
-                Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED"),
-                out var deploymentManaged)
-            && deploymentManaged)
-        {
-            return EnvironmentProfile(allowDefaultAllowlist: false) with
-            {
-                DeploymentManaged = true,
-                ConfigurationSourceCommit = Clean(
-                    Environment.GetEnvironmentVariable("PROJECTPULSE_SOURCE_COMMIT"),
-                    64,
-                    string.Empty)
-            };
-        }
-
+        var deploymentManaged = bool.TryParse(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED"), out var managed) && managed;
+        // Existing rows cannot shadow deployment settings. An explicit admin save
+        // activates a versioned, encrypted database override outside immutable releases.
         if (DatabaseAvailable && SecretEncryptionAvailable)
         {
             try
@@ -838,10 +827,11 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
                            private_host_allowlist::text, require_private_model_for_documents,
                            revision, updated_at, updated_by
                     FROM ai_private_model_profiles
-                    WHERE environment_code = @environment;
+                    WHERE environment_code = @environment AND (NOT @deployment_managed OR administrator_override);
                     """;
                 await using var command = new NpgsqlCommand(sql, connection);
                 command.Parameters.AddWithValue("environment", EnvironmentCode);
+                command.Parameters.AddWithValue("deployment_managed", deploymentManaged);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 if (await reader.ReadAsync(cancellationToken))
                 {
@@ -875,7 +865,13 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
             }
         }
 
-        return EnvironmentProfile(allowDefaultAllowlist: true);
+        return EnvironmentProfile(allowDefaultAllowlist: !deploymentManaged) with
+        {
+            DeploymentManaged = deploymentManaged,
+            ConfigurationSourceCommit = deploymentManaged
+                ? Clean(Environment.GetEnvironmentVariable("PROJECTPULSE_SOURCE_COMMIT"), 64, string.Empty)
+                : string.Empty
+        };
     }
 
     public async Task<CelarAiPrivateModelProfile> SavePrivateModelSettingsAsync(
@@ -930,7 +926,8 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
             UpdatedAt = DateTimeOffset.UtcNow,
             UpdatedBy = actorUserId,
             EndpointHostFingerprint = HostFingerprint(endpoint),
-            Persisted = true
+            Persisted = true,
+            DeploymentManaged = false
         };
         await PersistPrivateProfileAsync(next, "settings_changed", actorUserId, cancellationToken);
         CelarAiPrivateModelRuntime.Apply(next);
@@ -959,7 +956,8 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
             Revision = current.Revision + 1,
             UpdatedAt = DateTimeOffset.UtcNow,
             UpdatedBy = actorUserId,
-            Persisted = true
+            Persisted = true,
+            DeploymentManaged = false
         };
         await PersistPrivateProfileAsync(next, "secret_replaced", actorUserId, cancellationToken);
         CelarAiPrivateModelRuntime.Apply(next);
@@ -984,12 +982,12 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
                  endpoint_encryption_key_id, endpoint_host_fingerprint, model_name, auth_mode,
                  token_ciphertext, token_nonce, token_tag, token_encryption_key_id,
                  token_fingerprint, private_host_allowlist,
-                 require_private_model_for_documents, revision, updated_at, updated_by)
+                 require_private_model_for_documents, revision, updated_at, updated_by, administrator_override)
             VALUES
                  (@environment, @enabled, @endpoint_ciphertext, @endpoint_nonce, @endpoint_tag,
                  @key_id, @endpoint_fingerprint, @model, @auth_mode, @token_ciphertext, @token_nonce,
                  @token_tag, @key_id, @token_fingerprint, @allowlist::jsonb,
-                 @require_private, @revision, @updated_at, @updated_by)
+                 @require_private, @revision, @updated_at, @updated_by, true)
             ON CONFLICT (environment_code) DO UPDATE SET
                 enabled = EXCLUDED.enabled,
                 endpoint_ciphertext = EXCLUDED.endpoint_ciphertext,
@@ -1008,10 +1006,14 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
                 require_private_model_for_documents = EXCLUDED.require_private_model_for_documents,
                 revision = EXCLUDED.revision,
                 updated_at = EXCLUDED.updated_at,
-                updated_by = EXCLUDED.updated_by;
+                updated_by = EXCLUDED.updated_by,
+                administrator_override = true
+            WHERE (NOT ai_private_model_profiles.administrator_override AND @expected_revision = 0)
+               OR ai_private_model_profiles.revision = @expected_revision;
             """;
         await using (var command = new NpgsqlCommand(upsert, connection, transaction))
         {
+            command.Parameters.AddWithValue("expected_revision", profile.Revision - 1);
             command.Parameters.AddWithValue("environment", profile.EnvironmentCode);
             command.Parameters.AddWithValue("enabled", profile.Enabled);
             AddBytes(command, "endpoint_ciphertext", endpoint.Ciphertext);
@@ -1030,7 +1032,8 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
             command.Parameters.AddWithValue("revision", profile.Revision);
             command.Parameters.AddWithValue("updated_at", profile.UpdatedAt);
             command.Parameters.AddWithValue("updated_by", actorUserId);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+                throw new CelarAiConfigurationConflictException("The private profile changed. Refresh before saving.");
         }
         const string audit = """
             INSERT INTO ai_private_model_profile_audit
@@ -2625,7 +2628,7 @@ public sealed class CelarAiCapabilityRouter
                     throw new InvalidOperationException("structured_sow_capability_mismatch");
                 // Separate cost opt-in for SOWs. Missing/invalid/false means
                 // private-only, even if global external assistance is enabled.
-                if (target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                if (target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot
                     && !RuntimeFlag("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED"))
                 {
                     skipped.Add(target);
@@ -2635,7 +2638,7 @@ public sealed class CelarAiCapabilityRouter
                 // A cloud target needs the permission-checked closed SOW capsule.
                 // The generic assistance and local-template paths remain ineligible.
                 if (target == CelarAiCapabilityTargets.Local
-                    || (target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                    || (target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot
                         && execution.ExternalSow is null))
                 {
                     skipped.Add(target);
@@ -2643,7 +2646,7 @@ public sealed class CelarAiCapabilityRouter
                     continue;
                 }
                 targetTimeout = TimeSpan.FromSeconds(
-                    target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                    target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot
                         ? Module025GenerationEngine.ExternalProviderTimeoutSeconds
                         : Module025GenerationEngine.PrivatePhaseTimeoutSeconds);
             }

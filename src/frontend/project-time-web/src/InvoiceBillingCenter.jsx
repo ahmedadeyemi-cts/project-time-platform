@@ -6,20 +6,20 @@ const columns = [
   ['projectCode', 'Project code', 'Essential', true],
   ['customer', 'Customer', 'Essential', true],
   ['project', 'Project', 'Essential', true],
-  ['workType', 'Work type', 'Essential', true],
+  ['workType', 'Work type', 'Essential', false],
   ['billingModel', 'Contract type', 'Essential', true],
   ['status', 'Work status', 'Essential', true],
-  ['projectManager', 'Project Manager', 'Ownership', true],
+  ['projectManager', 'Project Manager', 'Ownership', false],
   ['coordinator', 'Project Team Coordinator', 'Ownership', false],
   ['assignedEngineers', 'Assigned engineers', 'Ownership', false],
   ['certiniaId', 'Certinia ID', 'External IDs', true],
   ['sellQuoteId', 'ConnectWise SELL Quote', 'External IDs', true],
-  ['commercialSource', 'Commercial source', 'Billing data', true],
+  ['commercialSource', 'Commercial source', 'Billing data', false],
   ['salesforceId', 'Salesforce ID / Quote', 'External IDs', true],
   ['purchaseOrder', 'Purchase order', 'External IDs', false],
-  ['approvedLines', 'Approved billing lines', 'Billing data', true],
+  ['approvedLines', 'Approved billing lines', 'Billing data', false],
   ['approvedHours', 'Approved billing hours', 'Billing data', true],
-  ['effectiveRate', 'Effective rate', 'Billing data', true],
+  ['effectiveRate', 'Effective rate', 'Billing data', false],
   ['candidateAmount', 'Candidate amount', 'Billing data', true]
 ].map(([key, label, group, defaultVisible]) => ({ key, label, group, defaultVisible }));
 
@@ -600,6 +600,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
           </p>
         </div>
         <div className="m042-actions">
+          <button type="button" className="secondary-action" onClick={() => setVisibleColumns([...defaultColumns])}>Essential columns</button>
           <button type="button" className="secondary-action" onClick={() => setDrawerOpen(true)}>Customize columns</button>
           <button type="button" className="secondary-action" onClick={() => void loadLiveData(selected?.projectId)}>Reload billing data</button>
           <button type="button" className="secondary-action" disabled={!invoiceDetail || invoiceDetailLoading} title={invoiceDetail ? 'Download the selected immutable invoice as a formatted native Excel workbook (.xlsx).' : 'Select or create an invoice first.'} onClick={() => void downloadServerInvoiceArtifact('excel')}>Download Excel (.xlsx)</button>
@@ -796,7 +797,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                   <section className="m042-refs">
                     <div><span>Certinia ID</span><strong>{text(selected.certiniaId, missingValue)}</strong></div>
                     <div><span>ConnectWise SELL Quote</span><strong>{text(selected.sellQuoteNumber, missingValue)}</strong></div>
-                    <div><span>Salesforce ID</span><strong>{text(selected.salesforceId, missingValue)}</strong></div>
+                    <div><span>Salesforce ID / Quote</span><strong>{text(selected.salesforceId, missingValue)}</strong></div>
                     <div>
                       <span>Purchase order</span>
                       <strong>{selected.purchaseOrder?.poNumber || (selected.purchaseOrderRequired ? 'Missing required PO' : 'Not required')}</strong>
