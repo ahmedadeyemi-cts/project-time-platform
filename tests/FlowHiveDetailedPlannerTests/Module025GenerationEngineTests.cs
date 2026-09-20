@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using Npgsql;
 using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
@@ -33,14 +34,38 @@ internal static class Module025GenerationEngineTests
             return Task.CompletedTask;
         }
         var calls = new List<string>();
-        Task<CelarAiComposeResult> Generate(CelarAiAuthoritativeScopeEvidence source, CancellationToken token)
+        var capturedRequests = new List<PulseAiPrivateModelRequest>();
+        var privatePhaseMethod = typeof(PulseAiPrivateRagService).GetMethod("GenerateModule025SinglePhaseAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var retrievalMethod = typeof(PulseAiPrivateRagService).GetMethod("Module025AuthoritativeScopeRetrieval", BindingFlags.NonPublic | BindingFlags.Static)!;
+        async Task<CelarAiComposeResult> Generate(CelarAiAuthoritativeScopeEvidence source, CancellationToken token)
         {
             var phase = source.PhaseExecution!.Phase;
             calls.Add(phase);
+            Check(source.ServiceOverview == evidence.ServiceOverview && source.Revision == evidence.Revision
+                && source.EngagementId == evidence.EngagementId && source.SavedAt == evidence.SavedAt,
+                "module025_every_phase_keeps_the_same_saved_scope_and_identity_" + phase);
             // Each preceding phase must have committed before the next provider request.
             Check(Module025GenerationEngine.Phases.TakeWhile(value => value != phase).All(saved.ContainsKey),
                 "module025_checkpoint_commits_before_" + phase);
-            return Task.FromResult(Result(phase));
+            Check(source.PhaseExecution.PriorPhaseReferences.Select(item => item.Phase)
+                .SequenceEqual(Module025GenerationEngine.Phases.TakeWhile(value => value != phase)),
+                "module025_validated_prior_phase_references_follow_saved_order_" + phase);
+            var authoritative = PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(source)!;
+            var retrieval = (PulseAiPrivateRetrievalResult)retrievalMethod.Invoke(null, [null, authoritative])!;
+            var request = new PulseAiPrivateModelRequest(CelarAiCapabilityCatalog.SowGsdPlanning,
+                "sow_draft", "comprehensive", "Return a structured technical proposal.", source.ServiceOverview,
+                [authoritative], "module025_detailed_phase", 6144, 0.1m, "module025-shared-scope-test");
+            Task<PulseAiPrivateModelResult> Capture(PulseAiPrivateModelRequest captured, CancellationToken _)
+            {
+                capturedRequests.Add(captured);
+                return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+                    JsonSerializer.Serialize(Result(phase).FlowHivePlan), 100, 100, string.Empty, DateTimeOffset.UtcNow));
+            }
+            var generated = await (Task<PulseAiPrivateModelResult>)privatePhaseMethod.Invoke(null,
+                [request, retrieval, source.PhaseExecution,
+                    (Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>>)Capture, token])!;
+            Check(generated.Succeeded, "module025_private_phase_capture_validates_" + phase);
+            return Result(phase);
         }
         var failed = await Module025GenerationEngine.RunAsync(evidence, saved, new Dictionary<string, int>(),
             (source, token) => source.PhaseExecution!.Phase == "Implement"
@@ -54,12 +79,62 @@ internal static class Module025GenerationEngineTests
         var completed = await Module025GenerationEngine.RunAsync(evidence, restored, new Dictionary<string, int>(),
             Generate, Persist, CancellationToken.None);
         Check(calls.SequenceEqual(new[] { "Implement", "Validate", "Release" }), "module025_restart_only_generates_missing_phases");
+        Check(capturedRequests.Count == 5 && capturedRequests.Select(request => request.Sources.Single().Text).Distinct().Single() == evidence.ServiceOverview
+            && capturedRequests.All(request => request.Sources.Single().Text.Contains("14.0 to version 15.0")
+                && request.MaximumOutputTokens == 6144),
+            "module025_five_private_requests_share_cucm_scope_versions_and_existing_budget");
+        Check(capturedRequests.Zip(Module025GenerationEngine.Phases).All(pair =>
+            pair.First.SystemInstruction.Contains(PulseAiPrivateRagService.Module025PhasePurpose(pair.Second))
+            && pair.First.SystemInstruction.Contains("project scope does not")
+            && pair.First.SystemInstruction.Contains("not Solution Architect approval")
+            && pair.First.SystemInstruction.Contains("after-hours maintenance")
+            && !pair.First.SystemInstruction.Contains(fixture.Tasks[0].Description)),
+            "module025_private_requests_change_phase_purpose_without_promoting_prior_ai_prose_to_evidence");
+        Check(capturedRequests[^1].SystemInstruction.Contains("1.1") && capturedRequests[^1].SystemInstruction.Contains("4.2"),
+            "module025_resumed_later_phases_receive_earlier_validated_wbs_references");
+        var longScope = evidence with { ServiceOverview = evidence.ServiceOverview + "\n\n"
+            + string.Join("\n\n", Enumerable.Range(1, 150).Select(index =>
+                $"Scope item {index}: review requirements, objectives, dependencies, architecture, security, configuration, test evidence and handoff documentation."))
+            + "\n\nDo not upgrade Cisco Unity Connection; that product is out of scope." };
+        var longSource = PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(longScope)!;
+        var longRetrieval = (PulseAiPrivateRetrievalResult)retrievalMethod.Invoke(null, [null, longSource])!;
+        var longRequests = new List<PulseAiPrivateModelRequest>();
+        foreach (var phaseName in Module025GenerationEngine.Phases)
+        {
+            var privateRequest = new PulseAiPrivateModelRequest(CelarAiCapabilityCatalog.SowGsdPlanning,
+                "sow_draft", "comprehensive", "Return a structured technical proposal.", "Expand the saved scope.",
+                [longSource], "module025_detailed_phase", 6144, 0.1m, "module025-bounded-scope-test");
+            Func<PulseAiPrivateModelRequest, CancellationToken, Task<PulseAiPrivateModelResult>> capture = (request, _) =>
+            {
+                longRequests.Add(request);
+                return Task.FromResult(new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
+                    JsonSerializer.Serialize(Result(phaseName).FlowHivePlan), 100, 100, string.Empty, DateTimeOffset.UtcNow));
+            };
+            await (Task<PulseAiPrivateModelResult>)privatePhaseMethod.Invoke(null,
+                [privateRequest, longRetrieval, new Module025PhaseExecution(phaseName, 0, (_, _) => Task.CompletedTask), capture, CancellationToken.None])!;
+        }
+        Check(longRequests.Select(request => request.Sources.Single().Text).Distinct().Count() == 1
+            && longRequests.All(request => request.Sources.Single().Text.Length <= 8000
+                && request.Sources.Single().Text.Contains(evidence.ServiceOverview)
+                && request.Sources.Single().Text.Contains("Do not upgrade Cisco Unity Connection")
+                && request.SystemInstruction.Contains("bounded excerpt")
+                && request.SystemInstruction.Contains("verify the complete saved scope")),
+            "module025_long_scope_keeps_same_bounded_anchor_versions_and_exclusion_in_every_phase");
         Check(completed.SowDraft!.WorkPackages.Count == fixture.Tasks.Count && completed.FlowHivePlan!.Tasks.Count == fixture.Tasks.Count,
             "module025_final_assembly_preserves_every_detailed_work_package");
         Check(completed.FlowHivePlan!.Tasks.All(task => task.Description.Length >= 80 && task.DetailedSteps!.Count >= 2
             && task.AcceptanceCriteria!.Count > 0 && task.ValidationSteps!.Count > 0
             && task.CustomerResponsibilities!.Count > 0 && task.UsSignalResponsibilities!.Count > 0),
             "module025_resume_preserves_full_detail_contract");
+        var rebuilt = new List<string>();
+        await Module025GenerationEngine.RunAsync(evidence,
+            new Dictionary<string, CelarAiComposeResult> { ["Plan"] = Result("Plan"), ["Implement"] = Result("Implement") },
+            new Dictionary<string, int>(), (source, _) => {
+                rebuilt.Add(source.PhaseExecution!.Phase);
+                return Task.FromResult(Result(source.PhaseExecution.Phase));
+            }, (_, _) => Task.CompletedTask, CancellationToken.None);
+        Check(rebuilt.SequenceEqual(new[] { "Design", "Implement", "Validate", "Release" }),
+            "module025_checkpoint_gap_rebuilds_downstream_phases_instead_of_reusing_stale_continuation");
         // Every phase is independently valid, but a provider can reference an
         // absent, future or self WBS. Replay the persisted phases without any AI
         // calls: assembly must retain review questions instead of inserting null
@@ -227,9 +302,25 @@ internal static class Module025GenerationEngineTests
             new(connectionString, evidence.EngagementId, actor, revision, generation, sourceHash ?? hash);
         await Journal(generationId).PersistAsync(new("provider_started", "Plan", "deepseek", 1), CancellationToken.None);
         await Journal(generationId).PersistAsync(new("phase_completed", "Plan", "deepseek", Result: Result("Plan")), CancellationToken.None);
+        await using (var legacy = new NpgsqlCommand("""
+            INSERT INTO module025_sow_gsd_events
+              (engagement_id,event_type,actor_user_id,engagement_revision,summary,evidence_json)
+            VALUES(@engagement,'ai_generation_progress',@actor,1,'Old prompt contract fixture.',@evidence::jsonb);
+            """, connection))
+        {
+            legacy.Parameters.AddWithValue("engagement", evidence.EngagementId);
+            legacy.Parameters.AddWithValue("actor", actor);
+            legacy.Parameters.AddWithValue("evidence", JsonSerializer.Serialize(new {
+                generationId, sourceHash = hash, contractVersion = "module025-detailed-phases-v2",
+                progress = new Module025GenerationProgress("phase_completed", "Design", "deepseek", Result: Result("Design")),
+                recordedAt = DateTimeOffset.UtcNow
+            }));
+            await legacy.ExecuteNonQueryAsync();
+        }
         var reloaded = await Journal(generationId).LoadAsync(CancellationToken.None);
         Check(reloaded.Checkpoints["Plan"].FlowHivePlan!.Tasks.Count == 2 && reloaded.Attempts["Plan"] == 1,
             "module025_postgres_checkpoint_and_attempt_survive_new_journal");
+        Check(!reloaded.Checkpoints.ContainsKey("Design"), "module025_old_prompt_contract_cannot_resume_as_shared_scope_phase");
         var retry = await Journal(Guid.NewGuid()).LoadAsync(CancellationToken.None);
         Check(retry.Checkpoints.ContainsKey("Plan") && retry.Attempts.Count == 0,
             "module025_explicit_retry_reuses_validated_phase_with_new_attempt_budget");

@@ -12,7 +12,10 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == feat/sa-workspace-redesign-20260920 ]]; then
+if [[ "$HEAD_BRANCH" == feat/module025-phase-progress-20260920 ]]; then
+  node tests/module025-phase-progress-scope.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == feat/sa-workspace-redesign-20260920 ]]; then
   node tests/module025-sa-workspace-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == feature/flowhive-document-readiness-archive-20260920 ]]; then

@@ -32,10 +32,13 @@ export function formatGenerationFailure(payload) {
   const deadlineHit = decisionRows.some(item => item.reason === 'provider_deadline_exceeded')
     || diagnostic === 'provider_deadline_exceeded';
   const adapterUnavailable = decisionRows.some(item => item.reason === 'structured_sow_adapter_unavailable');
+  const recovery = payload?.canResume === false
+    ? 'Review the saved scope before retrying. Earlier phase checkpoints are not eligible for reuse.'
+    : 'Any completed phase checkpoints will be reused.';
   const recommendation = deadlineHit && adapterUnavailable
-    ? 'Private providers reached their bounded deadline and no privacy-safe structured cloud fallback was eligible. Verify that Customer is selected and the Service Overview clearly names the technology and requested operation, then retry. Any completed phase checkpoints will be reused.'
+    ? `Private providers reached their bounded deadline and no privacy-safe structured cloud fallback was eligible. Verify that Customer is selected and the Service Overview clearly names the technology and requested operation, then retry. ${recovery}`
     : deadlineHit
-      ? 'A provider reached its bounded deadline. Retry generation; completed phase checkpoints will be reused instead of starting over.'
+      ? `A provider reached its bounded deadline. ${recovery}`
       : adapterUnavailable
         ? 'The privacy-safe structured cloud fallback was not eligible for this Service Overview. Clearly identify the technology and requested operation, then retry.'
         : '';

@@ -19,3 +19,9 @@ test('legacy metadata never labels existing generated content as not generated',
   assert.equal(generationConfidence({ aiMetadata: { confidence: 0 } }), '0%');
   assert.equal(generationConfidence({}), 'Not generated');
 });
+
+test('an explicitly incompatible checkpoint never promises phase reuse', () => {
+  const text = formatGenerationFailure({ diagnosticCode: 'provider_deadline_exceeded', canResume: false });
+  assert.match(text, /not eligible for reuse/);
+  assert.doesNotMatch(text, /will be reused/);
+});
