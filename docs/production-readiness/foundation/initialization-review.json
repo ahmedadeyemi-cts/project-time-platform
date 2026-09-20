@@ -1655,6 +1655,16 @@
       "rationale": "Additive enterprise integration schema. Review before production initialization; does not enable providers or notification delivery."
     },
     {
+      "path": "database/migrations/115_module_066_task_notifications.sql",
+      "sha256": "f490468e9d525b5f5e56df1502e2006f362c58be3376aeea8406b962630dbb30",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "New FlowHive task-event policies and checkpoint schema; pending production migration review. Owner-authorized Protected UAT payload verifies test_only or locked policies; production initialization remains unapproved."
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [

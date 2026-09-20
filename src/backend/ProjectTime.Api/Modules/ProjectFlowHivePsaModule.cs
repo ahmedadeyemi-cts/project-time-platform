@@ -26,7 +26,7 @@ public sealed record ProjectFlowHiveReminderPreferenceRequest(
 
 public sealed record ProjectFlowHivePsaArtifactRequest(ProjectFlowHivePlanRequest Plan);
 
-internal static class ProjectFlowHivePsaModule
+internal static partial class ProjectFlowHivePsaModule
 {
     internal const string MigrationId = "103_module_066_flowhive_enterprise_psa_revamp";
     private const long MaximumMeetingBytes = 2L * 1024 * 1024 * 1024;
@@ -47,6 +47,9 @@ internal static class ProjectFlowHivePsaModule
         endpoints.MapGet(
             "/api/project-flowhive/projects/{projectId:guid}/psa",
             (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetWorkspaceAsync);
+        endpoints.MapGet(
+            "/api/project-flowhive/projects/{projectId:guid}/team-calendar",
+            (Func<Guid, DateOnly, DateOnly, HttpContext, CancellationToken, Task<IResult>>)GetTeamCalendarAsync);
         var meetingUpload = endpoints.MapPost(
             "/api/project-flowhive/projects/{projectId:guid}/meetings",
             (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)UploadMeetingAsync);
@@ -89,7 +92,8 @@ internal static class ProjectFlowHivePsaModule
             if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
             var meetings = await LoadMeetingsAsync(connection, projectId, cancellationToken);
             var raidHistory = await LoadRaidHistoryAsync(connection, projectId, cancellationToken);
-            var reminders = await LoadReminderPreferencesAsync(connection, projectId, cancellationToken);
+            var dispatcherReady = await ProjectFlowHiveNotificationSource.ReadyAsync(connection, cancellationToken);
+            var reminders = await LoadReminderPreferencesAsync(connection, projectId, dispatcherReady, cancellationToken);
             var decisions = await LoadRaidRowsAsync(connection, projectId, "decision", cancellationToken);
             return Results.Ok(new
             {
@@ -107,6 +111,7 @@ internal static class ProjectFlowHivePsaModule
                 decisions,
                 raidHistory,
                 reminderPreferences = reminders,
+                notificationHistory = dispatcherReady ? await ProjectFlowHiveNotificationSource.RecentAsync(connection, projectId, cancellationToken) : [],
                 capabilities = new
                 {
                     kanban = true,
@@ -116,12 +121,12 @@ internal static class ProjectFlowHivePsaModule
                     immutableRaidHistory = true,
                     meetingRecordings = true,
                     customerMeetingDownloads = true,
-                    taskDueReminders = false,
+                    taskDueReminders = dispatcherReady,
                     reminderDispatcher = new
                     {
-                        registered = false,
-                        mode = "unavailable",
-                        message = "The reminder dispatcher is not registered; saved preferences do not deliver notifications."
+                        registered = dispatcherReady,
+                        mode = dispatcherReady ? "module_065" : "migration_required",
+                        message = "Approved WBS task events use Module 065 policies and delivery boundaries. Apply migration 115 to enable the source."
                     },
                     transcription = new
                     {
@@ -425,18 +430,21 @@ internal static class ProjectFlowHivePsaModule
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         if (!await MigrationReadyAsync(connection, cancellationToken)) return MigrationRequired();
-        if (request.Enabled)
-            return Results.Conflict(new
-            {
-                status = "task_reminder_dispatcher_unavailable",
-                stateChanged = false,
-                message = "Task reminder preferences are retained, but no dispatcher is registered. No notification was queued or delivered."
-            });
-        var leadDays = (request.LeadDays ?? [2, 1]).Distinct().Where(value => value is >= 0 and <= 60).OrderByDescending(value => value).Take(8).ToArray();
-        if (leadDays.Length == 0) leadDays = [1];
+        var dispatcherReady = await ProjectFlowHiveNotificationSource.ReadyAsync(connection, cancellationToken);
+        if (request.Enabled && !dispatcherReady)
+            return Results.Conflict(new { status = "migration_115_required", stateChanged = false,
+                message = "Apply migration 115 to register FlowHive task events with Module 065." });
+        var leadDays = (request.LeadDays ?? [3, 0]).Distinct().OrderByDescending(value => value).ToArray();
+        if (leadDays.Length is < 1 or > 8 || leadDays.Any(value => value is < 0 or > 60))
+            return Results.BadRequest(new { message = "Choose up to eight lead days between 0 and 60." });
         var timezone = Clean(request.TimezoneName, 100);
         if (timezone.Length == 0) timezone = "America/Chicago";
-        var boundary = request.DeliveryBoundary is "production_governed" or "locked" ? request.DeliveryBoundary : "test_only";
+        try { TimeZoneInfo.FindSystemTimeZoneById(timezone); }
+        catch (TimeZoneNotFoundException) { return Results.BadRequest(new { message = "Select a valid timezone." }); }
+        catch (InvalidTimeZoneException) { return Results.BadRequest(new { message = "Select a valid timezone." }); }
+        if (request.DeliveryBoundary is not ("test_only" or "production_governed" or "locked"))
+            return Results.BadRequest(new { message = "Select a valid delivery boundary." });
+        var boundary = request.DeliveryBoundary;
         const string sql = """
             INSERT INTO project_flowhive_task_reminder_preferences(
                 project_id, enabled, lead_days, include_project_manager, include_assigned_team_members,
@@ -466,7 +474,7 @@ internal static class ProjectFlowHivePsaModule
         command.Parameters.AddWithValue("actor", access.ActualUserId!.Value);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
-        return Results.Ok(ReadReminderPreferences(reader));
+        return Results.Ok(ReadReminderPreferences(reader, dispatcherReady));
     }
 
     private static async Task<IResult> BuildArtifactAsync(
@@ -681,16 +689,16 @@ internal static class ProjectFlowHivePsaModule
         return rows;
     }
 
-    private static async Task<object> LoadReminderPreferencesAsync(NpgsqlConnection connection, Guid projectId, CancellationToken cancellationToken)
+    private static async Task<object> LoadReminderPreferencesAsync(NpgsqlConnection connection, Guid projectId, bool dispatcherReady, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("SELECT enabled, lead_days, include_project_manager, include_assigned_team_members, include_overdue, timezone_name, quiet_hours_start, quiet_hours_end, delivery_boundary, updated_at FROM project_flowhive_task_reminder_preferences WHERE project_id = @project_id;", connection);
         command.Parameters.AddWithValue("project_id", projectId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) return new { enabled = false, leadDays = new[] { 2, 1 }, includeProjectManager = true, includeAssignedTeamMembers = true, includeOverdue = true, timezoneName = "America/Chicago", deliveryBoundary = "test_only", persisted = false, dispatcherAvailable = false };
-        return ReadReminderPreferences(reader);
+        if (!await reader.ReadAsync(cancellationToken)) return new { enabled = true, leadDays = new[] { 3, 0 }, includeProjectManager = true, includeAssignedTeamMembers = true, includeOverdue = true, timezoneName = "America/Chicago", deliveryBoundary = "test_only", persisted = false, dispatcherAvailable = dispatcherReady };
+        return ReadReminderPreferences(reader, dispatcherReady);
     }
 
-    private static object ReadReminderPreferences(NpgsqlDataReader reader) => new
+    private static object ReadReminderPreferences(NpgsqlDataReader reader, bool dispatcherReady) => new
     {
         enabled = reader.GetBoolean(0),
         leadDays = reader.GetFieldValue<short[]>(1),
@@ -703,7 +711,7 @@ internal static class ProjectFlowHivePsaModule
         deliveryBoundary = reader.GetString(8),
         updatedAt = reader.GetFieldValue<DateTimeOffset>(9),
         persisted = true,
-        dispatcherAvailable = false
+        dispatcherAvailable = dispatcherReady
     };
 
     private sealed record RaidRow(string ItemType, string Title, string Status, string Priority, string Probability, string Impact, string Owner, string DueDate, string Mitigation, string SourceReference);

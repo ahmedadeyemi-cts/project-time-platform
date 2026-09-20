@@ -6,7 +6,8 @@ using ProjectTime.Api.Modules;
 
 // Disposable PostgreSQL only. Temporary fixtures cannot touch application tables.
 var settings = new NpgsqlConnectionStringBuilder {
-    Host = "127.0.0.1", Port = 5432, Database = "enterprise_completion_test", Username = "postgres",
+    Host = "127.0.0.1", Port = int.Parse(Environment.GetEnvironmentVariable("PGPORT") ?? "5432"),
+    Database = "enterprise_completion_test", Username = "postgres",
     Password = Environment.GetEnvironmentVariable("PGPASSWORD") ?? throw new Exception("Disposable PostgreSQL password required")
 };
 await using var connection = new NpgsqlConnection(settings.ConnectionString);

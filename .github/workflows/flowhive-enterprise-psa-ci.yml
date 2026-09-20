@@ -14,6 +14,14 @@ on:
       - 'src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
       - 'tests/FlowHiveExecutablePlanTests/**'
       - 'tests/FlowHiveExecutionTests/**'
+      - 'tests/FlowHiveNotificationTests/**'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+      - 'scripts/release-test/verify-flowhive-task-notifications.sql'
+      - 'tests/flowhive-team-calendar*'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseNotification*.cs'
+      - 'database/migrations/115_module_066_task_notifications.sql'
+      - 'database/rollback/115_module_066_task_notifications_rollback.sql'
+      - 'src/frontend/project-time-web/src/flowhive-team-calendar.js'
       - 'tests/FlowHiveDetailedPlannerTests/**'
       - 'tests/flowhive-psa-*.mjs'
       - 'tests/flowhive-psa-*.py'
@@ -187,6 +195,8 @@ jobs:
           trap - ERR
       - name: Execute real database deadline, cancellation and concurrent-save regressions
         run: dotnet run --project tests/FlowHiveExecutionTests/FlowHiveExecutionTests.csproj --configuration Release
+      - name: Execute approved-WBS task notification policy and database regressions
+        run: dotnet run --project tests/FlowHiveNotificationTests --configuration Release -- --database
       - name: Execute Module 066 operation authorization and RAID actor regression
         run: bash tests/test-module-066-operation-authorization-migration-107.sh
       - name: Remove isolated PostgreSQL fixture
@@ -212,7 +222,7 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
       - name: Test resumable observation, identity fencing and bounded network requests
-        run: node --test tests/flowhive-psa-*.test.mjs
+        run: node --test tests/flowhive-psa-*.test.mjs tests/flowhive-team-calendar.test.mjs
       - name: Install locked frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci
@@ -257,6 +267,10 @@ jobs:
         env:
           FLOWHIVE_OFFLINE_BUNDLE: /tmp/flowhive-react-test
         run: python tests/flowhive-psa-react-browser.py
+      - name: Exercise project team calendar navigation and stale-response protection
+        run: |
+          node tests/flowhive-team-calendar-browser-bundle.mjs
+          python tests/flowhive-team-calendar-browser.py
       - name: Build and exercise the actual reviewed-regeneration UI
         run: |
           node tests/flowhive-psa-review-browser-bundle.mjs

@@ -19,20 +19,6 @@ jobs:
   contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: enterprise_completion_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - uses: actions/setup-dotnet@v4
@@ -45,9 +31,38 @@ jobs:
         run: dotnet run --project tests/EnterpriseCompletionTests --configuration Release
       - name: Autosave and API error behavior
         run: node --test tests/api-error-status.test.mjs tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs
+      - name: Start isolated PostgreSQL fixture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          name="enterprise-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ "$name" =~ ^enterprise-ci-[0-9]+-[0-9]+$ ]]
+          echo "ENTERPRISE_CI_POSTGRES_CONTAINER=$name" >> "$GITHUB_ENV"
+          env_file="$(mktemp "$RUNNER_TEMP/enterprise-postgres-XXXXXX")"
+          trap 'rm -f -- "$env_file"' EXIT
+          trap 'docker rm -f "$name" >/dev/null 2>&1 || true' ERR
+          password="$(openssl rand -hex 32)"
+          echo "::add-mask::$password"
+          printf 'POSTGRES_USER=postgres\nPOSTGRES_DB=enterprise_completion_test\nPOSTGRES_PASSWORD=%s\n' "$password" > "$env_file"
+          docker run --detach --rm --name "$name" --publish 127.0.0.1::5432 \
+            --env-file "$env_file" --health-cmd 'pg_isready -U postgres -d enterprise_completion_test' \
+            --health-interval 2s --health-timeout 2s --health-retries 30 postgres:16 >/dev/null
+          health='starting'
+          for attempt in {1..30}; do
+            health="$(timeout 5s docker inspect --format '{{.State.Health.Status}}' "$name")"
+            [[ "$health" != healthy ]] || break
+            [[ "$health" != unhealthy ]] || exit 1
+            sleep 2
+          done
+          [[ "$health" == healthy ]] || { echo 'CI PostgreSQL readiness expired.' >&2; exit 1; }
+          address="$(timeout 5s docker port "$name" 5432/tcp)"
+          [[ "$address" =~ ^127\.0\.0\.1:([0-9]{1,5})$ ]]
+          port="${BASH_REMATCH[1]}"
+          printf 'PGPORT=%s\nPGPASSWORD=%s\n' "$port" "$password" >> "$GITHUB_ENV"
+          printf 'ENTERPRISE_COMPLETION_DATABASE_URL=postgresql://postgres:%s@127.0.0.1:%s/enterprise_completion_test\n' "$password" "$port" >> "$GITHUB_ENV"
+          trap - ERR
       - name: Migration behavior on disposable PostgreSQL
-        env:
-          ENTERPRISE_COMPLETION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/enterprise_completion_test
         run: bash tests/enterprise-completion-migrations.sh
       - name: Reconciled budget, pagination and HTTP behavior
         run: |
@@ -55,6 +70,13 @@ jobs:
           dotnet run --project tests/ModuleAvailabilityHttp --configuration Release
           node --test tests/project-financial-portfolio.test.mjs
       - name: Assigned timesheet notification recipients
-        env:
-          PGPASSWORD: postgres
         run: dotnet run --project tests/TimesheetNotificationRecipients --configuration Release
+      - name: Remove isolated PostgreSQL fixture
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          name="${ENTERPRISE_CI_POSTGRES_CONTAINER:-}"
+          [[ -n "$name" ]] || exit 0
+          [[ "$name" == "enterprise-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]
+          docker rm -f "$name" >/dev/null 2>&1 || true

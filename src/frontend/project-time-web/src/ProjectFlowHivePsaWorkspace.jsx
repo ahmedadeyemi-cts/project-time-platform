@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './project-flowhive-psa-workspace.css';
+import ProjectFlowHiveTeamCalendar from './ProjectFlowHiveTeamCalendar.jsx';
 
 const KANBAN_COLUMNS = [
   ['not_started', 'Not started'],
@@ -137,7 +138,7 @@ export default function ProjectFlowHivePsaWorkspace({
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState('');
   const [meetingForm, setMeetingForm] = useState({ title: '', meetingAt: '', customerVisible: false, file: null });
-  const [reminders, setReminders] = useState({ enabled: false, dispatcherAvailable: false, leadDays: [2, 1], includeProjectManager: true, includeAssignedTeamMembers: true, includeOverdue: true, timezoneName: 'America/Chicago', deliveryBoundary: 'test_only' });
+  const [reminders, setReminders] = useState({ enabled: false, dispatcherAvailable: false, leadDays: [3, 0], includeProjectManager: true, includeAssignedTeamMembers: true, includeOverdue: true, timezoneName: 'America/Chicago', deliveryBoundary: 'test_only' });
   const [calendarMonth, setCalendarMonth] = useState(() => monthKey(new Date()));
   const psaRequestRef = useRef({ id: 0, controller: null });
   const selectedProjectRef = useRef(projectId);
@@ -187,6 +188,7 @@ export default function ProjectFlowHivePsaWorkspace({
     setAction('');
     psaRequestRef.current.controller?.abort();
     setPsa(null);
+    setReminders({ enabled: false, dispatcherAvailable: false, leadDays: [3, 0], includeProjectManager: true, includeAssignedTeamMembers: true, includeOverdue: true, timezoneName: 'America/Chicago', deliveryBoundary: 'test_only' });
     if (projectId) loadPsa();
     return () => psaRequestRef.current.controller?.abort();
   }, [projectId]);
@@ -303,7 +305,7 @@ export default function ProjectFlowHivePsaWorkspace({
       if (!actionIsCurrent(context)) return;
       setReminders((current) => ({ ...current, ...result }));
       setNotice?.(result.dispatcherAvailable === false
-        ? 'Task reminder preferences were saved as disabled. No reminder dispatcher is registered, so no notification was queued or delivered.'
+        ? 'Preferences saved. Apply the task notification migration before enabling delivery.'
         : 'Task due-date reminder controls saved.');
       await loadPsa(true, context.projectId);
     } catch (error) {
@@ -382,6 +384,7 @@ export default function ProjectFlowHivePsaWorkspace({
   if (mode === 'meetings') {
     const meetings = psa?.meetings || [];
     return <div className="flowhive-view-panel flowhive-psa-panel">
+      <ProjectFlowHiveTeamCalendar key={projectId} projectId={projectId} request={jsonRequest} />
       <div className="flowhive-section-heading"><div><span>Customer collaboration</span><h3>Project meetings and recordings</h3><p>Upload MP4 meeting recordings to the governed project store. Customer-visible recordings can be downloaded only through an active reviewed FlowHive sharing link that explicitly allows meetings.</p></div><strong>{meetings.length} recording(s)</strong></div>
       <form className="flowhive-psa-meeting-upload" onSubmit={uploadMeeting}>
         <label>Meeting title<input value={meetingForm.title} onChange={(event) => setMeetingForm({ ...meetingForm, title: event.target.value })} placeholder="Weekly project status meeting" /></label>
@@ -434,10 +437,11 @@ export default function ProjectFlowHivePsaWorkspace({
 
   if (mode === 'governance') {
     return <section className="flowhive-psa-reminders">
-      <header><div><span>Proactive delivery</span><h3>Task due-date reminders</h3><p>Reminder preferences are stored for the future governed dispatcher. Delivery is unavailable until that worker is registered; no reminder is queued or sent today.</p></div><strong>{reminders.dispatcherAvailable === false ? 'Unavailable' : reminders.enabled ? 'Enabled' : 'Disabled'}</strong></header>
-      <div className="flowhive-psa-reminder-grid"><label className="flowhive-psa-check"><input type="checkbox" checked={Boolean(reminders.enabled)} disabled={!canManage || reminders.dispatcherAvailable === false} onChange={(event) => setReminders({ ...reminders, enabled: event.target.checked })} />Enable task reminders</label><label>Lead days<input value={(reminders.leadDays || []).join(', ')} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, leadDays: event.target.value.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value >= 0 && value <= 60) })} placeholder="2, 1" /></label><label>Timezone<input value={reminders.timezoneName || 'America/Chicago'} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, timezoneName: event.target.value })} /></label><label>Delivery boundary<select value={reminders.deliveryBoundary || 'test_only'} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, deliveryBoundary: event.target.value })}><option value="test_only">Protected Test — record/suppress live email</option><option value="production_governed">Production governed — deliver through Module 065</option><option value="locked">Locked — no delivery</option></select></label><label className="flowhive-psa-check"><input type="checkbox" checked={Boolean(reminders.includeProjectManager)} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, includeProjectManager: event.target.checked })} />Notify Project Manager</label><label className="flowhive-psa-check"><input type="checkbox" checked={Boolean(reminders.includeAssignedTeamMembers)} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, includeAssignedTeamMembers: event.target.checked })} />Notify assigned task members</label><label className="flowhive-psa-check"><input type="checkbox" checked={Boolean(reminders.includeOverdue)} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, includeOverdue: event.target.checked })} />Include overdue tasks</label></div>
+      <header><div><span>Proactive delivery</span><h3>Task assignment and due-date notifications</h3><p>When notifications are enabled, approved WBS assignments notify their owners even if team due reminders are off. Due-date reminders default to 3 days before, on the due date, and once when overdue. Local quiet hours are respected; changes to an unpublished draft do not send notifications.</p></div><strong>{reminders.dispatcherAvailable === false ? 'Unavailable' : reminders.enabled ? 'Enabled' : 'Disabled'}</strong></header>
+      <div className="flowhive-psa-reminder-grid"><label className="flowhive-psa-check"><input type="checkbox" checked={Boolean(reminders.enabled)} disabled={!canManage || reminders.dispatcherAvailable === false} onChange={(event) => setReminders({ ...reminders, enabled: event.target.checked })} />Enable assignment and due-date notifications</label><label>Days before due (due-day always included)<input value={(reminders.leadDays || []).join(', ')} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, leadDays: event.target.value.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value >= 0 && value <= 60) })} placeholder="3, 0" /></label><label>Timezone<input value={reminders.timezoneName || 'America/Chicago'} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, timezoneName: event.target.value })} /></label><label>Delivery boundary<select value={reminders.deliveryBoundary || 'test_only'} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, deliveryBoundary: event.target.value })}><option value="test_only">Protected Test — record/suppress live email</option><option value="production_governed">Production governed — deliver through Module 065</option><option value="locked">Locked — no delivery</option></select></label><label className="flowhive-psa-check"><input type="checkbox" checked={Boolean(reminders.includeProjectManager)} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, includeProjectManager: event.target.checked })} />Send due reminders to Project Manager</label><label className="flowhive-psa-check"><input type="checkbox" checked={Boolean(reminders.includeAssignedTeamMembers)} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, includeAssignedTeamMembers: event.target.checked })} />Send due reminders to assigned task members</label><label className="flowhive-psa-check"><input type="checkbox" checked={Boolean(reminders.includeOverdue)} disabled={!canManage} onChange={(event) => setReminders({ ...reminders, includeOverdue: event.target.checked })} />Include overdue tasks</label></div>
       <footer><button type="button" className="primary" disabled={!canManage || action === 'reminders'} onClick={saveReminders}>{action === 'reminders' ? 'Saving…' : 'Save reminder policy'}</button></footer>
-      <aside><strong>Governance boundary</strong><p>Protected Test remains <code>test_only</code> by default. Moving to production-governed delivery is unavailable until a reviewed reminder dispatcher exists; no customer or production notifications are sent.</p></aside>
+      <section aria-label="Task notification history"><header><h4>Recent task notification events</h4><button type="button" disabled={loading} onClick={() => loadPsa()}>Refresh history</button></header><p>Last 50 events. Module 065 records delivery results; a queued event is not proof of delivery.</p><div className="flowhive-psa-table-wrap"><table><thead><tr><th>Task</th><th>Recipient</th><th>Event</th><th>Status</th><th>Diagnostic</th></tr></thead><tbody>{(psa?.notificationHistory || []).map(item => <tr key={item.eventId}><td>{item.taskWbs} · {item.taskName}</td><td>{item.recipient}</td><td>{label(item.kind)}</td><td>{label(item.status)}</td><td>{item.diagnosticCode || '—'}</td></tr>)}</tbody></table></div>{!psa?.notificationHistory?.length && <p>No task notification events recorded.</p>}</section>
+      <aside><strong>Governance boundary</strong><p>Protected Test remains <code>test_only</code> by default. Delivery also requires the corresponding Module 065 policies and provider to permit it. Microsoft Teams delivery is configured centrally in Module 065. Overdue alerts are sent once per due-date change; completed tasks are excluded.</p></aside>
     </section>;
   }
 

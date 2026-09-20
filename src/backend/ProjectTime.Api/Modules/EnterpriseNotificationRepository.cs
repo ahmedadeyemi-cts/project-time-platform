@@ -386,7 +386,9 @@ internal static class EnterpriseNotificationRepository
                     FROM enterprise_notification_events event
                     JOIN enterprise_notification_policies policy
                       ON policy.policy_code = event.policy_code
-                    WHERE event.event_status IN ('pending', 'failed')
+                    WHERE (event.event_status IN ('pending', 'failed')
+                        OR (event.policy_code IN ('FLOWHIVE_TASK_ASSIGNED','FLOWHIVE_TASK_DUE')
+                            AND event.event_status='processing' AND event.updated_at < NOW()-INTERVAL '30 minutes'))
                       AND event.available_at <= NOW()
                       AND event.attempt_count < 8
                       AND policy.enabled = TRUE
