@@ -7,6 +7,9 @@ HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 if [[ "$HEAD_BRANCH" == fix/module025-standard-download-formats-20260919 ]]; then
   node tests/module025-standard-download-formats-scope.mjs
   exit 0
+elif [[ "$HEAD_BRANCH" == fix/flowhive-sow-private-generation-20260921 ]]; then
+  python3 tests/flowhive-sow-private-generation-scope.py
+  exit 0
 elif [[ "$HEAD_BRANCH" == fix/module025-private-generation-recovery ]]; then
   python3 tests/module025-private-generation-scope.py
   exit 0
