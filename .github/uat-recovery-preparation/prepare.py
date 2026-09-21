@@ -1,5 +1,16 @@
 """Prepare exact historical-layout proofs while retaining existing CI cleanup."""
 from pathlib import Path
+import hashlib
+import subprocess
+
+# Read the actual immutable Git object, not a connector's rendered file view.
+for revision in ('c15ef12d5ce1bc54c15d8b31c87a50daa94bad17', 'af060cbc311dcc7cce89c3ae2cc0bff040f5f6ea'):
+    raw = subprocess.check_output(['git', 'show', revision + ':.github/workflows/projectpulse-deploy-test.yml'])
+    identity = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+    begin = raw.index(b'      - name: Guard exact source and validate release\n')
+    end = raw.index(b'          for required in ', begin)
+    print('IMMUTABLE_CONTROLLER=' + revision + ' blob=' + identity + ' sha256=' + hashlib.sha256(raw).hexdigest(), flush=True)
+    print(raw[begin:end].decode(), flush=True)
 
 path = Path(__file__).with_name('prepare-base.py')
 text = path.read_text()
