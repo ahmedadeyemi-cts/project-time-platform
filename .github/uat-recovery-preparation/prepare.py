@@ -53,8 +53,9 @@ negative_tests = '''    def test_existing_serialization_assertions_are_retained(
 
 '''
 serialization_guard = r'''// LAYA_UAT_RECOVERY_BEGIN serialization
+const reviewedTestConcurrencySource = (await import('node:fs')).readFileSync(new URL('../.github/workflows/projectpulse-deploy-test.yml', import.meta.url), 'utf8');
 const reviewedTestConcurrency = 'concurrency:\n  group: projectpulse-deploy-test-recovery-20260921\n  queue: max\n  cancel-in-progress: false\n';
-if (deployment.split(reviewedTestConcurrency).length !== 2) {
+if (reviewedTestConcurrencySource.split(reviewedTestConcurrency).length !== 2) {
   throw new Error('Protected-Test workflow must serialize deployments without cancellation');
 }
 // LAYA_UAT_RECOVERY_END serialization
@@ -66,8 +67,7 @@ validation, count = re.subn(r'projectpulse-deploy-test(?![a-zA-Z0-9_.-])', 'proj
 require(count > 0, 'The existing exact serialization queue assertion is missing')
 require(validation.replace('projectpulse-deploy-test-recovery-20260921', 'projectpulse-deploy-test') == source(validation_path), 'Unexpected serialization-validator source change')
 '''
-register += "validation_anchor = \"const deployment = read('.github/workflows/projectpulse-deploy-test.yml');\\n\"\n"
-register += 'validation = replace(validation, validation_anchor, validation_anchor + ' + repr(serialization_guard) + ')\n'
+register += 'validation = ' + repr(serialization_guard) + ' + validation\n'
 register += 'files[validation_path] = validation\n'
 register += "test_path = 'tests/protected-test-queue-recovery.test.py'\n"
 register += "test_anchor = '    def test_application_provider_order_and_production_unchanged(self):\\n'\n"
