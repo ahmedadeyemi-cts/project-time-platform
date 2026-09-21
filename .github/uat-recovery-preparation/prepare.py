@@ -23,11 +23,14 @@ proof = path.with_name('c15-proof.txt').read_text()
 patch = 'addition = ' + repr(proof) + '\nanchor = "    if args.base in (\'045b66ca01baa68b2f5b3f6eb9e063c23c335981\'"\nrequire(text.count(anchor) == 1, "Exact reviewed base selection missing")\ntext = text.replace(anchor, addition + anchor, 1)\nfiles[VALIDATOR] = text'
 text = text.replace('files[VALIDATOR] = text', patch, 1)
 
-negative_tests = '''    def test_existing_serialization_assertions_are_unchanged(self):
+negative_tests = '''    def test_existing_serialization_assertions_are_retained(self):
         path = 'tests/validate-systemwide-enterprise-reliability.mjs'
         updated = (ROOT/path).read_text()
         self.assertIn(recovery.NEW_GROUP, updated)
-        self.assertEqual(updated.replace(recovery.NEW_GROUP, 'projectpulse-deploy-test').encode(), baseline(path))
+        pattern = r'// LAYA_UAT_RECOVERY_BEGIN serialization\\n.*?// LAYA_UAT_RECOVERY_END serialization\\n'
+        self.assertEqual(len(re.findall(pattern, updated, re.S)), 1)
+        normalized = re.sub(pattern, '', updated, flags=re.S)
+        self.assertEqual(normalized.replace(recovery.NEW_GROUP, 'projectpulse-deploy-test').encode(), baseline(path))
 
     def test_existing_validator_rejects_unsafe_concurrency(self):
         controller = ROOT/recovery.CONTROLLER
@@ -44,10 +47,17 @@ negative_tests = '''    def test_existing_serialization_assertions_are_unchanged
                 result = subprocess.run(['node', 'tests/validate-systemwide-enterprise-reliability.mjs'],
                                         cwd=ROOT, text=True, capture_output=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0, new)
-                self.assertRegex(result.stderr, r'(serialize deployments without cancellation|Missing governed protected Test deployment contract: group:)')
+                self.assertIn('serialize deployments without cancellation', result.stderr)
         finally:
             controller.write_text(original)
 
+'''
+serialization_guard = r'''// LAYA_UAT_RECOVERY_BEGIN serialization
+const reviewedTestConcurrency = 'concurrency:\n  group: projectpulse-deploy-test-recovery-20260921\n  queue: max\n  cancel-in-progress: false\n';
+if (deployment.split(reviewedTestConcurrency).length !== 2) {
+  throw new Error('Protected-Test workflow must serialize deployments without cancellation');
+}
+// LAYA_UAT_RECOVERY_END serialization
 '''
 register = '''# Register only the reviewed fixed queue name; keep paths and assertions intact.
 validation_path = 'tests/validate-systemwide-enterprise-reliability.mjs'
@@ -55,8 +65,10 @@ validation = source(validation_path)
 validation, count = re.subn(r'projectpulse-deploy-test(?![a-zA-Z0-9_.-])', 'projectpulse-deploy-test-recovery-20260921', validation)
 require(count > 0, 'The existing exact serialization queue assertion is missing')
 require(validation.replace('projectpulse-deploy-test-recovery-20260921', 'projectpulse-deploy-test') == source(validation_path), 'Unexpected serialization-validator source change')
-files[validation_path] = validation
 '''
+register += "validation_anchor = \"const deployment = read('.github/workflows/projectpulse-deploy-test.yml');\\n\"\n"
+register += 'validation = replace(validation, validation_anchor, validation_anchor + ' + repr(serialization_guard) + ')\n'
+register += 'files[validation_path] = validation\n'
 register += "test_path = 'tests/protected-test-queue-recovery.test.py'\n"
 register += "test_anchor = '    def test_application_provider_order_and_production_unchanged(self):\\n'\n"
 register += 'files[test_path] = replace(files[test_path], test_anchor, ' + repr(negative_tests) + ' + test_anchor)\n\n'
