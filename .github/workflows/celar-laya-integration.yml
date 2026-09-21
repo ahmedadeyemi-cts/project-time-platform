@@ -1,0 +1,115 @@
+name: Celar Laya integration
+on:
+  pull_request:
+    paths:
+      - 'deployment/laya/**'
+      - 'deployment/oracle-celar/gateway/*decisions.py'
+      - 'deployment/oracle-celar/deploy.sh'
+      - 'scripts/release-test/build-and-run-module025-retention-migration-106.sh'
+      - 'src/backend/ProjectTime.Api/Ai/LayaDecision*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/LayaDecisionModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PulseAiPrivateDocumentPipelineModule.cs'
+      - 'src/frontend/project-time-web/src/ai/*Decision*'
+      - 'src/frontend/project-time-web/src/ai/laya-*'
+      - 'src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx'
+      - 'tests/laya/**'
+      - '.github/workflows/celar-laya-integration.yml'
+      - '.github/workflows/module064-automatic-provider-health-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: laya-integration-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  gateway:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify exact additive release scope
+        run: python3 tests/laya/release-scope.py
+      - name: Install test-only HTTP dependency
+        run: |
+          python3 -m venv /tmp/laya-tests
+          /tmp/laya-tests/bin/pip install Flask==3.1.2
+      - name: Gateway transport, authentication and release-wiring tests
+        run: |
+          /tmp/laya-tests/bin/python -c 'import flask'
+          /tmp/laya-tests/bin/python -m unittest discover -s tests/laya -p 'test_*.py' -v
+          bash -n deployment/laya/deploy-gateway.sh
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: laya_ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Start isolated database with an ephemeral credential
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$PASSWORD"
+          CONNECTION="Host=127.0.0.1;Port=5432;Username=postgres;Password=$PASSWORD;Database=laya_ci"
+          echo "::add-mask::$CONNECTION"
+          printf 'PGPASSWORD=%s\nLAYA_TEST_DB=%s\n' "$PASSWORD" "$CONNECTION" >> "$GITHUB_ENV"
+          export POSTGRES_PASSWORD="$PASSWORD"
+          docker run -d --name "laya-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --publish 127.0.0.1:5432:5432 --env POSTGRES_PASSWORD \
+            --env POSTGRES_USER=postgres --env POSTGRES_DB=laya_ci postgres:16
+          for attempt in {1..30}; do
+            if docker exec "laya-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" pg_isready -U postgres -d laya_ci >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'The isolated CI database did not start.' >&2
+          exit 1
+      - name: Database migration repeatability, role grants and append-only checks
+        run: |
+          psql -v ON_ERROR_STOP=1 -f deployment/laya/schema.sql
+          psql -v ON_ERROR_STOP=1 -f deployment/laya/schema.sql
+          psql -v ON_ERROR_STOP=1 -v runtime_role=postgres -f deployment/laya/grants.sql
+          psql -v ON_ERROR_STOP=1 -v runtime_role=postgres -f deployment/laya/verify-database.sql
+          psql -v ON_ERROR_STOP=1 -f tests/laya/schema_checks.sql
+      - name: Typed decision contract
+        run: dotnet run --project tests/laya/ContractChecks.csproj --configuration Release
+      - name: HTTP and real database with synthetic platform boundaries
+        run: dotnet run --project tests/laya/backend/BackendChecks.csproj --configuration Release
+      - name: Build against the actual application
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+      - name: Remove only this job's ephemeral database
+        if: always()
+        run: docker rm -f "laya-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >/dev/null 2>&1 || true
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/frontend/project-time-web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - name: Build the actual frontend with the locked repository toolchain
+        run: npm run build
+      - name: Verify the Laya workflow is included in the production bundle
+        run: |
+          test -d dist/assets
+          grep -RlF 'Laya document classification' dist/assets >/dev/null
+          grep -RlF '/api/ai-configuration/decisions/laya' dist/assets >/dev/null
