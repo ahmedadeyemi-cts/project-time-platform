@@ -1,5 +1,5 @@
 const phases = ['Plan', 'Design', 'Implement', 'Validate', 'Release', 'assembly'];
-const providers = { claude: 'Claude', openai: 'OpenAI', deepseek_v4: 'DeepSeek', celar_ai: 'Celar AI' };
+const providers = { gemini: 'Gemini', claude: 'Claude', openai: 'OpenAI', deepseek_v4: 'DeepSeek', celar_ai: 'Celar AI', copilot_studio: 'Microsoft Copilot Studio', local_template: 'Governed local template' };
 const code = value => typeof value === 'string' && /^[a-z][a-z0-9_]{0,159}$/i.test(value) ? value : '';
 
 function position(progress) {
@@ -21,9 +21,10 @@ export function formatGenerationProgress(progress, now = Date.now()) {
 export function formatGenerationFailure(payload) {
   const decisionRows = (payload?.targetDecisions || []).map(decision => ({
     provider: providers[decision.target ?? decision.Target] || '',
-    reason: code(decision.reasonCode ?? decision.ReasonCode)
+    reason: code(decision.reasonCode ?? decision.ReasonCode),
+    outcome: ({ skipped: 'skipped', failed: 'failed', used: 'completed', refused: 'refused' })[decision.outcome ?? decision.Outcome] || 'reported'
   })).filter(item => item.provider && item.reason);
-  const decisions = decisionRows.map(item => `${item.provider}: ${item.reason}`);
+  const decisions = decisionRows.map(item => `${item.provider} (${item.outcome}): ${item.reason}`);
   const diagnostic = code(payload?.diagnosticCode);
   const elapsed = Number(payload?.elapsedSeconds);
   const elapsedText = Number.isFinite(elapsed)
@@ -35,7 +36,10 @@ export function formatGenerationFailure(payload) {
   const recovery = payload?.canResume === false
     ? 'Review the saved scope before retrying. Earlier phase checkpoints are not eligible for reuse.'
     : 'Any completed phase checkpoints will be reused.';
-  const recommendation = deadlineHit && adapterUnavailable
+  const fullTextApprovalRequired = decisionRows.some(item => item.reason === 'module025_full_service_scope_approval_required');
+  const recommendation = fullTextApprovalRequired
+    ? 'Full Service Scope submission requires its separate approval in Module 064. Sanitized-generation approval does not authorize full-text submission. Your saved provider order is unchanged.'
+    : deadlineHit && adapterUnavailable
     ? `Private providers reached their bounded deadline and no privacy-safe structured cloud fallback was eligible. Verify that Customer is selected and the Service Overview clearly names the technology and requested operation, then retry. ${recovery}`
     : deadlineHit
       ? `A provider reached its bounded deadline. ${recovery}`

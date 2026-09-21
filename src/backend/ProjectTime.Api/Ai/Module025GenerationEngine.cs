@@ -78,6 +78,7 @@ internal static class Module025GenerationEngine
         await persist(new("assembly_started", "assembly",
             DiagnosticCode: "module025_assembly_started"), cancellationToken);
         var plan = PulseAiPrivateRagService.AssembleModule025PhasePlans(results.Select(result => result.FlowHivePlan!).ToArray());
+        if (evidence.ServiceScopeOnly) plan = plan with { Objective = results[0].FlowHivePlan!.Objective };
         PulseAiPrivateRagService.ValidateModule025Phase(plan, null, evidence);
         if (JsonSerializer.Serialize(plan).Length > MaximumDocumentCharacters)
             throw new JsonException("module025_assembled_plan_limit_exceeded");

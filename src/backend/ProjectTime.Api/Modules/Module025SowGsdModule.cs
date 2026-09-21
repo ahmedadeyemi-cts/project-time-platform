@@ -116,7 +116,8 @@ public static class Module025SowGsdModule
             module = ModuleNumber,
             migration = MigrationId,
             contract = WorkspaceContract,
-            capabilities = new { workTracking = true, temporaryCoverage = true, handoffNotifications = true },
+            capabilities = new { workTracking = true, temporaryCoverage = true, handoffNotifications = true,
+                serviceScope = await Module025ServiceScopePolicy.SchemaReadyAsync(connection, cancellationToken) },
             currentUser = new
             {
                 userId = access.EffectiveUserId,
@@ -261,6 +262,10 @@ public static class Module025SowGsdModule
 
         var commercialModel = NormalizeCommercialModel(request.CommercialModel);
         var customerProgram = NormalizeCustomerProgram(request.CustomerProgram);
+        if (request.ServiceScope is { Length: > Module025ServiceScopePolicy.MaximumCharacters })
+            return Results.BadRequest(new { status = "service_scope_too_long", message = "Service Scope must be at most 30,000 characters. No text was truncated." });
+        if (request.ServiceScope is not null && !await Module025ServiceScopePolicy.SchemaReadyAsync(connection, cancellationToken))
+            return ServiceScopeMigrationRequired();
         var engagementId = Guid.NewGuid();
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         const string insert = """
@@ -294,6 +299,9 @@ public static class Module025SowGsdModule
             command.Parameters.AddWithValue("project_name", Clean(request.ProjectName, 500));
             engagementNumber = Convert.ToString(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) ?? string.Empty;
         }
+        if (request.ServiceScope is not null)
+            await Module025ServiceScopeWorkspace.SaveInputAsync(connection, transaction, engagementId,
+                request.ServiceScope, !string.IsNullOrEmpty(request.ServiceOverview), cancellationToken);
         await InsertEmptyPhasesAsync(connection, transaction, engagementId, cancellationToken);
         await InsertEventAsync(connection, transaction, engagementId, access.ActualUserId, 1, "created", "SOW/GSD workspace created.", new { engagementNumber }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -340,6 +348,12 @@ public static class Module025SowGsdModule
 
         var serviceOverview = Clean(request.ServiceOverview, 30_000);
         var overviewChanged = !string.Equals(current.ServiceOverview, serviceOverview, StringComparison.Ordinal);
+        if (request.ServiceScope is { Length: > Module025ServiceScopePolicy.MaximumCharacters })
+            return Results.BadRequest(new { status = "service_scope_too_long", message = "Service Scope must be at most 30,000 characters. No text was truncated." });
+        var serviceScope = request.ServiceScope ?? current.ServiceScope;
+        if (serviceScope is not null && !await Module025ServiceScopePolicy.SchemaReadyAsync(connection, cancellationToken))
+            return ServiceScopeMigrationRequired();
+        var scopeChanged = Module025ServiceScopeWorkspace.SourceChanged(current, serviceScope, serviceOverview);
         var customerProgram = NormalizeCustomerProgram(request.CustomerProgram);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         const string update = """
@@ -348,8 +362,8 @@ public static class Module025SowGsdModule
                 commercial_model=@commercial_model, customer_program=@customer_program, gsd_template_key=@gsd_template_key,
                 account_executive_user_id=@account_executive_user_id, account_executive_name=@account_executive_name,
                 resale_user_id=@resale_user_id, resale_name=@resale_name, service_overview=@service_overview, project_name=@project_name,
-                status=CASE WHEN service_overview IS DISTINCT FROM @service_overview THEN 'draft' ELSE status END,
-                last_generated_at=CASE WHEN service_overview IS DISTINCT FROM @service_overview THEN NULL ELSE last_generated_at END,
+                status=CASE WHEN @scope_changed THEN 'draft' ELSE status END,
+                last_generated_at=CASE WHEN @scope_changed THEN NULL ELSE last_generated_at END,
                 revision=revision+1
             WHERE engagement_id=@engagement_id AND revision=@expected_revision AND is_active=TRUE AND status NOT IN ('confirmed','archived')
             RETURNING revision;
@@ -370,6 +384,7 @@ public static class Module025SowGsdModule
             AddNullableGuid(command, "resale_user_id", resale.UserId);
             command.Parameters.AddWithValue("resale_name", resale.DisplayName);
             command.Parameters.AddWithValue("service_overview", serviceOverview);
+            command.Parameters.AddWithValue("scope_changed", scopeChanged);
             command.Parameters.AddWithValue("project_name", Clean(request.ProjectName, 500));
             var result = await command.ExecuteScalarAsync(cancellationToken);
             if (result is null)
@@ -379,6 +394,15 @@ public static class Module025SowGsdModule
             }
             nextRevision = Convert.ToInt32(result, CultureInfo.InvariantCulture);
         }
+        if (serviceScope is not null)
+            await Module025ServiceScopeWorkspace.SaveInputAsync(connection, transaction, engagementId, serviceScope,
+                current.ServiceOverviewManuallyEdited || overviewChanged, cancellationToken);
+        if (scopeChanged)
+            await InsertEventAsync(connection, transaction, engagementId, access.ActualUserId, nextRevision,
+                "service_scope_changed", "Source scope changed; previous working content preserved for review.",
+                new { previousServiceScope = current.EffectiveServiceScope, previousServiceOverview = current.ServiceOverview,
+                    previousGeneratedOverview = current.GeneratedServiceOverview, previousSowSections = current.SowSections,
+                    previousPhases = current.Phases, previousRevision = current.Revision }, cancellationToken);
         foreach (var phaseRequest in request.Phases ?? Array.Empty<Module025SowGsdPhaseSaveRequest>())
         {
             var phaseCode = NormalizePhaseCode(phaseRequest.PhaseCode);
@@ -395,7 +419,7 @@ public static class Module025SowGsdModule
         }
         await transaction.CommitAsync(cancellationToken);
         var saved = await LoadEngagementAsync(connection, engagementId, cancellationToken);
-        return Results.Ok(new { status = overviewChanged ? "module025_saved_scope_regeneration_required" : "module025_autosaved", revision = nextRevision, engagement = saved is null ? null : PublicEngagement(saved, access), requiresRegeneration = overviewChanged, stateChanged = true });
+        return Results.Ok(new { status = scopeChanged ? "module025_saved_scope_regeneration_required" : "module025_autosaved", revision = nextRevision, engagement = saved is null ? null : PublicEngagement(saved, access), requiresRegeneration = scopeChanged, stateChanged = true });
     }
 
     private static async Task<IResult> GenerateAsync(Guid engagementId, HttpContext context, CancellationToken cancellationToken)
@@ -412,7 +436,7 @@ public static class Module025SowGsdModule
             return Forbidden("generate");
         if (current.Status == "confirmed") return StateConflict("confirmed_record", "Reopen this confirmed SOW/GSD before generating a new scope.");
         if (current.CustomerName.Trim().Length == 0) return Results.BadRequest(new { status = "customer_required_for_generation", message = "Select or enter the customer before generating detailed scope." });
-        if (!MeaningfulServiceOverview(current.ServiceOverview)) return Results.BadRequest(new
+        if (!MeaningfulServiceOverview(current.EffectiveServiceScope)) return Results.BadRequest(new
         {
             status = "service_overview_required",
             message = "Enter a meaningful multi-word Service Overview that identifies the requested technical work, expected outcome, and any known platform/version details before generating scope."
@@ -579,7 +603,7 @@ public static class Module025SowGsdModule
     private static string GenerationSourceHash(Module025EngagementRow engagement) =>
         PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(new CelarAiAuthoritativeScopeEvidence(
             engagement.EngagementId, engagement.Revision, engagement.EngagementNumber,
-            engagement.CustomerName, engagement.ServiceOverview, engagement.UpdatedAt))?.SourceSha256 ?? string.Empty;
+            engagement.CustomerName, engagement.EffectiveServiceScope, engagement.UpdatedAt) { ServiceScopeOnly = engagement.ServiceScope is not null })?.SourceSha256 ?? string.Empty;
 
     private static async Task<IResult> GenerationStatusResultAsync(NpgsqlConnection connection,
         Module025EngagementRow engagement, Module025AccessContext access, Guid generationId, CancellationToken cancellationToken)
@@ -749,7 +773,7 @@ public static class Module025SowGsdModule
                         queueCorrelationId,
                         false);
                 }
-                if (!MeaningfulServiceOverview(current.ServiceOverview))
+                if (!MeaningfulServiceOverview(current.EffectiveServiceScope))
                 {
                     return new(
                         StatusCodes.Status400BadRequest,
@@ -795,7 +819,8 @@ public static class Module025SowGsdModule
             var enterprise = context.RequestServices.GetRequiredService<CelarAiEnterprisePlatformService>();
             var evidence = new CelarAiAuthoritativeScopeEvidence(
                 current.EngagementId, current.Revision, current.EngagementNumber,
-                current.CustomerName, current.ServiceOverview, current.UpdatedAt);
+                current.CustomerName, current.EffectiveServiceScope, current.UpdatedAt)
+                { ServiceScopeOnly = current.ServiceScope is not null };
             var source = PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(evidence)
                 ?? throw new InvalidOperationException("module025_source_invalid");
             var journal = new Module025GenerationJournal(BuildConnectionString()!, engagementId,
@@ -972,7 +997,9 @@ public static class Module025SowGsdModule
                 composition.Confidence,
                 composition.ConfidenceExplanation,
                 composition.CorrelationId,
-                source = "service_overview_and_governed_celar_ai",
+                source = current.ServiceScope is not null ? "author_saved_service_scope" : "service_overview_and_governed_celar_ai",
+                sourceRevision = current.Revision,
+                sourceScopeOnly = current.ServiceScope is not null,
                 humanReviewRequired = true,
                 suggestedHoursPreservedSeparately = true
             });
@@ -1060,6 +1087,18 @@ public static class Module025SowGsdModule
             }
 
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            if (current.ServiceScope is not null)
+            {
+                var proposal = JsonString(sowSections, "executiveSummary");
+                if (proposal.Length < 600 || proposal.Length > 4000)
+                    throw new InvalidOperationException("module025_service_overview_incomplete");
+                await Module025ServiceScopeWorkspace.SaveOverviewAsync(connection, transaction, current, proposal, cancellationToken);
+                await InsertEventAsync(connection, transaction, engagementId, access.ActualUserId, current.Revision,
+                    "service_scope_package_replaced", "Prior generated and reviewed content retained before new AI proposals.",
+                    new { sourceRevision = current.Revision, previousOverview = current.ServiceOverview,
+                        previousGeneratedOverview = current.GeneratedServiceOverview, previousSowSections = current.SowSections,
+                        previousPhases = current.Phases }, cancellationToken);
+            }
             foreach (var phaseCode in PhaseCodes)
             {
                 var phase = generated[phaseCode];
@@ -1523,8 +1562,10 @@ public static class Module025SowGsdModule
             SELECT engagement_id, engagement_number, owner_user_id, owner_display_name, owner_department_name, owner_team_name,
                    customer_id, customer_name, customer_entry_mode, commercial_model, customer_program, gsd_template_key,
                    account_executive_user_id, account_executive_name, resale_user_id, resale_name, service_overview, project_name,
-                   sow_sections::text, ai_metadata::text, status, is_active, revision, last_generated_at, confirmed_at, archived_at, created_at, updated_at
-            FROM module025_sow_gsd_engagements WHERE engagement_id=@engagement_id;
+                   sow_sections::text, ai_metadata::text, status, is_active, revision, last_generated_at, confirmed_at, archived_at, created_at, updated_at,
+                   to_jsonb(e)->>'service_scope', COALESCE(to_jsonb(e)->>'generated_service_overview',''),
+                   COALESCE((to_jsonb(e)->>'service_overview_manually_edited')::boolean,FALSE)
+            FROM module025_sow_gsd_engagements e WHERE engagement_id=@engagement_id;
             """;
         Module025EngagementRow? shell;
         await using (var command = new NpgsqlCommand(sql, connection, transaction))
@@ -1537,7 +1578,9 @@ public static class Module025SowGsdModule
                 reader.IsDBNull(6) ? null : reader.GetGuid(6), reader.GetString(7), reader.GetString(8), reader.GetString(9), reader.GetString(10), reader.GetString(11),
                 reader.IsDBNull(12) ? null : reader.GetGuid(12), reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetGuid(14), reader.GetString(15), reader.GetString(16), reader.GetString(17),
                 ParseJson(reader.GetString(18), JsonValueKind.Object), ParseJson(reader.GetString(19), JsonValueKind.Object), reader.GetString(20), reader.GetBoolean(21), reader.GetInt32(22),
-                NullableTimestamp(reader, 23), NullableTimestamp(reader, 24), NullableTimestamp(reader, 25), reader.GetFieldValue<DateTimeOffset>(26), reader.GetFieldValue<DateTimeOffset>(27), Array.Empty<Module025PhaseRow>());
+                NullableTimestamp(reader, 23), NullableTimestamp(reader, 24), NullableTimestamp(reader, 25), reader.GetFieldValue<DateTimeOffset>(26), reader.GetFieldValue<DateTimeOffset>(27), Array.Empty<Module025PhaseRow>())
+            { ServiceScope = reader.IsDBNull(28) ? null : reader.GetString(28),
+                GeneratedServiceOverview = reader.GetString(29), ServiceOverviewManuallyEdited = reader.GetBoolean(30) };
         }
         var phases = await LoadPhasesAsync(connection, engagementId, cancellationToken, transaction);
         return shell with { Phases = phases.Select(p => p with { Tasks = Module025TaskEstimates.Read(shell.SowSections, p.PhaseCode) }).ToArray() };
@@ -1578,6 +1621,8 @@ public static class Module025SowGsdModule
             engagement.CustomerId, engagement.CustomerName, engagement.CustomerEntryMode, engagement.CommercialModel, engagement.CustomerProgram, engagement.GsdTemplateKey,
             gsdTemplate = engagement.GsdTemplateKey == Module025SowGsdDocumentExporter.HaeaGsdTemplateKey ? Module025SowGsdDocumentExporter.HaeaGsdDisplayName : "Standard GSD",
             engagement.AccountExecutiveUserId, engagement.AccountExecutiveName, engagement.ResaleUserId, engagement.ResaleName, engagement.ServiceOverview, engagement.ProjectName,
+            engagement.ServiceScope, engagement.GeneratedServiceOverview, engagement.ServiceOverviewManuallyEdited,
+            serviceScopeMode = engagement.ServiceScope is not null,
             engagement.SowSections, engagement.AiMetadata, engagement.Status, engagement.IsActive, engagement.Revision, engagement.LastGeneratedAt, engagement.ConfirmedAt,
             engagement.ArchivedAt, engagement.CreatedAt, engagement.UpdatedAt,
             suggestedHours = engagement.Phases.Sum(phase => phase.SuggestedHours), finalHours = engagement.Phases.Sum(phase => phase.FinalHours),
@@ -2062,6 +2107,12 @@ public static class Module025SowGsdModule
         return (connection, engagement, access, null);
     }
 
+    private static IResult ServiceScopeMigrationRequired() => Results.Json(new
+    {
+        status = "module025_service_scope_migration_required",
+        message = "Apply Service Scope migration 124 before saving the new input fields. Existing records remain unchanged."
+    }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
     private static bool MeaningfulServiceOverview(string? value)
     {
         var text = Clean(value, 30_000).Trim();
@@ -2076,7 +2127,7 @@ public static class Module025SowGsdModule
 
     private static string BuildGenerationPrompt(Module025EngagementRow engagement) => $"""
         Use the single saved project scope below for the current assigned delivery phase. The same scope is reused for Plan, Design, Implement, Validate, and Release in that order.
-        Saved project scope (Service Overview): {engagement.ServiceOverview}
+        Saved project scope (Service Scope): {engagement.EffectiveServiceScope}
         Commercial model: {(engagement.CommercialModel == "fixed" ? "Fixed Price" : "Time & Materials")}
         Customer program: {engagement.CustomerProgram}
         Follow the current phase instruction and generate only that phase, not all five phases in one response. Explain what this phase requires to deliver the saved scope. Keep the requested technologies, source and target versions, outcomes, and constraints consistent across phases.
@@ -2173,7 +2224,7 @@ public static class Module025SowGsdModule
             runtimeFailure ? "module025_ai_temporarily_unavailable" : "module025_ai_evidence_limited",
             runtimeFailure
                 ? "The private inference service could not complete SOW generation. The saved draft was not changed."
-                : "Celar AI did not return a reviewable SOW draft. No generic scope or fabricated level of effort was substituted.",
+                : "No eligible provider returned a complete, reviewable SOW draft. The saved scope and reviewed work were preserved.",
             correlationId, false, diagnostic);
     }
 

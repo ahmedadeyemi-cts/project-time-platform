@@ -72,6 +72,9 @@ install -m 0444 "$ROOT/scripts/release-test/verify-flowhive-automatic-first-draf
 install -m 0444 "$ROOT/database/migrations/123_module064_external_generation_approval.sql" "$CONTEXT/database/migrations/123_module064_external_generation_approval.sql"
 install -m 0444 "$ROOT/scripts/release-test/verify-module064-external-generation-approval.sql" "$CONTEXT/database/verify-module064-external-generation-approval.sql"
 (cd "$CONTEXT" && sha256sum database/migrations/123_module064_external_generation_approval.sql database/verify-module064-external-generation-approval.sql > database/module064-approval.sha256)
+install -m 0444 "$ROOT/database/migrations/124_module025_service_scope.sql" "$CONTEXT/database/migrations/124_module025_service_scope.sql"
+install -m 0444 "$ROOT/scripts/release-test/verify-module025-service-scope.sql" "$CONTEXT/database/verify-module025-service-scope.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/124_module025_service_scope.sql database/verify-module025-service-scope.sql > database/module025-service-scope.sha256)
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -136,6 +139,11 @@ echo 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED'
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/123_module064_external_generation_approval.sql"
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-module064-external-generation-approval.sql"
 echo 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED'
+(cd "$ROOT" && sha256sum --check --status database/module025-service-scope.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/124_module025_service_scope.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-module025-service-scope.sql"
+echo 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED'
+
 
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
@@ -298,6 +306,7 @@ echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_121_FLOWHIVE_SEQUENTIAL_CHECKPOINTS=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED'
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"

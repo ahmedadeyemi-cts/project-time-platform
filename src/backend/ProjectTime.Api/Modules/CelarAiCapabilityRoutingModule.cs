@@ -533,7 +533,8 @@ public static class CelarAiCapabilityRoutingModule
                 request.ExpectedRevision,
                 actor,
                 cancellationToken,
-                request.SanitizedExternalGenerationApproved);
+                request.SanitizedExternalGenerationApproved,
+                request.ServiceScopeFullTextApproved);
             return Results.Ok(new
             {
                 module = "064",

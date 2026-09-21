@@ -45,6 +45,7 @@ function routeDraft(route) {
     targets: [...(route.targets ?? ['deepseek_v4', 'celar_ai', 'claude', 'openai', 'local_template'])],
     revision: route.revision ?? 0,
     sanitizedExternalGenerationApproved: route.sanitizedExternalGenerationApproved === true,
+    serviceScopeFullTextApproved: route.serviceScopeFullTextApproved === true,
   };
 }
 
@@ -141,6 +142,7 @@ export default function CelarAiCapabilityRoutingPanel() {
           targets: draft.targets,
           expectedRevision: draft.revision,
           ...(route?.externalGenerationApprovalEditable ? { sanitizedExternalGenerationApproved: draft.sanitizedExternalGenerationApproved } : {}),
+          ...(route?.serviceScopeApprovalEditable ? { serviceScopeFullTextApproved: draft.serviceScopeFullTextApproved } : {}),
         }),
       }));
       setNotice(payload.message || 'Capability route saved.');
@@ -456,6 +458,7 @@ export default function CelarAiCapabilityRoutingPanel() {
             const localLast = draft.targets.length >= 5 && draft.targets.at(-1) === 'local_template';
             const sowRoute = route.feature === 'sow_gsd_planning';
             const unsaved = draft.sanitizedExternalGenerationApproved !== (route.sanitizedExternalGenerationApproved === true)
+              || draft.serviceScopeFullTextApproved !== (route.serviceScopeFullTextApproved === true)
               || JSON.stringify(draft.targets) !== JSON.stringify(route.targets);
             return (
               <article key={route.feature} className="celar-ai-routing__route-card">
@@ -493,6 +496,16 @@ export default function CelarAiCapabilityRoutingPanel() {
                     <small>Allows eligible external providers in the saved order. Provider charges may apply. Raw documents, identities, and commercial values remain private. Save the route to apply this approval.</small>
                   </div>
                 ) : null}
+                {sowRoute ? <div className="celar-ai-routing__external-approval">
+                  <label><input type="checkbox" checked={draft.serviceScopeFullTextApproved === true}
+                    disabled={routeReadOnly || !route.serviceScopeApprovalEditable || savingRoute === route.feature}
+                    onChange={event => setDrafts(current => ({ ...current,
+                      [route.feature]: { ...current[route.feature], serviceScopeFullTextApproved: event.target.checked } }))} />
+                    <span>Allow configured AI providers to process the complete Service Scope for SOW/GSD generation</span>
+                  </label>
+                  <small>Separate full-text approval for the new Service Scope field. Its complete contents are sent without sanitization, including anything entered there. Customer-record fields, commercial data and attachments are not automatically included. Provider charges may apply. Saving this approval does not alter your provider order.</small>
+                  {!route.serviceScopeApprovalEditable && !routeReadOnly ? <small>Service Scope migration 124 must be applied before this approval can be saved.</small> : null}
+                </div> : null}
                 {route.executionPolicy ? (
                   <section className={`celar-ai-routing__effective-policy is-${route.executionPolicy.status}`} aria-label={`${route.displayName} saved execution policy`}>
                     <strong>Saved execution policy: {title(route.executionPolicy.status)}</strong>
@@ -543,8 +556,8 @@ export default function CelarAiCapabilityRoutingPanel() {
       <aside className="celar-ai-routing__guardrails">
         <strong>Non-editable enterprise guardrails</strong>
         <ul>
-          <li>Raw SOW, GSD, IQS, email, customer, project, employee, contract, rate, and financial context never goes directly to a public provider.</li>
-          <li>External providers receive only approved, backend-owned, identity-free capsules. The saved route reports when a privacy policy requires private providers first.</li>
+          <li>Stored SOW/GSD attachments, email, customer records, employee records, contracts, rates and financial fields are not automatically added to Service Scope requests.</li>
+          <li>Legacy modes use approved backend-owned capsules. The separate full-text Service Scope mode sends exactly the saved field, without sanitization, only after explicit Module 064 approval. Eligibility never reorders saved provider priorities.</li>
           <li>A safety refusal stops routing; a later provider is not used to bypass it.</li>
           <li>No AI route automatically saves or submits time, publishes a SOW, baselines a plan, sends a closeout message, changes financial data, or deploys software.</li>
         </ul>

@@ -428,6 +428,8 @@ public sealed record CelarAiCapabilityRouteSnapshot(
 
     public bool SanitizedExternalGenerationApproved { get; init; }
     public bool ExternalGenerationApprovalSchemaReady { get; init; }
+    public bool ServiceScopeFullTextApproved { get; init; }
+    public bool ServiceScopeApprovalSchemaReady { get; init; }
 
     public object ToPublicResponse(CelarAiPrivateModelProfile? privateProfile = null) => new
     {
@@ -442,6 +444,9 @@ public sealed record CelarAiCapabilityRouteSnapshot(
         finalFallback = Targets.ElementAtOrDefault(3),
         targets = Targets,
         sanitizedExternalGenerationApproved = SanitizedExternalGenerationApproved,
+        serviceScopeFullTextApproved = ServiceScopeFullTextApproved,
+        serviceScopeApprovalEditable = FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
+            && !DeploymentManaged && ServiceScopeApprovalSchemaReady,
         externalGenerationApprovalSchemaReady = ExternalGenerationApprovalSchemaReady,
         externalGenerationApprovalEditable = CelarAiRouteExecutionPolicy.ApprovalEditable(this),
         effectiveTargets = CelarAiRouteExecutionPolicy.ConfiguredEffectiveOrder(this, privateProfile),
@@ -523,7 +528,8 @@ public sealed record CelarAiPrivateModelProfile(
 public sealed record CelarAiRouteUpdateRequest(
     IReadOnlyList<string>? Targets,
     int? ExpectedRevision,
-    bool? SanitizedExternalGenerationApproved = null);
+    bool? SanitizedExternalGenerationApproved = null,
+    bool? ServiceScopeFullTextApproved = null);
 
 public sealed record CelarAiPrivateModelSettingsRequest(
     bool? Enabled,
@@ -576,8 +582,8 @@ public sealed record CelarAiCapabilityExecutionContext(
 }
 
 public sealed class CelarAiConfigurationConflictException(string message) : InvalidOperationException(message);
-public sealed class CelarAiRouteSchemaUnavailableException() : InvalidOperationException(
-    "Module 064 route changes require migration 123. Existing saved provider order remains active; deploy the approved migration before saving route changes.");
+public sealed class CelarAiRouteSchemaUnavailableException(string? message = null) : InvalidOperationException(
+    message ?? "Module 064 route changes require migration 123. Existing saved provider order remains active; deploy the approved migration before saving route changes.");
 
 public sealed class CelarAiCapabilityRoutingStore : IDisposable
 {
@@ -656,7 +662,10 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
                            revision, updated_at, updated_by,
                            COALESCE((to_jsonb(r)->>'sanitized_external_generation_approved')::boolean, FALSE),
                            (to_jsonb(r) ? 'sanitized_external_generation_approved')
-                             AND EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id = '123_module064_external_generation_approval')
+                             AND EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id = '123_module064_external_generation_approval'),
+                           COALESCE((to_jsonb(r)->>'service_scope_full_text_approved')::boolean, FALSE),
+                           (to_jsonb(r) ? 'service_scope_full_text_approved')
+                             AND EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id='124_module025_service_scope')
                     FROM ai_capability_routes AS r;
                     """;
                 await using var command = new NpgsqlCommand(sql, connection);
@@ -671,7 +680,7 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
                         reader.GetString(2),
                         reader.GetInt32(3),
                         new DateTimeOffset(reader.GetDateTime(4).ToUniversalTime()),
-                        reader.IsDBNull(5) ? null : reader.GetGuid(5), reader.GetBoolean(6), reader.GetBoolean(7));
+                        reader.IsDBNull(5) ? null : reader.GetGuid(5), reader.GetBoolean(6), reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9));
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -701,7 +710,9 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
                     route.UpdatedAt,
                     route.UpdatedBy,
                     true) { SanitizedExternalGenerationApproved = route.SanitizedExternalGenerationApproved,
-                        ExternalGenerationApprovalSchemaReady = route.ExternalGenerationApprovalSchemaReady }
+                        ExternalGenerationApprovalSchemaReady = route.ExternalGenerationApprovalSchemaReady,
+                        ServiceScopeFullTextApproved = route.ServiceScopeFullTextApproved,
+                        ServiceScopeApprovalSchemaReady = route.ServiceScopeApprovalSchemaReady }
                 : new CelarAiCapabilityRouteSnapshot(
                     definition.FeatureCode,
                     definition.DisplayName,
@@ -735,7 +746,8 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         int? expectedRevision,
         Guid actorUserId,
         CancellationToken cancellationToken = default,
-        bool? sanitizedExternalGenerationApproved = null)
+        bool? sanitizedExternalGenerationApproved = null,
+        bool? serviceScopeFullTextApproved = null)
     {
         ProjectPulseAiReleaseRuntimePolicy.RejectReleaseConfigurationMutation("Capability route mutation");
         if (!DatabaseAvailable) throw new InvalidOperationException("Database configuration is unavailable.");
@@ -743,6 +755,9 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         if (!string.Equals(definition.FeatureCode, CelarAiCapabilityCatalog.NormalizeFeature(feature), StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The requested capability is not registered.");
         var validated = CelarAiCapabilityCatalog.ValidateTargets(targets);
+        if (serviceScopeFullTextApproved.HasValue && (!expectedRevision.HasValue
+            || definition.FeatureCode != CelarAiCapabilityCatalog.SowGsdPlanning))
+            throw new ArgumentException("Full Service Scope approval requires the SOW route and its current revision.");
         if (sanitizedExternalGenerationApproved.HasValue && !expectedRevision.HasValue)
             throw new ArgumentException("Refresh the route and include its expected revision when changing external generation approval.");
         if (sanitizedExternalGenerationApproved == true && definition.FeatureCode != CelarAiCapabilityCatalog.SowGsdPlanning)
@@ -759,6 +774,10 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         if (expectedRevision.HasValue && expectedRevision.Value != currentRevision)
             throw new CelarAiConfigurationConflictException("The capability route changed after it was loaded. Refresh and try again.");
         var externalApproved = sanitizedExternalGenerationApproved ?? current?.SanitizedExternalGenerationApproved ?? false;
+        var scopeSchemaReady = await Module025ServiceScopePolicy.SchemaReadyAsync(connection, cancellationToken, transaction);
+        if (serviceScopeFullTextApproved == true && !scopeSchemaReady)
+            throw new CelarAiRouteSchemaUnavailableException("Apply Service Scope migration 124 before approving full-text generation.");
+        var scopeApproved = serviceScopeFullTextApproved ?? current?.ServiceScopeFullTextApproved ?? false;
         var nextRevision = currentRevision + 1;
         var now = DateTimeOffset.UtcNow;
         var targetsJson = JsonSerializer.Serialize(validated);
@@ -788,7 +807,15 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        const string audit = """
+        var audit = scopeSchemaReady ? """
+            INSERT INTO ai_capability_route_audit
+                (feature_code, previous_targets, new_targets, previous_external_context_policy,
+                 new_external_context_policy, actor_user_id, previous_external_generation_approved, new_external_generation_approved,
+                 previous_scope_full_text_approved, new_scope_full_text_approved)
+            VALUES
+                (@feature, @previous::jsonb, @next::jsonb, @previous_policy, @next_policy, @actor,
+                 @previous_approval, @next_approval, @previous_scope_approval, @scope_approval);
+            """ : """
             INSERT INTO ai_capability_route_audit
                 (feature_code, previous_targets, new_targets, previous_external_context_policy,
                  new_external_context_policy, actor_user_id, previous_external_generation_approved, new_external_generation_approved)
@@ -798,15 +825,26 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         await using (var command = new NpgsqlCommand(audit, connection, transaction))
         {
             command.Parameters.AddWithValue("feature", definition.FeatureCode);
-            command.Parameters.AddWithValue("previous", NpgsqlDbType.Jsonb,
-                JsonSerializer.Serialize(current?.Targets ?? CelarAiCapabilityTargets.DefaultOrder));
-            command.Parameters.AddWithValue("next", NpgsqlDbType.Jsonb, targetsJson);
-            command.Parameters.AddWithValue("previous_policy", (object?)current?.ExternalContextPolicy ?? DBNull.Value);
+            command.Parameters.AddWithValue("previous", current is null ? (object)DBNull.Value : JsonSerializer.Serialize(current.Targets));
+            command.Parameters.AddWithValue("next", targetsJson);
+            command.Parameters.AddWithValue("previous_policy", current?.ExternalContextPolicy ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("next_policy", definition.ExternalContextPolicy);
             command.Parameters.AddWithValue("previous_approval", current?.SanitizedExternalGenerationApproved ?? false);
             command.Parameters.AddWithValue("next_approval", externalApproved);
             command.Parameters.AddWithValue("actor", actorUserId);
+            if (scopeSchemaReady)
+            {
+                command.Parameters.AddWithValue("previous_scope_approval", current?.ServiceScopeFullTextApproved ?? false);
+                command.Parameters.AddWithValue("scope_approval", scopeApproved);
+            }
             await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        if (scopeSchemaReady)
+        {
+            await using var approval = new NpgsqlCommand("UPDATE ai_capability_routes SET service_scope_full_text_approved=@approved WHERE feature_code=@feature", connection, transaction);
+            approval.Parameters.AddWithValue("approved", scopeApproved);
+            approval.Parameters.AddWithValue("feature", definition.FeatureCode);
+            await approval.ExecuteNonQueryAsync(cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
 
@@ -820,7 +858,8 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
             nextRevision,
             now,
             actorUserId,
-            true) { SanitizedExternalGenerationApproved = externalApproved, ExternalGenerationApprovalSchemaReady = true };
+            true) { SanitizedExternalGenerationApproved = externalApproved, ExternalGenerationApprovalSchemaReady = true,
+                ServiceScopeFullTextApproved = scopeApproved, ServiceScopeApprovalSchemaReady = scopeSchemaReady };
     }
 
     public Task<CelarAiCapabilityRouteSnapshot> ResetRouteAsync(
@@ -829,7 +868,8 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         Guid actorUserId,
         CancellationToken cancellationToken = default) =>
         SaveRouteAsync(feature, CelarAiCapabilityTargets.DefaultOrder, expectedRevision, actorUserId, cancellationToken,
-            sanitizedExternalGenerationApproved: false);
+            sanitizedExternalGenerationApproved: false,
+            serviceScopeFullTextApproved: feature == CelarAiCapabilityCatalog.SowGsdPlanning ? false : null);
 
     public async Task<CelarAiPrivateModelProfile> LoadPrivateModelProfileAsync(
         CancellationToken cancellationToken = default)
@@ -1197,8 +1237,11 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
     {
         const string sql = """
             SELECT feature_code, route_targets::text, external_context_policy,
-                   revision, updated_at, updated_by, sanitized_external_generation_approved, TRUE
-            FROM ai_capability_routes
+                   revision, updated_at, updated_by, sanitized_external_generation_approved, TRUE,
+                   COALESCE((to_jsonb(r)->>'service_scope_full_text_approved')::boolean, FALSE),
+                   (to_jsonb(r) ? 'service_scope_full_text_approved') AND EXISTS
+                     (SELECT 1 FROM schema_migrations WHERE migration_id='124_module025_service_scope')
+            FROM ai_capability_routes r
             WHERE feature_code = @feature
             FOR UPDATE;
             """;
@@ -1212,7 +1255,7 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
             reader.GetString(2),
             reader.GetInt32(3),
             new DateTimeOffset(reader.GetDateTime(4).ToUniversalTime()),
-            reader.IsDBNull(5) ? null : reader.GetGuid(5), reader.GetBoolean(6), reader.GetBoolean(7));
+            reader.IsDBNull(5) ? null : reader.GetGuid(5), reader.GetBoolean(6), reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9));
     }
 
     private static async Task EnsureRouteApprovalSchemaAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
@@ -1381,7 +1424,9 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         DateTimeOffset UpdatedAt,
         Guid? UpdatedBy,
         bool SanitizedExternalGenerationApproved,
-        bool ExternalGenerationApprovalSchemaReady);
+        bool ExternalGenerationApprovalSchemaReady,
+        bool ServiceScopeFullTextApproved,
+        bool ServiceScopeApprovalSchemaReady);
 
     private sealed record EncryptedValue(byte[]? Ciphertext, byte[]? Nonce, byte[]? Tag)
     {
@@ -1569,6 +1614,11 @@ public sealed class CelarAiPrivateGenerationTarget
                 generationToken);
             if (PulseAiPrivateModelResponsePolicy.IsSafetyRefusal(json.RootElement))
                 return Refusal(requestId, (int)response.StatusCode);
+            if (request.StructuredSowPhase && json.RootElement.TryGetProperty("choices", out var choices)
+                && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0
+                && choices[0].TryGetProperty("finish_reason", out var finish)
+                && finish.ValueKind == JsonValueKind.String && finish.GetString() is "length" or "max_tokens")
+                return Unavailable("celar_ai_output_budget_exhausted", requestId, (int)response.StatusCode);
             var content = ReadContent(json.RootElement).Trim();
             if (content.Length == 0)
                 return Unavailable("celar_ai_private_empty_response", requestId, (int)response.StatusCode);
@@ -2661,15 +2711,20 @@ public sealed class CelarAiCapabilityRouter
         var privateDocumentTargetMandatory = execution.ContainsPrivateDocuments
             && privatePolicyProfile?.RequirePrivateModelForDocuments == true;
         static bool IsPrivateTarget(string target) => target is CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi;
-        // Only an explicitly approved, server-validated closed SOW capsule may
-        // use external providers in the saved order. The private source flags
-        // remain intact; ordinary documents and FlowHive retain their policies.
+        // Explicitly approved SOW submissions use the saved order. Full Service
+        // Scope has a separate consent contract from legacy closed capsules.
+        // Ordinary documents and FlowHive retain their existing policies.
+        var fullServiceScope = execution.ExternalSow?.UsesFullServiceScope == true;
+        var sowSubmissionApproved = fullServiceScope
+            ? Module025ServiceScopePolicy.Approved(route)
+            : CelarAiRouteExecutionPolicy.ExternalGenerationApproved(route);
         ProjectPulseAiGenerationRequest? approvedSowRequest = null;
         if (execution.StructuredSowPhase && execution.ExternalSow is not null
-            && CelarAiRouteExecutionPolicy.ExternalGenerationApproved(route))
+            && sowSubmissionApproved)
             approvedSowRequest = execution.ExternalSow.Prepare(_sanitizer, out _);
         var savedSowOrder = CelarAiRouteExecutionPolicy.ClosedSowMayUseSavedOrder(route,
-            execution.StructuredSowPhase, approvedSowRequest is not null);
+            execution.StructuredSowPhase, approvedSowRequest is not null)
+            || (execution.StructuredSowPhase && fullServiceScope && sowSubmissionApproved && approvedSowRequest is not null);
         var orderedTargets = CelarAiRouteExecutionPolicy.Order(route,
             requirePrivateTargetBeforeExternal, savedSowOrder);
         var attempted = new List<string>();
@@ -2694,10 +2749,11 @@ public sealed class CelarAiCapabilityRouter
                 // Active routes require the explicit, audited Module 064 cost
                 // approval. The legacy flag belongs only to release qualification.
                 if (target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot
-                    && !CelarAiRouteExecutionPolicy.ExternalGenerationApproved(route))
+                    && !sowSubmissionApproved)
                 {
                     skipped.Add(target);
-                    decisions.Add(new(target, "skipped", route.DeploymentManaged
+                    decisions.Add(new(target, "skipped", fullServiceScope
+                        ? "module025_full_service_scope_approval_required" : route.DeploymentManaged
                         ? "module025_paid_fallback_disabled" : "module025_external_generation_approval_required"));
                     continue;
                 }
@@ -2815,7 +2871,21 @@ public sealed class CelarAiCapabilityRouter
                 ProjectPulseAiProviderResult privateResult;
                 try
                 {
-                    if (privateTargetOverride is not null)
+                    if (fullServiceScope)
+                    {
+                        var scopeRequest = execution.ExternalSow!.PreparePrivateScope();
+                        if (target == CelarAiCapabilityTargets.DeepSeek)
+                            privateResult = await CelarAiRouteAttemptBudget.RunAsync(target, targetTimeout,
+                                token => _providers[target].GenerateAsync(scopeRequest, token), cancellationToken);
+                        else
+                        {
+                            var scopeProfile = privatePolicyProfile ?? await _store.LoadPrivateModelProfileAsync(cancellationToken);
+                            privateResult = await CelarAiRouteAttemptBudget.RunAsync(target, targetTimeout,
+                                token => _privateTarget.GenerateAsync(scopeRequest, scopeProfile, token), cancellationToken);
+                        }
+                        privateResult = execution.ExternalSow.ValidateResult(privateResult, execution.CorrelationId, _sanitizer);
+                    }
+                    else if (privateTargetOverride is not null)
                     {
                         privateResult = await CelarAiRouteAttemptBudget.RunAsync(target, targetTimeout,
                             token => ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(target, privateTargetOverride, token), cancellationToken);

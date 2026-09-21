@@ -450,6 +450,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
           accountExecutiveUserId: engagement.accountExecutiveUserId || null,
           resaleUserId: engagement.resaleUserId || null,
           serviceOverview: engagement.serviceOverview,
+          ...(bootstrap?.capabilities?.serviceScope && engagement.serviceScope != null ? { serviceScope: engagement.serviceScope } : {}),
           phases: (engagement.phases || []).map((phase) => ({
             phaseCode: phase.phaseCode,
             finalHours: Number(phase.finalHours || 0),
@@ -497,7 +498,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
     } finally {
       saveInFlight.current = false;
     }
-  }, [engagement, access, loadList]);
+  }, [engagement, access, loadList, bootstrap?.capabilities?.serviceScope]);
 
   useEffect(() => {
     if (!dirty || !access?.canEdit) return undefined;
@@ -517,7 +518,8 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
           customerEntryMode: 'directory',
           commercialModel: 'time_and_materials',
           customerProgram: 'standard',
-          serviceOverview: ''
+          serviceOverview: '',
+          ...(bootstrap?.capabilities?.serviceScope ? { serviceScope: '' } : {})
         })
       });
       const created = payload?.engagement;
@@ -537,7 +539,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
     setActionState({ busy: action, message: '', error: '' });
     try {
       if (dirtyRef.current && !await saveNow()) {
-        throw new Error('Save the latest Service Overview and scope edits before continuing. If autosave is running, wait for Saved and try again.');
+        throw new Error('Save the latest Service Scope and overview edits before continuing. If autosave is running, wait for Saved and try again.');
       }
       if (selectedEngagementRef.current !== actionRecordId) return;
       const payload = await requestJson(`/api/module025/sow-gsd/${actionRecordId}/${action}`, { method: 'POST' });
@@ -626,7 +628,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   const warnings = Array.isArray(engagement?.aiMetadata?.warnings) ? engagement.aiMetadata.warnings : [];
   const missingEvidence = Array.isArray(engagement?.aiMetadata?.missingEvidence) ? engagement.aiMetadata.missingEvidence : [];
   const generationInputReady = Boolean(String(engagement?.customerName || '').trim())
-    && meaningfulServiceOverview(engagement?.serviceOverview);
+    && meaningfulServiceOverview(engagement?.serviceScope ?? engagement?.serviceOverview);
   const downloadReady = engagement?.status === 'confirmed' && !dirty && !detailLoading && !actionState.busy && !transferBusy && !trackingBusy;
   const phaseReviewComplete = (engagement?.phases || []).length === 5
     && (engagement?.phases || []).every((phase) => String(phase.objective || '').trim().length > 0);
@@ -904,7 +906,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
 
               <section id="m025-generation" className="m025-section">
                 <div className="m025-section-heading m025-section-heading--action">
-                  <div><span>02</span><h2>Service Overview &amp; AI scope</h2></div>
+                  <div><span>02</span><h2>Service Scope &amp; generated SOW</h2></div>
                   <div className="m025-generation-control">
                     <Button
                       kind="primary"
@@ -922,18 +924,39 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
                     ) : null}
                   </div>
                 </div>
-                <Field label="Service Overview" hint="Enter one project scope, for example: Upgrade Cisco CUCM from 14.0 to 15.0. Add known requirements and constraints. AI uses the same saved scope for every phase; unknown details remain assumptions or questions.">
+                <Field label={engagement.serviceScope != null ? "Service Scope" : "Service Overview (legacy input)"}
+                  hint="Enter the complete requested work: current and desired state, technologies, versions, quantities, deliverables, work windows, constraints and exclusions. Every phase uses this same saved input. AI must expand the explanation, not the authorized commitment.">
                   <textarea
                     className="m025-service-overview"
                     rows={10}
-                    value={engagement.serviceOverview || ''}
+                    value={engagement.serviceScope ?? engagement.serviceOverview ?? ''}
                     disabled={readOnly}
-                    onChange={(event) => updateTopLevel('serviceOverview', event.target.value)}
+                    onChange={(event) => updateTopLevel(engagement.serviceScope != null ? 'serviceScope' : 'serviceOverview', event.target.value)}
+                    maxLength={30000}
                     placeholder="Describe the requested services, platforms, expected outcome, known quantities/versions, locations, constraints, integrations, customer responsibilities, and any known acceptance requirements…"
                   />
                 </Field>
+                {bootstrap?.capabilities?.serviceScope && engagement.serviceScope == null ? <div>
+                  <p>This legacy record still uses Service Overview as its input. Adopt Service Scope explicitly to separate the original requirements from the generated narrative.</p>
+                  <Button disabled={readOnly} onClick={() => updateTopLevel('serviceScope', engagement.serviceOverview || '')}>Use existing input as Service Scope</Button>
+                </div> : null}
+                {engagement.serviceScope != null ? <>
+                  <p className="m025-generation-input-help">Service Scope is the only author-entered field sent to AI. Private providers receive its complete text; external providers require separate full-text approval in Module 064. It is not sanitized or reduced to keywords. Customer-record fields, pricing and attachments are not included. Do not enter credentials or confidential details in this field.</p>
+                  <Field label="Service Overview (generated, editable for review)"
+                    hint="AI writes the expanded customer-facing overview from Service Scope. Your edits are preserved during regeneration and do not change the original input.">
+                    <textarea rows={10} maxLength={30000} disabled={readOnly}
+                      value={engagement.serviceOverview || ''}
+                      placeholder="The expanded Service Overview will appear after all five phases complete."
+                      onChange={event => updateTopLevel('serviceOverview', event.target.value)} />
+                  </Field>
+                  {engagement.generatedServiceOverview && engagement.generatedServiceOverview !== engagement.serviceOverview ? <details>
+                    <summary>Latest AI overview proposal (your edited overview is preserved)</summary>
+                    <p style={{ whiteSpace: 'pre-wrap' }}>{engagement.generatedServiceOverview}</p>
+                    <Button disabled={readOnly} onClick={() => updateTopLevel('serviceOverview', engagement.generatedServiceOverview)}>Use this overview proposal</Button>
+                  </details> : null}
+                </> : null}
                 {!generationInputReady ? (
-                  <p className="m025-generation-input-help">To generate scope, select a customer and enter a meaningful multi-word Service Overview describing the technical work, expected outcome, and known platform/version details.</p>
+                  <p className="m025-generation-input-help">To generate scope, select a customer and enter a meaningful multi-word Service Scope describing the technical work, expected outcome, and known platform/version details.</p>
                 ) : null}
                 <GenerationProgress monitor={generationMonitor} now={generationNow}
                   canGenerate={!readOnly && !actionState.busy && !trackingDirty && generationInputReady}

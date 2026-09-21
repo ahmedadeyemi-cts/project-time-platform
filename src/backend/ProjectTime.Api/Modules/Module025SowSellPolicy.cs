@@ -101,7 +101,7 @@ internal static class Module025SowSellPolicy
             e.OwnerDepartmentName, e.OwnerTeamName, e.CustomerId, e.CustomerName,
             e.CustomerEntryMode, e.CommercialModel, e.CustomerProgram, e.GsdTemplateKey,
             e.AccountExecutiveUserId, e.AccountExecutiveName, e.ResaleUserId, e.ResaleName,
-            e.ServiceOverview, e.SowSections, e.AiMetadata,
+            e.ServiceScope, e.ServiceOverview, e.GeneratedServiceOverview, e.SowSections, e.AiMetadata,
             phases = e.Phases.Select(p => new
             {
                 p.PhaseCode, p.SortOrder, p.SuggestedHours, p.FinalHours, p.Objective,

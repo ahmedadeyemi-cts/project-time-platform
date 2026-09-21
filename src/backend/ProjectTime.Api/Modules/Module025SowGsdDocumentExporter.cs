@@ -36,7 +36,13 @@ internal static class Module025SowGsdDocumentExporter
         });
 
         BodyHeading(body, "Services Overview", 1);
-        BodyParagraph(body, EmptyAsTbd(engagement.ServiceOverview));
+        foreach (var paragraph in EmptyAsTbd(engagement.ServiceOverview).Split("\n", StringSplitOptions.RemoveEmptyEntries))
+            BodyParagraph(body, paragraph);
+        if (engagement.ServiceScope is not null)
+        {
+            BodyHeading(body, "Objectives and Expected Outcomes", 1);
+            AppendBullets(body, model.Phases.Select(phase => phase.Objective).Where(value => !string.IsNullOrWhiteSpace(value)));
+        }
 
         BodyHeading(body, "Services Description", 1);
         BodyParagraph(body,

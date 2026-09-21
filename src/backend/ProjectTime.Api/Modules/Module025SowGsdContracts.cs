@@ -11,7 +11,8 @@ public sealed record Module025SowGsdCreateRequest(
     string? CustomerProgram,
     Guid? AccountExecutiveUserId,
     Guid? ResaleUserId,
-    string? ServiceOverview);
+    string? ServiceOverview,
+    string? ServiceScope = null);
 
 public sealed record Module025SowGsdPhaseSaveRequest(
     string? PhaseCode,
@@ -43,7 +44,8 @@ public sealed record Module025SowGsdSaveRequest(
     Guid? AccountExecutiveUserId,
     Guid? ResaleUserId,
     string? ServiceOverview,
-    IReadOnlyList<Module025SowGsdPhaseSaveRequest>? Phases);
+    IReadOnlyList<Module025SowGsdPhaseSaveRequest>? Phases,
+    string? ServiceScope = null);
 
 internal sealed record Module025AccessContext(
     Guid ActualUserId,
@@ -96,7 +98,13 @@ internal sealed record Module025EngagementRow(
     DateTimeOffset? ArchivedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    IReadOnlyList<Module025PhaseRow> Phases);
+    IReadOnlyList<Module025PhaseRow> Phases)
+{
+    public string? ServiceScope { get; init; }
+    public string GeneratedServiceOverview { get; init; } = string.Empty;
+    public bool ServiceOverviewManuallyEdited { get; init; }
+    internal string EffectiveServiceScope => ServiceScope ?? ServiceOverview;
+}
 
 internal sealed record Module025PhaseRow(
     string PhaseCode,

@@ -1568,10 +1568,10 @@ public sealed partial class PulseAiPrivateRagService
             DocumentVersion: $"module025-revision-{evidence.Revision}",
             Classification: "author_saved_private_scope",
             OriginalFileName: $"Module 025 {engagementNumber}",
-            CitationAnchor: "Saved Service Overview",
+            CitationAnchor: evidence.ServiceScopeOnly ? "Saved Service Scope" : "Saved Service Overview",
             PageNumber: null,
             SheetName: null,
-            SectionTitle: "Service Overview",
+            SectionTitle: evidence.ServiceScopeOnly ? "Service Scope" : "Service Overview",
             Text: serviceOverview,
             SourceSha256: sourceHash,
             TextSha256: textHash,
@@ -1963,7 +1963,9 @@ public sealed partial class PulseAiPrivateRagService
         return new(Guid.NewGuid(), "completed", CelarAiCapabilityCatalog.SowGsdPlanning, "sow_draft",
             "direct_knowledge", provider, string.Empty, null, evidence.EngagementNumber, evidence.CustomerName,
             null, plan, Citations([source], [1]),
-            ["Technical work packages were proposed from a closed technology capsule. The saved Service Overview remains authoritative; quantities, versions, customer constraints and all effort estimates require Solution Architect review."],
+            [evidence.ServiceScopeOnly
+                ? "The saved Service Scope is authoritative. The expanded overview, tasks, assumptions and estimates are AI proposals, not approved scope changes or independently verified vendor guidance."
+                : "Technical work packages were proposed from a closed technology capsule. The saved Service Overview remains authoritative; quantities, versions, customer constraints and all effort estimates require Solution Architect review."],
             [], plan.Conflicts, 1m, 1m, evidence.SavedAt, correlationId, string.Empty);
     }
 

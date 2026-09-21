@@ -49,7 +49,7 @@ internal static class CelarAiRouteExecutionPolicy
             blockers.Add("module064_route_migration_required");
             details.Add("Migration 123 is required before route changes can be saved. Existing saved provider order remains active.");
         }
-        if (sow && !ExternalGenerationApproved(route))
+        if (sow && !ExternalGenerationApproved(route) && !Module025ServiceScopePolicy.Approved(route))
         {
             blockers.Add("sanitized_external_generation_approval_required");
             details.Add("Approve sanitized external SOW/GSD generation in this route before a paid provider can generate its phases.");
@@ -70,7 +70,9 @@ internal static class CelarAiRouteExecutionPolicy
         var order = Order(route, privateFirst, approvedSow);
         var status = route.DeploymentManaged ? "release_managed"
             : blockers.Count > 0 ? "external_generation_blocked" : "saved_order";
-        var message = approvedSow
+        var message = Module025ServiceScopePolicy.Approved(route)
+            ? "Service Scope mode sends the complete saved Service Scope text (not a sanitized summary) in this saved order. Customer-record fields, commercial data and attachments are not included. Legacy sanitized approval is separate."
+            : approvedSow
             ? "Approved, supported SOW scopes use this saved order. Only the validated technical capsule leaves Pulse; source documents, identities and commercial values stay private. Unsupported or unavailable providers are skipped in place."
             : "Module 064 is the sequence authority. Providers are considered once in this saved order; unavailable or privacy-ineligible providers are skipped with a reason, never moved ahead of or behind another provider. Saving an order does not authorize external disclosure.";
         return new { status, blockers, blockerDetails = details, message,
