@@ -2,44 +2,91 @@ name: Module 064 generation sequence repair
 on:
   push:
     branches: ['fix/module064-generation-sequence-20260921']
-  pull_request:
-    paths:
-      - 'src/backend/ProjectTime.Api/Ai/**'
-      - 'scripts/release-test/run-flowhive-psa-live-uat.py'
-      - 'tests/DeepSeekProviderTests/**'
-      - 'tests/FlowHiveSequentialTests/**'
-      - 'tests/module064-generation-sequence*'
-      - '.github/workflows/module064-generation-sequence-ci.yml'
 permissions:
-  contents: read
+  contents: write
 concurrency:
-  group: module064-generation-sequence-${{ github.event.pull_request.number || github.ref }}
+  group: module064-generation-sequence-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  validate:
+  apply-reviewed-source:
+    if: github.actor == 'ahmedadeyemi-cts' && github.ref == 'refs/heads/fix/module064-generation-sequence-20260921'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-          persist-credentials: false
-      - name: Capture exact tracked source for repair diagnostics
-        if: github.event_name == 'push'
-        run: git archive --format=zip HEAD -o "$RUNNER_TEMP/module064-generation-source.zip"
-      - name: Retain source diagnostics without credentials or runtime data
-        if: github.event_name == 'push'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: module064-generation-source-${{ github.run_id }}
-          path: ${{ runner.temp }}/module064-generation-source.zip
-          retention-days: 1
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
-        with:
-          dotnet-version: '10.0.x'
-      - name: Build API
-        run: dotnet build src/backend/ProjectTime.Api --configuration Release
-      - name: Verify provider and sequential generation contracts
+      - name: Apply exact source edit bundle without deployment or environment access
+        shell: bash
         run: |
-          dotnet run --project tests/DeepSeekProviderTests --configuration Release -p:BuildProjectReferences=false
-          dotnet run --project tests/FlowHiveSequentialTests --configuration Release -p:BuildProjectReferences=false
+          set -Eeuo pipefail
+          branch='fix/module064-generation-sequence-20260921'
+          [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == "refs/heads/$branch" ]]
+          [[ "$(git rev-parse HEAD^)" == '57f2e009e1ec9a6d0a5d0ce1f6a88f7ed4aaef60' ]]
+          [[ "$(git ls-remote origin "refs/heads/$branch" | cut -f1)" == "$GITHUB_SHA" ]]
+          git merge-base --is-ancestor 43186adb5835e693cdb1ee07e777c3ca2ddace93 HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os, subprocess
+          expected = {
+              'scripts/release-test/run-flowhive-psa-live-uat.py',
+              'scripts/release-test/validate-protected-test-controller-branches.sh',
+              'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs',
+              'src/backend/ProjectTime.Api/Ai/CelarAiRouteExecutionPolicy.cs',
+              'src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs',
+              'src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs',
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs',
+              'src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs',
+              'tests/DeepSeekProviderTests/Program.cs',
+              'tests/FlowHiveDetailedPlannerTests/Module025GenerationEngineTests.cs',
+              'tests/FlowHiveDetailedPlannerTests/Module064RouteOrderTests.cs',
+              'tests/FlowHiveDetailedPlannerTests/Module064SequenceTests.cs',
+              'tests/FlowHiveSequentialTests/Program.cs',
+              'tests/Module064RoutePersistenceTests/Program.cs',
+              'tests/flowhive-psa-admission.test.mjs',
+              'tests/module064-generation-sequence-scope.py',
+              'tests/module064-generation-sequence.test.py',
+          }
+          bundles = [Path(f'scripts/ci/module064-repair-edits-{index}.json') for index in (1, 2, 3)]
+          rows = [row for bundle in bundles for row in json.loads(bundle.read_text())]
+          assert len(rows) == len(expected) and {row['path'] for row in rows} == expected
+          outputs = {}
+          for row in rows:
+              path = Path(row['path'])
+              assert path.resolve().is_relative_to(Path.cwd()) and not path.is_symlink()
+              before = path.read_bytes() if path.exists() else None
+              assert (hashlib.sha256(before).hexdigest() if before is not None else None) == row['before'], f'Base changed: {path}'
+              lines = before.decode().splitlines(keepends=True) if before is not None else []
+              original_length = len(lines)
+              edits = row['edits']
+              assert edits == sorted(edits, key=lambda edit: edit['start'])
+              last_end = 0
+              for edit in edits:
+                  assert type(edit['start']) is int and type(edit['end']) is int
+                  assert last_end <= edit['start'] <= edit['end'] <= original_length
+                  last_end = edit['end']
+              for edit in reversed(edits):
+                  lines[edit['start']:edit['end']] = edit['text'].splitlines(keepends=True)
+              result = ''.join(lines).encode()
+              assert hashlib.sha256(result).hexdigest() == row['after'], f'Output mismatch: {path}'
+              outputs[path] = result
+          for path, content in outputs.items():
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(content)
+              print(f'VERIFIED_SOURCE {path} {hashlib.sha256(content).hexdigest()}')
+          for bundle in bundles: bundle.unlink()
+          subprocess.run(['git', 'add', '--', *sorted(expected), *(str(bundle) for bundle in bundles)], check=True)
+          staged = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only']).decode().splitlines())
+          assert staged == expected | {str(bundle) for bundle in bundles}
+          assert not any(path.startswith('.github/') or path.startswith('database/') for path in staged)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          PY
+          [[ "$(git ls-remote origin "refs/heads/$branch" | cut -f1)" == "$GITHUB_SHA" ]]
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Honor Module 064 saved sequence and repair bounded five-phase generation'
+          git push origin "HEAD:refs/heads/$branch"
+          echo 'SOURCE_REPAIR_APPLIED=TRUE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'UAT_MUTATION=NONE'
