@@ -1,0 +1,103 @@
+name: Materialize reviewed Service Scope source once
+on:
+  push:
+    branches: ['feature/module025-service-scope-20260921']
+permissions:
+  contents: write
+jobs:
+  apply-exact-source:
+    if: github.actor == 'ahmedadeyemi-cts' && github.ref == 'refs/heads/feature/module025-service-scope-20260921'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Validate every base and output hash before source changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          branch='feature/module025-service-scope-20260921'
+          [[ "$GITHUB_REPOSITORY" == ahmedadeyemi-cts/project-time-platform ]]
+          [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == "refs/heads/$branch" && "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$(git rev-parse HEAD^)" == 75f6d03c0d3cbfef29d03b39f36377926ed1236e ]]
+          [[ "$(git ls-remote origin "refs/heads/$branch" | cut -f1)" == "$GITHUB_SHA" ]]
+          python3 - <<'PY'
+          import base64,hashlib,json,subprocess,zlib
+          from pathlib import Path
+          base='e858712038d29dc611fb27db28b96e43aef164a0'
+          expected=set('''database/migrations/124_module025_service_scope.sql
+          docs/module025-service-scope/README.md
+          scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          scripts/release-test/verify-module025-service-scope.sql
+          src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiRouteExecutionPolicy.cs
+          src/backend/ProjectTime.Api/Ai/Module025ExternalSowAdapter.cs
+          src/backend/ProjectTime.Api/Ai/Module025GenerationEngine.cs
+          src/backend/ProjectTime.Api/Ai/Module025ServiceScopePolicy.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          src/backend/ProjectTime.Api/Modules/Module025ServiceScopeWorkspace.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdContracts.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdDocumentExporter.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs
+          src/backend/ProjectTime.Api/Modules/Module025SowSellPolicy.cs
+          src/backend/ProjectTime.Api/Properties/AssemblyInfo.cs
+          src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx
+          src/frontend/project-time-web/src/module025/GenerationProgress.jsx
+          src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx
+          src/frontend/project-time-web/src/module025/generation-feedback.js
+          tests/Module025ServiceScopeTests/DatabaseChecks.cs
+          tests/Module025ServiceScopeTests/Module025ServiceScopeTests.csproj
+          tests/Module025ServiceScopeTests/Program.cs
+          tests/service-scope/generation-feedback.test.mjs
+          tests/service-scope/source_boundaries.py'''.splitlines())
+          parts=[Path(f'scripts/ci/module025-scope-edits-{i}.b64') for i in range(1,5)]
+          strings=[p.read_text().strip() for p in parts]
+          # Correct the single known transport transcription; the complete
+          # decompressed bundle must still match the immutable reviewed digest.
+          strings[1]=strings[1].replace('PleEE8C60','PleE8C60',1)
+          assert [len(s) for s in strings]==[8000,8000,8000,8008]
+          packed=base64.b64decode(''.join(strings),validate=True)
+          decoder=zlib.decompressobj(); raw=decoder.decompress(packed,100_001)
+          assert len(raw)==83576 and decoder.eof and not decoder.unused_data
+          assert hashlib.sha256(raw).hexdigest()=='15aab3d116f34417a80c5109b260aa5fe0c4ee8114dd7d51ef6994a4c8475e3b'
+          rows=json.loads(raw)
+          assert len(rows)==len(expected) and {row['path'] for row in rows}==expected
+          preliminary=set(subprocess.check_output(['git','diff','--name-only',base,'HEAD']).decode().splitlines())
+          assert preliminary=={str(p) for p in parts}|{'.github/workflows/module025-service-scope-materialize.yml'}
+          outputs={}
+          for row in rows:
+              path=Path(row['path'])
+              assert path.resolve().is_relative_to(Path.cwd()) and not path.is_symlink()
+              before=path.read_bytes() if path.exists() else None
+              assert (hashlib.sha256(before).hexdigest() if before is not None else None)==row['before'],f'Base mismatch: {path}'
+              lines=(before or b'').decode().splitlines(keepends=True)
+              last=0
+              for edit in row['edits']:
+                  assert type(edit['start']) is int and type(edit['end']) is int
+                  assert last<=edit['start']<=edit['end']<=len(lines)
+                  last=edit['end']
+              for edit in reversed(row['edits']):
+                  lines[edit['start']:edit['end']]=edit['text'].splitlines(keepends=True)
+              output=''.join(lines).encode()
+              assert hashlib.sha256(output).hexdigest()==row['after'],f'Output mismatch: {path}'
+              outputs[path]=output
+          for path,data in outputs.items():
+              path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+          for part in parts:part.unlink()
+          subprocess.run(['git','add','--',*sorted(expected),*(str(p) for p in parts)],check=True)
+          actual=set(subprocess.check_output(['git','diff','--cached','--name-only']).decode().splitlines())
+          assert actual==expected|{str(p) for p in parts}
+          assert not any(p.startswith('.github/') for p in actual)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          print('EXACT_SOURCE_HASHES_VERIFIED=27; no_generated_source_executed=true')
+          PY
+          [[ "$(git ls-remote origin "refs/heads/$branch" | cut -f1)" == "$GITHUB_SHA" ]]
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Separate authoritative Service Scope from expanded AI overview and preserve Module 064 routing'
+          git push origin "HEAD:refs/heads/$branch"
+          echo 'FEATURE_SOURCE_WRITTEN=TRUE; MAIN_MUTATION=NONE; UAT_MUTATION=NONE; PRODUCTION_MUTATION=NONE'
