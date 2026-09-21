@@ -1,0 +1,59 @@
+name: Module 025 Service Scope and generated overview
+on:
+  push:
+    branches: ['feature/module025-service-scope-20260921']
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/**'
+      - 'src/frontend/project-time-web/src/module025/**'
+      - 'src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx'
+      - 'database/migrations/124_module025_service_scope.sql'
+      - 'scripts/release-test/verify-module025-service-scope.sql'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+      - 'tests/Module025ServiceScopeTests/**'
+      - 'tests/service-scope/**'
+      - '.github/workflows/module025-service-scope-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: module025-service-scope-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-scope-tests
+        ports: ['5432/tcp']
+        options: >-
+          --health-cmd pg_isready --health-interval 3s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify source boundaries and provider feedback
+        run: |
+          python3 tests/service-scope/source_boundaries.py
+          node --test tests/service-scope/generation-feedback.test.mjs
+          bash -n scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api --configuration Release
+      - name: Verify real router, complete scope payload and PostgreSQL persistence
+        env:
+          MODULE025_SCOPE_TEST_DATABASE: Host=127.0.0.1;Port=${{ job.services.postgres.ports[5432] }};Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-scope-tests;Database=postgres
+        run: dotnet run --project tests/Module025ServiceScopeTests --configuration Release -p:BuildProjectReferences=false
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --ignore-scripts
+      - name: Bundle frontend without invoking deployment scripts
+        working-directory: src/frontend/project-time-web
+        run: npx --no-install vite build
