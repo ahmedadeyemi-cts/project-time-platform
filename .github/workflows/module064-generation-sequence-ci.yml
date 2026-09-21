@@ -2,59 +2,73 @@ name: Module 064 generation sequence repair
 on:
   push:
     branches: ['fix/module064-generation-sequence-20260921']
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Ai/**'
+      - 'src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs'
+      - 'scripts/release-test/run-flowhive-psa-live-uat.py'
+      - 'tests/DeepSeekProviderTests/**'
+      - 'tests/FlowHiveSequentialTests/**'
+      - 'tests/FlowHiveDetailedPlannerTests/**'
+      - 'tests/Module064RoutePersistenceTests/**'
+      - 'tests/module064-generation-sequence*'
+      - '.github/module064-generation-sequence-files.txt'
+      - '.github/workflows/module064-generation-sequence-ci.yml'
+      - '.github/workflows/flowhive-psa-installed-acceptance.yml'
 permissions:
-  contents: write
+  contents: read
 concurrency:
-  group: module064-generation-sequence-${{ github.ref }}
+  group: module064-generation-sequence-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
-  prepare-observer-blobs:
-    if: github.actor == 'ahmedadeyemi-cts' && github.ref == 'refs/heads/fix/module064-generation-sequence-20260921'
+  validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-sequence
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Prepare exact content blobs only; no branch or deployment writes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install pinned YAML parser for boundary tests
+        run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.3
+      - name: Validate exact application scope without changing release authority
+        if: github.event_name == 'pull_request' && github.head_ref == 'fix/module064-generation-sequence-20260921'
+        run: python3 tests/module064-generation-sequence-scope.py
+      - name: Verify sequential observer, privacy and shared routing source boundaries
         run: |
-          set -Eeuo pipefail
-          [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/fix/module064-generation-sequence-20260921 ]]
-          [[ "$(git rev-parse HEAD^)" == '79edf30c3c232c6298b46ad603a48e252e2494a3' ]]
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib,json,os,subprocess
-          from urllib.request import Request,urlopen
-          paths = {
-            '.github/workflows/flowhive-psa-release-control-ci.yml': ('a3552c74ba588814dd5836aec2ff9e066926cac0d233f5e0c2acb85c06d371c6', 'b2c935183e5715ead6191e094fce0b62d1b95ed83085855df5a1b65a7510e14d'),
-            '.github/workflows/flowhive-psa-installed-acceptance.yml': ('b9b76a1ea0ba5c12209ef963faf2e7afe8fdd43800e2563326b1dbed7cac77f1', '5ba757d1ff02031eeb778b5ec47dfaaaa2628cdd13fc849077302da10210278e')
-          }
-          assert os.environ['GITHUB_REPOSITORY'] == 'ahmedadeyemi-cts/project-time-platform'
-          for path,(old_hash,new_hash) in paths.items():
-            original = Path(path).read_bytes()
-            assert hashlib.sha256(original).hexdigest() == old_hash
-            value = original.decode()
-            if 'release-control-ci' in path:
-              old = '          if [[ "$GITHUB_HEAD_REF" == fix/flowhive-installed-verifier-20260921 ]]; then'
-              new = '          if [[ "$GITHUB_HEAD_REF" == fix/module064-generation-sequence-20260921 ]]; then\n            python3 tests/module064-generation-sequence-scope.py\n          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-installed-verifier-20260921 ]]; then'
-              assert value.count(old) == 1
-              value = value.replace(old,new,1)
-            else:
-              assert value.count('    timeout-minutes: 45') == 1
-              assert value.count("MODULE025_GENERATION_TIMEOUT_SECONDS: '1500'") == 1
-              value = value.replace('    timeout-minutes: 45','    # Two existing 40-minute application ceilings, observation grace, setup and evidence.\n    timeout-minutes: 95',1).replace("MODULE025_GENERATION_TIMEOUT_SECONDS: '1500'","MODULE025_GENERATION_TIMEOUT_SECONDS: '2430'",1)
-            assert hashlib.sha256(value.encode()).hexdigest() == new_hash
-            expected = subprocess.check_output(['git','hash-object','--stdin'],input=value.encode()).decode().strip()
-            request = Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',
-              data=json.dumps({'content':value,'encoding':'utf-8'}).encode(), method='POST',
-              headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
-            with urlopen(request,timeout=30) as response: result=json.load(response)
-            assert result['sha'] == expected
-            print(f'REVIEWED_CONTENT_BLOB {path} {expected} sha256={new_hash}')
-          print('BRANCH_MUTATION=NONE DEPLOYMENT_MUTATION=NONE')
-          PY
+          python3 tests/module064-generation-sequence-scope.py --self-test
+          python3 tests/module064-generation-sequence.test.py
+          python3 tests/flowhive-psa-live-uat.test.py
+          node src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api --configuration Release
+      - name: Verify all-capability provider ordering, bounded phases and persisted routes
+        env:
+          MODULE025_TEST_DATABASE: Host=127.0.0.1;Port=${{ job.services.postgres.ports[5432] }};Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-sequence;Database=postgres
+          MODULE064_TEST_DATABASE_CONNECTION_STRING: Host=127.0.0.1;Port=${{ job.services.postgres.ports[5432] }};Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-sequence;Database=postgres
+        run: |
+          dotnet run --project tests/DeepSeekProviderTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/FlowHiveSequentialTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/FlowHiveDetailedPlannerTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/Module064RoutePersistenceTests --configuration Release -p:BuildProjectReferences=false

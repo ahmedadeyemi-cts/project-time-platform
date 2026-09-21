@@ -30,7 +30,8 @@ jobs:
   verify-installed-release:
     name: Verify installed FlowHive release without deployment
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # Two existing 40-minute application ceilings, observation grace, setup and evidence.
+    timeout-minutes: 95
     # The object form resolves to the existing protected Test environment;
     # it is not a separate environment or a deployment lane.
     environment:
@@ -142,7 +143,7 @@ jobs:
         env:
           PROJECTPULSE_M025_SA_EMAIL: ${{ secrets.PROJECTPULSE_M025_SA_EMAIL }}
           PROJECTPULSE_M025_SA_PASSWORD: ${{ secrets.PROJECTPULSE_M025_SA_PASSWORD }}
-          MODULE025_GENERATION_TIMEOUT_SECONDS: '1500'
+          MODULE025_GENERATION_TIMEOUT_SECONDS: '2430'
         run: |
           set -Eeuo pipefail
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py
