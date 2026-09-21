@@ -143,7 +143,13 @@ public sealed class PulseAiPrivateModelClient
         if (_deepSeek is not null && deepSeekReady && ProjectPulseDeepSeekProvider.PrivateTarget != CelarAiCapabilityTargets.CelarAi)
         {
             var deepSeek = await _deepSeek.GenerateAsync(
-                new(request.FeatureCode, request.SystemInstruction, userInstruction, request.MaximumOutputTokens, (double)request.Temperature),
+                new(request.FeatureCode, request.SystemInstruction, userInstruction, request.MaximumOutputTokens, (double)request.Temperature)
+                {
+                    BoundedPrivatePhase = request.FeatureCode == CelarAiCapabilityCatalog.ProjectFlowHivePlan
+                        && request.OutputSchemaName == FlowHiveSequentialExecution.PhaseSchema
+                        || request.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning
+                        && request.OutputSchemaName == "module025_detailed_phase"
+                },
                 cancellationToken);
             if (deepSeek.IsRefusal)
                 return Failure("private_model_refused", PulseAiPrivateModelResponsePolicy.SafetyRefusalDiagnostic, DateTimeOffset.UtcNow);
@@ -224,6 +230,13 @@ public sealed class PulseAiPrivateModelClient
                 httpRequest.Headers.Add("X-Pulse-AI-Workload", "module025_phase_v4");
                 httpRequest.Headers.Add("X-Pulse-AI-Deadline-Seconds",
                     Module025GenerationEngine.GatewayPhaseTimeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            else if (request.FeatureCode == CelarAiCapabilityCatalog.ProjectFlowHivePlan
+                && request.OutputSchemaName == FlowHiveSequentialExecution.PhaseSchema)
+            {
+                httpRequest.Headers.Add("X-Pulse-AI-Workload", "flowhive_phase_v1");
+                httpRequest.Headers.Add("X-Pulse-AI-Deadline-Seconds",
+                    FlowHiveSequentialExecution.GatewayPhaseTimeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
             httpRequest.Headers.Add("X-Pulse-AI-Correlation-Id", request.CorrelationId);
             httpRequest.Headers.Add("X-Pulse-AI-External-Escalation", "false");

@@ -49,6 +49,7 @@ public sealed record ProjectPulseAiGenerationRequest(
 {
     // Internal capability: public request JSON cannot opt into larger budgets.
     internal bool StructuredSowPhase { get; init; }
+    internal bool BoundedPrivatePhase { get; init; }
     internal string? SowPhase { get; init; }
 }
 

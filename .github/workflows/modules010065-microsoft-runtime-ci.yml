@@ -57,6 +57,10 @@ jobs:
             python3 tests/enterprise-module-repair-scope.py
             RESERVED=""
             echo "MODULES_010_065_VALIDATION_MODE=ENTERPRISE_REPAIR_REGRESSION" >> "$GITHUB_ENV"
+          elif [[ "$HEAD_BRANCH" == fix/flowhive-sow-private-generation-20260921 ]]; then
+            python3 tests/flowhive-sow-private-generation-scope.py
+            RESERVED=""
+            echo "MODULES_010_065_VALIDATION_MODE=CONNECTWISE_REGRESSION" >> "$GITHUB_ENV"
           elif [[ "$HEAD_BRANCH" == fix/module025-private-generation-recovery ]]; then
             python3 tests/module025-private-generation-scope.py
             RESERVED=""

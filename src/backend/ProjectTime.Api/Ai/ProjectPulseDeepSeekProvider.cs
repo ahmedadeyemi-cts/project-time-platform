@@ -54,19 +54,7 @@ public sealed class ProjectPulseDeepSeekProvider(
 
             using var message = new HttpRequestMessage(HttpMethod.Post, Endpoint + "/chat/completions");
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey);
-            message.Content = new StringContent(JsonSerializer.Serialize(new
-            {
-                model = Model,
-                messages = new[]
-                {
-                    new { role = "system", content = request.SystemPrompt },
-                    new { role = "user", content = request.UserPrompt }
-                },
-                // Module 025 owns the total completion budget, including reasoning.
-                // Other consumers retain their existing reasoning allowance.
-                max_tokens = CompletionBudget(request.MaxOutputTokens, request.Feature),
-                stream = false
-            }), Encoding.UTF8, "application/json");
+            message.Content = new StringContent(JsonSerializer.Serialize(BuildPayload(request)), Encoding.UTF8, "application/json");
             using var response = await clients.CreateClient("DeepSeekDgx").SendAsync(
                 message, HttpCompletionOption.ResponseHeadersRead, budget.Token);
             if (!response.IsSuccessStatusCode)
@@ -83,6 +71,39 @@ public sealed class ProjectPulseDeepSeekProvider(
         catch (HttpRequestException) { return Failure("deepseek_connection_failed"); }
         catch (JsonException) { return Failure("deepseek_invalid_response"); }
         catch (NpgsqlException) { return Failure("deepseek_queue_unavailable"); }
+    }
+
+    internal static Dictionary<string, object> BuildPayload(ProjectPulseAiGenerationRequest request)
+    {
+        var planning = request.Feature is CelarAiCapabilityCatalog.SowGsdPlanning
+            or CelarAiCapabilityCatalog.ProjectFlowHivePlan;
+        var payload = new Dictionary<string, object>
+        {
+            ["model"] = Model,
+            ["messages"] = new[]
+            {
+                new { role = "system", content = request.SystemPrompt },
+                new { role = "user", content = request.UserPrompt }
+            },
+            ["max_tokens"] = request.BoundedPrivatePhase && planning
+                ? Math.Clamp(request.MaxOutputTokens, 1, 16_384)
+                : CompletionBudget(request.MaxOutputTokens, request.Feature),
+            ["stream"] = false
+        };
+        // DeepSeek defaults to high reasoning effort. Phase calls already have a
+        // complete task contract and a strict deadline; spend the bounded budget
+        // on the final JSON. Refusals and completeness checks remain unchanged.
+        if (planning)
+        {
+            payload["reasoning_effort"] = "low";
+            payload["response_format"] = new { type = "json_object" };
+        }
+        if (request.Feature == "provider_readiness")
+        {
+            payload["thinking"] = new { type = "disabled" };
+            payload["max_tokens"] = 32;
+        }
+        return payload;
     }
 
     internal static ProjectPulseAiProviderResult ParseCompletion(JsonElement root)

@@ -117,3 +117,27 @@ for value in ['', '0', '301', '3600', '-1', 'NaN', '٣٠٠']:
     _, status = ns['_local_chat_completions']()
     assert status == 400 and not attempts
 print('MODULE025_GATEWAY_PHASE_DEADLINE=PASS')
+
+# FlowHive's durable phase must not inherit the 3000-second legacy attempt.
+for feature, workload in [('sow_gsd_planning', 'module025_phase_v4'),
+                          ('project_flowhive_plan', 'flowhive_phase_v1')]:
+    request.headers = {'X-Pulse-AI-Feature': feature, 'X-Pulse-AI-Workload': workload,
+                       'X-Pulse-AI-Deadline-Seconds': '300'}
+    clock[0] = 0
+    attempts.clear()
+    _, status = ns['_local_chat_completions']()
+    assert status == 504 and attempts == [('gemma3:4b', 300)]
+    for value in ['', '0', '301', '3600', '-1', 'NaN', '٣٠٠']:
+        attempts.clear()
+        request.headers['X-Pulse-AI-Deadline-Seconds'] = value
+        _, status = ns['_local_chat_completions']()
+        assert status == 400 and not attempts
+    request.headers['X-Pulse-AI-Deadline-Seconds'] = '10'
+    clock[0] = 0
+    _, status = ns['_local_chat_completions']()
+    assert status == 504 and attempts == [('gemma3:4b', 10)]
+    attempts.clear()
+    request.headers['X-Pulse-AI-Feature'] = 'help_assistant'
+    _, status = ns['_local_chat_completions']()
+    assert status == 400 and not attempts
+print('PRIVATE_PLANNING_PHASE_DEADLINES=PASS')

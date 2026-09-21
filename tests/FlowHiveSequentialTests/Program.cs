@@ -133,6 +133,10 @@ var completed = await PulseAiPrivateRagService.GenerateFlowHiveSequentialAsync(r
     Check(current==snapshot, "same pinned SOW/GSD for " + phase);
     Check(r.SystemInstruction.Contains("Service Overview or Scope") && r.UserInstruction.Contains(FlowHiveSequentialExecution.PhasePurpose(phase)), "phase scope and purpose " + phase);
     Check(r.UserInstruction.Contains(request.UserInstruction), "PM requested outcome preserved " + phase);
+    Check(r.OutputSchemaName == FlowHiveSequentialExecution.PhaseSchema,
+        "phase request selects bounded gateway workload " + phase);
+    Check(r.SystemInstruction.Contains("\"requiredRoles\"") && r.SystemInstruction.Contains("\"customerResponsibilities\""),
+        "phase includes the exact task JSON contract " + phase);
     if(index>0) Check(r.SystemInstruction.Contains($"{index}.2"), "prior outputs available " + phase);
     calls.Add(phase); return Task.FromResult(Result(Payload(phase)));
 }, default);
@@ -177,4 +181,49 @@ Check(!safeProgress.Contains("SourceSha256") && !safeProgress.Contains("Descript
 var stopped=JsonSerializer.Serialize(interrupted.State.Progress(true,DateTimeOffset.UtcNow));
 Check(stopped.Contains("stopped"), "terminal progress freezes running stage");
 Check(typeof(CelarAiComposeRequest).GetProperty("FlowHiveExecution", BindingFlags.Instance|BindingFlags.NonPublic)!.GetCustomAttributes<System.Text.Json.Serialization.JsonIgnoreAttribute>().Any(), "internal checkpoint cannot be serialized to clients");
+Check(FlowHiveSequentialExecution.GatewayPhaseTimeoutSeconds < FlowHiveSequentialExecution.PhaseBudget.TotalSeconds,
+    "gateway stops before the caller deadline");
+var transport = new PhaseTransport();
+var modelClient = new PulseAiPrivateModelClient(transport,
+    Microsoft.Extensions.Logging.Abstractions.NullLogger<PulseAiPrivateModelClient>.Instance);
+var privateOptions = PulseAiPrivateRagOptions.FromEnvironment() with {
+    Enabled=true, InferenceEndpoint="https://10.23.45.67/v1/chat/completions",
+    InferenceModel="fixture", InferenceBearerToken="synthetic-fixture-token" };
+foreach (var (feature, schema, workload) in new[] {
+    (CelarAiCapabilityCatalog.ProjectFlowHivePlan, FlowHiveSequentialExecution.PhaseSchema, "flowhive_phase_v1"),
+    (CelarAiCapabilityCatalog.SowGsdPlanning, "module025_detailed_phase", "module025_phase_v4"),
+    (CelarAiCapabilityCatalog.ProjectFlowHivePlan, "FlowHive", ""),
+    (CelarAiCapabilityCatalog.SowGsdPlanning, FlowHiveSequentialExecution.PhaseSchema, "") })
+{
+    var response = await modelClient.GenerateAsync(request with { FeatureCode=feature, OutputSchemaName=schema }, privateOptions);
+    Check(response.Succeeded && transport.Workload == workload, "actual private HTTP client workload " + feature + "/" + schema);
+    Check(transport.Deadline == (workload.Length > 0 ? "300" : ""), "actual HTTP phase deadline " + feature + "/" + schema);
+}
+foreach (var feature in new[] { CelarAiCapabilityCatalog.SowGsdPlanning, CelarAiCapabilityCatalog.ProjectFlowHivePlan })
+{
+    using var payload = JsonDocument.Parse(JsonSerializer.Serialize(ProjectPulseDeepSeekProvider.BuildPayload(
+        new(feature, "JSON contract", "Synthetic scope", 6144, 0.1) { BoundedPrivatePhase=true })));
+    Check(payload.RootElement.GetProperty("max_tokens").GetInt32()==6144, "private phase token ceiling includes reasoning " + feature);
+    Check(payload.RootElement.GetProperty("reasoning_effort").GetString()=="low"
+        && payload.RootElement.GetProperty("response_format").GetProperty("type").GetString()=="json_object", "planning final JSON budget " + feature);
+}
+using var probePayload = JsonDocument.Parse(JsonSerializer.Serialize(ProjectPulseDeepSeekProvider.BuildPayload(
+    new("provider_readiness", "Reply briefly", "Hello", 500, 0))));
+Check(probePayload.RootElement.GetProperty("max_tokens").GetInt32()==32
+    && probePayload.RootElement.GetProperty("thinking").GetProperty("type").GetString()=="disabled", "health probe cannot consume the planning reasoning budget");
 Console.WriteLine($"FLOWHIVE_SEQUENTIAL_ASSERTIONS_PASSED={assertions}");
+
+sealed class PhaseTransport : HttpMessageHandler, IHttpClientFactory
+{
+    public string Workload { get; private set; } = "";
+    public string Deadline { get; private set; } = "";
+    public HttpClient CreateClient(string name) => new(this, disposeHandler:false);
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        Workload = message.Headers.TryGetValues("X-Pulse-AI-Workload", out var workloads) ? workloads.Single() : "";
+        Deadline = message.Headers.TryGetValues("X-Pulse-AI-Deadline-Seconds", out var deadlines) ? deadlines.Single() : "";
+        return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) {
+            Content = new StringContent("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"{}\"}}]}") });
+    }
+}
