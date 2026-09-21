@@ -43,6 +43,28 @@ for path in ['.github/workflows/projectpulse-deploy-test.yml',
              'scripts/release-test/flowhive-psa-admission.mjs',
              'scripts/release-test/dispatch-flowhive-psa-test.mjs']:
     assert Path(path).read_bytes() == subprocess.check_output(['git','show',BASE+':'+path]), path
+# Limit the application change to the durable SOW deadline; retain all other
+# provider behavior and every existing regression assertion byte-for-byte.
+provider_path = 'src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs'
+provider_before = git('show', BASE + ':' + provider_path)
+old_call = 'budget.CancelAfter(AttemptBudget(request.Feature));'
+new_call = 'budget.CancelAfter(RequestAttemptBudget(request.Feature, request.BoundedPrivatePhase));'
+assert provider_before.count(old_call) == 1
+anchor = '    internal static TimeSpan AttemptBudget(string feature) => feature switch\n'
+addition = '''    // Only server-marked durable SOW phases receive the longer attempt. Queue
+    // time remains inside this ceiling, below the router's 330-second deadline.
+    // The linked caller token still cancels immediately, including document expiry.
+    internal static TimeSpan RequestAttemptBudget(string feature, bool boundedPrivatePhase) =>
+        boundedPrivatePhase && feature == CelarAiCapabilityCatalog.SowGsdPlanning
+            ? TimeSpan.FromSeconds(300)
+            : AttemptBudget(feature);
+
+'''
+assert provider_before.count(anchor) == 1
+assert Path(provider_path).read_text() == provider_before.replace(old_call, new_call, 1).replace(anchor, addition + anchor, 1), 'Unrelated provider change'
+test_path = 'tests/DeepSeekProviderTests/Program.cs'
+assert Path(test_path).read_text().startswith(git('show', BASE + ':' + test_path)), 'Existing provider tests changed'
+assert 'DEEPSEEK_DURABLE_SOW_PHASE_DEADLINES=PASS' in Path(test_path).read_text()
 assert not any(p.startswith('database/') for p in actual)
 subprocess.run(['git','diff','--check',BASE],check=True)
 print(f'INSTALLED_VERIFIER_SCOPE=PASS files={len(expected)} release_authority=unchanged')

@@ -190,3 +190,24 @@ TimeSpan AttemptBudget(string feature) => (TimeSpan)attemptBudgetMethod.Invoke(n
 Check(AttemptBudget(CelarAiCapabilityCatalog.SowGsdPlanning) == TimeSpan.FromSeconds(120), "SOW leaves time for Oracle fallback before the UAT deadline.");
 Check(AttemptBudget("provider_readiness") == TimeSpan.FromSeconds(30), "Probe timeout is preserved.");
 Check(AttemptBudget(CelarAiCapabilityCatalog.ProjectFlowHivePlan) == TimeSpan.FromMinutes(10), "Planner timing is preserved.");
+
+// Durable SOW phases must not inherit the shorter legacy request timeout.
+var requestAttemptBudgetMethod = typeof(ProjectPulseDeepSeekProvider).GetMethod("RequestAttemptBudget", BindingFlags.Static | BindingFlags.NonPublic)!;
+TimeSpan RequestAttemptBudget(string feature, bool boundedPrivatePhase) =>
+    (TimeSpan)requestAttemptBudgetMethod.Invoke(null, [feature, boundedPrivatePhase])!;
+Check(RequestAttemptBudget(CelarAiCapabilityCatalog.SowGsdPlanning, true) == TimeSpan.FromSeconds(300),
+    "Server-marked durable SOW phases receive a bounded 300-second DeepSeek attempt.");
+Check(RequestAttemptBudget(CelarAiCapabilityCatalog.SowGsdPlanning, true) < TimeSpan.FromSeconds(330),
+    "The provider deadline remains below the durable router ceiling.");
+Check(RequestAttemptBudget(CelarAiCapabilityCatalog.SowGsdPlanning, false) == TimeSpan.FromSeconds(120),
+    "Legacy SOW requests keep their original deadline.");
+foreach (var feature in new[] { "provider_readiness", CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+    CelarAiCapabilityCatalog.ProjectForgePlanEstimate, "timesheet_description", "help_assistant", "unknown" })
+{
+    foreach (var boundedPrivatePhase in new[] { false, true })
+        Check(RequestAttemptBudget(feature, boundedPrivatePhase) == AttemptBudget(feature),
+            "The phase flag must not alter another feature's provider deadline: " + feature);
+}
+Check(RequestAttemptBudget("provider_readiness", true) == TimeSpan.FromSeconds(30),
+    "Readiness remains a short probe even when a phase flag is supplied.");
+Console.WriteLine("DEEPSEEK_DURABLE_SOW_PHASE_DEADLINES=PASS");
