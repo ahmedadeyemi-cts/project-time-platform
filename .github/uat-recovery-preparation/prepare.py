@@ -1,16 +1,5 @@
-"""Prepare exact historical-layout proofs while retaining existing CI cleanup."""
+"""Prepare exact recovery proofs and retain all existing validation assertions."""
 from pathlib import Path
-import hashlib
-import subprocess
-
-# Read the actual immutable Git object, not a connector's rendered file view.
-for revision in ('c15ef12d5ce1bc54c15d8b31c87a50daa94bad17', 'af060cbc311dcc7cce89c3ae2cc0bff040f5f6ea'):
-    raw = subprocess.check_output(['git', 'show', revision + ':.github/workflows/projectpulse-deploy-test.yml'])
-    identity = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
-    begin = raw.index(b'      - name: Guard exact source and validate release\n')
-    end = raw.index(b'          for required in ', begin)
-    print('IMMUTABLE_CONTROLLER=' + revision + ' blob=' + identity + ' sha256=' + hashlib.sha256(raw).hexdigest(), flush=True)
-    print(raw[begin:end].decode(), flush=True)
 
 path = Path(__file__).with_name('prepare-base.py')
 text = path.read_text()
@@ -33,5 +22,47 @@ text = text[:start] + '        self.assertEqual(text.encode(), baseline(path))' 
 proof = path.with_name('c15-proof.txt').read_text()
 patch = 'addition = ' + repr(proof) + '\nanchor = "    if args.base in (\'045b66ca01baa68b2f5b3f6eb9e063c23c335981\'"\nrequire(text.count(anchor) == 1, "Exact reviewed base selection missing")\ntext = text.replace(anchor, addition + anchor, 1)\nfiles[VALIDATOR] = text'
 text = text.replace('files[VALIDATOR] = text', patch, 1)
+
+negative_tests = '''    def test_existing_serialization_assertions_are_unchanged(self):
+        path = 'tests/validate-systemwide-enterprise-reliability.mjs'
+        updated = (ROOT/path).read_text()
+        self.assertIn(recovery.NEW_GROUP, updated)
+        self.assertEqual(updated.replace(recovery.NEW_GROUP, 'projectpulse-deploy-test').encode(), baseline(path))
+
+    def test_existing_validator_rejects_unsafe_concurrency(self):
+        controller = ROOT/recovery.CONTROLLER
+        original = controller.read_text()
+        mutations = (
+            ('group: ' + recovery.NEW_GROUP, 'group: unreviewed-test-queue'),
+            ('group: ' + recovery.NEW_GROUP, 'group: $' + '{{ github.run_id }}'),
+            ('cancel-in-progress: false', 'cancel-in-progress: true'),
+        )
+        try:
+            for old, new in mutations:
+                self.assertEqual(original.count(old), 1)
+                controller.write_text(original.replace(old, new, 1))
+                result = subprocess.run(['node', 'tests/validate-systemwide-enterprise-reliability.mjs'],
+                                        cwd=ROOT, text=True, capture_output=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0, new)
+                self.assertIn('serialize deployments without cancellation', result.stderr)
+        finally:
+            controller.write_text(original)
+
+'''
+register = '''# Register only the reviewed fixed queue name; keep paths and assertions intact.
+validation_path = 'tests/validate-systemwide-enterprise-reliability.mjs'
+validation = source(validation_path)
+validation, count = re.subn(r'projectpulse-deploy-test(?![a-zA-Z0-9_.-])', 'projectpulse-deploy-test-recovery-20260921', validation)
+require(count > 0, 'The existing exact serialization queue assertion is missing')
+require(validation.replace('projectpulse-deploy-test-recovery-20260921', 'projectpulse-deploy-test') == source(validation_path), 'Unexpected serialization-validator source change')
+files[validation_path] = validation
+'''
+register += "test_path = 'tests/protected-test-queue-recovery.test.py'\n"
+register += "test_anchor = '    def test_application_provider_order_and_production_unchanged(self):\\n'\n"
+register += 'files[test_path] = replace(files[test_path], test_anchor, ' + repr(negative_tests) + ' + test_anchor)\n\n'
+anchor = '# Add a closed scope and inverse-normalization assertions to the new tests.'
+if text.count(anchor) != 1:
+    raise SystemExit('The closed candidate file-scope registration anchor changed')
+text = text.replace(anchor, register + anchor, 1)
 compile(text, str(path), 'exec')
 exec(compile(text, str(path), 'exec'), {'__name__': '__main__', '__file__': str(path)})
