@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -125,11 +126,27 @@ class ResolutionTests(unittest.TestCase):
         self.assertIn(actual[0], resolver.MIGRATION_STEPS)
         data = self.scoped_main_case()
         next(step for step in data[1][0]["steps"] if step["name"] == resolver.LEGACY_MIGRATION_STEP)["name"] = actual[0]
+        migration_run = next(step["run"] for step in deploy["steps"] if step.get("name") == actual[0])
+        receipt_lists = re.findall(r'migrations:(\[[^\]]+\])', migration_run)
+        self.assertEqual(len(receipt_lists), 1)
+        data[3]["migrations.json"]["migrations"] = json.loads(receipt_lists[0])
+        self.assertIn("109_module025_project_name", data[3]["migrations.json"]["migrations"])
         context = validate(data)
         self.assertTrue(context["installationVerified"])
         self.assertFalse(context["functionalAcceptanceVerified"])
         self.assertTrue(context["liveIdentityRequired"])
         self.assertFalse(context["businessWritesPermitted"])
+
+    def test_current_migration_step_requires_exact_current_receipt(self):
+        for migration_list in (list(resolver.STANDARD_MAIN_MIGRATIONS),
+                               [*resolver.STANDARD_MAIN_MIGRATIONS, "109_module025_project_name", "999_unreviewed"],
+                               ["109_module025_project_name"]):
+            with self.subTest(migrations=migration_list):
+                data = self.scoped_main_case()
+                next(step for step in data[1][0]["steps"] if step["name"] == resolver.LEGACY_MIGRATION_STEP)["name"] = resolver.CURRENT_MIGRATION_STEP
+                data[3]["migrations.json"]["migrations"] = migration_list
+                with self.assertRaisesRegex(resolver.ResolutionError, "deployment_migrations_not_verified"):
+                    validate(data)
 
     def test_migration_aliases_require_exactly_one_successful_ordered_step(self):
         for alias in resolver.MIGRATION_STEPS:

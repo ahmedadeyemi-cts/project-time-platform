@@ -250,6 +250,8 @@ def resolve(run: dict, jobs: list[dict], artifact: dict, archive: bytes, manifes
             boundary = read_receipt(bundle, "release-boundary.json")
             require(boundary.get("applicationRelease") == application and boundary.get("environment") == "test" and boundary.get("productionMutation") is False, "main_release_boundary_invalid")
             expected_migrations = list(STANDARD_MAIN_MIGRATIONS)
+            if any(step["name"] == CURRENT_MIGRATION_STEP for step in jobs[0]["steps"]):
+                expected_migrations.append("109_module025_project_name")
             require(
                 migrations.get("status") == "applied_and_verified"
                 and migrations.get("productionMutation") is False
