@@ -60,12 +60,16 @@ if (reviewedTestConcurrencySource.split(reviewedTestConcurrency).length !== 2) {
 }
 // LAYA_UAT_RECOVERY_END serialization
 '''
-register = '''# Register only the reviewed fixed queue name; keep paths and assertions intact.
+register = '''# Register the exact reviewed queue in every string/regex assertion.
 validation_path = 'tests/validate-systemwide-enterprise-reliability.mjs'
 validation = source(validation_path)
-validation, count = re.subn(r'projectpulse-deploy-test(?![a-zA-Z0-9_.-])', 'projectpulse-deploy-test-recovery-20260921', validation)
-require(count > 0, 'The existing exact serialization queue assertion is missing')
-require(validation.replace('projectpulse-deploy-test-recovery-20260921', 'projectpulse-deploy-test') == source(validation_path), 'Unexpected serialization-validator source change')
+old_queue = 'projectpulse-deploy-test'
+new_queue = 'projectpulse-deploy-test-recovery-20260921'
+require(new_queue not in validation, 'The original validator already contains a recovery queue')
+validation = validation.replace(old_queue, new_queue).replace(new_queue + '.yml', old_queue + '.yml')
+require(new_queue in validation, 'The existing exact serialization queue assertion is missing')
+require(validation.replace(new_queue, old_queue) == source(validation_path), 'Unexpected serialization-validator source change')
+require(validation.count(old_queue + '.yml') == source(validation_path).count(old_queue + '.yml'), 'Existing workflow paths changed')
 '''
 register += 'validation = ' + repr(serialization_guard) + ' + validation\n'
 register += 'files[validation_path] = validation\n'
