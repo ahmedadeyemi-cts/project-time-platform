@@ -417,12 +417,19 @@ def _local_chat_completions() -> Any:
         if name in payload:
             base_payload[name] = payload[name]
 
-    phase_request = feature == "sow_gsd_planning" and request.headers.get("X-Pulse-AI-Workload") == "module025_phase_v4"
+    workload = request.headers.get("X-Pulse-AI-Workload", "")
+    phase_request = (feature, workload) in {
+        ("sow_gsd_planning", "module025_phase_v4"),
+        ("project_flowhive_plan", "flowhive_phase_v1"),
+    }
+    if workload in {"module025_phase_v4", "flowhive_phase_v1"} and not phase_request:
+        return gateway._error("private_phase_workload_invalid", 400)
     deadline_seconds = SOW_TIMEOUT_SECONDS if sow else gateway.CHAT_TIMEOUT_SECONDS
     if phase_request:
         supplied = request.headers.get("X-Pulse-AI-Deadline-Seconds", "")
         if not supplied.isascii() or not supplied.isdigit() or not 10 <= int(supplied) <= 300:
-            return gateway._error("module025_deadline_invalid", 400)
+            return gateway._error("module025_deadline_invalid" if feature == "sow_gsd_planning"
+                                  else "flowhive_deadline_invalid", 400)
         deadline_seconds = min(deadline_seconds, int(supplied))
         # The durable router owns attempts. Do not restart inference on another
         # local model after the caller's bounded phase has already expired.

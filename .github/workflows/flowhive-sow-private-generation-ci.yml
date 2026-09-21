@@ -1,0 +1,59 @@
+name: FlowHive and SOW private generation repair
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Ai/**'
+      - 'deployment/oracle-celar/**'
+      - 'tests/FlowHiveSequentialTests/**'
+      - 'tests/FlowHiveDetailedPlannerTests/**'
+      - 'tests/test-celar-sow-runtime-deadlines.py'
+      - 'tests/flowhive-sow-private-generation-scope.py'
+      - '.github/flowhive-sow-private-generation-files.txt'
+      - '.github/workflows/flowhive-sow-private-generation-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: private-generation-repair-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  behavior:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-private-phase
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate exact repair scope and retained release authority
+        if: github.head_ref == 'fix/flowhive-sow-private-generation-20260921'
+        run: python3 tests/flowhive-sow-private-generation-scope.py
+      - name: Validate scope negative cases and actual gateway deadlines
+        run: |
+          python3 tests/flowhive-sow-private-generation-scope.py --self-test
+          python3 tests/test-celar-sow-runtime-deadlines.py
+          python3 tests/test-oracle-runtime-preflight.py
+      - name: Build API and generated consumers
+        run: dotnet build src/backend/ProjectTime.Api --configuration Release
+      - name: Verify private transport, five-phase checkpoints and persisted SOW generation
+        env:
+          MODULE025_TEST_DATABASE: Host=127.0.0.1;Port=${{ job.services.postgres.ports[5432] }};Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-private-phase;Database=postgres
+        run: |
+          dotnet run --project tests/FlowHiveSequentialTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/FlowHiveDetailedPlannerTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/DeepSeekProviderTests --configuration Release -p:BuildProjectReferences=false
