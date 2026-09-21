@@ -50,10 +50,14 @@ public sealed class PulseAiPrivateModelClient
     {
         // A router-owned callback has already selected one target. Direct RAG
         // consumers must also consult Module 064 instead of assuming DeepSeek first.
-        if (ProjectPulseDeepSeekProvider.PrivateTarget is not null || _routes is null)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (ProjectPulseDeepSeekProvider.PrivateTarget is not null)
             return await GenerateTargetAsync(request, options, cancellationToken);
         if (!options.Enabled)
             return Failure("private_rag_disabled", "private_rag_disabled", DateTimeOffset.UtcNow);
+        if (_routes is null)
+            return new("private_model_unavailable", "module064", "", "", 0, 0,
+                "module064_route_store_unavailable", DateTimeOffset.UtcNow);
 
         var route = await _routes.LoadRouteAsync(request.FeatureCode, cancellationToken);
         PulseAiPrivateModelResult? last = null;

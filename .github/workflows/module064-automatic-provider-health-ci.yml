@@ -55,6 +55,10 @@ jobs:
           printf '%s\n' "$CHANGED"
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == fix/module064-generation-sequence-20260921 ]]; then
+            python3 tests/module064-generation-sequence-scope.py
+            exit 0
+          fi
           if [[ "$HEAD_BRANCH" == fix/flowhive-sow-private-generation-20260921 ]]; then
             python3 tests/flowhive-sow-private-generation-scope.py
             exit 0
@@ -225,7 +229,8 @@ jobs:
           set -Eeuo pipefail
           REGISTRY='src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry.cs'
           MONITOR='src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor.cs'
-          ROUTER='src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs'
+          ROUTER='src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'
+          COMPATIBILITY_ROUTER='src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs'
           STORE='src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs'
           MODULE='src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs'
           CENTER='src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx'
@@ -236,7 +241,9 @@ jobs:
           grep -Fq 'var liveConfiguration = _configuration.Provider(provider.Code)' "$MONITOR"
           grep -Fq '_health.ApplyConfiguration(liveConfiguration)' "$MONITOR"
           grep -Fq '_health.ShouldProbe(provider.Code, maximumAge, force)' "$MONITOR"
-          grep -Fq '_health.ApplyConfiguration(_configuration.Provider(providerCode))' "$ROUTER"
+          grep -Fq '_health.ApplyConfiguration(_configuration.Provider(target))' "$ROUTER"
+          grep -Fq 'ProjectPulseAiRouter(CelarAiCapabilityRouter authority)' "$COMPATIBILITY_ROUTER"
+          grep -Fq 'authority.GenerateAsync(' "$COMPATIBILITY_ROUTER"
           grep -Fq 'ProjectPulseAiHealthRegistry health' "$STORE"
           grep -Fq 'await coordinator.RefreshAsync(false, stoppingToken)' "$STORE"
           grep -Fq 'healthCheckedAutomatically = true' "$MODULE"

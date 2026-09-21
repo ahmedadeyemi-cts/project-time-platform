@@ -12,7 +12,9 @@ const contracts = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'Pro
 const configuration = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiConfiguration.cs');
 const health = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiHealthRegistry.cs');
 const providers = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiRemoteProviders.cs');
-const router = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiRouter.cs');
+const legacyRouter = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiRouter.cs');
+const router = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'CelarAiCapabilityRouting.cs');
+const generationRouter = router.slice(router.indexOf('internal async Task<ProjectPulseAiRouteResult> GenerateForRouteAsync'));
 const monitor = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiHealthMonitor.cs');
 const registration = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiServiceCollectionExtensions.cs');
 const secretStore = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiSecretStore.cs');
@@ -54,8 +56,11 @@ assert('MODULE_064_HEALTH_REGISTRY', health.includes('CanAttempt') && health.inc
 assert('MODULE_064_PROVIDER_RATE_LIMITS', contracts.includes('ProjectPulseAiRateLimits') && providers.includes('ClaudeRateLimits') && providers.includes('OpenAiRateLimits') && center.includes('Requests remaining'));
 assert('MODULE_064_CIRCUIT_GUARD', health.includes('provider_circuit_open') && health.includes('FailureThreshold'));
 assert('MODULE_064_BACKGROUND_HEALTH', monitor.includes('BackgroundService') && monitor.includes('PeriodicTimer'));
+assert('MODULE_064_COMPATIBILITY_USES_SAME_AUTHORITY', legacyRouter.includes('ProjectPulseAiRouter(CelarAiCapabilityRouter authority)')
+  && legacyRouter.includes('authority.GenerateAsync(') && !legacyRouter.includes('.RouteFor(')
+  && !legacyRouter.includes('IProjectPulseAiProvider'));
 assert('MODULE_064_UNAVAILABLE_PROVIDER_SKIPPED', router.includes('!_health.CanAttempt') && router.includes('skipped.Add'));
-assert('MODULE_064_NO_FAILOVER_ON_REFUSAL', router.includes('if (result.IsRefusal)') && router.includes('No fallback provider was attempted'));
+assert('MODULE_064_NO_FAILOVER_ON_REFUSAL', router.includes('if (result.IsRefusal)') && router.includes('No later target was attempted'));
 assert('MODULE_064_REMOTE_RETRY_BOUNDARY', providers.includes('SendWithRetryAsync') && providers.includes('IsTransient'));
 assert('MODULE_064_CLAUDE_MESSAGES_API', providers.includes('"/messages"') && providers.includes('anthropic-version'));
 assert('MODULE_064_OPENAI_RESPONSES_API', providers.includes('"/responses"') && providers.includes('output_text'));
@@ -145,8 +150,9 @@ assert(
 );
 assert(
   'MODULE_064_ROUTER_RECONCILES_BEFORE_SKIP',
-  router.indexOf('_health.ApplyConfiguration(_configuration.Provider(providerCode))')
-    < router.indexOf('if (!_health.CanAttempt(providerCode, out _))'),
+  generationRouter.includes('_health.ApplyConfiguration(_configuration.Provider(target))')
+    && generationRouter.indexOf('_health.ApplyConfiguration(_configuration.Provider(target))')
+      < generationRouter.indexOf('if (!_health.CanAttempt(target, out var healthReason))'),
   'Module 001 cannot fall back because of a stale pre-secret health snapshot',
 );
 assert(
@@ -194,7 +200,7 @@ assert('MODULE_064_NO_DATABASE_ARTIFACT', !fs.existsSync(path.join(repository, '
 
 const failed = assertions.filter((assertion) => !assertion.condition);
 console.log(`\nMODULE_064_VALIDATION_CHECKS=${assertions.length}`);
-console.log('MODULE_064_ROUTING=DEEPSEEK_CELAR_CLAUDE_OPENAI_LOCAL');
+console.log('MODULE_064_ROUTING=PERSISTED_CAPABILITY_SEQUENCE_WITH_EXPLICIT_ELIGIBILITY');
 console.log('MODULE_064_AUTOMATIC_HEALTH=STARTUP_PERIODIC_REPLICA_ROUTER');
 console.log('MODULE_064_SAFETY_REFUSAL_FAILOVER=BLOCKED');
 console.log('MODULE_064_SECRET_MUTATION=ADMIN_WRITE_ONLY_ENCRYPTED');

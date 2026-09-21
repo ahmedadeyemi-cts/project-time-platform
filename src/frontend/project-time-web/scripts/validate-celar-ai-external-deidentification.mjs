@@ -354,19 +354,28 @@ check(
     'var orderedTargets = CelarAiRouteExecutionPolicy.Order(route,',
     'execution.StructuredSowPhase, approvedSowRequest is not null',
     'CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi',
-    '"deferred"',
+    'var privatePositionVisited = false;',
+    'if (IsPrivateTarget(target)) privatePositionVisited = true;',
+    'if (requirePrivateTargetBeforeExternal && !savedSowOrder',
+    '&& !privatePositionVisited && !IsPrivateTarget(target)',
     '"private_document_private_target_mandatory"',
     'privateTargetOverride is not null',
     'mandatoryConsumerPrivateTarget',
     'skipPrivateTarget\n                && !requirePrivateTargetBeforeExternal'
   ]) && containsAll(routeExecutionPolicy, [
-    'privateContextRequiresPrecedence && !closedSowMayUseSavedOrder',
-    'route.Targets.Where(CelarAiCapabilityTargets.IsPrivate)',
+    'route.Targets.ToArray();',
     'structuredSowPhase && closedCapsuleReady && ExternalGenerationApproved(route)',
     'route.Persisted && route.ExternalGenerationApprovalSchemaReady && route.SanitizedExternalGenerationApproved',
     'Module025ExternalSowAdapter.PolicyEnabled && !route.DeploymentManaged'
-  ]),
-  'stored order remains authoritative for generic work; private document policy retains precedence except for explicitly approved and validated closed SOW capsules, without disabling private RAG or exposing raw source'
+  ])
+    && !centralRouteExecution.includes('"deferred"')
+    && !routeExecutionPolicy.includes('route.Targets.Where(')
+    && !routeExecutionPolicy.includes('.Concat(')
+    && containsAll(centralRouteExecution, [
+      'decisions.Add(new(target, "skipped", privateDocumentTargetMandatory',
+      '"restricted_context_private_target_mandatory"'
+    ]),
+  'Module 064 saved order is authoritative for every capability; private prerequisites skip ineligible saved positions rather than sorting or replaying providers; explicit closed-SOW approval and private-source protections remain enforced'
 );
 check(
   'CELAR_EXTERNAL_REFUSAL_TERMINAL_AND_ASSURANCE_ONCE',

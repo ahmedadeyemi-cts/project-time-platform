@@ -66,8 +66,12 @@ try
         var oldSchemaRoute = await oldSchemaStore.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning);
         Check(oldSchemaRoute.Persisted && !oldSchemaRoute.SanitizedExternalGenerationApproved
             && !oldSchemaRoute.ExternalGenerationApprovalSchemaReady, "old schema preserves persisted route with approval unavailable");
+        Check(oldSchemaRoute.Targets.SequenceEqual(new[] { "celar_ai", "claude", "openai", "local_template" }),
+            "reading the old schema does not silently insert a newer provider");
+        // Supply a valid current write shape so this checks the missing-schema
+        // gate, independently of legacy read compatibility and input validation.
         await Reject<CelarAiRouteSchemaUnavailableException>(() => oldSchemaStore.SaveRouteAsync(oldSchemaRoute.FeatureCode,
-            oldSchemaRoute.Targets, oldSchemaRoute.Revision, Guid.NewGuid(), sanitizedExternalGenerationApproved: true),
+            CelarAiCapabilityTargets.DefaultOrder, oldSchemaRoute.Revision, Guid.NewGuid(), sanitizedExternalGenerationApproved: true),
             "route mutation fails closed until migration 123 is verified");
     }
     await Apply(migration);
@@ -216,6 +220,30 @@ try
         { Secret = replicaConfiguration.Provider("gemini").Secret with { Source = "environment", Version = null } };
     Check(!await secretStore.TrySaveVerifiedModelAsync("gemini", firstModel, environmentOnly, actor, default),
         "environment-only credentials cannot bypass shared credential validation");
+    // A historical saved sequence is authoritative as stored; a read may not
+    // silently prepend a newer provider or substitute a default route.
+    await Execute("UPDATE ai_capability_routes SET route_targets='[\"claude\",\"celar_ai\",\"openai\",\"local_template\"]'::jsonb WHERE feature_code='sow_gsd_planning'");
+    Check((await store.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning)).Targets.SequenceEqual(
+        new[] { "claude", "celar_ai", "openai", "local_template" }), "legacy persisted order is not silently expanded");
+    await Execute("UPDATE ai_capability_routes SET route_targets='[\"unknown\",\"local_template\"]'::jsonb WHERE feature_code='sow_gsd_planning'");
+    await Reject<InvalidOperationException>(() => store.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning),
+        "invalid persisted order fails closed instead of running defaults");
+    using (var cancellation = new CancellationTokenSource())
+    {
+        cancellation.Cancel();
+        await Reject<OperationCanceledException>(() => store.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning, cancellation.Token),
+            "cancelled route read cannot continue with defaults");
+    }
+    var activeConnection = Environment.GetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING");
+    try
+    {
+        Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING",
+            new NpgsqlConnectionStringBuilder(connectionString) { Port = 1, Timeout = 1, Pooling = false }.ConnectionString);
+        using var unavailableStore = new CelarAiCapabilityRoutingStore(NullLogger<CelarAiCapabilityRoutingStore>.Instance);
+        await Reject<InvalidOperationException>(() => unavailableStore.LoadRouteAsync(CelarAiCapabilityCatalog.ProjectFlowHivePlan),
+            "database outage cannot select an alternate provider order");
+    }
+    finally { Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING", activeConnection); }
     Console.WriteLine($"MODULE064_ROUTE_PERSISTENCE=PASS checks={checks}");
 }
 finally

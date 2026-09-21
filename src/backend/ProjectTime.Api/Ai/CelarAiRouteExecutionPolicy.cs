@@ -1,8 +1,8 @@
 namespace ProjectTime.Api.Ai;
 
-// A saved order is a preference among eligible targets. A separately audited
-// approval permits the closed SOW adapter to use that order without exposing
-// the private source documents or commercial context to external providers.
+// Module 064 owns the sequence for every consumer. Privacy and availability
+// decide eligibility at each saved position; they never sort, prepend, or retry
+// an earlier provider behind the administrator's back.
 internal static class CelarAiRouteExecutionPolicy
 {
     internal static bool ApprovalEditable(CelarAiCapabilityRouteSnapshot route) =>
@@ -22,10 +22,21 @@ internal static class CelarAiRouteExecutionPolicy
 
     internal static IReadOnlyList<string> Order(CelarAiCapabilityRouteSnapshot route,
         bool privateContextRequiresPrecedence, bool closedSowMayUseSavedOrder) =>
-        privateContextRequiresPrecedence && !closedSowMayUseSavedOrder
-            ? route.Targets.Where(CelarAiCapabilityTargets.IsPrivate)
-                .Concat(route.Targets.Where(target => !CelarAiCapabilityTargets.IsPrivate(target))).ToArray()
-            : route.Targets;
+        route.Targets.ToArray();
+
+    // Legacy saved routes can omit a newly introduced provider. Reading them
+    // must not silently insert DeepSeek or replace them with a default order.
+    // New writes still use the catalog's stricter current configuration form.
+    internal static IReadOnlyList<string> ReadSavedOrder(IReadOnlyList<string> values)
+    {
+        var targets = values.Select(value => value?.Trim().ToLowerInvariant() ?? string.Empty).ToArray();
+        if (targets.Length == 0 || targets.Length > CelarAiCapabilityTargets.All.Length
+            || targets.Any(target => !CelarAiCapabilityTargets.All.Contains(target, StringComparer.Ordinal))
+            || targets.Distinct(StringComparer.Ordinal).Count() != targets.Length
+            || targets[^1] != CelarAiCapabilityTargets.Local)
+            throw new InvalidOperationException("module064_saved_route_invalid");
+        return targets;
+    }
 
     internal static object Describe(CelarAiCapabilityRouteSnapshot route, CelarAiPrivateModelProfile? profile)
     {
@@ -57,15 +68,11 @@ internal static class CelarAiRouteExecutionPolicy
         var approvedSow = ClosedSowMayUseSavedOrder(route, sow, closedCapsuleReady: true);
         var privateFirst = ConfiguredPrivatePrecedence(route, profile);
         var order = Order(route, privateFirst, approvedSow);
-        var changed = !order.SequenceEqual(route.Targets, StringComparer.OrdinalIgnoreCase);
         var status = route.DeploymentManaged ? "release_managed"
-            : changed ? "private_first_policy"
             : blockers.Count > 0 ? "external_generation_blocked" : "saved_order";
         var message = approvedSow
-            ? "Approved, supported SOW scopes use this saved order. Only the validated technical capsule leaves Pulse; source documents, identities and commercial values stay private. Unsupported scopes retain private routing."
-            : changed
-                ? "Private-context policy moves private targets ahead of external targets. The saved order alone does not authorize external generation."
-                : "Eligible providers are attempted in this saved order. Availability, privacy checks and the restrictions below still apply.";
+            ? "Approved, supported SOW scopes use this saved order. Only the validated technical capsule leaves Pulse; source documents, identities and commercial values stay private. Unsupported or unavailable providers are skipped in place."
+            : "Module 064 is the sequence authority. Providers are considered once in this saved order; unavailable or privacy-ineligible providers are skipped with a reason, never moved ahead of or behind another provider. Saving an order does not authorize external disclosure.";
         return new { status, blockers, blockerDetails = details, message,
             generationMode = sow ? "validated_structured_phases"
                 : flowHive ? "private_evidence_wbs_with_generic_external_assistance" : "capability_policy",

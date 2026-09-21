@@ -24,7 +24,10 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 ORIGIN = 'https://phd-west-test.onenecklab.com'
 PROJECT = '0ea25cb8-1a7f-4baf-ba7b-2dd76215be49'
 PHASES = ['Plan', 'Design', 'Implement', 'Validate', 'Release']
-CONTRACT = 'flowhive-bounded-execution-v1-20260906'
+CONTRACT = 'flowhive-sequential-execution-v2-20260920'
+BACKEND_BUDGET_SECONDS = 2400
+OBSERVATION_GRACE_SECONDS = 30
+MAXIMUM_ATTEMPTS = 2
 MAX_BODY = 12 * 1024 * 1024
 TERMINAL_OK = {'completed', 'completed_with_schedule_overrun'}
 
@@ -102,6 +105,49 @@ def iso(value: object) -> datetime:
         return result
     except (ValueError, TypeError):
         raise GateError('timestamp_invalid') from None
+
+
+def execution_checks(result: dict) -> float:
+    """Exact installed contract and finite server budget, never arbitrary versions."""
+    need(result.get('executionContract') == CONTRACT, 'bounded_execution_not_deployed')
+    need(type(result.get('attemptCount')) is int and 0 <= result['attemptCount'] <= MAXIMUM_ATTEMPTS,
+         'orchestration_budget_exceeded')
+    need(type(result.get('maximumAttempts')) is int and result['maximumAttempts'] == MAXIMUM_ATTEMPTS,
+         'orchestration_budget_changed')
+    budget = (iso(result.get('deadlineAt')) - iso(result.get('createdAt'))).total_seconds()
+    need(0 < budget <= BACKEND_BUDGET_SECONDS + 1, 'backend_deadline_not_bounded')
+    return budget
+
+
+def sequential_phase_checks(result: dict) -> list[dict]:
+    """Check the real server-owned phase/timer shape; retain no generated prose."""
+    phases = result.get('phases')
+    need(isinstance(phases, list) and len(phases) == len(PHASES), 'phase_progress_missing')
+    need([phase.get('name') for phase in phases if isinstance(phase, dict)] == PHASES,
+         'phase_progress_order_invalid')
+    safe = []
+    for index, phase in enumerate(phases, 1):
+        need(type(phase.get('number')) is int and phase['number'] == index
+             and type(phase.get('total')) is int and phase['total'] == len(PHASES), 'phase_progress_number_invalid')
+        status = phase.get('status')
+        need(status in {'pending', 'processing', 'retrying', 'completed', 'stopped', 'needs_attention'},
+             'phase_progress_status_invalid')
+        need(type(phase.get('attemptCount')) is int and 0 <= phase['attemptCount'] <= 4,
+             'phase_progress_attempts_invalid')
+        need(type(phase.get('taskCount')) is int and phase['taskCount'] >= 0, 'phase_progress_tasks_invalid')
+        started, ended = phase.get('startedAt'), phase.get('completedAt')
+        if status == 'completed':
+            need(started is not None and ended is not None and phase['taskCount'] > 0,
+                 'completed_phase_timer_or_tasks_missing')
+        seconds = None
+        if ended is not None:
+            need(started is not None, 'phase_timer_start_missing')
+            seconds = (iso(ended) - iso(started)).total_seconds()
+            need(0 <= seconds <= BACKEND_BUDGET_SECONDS + 1, 'phase_timer_invalid')
+        safe.append({'number': index, 'name': PHASES[index - 1], 'status': status,
+                     'attemptCount': phase['attemptCount'], 'taskCount': phase['taskCount'],
+                     'elapsedSeconds': seconds})
+    return safe
 
 
 def stable_diagnostic(value: object) -> str:
@@ -550,17 +596,16 @@ def run(approval: dict, report: dict) -> None:
         need(uid(run_id) and result.get('projectId') == PROJECT, 'run_identity_missing')
         report['runId'] = run_id
         report['acknowledgementSeconds'] = round(time.monotonic() - generation_start, 3)
-        deadline = generation_start + 750  # Backend failure ceiling is 720s; bounded observation grace only.
+        deadline = generation_start + BACKEND_BUDGET_SECONDS + OBSERVATION_GRACE_SECONDS
         stage_started = time.monotonic()
         stage = str(result.get('phase') or '')
         report['stages'] = []
         failures = 0
         while True:
             need(result.get('runId') == run_id and result.get('projectId') == PROJECT, 'status_identity_changed')
-            need(result.get('executionContract') == CONTRACT, 'bounded_execution_not_deployed')
-            need(type(result.get('attemptCount')) is int and 0 <= result['attemptCount'] <= 2, 'orchestration_budget_exceeded')
-            need(result.get('maximumAttempts') == 2, 'orchestration_budget_changed')
-            need((iso(result['deadlineAt']) - iso(result['createdAt'])).total_seconds() <= 721, 'backend_deadline_not_bounded')
+            report['executionContract'] = stable_diagnostic(result.get('executionContract'))
+            report['executionBudgetSeconds'] = execution_checks(result)
+            report['phaseProgress'] = sequential_phase_checks(result)
             new_stage = str(result.get('phase') or '')
             if new_stage != stage:
                 report['stages'].append({'stage': re.sub('[^a-z0-9_]', '', stage.lower())[:80], 'observedSeconds': round(time.monotonic() - stage_started, 3)})
@@ -599,6 +644,7 @@ def run(approval: dict, report: dict) -> None:
                 ][:12],
             }
         need(result.get('status') in TERMINAL_OK, 'planner_terminal_failure')
+        need(all(phase['status'] == 'completed' for phase in report['phaseProgress']), 'five_phase_progress_incomplete')
         need(result.get('phase') == 'candidate_review_required' and result.get('candidateAvailable') is True,
              'proposal_review_not_required_for_existing_work')
         need(result.get('plan') is None and result.get('workingDraft', {}).get('persisted') is False,

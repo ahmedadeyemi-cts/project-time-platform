@@ -195,17 +195,22 @@ foreach (var (feature, schema, workload) in new[] {
     (CelarAiCapabilityCatalog.ProjectFlowHivePlan, "FlowHive", ""),
     (CelarAiCapabilityCatalog.SowGsdPlanning, FlowHiveSequentialExecution.PhaseSchema, "") })
 {
-    var response = await modelClient.GenerateAsync(request with { FeatureCode=feature, OutputSchemaName=schema }, privateOptions);
+    var response = await ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(CelarAiCapabilityTargets.CelarAi,
+        token => modelClient.GenerateAsync(request with { FeatureCode=feature, OutputSchemaName=schema }, privateOptions, token), CancellationToken.None);
     Check(response.Succeeded && transport.Workload == workload, "actual private HTTP client workload " + feature + "/" + schema);
     Check(transport.Deadline == (workload.Length > 0 ? "300" : ""), "actual HTTP phase deadline " + feature + "/" + schema);
 }
+var withoutRoute = await modelClient.GenerateAsync(request, privateOptions);
+Check(!withoutRoute.Succeeded && withoutRoute.DiagnosticCode == "module064_route_store_unavailable",
+    "direct RAG cannot invent a provider order without Module 064");
 foreach (var feature in new[] { CelarAiCapabilityCatalog.SowGsdPlanning, CelarAiCapabilityCatalog.ProjectFlowHivePlan })
 {
     using var payload = JsonDocument.Parse(JsonSerializer.Serialize(ProjectPulseDeepSeekProvider.BuildPayload(
         new(feature, "JSON contract", "Synthetic scope", 6144, 0.1) { BoundedPrivatePhase=true })));
     Check(payload.RootElement.GetProperty("max_tokens").GetInt32()==6144, "private phase token ceiling includes reasoning " + feature);
-    Check(payload.RootElement.GetProperty("reasoning_effort").GetString()=="low"
-        && payload.RootElement.GetProperty("response_format").GetProperty("type").GetString()=="json_object", "planning final JSON budget " + feature);
+    Check(payload.RootElement.GetProperty("thinking").GetProperty("type").GetString()=="disabled"
+        && !payload.RootElement.TryGetProperty("reasoning_effort", out _)
+        && payload.RootElement.GetProperty("response_format").GetProperty("type").GetString()=="json_object", "bounded planning uses non-thinking final JSON " + feature);
 }
 using var probePayload = JsonDocument.Parse(JsonSerializer.Serialize(ProjectPulseDeepSeekProvider.BuildPayload(
     new("provider_readiness", "Reply briefly", "Hello", 500, 0))));

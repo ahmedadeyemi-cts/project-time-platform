@@ -505,13 +505,18 @@ assert(
     && routeExecutionPolicy.includes('structuredSowPhase && closedCapsuleReady && ExternalGenerationApproved(route)')
     && routeExecutionPolicy.includes('route.Persisted && route.ExternalGenerationApprovalSchemaReady && route.SanitizedExternalGenerationApproved')
     && routeExecutionPolicy.includes('Module025ExternalSowAdapter.PolicyEnabled && !route.DeploymentManaged')
-    && routeExecutionPolicy.includes('privateContextRequiresPrecedence && !closedSowMayUseSavedOrder')
+    && routeExecutionPolicy.includes('route.Targets.ToArray();')
     && routing.includes('sanitizedExternalGenerationApproved.HasValue && !expectedRevision.HasValue')
     && routing.includes('previous_external_generation_approved, new_external_generation_approved')
+    && routing.includes('if (requirePrivateTargetBeforeExternal && !savedSowOrder')
+    && routing.includes('&& !privatePositionVisited && !IsPrivateTarget(target)')
+    && !routing.includes('"deferred"')
+    && !routeExecutionPolicy.includes('route.Targets.Where(')
+    && !routeExecutionPolicy.includes('.Concat(')
     && routing.includes('foreach (var target in orderedTargets)')
     && routing.includes('var validated = CelarAiCapabilityCatalog.ValidateTargets(targets);')
     && module064.includes('var route = await store.SaveRouteAsync('),
-  'every request loads the saved Module 064 route; only an audited approval plus a valid closed SOW capsule and enabled privacy policy can use external targets in saved order, while raw private-context precedence remains enforced'
+  'every request follows the saved Module 064 sequence; privacy-ineligible slots are skipped in place, without sorting or replay; audited SOW approval, closed capsules, privacy policy and revision-controlled saves remain enforced'
 );
 
 assert(

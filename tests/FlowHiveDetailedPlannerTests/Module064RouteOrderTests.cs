@@ -15,7 +15,6 @@ internal static class Module064RouteOrderTests
         static void Check(bool condition, string label)
         { if (!condition) throw new InvalidOperationException("ASSERTION_FAILED " + label); Console.WriteLine("ASSERTION_PASSED " + label); }
         string[] saved = ["gemini", "claude", "openai", "deepseek_v4", "celar_ai", "local_template"];
-        string[] privateFirst = ["deepseek_v4", "celar_ai", "gemini", "claude", "openai", "local_template"];
         var before = Environment.GetEnvironmentVariable("PROJECTPULSE_MODULE025_PAID_FALLBACK_ENABLED");
         var policyBefore = Environment.GetEnvironmentVariable("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION");
         var privateEnvironment = new Dictionary<string, string?> {
@@ -34,8 +33,8 @@ internal static class Module064RouteOrderTests
                 CelarAiRouteExecutionPolicy.ClosedSowMayUseSavedOrder(approved, true, true)).SequenceEqual(saved),
                 "approved_closed_sow_keeps_saved_gemini_first_order_with_private_financial_context");
             Check(CelarAiRouteExecutionPolicy.Order(approved, true,
-                CelarAiRouteExecutionPolicy.ClosedSowMayUseSavedOrder(approved, true, false)).SequenceEqual(privateFirst),
-                "unsupported_or_rejected_capsule_retains_private_precedence");
+                CelarAiRouteExecutionPolicy.ClosedSowMayUseSavedOrder(approved, true, false)).SequenceEqual(saved),
+                "unsupported_capsule_changes_eligibility_not_saved_sequence");
             Check(!CelarAiRouteExecutionPolicy.ClosedSowMayUseSavedOrder(approved, false, true),
                 "approval_never_reclassifies_ordinary_private_documents");
             Check(!CelarAiRouteExecutionPolicy.ExternalGenerationApproved(approved with { Persisted = false }),
@@ -64,6 +63,7 @@ internal static class Module064RouteOrderTests
             // Exercise the actual route executor with a valid structured phase,
             // invalid output, refusal, and an unapproved route. No network calls.
             foreach (var pair in privateEnvironment) Environment.SetEnvironmentVariable(pair.Key, pair.Value);
+            await Module064SequenceTests.RunAsync(sanitizer);
             foreach (var scenario in new[] { "success", "invalid_then_fallback", "refusal", "unapproved", "fifth_private", "unconfigured_skips" })
             {
                 var events = new List<Module025GenerationProgress>();
