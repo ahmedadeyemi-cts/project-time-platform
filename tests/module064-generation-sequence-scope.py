@@ -59,6 +59,15 @@ registrations = [
 registrations.append(('tests/flowhive-psa-admission.test.mjs',
     '    for (const path of protectedPaths) {',
     "    if (module064SequenceRepair) {\n      // The exact scope validator permits only the two observer-budget changes;\n      // every identity, approval, deployment and final acceptance gate is pinned.\n      execFileSync('python3', ['tests/module064-generation-sequence-scope.py']);\n      protectedPaths.splice(protectedPaths.indexOf('.github/workflows/flowhive-psa-installed-acceptance.yml'), 1);\n    }\n    for (const path of protectedPaths) {"))
+registrations.append(('.github/workflows/module064-automatic-provider-health-ci.yml',
+    '          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"',
+    '          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"\n          if [[ "$HEAD_BRANCH" == fix/module064-generation-sequence-20260921 ]]; then\n            python3 tests/module064-generation-sequence-scope.py\n            exit 0\n          fi'))
+registrations.append(('.github/workflows/module064-automatic-provider-health-ci.yml',
+    "          ROUTER='src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs'",
+    "          ROUTER='src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'\n          COMPATIBILITY_ROUTER='src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs'"))
+registrations.append(('.github/workflows/module064-automatic-provider-health-ci.yml',
+    '          grep -Fq \'_health.ApplyConfiguration(_configuration.Provider(providerCode))\' "$ROUTER"',
+    '          grep -Fq \'_health.ApplyConfiguration(_configuration.Provider(target))\' "$ROUTER"\n          grep -Fq \'ProjectPulseAiRouter(CelarAiCapabilityRouter authority)\' "$COMPATIBILITY_ROUTER"\n          grep -Fq \'authority.GenerateAsync(\' "$COMPATIBILITY_ROUTER"'))
 normalized = {}
 for path, old, new in registrations:
     value = normalized.get(path, git('show', BASE + ':' + path))

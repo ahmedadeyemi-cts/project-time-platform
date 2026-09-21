@@ -1,6 +1,7 @@
 .github/module064-generation-sequence-files.txt
 .github/workflows/flowhive-psa-installed-acceptance.yml
 .github/workflows/flowhive-psa-release-control-ci.yml
+.github/workflows/module064-automatic-provider-health-ci.yml
 .github/workflows/module064-generation-sequence-ci.yml
 scripts/release-test/run-flowhive-psa-live-uat.py
 scripts/release-test/validate-protected-test-controller-branches.sh
