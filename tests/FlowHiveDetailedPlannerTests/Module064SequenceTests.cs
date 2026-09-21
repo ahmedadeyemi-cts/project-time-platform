@@ -9,7 +9,7 @@ internal static class Module064SequenceTests
         var checks = 0;
         void Check(bool value, string label)
         { if (!value) throw new InvalidOperationException("ASSERTION_FAILED " + label); checks++; }
-        var flags = new[] { "PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", "PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED" };
+        var flags = new[] { "PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", "PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED", "PROJECTPULSE_PRIVATE_INFERENCE_REQUIRED_FOR_DOCUMENTS" };
         var prior = flags.ToDictionary(flag => flag, Environment.GetEnvironmentVariable);
         try
         {
@@ -22,7 +22,10 @@ internal static class Module064SequenceTests
             foreach (var definition in CelarAiCapabilityCatalog.Definitions.Values)
             foreach (var order in orders)
             foreach (var restricted in new[] { false, true })
+            foreach (var requirePrivateDocuments in new[] { false, true })
             {
+                Environment.SetEnvironmentVariable("PROJECTPULSE_PRIVATE_INFERENCE_REQUIRED_FOR_DOCUMENTS",
+                    requirePrivateDocuments ? "true" : "false");
                 var calls = new List<string>();
                 var configuration = new ProjectPulseAiConfiguration();
                 var providers = ProjectPulseAiProviders.Remote.Select(code => new Provider(code, calls)).ToArray();
@@ -52,17 +55,23 @@ internal static class Module064SequenceTests
                         return Task.FromResult(new ProjectPulseAiProviderResult(selected, "unavailable", null,
                             "synthetic_unavailable", null, null, null, 503));
                     });
+                var privatePrerequisite = restricted && requirePrivateDocuments;
                 var firstPrivate = Array.FindIndex(order, CelarAiCapabilityTargets.IsPrivate);
                 var expected = order.Where((target, index) => target != CelarAiCapabilityTargets.Local
-                    && (!restricted || index >= firstPrivate)).ToArray();
-                Check(calls.SequenceEqual(expected), "every_capability_obeys_saved_sequence_" + definition.FeatureCode);
+                    && (!privatePrerequisite || index >= firstPrivate)).ToArray();
+                var diagnostic = $"{definition.FeatureCode} privatePrerequisite={privatePrerequisite} expected={string.Join(",", expected)} actual={string.Join(",", calls)} decisions={string.Join(";", result.TargetDecisions!.Select(d => $"{d.Target}:{d.Outcome}:{d.ReasonCode}"))}";
+                Check(calls.SequenceEqual(expected), "every_capability_obeys_saved_sequence_" + diagnostic);
+                Check(result.TargetDecisions.Select(decision => decision.Target).SequenceEqual(order),
+                    "every_saved_slot_has_one_ordered_decision_" + diagnostic);
                 Check(result.AttemptedProviders.SequenceEqual(expected), "attempt_audit_matches_real_callbacks");
                 Check(calls.Distinct().Count() == calls.Count, "no_duplicate_or_deferred_replay");
                 Check(providers.All(provider => !provider.RawSourceSeen), "raw_source_never_sent_to_external_targets");
                 Check(CelarAiRouteExecutionPolicy.Order(route, restricted, false).SequenceEqual(order), "policy_never_reorders");
                 Check(result.TargetDecisions!.All(decision => decision.Outcome != "deferred"), "decisions_are_used_failed_or_skipped_in_place");
-                if (restricted)
+                if (privatePrerequisite)
                     Check(result.SkippedProviders.SequenceEqual(order.Take(firstPrivate)), "private_prerequisite_has_explicit_in_place_skips");
+                else
+                    Check(result.SkippedProviders.Count == 0, "no_private_prerequisite_means_no_reordering_or_unexplained_skips");
             }
             string[] legacy = ["claude", "celar_ai", "openai", "local_template"];
             Check(CelarAiRouteExecutionPolicy.ReadSavedOrder(legacy).SequenceEqual(legacy), "reading_legacy_route_never_inserts_deepseek");

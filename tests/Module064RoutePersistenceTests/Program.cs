@@ -66,8 +66,12 @@ try
         var oldSchemaRoute = await oldSchemaStore.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning);
         Check(oldSchemaRoute.Persisted && !oldSchemaRoute.SanitizedExternalGenerationApproved
             && !oldSchemaRoute.ExternalGenerationApprovalSchemaReady, "old schema preserves persisted route with approval unavailable");
+        Check(oldSchemaRoute.Targets.SequenceEqual(new[] { "celar_ai", "claude", "openai", "local_template" }),
+            "reading the old schema does not silently insert a newer provider");
+        // Supply a valid current write shape so this checks the missing-schema
+        // gate, independently of legacy read compatibility and input validation.
         await Reject<CelarAiRouteSchemaUnavailableException>(() => oldSchemaStore.SaveRouteAsync(oldSchemaRoute.FeatureCode,
-            oldSchemaRoute.Targets, oldSchemaRoute.Revision, Guid.NewGuid(), sanitizedExternalGenerationApproved: true),
+            CelarAiCapabilityTargets.DefaultOrder, oldSchemaRoute.Revision, Guid.NewGuid(), sanitizedExternalGenerationApproved: true),
             "route mutation fails closed until migration 123 is verified");
     }
     await Apply(migration);

@@ -56,6 +56,9 @@ registrations = [
  ('tests/flowhive-psa-admission.test.mjs',
   'const module025VerifierBase = installedVerifierRepair ?',
   "const module025VerifierBase = module064SequenceRepair ? '" + BASE + "' : installedVerifierRepair ?")]
+registrations.append(('tests/flowhive-psa-admission.test.mjs',
+    '    for (const path of protectedPaths) {',
+    "    if (module064SequenceRepair) {\n      // The exact scope validator permits only the two observer-budget changes;\n      // every identity, approval, deployment and final acceptance gate is pinned.\n      execFileSync('python3', ['tests/module064-generation-sequence-scope.py']);\n      protectedPaths.splice(protectedPaths.indexOf('.github/workflows/flowhive-psa-installed-acceptance.yml'), 1);\n    }\n    for (const path of protectedPaths) {"))
 normalized = {}
 for path, old, new in registrations:
     value = normalized.get(path, git('show', BASE + ':' + path))

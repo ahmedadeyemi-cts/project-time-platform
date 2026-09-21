@@ -401,13 +401,21 @@ check(
       'CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi'
     ])
     && containsAll(routeExecutionPolicy, [
-      'privateContextRequiresPrecedence && !closedSowMayUseSavedOrder',
+      'route.Targets.ToArray();',
       'structuredSowPhase && closedCapsuleReady && ExternalGenerationApproved(route)',
       'route.FeatureCode == CelarAiCapabilityCatalog.SowGsdPlanning',
       'Module025ExternalSowAdapter.PolicyEnabled && !route.DeploymentManaged'
     ])
+    && containsAll(centralRoute, [
+      'if (requirePrivateTargetBeforeExternal && !savedSowOrder',
+      '&& !privatePositionVisited && !IsPrivateTarget(target)',
+      '"private_document_private_target_mandatory"'
+    ])
+    && !centralRoute.includes('"deferred"')
+    && !routeExecutionPolicy.includes('route.Targets.Where(')
+    && !routeExecutionPolicy.includes('.Concat(')
     && !timesheetSuggestion.includes('_router.IsFirstTargetAsync('),
-  'the central router owns persisted order; the narrowly approved structured SOW exception does not alter private-document precedence for Timesheet requests'
+  'the central router owns persisted order; Timesheet privacy prerequisites skip ineligible saved slots without reordering or replay; only validated, approved SOW capsules receive the existing exception'
 );
 check(
   'MODULE001_AI_PRIVATE_TARGET_NOT_RETRIED',

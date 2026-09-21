@@ -9,6 +9,9 @@ src/backend/ProjectTime.Api/Ai/CelarAiRouteExecutionPolicy.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
+src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
+src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
+src/frontend/project-time-web/scripts/validate-module-001-ai-task-grounding.mjs
 src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs
 tests/DeepSeekProviderTests/Program.cs
 tests/FlowHiveDetailedPlannerTests/Module025GenerationEngineTests.cs

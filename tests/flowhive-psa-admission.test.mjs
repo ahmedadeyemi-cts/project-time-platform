@@ -555,6 +555,12 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);
       execFileSync('node', ['tests/module025-auto-protected-test-scope.mjs']);
     }
+    if (module064SequenceRepair) {
+      // The exact scope validator permits only the two observer-budget changes;
+      // every identity, approval, deployment and final acceptance gate is pinned.
+      execFileSync('python3', ['tests/module064-generation-sequence-scope.py']);
+      protectedPaths.splice(protectedPaths.indexOf('.github/workflows/flowhive-psa-installed-acceptance.yml'), 1);
+    }
     for (const path of protectedPaths) {
       const baseBytes = execFileSync('git', ['show', `${module025VerifierBase}:${path}`]);
       assert.deepEqual(fs.readFileSync(new URL(`../${path}`, import.meta.url)), baseBytes,
