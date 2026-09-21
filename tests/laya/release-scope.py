@@ -16,6 +16,7 @@ base = git('merge-base', 'origin/main', 'HEAD').strip()
 allowed = set('''
 .github/workflows/celar-laya-integration.yml
 .github/workflows/module064-automatic-provider-health-ci.yml
+.github/workflows/flowhive-psa-release-control-ci.yml
 deployment/laya/README.md
 deployment/laya/deploy-gateway.sh
 deployment/laya/grants.sql
@@ -72,6 +73,7 @@ equal_original(mapping, text.replace(insertion, '', 1))
 
 boundaries = {
     '.github/workflows/module064-automatic-provider-health-ci.yml': {'ownership'},
+    '.github/workflows/flowhive-psa-release-control-ci.yml': {'ownership'},
     'deployment/oracle-celar/deploy.sh': {'incremental_gateway', 'full_deployment_adapter'},
     'scripts/release-test/build-and-run-module025-retention-migration-106.sh':
         {'runtime_role','migration_files','migration_apply','migration_image','migration_evidence'},
