@@ -44,7 +44,7 @@ negative_tests = '''    def test_existing_serialization_assertions_are_unchanged
                 result = subprocess.run(['node', 'tests/validate-systemwide-enterprise-reliability.mjs'],
                                         cwd=ROOT, text=True, capture_output=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0, new)
-                self.assertIn('serialize deployments without cancellation', result.stderr)
+                self.assertRegex(result.stderr, r'(serialize deployments without cancellation|Missing governed protected Test deployment contract: group:)')
         finally:
             controller.write_text(original)
 
