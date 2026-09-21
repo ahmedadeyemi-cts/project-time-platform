@@ -90,12 +90,16 @@ public sealed class ProjectPulseDeepSeekProvider(
                 : CompletionBudget(request.MaxOutputTokens, request.Feature),
             ["stream"] = false
         };
-        // DeepSeek defaults to high reasoning effort. Phase calls already have a
-        // complete task contract and a strict deadline; spend the bounded budget
-        // on the final JSON. Refusals and completeness checks remain unchanged.
+        // Low effort still enables thinking. Server-marked phases need their
+        // bounded completion budget for the validated final JSON, not a separate
+        // reasoning response. Do not send a conflicting reasoning_effort value.
+        // Other requests retain their existing behavior and all output gates.
         if (planning)
         {
-            payload["reasoning_effort"] = "low";
+            if (request.BoundedPrivatePhase)
+                payload["thinking"] = new { type = "disabled" };
+            else
+                payload["reasoning_effort"] = "low";
             payload["response_format"] = new { type = "json_object" };
         }
         if (request.Feature == "provider_readiness")

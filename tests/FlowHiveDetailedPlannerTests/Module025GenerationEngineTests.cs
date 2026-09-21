@@ -282,7 +282,7 @@ internal static class Module025GenerationEngineTests
                     OutputSchemaName = FlowHiveSequentialExecution.PhaseSchema },
                     PulseAiPrivateRagOptions.FromEnvironment() with { Enabled = true }, token), CancellationToken.None);
             Check(flowHiveResponse.Succeeded && transport.RequestCount == 2 && transport.MaximumTokens == 6_144
-                && transport.ReasoningEffort == "low" && transport.JsonOutput,
+                && transport.ThinkingDisabled && transport.ReasoningEffort.Length == 0 && transport.JsonOutput,
                 "flowhive_private_client_deepseek_http_request_preserves_phase_ceiling_and_json_contract");
         }
         finally { Environment.SetEnvironmentVariable("PROJECTPULSE_DB_CONNECTION", priorConnection); }
@@ -371,6 +371,7 @@ internal static class Module025GenerationEngineTests
         internal int MaximumTokens { get; private set; }
         internal int RequestCount { get; private set; }
         internal string ReasoningEffort { get; private set; } = "";
+        internal bool ThinkingDisabled { get; private set; }
         internal bool JsonOutput { get; private set; }
         public HttpClient CreateClient(string name) => new(this, disposeHandler: false);
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
@@ -378,6 +379,8 @@ internal static class Module025GenerationEngineTests
             using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
             MaximumTokens = payload.RootElement.GetProperty("max_tokens").GetInt32();
             ReasoningEffort = payload.RootElement.TryGetProperty("reasoning_effort", out var effort) ? effort.GetString() ?? "" : "";
+            ThinkingDisabled = payload.RootElement.TryGetProperty("thinking", out var thinking)
+                && thinking.GetProperty("type").GetString() == "disabled";
             JsonOutput = payload.RootElement.TryGetProperty("response_format", out var format)
                 && format.GetProperty("type").GetString() == "json_object";
             RequestCount++;

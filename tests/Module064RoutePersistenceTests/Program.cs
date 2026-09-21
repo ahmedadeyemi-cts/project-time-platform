@@ -216,6 +216,30 @@ try
         { Secret = replicaConfiguration.Provider("gemini").Secret with { Source = "environment", Version = null } };
     Check(!await secretStore.TrySaveVerifiedModelAsync("gemini", firstModel, environmentOnly, actor, default),
         "environment-only credentials cannot bypass shared credential validation");
+    // A historical saved sequence is authoritative as stored; a read may not
+    // silently prepend a newer provider or substitute a default route.
+    await Execute("UPDATE ai_capability_routes SET route_targets='[\"claude\",\"celar_ai\",\"openai\",\"local_template\"]'::jsonb WHERE feature_code='sow_gsd_planning'");
+    Check((await store.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning)).Targets.SequenceEqual(
+        new[] { "claude", "celar_ai", "openai", "local_template" }), "legacy persisted order is not silently expanded");
+    await Execute("UPDATE ai_capability_routes SET route_targets='[\"unknown\",\"local_template\"]'::jsonb WHERE feature_code='sow_gsd_planning'");
+    await Reject<InvalidOperationException>(() => store.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning),
+        "invalid persisted order fails closed instead of running defaults");
+    using (var cancellation = new CancellationTokenSource())
+    {
+        cancellation.Cancel();
+        await Reject<OperationCanceledException>(() => store.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning, cancellation.Token),
+            "cancelled route read cannot continue with defaults");
+    }
+    var activeConnection = Environment.GetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING");
+    try
+    {
+        Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING",
+            new NpgsqlConnectionStringBuilder(connectionString) { Port = 1, Timeout = 1, Pooling = false }.ConnectionString);
+        using var unavailableStore = new CelarAiCapabilityRoutingStore(NullLogger<CelarAiCapabilityRoutingStore>.Instance);
+        await Reject<InvalidOperationException>(() => unavailableStore.LoadRouteAsync(CelarAiCapabilityCatalog.ProjectFlowHivePlan),
+            "database outage cannot select an alternate provider order");
+    }
+    finally { Environment.SetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING", activeConnection); }
     Console.WriteLine($"MODULE064_ROUTE_PERSISTENCE=PASS checks={checks}");
 }
 finally

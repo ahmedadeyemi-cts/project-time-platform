@@ -616,7 +616,8 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
     public string EnvironmentCode => Clean(Environment.GetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT"), 80, "unspecified");
 
     public async Task<IReadOnlyList<CelarAiCapabilityRouteSnapshot>> LoadRoutesAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool requireSuccessfulRead = false)
     {
         var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         if (release.IsReleaseScoped)
@@ -673,9 +674,15 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
                         reader.IsDBNull(5) ? null : reader.GetGuid(5), reader.GetBoolean(6), reader.GetBoolean(7));
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception exception)
             {
-                _logger.LogWarning(exception, "Module 064 could not load capability routes; defaults remain active.");
+                if (requireSuccessfulRead)
+                    throw new InvalidOperationException("module064_route_store_unavailable", exception);
+                _logger.LogWarning(exception, "Module 064 could not load capability routes for display; generation requires a successful route read.");
             }
         }
 
@@ -714,9 +721,12 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         CancellationToken cancellationToken = default)
     {
         var normalized = CelarAiCapabilityCatalog.NormalizeFeature(feature);
-        return (await LoadRoutesAsync(cancellationToken))
-            .FirstOrDefault(route => string.Equals(route.FeatureCode, normalized, StringComparison.OrdinalIgnoreCase))
-            ?? (await LoadRoutesAsync(cancellationToken)).First(route => route.FeatureCode == CelarAiCapabilityCatalog.HelpAssistant);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_connectionConfigurationFailure is not null)
+            throw new InvalidOperationException("module064_route_store_unavailable");
+        var routes = await LoadRoutesAsync(cancellationToken, requireSuccessfulRead: true);
+        return routes.FirstOrDefault(route => string.Equals(route.FeatureCode, normalized, StringComparison.OrdinalIgnoreCase))
+            ?? routes.First(route => route.FeatureCode == CelarAiCapabilityCatalog.HelpAssistant);
     }
 
     public async Task<CelarAiCapabilityRouteSnapshot> SaveRouteAsync(
@@ -1315,11 +1325,8 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         parameter.Value = value is { Length: > 0 } ? value : DBNull.Value;
     }
 
-    private static IReadOnlyList<string> SafeTargets(IReadOnlyList<string> values)
-    {
-        try { return CelarAiCapabilityCatalog.ValidateTargets(values.Contains(CelarAiCapabilityTargets.DeepSeek) ? values : new[] { CelarAiCapabilityTargets.DeepSeek }.Concat(values)); }
-        catch { return CelarAiCapabilityTargets.DefaultOrder; }
-    }
+    private static IReadOnlyList<string> SafeTargets(IReadOnlyList<string> values) =>
+        CelarAiRouteExecutionPolicy.ReadSavedOrder(values);
 
     private static IReadOnlyList<string> NormalizeAllowlist(
         IEnumerable<string>? values,
@@ -2669,23 +2676,16 @@ public sealed class CelarAiCapabilityRouter
         var skipped = new List<string>();
         var failed = new List<string>();
         var decisions = new List<ProjectPulseAiTargetDecision>();
-        if (requirePrivateTargetBeforeExternal && !savedSowOrder)
-        {
-            foreach (var deferredTarget in route.Targets.TakeWhile(target => !IsPrivateTarget(target)))
-            {
-                decisions.Add(new(
-                    deferredTarget,
-                    "deferred",
-                    privateDocumentTargetMandatory
-                        ? "private_document_private_target_mandatory"
-                        : "restricted_context_private_target_mandatory"));
-            }
-        }
+        _logger.LogInformation(
+            "Module 064 route selected. Feature={Feature} Revision={Revision} Persisted={Persisted} DeploymentManaged={DeploymentManaged} Targets={Targets}",
+            feature, route.Revision, route.Persisted, route.DeploymentManaged, string.Join(",", orderedTargets));
+        var privatePositionVisited = false;
 
         var attemptBudget = new CelarAiRouteAttemptBudget(feature);
         var remainingTargets = orderedTargets.Count(target => target != CelarAiCapabilityTargets.Local);
         foreach (var target in orderedTargets)
         {
+            if (IsPrivateTarget(target)) privatePositionVisited = true;
             var targetTimeout = target == CelarAiCapabilityTargets.Local ? null : attemptBudget.NextTimeout(remainingTargets--);
             if (execution.StructuredSowPhase)
             {
@@ -2717,6 +2717,19 @@ public sealed class CelarAiCapabilityRouter
                         : Module025GenerationEngine.PrivatePhaseTimeoutSeconds);
             }
             cancellationToken.ThrowIfCancellationRequested();
+            // A private-context prerequisite is an eligibility gate, not a
+            // license to reorder Module 064. An earlier external position is
+            // skipped once; it is never replayed after later private attempts.
+            if (requirePrivateTargetBeforeExternal && !savedSowOrder
+                && !privatePositionVisited && !IsPrivateTarget(target)
+                && target != CelarAiCapabilityTargets.Local)
+            {
+                skipped.Add(target);
+                decisions.Add(new(target, "skipped", privateDocumentTargetMandatory
+                    ? "private_document_private_target_mandatory"
+                    : "restricted_context_private_target_mandatory"));
+                continue;
+            }
             if (skipPrivateTarget
                 && !requirePrivateTargetBeforeExternal
                 && target == CelarAiCapabilityTargets.CelarAi)
@@ -2971,6 +2984,10 @@ public sealed class CelarAiCapabilityRouter
                 decisions.Add(new(target, "failed", "provider_unhandled_failure"));
                 continue;
             }
+
+            _logger.LogInformation(
+                "Module 064 provider attempt completed. Provider={Provider} Outcome={Outcome} Code={Code} HttpStatus={HttpStatus} RequestId={RequestId}",
+                target, result.Outcome, result.Code, result.HttpStatusCode, result.RequestId);
 
             if (execution.StructuredSowPhase && result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
             {

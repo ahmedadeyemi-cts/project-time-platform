@@ -211,3 +211,25 @@ foreach (var feature in new[] { "provider_readiness", CelarAiCapabilityCatalog.P
 Check(RequestAttemptBudget("provider_readiness", true) == TimeSpan.FromSeconds(30),
     "Readiness remains a short probe even when a phase flag is supplied.");
 Console.WriteLine("DEEPSEEK_DURABLE_SOW_PHASE_DEADLINES=PASS");
+
+// Only server-marked phase calls change inference mode. Unknown, interactive,
+// legacy and Forge requests retain their existing payload and token behavior.
+var payloadMethod = typeof(ProjectPulseDeepSeekProvider).GetMethod("BuildPayload", BindingFlags.Static | BindingFlags.NonPublic)!;
+foreach (var feature in new[] { CelarAiCapabilityCatalog.SowGsdPlanning, CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+    CelarAiCapabilityCatalog.ProjectForgePlanEstimate, "help_assistant", "timesheet_description", "unknown" })
+foreach (var bounded in new[] { false, true })
+{
+    // The capability is internal; exercise it via reflection just as the
+    // provider's existing internal policy tests do.
+    var request = new ProjectPulseAiGenerationRequest(feature, "Return JSON", "Synthetic", 1024, 0);
+    typeof(ProjectPulseAiGenerationRequest).GetProperty("BoundedPrivatePhase", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(request, bounded);
+    var payload = (Dictionary<string, object>)payloadMethod.Invoke(null, [request])!;
+    using var json = JsonDocument.Parse(JsonSerializer.Serialize(payload));
+    var isPhase = bounded && feature is (CelarAiCapabilityCatalog.SowGsdPlanning or CelarAiCapabilityCatalog.ProjectFlowHivePlan);
+    Check(payload.ContainsKey("thinking") == isPhase, "Only bounded SOW/FlowHive phases disable thinking: " + feature);
+    if (isPhase)
+        Check(json.RootElement.GetProperty("thinking").GetProperty("type").GetString() == "disabled"
+            && !payload.ContainsKey("reasoning_effort") && (int)payload["max_tokens"] == 1024,
+            "Non-thinking phases preserve token ceilings and omit contradictory reasoning effort.");
+}
+Console.WriteLine("DEEPSEEK_BOUNDED_PHASE_NONTHINKING=PASS");
