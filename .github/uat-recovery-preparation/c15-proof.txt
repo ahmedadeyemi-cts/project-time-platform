@@ -1,10 +1,12 @@
     if args.base == 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17':
-        # The immutable historical controller uses the original Guard exact
-        # source step name. Compare its complete main-rejection shell prefix,
-        # and require the whole current controller to remain the pinned release.
+        # Both entire controllers are pinned. Their guard implementations were
+        # deliberately refactored, so verify each reviewed failure block rather
+        # than pretending that the two historical shell layouts are identical.
         if hashlib.sha256(current).hexdigest() != '3cbd088ab607eb3f3399ab254332adb818c946c7287c33e7a4a52f7e04a3f179':
             raise SystemExit('The current controller differs from the reviewed recovery baseline')
-        guards = []
+        original_blob = hashlib.sha1(b'blob ' + str(len(original)).encode() + b'\0' + original).hexdigest()
+        if original_blob != '4fb263b728428c42451af2c0c0ff069e82d808a6':
+            raise SystemExit('The historical controller is not the exact reviewed Git blob')
         marker = b'      - name: Guard exact source and validate release\n'
         for blob in (original, current):
             if blob.count(marker) != 1:
@@ -23,8 +25,18 @@
                              b'[[ "$(git rev-parse origin/main)" == "$TARGET_RELEASE_COMMIT" ]]'):
                 if required not in guard:
                     raise SystemExit('The historical stale-main rejection is incomplete')
-            guards.append(guard)
-        if guards[0] != guards[1]:
-            raise SystemExit('The full historical main-rejection guard changed')
+            if blob is original:
+                expected = b'''            if [[ "$TARGET_RELEASE_BRANCH" == main ]]; then
+              git fetch --no-tags origin main
+              [[ "$(git rev-parse origin/main)" == "$TARGET_RELEASE_COMMIT" ]] || { echo "Only exact current main may use the scoped Module 025 release lane." >&2; exit 1; }
+'''
+            else:
+                expected = b'''            if [[ "$TARGET_RELEASE_BRANCH" == 'main' ]]; then
+              git fetch --no-tags origin main
+              [[ "$(git rev-parse origin/main)" == "$TARGET_RELEASE_COMMIT" ]] \\
+                || fail 'The requested merged-main SHA is not the current main branch head.'
+'''
+            if guard.count(expected) != 1:
+                raise SystemExit('The exact reviewed main-branch failure block changed')
         print('MODULE025_QUARANTINE_CONTROLLER=PASS')
         return
