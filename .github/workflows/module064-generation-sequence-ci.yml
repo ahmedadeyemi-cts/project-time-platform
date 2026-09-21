@@ -41,6 +41,16 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Retain exact tracked source for branch-only repair diagnostics
+        if: github.event_name == 'push'
+        run: git archive --format=zip HEAD -o "$RUNNER_TEMP/module064-source.zip"
+      - name: Upload tracked source without credentials or runtime state
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module064-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/module064-source.zip
+          retention-days: 1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
@@ -68,7 +78,27 @@ jobs:
           MODULE025_TEST_DATABASE: Host=127.0.0.1;Port=${{ job.services.postgres.ports[5432] }};Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-sequence;Database=postgres
           MODULE064_TEST_DATABASE_CONNECTION_STRING: Host=127.0.0.1;Port=${{ job.services.postgres.ports[5432] }};Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-sequence;Database=postgres
         run: |
-          dotnet run --project tests/DeepSeekProviderTests --configuration Release -p:BuildProjectReferences=false
-          dotnet run --project tests/FlowHiveSequentialTests --configuration Release -p:BuildProjectReferences=false
-          dotnet run --project tests/FlowHiveDetailedPlannerTests --configuration Release -p:BuildProjectReferences=false
-          dotnet run --project tests/Module064RoutePersistenceTests --configuration Release -p:BuildProjectReferences=false
+          set -Eeuo pipefail
+          diagnostics="$RUNNER_TEMP/module064-test-diagnostics"
+          mkdir -p "$diagnostics"
+          failed=0
+          for suite in DeepSeekProviderTests FlowHiveSequentialTests FlowHiveDetailedPlannerTests Module064RoutePersistenceTests; do
+            if dotnet run --project "tests/$suite" --configuration Release -p:BuildProjectReferences=false > "$diagnostics/$suite.log" 2>&1; then
+              echo "$suite: PASS" | tee -a "$diagnostics/results.txt"
+            else
+              code=$?
+              failed=1
+              echo "$suite: FAIL exit=$code" | tee -a "$diagnostics/results.txt"
+            fi
+            tail -n 15 "$diagnostics/$suite.log"
+          done
+          cat "$diagnostics/results.txt" >> "$GITHUB_STEP_SUMMARY"
+          exit "$failed"
+      - name: Retain isolated test failures for exact diagnosis
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module064-test-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/module064-test-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 1
