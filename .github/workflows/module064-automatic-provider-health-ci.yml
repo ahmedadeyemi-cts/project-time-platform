@@ -55,6 +55,13 @@ jobs:
           printf '%s\n' "$CHANGED"
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          # LAYA_RELEASE_BEGIN ownership
+          if [[ "$HEAD_BRANCH" == feature/celar-laya-document-decisions-20260921 ]]; then
+            python3 tests/laya/release-scope.py
+            echo 'MODULE_064_VALIDATION_MODE=LAYA_ADDITIVE_CAPABILITY' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # LAYA_RELEASE_END ownership
           if [[ "$HEAD_BRANCH" == fix/module064-generation-sequence-20260921 ]]; then
             python3 tests/module064-generation-sequence-scope.py
             exit 0

@@ -116,6 +116,19 @@ jq -e '
 exec 8>"$RUNTIME_MUTATION_LOCK"
 flock -w "$LOCK_WAIT_SECONDS" 8 || fail 'Timed out waiting for the Celar runtime mutation lock.'
 
+# LAYA_RELEASE_BEGIN incremental_gateway
+# The installed GitOps controller already invokes this exact reviewed worktree.
+# A Laya-only change must not reprovision Ollama, ClamAV, packages or the firewall.
+if python3 "$ROOT/../laya/incremental-policy.py"; then
+  bash "$ROOT/../laya/deploy-gateway.sh" apply
+  echo 'CELAR_ORACLE_DESIRED_STATE=APPLIED'
+  echo 'CELAR_ORACLE_DEPLOYMENT_MODE=LAYA_INCREMENTAL'
+  exit 0
+else
+  LAYA_INCREMENTAL_STATUS=$?
+  [[ "$LAYA_INCREMENTAL_STATUS" == 10 ]] || fail 'Laya incremental baseline verification failed; no full reprovision attempted.'
+fi
+# LAYA_RELEASE_END incremental_gateway
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y \
@@ -350,6 +363,13 @@ systemctl enable celar-gitops.timer >/dev/null
 
 "$INSTALL_ROOT/health-check.sh"
 
+# LAYA_RELEASE_BEGIN full_deployment_adapter
+# Fresh hosts still use the existing installer. Prepared hosts also retain the
+# versioned decision adapter after a future non-Laya Oracle runtime release.
+if [[ -f /etc/systemd/system/celar-laya.service ]]; then
+  bash "$ROOT/../laya/deploy-gateway.sh" apply
+fi
+# LAYA_RELEASE_END full_deployment_adapter
 echo 'CELAR_ORACLE_DESIRED_STATE=APPLIED'
 echo "CELAR_RUNTIME_TOKEN_FILE=$RUNTIME_TOKEN_FILE"
 echo 'CELAR_RUNTIME_TOKEN_VALUE=REDACTED'

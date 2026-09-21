@@ -1,0 +1,14 @@
+.laya-decisions { border:1px solid var(--border-color,#d4dce7); border-radius:12px; padding:1.25rem; margin-top:1.25rem; background:var(--panel-bg,#fff); color:var(--text-color,#182538); }
+.laya-decisions header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+.laya-decisions h2,.laya-decisions h4 { margin-top:0; }
+.laya-decisions p { line-height:1.5; }
+.laya-decisions__actions { display:flex; align-items:end; flex-wrap:wrap; gap:.75rem; margin:.75rem 0; }
+.laya-decisions label { display:flex; flex-direction:column; gap:.35rem; margin:.5rem 0; }
+.laya-decisions input,.laya-decisions select { max-width:100%; min-height:2.5rem; padding:.5rem; font:inherit; }
+.laya-decisions button { min-height:2.5rem; padding:.5rem .75rem; font:inherit; cursor:pointer; }
+.laya-decisions button:disabled { opacity:.55; cursor:not-allowed; }
+.laya-decisions fieldset { margin:1rem 0; padding:1rem; border:1px solid var(--border-color,#d4dce7); }
+.laya-decisions__error { border-left:4px solid #aa2832; padding:.75rem; background:#fff3f3; color:#6f1520; }
+.laya-decisions__record { border-top:1px solid var(--border-color,#d4dce7); padding-top:1rem; margin-top:1rem; }
+.laya-decisions dd { margin:0 0 .5rem; overflow-wrap:anywhere; }
+.laya-decisions dt { font-weight:600; }

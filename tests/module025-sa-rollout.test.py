@@ -27,6 +27,15 @@ ADDED = (
 ALL = ('106_module025_sow_sell_register', '110_module025_ungenerated_draft_delete',
        '111_connectwise_sell_provider') + ADDED
 POSTCONDITION_HASH = 'ff93d686d186fc1051f368c4e42f71a6b5e547e4870f7d65e407a90177042934'
+# This exact reviewed runner adds Laya without changing the earlier controls.
+# A different payload must be reviewed, not silently normalized by its markers.
+LAYA_RUNNER_BLOB = '934ce1e14b4e6ec9d1202a8b5f0e56efefbb0322'
+LAYA_SQL = {
+    'laya-schema.sql': 'deployment/laya/schema.sql',
+    'laya-grants.sql': 'deployment/laya/grants.sql',
+    'laya-verify.sql': 'deployment/laya/verify-database.sql',
+}
+LAYA_FILES = (*LAYA_SQL, 'laya-runtime-role')
 
 
 def require(condition, message):
@@ -36,7 +45,14 @@ def require(condition, message):
 
 def verify_source(text):
     baseline = subprocess.check_output(['git', 'show', BASE + ':' + RUNNER], cwd=ROOT, text=True)
-    normalized = text
+    raw = text.encode('utf-8')
+    blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+    require(blob == LAYA_RUNNER_BLOB, 'The reviewed Laya migration runner changed; review its exact payload and authority.')
+    pattern = re.compile(r'^# LAYA_RELEASE_BEGIN ([a-z_]+)\n.*?^# LAYA_RELEASE_END \1\n', re.M | re.S)
+    require(sorted(match.group(1) for match in pattern.finditer(text)) ==
+            sorted(['runtime_role', 'migration_files', 'migration_apply', 'migration_image', 'migration_evidence']),
+            'The complete reviewed Laya staging, apply, grant and evidence blocks are required.')
+    normalized = pattern.sub('', text)
     for name in ADDED:
         for addition in (
             f'install -m 0444 "$ROOT/database/migrations/{name}.sql" "$CONTEXT/migration-{name[:3]}.sql"\n',
@@ -81,13 +97,22 @@ def prepare_context(source, directory):
     # Execute exactly the real local packaging section, ending before az acr.
     begin = source.index('install -m 0444 ')
     end = source.index('\nDOCKERFILE\n', begin) + len('\nDOCKERFILE\n')
-    env = {**os.environ, 'ROOT': str(ROOT), 'CONTEXT': str(directory), 'RELEASE': BASE}
+    # Only this disposable fixture supplies its own runtime role. Live release
+    # still resolves the explicit role from the Test application's PTP_DB_USER.
+    env = {**os.environ, 'ROOT': str(ROOT), 'CONTEXT': str(directory), 'RELEASE': BASE,
+           'LAYA_RUNTIME_ROLE': 'postgres'}
     run(['bash'], env=env, text='set -Eeuo pipefail\n' + source[begin:end])
     checks = (directory / 'SHA256SUMS').read_text().splitlines()
-    require(len(checks) == len(ALL) + 1, 'Unexpected files in integrity manifest.')
+    require(len(checks) == len(ALL) + 1 + len(LAYA_FILES), 'Unexpected files in integrity manifest.')
     for name in ALL:
         require((directory / ('migration-' + name[:3] + '.sql')).read_bytes()
                 == (ROOT / 'database/migrations' / (name + '.sql')).read_bytes(), 'Packaged migration differs from source.')
+    for target, path in LAYA_SQL.items():
+        require((directory / target).read_bytes() == (ROOT / path).read_bytes(), 'Packaged Laya SQL differs from source.')
+    require((directory / 'laya-runtime-role').read_text() == 'postgres\n', 'The disposable runtime role was not bound into the payload.')
+    expected_files = {'migration-' + name[:3] + '.sql' for name in ALL} | {'release-commit'} | set(LAYA_FILES)
+    require({line.split(maxsplit=1)[1].strip() for line in checks} == expected_files,
+            'Integrity manifest must cover exactly every staged SQL, role and release binding.')
     entry = (directory / 'entrypoint.sh').read_text()
     require(entry.count('cd /opt/projectpulse/release\n') == 1, 'Entrypoint image root changed.')
     # Only substitute the image mount path for the temporary local directory.
@@ -110,12 +135,16 @@ def integrity_tests(directory):
            'MAIN_RELEASE_MIGRATION_MODE': 'apply', 'MAIN_RELEASE_EXPECTED_RELEASE_COMMIT': BASE}
     for name, value in [('MAIN_RELEASE_MIGRATION_MODE', 'rollback'), ('MAIN_RELEASE_EXPECTED_RELEASE_COMMIT', '0' * 40)]:
         run(['bash', str(directory / 'local-entrypoint.sh')], env={**env, name: value}, success=False)
-    target = directory / 'migration-120.sql'
-    original = target.read_bytes()
-    target.chmod(0o600)
-    target.write_bytes(original + b'\n-- changed after image manifest\n')
-    run(['bash', str(directory / 'local-entrypoint.sh')], env=env, success=False)
-    target.write_bytes(original)
+    for name in ('migration-120.sql', *LAYA_FILES):
+        target = directory / name
+        original = target.read_bytes()
+        target.chmod(0o600)
+        try:
+            target.write_bytes(original + b'\n-- changed after image manifest\n')
+            run(['bash', str(directory / 'local-entrypoint.sh')], env=env, success=False)
+        finally:
+            target.write_bytes(original)
+            target.chmod(0o444)
     require(not trace.exists(), 'Integrity or mode guard allowed database execution.')
 
 
@@ -149,6 +178,8 @@ def database_tests(directory, entry):
         for attempt in range(2):
             output = run(['bash', str(directory / 'local-entrypoint.sh')], env=env)
             require('MIGRATION_120_MODULE025_HANDOFF_NOTIFICATIONS=APPLIED_AND_VERIFIED' in output, 'Entrypoint did not verify the full migration chain.')
+            require('LAYA_DATABASE_SCHEMA_AND_API_GRANTS=APPLIED_AND_VERIFIED' in output,
+                    'The actual entrypoint did not verify Laya schema and runtime-role privileges.')
             if attempt == 0:
                 # An existing administrator policy choice survives replay; the
                 # migration cannot re-enable delivery or erase its configuration.
@@ -190,6 +221,7 @@ def main():
     print('MODULE025_SA_ROLLOUT_SOURCE=PASS authority=unchanged integrity_guards=verified')
     if '--source-only' not in sys.argv:
         print('MODULE025_SA_ROLLOUT_DATABASE=PASS entrypoint=actual replay=verified policies=preserved transport=unused')
+        print('LAYA_ROLLOUT_PAYLOAD=PASS source=exact checksums=verified schema_and_grants=replayed')
 
 
 if __name__ == '__main__':
