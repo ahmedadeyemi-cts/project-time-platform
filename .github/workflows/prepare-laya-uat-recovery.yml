@@ -1,0 +1,36 @@
+name: Prepare reviewed Laya Protected Test recovery tree
+on:
+  push:
+    branches: [ops/prepare-laya-uat-recovery-20260921]
+    paths:
+      - '.github/workflows/prepare-laya-uat-recovery.yml'
+      - '.github/uat-recovery-preparation/**'
+permissions:
+  contents: write
+concurrency:
+  group: laya-uat-recovery-preparation
+  cancel-in-progress: false
+jobs:
+  prepare_only:
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Read the exact baseline history without checking out another branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == refs/heads/ops/prepare-laya-uat-recovery-20260921 ]]
+          git fetch --quiet --no-tags --unshallow origin main:refs/remotes/origin/main
+          [[ "$(git rev-parse origin/main)" == af060cbc311dcc7cce89c3ae2cc0bff040f5f6ea ]]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Prepare and test Git objects only; do not move any branch or deploy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/uat-recovery-preparation/prepare.py

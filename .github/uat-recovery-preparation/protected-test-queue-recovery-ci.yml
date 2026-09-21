@@ -1,0 +1,35 @@
+name: Protected Test queue recovery and Laya managed upgrades
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/projectpulse-deploy-test.yml'
+      - '.github/workflows/module025-protected-uat-control.yml'
+      - '.github/workflows/flowhive-psa-release-control-ci.yml'
+      - '.github/workflows/protected-test-queue-recovery-ci.yml'
+      - 'scripts/release-test/protected-test-queue-recovery.py'
+      - 'scripts/release-test/verify-module025-quarantine-controller.py'
+      - 'tests/protected-test-queue-recovery.test.py'
+      - 'tests/prepare-recovery-admission.py'
+      - 'tests/laya/test_managed_adapters.py'
+      - 'deployment/laya/deploy-gateway.sh'
+      - 'deployment/oracle-celar/gateway/laya_decisions.py'
+permissions:
+  contents: read
+jobs:
+  recovery_contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify unchanged deployment authority and reject unsafe recovery
+        run: python3 tests/protected-test-queue-recovery.test.py
+      - name: Verify managed upgrades and restoration of the prior release
+        run: python3 tests/laya/test_managed_adapters.py
+      - name: Verify existing gateway and incremental release contracts
+        run: |
+          python3 tests/laya/test_gateway.py
+          python3 tests/laya/test_release_wiring.py
