@@ -1,0 +1,183 @@
+name: Verify reviewed Module 064 installation once
+on:
+  push:
+    branches: ['ops/module064-installed-verification-20260921']
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: module064-installed-verification-once-e858712
+  cancel-in-progress: false
+jobs:
+  dispatch-reviewed-main-verifier:
+    if: github.actor == 'ahmedadeyemi-cts' && github.ref == 'refs/heads/ops/module064-installed-verification-20260921' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify completed installation and dispatch existing protected main acceptance once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PYCODE'
+          """Dispatch only the reviewed main-only installed verifier after a successful Test install."""
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+          
+          REPO = 'ahmedadeyemi-cts/project-time-platform'
+          MAIN = 'e858712038d29dc611fb27db28b96e43aef164a0'
+          DEPLOY = 35559899639
+          WORKFLOW = 'flowhive-psa-installed-acceptance.yml'
+          BRANCH = 'ops/module064-installed-verification-20260921'
+          HELPER = '.github/workflows/module064-installed-verification-once.yml'
+          WORKFLOW_DIGEST = '5ba757d1ff02031eeb778b5ec47dfaaaa2628cdd13fc849077302da10210278e'
+          REQUIRED = (
+              'Verify admitted controller identity before deployment mutations',
+              'Guard exact source and validate release',
+              'Snapshot protected Test and preserve rollback contract',
+              'Verify the matching Oracle SOW runtime before API rollout',
+              'Build immutable API, web, and migration images',
+              'Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network',
+              'Deploy immutable Test API image',
+              'Deploy immutable Test web image',
+              'Seal server-confirmed deployment identity',
+              'Verify Module 025 scoped deployment identity and lifecycle',
+          )
+          ROLLBACK = ('Restore exact prior Test images after application failure',
+                      'Rollback protected Test API configuration on failure')
+          
+          
+          def require(value, code):
+              if not value:
+                  raise RuntimeError(code)
+          
+          
+          def validate_install(run, jobs):
+              require(run.get('id') == DEPLOY and run.get('workflow_id') == 315562561
+                      and run.get('path') == '.github/workflows/projectpulse-deploy-test.yml'
+                      and run.get('head_sha') == MAIN and run.get('head_branch') == 'main'
+                      and run.get('event') == 'workflow_dispatch'
+                      and run.get('status') == 'completed' and run.get('conclusion') == 'success',
+                      'exact_test_installation_not_successful')
+              found = [j for j in jobs if j.get('name') == 'Validate, migrate, deploy, and verify protected Test']
+              require(len(found) == 1 and found[0].get('conclusion') == 'success', 'installation_job_missing')
+              steps = {s['name']: s.get('conclusion') for s in found[0].get('steps', [])}
+              require(all(steps.get(name) == 'success' for name in REQUIRED), 'installation_evidence_incomplete')
+              require(all(steps.get(name) == 'skipped' for name in ROLLBACK), 'installation_rollback_detected')
+          
+          
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  raise RuntimeError('unexpected_github_redirect')
+          
+          
+          def api(path, payload=None):
+              require(path.startswith('/repos/' + REPO + '/'), 'unexpected_api_scope')
+              data = json.dumps(payload).encode() if payload is not None else None
+              request = Request('https://api.github.com' + path, data=data,
+                                method='POST' if data is not None else 'GET', headers={
+                                    'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                                    'Accept': 'application/vnd.github+json',
+                                    'Content-Type': 'application/json',
+                                    'X-GitHub-Api-Version': '2026-03-10',
+                                })
+              try:
+                  with build_opener(NoRedirect()).open(request, timeout=30) as response:
+                      raw = response.read(4_000_001)
+                      require(len(raw) <= 4_000_000, 'github_response_too_large')
+                      return response.status, json.loads(raw) if raw else {}
+              except HTTPError as error:
+                  raise RuntimeError('github_http_' + str(error.code)) from None
+              except (URLError, TimeoutError, OSError, ValueError):
+                  raise RuntimeError('github_transport_failure_do_not_repeat_dispatch') from None
+          
+          
+          def main():
+              require(os.environ.get('GITHUB_REPOSITORY') == REPO
+                      and os.environ.get('GITHUB_ACTOR') == 'ahmedadeyemi-cts'
+                      and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                      and os.environ.get('GITHUB_REF') == 'refs/heads/' + BRANCH
+                      and os.environ.get('GITHUB_RUN_ATTEMPT') == '1', 'unexpected_dispatch_context')
+              git = lambda *args: subprocess.check_output(['git', *args], text=True).strip()
+              require(git('rev-parse', 'HEAD^') == MAIN
+                      and git('rev-parse', 'HEAD') == os.environ['GITHUB_SHA'], 'helper_parent_not_reviewed_main')
+              require(git('diff', '--name-only', MAIN, 'HEAD').splitlines() == [HELPER], 'helper_scope_changed')
+              require(hashlib.sha256(Path('.github/workflows/' + WORKFLOW).read_bytes()).hexdigest()
+                      == WORKFLOW_DIGEST, 'reviewed_main_verifier_changed')
+              root = '/repos/' + REPO
+              require(api(root + '/git/ref/heads/main')[1]['object']['sha'] == MAIN, 'main_moved')
+              # Observe only this already authorized installation. No deployment retry or
+              # cancellation is permitted from this verification dispatcher.
+              for _ in range(40):
+                  run = api(root + '/actions/runs/' + str(DEPLOY))[1]
+                  require(run.get('head_sha') == MAIN and run.get('workflow_id') == 315562561,
+                          'installation_identity_changed')
+                  if run.get('status') == 'completed':
+                      break
+                  print('Awaiting selected Test installation terminal evidence.', flush=True)
+                  time.sleep(30)
+              jobs = api(root + '/actions/runs/' + str(DEPLOY) + '/jobs?filter=latest&per_page=100')[1]['jobs']
+              validate_install(run, jobs)
+              wf_path = root + '/actions/workflows/' + WORKFLOW
+              workflow = api(wf_path)[1]
+              require(workflow.get('state') == 'active' and workflow.get('path') == '.github/workflows/' + WORKFLOW,
+                      'existing_verifier_unavailable')
+              query = wf_path + '/runs?event=workflow_dispatch&head_sha=' + MAIN + '&per_page=100'
+              require(api(query)[1].get('total_count') == 0, 'verification_already_requested_for_release')
+              require(api(root + '/git/ref/heads/main')[1]['object']['sha'] == MAIN, 'main_moved_before_dispatch')
+              # Exactly one POST to the existing protected main workflow. Never auto-approve,
+              # change settings, deploy, select providers, or retry an ambiguous POST.
+              status, response = api(wf_path + '/dispatches', {
+                  'ref': 'main', 'inputs': {'deployment_run_id': str(DEPLOY), 'acceptance_scope': 'full'}})
+              receipt = {'releaseSha': MAIN, 'deploymentRunId': DEPLOY, 'acceptanceScope': 'full',
+                         'dispatchPosts': 1, 'dispatchHttpStatus': status, 'workflowRunId': None,
+                         'mainMutation': False, 'productionMutation': False, 'approvalBypass': False}
+              output = Path(os.environ['RUNNER_TEMP']) / 'module064-installed-verification-receipt.json'
+              output.write_text(json.dumps(receipt, indent=2) + '\n')
+              require(status in (200, 204), 'dispatch_not_accepted')
+              run_id = response.get('workflow_run_id')
+              if type(run_id) is not int:
+                  for _ in range(12):
+                      candidates = api(query)[1].get('workflow_runs', [])
+                      if candidates:
+                          require(len(candidates) == 1, 'ambiguous_verification_run')
+                          run_id = candidates[0]['id']
+                          break
+                      time.sleep(5)
+              require(type(run_id) is int and run_id > 0, 'dispatch_accepted_run_not_yet_visible_do_not_redispatch')
+              verification = api(root + '/actions/runs/' + str(run_id))[1]
+              require(verification.get('workflow_id') == workflow['id']
+                      and verification.get('head_branch') == 'main'
+                      and verification.get('head_sha') == MAIN
+                      and verification.get('event') == 'workflow_dispatch', 'verification_identity_mismatch')
+              receipt['workflowRunId'] = run_id
+              output.write_text(json.dumps(receipt, indent=2) + '\n')
+              print(json.dumps(receipt, indent=2))
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                  summary.write('Existing Protected Test full installed verification dispatched: ' + str(run_id)
+                                + '\nThis is a dispatch receipt, not evidence of generation success.\n')
+          
+          
+          if __name__ == '__main__':
+              main()
+          PYCODE
+      - name: Retain bounded dispatch receipt without credentials or generated data
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module064-installed-verification-receipt-${{ github.run_id }}
+          path: ${{ runner.temp }}/module064-installed-verification-receipt.json
+          if-no-files-found: ignore
+          retention-days: 1
