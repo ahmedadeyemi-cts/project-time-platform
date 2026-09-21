@@ -1,0 +1,45 @@
+name: Module 064 generation sequence repair
+on:
+  push:
+    branches: ['fix/module064-generation-sequence-20260921']
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Ai/**'
+      - 'scripts/release-test/run-flowhive-psa-live-uat.py'
+      - 'tests/DeepSeekProviderTests/**'
+      - 'tests/FlowHiveSequentialTests/**'
+      - 'tests/module064-generation-sequence*'
+      - '.github/workflows/module064-generation-sequence-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: module064-generation-sequence-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Capture exact tracked source for repair diagnostics
+        if: github.event_name == 'push'
+        run: git archive --format=zip HEAD -o "$RUNNER_TEMP/module064-generation-source.zip"
+      - name: Retain source diagnostics without credentials or runtime data
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module064-generation-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/module064-generation-source.zip
+          retention-days: 1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api --configuration Release
+      - name: Verify provider and sequential generation contracts
+        run: |
+          dotnet run --project tests/DeepSeekProviderTests --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/FlowHiveSequentialTests --configuration Release -p:BuildProjectReferences=false
