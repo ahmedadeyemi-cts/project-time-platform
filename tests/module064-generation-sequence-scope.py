@@ -68,6 +68,9 @@ registrations.append(('.github/workflows/module064-automatic-provider-health-ci.
 registrations.append(('.github/workflows/module064-automatic-provider-health-ci.yml',
     '          grep -Fq \'_health.ApplyConfiguration(_configuration.Provider(providerCode))\' "$ROUTER"',
     '          grep -Fq \'_health.ApplyConfiguration(_configuration.Provider(target))\' "$ROUTER"\n          grep -Fq \'ProjectPulseAiRouter(CelarAiCapabilityRouter authority)\' "$COMPATIBILITY_ROUTER"\n          grep -Fq \'authority.GenerateAsync(\' "$COMPATIBILITY_ROUTER"'))
+registrations.append(('tests/validate-celar-ai-pr630-consolidated.mjs',
+    'const scopedCompatibilityMode = privateGenerationRepairMode ||',
+    "const module064SequenceRepairMode = branchName === 'fix/module064-generation-sequence-20260921';\nif (module064SequenceRepairMode) childProcess.execFileSync('python3', ['tests/module064-generation-sequence-scope.py'], {stdio:'inherit'});\nconst scopedCompatibilityMode = module064SequenceRepairMode || privateGenerationRepairMode ||"))
 normalized = {}
 for path, old, new in registrations:
     value = normalized.get(path, git('show', BASE + ':' + path))
