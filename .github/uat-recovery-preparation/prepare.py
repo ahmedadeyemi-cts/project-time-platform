@@ -1,4 +1,4 @@
-"""Keep historical cleanup unchanged; add cleanup owned by the repair fixture."""
+"""Prepare exact historical-layout proofs while retaining existing CI cleanup."""
 from pathlib import Path
 
 path = Path(__file__).with_name('prepare-base.py')
@@ -19,5 +19,8 @@ text = text.replace("self.assertCountEqual(re.findall(pattern, text, re.M | re.S
 start = text.index('        changed = "        if: always() && (github.head_ref')
 end = text.index('\n\n', start)
 text = text[:start] + '        self.assertEqual(text.encode(), baseline(path))' + text[end:]
+proof = path.with_name('c15-proof.txt').read_text()
+patch = 'addition = ' + repr(proof) + '\nanchor = "    if args.base in (\'045b66ca01baa68b2f5b3f6eb9e063c23c335981\'"\nrequire(text.count(anchor) == 1, "Exact reviewed base selection missing")\ntext = text.replace(anchor, addition + anchor, 1)\nfiles[VALIDATOR] = text'
+text = text.replace('files[VALIDATOR] = text', patch, 1)
 compile(text, str(path), 'exec')
 exec(compile(text, str(path), 'exec'), {'__name__': '__main__', '__file__': str(path)})

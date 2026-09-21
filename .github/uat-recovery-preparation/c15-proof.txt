@@ -1,0 +1,30 @@
+    if args.base == 'c15ef12d5ce1bc54c15d8b31c87a50daa94bad17':
+        # The immutable historical controller uses the original Guard exact
+        # source step name. Compare its complete main-rejection shell prefix,
+        # and require the whole current controller to remain the pinned release.
+        if hashlib.sha256(current).hexdigest() != '3cbd088ab607eb3f3399ab254332adb818c946c7287c33e7a4a52f7e04a3f179':
+            raise SystemExit('The current controller differs from the reviewed recovery baseline')
+        guards = []
+        marker = b'      - name: Guard exact source and validate release\n'
+        for blob in (original, current):
+            if blob.count(marker) != 1:
+                raise SystemExit('The historical exact-main guard is missing or duplicated')
+            begin = blob.index(marker)
+            end = blob.index(b'          for required in ', begin)
+            login = blob.index(b'        uses: azure/login@')
+            if not begin < end < login:
+                raise SystemExit('Exact-main rejection must precede the first Azure login')
+            prefix = blob[:begin]
+            if b'    environment: test\n' not in prefix or b"github.ref == 'refs/heads/main'" not in prefix:
+                raise SystemExit('The historical Test/main boundary is missing')
+            guard = blob[begin:end]
+            for required in (b'git fetch --no-tags origin main',
+                             b'[[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]]',
+                             b'[[ "$(git rev-parse origin/main)" == "$TARGET_RELEASE_COMMIT" ]]'):
+                if required not in guard:
+                    raise SystemExit('The historical stale-main rejection is incomplete')
+            guards.append(guard)
+        if guards[0] != guards[1]:
+            raise SystemExit('The full historical main-rejection guard changed')
+        print('MODULE025_QUARANTINE_CONTROLLER=PASS')
+        return
