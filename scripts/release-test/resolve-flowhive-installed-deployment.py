@@ -37,13 +37,16 @@ STANDARD_MAIN_MIGRATIONS = (
     "099_module025_sow_gsd_workspace",
     "100_module001b_catalog_ownership_reconciliation",
 )
+LEGACY_MIGRATION_STEP = "Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network"
+CURRENT_MIGRATION_STEP = "Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network"
+MIGRATION_STEPS = (LEGACY_MIGRATION_STEP, CURRENT_MIGRATION_STEP)
 REQUIRED_STEPS = (
     "Verify admitted controller identity before deployment mutations",
     "Admit the exact reviewed PSA candidate using trusted main controls",
     "Guard exact source and validate release",
     "Snapshot protected Test and preserve rollback contract",
     "Build immutable API, web, and migration images",
-    "Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network",
+    LEGACY_MIGRATION_STEP,
     "Deploy immutable Test API image",
     "Deploy immutable Test web image",
     "Seal server-confirmed deployment identity",
@@ -155,7 +158,12 @@ def installation_steps(run: dict, jobs: list[dict], application_branch: str) -> 
     names = [row.get("name") for row in rows]
     require(all(isinstance(name, str) and name for name in names) and len(set(names)) == len(names), "deployment_steps_ambiguous")
     steps = {row["name"]: row for row in rows}
-    required_steps = REQUIRED_STEPS
+    # Historical receipts retain their original step name. Require exactly one
+    # known migration step; a renamed, duplicate, or failed step is not proof.
+    migration_steps = [name for name in MIGRATION_STEPS if name in steps]
+    require(len(migration_steps) == 1, "migration_step_missing_or_ambiguous")
+    required_steps = tuple(migration_steps[0] if name == LEGACY_MIGRATION_STEP else name
+                           for name in REQUIRED_STEPS)
     scoped_sow = steps.get(SCOPED_SOW_STEP, {}).get("conclusion") in {"success", "failure"}
     if scoped_sow:
         require(application_branch == "main", "scoped_sow_requires_main")

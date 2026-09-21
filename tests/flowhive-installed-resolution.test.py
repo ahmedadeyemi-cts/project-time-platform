@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 from urllib.request import Request
 import zipfile
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("resolver", ROOT / "scripts/release-test/resolve-flowhive-installed-deployment.py")
@@ -114,6 +115,50 @@ def standard_main_case():
 
 
 class ResolutionTests(unittest.TestCase):
+    def test_current_controller_migration_step_is_supported(self):
+        # Read the real controller, independently of resolver fixture constants.
+        workflow = yaml.safe_load((ROOT / resolver.WORKFLOW_PATH).read_text())
+        deploy = next(job for job in workflow["jobs"].values() if job.get("name") == resolver.DEPLOY_JOB)
+        names = [step.get("name", "") for step in deploy["steps"]]
+        actual = [name for name in names if name.startswith("Apply and verify") and "inside Test private network" in name]
+        self.assertEqual(len(actual), 1)
+        self.assertIn(actual[0], resolver.MIGRATION_STEPS)
+        data = self.scoped_main_case()
+        next(step for step in data[1][0]["steps"] if step["name"] == resolver.LEGACY_MIGRATION_STEP)["name"] = actual[0]
+        context = validate(data)
+        self.assertTrue(context["installationVerified"])
+        self.assertFalse(context["functionalAcceptanceVerified"])
+        self.assertTrue(context["liveIdentityRequired"])
+        self.assertFalse(context["businessWritesPermitted"])
+
+    def test_migration_aliases_require_exactly_one_successful_ordered_step(self):
+        for alias in resolver.MIGRATION_STEPS:
+            for mutation, diagnostic in (
+                ("missing", "migration_step_missing_or_ambiguous"),
+                ("both", "migration_step_missing_or_ambiguous"),
+                ("renamed", "migration_step_missing_or_ambiguous"),
+                ("failure", "installation_step_not_successful"),
+                ("skipped", "installation_step_not_successful"),
+                ("in_progress", "deployment_steps_not_complete"),
+                ("after_deploy", "installation_step_order_invalid"),
+            ):
+                with self.subTest(alias=alias, mutation=mutation):
+                    data = self.scoped_main_case()
+                    steps = data[1][0]["steps"]
+                    step = next(row for row in steps if row["name"] == resolver.LEGACY_MIGRATION_STEP)
+                    step["name"] = alias
+                    if mutation == "missing": steps.remove(step)
+                    elif mutation == "both":
+                        steps.append(dict(step, name=next(name for name in resolver.MIGRATION_STEPS if name != alias)))
+                    elif mutation == "renamed": step["name"] += " (unverified successor)"
+                    elif mutation in {"failure", "skipped"}: step["conclusion"] = mutation
+                    elif mutation == "in_progress": step["status"] = mutation
+                    else:
+                        steps.remove(step)
+                        steps.append(step)
+                    with self.assertRaisesRegex(resolver.ResolutionError, diagnostic):
+                        validate(data)
+
     def test_main_path_skip_names_match_server_recorded_workflow(self):
         self.assertEqual(resolver.MAIN_PATH_SKIPPED_STEPS, REAL_MAIN_PATH_SKIPPED_STEPS)
 
