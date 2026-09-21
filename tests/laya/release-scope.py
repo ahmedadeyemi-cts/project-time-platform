@@ -44,6 +44,7 @@ tests/laya/prepare-admission-fixture.py
 tests/laya/backend/BackendChecks.csproj
 tests/laya/backend/Fakes.cs
 tests/laya/backend/Program.cs
+tests/module025-sa-rollout.test.py
 '''.split())
 changed = set(git('diff', '--name-only', base, 'HEAD', '--').splitlines())
 if not changed or changed - allowed:
