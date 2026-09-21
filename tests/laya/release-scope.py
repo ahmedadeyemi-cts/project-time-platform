@@ -40,6 +40,7 @@ tests/laya/schema_checks.sql
 tests/laya/test_gateway.py
 tests/laya/test_release_wiring.py
 tests/laya/release-scope.py
+tests/laya/prepare-admission-fixture.py
 tests/laya/backend/BackendChecks.csproj
 tests/laya/backend/Fakes.cs
 tests/laya/backend/Program.cs
@@ -73,7 +74,7 @@ equal_original(mapping, text.replace(insertion, '', 1))
 
 boundaries = {
     '.github/workflows/module064-automatic-provider-health-ci.yml': {'ownership'},
-    '.github/workflows/flowhive-psa-release-control-ci.yml': {'ownership'},
+    '.github/workflows/flowhive-psa-release-control-ci.yml': {'ownership', 'fixture_preparation', 'fixture_cleanup'},
     'deployment/oracle-celar/deploy.sh': {'incremental_gateway', 'full_deployment_adapter'},
     'scripts/release-test/build-and-run-module025-retention-migration-106.sh':
         {'runtime_role','migration_files','migration_apply','migration_image','migration_evidence'},
@@ -84,15 +85,23 @@ for path, names in boundaries.items():
     seen = Counter(match.group(1) for match in pattern.finditer(text))
     if seen != Counter({name: 1 for name in names}):
         raise SystemExit('Unexpected release insertion blocks: ' + path)
-    equal_original(path, pattern.sub('', text))
+    text = pattern.sub('', text)
+    if path == '.github/workflows/flowhive-psa-release-control-ci.yml':
+        selection = 'node --test "${LAYA_ADMISSION_TEST:-tests/flowhive-psa-admission.test.mjs}"'
+        if text.count(selection) != 1:
+            raise SystemExit('Expected one explicit historical admission fixture invocation')
+        text = text.replace(selection, 'node --test tests/flowhive-psa-admission.test.mjs', 1)
+    equal_original(path, text)
 
-# These critical files are deliberately not in the allowlist. Check their exact
-# contents too: no quarantine/admission edits or shared Group 7 ownership change.
 for path in ('.github/workflows/projectpulse-deploy-test.yml',
              '.github/workflows/module025-protected-uat-control.yml',
              'src/frontend/project-time-web/src/ai/AiProviderReadinessPanel.jsx',
              'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs',
-             'src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs'):
+             'src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs',
+             'tests/flowhive-psa-admission.test.mjs',
+             'scripts/release-test/flowhive-psa-admission.mjs',
+             '.github/flowhive-psa-protected-test-candidate.json',
+             '.github/flowhive-psa-protected-cutover.json'):
     equal_original(path, (ROOT/path).read_text())
 subprocess.run(['git','-C',str(ROOT),'diff','--check',base,'HEAD'],check=True)
 print('LAYA_ADDITIVE_RELEASE_SCOPE=PASS')
