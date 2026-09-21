@@ -32,7 +32,7 @@ public sealed class ProjectPulseDeepSeekProvider(
         if (provider.Endpoint != Endpoint || provider.Model != Model) return Failure("deepseek_configuration_rejected");
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var probe = request.Feature == "provider_readiness";
-        budget.CancelAfter(AttemptBudget(request.Feature));
+        budget.CancelAfter(RequestAttemptBudget(request.Feature, request.BoundedPrivatePhase));
         try
         {
             // One slot across API replicas, health probes, and private consumers.
@@ -127,6 +127,14 @@ public sealed class ProjectPulseDeepSeekProvider(
         return new(ProjectPulseAiProviders.DeepSeek, ProjectPulseAiOutcomes.Success,
             content.GetString()!.Trim(), null, null, null, null, 200);
     }
+
+    // Only server-marked durable SOW phases receive the longer attempt. Queue
+    // time remains inside this ceiling, below the router's 330-second deadline.
+    // The linked caller token still cancels immediately, including document expiry.
+    internal static TimeSpan RequestAttemptBudget(string feature, bool boundedPrivatePhase) =>
+        boundedPrivatePhase && feature == CelarAiCapabilityCatalog.SowGsdPlanning
+            ? TimeSpan.FromSeconds(300)
+            : AttemptBudget(feature);
 
     internal static TimeSpan AttemptBudget(string feature) => feature switch
     {

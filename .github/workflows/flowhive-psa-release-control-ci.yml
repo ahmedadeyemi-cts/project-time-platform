@@ -71,7 +71,9 @@ jobs:
             python3 tests/module064-provider-controls-scope.py
             exit 0
           fi
-          if [[ "$GITHUB_HEAD_REF" == fix/flowhive-sow-private-generation-20260921 ]]; then
+          if [[ "$GITHUB_HEAD_REF" == fix/flowhive-installed-verifier-20260921 ]]; then
+            python3 tests/flowhive-installed-verifier-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-sow-private-generation-20260921 ]]; then
             python3 tests/flowhive-sow-private-generation-scope.py
           elif [[ "$GITHUB_HEAD_REF" == fix/module064-authoritative-model-catalog-20260920 ]]; then
             python3 tests/module064-authoritative-model-catalog-scope.py
