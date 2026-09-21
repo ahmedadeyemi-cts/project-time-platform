@@ -33,4 +33,27 @@ jobs:
       - name: Prepare and test Git objects only; do not move any branch or deploy
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 .github/uat-recovery-preparation/prepare.py
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if python3 .github/uat-recovery-preparation/prepare.py; then
+            exit 0
+          else
+            code=$?
+            python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          for name in ('tests/validate-systemwide-enterprise-reliability.mjs', '.github/workflows/projectpulse-deploy-test.yml'):
+              path = Path(name)
+              raw = path.read_bytes()
+              print('SOURCE_DIAGNOSTIC', name, hashlib.sha256(raw).hexdigest(), flush=True)
+              lines = raw.decode().splitlines()
+              selected = set()
+              for i, line in enumerate(lines):
+                  if any(word in line for word in ('serialize deployments', 'const deploy', 'concurrency:', 'projectpulse-deploy-test')):
+                      selected.update(range(max(0, i-3), min(len(lines), i+5)))
+              for i in sorted(selected):
+                  print(f'{i+1}: {lines[i]!r}', flush=True)
+          PY
+            exit "$code"
+          fi
