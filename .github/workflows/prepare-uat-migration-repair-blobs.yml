@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   prepare:
-    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == '4213bc0b1e5e5a7fe35dcd776511c80b7f7eff1c'
+    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == 'b529164bd367601b360cf0a7b4a6e36138cfab19'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -17,13 +17,62 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
           show-progress: false
-      - name: Verify exact source edits and publish content objects only
+      - name: Verify exact edits and publish content objects without branch writes
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
-          import base64,gzip,hashlib,json,os,subprocess
+          import hashlib,json,os,subprocess
           from pathlib import Path
           from urllib.request import Request,urlopen
-          encoded = 'H4sIAAAAAAAC/+19i3bbRpLor3SU7IK0QAoAQfDh4UwUm44161haSspORtTg4NGQEFMAA4C2FUX3229VP4AG35I9u3fPncwZiwS6q6urq+vVVc2rh4O5V9weDA/aN3Fxu/CPPqXZh2iWfsqP7tJwMaOG1W3Ns7SgQUHD1sIrWkGaFFk6a9/fzQ70A59GaUYBgNGLBl3Ts6Ow2zcGgUejwOoGDU0TUnverifiedPayloadPlaceholder'
-          raise SystemExit('SOURCE_TRANSCRIPTION_NOT_COMPLETE: no writes')
+          repository='ahmedadeyemi-cts/project-time-platform'
+          assert os.environ['GITHUB_REPOSITORY']==repository
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='e81b458f77c6af114c06585475386568a060450d'
+          rows=json.loads(r'''[
+          {"path":".github/workflows/module025-protected-uat-control.yml","before":"07f951a4fd5809caefc25ce18f0259491d0a0bd7ec708a44edf8acc300d1c04f","after":"c68aa2fd47b24d5d463561661e46d238045e1a6ac3d54dcc3850a3fc8c20db06","edits":[{"start":258,"end":258,"text":"            # MIGRATION_RETRY_RECOVERY_BEGIN\n            if [[ \"$run_id\" == '35761573008' ]]; then\n              python3 scripts/release-test/recover-pr1140-migration-retry-orphan.py \\\n                || fail 'Migration retry orphan recovery did not meet its exact safety contract.'\n              quarantined_runs+=(\"$run_id\")\n              continue\n            fi\n            # MIGRATION_RETRY_RECOVERY_END\n"}]},
+          {"path":"scripts/release-test/run-flowhive-authority-migration-094-job.sh","before":"913cbbe8cf48bae90dabf715fcdbf46892ea32b3d6e4eaca0d25f6c072488ea3","after":"4f660af0e9a7fbba119abb562edd8639dfe566be9bc771547f2c94dfbb6b741d","edits":[{"start":2,"end":2,"text":"\nsource \"$(dirname \"${BASH_SOURCE[0]}\")/azure-migration-throttle.sh\"\n"},{"start":66,"end":67,"text":"SUBSCRIPTION_ID=\"$(azure_migration_retry account_read az account show --query id -o tsv --only-show-errors)\"\n"},{"start":73,"end":74,"text":"ACTUAL_IDENTITY=\"$(azure_migration_retry identity_read az identity show --ids \"$MIGRATOR_IDENTITY\" --query id -o tsv --only-show-errors)\"\n"},{"start":77,"end":78,"text":"API_JSON=\"$(azure_migration_retry api_read az containerapp show -g \"$RESOURCE_GROUP\" -n \"$API_APP\" -o json --only-show-errors)\"\n"},{"start":102,"end":103,"text":"  token=\"$(azure_migration_retry token_read az account get-access-token --resource-type arm --query accessToken -o tsv --only-show-errors)\" || return 1\n"},{"start":177,"end":178,"text":"  executions=\"$(azure_migration_retry executions_read az containerapp job execution list -g \"$RESOURCE_GROUP\" -n \"$JOB_NAME\" -o json --only-show-errors)\" || return 1\n"},{"start":285,"end":286,"text":"azure_migration_retry job_put az rest --method put --uri \"$JOB_URI\" --body @\"$PAYLOAD\" --output none --only-show-errors\n"},{"start":307,"end":308,"text":"  STATUS=\"$(azure_migration_retry executions_read az containerapp job execution list -g \"$RESOURCE_GROUP\" -n \"$JOB_NAME\" \\\n"}]},
+          {"path":"scripts/release-test/validate-protected-test-controller-branches.sh","before":"e26daf0d4ce60ee40403a86791d68f2fce8cc25973d99939d9ffb46be9b8c112","after":"dfcfc7b1bdec125007019b90c545088dec44627e34dbb8884426d3abf02b80d1","edits":[{"start":5,"end":5,"text":"# MIGRATION_THROTTLE_SCOPE_BEGIN\nif [[ \"$HEAD_BRANCH\" == fix/uat-migration-throttle-recovery-20260922 ]]; then\n  python3 tests/uat-migration-throttle-scope.py\n  python3 tests/test-azure-migration-throttle.py\n  python3 tests/test-pr1140-migration-retry-recovery.py\n  node tests/validate-systemwide-image-build-controller.mjs\n  return\nfi\n# MIGRATION_THROTTLE_SCOPE_END\n"}]},
+          {"path":"tests/pr1140-uat-recovery-scope.py","before":"ba7d0149e5732512974c94fe6af2aa63d6e9684dde88a29527b159fdc1849952","after":"805cf6a3bc322d0c45122d1bb2217c09735c35113e5b9aa322b9638068f4775c","edits":[{"start":53,"end":54,"text":"    expected = before.replace(anchor, addition + anchor, 1)\n    # A later reviewed repair adds one pinned recovery and its CI registration.\n    # Compare the entire exact extended source, not a regex-stripped projection.\n    if after != expected:\n        extensions = {\n            SUPERVISOR_ANCHOR: ('            # PR1140_UAT_RECOVERY_END\\n', '            # MIGRATION_RETRY_RECOVERY_BEGIN\\n            if [[ \"$run_id\" == \\'35761573008\\' ]]; then\\n              python3 scripts/release-test/recover-pr1140-migration-retry-orphan.py \\\\\\n                || fail \\'Migration retry orphan recovery did not meet its exact safety contract.\\'\\n              quarantined_runs+=(\"$run_id\")\\n              continue\\n            fi\\n            # MIGRATION_RETRY_RECOVERY_END\\n'),\n            REGISTRY_ANCHOR: ('# PR1140_RECOVERY_SCOPE_BEGIN\\n', '# MIGRATION_THROTTLE_SCOPE_BEGIN\\nif [[ \"$HEAD_BRANCH\" == fix/uat-migration-throttle-recovery-20260922 ]]; then\\n  python3 tests/uat-migration-throttle-scope.py\\n  python3 tests/test-azure-migration-throttle.py\\n  python3 tests/test-pr1140-migration-retry-recovery.py\\n  node tests/validate-systemwide-image-build-controller.mjs\\n  return\\nfi\\n# MIGRATION_THROTTLE_SCOPE_END\\n'),\n        }\n        if anchor in extensions:\n            marker, extension = extensions[anchor]\n            assert expected.count(marker) == 1\n            expected = expected.replace(marker, extension + marker, 1)\n    assert after == expected, 'Unrelated supervisor or registry change'\n"}]}
+          ]''')
+          assert {r['path'] for r in rows}=={'.github/workflows/module025-protected-uat-control.yml','scripts/release-test/run-flowhive-authority-migration-094-job.sh','scripts/release-test/validate-protected-test-controller-branches.sh','tests/pr1140-uat-recovery-scope.py'}
+          outputs={}
+          modes={}
+          for row in rows:
+              path=Path(row['path'])
+              original=path.read_bytes()
+              assert hashlib.sha256(original).hexdigest()==row['before'],str(path)
+              lines=original.decode().splitlines(keepends=True)
+              last=0
+              for edit in row['edits']:
+                  assert last<=edit['start']<=edit['end']<=len(lines)
+                  last=edit['end']
+              for edit in reversed(row['edits']):
+                  lines[edit['start']:edit['end']]=edit['text'].splitlines(keepends=True)
+              value=''.join(lines).encode()
+              assert hashlib.sha256(value).hexdigest()==row['after'],'Output mismatch: '+str(path)
+              outputs[str(path)]=value
+              modes[str(path)]=subprocess.check_output(['git','ls-files','-s','--',str(path)],text=True).split()[0]
+          path='scripts/release-test/recover-pr1140-migration-retry-orphan.py'
+          assert not Path(path).exists()
+          value=Path('scripts/release-test/recover-pr1140-uat-orphan.py').read_text()
+          for old,new in [("PR 1140's observed zero-job", "PR 1140's migration-retry zero-job"),('35739149661','35761573008'),('4e8871cf9a7c4643483d178feecff67ec6d78d12','e81b458f77c6af114c06585475386568a060450d'),('2026-09-22T14:16:21Z','2026-09-22T17:34:19Z'),('recover-pr1140-uat-orphan.py','recover-pr1140-migration-retry-orphan.py'),('PR1140_UAT_ORPHAN_RECOVERY=','PR1140_MIGRATION_RETRY_ORPHAN_RECOVERY=')]:
+              assert old in value
+              value=value.replace(old,new)
+          assert hashlib.sha256(value.encode()).hexdigest()=='a26bdeca55391378e2e41d8a6230293f162801c2b91f21091887395e8643d3a6'
+          outputs[path]=value.encode();modes[path]='100644'
+          result=[]
+          for path,value in outputs.items():
+              expected=subprocess.check_output(['git','hash-object','--stdin'],input=value).decode().strip()
+              request=Request('https://api.github.com/repos/'+repository+'/git/blobs',data=json.dumps({'content':value.decode(),'encoding':'utf-8'}).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urlopen(request,timeout=30) as response: actual=json.load(response)['sha']
+              assert actual==expected
+              result.append({'path':path,'mode':modes[path],'type':'blob','sha':actual})
+          target=Path(os.environ['RUNNER_TEMP'])/'migration-repair-blobs.json'
+          target.write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result))
+          print('BRANCH_MUTATION=NONE DEPLOYMENT_MUTATION=NONE CLOUD_ACCESS=NONE')
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: migration-repair-blobs-${{ github.run_id }}
+          path: ${{ runner.temp }}/migration-repair-blobs.json
+          retention-days: 1
