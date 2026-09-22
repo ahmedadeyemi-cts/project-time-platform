@@ -1,0 +1,30 @@
+name: Prepare exact UAT migration repair source
+on:
+  push:
+    branches: ['ops/pr1140-migration-diagnostics-20260922']
+    paths: ['.github/workflows/prepare-uat-migration-repair-blobs.yml']
+permissions:
+  contents: write
+jobs:
+  prepare:
+    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == '71eecd32eedf75297023462b4b466813193cd0e2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: e81b458f77c6af114c06585475386568a060450d
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+      - name: Verify exact local edit bundle and publish content objects, not branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,gzip,hashlib,json,os,subprocess
+          from pathlib import Path
+          from urllib.request import Request,urlopen
+          encoded = 'H4sIAAAAAAAC/+19i3bbRpLor3SU7IK0QAoAQfDh4UwUm44161haSspORtTg4NGQEFMAA4C2FUX3229VP4AG35I9u3fPncwZiwS6q6urq+vVVc2rh4O5V9weDA/aN3Fxu/CPPqXZh2iWfsqP7tJwMaOG1W3Ns7SgQUHD1sIrWkGaFFk6a9/fzQ70A59GaUYBgNGLBl3Ts6Ow2zcGgUejwOoGDU0TUnverifiedPayloadPlaceholder'
+          # The source bundle is completed in the next exact operational commit.
+          raise SystemExit('INCOMPLETE_SOURCE_BUNDLE: no content objects published')
