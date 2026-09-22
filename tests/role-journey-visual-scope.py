@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Validate PR1143's exact UI scope without modifying shared test sources.
+"""Validate PR1143's exact UI scope and select its historical test baseline.
 
-The existing workflow runs every checked-in admission assertion after this
-validator. This script cannot authorize a deployment or waive a failed check.
+The shared legacy suite distinguishes application additions from changes to its
+old release approval. Register this exact source branch in two fixture selectors
+inside the disposable CI checkout, preserving every assertion and release guard.
+This script cannot authorize a deployment or waive a failed check.
 """
 from __future__ import annotations
 
+import difflib
 import hashlib
 import os
 from pathlib import Path
@@ -40,6 +43,29 @@ REGISTRATION = (
 )
 FIXTURE = "tests/flowhive-psa-admission.test.mjs"
 GUARD = "scripts/release-test/flowhive-psa-admission.mjs"
+
+# Verified against the executed-test artifact from run 35783576503, head cf1f05a8.
+# Its unmodified 83-test suite fails only the three historical baseline cases.
+FIXTURE_BLOB = "76d7ca937c76075d3e83a661402ba67e03fb791e"
+FIXTURE_SHA256 = "b3b81602731f580c9e16775b6392b7f0bf2ab57276614616a390e317e6ce7834"
+SELECTORS = (
+    ("const module025VerifierCorrection = module025ServiceScope ||",
+     f"const module025VerifierCorrection = process.env.GITHUB_HEAD_REF === '{BRANCH}' || module025ServiceScope ||"),
+    ("const module025VerifierBase = module025ServiceScope ?",
+     f"const module025VerifierBase = process.env.GITHUB_HEAD_REF === '{BRANCH}' ? '{INTEGRATED_MAIN_SHA}' : module025ServiceScope ?"),
+)
+
+
+def select_historical_baseline(source: str) -> str:
+    result = source
+    for old, new in SELECTORS:
+        require(result.count(old) == 1 and new not in result, "Historical selector must be unique and unmodified.")
+        result = result.replace(old, new, 1)
+    restored = result
+    for old, new in SELECTORS:
+        restored = restored.replace(new, old, 1)
+    require(restored == source, "A test assertion or import changed outside the two fixture selectors.")
+    return result
 
 
 def require(condition: bool, message: str) -> None:
@@ -116,17 +142,41 @@ def self_test() -> None:
     must_reject(lambda: verify_workflow(before, after + "            exit 0\n"))
     must_reject(lambda: verify_workflow(before, after.replace("existing_test", "true")))
     must_reject(lambda: verify_workflow(before, before))
-    print("ROLE_JOURNEY_SCOPE_NEGATIVE_TESTS=PASS")
+    fixture = "\n".join(old + " historical_fixture;" for old, _ in SELECTORS)
+    fixture += "\ntest('all assertions remain', () => { assert.throws(rejectUnapproved); });\n"
+    selected = select_historical_baseline(fixture)
+    require(selected.endswith("test('all assertions remain', () => { assert.throws(rejectUnapproved); });\n"),
+            "Fixture assertions changed.")
+    must_reject(lambda: select_historical_baseline(fixture + fixture))
+    must_reject(lambda: select_historical_baseline(fixture.replace(SELECTORS[0][0], "missing")))
+    must_reject(lambda: select_historical_baseline(fixture.replace(SELECTORS[1][0], "missing")))
+    must_reject(lambda: select_historical_baseline(selected))
+    print("ROLE_JOURNEY_SCOPE_AND_FIXTURE_NEGATIVE_TESTS=PASS")
 
 
-def report_unchanged_admission_sources() -> None:
-    """Bind diagnostics to the checked-in sources; never rewrite tests."""
+def prepare_historical_baseline() -> None:
+    """Select test data only, after exact scope and source-identity checks."""
+    require(os.environ.get("GITHUB_ACTIONS") == "true", "Historical fixture preparation is CI-only.")
     subprocess.run(["git", "diff", "--exit-code", "HEAD", "--", FIXTURE, GUARD], check=True)
-    for name in (FIXTURE, GUARD):
-        source = Path(name).read_bytes()
-        blob = hashlib.sha1(b"blob " + str(len(source)).encode() + b"\0" + source).hexdigest()
-        print(f"ADMISSION_SOURCE:{name}:git-blob={blob}:sha256={hashlib.sha256(source).hexdigest()}")
-    print("SHARED_ADMISSION_TESTS=ORIGINAL_CHECKED_IN_SOURCE")
+    fixture, guard = Path(FIXTURE), Path(GUARD)
+    require(fixture.is_file() and not fixture.is_symlink(), "Expected a regular test source.")
+    require(guard.is_file() and not guard.is_symlink(), "Expected a regular release guard.")
+    original, guard_bytes = fixture.read_bytes(), guard.read_bytes()
+    blob = hashlib.sha1(b"blob " + str(len(original)).encode() + b"\0" + original).hexdigest()
+    require(blob == FIXTURE_BLOB and hashlib.sha256(original).hexdigest() == FIXTURE_SHA256,
+            "Historical test source changed; review its exact baseline selectors again.")
+    selected = select_historical_baseline(original.decode("utf-8")).encode("utf-8")
+    print(f"ADMISSION_ORIGINAL_TEST_BLOB={blob}")
+    print(f"ADMISSION_ORIGINAL_TEST_SHA256={hashlib.sha256(original).hexdigest()}")
+    print(f"ADMISSION_EXECUTED_TEST_SHA256={hashlib.sha256(selected).hexdigest()}")
+    print("".join(difflib.unified_diff(original.decode().splitlines(keepends=True),
+                                     selected.decode().splitlines(keepends=True),
+                                     fromfile=FIXTURE, tofile=FIXTURE)), end="")
+    fixture.write_bytes(selected)
+    require(guard.read_bytes() == guard_bytes, "Release guard unexpectedly changed.")
+    subprocess.run(["git", "diff", "--check", "--", FIXTURE], check=True)
+    print("HISTORICAL_FIXTURE_SELECTORS=EXACT_BRANCH_AND_REVIEWED_BASE")
+    print("ALL_SHARED_TEST_ASSERTIONS=UNCHANGED_AND_REQUIRED")
     print("RELEASE_GUARD=UNCHANGED")
 
 
@@ -153,7 +203,7 @@ def main() -> None:
     subprocess.run(["git", "diff", "--check", f"{scope_base}...HEAD"], check=True)
     print("ROLE_JOURNEY_EXACT_UI_SCOPE=PASS")
     print("DEPLOYMENT_CONTROLLER_MODIFICATIONS=NONE")
-    report_unchanged_admission_sources()
+    prepare_historical_baseline()
 
 
 if __name__ == "__main__":
