@@ -1,0 +1,197 @@
+/* PULSE_SURFACE_CONTRAST_V1
+ * Foreground colors belong to their surface, not to the selected page theme.
+ * Imported by the final contrast guard; no runtime DOM recoloring is required.
+ */
+:root {
+  --uss-app-header-copy: #e6f2ff;
+  --uss-app-header-label: #bdf4ff;
+  --uss-app-header-background:
+    radial-gradient(circle at 88% 12%, rgba(19, 168, 191, 0.22), transparent 33%),
+    linear-gradient(135deg, #06192b 0%, #123f68 58%, #0b5063 100%);
+  --pulse-table-header-background: #062b49;
+  --pulse-table-header-text: #ffffff;
+  --pulse-table-header-muted: #e6f2ff;
+}
+
+/* Match the canonical route-header contract, including the welcome dashboard.
+ * Existing enterprise typography reads these local aliases instead of painting
+ * light-mode body text on an inverse surface. These aliases are deliberately
+ * NOT applied to the document, the navigation bar, or every element with 'blue'
+ * or 'header' in its class name.
+ */
+:where(
+  .welcome-dashboard-hero,
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true'],
+  [data-contrast-surface='inverse']
+) {
+  --pulse-surface-text: #ffffff;
+  --pulse-surface-muted: #e6f2ff;
+  --pulse-surface-label: #bdf4ff;
+  --pulse-enterprise-text: var(--pulse-surface-text);
+  --pulse-enterprise-muted: var(--pulse-surface-muted);
+  --readable-text: var(--pulse-surface-text);
+  --readable-muted: var(--pulse-surface-muted);
+  --text-color: var(--pulse-surface-text);
+  --muted-color: var(--pulse-surface-muted);
+  color: var(--pulse-surface-text);
+}
+
+:root body .welcome-dashboard-hero {
+  background: var(--uss-app-header-background) !important;
+}
+
+/* Legacy modules sometimes set an explicit color on the label itself. Correct
+ * those text nodes, not all descendants. Interactive and independent surfaces
+ * below establish their own foreground contract.
+ */
+:root body :where(
+  .welcome-dashboard-hero,
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true'],
+  [data-contrast-surface='inverse']
+) :is(h1, h2, h3, h4, h5, h6, p, small, strong, b, label, dt, dd, code, .muted, .subtitle, .helper-text, .supporting-text) {
+  color: var(--pulse-surface-text, var(--uss-app-text)) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+:root body :where(
+  .welcome-dashboard-hero,
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true'],
+  [data-contrast-surface='inverse']
+) :is(p, small, .muted, .subtitle, .helper-text, .supporting-text) {
+  color: var(--pulse-surface-muted, var(--uss-app-muted)) !important;
+  opacity: 1;
+}
+
+:root body :where(
+  .welcome-dashboard-hero,
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true'],
+  [data-contrast-surface='inverse']
+) :is(.eyebrow, .uss-module-label, [class*='__eyebrow'], [class$='-eyebrow']) {
+  color: var(--pulse-surface-label, var(--uss-app-header-label)) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+/* An inset card, form, dialog or popover is a new surface. Do not leak inverse
+ * colors into it. The explicit data attribute is the reusable opt-in for new
+ * independently painted components.
+ */
+:where(
+  .panel, .card, .welcome-card, .uss-status-card, .uss-filter-bar,
+  .roles-matrix-panel, .group2b-resilience-card,
+  [role='dialog'], [role='menu'], [data-contrast-surface='base']
+) {
+  --pulse-surface-text: var(--uss-app-text);
+  --pulse-surface-muted: var(--uss-app-muted);
+  --pulse-surface-label: var(--uss-app-link);
+  --pulse-enterprise-text: var(--uss-app-text);
+  --pulse-enterprise-muted: var(--uss-app-muted);
+  --readable-text: var(--uss-app-text);
+  --readable-muted: var(--uss-app-muted);
+  --text-color: var(--uss-app-text);
+  --muted-color: var(--uss-app-muted);
+}
+
+/* Button/link colors are owned by the control's existing background variant.
+ * currentColor lets a nested label inherit a white primary button's dark text,
+ * a blue button's light text, or the disabled control's readable foreground.
+ * Inputs and options keep the base control palette rather than the hero text.
+ */
+:where(button, a, input, select, textarea, option) {
+  --pulse-surface-text: currentColor;
+  --pulse-surface-muted: currentColor;
+  --pulse-surface-label: currentColor;
+  --pulse-enterprise-text: var(--uss-app-text);
+  --pulse-enterprise-muted: var(--uss-app-muted);
+  --readable-text: var(--uss-app-text);
+  --readable-muted: var(--uss-app-muted);
+}
+
+:root body :where(
+  .welcome-dashboard-hero,
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true'],
+  [data-contrast-surface='inverse']
+) a:not([class]):not([role='button']) {
+  color: #ffffff;
+  -webkit-text-fill-color: currentColor;
+  text-decoration: underline;
+}
+
+/* The enterprise table theme already paints every eligible column header navy.
+ * Pair that paint with foregrounds on the cell AND its nested labels, including
+ * role names, role-code pills and pinned matrix columns. This does not touch
+ * tbody status colors, row headers or navigation.
+ */
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled thead th:not([class*='celar-ai'] *),
+:root body :is(.roles-matrix-table, .uss-table) thead th {
+  --pulse-surface-text: var(--pulse-table-header-text);
+  --pulse-surface-muted: var(--pulse-table-header-muted);
+  --pulse-enterprise-text: var(--pulse-surface-text);
+  --pulse-enterprise-muted: var(--pulse-surface-muted);
+  --readable-text: var(--pulse-surface-text);
+  --readable-muted: var(--pulse-surface-muted);
+  background: var(--pulse-table-header-background) !important;
+  color: var(--pulse-table-header-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled thead th:not([class*='celar-ai'] *) :is(strong, small, span, p, code, label, abbr),
+:root body :is(.roles-matrix-table, .uss-table) thead th :is(strong, small, span, p, code, label, abbr) {
+  color: var(--pulse-surface-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1;
+}
+
+:root body .roles-matrix-role-heading small {
+  background: #163f61;
+  color: var(--pulse-table-header-muted) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+:root body .roles-matrix-table .roles-matrix-cell-button small {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1;
+}
+
+/* Preserve explicit system colors rather than forcing branded colors over the
+ * operating system's high-contrast palette.
+ */
+@media (forced-colors: active) {
+  :root {
+    --uss-app-header-copy: CanvasText;
+    --uss-app-header-label: CanvasText;
+    --uss-app-header-background: Canvas;
+    --pulse-table-header-background: Canvas;
+    --pulse-table-header-text: CanvasText;
+    --pulse-table-header-muted: CanvasText;
+  }
+
+  :where(
+    .welcome-dashboard-hero,
+    .projectpulse-module-standard > header,
+    .uss-enterprise-page-header,
+    [data-enterprise-page-header='true'],
+    [data-contrast-surface='inverse']
+  ) {
+    --pulse-surface-text: CanvasText;
+    --pulse-surface-muted: CanvasText;
+    --pulse-surface-label: CanvasText;
+    background: Canvas !important;
+    color: CanvasText !important;
+  }
+
+  :root body .roles-matrix-role-heading small {
+    background: Canvas;
+    border: 1px solid CanvasText;
+  }
+}

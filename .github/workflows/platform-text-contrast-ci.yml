@@ -1,0 +1,60 @@
+name: Platform Text Contrast CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/platform-text-contrast-ci.yml'
+      - 'src/frontend/project-time-web/src/**'
+      - 'src/frontend/project-time-web/package*.json'
+      - 'src/frontend/project-time-web/scripts/validate-platform-text-contrast.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-text-contrast-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contrast:
+    name: Validate platform text in light and dark modes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Install and build the complete frontend
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci
+          npm run build
+      - name: Verify source stability
+        run: git diff --exit-code
+      - name: Install isolated browser-test dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pulse-contrast-venv"
+          "$RUNNER_TEMP/pulse-contrast-venv/bin/pip" install playwright==1.55.0 Pillow==11.3.0
+          "$RUNNER_TEMP/pulse-contrast-venv/bin/python" -m playwright install --with-deps chromium firefox
+      - name: Check rendered text against production CSS
+        working-directory: src/frontend/project-time-web
+        run: |
+          mkdir -p "$RUNNER_TEMP/pulse-contrast-evidence/production-css"
+          cp dist/assets/*.css "$RUNNER_TEMP/pulse-contrast-evidence/production-css/"
+          "$RUNNER_TEMP/pulse-contrast-venv/bin/python" scripts/validate-platform-text-contrast.py \
+            --output "$RUNNER_TEMP/pulse-contrast-evidence"
+      - name: Upload contrast measurements and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-text-contrast-${{ github.run_id }}
+          path: ${{ runner.temp }}/pulse-contrast-evidence
+          if-no-files-found: warn
+          retention-days: 7
