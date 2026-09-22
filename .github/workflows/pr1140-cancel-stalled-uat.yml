@@ -1,0 +1,128 @@
+name: Cancel exact unstarted PR1140 UAT request
+on:
+  push:
+    branches: ['ops/pr1140-cancel-stalled-uat-20260922']
+    paths: ['.github/workflows/pr1140-cancel-stalled-uat.yml']
+permissions:
+  actions: write
+  contents: read
+concurrency:
+  group: module025-protected-uat-control
+  cancel-in-progress: false
+jobs:
+  cancel_exact_request:
+    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == '4e8871cf9a7c4643483d178feecff67ec6d78d12'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Cancel only the observed zero-job request and retain the outcome
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_PARENT: ${{ github.event.before }}
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import time
+
+          REPOSITORY = 'ahmedadeyemi-cts/project-time-platform'
+          RELEASE = '4e8871cf9a7c4643483d178feecff67ec6d78d12'
+          RUN = 35739149661
+          CREATED = '2026-09-22T14:16:21Z'
+          BRANCH = 'ops/pr1140-cancel-stalled-uat-20260922'
+          report = {'run_id': RUN, 'release_sha': RELEASE, 'cancelled': False,
+                    'deployment_performed': False, 'result': 'not_attempted'}
+
+          def require(ok, message):
+              if not ok:
+                  raise RuntimeError(message)
+
+          def read(path):
+              p = subprocess.run(['gh', 'api', '--hostname', 'github.com',
+                                  f'repos/{REPOSITORY}/{path}'],
+                                 capture_output=True, text=True, timeout=30)
+              require(p.returncode == 0, 'GitHub read failed; no recovery authorization')
+              return json.loads(p.stdout)
+
+          def inspect(run, jobs, pending):
+              expected = {'id': RUN, 'head_sha': RELEASE, 'head_branch': 'main',
+                          'workflow_id': 315562561, 'run_attempt': 1,
+                          'event': 'workflow_dispatch', 'created_at': CREATED,
+                          'path': '.github/workflows/projectpulse-deploy-test.yml'}
+              require(isinstance(run, dict) and isinstance(jobs, dict), 'Invalid run evidence')
+              for key, value in expected.items():
+                  require(type(run.get(key)) is type(value) and run[key] == value,
+                          'Target identity changed: ' + key)
+              require(type(jobs.get('total_count')) is int and jobs['total_count'] == 0
+                      and jobs.get('jobs') == [], 'Target has a job; stop')
+              require(pending == [], 'Target has an environment approval; stop')
+              if run.get('status') == 'completed' and run.get('conclusion') == 'cancelled':
+                  return 'cancelled'
+              require(run.get('status') == 'queued' and run.get('conclusion') is None
+                      and run.get('updated_at') == CREATED, 'Target advanced; stop')
+              return 'unchanged_zero_job'
+
+          def snapshot():
+              path = f'actions/runs/{RUN}'
+              return inspect(read(path), read(path + '/jobs?filter=all&per_page=1'),
+                             read(path + '/pending_deployments'))
+
+          def main():
+              require(os.environ.get('GITHUB_REPOSITORY') == REPOSITORY
+                      and os.environ.get('GITHUB_REF') == 'refs/heads/' + BRANCH
+                      and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                      and os.environ.get('GITHUB_ACTOR') == 'ahmedadeyemi-cts'
+                      and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'
+                      and os.environ.get('EXPECTED_PARENT') == RELEASE,
+                      'Not the one-time owner-triggered cancellation request')
+              require(read('git/ref/heads/main').get('object', {}).get('sha') == RELEASE,
+                      'Main changed; re-inspection required')
+              supervisor = read('actions/runs/35739100559')
+              require(supervisor.get('head_sha') == RELEASE and supervisor.get('status') == 'completed'
+                      and supervisor.get('conclusion') == 'failure' and supervisor.get('run_attempt') == 1
+                      and supervisor.get('path') == '.github/workflows/module025-protected-uat-control.yml',
+                      'The exact supervisor has not ended as expected')
+              if snapshot() == 'cancelled':
+                  report.update(result='already_cancelled', cancelled=True)
+                  return
+              # Only one normal cancellation POST. No dispatch, force-cancel, DELETE,
+              # workflow toggles, environment approvals or cloud operations are available.
+              p = subprocess.run(['gh', 'api', '--hostname', 'github.com', '--include',
+                                  '--method', 'POST', f'repos/{REPOSITORY}/actions/runs/{RUN}/cancel'],
+                                 capture_output=True, text=True, timeout=30)
+              statuses = re.findall(r'^HTTP/\S+\s+(\d{3})\b', p.stdout, re.M)
+              require(len(statuses) == 1, 'Cancellation outcome uncertain; do not repeat')
+              status = int(statuses[0])
+              report['cancel_http_status'] = status
+              require(status in (202, 409), 'Cancellation rejected; stop without changing controls')
+              for _ in range(15 if status == 202 else 1):
+                  if status == 202:
+                      time.sleep(2)
+                  state = snapshot()
+                  if state == 'cancelled':
+                      report.update(result='cancelled', cancelled=True)
+                      return
+              report['result'] = 'still_queued_no_jobs'
+              raise RuntimeError('The request is not cancelled. No second deployment was submitted.')
+
+          if __name__ == '__main__':
+              try:
+                  main()
+              except (RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+                  print('STOP:', error)
+                  raise SystemExit(1)
+              finally:
+                  (Path(os.environ['RUNNER_TEMP']) / 'pr1140-cancellation.json').write_text(
+                      json.dumps(report, indent=2) + '\n')
+                  print('PR1140_CANCEL_RESULT=' + json.dumps(report, sort_keys=True))
+      - name: Retain exact cancellation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr1140-cancellation-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr1140-cancellation.json
+          if-no-files-found: error
+          retention-days: 1
