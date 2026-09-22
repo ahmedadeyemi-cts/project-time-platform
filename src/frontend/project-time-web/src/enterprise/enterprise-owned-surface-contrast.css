@@ -1,0 +1,713 @@
+/* PULSE_OWNED_SURFACES_V1
+ * Source-audited independent paints. Every surface owns BOTH foreground and
+ * background; the nearest declared surface wins, including within dark heroes.
+ * Do not infer semantic colors from arbitrary class substrings. New components
+ * can use data-contrast-surface="base|info|success|warning|danger".
+ */
+:root {
+  --uss-app-muted: #42536b;
+  --pulse-info-bg: #eff6ff; --pulse-info-copy: #164a72;
+  --pulse-success-bg: #e8f6ee; --pulse-success-copy: #175b35;
+  --pulse-warning-bg: #fff3d6; --pulse-warning-copy: #784d0a;
+  --pulse-danger-bg: #fdecec; --pulse-danger-copy: #8c1d28;
+}
+:root[data-theme='dark'], body[data-theme='dark'] {
+  --uss-app-muted: #b8c4d6;
+  --pulse-info-bg: #122c45; --pulse-info-copy: #d6ecff;
+  --pulse-success-bg: #123a2b; --pulse-success-copy: #d8f8e6;
+  --pulse-warning-bg: #453414; --pulse-warning-copy: #ffe9b1;
+  --pulse-danger-bg: #421e28; --pulse-danger-copy: #ffdce1;
+}
+:root[data-pulse-experience='enterprise'],
+:root[data-pulse-experience='enterprise'][data-theme='dark'],
+:root[data-pulse-experience='enterprise'] body[data-theme='dark'] {
+  --pulse-enterprise-muted: var(--uss-app-muted);
+}
+/* Legacy components read these variables directly. The root-owned theme
+ * already supplies them; body-owned theme selection must supply the same pairs.
+ * Keep this bridge color-only, without normalizing or rewriting user settings. */
+body[data-theme='dark'] {
+  --bg: #07111f;
+  --bg-soft: #0e1b2c;
+  --surface: #111f33;
+  --surface-strong: #172842;
+  --text: #f4f8ff;
+  --muted: #a7b5cc;
+  --border: rgba(255, 255, 255, 0.1);
+  --brand-blue: #4aa3ff;
+  --brand-blue-strong: #7bbcff;
+  --brand-cyan: #24d2f3;
+  --brand-green: #7bd65e;
+  --accent: #102a45;
+  --shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+  --account-center-surface: #11253a;
+  --account-center-surface-subtle: #162d44;
+  --account-center-canvas: #071727;
+  --account-center-border: #304a63;
+  --account-center-border-strong: #49647e;
+  --account-center-text: #edf5fb;
+  --account-center-muted: #b5c7d8;
+  --account-center-blue: #63b8eb;
+  --account-center-blue-strong: #9bd5f5;
+  --account-center-navy: #0567a9;
+  --account-center-success: #73d5a9;
+  --account-center-warning: #f2c46f;
+  --account-center-danger: #ff9696;
+  --account-center-shadow: 0 24px 62px rgba(0, 0, 0, 0.44);
+}
+/* Base: independent foreground/background ownership. */
+:root body :is(
+  .oncall-authority,
+  .oneassist-authority,
+  .sales-coverage-authority,
+  .vendor-directory-authority,
+  .entra-secret-health,
+  .defect-brand-lockup,
+  .hero-side-card,
+  .hero-pill-row > span,
+  [data-contrast-surface='base'],
+  .account-center-page-layer,
+  .analytics-topbar-actions > label,
+  .billing-month-end-callout,
+  .calendar-period-month,
+  .calendar-agenda-day,
+  .calendar-agenda-day-heading,
+  .celar-ops-probe.is-unknown,
+  .celar-ai-routing__production-readiness,
+  .celar-ai-routing__knowledge-fabric,
+  .celar-production-empty,
+  .celar-ai-composer-output,
+  .certinia-delivery,
+  .cicd-panel,
+  .closeout-email-empty,
+  .prepaid-drawer,
+  .customer-source-authority,
+  .dashboard-personal-calendar,
+  .dashboard-calendar-day > header,
+  .defect-contract-footer,
+  .engineer-closeout-workspace,
+  .entra-expiration-card,
+  .group5-empty-state,
+  .m042-invoice,
+  .m0423-commercial,
+  .eg-surface,
+  .backup-retention-hero,
+  .backup-retention-alert,
+  .backup-retention-mode-banner,
+  .module-management-enterprise-header,
+  .pending-approval-week,
+  .pending-approval-center,
+  .production-approval-week,
+  .production-approval-center,
+  .expense-cross-empty,
+  .project-closeout-empty,
+  .flowhive-psa-export-matrix,
+  .flowhive-psa-financial-summary,
+  .flowhive-psa-status-extras > section,
+  .flowhive-psa-reminders,
+  .flowhive-team-calendar,
+  .forge-flowhive-sync__header,
+  .forge-flowhive-sync__empty,
+  .group4-rule,
+  .group4-schedule,
+  .module006-modal,
+  .module006-task-card.archived,
+  .replication-sync-hero,
+  .replication-sync-alert,
+  .replication-sync-mode-banner,
+  .restore-validation-hero,
+  .restore-validation-alert,
+  .restore-validation-mode-banner,
+  .dynamic-rbac-members,
+  .dynamic-rbac-modules,
+  .uss-session-intelligence-panel,
+  .group3-detail-header,
+  .work-register-create-wizard,
+  .laya-decisions,
+  .analytics-multiselect-menu,
+  .uss-empty-state,
+  .module001-review-dialog,
+  .m025-phase-card,
+  .m025-editor-panel,
+  .hero.hero-polished,
+  .opportunity-hero:not([data-enterprise-page-header='true']),
+  .cicd-hero,
+  .pulse-auth-card,
+  .eg-modal,
+  .pending-approval-empty,
+  .production-approval-empty,
+  .expense-hero,
+  .flowhive-psa-meetings > article,
+  .flowhive-psa-meetings > article > header > strong,
+  .module006-task-card > footer,
+  .module006-history > article,
+  .rpw-kpis > article,
+  .rpm-detail-overlay > article,
+  .uss-si-footer,
+  .group3-empty,
+  .group3-document-groups > article,
+  .group3-document-groups > article > header,
+  .m025-estimate-empty,
+  .eg-modal > header,
+  .projectpulse-more-menu-tools,
+  .projectpulse-more-menu-search-row,
+  .projectpulse-more-intuitive-heading,
+  .analytics-topbar,
+  .analytics-coverage-footer,
+  .profile-dropdown-menu,
+  .profile-picture-production-validation-card,
+  .production-ops-ack-heading,
+  .production-ops-ack-summary,
+  .production-ops-ack-card,
+  .time-compliance-email-panel,
+  .time-compliance-email-heading,
+  .time-compliance-email-summary,
+  .time-compliance-email-lists > div,
+  .ai-operation-progress,
+  .group7-help-preferences,
+  .group7-system-guide-overview,
+  .identity-profile-card,
+  .module062-profile-source-note,
+  .celar-ai-architecture-glance,
+  .m025-generation-progress,
+  .m025-transfer,
+  .m025-handoff-state,
+  .m025-notification-status,
+  .m025-tracking,
+  .m025-tracking__history,
+  .celar-reliability-heading,
+  .celar-reliability-empty,
+  .workspace-quick-launcher,
+  .workspace-quick-launcher > footer,
+  .approval-export-readiness-callout,
+  .profile-preferences-backup-readiness-card,
+  .profile-picture-backup-readiness-card,
+  .celar-ops-defect-card,
+  .expense-history-card,
+  .expense-empty,
+  .expense-cross-module-panel > header,
+  .module001-work-card,
+  .time-compliance-email-grid > article,
+  .group7-help-governance ol > li,
+  .local-admin-reset-clear-floating-panel,
+  .m025-generation-phase
+) {
+  --pulse-surface-text: var(--uss-app-text);
+  --pulse-surface-muted: var(--uss-app-muted);
+  --pulse-surface-label: var(--uss-app-muted);
+  --pulse-enterprise-text: var(--pulse-surface-text);
+  --pulse-enterprise-muted: var(--pulse-surface-muted);
+  --readable-text: var(--pulse-surface-text);
+  --readable-muted: var(--pulse-surface-muted);
+  --text-color: var(--pulse-surface-text);
+  --muted-color: var(--pulse-surface-muted);
+  background: var(--uss-app-surface) !important;
+  color: var(--uss-app-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+
+  /* Descendants resolve the NEAREST surface token. Controls retain their
+   * existing currentColor boundary; nested semantic badges own their palette. */
+  & :is(h1,h2,h3,h4,h5,h6,strong,b,span,label,dt,dd,legend,summary,code) {
+    color: var(--pulse-surface-text) !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+  & :is(p,small,.muted,.subtitle,.helper-text,.supporting-text,.eyebrow) {
+    color: var(--pulse-surface-muted) !important;
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1 !important;
+  }
+  @media (forced-colors: active) {
+    --pulse-surface-text: CanvasText;
+    --pulse-surface-muted: CanvasText;
+    --pulse-surface-label: LinkText;
+    background: Canvas !important;
+    color: CanvasText !important;
+    border-color: CanvasText !important;
+  }
+}
+
+/* Inverse: independent foreground/background ownership. */
+:root body :is(
+  .vendor-directory-footer,
+  .sales-coverage-footer,
+  .entra-secret-footer,
+  .analytics-profile > span,
+  .group7-help-governance ol > li > span
+) {
+  --pulse-surface-text: #ffffff;
+  --pulse-surface-muted: #e6f2ff;
+  --pulse-surface-label: #e6f2ff;
+  --pulse-enterprise-text: var(--pulse-surface-text);
+  --pulse-enterprise-muted: var(--pulse-surface-muted);
+  --readable-text: var(--pulse-surface-text);
+  --readable-muted: var(--pulse-surface-muted);
+  --text-color: var(--pulse-surface-text);
+  --muted-color: var(--pulse-surface-muted);
+  background: #062b49 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: currentColor !important;
+
+  /* Descendants resolve the NEAREST surface token. Controls retain their
+   * existing currentColor boundary; nested semantic badges own their palette. */
+  & :is(h1,h2,h3,h4,h5,h6,strong,b,span,label,dt,dd,legend,summary,code) {
+    color: var(--pulse-surface-text) !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+  & :is(p,small,.muted,.subtitle,.helper-text,.supporting-text,.eyebrow) {
+    color: var(--pulse-surface-muted) !important;
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1 !important;
+  }
+  @media (forced-colors: active) {
+    --pulse-surface-text: CanvasText;
+    --pulse-surface-muted: CanvasText;
+    --pulse-surface-label: LinkText;
+    background: Canvas !important;
+    color: CanvasText !important;
+    border-color: CanvasText !important;
+  }
+}
+
+/* Neutral: independent foreground/background ownership. */
+:root body :is(
+  .approval-center-scope,
+  .cost-alert-mode,
+  .customer-source-authority__status,
+  .vendor-directory-vendor b,
+  .pulse-ai-status--locked,
+  .dynamic-rbac-assigned-list > header > span,
+  .group3-document-groups > article > header > span,
+  .certify-connection-badge.not_configured,
+  .celar-ops-probe > header > span,
+  .celar-ops-defect-card > header > span,
+  .module-016-view-switcher button > span,
+  .prepaid-readonly
+) {
+  --pulse-surface-text: var(--uss-app-text);
+  --pulse-surface-muted: var(--uss-app-muted);
+  --pulse-surface-label: var(--uss-app-muted);
+  --pulse-enterprise-text: var(--pulse-surface-text);
+  --pulse-enterprise-muted: var(--pulse-surface-muted);
+  --readable-text: var(--pulse-surface-text);
+  --readable-muted: var(--pulse-surface-muted);
+  --text-color: var(--pulse-surface-text);
+  --muted-color: var(--pulse-surface-muted);
+  background: var(--uss-app-surface) !important;
+  color: var(--uss-app-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+
+  /* Descendants resolve the NEAREST surface token. Controls retain their
+   * existing currentColor boundary; nested semantic badges own their palette. */
+  & :is(h1,h2,h3,h4,h5,h6,strong,b,span,label,dt,dd,legend,summary,code) {
+    color: var(--pulse-surface-text) !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+  & :is(p,small,.muted,.subtitle,.helper-text,.supporting-text,.eyebrow) {
+    color: var(--pulse-surface-muted) !important;
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1 !important;
+  }
+  @media (forced-colors: active) {
+    --pulse-surface-text: CanvasText;
+    --pulse-surface-muted: CanvasText;
+    --pulse-surface-label: LinkText;
+    background: Canvas !important;
+    color: CanvasText !important;
+    border-color: CanvasText !important;
+  }
+}
+
+/* Info: independent foreground/background ownership. */
+:root body :is(
+  [data-contrast-surface='info'],
+  .workspace-quick-launcher__heading-icon,
+  .approval-export-banner,
+  .billing-readiness-alert,
+  .capacity-forecast-banner.governed,
+  .cicd-banner,
+  .crm-erp-notice,
+  .crm-token-persistence__notice,
+  .customer-directory-alert,
+  .customer-source-authority__message,
+  .celar-trust-banner.is-unknown,
+  .post-intake-banner,
+  .flowhive-notice,
+  .project-intake-alert,
+  .group4-governance-banner,
+  .module006-independence-banner,
+  .workspace-notice,
+  .rpm-readonly-banner,
+  .time-compliance-alert,
+  .group3-authority-banner,
+  .vendor-directory-banner.governed,
+  .sales-coverage-banner.governed,
+  .oncall-banner.governed,
+  .oneassist-banner.governed,
+  .cost-alert-notice,
+  .production-workflow-viewas-banner,
+  .pm-approval-notice,
+  .m025-notice,
+  .m025-generation-phase.is-running,
+  .m025-generation-phase.is-retrying
+) {
+  --pulse-surface-text: var(--pulse-info-copy);
+  --pulse-surface-muted: var(--pulse-info-copy);
+  --pulse-surface-label: var(--pulse-info-copy);
+  --pulse-enterprise-text: var(--pulse-surface-text);
+  --pulse-enterprise-muted: var(--pulse-surface-muted);
+  --readable-text: var(--pulse-surface-text);
+  --readable-muted: var(--pulse-surface-muted);
+  --text-color: var(--pulse-surface-text);
+  --muted-color: var(--pulse-surface-muted);
+  background: var(--pulse-info-bg) !important;
+  color: var(--pulse-info-copy) !important;
+  -webkit-text-fill-color: currentColor !important;
+
+  /* Descendants resolve the NEAREST surface token. Controls retain their
+   * existing currentColor boundary; nested semantic badges own their palette. */
+  & :is(h1,h2,h3,h4,h5,h6,strong,b,span,label,dt,dd,legend,summary,code) {
+    color: var(--pulse-surface-text) !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+  & :is(p,small,.muted,.subtitle,.helper-text,.supporting-text,.eyebrow) {
+    color: var(--pulse-surface-muted) !important;
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1 !important;
+  }
+  @media (forced-colors: active) {
+    --pulse-surface-text: CanvasText;
+    --pulse-surface-muted: CanvasText;
+    --pulse-surface-label: LinkText;
+    background: Canvas !important;
+    color: CanvasText !important;
+    border-color: CanvasText !important;
+  }
+}
+
+/* Success: independent foreground/background ownership. */
+:root body :is(
+  [data-contrast-surface='success'],
+  .backup-dr-alert.healthy,
+  .forge-banner.success,
+  .group5-card .badge.active,
+  .module-management-table-notice.success,
+  .module-management-state.enabled,
+  .native-admin-banner.success,
+  .oncall-banner.success,
+  .oneassist-banner.success,
+  .group4-notice,
+  .time-compliance-demo-banner.ready,
+  .module001-ready-banner,
+  .security-operations-live,
+  .system-diagnostic-mode.is-live,
+  .system-user-guide-availability,
+  .vendor-directory-vendor b.preferred,
+  .vendor-directory-vendor b.active,
+  .vendor-directory-validation.valid,
+  .vendor-directory-banner.notice,
+  .oncall-live,
+  .celar-production-notice.is-success,
+  .pulse-enterprise-page-chrome__status > span,
+  .financial-operations-recovery-compact .badge.active,
+  .module001-running-indicator,
+  .golive-badge.ready,
+  .release-closeout-badge.ready,
+  .m025-generation-phase.is-completed,
+  .m025-generation-phase.is-resumed
+) {
+  --pulse-surface-text: var(--pulse-success-copy);
+  --pulse-surface-muted: var(--pulse-success-copy);
+  --pulse-surface-label: var(--pulse-success-copy);
+  --pulse-enterprise-text: var(--pulse-surface-text);
+  --pulse-enterprise-muted: var(--pulse-surface-muted);
+  --readable-text: var(--pulse-surface-text);
+  --readable-muted: var(--pulse-surface-muted);
+  --text-color: var(--pulse-surface-text);
+  --muted-color: var(--pulse-surface-muted);
+  background: var(--pulse-success-bg) !important;
+  color: var(--pulse-success-copy) !important;
+  -webkit-text-fill-color: currentColor !important;
+
+  /* Descendants resolve the NEAREST surface token. Controls retain their
+   * existing currentColor boundary; nested semantic badges own their palette. */
+  & :is(h1,h2,h3,h4,h5,h6,strong,b,span,label,dt,dd,legend,summary,code) {
+    color: var(--pulse-surface-text) !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+  & :is(p,small,.muted,.subtitle,.helper-text,.supporting-text,.eyebrow) {
+    color: var(--pulse-surface-muted) !important;
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1 !important;
+  }
+  @media (forced-colors: active) {
+    --pulse-surface-text: CanvasText;
+    --pulse-surface-muted: CanvasText;
+    --pulse-surface-label: LinkText;
+    background: Canvas !important;
+    color: CanvasText !important;
+    border-color: CanvasText !important;
+  }
+}
+
+/* Warning: independent foreground/background ownership. */
+:root body :is(
+  [data-contrast-surface='warning'],
+  .crm-erp-access-banner,
+  .customer-source-authority__alert,
+  .group5-alert.warning,
+  .module-management-table-notice.warning,
+  .production-data-alert,
+  .expense-notice.warning,
+  .project-register-banner.warning,
+  .workspace-notice.attention,
+  .rpw-banner,
+  .m025-notice--warning,
+  .production-readiness-alert,
+  .time-compliance-demo-banner.attention,
+  .golive-badge:not(.ready),
+  .release-closeout-badge:not(.ready),
+  .m025-generation-phase.is-failed,
+  .m025-generation-phase.is-interrupted
+) {
+  --pulse-surface-text: var(--pulse-warning-copy);
+  --pulse-surface-muted: var(--pulse-warning-copy);
+  --pulse-surface-label: var(--pulse-warning-copy);
+  --pulse-enterprise-text: var(--pulse-surface-text);
+  --pulse-enterprise-muted: var(--pulse-surface-muted);
+  --readable-text: var(--pulse-surface-text);
+  --readable-muted: var(--pulse-surface-muted);
+  --text-color: var(--pulse-surface-text);
+  --muted-color: var(--pulse-surface-muted);
+  background: var(--pulse-warning-bg) !important;
+  color: var(--pulse-warning-copy) !important;
+  -webkit-text-fill-color: currentColor !important;
+
+  /* Descendants resolve the NEAREST surface token. Controls retain their
+   * existing currentColor boundary; nested semantic badges own their palette. */
+  & :is(h1,h2,h3,h4,h5,h6,strong,b,span,label,dt,dd,legend,summary,code) {
+    color: var(--pulse-surface-text) !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+  & :is(p,small,.muted,.subtitle,.helper-text,.supporting-text,.eyebrow) {
+    color: var(--pulse-surface-muted) !important;
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1 !important;
+  }
+  @media (forced-colors: active) {
+    --pulse-surface-text: CanvasText;
+    --pulse-surface-muted: CanvasText;
+    --pulse-surface-label: LinkText;
+    background: Canvas !important;
+    color: CanvasText !important;
+    border-color: CanvasText !important;
+  }
+}
+
+/* Danger: independent foreground/background ownership. */
+:root body :is(
+  [data-contrast-surface='danger'],
+  .approval-export-banner.error,
+  .forge-banner.error,
+  .audit-empty-state.error,
+  .backup-dr-alert.critical,
+  .cicd-banner.error,
+  .customer-directory-alert.error,
+  .entra-secret-banner.error,
+  .group5-alert.critical,
+  .global-mail-banner.error,
+  .m042-notice.m042-error,
+  .manager-empty-state.error,
+  .microsoft-integration-banner.error,
+  .native-admin-banner.error,
+  .oncall-banner.error,
+  .oncall-danger,
+  .oneassist-banner.error,
+  .group2b-resilience-alert,
+  .post-intake-banner.error,
+  .qualifications-banner.error,
+  .m025-notice--critical,
+  .celar-production-notice.is-error,
+  .vendor-directory-validation.invalid,
+  .vendor-directory-banner.error,
+  .module-management-state.disabled,
+  .module001-active-timer-card > footer > button.danger:not(:disabled),
+  .engineering-team-utilization-panel .error-text,
+  .module001-ai-description-assistant .error-text,
+  .m025-overdue,
+  .m025-tracking__error
+) {
+  --pulse-surface-text: var(--pulse-danger-copy);
+  --pulse-surface-muted: var(--pulse-danger-copy);
+  --pulse-surface-label: var(--pulse-danger-copy);
+  --pulse-enterprise-text: var(--pulse-surface-text);
+  --pulse-enterprise-muted: var(--pulse-surface-muted);
+  --readable-text: var(--pulse-surface-text);
+  --readable-muted: var(--pulse-surface-muted);
+  --text-color: var(--pulse-surface-text);
+  --muted-color: var(--pulse-surface-muted);
+  background: var(--pulse-danger-bg) !important;
+  color: var(--pulse-danger-copy) !important;
+  -webkit-text-fill-color: currentColor !important;
+
+  /* Descendants resolve the NEAREST surface token. Controls retain their
+   * existing currentColor boundary; nested semantic badges own their palette. */
+  & :is(h1,h2,h3,h4,h5,h6,strong,b,span,label,dt,dd,legend,summary,code) {
+    color: var(--pulse-surface-text) !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+  & :is(p,small,.muted,.subtitle,.helper-text,.supporting-text,.eyebrow) {
+    color: var(--pulse-surface-muted) !important;
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1 !important;
+  }
+  @media (forced-colors: active) {
+    --pulse-surface-text: CanvasText;
+    --pulse-surface-muted: CanvasText;
+    --pulse-surface-label: LinkText;
+    background: Canvas !important;
+    color: CanvasText !important;
+    border-color: CanvasText !important;
+  }
+}
+
+/* Classless painted resource links are not bare white links on the hero. */
+:root body .oncall-quick-links > a {
+  --pulse-surface-text: currentColor;
+  --pulse-surface-muted: currentColor;
+  background: var(--pulse-header-action-bg) !important;
+  color: var(--pulse-header-action-text) !important;
+  border-color: var(--pulse-header-action-border) !important;
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1 !important;
+}
+:root body .oncall-quick-links > a:hover {
+  background: var(--pulse-header-action-hover) !important;
+}
+:root body .oncall-quick-links > a:focus-visible {
+  outline: 3px solid var(--uss-app-focus) !important;
+  outline-offset: 3px;
+}
+:root body :is(
+  .prepaid-empty,
+  .manager-empty-state:not(.error),
+  .cicd-empty,
+  .native-admin-empty,
+  .vendor-directory-empty,
+  .oncall-empty,
+  .oneassist-empty,
+  .sales-coverage-card .empty,
+  .analytics-multiselect-empty,
+  .group3-empty,
+  .expense-empty,
+  .capacity-forecast-footnote,
+  .celar-ai-routing__header span,
+  .celar-ai-platform-capabilities article > footer > strong,
+  .group7-provider-readiness__empty,
+  .sales-delivery-empty,
+  .m025-register-version > header > span,
+  .analytics-empty-state > span,
+  .local-admin-reset-clear-eyebrow,
+  .page-context-guide-grid > div > span,
+  .page-context-guide small,
+  .golive-summary-grid span,
+  .golive-summary-grid small,
+  .production-ops-ack-card span,
+  .browser-validation-summary span,
+  .browser-validation-footer span,
+  .browser-validation-item small,
+  .release-closeout-footer span,
+  .release-closeout-item small,
+  .ai-provider-center__provider p,
+  .engineering-utilization-summary-grid span,
+  .module001-server-timer-clock,
+  .identity-presence-label,
+  .golive-actions > span,
+  .golive-check small,
+  .celar-ai-architecture-heading > div > p,
+  .celar-ai-routing__header > div > p,
+  .project-workspace-header p,
+  .role-permission-workbench header:not([data-enterprise-page-header='true']) p,
+  .rpm-hero:not([data-enterprise-page-header='true']) p,
+  .enterprise-more-group > strong,
+  .group4-empty,
+  .security-session-drawer .security-operations-eyebrow,
+  .m025-templates > header > p
+) {
+  color: var(--uss-app-muted) !important;
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1 !important;
+}
+:root body .vendor-directory-vendor > header > div > span {
+  color: var(--uss-app-link) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+/* Independent action surfaces keep their own control palette. */
+:root body :is(
+  .celar-reliability-heading > button,
+  .analytics-coverage-footer > button,
+  .profile-dropdown-menu > button,
+  .celar-production-actions > a,
+  .dashboard-personal-calendar-actions > a,
+  .eg-modal .eg-button,
+  .uss-si-header > button,
+  .projectpulse-more-menu-search-row > button,
+  .entra-expiration-global-warning > a,
+  .group7-help-governance__actions > a,
+  .group7-system-guide-overview__actions > a
+):not(:disabled):not([aria-disabled='true']) {
+  background: var(--pulse-header-action-bg) !important;
+  color: var(--pulse-header-action-text) !important;
+  border-color: var(--pulse-header-action-border) !important;
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1 !important;
+}
+:root body :is(.module-management-layout-switcher button.active,.module-management-pagination button.active,.enterprise-more-links > a.active) {
+  background: #00569a !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+/* Preserve action emphasis on painted classless links. */
+:root body :is(.module010-audit-consolidation > a,.approval-mailbox-popover > a,.group7-help-governance__heading > a) {
+  background: #0b2f52 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+:root body .group7-help-governance ol > li > span {
+  background: #0b2f52 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+:root body .data-readiness-copy-details > summary {
+  color: var(--uss-app-link) !important;
+}
+:root body .m025-workspace {
+  --m025-surface: var(--uss-app-surface);
+  --m025-text: var(--uss-app-text);
+  color: var(--m025-text);
+}
+:root body .m025-tabs > button { color: var(--uss-app-muted) !important; }
+:root body .m025-tabs > button.is-active { color: var(--uss-app-link) !important; }
+:root body .m025-tracking fieldset:disabled { opacity: 1 !important; }
+:root body :is(.m025-notification-status,.m025-tracking__history) li {
+  color: var(--uss-app-text) !important;
+}
+:root body :is(.ffla-center button.primary,.flowhive-project-card button.primary,.module001-active-timer-card .primary-action,.module001-ai-description-actions .primary-action):not(:disabled) {
+  background: #00569a !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+:root body .dynamic-rbac-history h2, :root body .m025-register-version h3 {
+  color: var(--uss-app-text) !important;
+}
+/* Archival state is retained by its label and outline, not faded text. */
+:root body .module006-task-card.archived {
+  opacity: 1 !important;
+  border-style: dashed;
+}
+@media (forced-colors: active) {
+  :root body .oncall-quick-links > a {
+    background: ButtonFace !important;
+    color: ButtonText !important;
+    border-color: ButtonText !important;
+  }
+}

@@ -1,6 +1,7 @@
 @import './enterprise/enterprise-application-theme.css';
 @import './enterprise/enterprise-surface-contrast.css';
 @import './enterprise/enterprise-header-action-contrast.css';
+@import './enterprise/enterprise-owned-surface-contrast.css';
 
 /* Shared accessibility floor for every routed module. Component themes may
    refine these values, but no page may fall below this readable contract. */
