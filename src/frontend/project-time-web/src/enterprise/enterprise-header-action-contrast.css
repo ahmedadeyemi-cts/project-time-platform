@@ -1,0 +1,100 @@
+/* PULSE_HEADER_ACTION_CONTRAST_V1
+ * The branded shell can be an adopted inverse header. Its translucent button
+ * paint must not be combined with the legacy top-bar's dark foreground.
+ * Pair these two utility surfaces explicitly; never alter access, disabled
+ * semantics, the avatar, navigation, or the independently painted popovers.
+ */
+:root {
+  --pulse-header-action-bg: #ffffff;
+  --pulse-header-action-text: #123f68;
+  --pulse-header-action-border: #c5e1f2;
+  --pulse-header-action-hover: #e8f3fc;
+  --pulse-header-action-selected: #d5e9f8;
+}
+
+:root[data-theme='dark'], body[data-theme='dark'] {
+  --pulse-header-action-bg: #17324f;
+  --pulse-header-action-text: #ffffff;
+  --pulse-header-action-border: #bde4ff;
+  --pulse-header-action-hover: #234968;
+  --pulse-header-action-selected: #255577;
+}
+
+/* Actual shared shell structure also outranks earlier enterprise utility
+ * overrides, including the root-owned dark theme. Keep both buttons together. */
+:root body main.app-shell.enterprise-nav-enabled .top-bar.enterprise-top-bar .enterprise-header-utilities
+  :is(button.approval-mailbox-button, button.projectpulse-global-search-button) {
+  --pulse-header-action-contrast: 1;
+  background: var(--pulse-header-action-bg) !important;
+  color: var(--pulse-header-action-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+  border-color: var(--pulse-header-action-border) !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+
+  & :is(span, strong, small, kbd, svg) {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1 !important;
+  }
+
+  & kbd {
+    background: transparent !important;
+    border: 1px solid currentColor !important;
+  }
+
+  /* The notification count is a separate red surface, not a plain label. */
+  & .approval-mailbox-badge {
+    background: #b91c34 !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: currentColor !important;
+    box-shadow: 0 0 0 2px var(--pulse-header-action-bg);
+  }
+
+  &:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--pulse-header-action-hover) !important;
+  }
+
+  &:is(.active, [aria-expanded='true'], :active):not(:disabled):not([aria-disabled='true']) {
+    background: var(--pulse-header-action-selected) !important;
+    border-color: currentColor !important;
+  }
+
+  &:focus-visible {
+    outline: 3px solid #ffffff !important;
+    outline-offset: 3px;
+    box-shadow: 0 0 0 3px #06192b !important;
+  }
+
+  &:is(:disabled, [aria-disabled='true']) {
+    background: var(--readable-disabled-bg) !important;
+    color: var(--readable-disabled-text) !important;
+    border-color: currentColor !important;
+    border-style: dashed !important;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  @media (forced-colors: active) {
+    background: ButtonFace !important;
+    color: ButtonText !important;
+    border-color: ButtonText !important;
+
+    &:hover:not(:disabled):not([aria-disabled='true']),
+    &:is(.active, [aria-expanded='true'], :active):not(:disabled):not([aria-disabled='true']) {
+      background: Highlight !important;
+      color: HighlightText !important;
+    }
+
+    &:focus-visible { outline-color: Highlight !important; }
+    &:is(:disabled, [aria-disabled='true']) {
+      background: ButtonFace !important;
+      color: GrayText !important;
+    }
+    & .approval-mailbox-badge {
+      background: Canvas !important;
+      color: CanvasText !important;
+      border: 1px solid CanvasText;
+    }
+  }
+}
