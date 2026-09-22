@@ -79,12 +79,20 @@ def fixtures() -> str:
         'projectpulse-view-as-drawer__header', 'pulse-display-preferences-drawer__header',
     )
     for surface in legacy_surfaces:
-        fragments.append(f'''<article class="contrast-fixture"><div class="{surface}">
+        # DefectTrackerCenter paints a rounded outer shell and places its copy
+        # inside this padded content container. Match that real DOM contract;
+        # bare text at the shell edge is clipped by its rounded overflow.
+        defect = surface == 'defect-tracker-hero'
+        wrapper_class = 'contrast-fixture defect-tracker-center' if defect else 'contrast-fixture'
+        hero_tag = 'header' if defect else 'div'
+        content_open = '<div class="defect-hero-content"><div>' if defect else ''
+        content_close = '</div></div>' if defect else ''
+        fragments.append(f'''<article class="{wrapper_class}"><{hero_tag} class="{surface}">{content_open}
           {label('h2', surface + '.title', 'Workspace overview')}
           {label('p', surface + '.copy', 'Review the information for your role.')}
           {label('small', surface + '.detail', 'Updated today')}
           {label('span', surface + '.label', 'Project status')}
-        </div></article>''')
+        {content_close}</{hero_tag}></article>''')
     fragments.append(f'''<article class="contrast-fixture"><div class="welcome-card">
       <div class="welcome-card-heading">
         {label('span', 'dashboard-card.eyebrow', 'YOUR PROJECTS')}
