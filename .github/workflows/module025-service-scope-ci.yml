@@ -65,7 +65,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Validate exact Service Scope feature boundary
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/module025-service-scope-20260921'
         env:
           GITHUB_HEAD_REF: ${{ github.head_ref }}
         run: python3 tests/service-scope/release_scope.py

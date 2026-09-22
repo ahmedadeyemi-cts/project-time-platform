@@ -47,6 +47,11 @@ class Boundaries(unittest.TestCase):
         s = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')
         self.assertIn('previous_scope_full_text_approved, new_scope_full_text_approved', s)
         self.assertNotIn('UPDATE ai_capability_route_audit', s)
+    def test_exact_feature_scope_does_not_block_unrelated_future_prs(self):
+        s = read('.github/workflows/module025-service-scope-ci.yml')
+        self.assertIn("if: github.event_name == 'pull_request' && github.head_ref == 'feature/module025-service-scope-20260921'", s)
+        self.assertIn('run: python3 tests/service-scope/release_scope.py', s)
+        self.assertIn('dotnet run --project tests/Module025ServiceScopeTests', s)
     def test_final_ci_has_no_write_or_deployment_authority(self):
         s = read('.github/workflows/module025-service-scope-ci.yml')
         self.assertIn('contents: read', s)
