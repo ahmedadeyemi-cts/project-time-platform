@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   prepare:
-    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == '71eecd32eedf75297023462b4b466813193cd0e2'
+    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == '4213bc0b1e5e5a7fe35dcd776511c80b7f7eff1c'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -17,7 +17,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
           show-progress: false
-      - name: Verify exact local edit bundle and publish content objects, not branches
+      - name: Verify exact source edits and publish content objects only
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
@@ -26,5 +26,4 @@ jobs:
           from pathlib import Path
           from urllib.request import Request,urlopen
           encoded = 'H4sIAAAAAAAC/+19i3bbRpLor3SU7IK0QAoAQfDh4UwUm44161haSspORtTg4NGQEFMAA4C2FUX3229VP4AG35I9u3fPncwZiwS6q6urq+vVVc2rh4O5V9weDA/aN3Fxu/CPPqXZh2iWfsqP7tJwMaOG1W3Ns7SgQUHD1sIrWkGaFFk6a9/fzQ70A59GaUYBgNGLBl3Ts6Ow2zcGgUejwOoGDU0TUnverifiedPayloadPlaceholder'
-          # The source bundle is completed in the next exact operational commit.
-          raise SystemExit('INCOMPLETE_SOURCE_BUNDLE: no content objects published')
+          raise SystemExit('SOURCE_TRANSCRIPTION_NOT_COMPLETE: no writes')
