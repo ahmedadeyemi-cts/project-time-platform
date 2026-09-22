@@ -33,6 +33,7 @@ tests/Module025ServiceScopeTests/Module025ServiceScopeTests.csproj
 tests/Module025ServiceScopeTests/Program.cs
 tests/flowhive-migration-package.test.py
 tests/flowhive-psa-admission.test.mjs
+tests/flowhive-psa-release-workflow.test.py
 tests/module025-generation-feedback.test.mjs
 tests/module064-migration-rollout.test.py
 tests/service-scope/generation-feedback.test.mjs

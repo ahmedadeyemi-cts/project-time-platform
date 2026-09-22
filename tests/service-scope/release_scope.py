@@ -71,6 +71,16 @@ def main():
         normalized[path] = source.replace(old, new, 1)
     for path, source in normalized.items():
         assert (ROOT / path).read_text() == source, f'Unrelated CI changes: {path}'
+    # Main already contains the PR1141-only recovery guard. Permit exactly its
+    # missing expected line in the workflow test, not removal of any assertion
+    # or changes to the controller, historical comparisons or native protection.
+    path = 'tests/flowhive-psa-release-workflow.test.py'
+    prior_test = git('show', BASE + ':' + path)
+    anchor = '            self.assertEqual([line.strip() for line in controller_script.splitlines() if \'"$PR_NUMBER"\' in line], [\n'
+    guard = "[[ \"$PR_NUMBER\" == '1141' ]] || fail 'This recovery scope is restricted to PR #1141.'"
+    assert prior_test.count(anchor) == 1
+    expected_test = prior_test.replace(anchor, anchor + '                ' + repr(guard) + ',\n', 1)
+    assert (ROOT / path).read_text() == expected_test, 'Unrelated release-workflow test changes'
     path = 'docs/production-readiness/foundation/initialization-review.json'
     prior = json.loads(git('show', BASE + ':' + path))
     current = json.loads((ROOT / path).read_text())
