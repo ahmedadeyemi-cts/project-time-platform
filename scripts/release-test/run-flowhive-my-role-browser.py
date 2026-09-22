@@ -114,9 +114,9 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
 
         async def wait_for_assigned_role(buttons, code: str) -> int:
             # The role authority bridge is server-backed and completes after
-            # the guide shell has rendered. Do not sample the initial
-            # unassigned catalogue and turn that transient state into a false
-            # acceptance failure.
+            # the guide shell has rendered. The assigned-only selector is
+            # deliberately absent until verification completes. Wait for the
+            # real assigned panel; never fall back to another role's story.
             try:
                 await buttons.filter(has_text="Your role").first.wait_for(state="visible")
             except PlaywrightTimeoutError:
@@ -124,6 +124,7 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
             role_texts = await buttons.all_text_contents()
             assigned_index = next((index for index, value in enumerate(role_texts) if "Your role" in value), None)
             require(assigned_index is not None, code)
+            require(all("Your role" in value for value in role_texts), "my_role_exposes_unassigned_playbook")
             return assigned_index
 
         try:
@@ -139,10 +140,10 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
             await wait_visible(journey, "browser_timeout_my_role_page")
             await wait_visible(page.get_by_role("heading", name="My Role in Pulse", exact=True), "browser_timeout_my_role_heading")
 
-            role_buttons = journey.locator('aside[aria-label="Choose a role"] button[aria-pressed]')
+            role_buttons = journey.locator('aside[aria-label="Your assigned roles"] button[aria-pressed]')
+            assigned_index = await wait_for_assigned_role(role_buttons, "my_role_has_no_assigned_playbook")
             role_count = await role_buttons.count()
             require(role_count > 0, "my_role_has_no_playbooks")
-            assigned_index = await wait_for_assigned_role(role_buttons, "my_role_has_no_assigned_playbook")
             await role_buttons.nth(assigned_index).click()
             await wait_visible(journey.locator("#rj-role-title"), "browser_timeout_my_role_selected_role")
             await wait_visible(journey.locator("#rj-lifecycle-title"), "browser_timeout_my_role_lifecycle")
@@ -175,7 +176,7 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
             # workspace link or the explicit access-boundary message.
             await page.goto(ORIGIN + "/#my-role-in-pulse", wait_until="domcontentloaded")
             await wait_visible(journey, "browser_timeout_my_role_reentry")
-            role_buttons = journey.locator('aside[aria-label="Choose a role"] button[aria-pressed]')
+            role_buttons = journey.locator('aside[aria-label="Your assigned roles"] button[aria-pressed]')
             assigned_index = await wait_for_assigned_role(role_buttons, "my_role_reentry_has_no_assigned_playbook")
             role_texts = await role_buttons.all_text_contents()
             await role_buttons.nth(assigned_index).click()
