@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   prepare_source:
-    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == '30b7bbeeb9c19d121cfc5013fc02edd9ac9beddf'
+    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == 'c23b5e725a40325b1ca891fc986456ffd1e0ba66'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -23,7 +23,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          import hashlib, json, os, re, subprocess
+          import hashlib, json, os, subprocess
           BASE = '4e8871cf9a7c4643483d178feecff67ec6d78d12'
           REPOSITORY = 'ahmedadeyemi-cts/project-time-platform'
           assert os.environ['GITHUB_REPOSITORY'] == REPOSITORY
@@ -33,28 +33,24 @@ jobs:
           assert git('rev-parse', 'HEAD') == BASE
           read = subprocess.run(['gh', 'api', f'repos/{REPOSITORY}/git/ref/heads/main'], capture_output=True, text=True, timeout=30, check=True)
           assert json.loads(read.stdout)['object']['sha'] == BASE
-          supervisor_addition = '''            # PR1140_UAT_RECOVERY_BEGIN
-                      if [[ "$run_id" == '35739149661' ]]; then
-                        python3 scripts/release-test/recover-pr1140-uat-orphan.py \\
-                          || fail 'PR 1140 orphan recovery did not meet its exact safety contract.'
-                        quarantined_runs+=("$run_id")
-                        continue
-                      fi
-                      # PR1140_UAT_RECOVERY_END
-          '''
-          # The leading indentation below is part of the YAML block scalar;
-          # normalize the following lines to the same exact shell indentation.
-          supervisor_addition = supervisor_addition.splitlines(keepends=True)
-          supervisor_addition = supervisor_addition[0] + ''.join(line[10:] for line in supervisor_addition[1:])
-          scope_addition = '''# PR1140_RECOVERY_SCOPE_BEGIN
-          if [[ "$HEAD_BRANCH" == fix/pr1140-protected-uat-dispatch-recovery ]]; then
-            python3 tests/pr1140-uat-recovery-scope.py
-            python3 tests/test-pr1140-uat-recovery.py
-            node tests/validate-systemwide-image-build-controller.mjs
-            return
-          fi
-          # PR1140_RECOVERY_SCOPE_END
-          '''
+          supervisor_addition = (
+              '            # PR1140_UAT_RECOVERY_BEGIN\n'
+              '            if [[ "$run_id" == \'35739149661\' ]]; then\n'
+              '              python3 scripts/release-test/recover-pr1140-uat-orphan.py \\\n'
+              '                || fail \'PR 1140 orphan recovery did not meet its exact safety contract.\'\n'
+              '              quarantined_runs+=("$run_id")\n'
+              '              continue\n'
+              '            fi\n'
+              '            # PR1140_UAT_RECOVERY_END\n')
+          scope_addition = (
+              '# PR1140_RECOVERY_SCOPE_BEGIN\n'
+              'if [[ "$HEAD_BRANCH" == fix/pr1140-protected-uat-dispatch-recovery ]]; then\n'
+              '  python3 tests/pr1140-uat-recovery-scope.py\n'
+              '  python3 tests/test-pr1140-uat-recovery.py\n'
+              '  node tests/validate-systemwide-image-build-controller.mjs\n'
+              '  return\n'
+              'fi\n'
+              '# PR1140_RECOVERY_SCOPE_END\n')
           changes = [
               ('.github/workflows/module025-protected-uat-control.yml', 'f136cc0d5b05123ceb6e1bb4573555f911e4d1f2',
                '            # PR1139_UAT_RECOVERY_END\n', supervisor_addition),
@@ -71,20 +67,12 @@ jobs:
               if path.endswith('.sh'):
                   subprocess.run(['bash', '-n'], input=after, text=True, check=True)
               else:
-                  assert addition == (
-                      '            # PR1140_UAT_RECOVERY_BEGIN\n'
-                      '            if [[ "$run_id" == \'35739149661\' ]]; then\n'
-                      '              python3 scripts/release-test/recover-pr1140-uat-orphan.py \\\n'
-                      '                || fail \'PR 1140 orphan recovery did not meet its exact safety contract.\'\n'
-                      '              quarantined_runs+=("$run_id")\n'
-                      '              continue\n'
-                      '            fi\n'
-                      '            # PR1140_UAT_RECOVERY_END\n')
+                  assert [len(line) - len(line.lstrip()) for line in addition.splitlines()] == [12,12,14,16,14,14,12,12]
+                  assert addition.splitlines()[2].endswith(chr(92))
               raw = after.encode()
               expected = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
-              request = json.dumps({'content': after, 'encoding': 'utf-8'})
               response = subprocess.run(['gh', 'api', '--method', 'POST', f'repos/{REPOSITORY}/git/blobs', '--input', '-'],
-                                        input=request, capture_output=True, text=True, timeout=30, check=True)
+                  input=json.dumps({'content': after, 'encoding': 'utf-8'}), capture_output=True, text=True, timeout=30, check=True)
               assert json.loads(response.stdout)['sha'] == expected
               outputs.append({'path': path, 'before_blob': before_blob, 'blob_sha': expected,
                               'sha256': hashlib.sha256(raw).hexdigest()})
