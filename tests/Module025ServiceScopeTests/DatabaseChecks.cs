@@ -30,16 +30,16 @@ internal static class DatabaseChecks
             async Task Apply(string path) => await Run(await File.ReadAllTextAsync(path));
             async Task<long> Count(string query) => Convert.ToInt64(await new NpgsqlCommand(query, sql).ExecuteScalarAsync());
             await Apply("database/migrations/061_celar_ai_capability_routing.sql");
-            // Fixture only the unrelated older document-worker and workspace
-            // records. Run the real routing/hardening/approval SQL unchanged;
-            // a fabricated 071 ledger row cannot satisfy its physical schema.
+            // Fixture only unrelated identity/document-worker prerequisites.
+            // Run the real 061/071/099/123/124 migrations: migration 099 never
+            // registers a ledger row, which the former fixture incorrectly hid.
             await Run("""
-                CREATE TABLE module025_sow_gsd_engagements (engagement_id uuid PRIMARY KEY, service_overview text NOT NULL);
+                CREATE TABLE app_users (user_id uuid PRIMARY KEY);
+                CREATE TABLE clients (client_id uuid PRIMARY KEY);
                 CREATE TABLE pulse_ai_document_processing_jobs (
                     pulse_ai_document_processing_job_id uuid PRIMARY KEY, lease_owner text NULL
                 );
                 INSERT INTO schema_migrations(migration_id, description) VALUES
-                  ('099_module025_sow_gsd_workspace','Disposable workspace predecessor'),
                   ('052_pulse_ai_private_document_runtime','Disposable document-worker predecessor'),
                   ('053_pulse_ai_private_rag_orchestration','Disposable document-worker predecessor');
                 """);
@@ -60,9 +60,51 @@ internal static class DatabaseChecks
                 check(legacyRoute.Persisted && !legacyRoute.ExternalGenerationApprovalSchemaReady,
                     "real_migration071_restores_reads_without_granting_external_approval");
             }
+            async Task Reject124(string expectedMessage, string label)
+            {
+                var rejected = false;
+                try { await Apply("database/migrations/124_module025_service_scope.sql"); }
+                catch (PostgresException exception) when (exception.SqlState == "P0001"
+                    && exception.MessageText.Contains(expectedMessage, StringComparison.Ordinal))
+                { rejected = true; }
+                finally { await Run("ROLLBACK"); }
+                check(rejected, label);
+                check(await Count("SELECT count(*) FROM schema_migrations WHERE migration_id='124_module025_service_scope'") == 0,
+                    label + "_no_false_receipt");
+                check(await Count("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('service_scope','service_scope_full_text_approved')") == 0,
+                    label + "_no_partial_columns");
+            }
+            await Reject124("migration 123 approval receipt", "missing_123_receipt_fails_closed");
             await Apply("database/migrations/123_module064_external_generation_approval.sql");
-            await using (var insert = new NpgsqlCommand("INSERT INTO module025_sow_gsd_engagements VALUES (@id,'Existing saved text')", sql))
-            { insert.Parameters.AddWithValue("id", row.EngagementId); await insert.ExecuteNonQueryAsync(); }
+            await Reject124("migration 099 workspace schema", "missing_workspace_fails_closed");
+            await Run("INSERT INTO schema_migrations(migration_id,description) VALUES ('099_module025_sow_gsd_workspace','Intentionally invalid test-only receipt')");
+            await Reject124("migration 099 workspace schema", "ledger_alone_cannot_replace_physical_workspace");
+            await Run("DELETE FROM schema_migrations WHERE migration_id='099_module025_sow_gsd_workspace'");
+            await Apply("database/migrations/099_module025_sow_gsd_workspace.sql");
+            check(await Count("SELECT count(*) FROM schema_migrations WHERE migration_id='099_module025_sow_gsd_workspace'") == 0,
+                "real_099_uses_physical_schema_not_a_fabricated_ledger_receipt");
+            foreach (var (change, restore, expected, label) in new[]
+            {
+                ("ALTER TABLE module025_sow_gsd_phases RENAME TO fixture_missing_phases", "ALTER TABLE fixture_missing_phases RENAME TO module025_sow_gsd_phases",
+                    "migration 099 workspace schema", "missing_phases_rejected"),
+                ("ALTER TABLE module025_sow_gsd_engagements DISABLE TRIGGER trg_module025_protect_sow_gsd_identity", "ALTER TABLE module025_sow_gsd_engagements ENABLE TRIGGER trg_module025_protect_sow_gsd_identity",
+                    "migration 099 workspace schema", "disabled_identity_protection_rejected"),
+                ("ALTER TABLE module025_sow_gsd_phases RENAME COLUMN final_hours TO fixture_final_hours", "ALTER TABLE module025_sow_gsd_phases RENAME COLUMN fixture_final_hours TO final_hours",
+                    "complete migration 099 and 123 columns", "missing_reviewed_hours_rejected"),
+                ("ALTER TABLE ai_capability_route_audit RENAME COLUMN new_external_generation_approved TO fixture_approval", "ALTER TABLE ai_capability_route_audit RENAME COLUMN fixture_approval TO new_external_generation_approved",
+                    "complete migration 099 and 123 columns", "missing_approval_audit_column_rejected")
+            })
+            {
+                await Run(change);
+                try { await Reject124(expected, label); }
+                finally { await Run(restore); }
+            }
+            await using (var insert = new NpgsqlCommand("INSERT INTO app_users(user_id) VALUES (@owner); INSERT INTO module025_sow_gsd_engagements(engagement_id,owner_user_id,service_overview) VALUES (@id,@owner,'Existing saved text')", sql))
+            {
+                insert.Parameters.AddWithValue("id", row.EngagementId);
+                insert.Parameters.AddWithValue("owner", row.OwnerUserId);
+                await insert.ExecuteNonQueryAsync();
+            }
             await Run("UPDATE ai_capability_routes SET sanitized_external_generation_approved=TRUE WHERE feature_code='sow_gsd_planning'");
             check(!await Module025ServiceScopePolicy.SchemaReadyAsync(sql, default), "pre_migration124_schema_is_not_advertised");
             await Apply("database/migrations/124_module025_service_scope.sql");
