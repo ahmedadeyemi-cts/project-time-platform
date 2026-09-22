@@ -6,6 +6,7 @@ The existing workflow continues running those tests after this validator.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -90,6 +91,20 @@ def self_test() -> None:
     print("ROLE_JOURNEY_SCOPE_NEGATIVE_FIXTURES=PASS")
 
 
+def report_fixture_source() -> None:
+    """Report only checked-in test code, never credentials or runtime data."""
+    source = Path("tests/flowhive-psa-admission.test.mjs").read_bytes()
+    lines = source.decode("utf-8").splitlines()
+    title = "the exact repaired 14-file SOW/My Role branch remains admissible after control merges"
+    matches = [index for index, line in enumerate(lines) if title in line]
+    print(f"ADMISSION_CHECKED_IN_SOURCE_SHA256={hashlib.sha256(source).hexdigest()}")
+    print(f"ADMISSION_FIXTURE_TITLE_MATCHES={len(matches)}")
+    for index in matches:
+        stop = next((i for i in range(index + 1, len(lines)) if lines[i].startswith("test(")), min(index + 110, len(lines)))
+        for i in range(max(0, index - 4), min(stop, index + 110)):
+            print(f"ADMISSION_FIXTURE_SOURCE:{i + 1}:{lines[i]}")
+
+
 def main() -> None:
     self_test()
     if sys.argv[1:] == ["--self-test"]:
@@ -118,6 +133,7 @@ def main() -> None:
     print("ROLE_JOURNEY_EXACT_UI_SCOPE=PASS")
     print("DEPLOYMENT_CONTROLLER_MODIFICATIONS=NONE")
     print("SHARED_ADMISSION_NEGATIVES=REQUIRED_BY_EXISTING_WORKFLOW")
+    report_fixture_source()
 
 
 if __name__ == "__main__":
