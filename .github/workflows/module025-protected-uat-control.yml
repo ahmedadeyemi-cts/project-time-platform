@@ -256,6 +256,14 @@ jobs:
               quarantined_runs+=("$run_id")
               continue
             fi
+            # MIGRATION_RETRY_RECOVERY_BEGIN
+            if [[ "$run_id" == '35761573008' ]]; then
+              python3 scripts/release-test/recover-pr1140-migration-retry-orphan.py \
+                || fail 'Migration retry orphan recovery did not meet its exact safety contract.'
+              quarantined_runs+=("$run_id")
+              continue
+            fi
+            # MIGRATION_RETRY_RECOVERY_END
             # PR1140_UAT_RECOVERY_END
             # PR1139_UAT_RECOVERY_END
             run_status="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .status' <<<"$runs_json")"

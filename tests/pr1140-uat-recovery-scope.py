@@ -51,7 +51,19 @@ def verify_paths(paths):
 
 def verify_insertion(before, after, anchor, addition):
     assert before.count(anchor) == 1 and addition not in before
-    assert after == before.replace(anchor, addition + anchor, 1), 'Unrelated supervisor or registry change'
+    expected = before.replace(anchor, addition + anchor, 1)
+    # A later reviewed repair adds one pinned recovery and its CI registration.
+    # Compare the entire exact extended source, not a regex-stripped projection.
+    if after != expected:
+        extensions = {
+            SUPERVISOR_ANCHOR: ('            # PR1140_UAT_RECOVERY_END\n', '            # MIGRATION_RETRY_RECOVERY_BEGIN\n            if [[ "$run_id" == \'35761573008\' ]]; then\n              python3 scripts/release-test/recover-pr1140-migration-retry-orphan.py \\\n                || fail \'Migration retry orphan recovery did not meet its exact safety contract.\'\n              quarantined_runs+=("$run_id")\n              continue\n            fi\n            # MIGRATION_RETRY_RECOVERY_END\n'),
+            REGISTRY_ANCHOR: ('# PR1140_RECOVERY_SCOPE_BEGIN\n', '# MIGRATION_THROTTLE_SCOPE_BEGIN\nif [[ "$HEAD_BRANCH" == fix/uat-migration-throttle-recovery-20260922 ]]; then\n  python3 tests/uat-migration-throttle-scope.py\n  python3 tests/test-azure-migration-throttle.py\n  python3 tests/test-pr1140-migration-retry-recovery.py\n  node tests/validate-systemwide-image-build-controller.mjs\n  return\nfi\n# MIGRATION_THROTTLE_SCOPE_END\n'),
+        }
+        if anchor in extensions:
+            marker, extension = extensions[anchor]
+            assert expected.count(marker) == 1
+            expected = expected.replace(marker, extension + marker, 1)
+    assert after == expected, 'Unrelated supervisor or registry change'
 
 
 def verify_sources():

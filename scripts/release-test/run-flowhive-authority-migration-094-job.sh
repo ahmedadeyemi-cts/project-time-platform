@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/azure-migration-throttle.sh"
+
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
 API_APP="${AZURE_API_APP:-}"
 ACR_NAME="${AZURE_ACR_NAME:-}"
@@ -64,18 +66,18 @@ MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"
 
 KEY_VAULT_URI="${KEY_VAULT_URI%/}"
 DATABASE_PASSWORD_SECRET_URI="$KEY_VAULT_URI/secrets/$DATABASE_PASSWORD_SECRET_NAME"
-SUBSCRIPTION_ID="$(az account show --query id -o tsv --only-show-errors)"
+SUBSCRIPTION_ID="$(azure_migration_retry account_read az account show --query id -o tsv --only-show-errors)"
 [[ "$SUBSCRIPTION_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail "Azure subscription ID is unavailable."
 UAMI_SUBSCRIPTION="${MIGRATOR_IDENTITY#*/subscriptions/}"
 UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
 [[ "${UAMI_SUBSCRIPTION,,}" == "${SUBSCRIPTION_ID,,}" ]] \
   || fail "The Migration 094 UAMI is outside the logged-in Test subscription."
 
-ACTUAL_IDENTITY="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
+ACTUAL_IDENTITY="$(azure_migration_retry identity_read az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
 [[ "${ACTUAL_IDENTITY,,}" == "${MIGRATOR_IDENTITY,,}" ]] \
   || fail "The protected-Test Migration 094 UAMI could not be resolved exactly."
 
-API_JSON="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" -o json --only-show-errors)"
+API_JSON="$(azure_migration_retry api_read az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" -o json --only-show-errors)"
 [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] \
   || fail "The API app is not tagged as Test."
 JQ_IDENTITY="$MIGRATOR_IDENTITY" jq -e '
@@ -100,7 +102,7 @@ PREFLIGHT_CONFIRMED_404=0
 
 arm_get_job() {
   local output_file="$1" token='' http_code='' curl_status=0
-  token="$(az account get-access-token --resource-type arm --query accessToken -o tsv --only-show-errors)" || return 1
+  token="$(azure_migration_retry token_read az account get-access-token --resource-type arm --query accessToken -o tsv --only-show-errors)" || return 1
   [[ -n "$token" ]] || return 1
   http_code="$(curl --silent --show-error --retry 0 --connect-timeout 20 --max-time 60 \
     --output "$output_file" --write-out '%{http_code}' \
@@ -175,7 +177,7 @@ validate_job_ownership() {
 
 stop_nonterminal_executions() {
   local executions execution status
-  executions="$(az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" -o json --only-show-errors)" || return 1
+  executions="$(azure_migration_retry executions_read az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" -o json --only-show-errors)" || return 1
   while IFS=$'\t' read -r execution status; do
     [[ -n "$execution" ]] || continue
     case "$status" in
@@ -283,7 +285,7 @@ jq -n \
   }' > "$PAYLOAD"
 
 CREATE_ATTEMPTED=1
-az rest --method put --uri "$JOB_URI" --body @"$PAYLOAD" --output none --only-show-errors
+azure_migration_retry job_put az rest --method put --uri "$JOB_URI" --body @"$PAYLOAD" --output none --only-show-errors
 : > "$PAYLOAD"
 
 PROVISIONED=0
@@ -305,7 +307,7 @@ EXECUTION_NAME="$(az containerapp job start -g "$RESOURCE_GROUP" -n "$JOB_NAME" 
 normalize "$EXECUTION_NAME" >/dev/null || fail "Azure did not return the Migration 094 execution name."
 
 for _ in $(seq 1 180); do
-  STATUS="$(az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+  STATUS="$(azure_migration_retry executions_read az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
     --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" -o tsv --only-show-errors)"
   case "$STATUS" in
     Succeeded)
