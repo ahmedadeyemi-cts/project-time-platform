@@ -1,0 +1,86 @@
+name: Prepare reviewed PR1140 validation blobs
+on:
+  push:
+    branches: ['control/pr1140-validation-blobs-20260922']
+permissions:
+  contents: write
+jobs:
+  content-only:
+    if: github.actor == 'ahmedadeyemi-cts' && github.ref == 'refs/heads/control/pr1140-validation-blobs-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify fixed source edits and create content-addressed blobs only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD^)" == 5e21e97d24c547ce0bc0c5a4e54ad5e30c267d46 ]]
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, os, subprocess
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          encoded = '''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'''
+          # Transfer data only: bounded line edits with exact before/after hashes.
+          raw = gzip.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(raw).hexdigest() == '423bc6d4a3a9b63907a0313e6aec4ba066ed5751df9bb780fb861918f60cedb8'
+          expected = {
+              '.github/module025-service-scope-files.txt',
+              '.github/workflows/celar-ai-ask-operations-ci.yml',
+              '.github/workflows/flowhive-psa-release-control-ci.yml',
+              '.github/workflows/module-management-owner-drawer-ci.yml',
+              '.github/workflows/module025-service-scope-ci.yml',
+              'docs/production-readiness/foundation/initialization-review.json',
+              'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh',
+              'scripts/release-test/validate-protected-test-controller-branches.sh',
+              'tests/flowhive-migration-package.test.py',
+              'tests/flowhive-psa-admission.test.mjs',
+              'tests/module025-generation-feedback.test.mjs',
+              'tests/module064-migration-rollout.test.py',
+              'tests/service-scope/release_scope.py',
+          }
+          assert os.environ['GITHUB_REPOSITORY'] == 'ahmedadeyemi-cts/project-time-platform'
+          assert os.environ['GITHUB_EVENT_NAME'] == 'push'
+          rows = json.loads(raw)
+          assert len(rows) == len(expected) and {row['path'] for row in rows} == expected
+          prepared = []
+          for row in rows:
+              path = Path(row['path'])
+              assert not path.is_symlink() and path.resolve().is_relative_to(Path.cwd())
+              before = path.read_bytes() if path.exists() else None
+              assert (hashlib.sha256(before).hexdigest() if before is not None else None) == row['before'], str(path)
+              lines = before.decode().splitlines(keepends=True) if before is not None else []
+              edits = row['edits']
+              assert edits == sorted(edits, key=lambda e:e['start'])
+              end = 0
+              for edit in edits:
+                  assert end <= edit['start'] <= edit['end'] <= len(lines)
+                  end = edit['end']
+              for edit in reversed(edits):
+                  lines[edit['start']:edit['end']] = edit['text'].splitlines(keepends=True)
+              content = ''.join(lines).encode()
+              assert hashlib.sha256(content).hexdigest() == row['after'], str(path)
+              expected_blob = subprocess.check_output(['git','hash-object','--stdin'],input=content).decode().strip()
+              prepared.append((row, content, expected_blob))
+          entries = []
+          for row, content, expected_blob in prepared:
+              request = Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',
+                  data=json.dumps({'content':content.decode(),'encoding':'utf-8'}).encode(), method='POST',
+                  headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urlopen(request,timeout=30) as response:
+                  result=json.load(response)
+              assert result['sha'] == expected_blob
+              entries.append({'path':row['path'],'mode':row['mode'],'type':'blob','sha':expected_blob})
+              print('VERIFIED_CONTENT_BLOB',row['path'],expected_blob)
+          Path(os.environ['RUNNER_TEMP'],'pr1140-reviewed-blobs.json').write_text(json.dumps(entries,indent=2)+'\n')
+          print('BRANCH_MUTATION=NONE UAT_MUTATION=NONE PRODUCTION_MUTATION=NONE')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr1140-reviewed-blobs-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr1140-reviewed-blobs.json
+          retention-days: 1
