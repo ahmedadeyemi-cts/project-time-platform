@@ -1742,6 +1742,15 @@
       "rationale": ""
     },
     {
+      "path": "database/migrations/124_module025_service_scope.sql",
+      "sha256": "a63226167c304835a203ca55d74535c184e612468e9300ed0423d05f2dbf981b",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [

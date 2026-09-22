@@ -10,7 +10,7 @@ test('progress identifies current phase, actual provider, saved phases and elaps
 test('terminal failure explains stale content and exposes safe provider diagnostics', () => {
   const text = formatGenerationFailure({ currentPhase: 'Plan', currentProvider: 'celar_ai', diagnosticCode: 'private_model_timeout',
     message: 'The saved draft was not changed.', targetDecisions: [{ Target: 'claude', ReasonCode: 'unsupported_contract' }] });
-  for (const part of ['previous saved result', 'Phase: Plan', 'Provider: Celar AI', 'private_model_timeout', 'Claude: unsupported_contract']) assert.ok(text.includes(part));
+  for (const part of ['previous saved result', 'Phase: Plan', 'Provider: Celar AI', 'private_model_timeout', 'Claude (reported): unsupported_contract']) assert.ok(text.includes(part));
   assert.ok(!formatGenerationFailure({ diagnosticCode: 'secret@example.invalid', targetDecisions: [{ target: 'claude', reasonCode: 'secret@example.invalid' }] }).includes('example.invalid'));
 });
 test('legacy metadata never labels existing generated content as not generated', () => {

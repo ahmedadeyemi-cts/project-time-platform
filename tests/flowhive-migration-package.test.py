@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='flowhive-package-') as directory:
     scripts = release/'scripts/release-test'; scripts.mkdir(parents=True)
     for name in ('reconcile-module-catalog.mjs', 'verify-flowhive-task-notifications.sql',
                  'verify-flowhive-sequential-checkpoints.sql', 'verify-flowhive-automatic-first-draft.sql',
-                 'verify-module064-external-generation-approval.sql'):
+                 'verify-module064-external-generation-approval.sql', 'verify-module025-service-scope.sql'):
         (scripts/name).symlink_to(ROOT/'scripts/release-test'/name)
     runner = scripts/'run-project-planning-document-authority-migration-job.sh'
     runner.write_text('#!/bin/bash\nset -euo pipefail\n[[ "$RELIABILITY_MIGRATION_IMAGE" == *"@sha256:"* ]]\n[[ "${FAIL_PRIVATE_JOB:-0}" != 1 ]]\necho PRIVATE_JOB_VERIFIED\n')
@@ -47,17 +47,22 @@ else: raise SystemExit('Unexpected Azure call in offline fixture')
         return subprocess.run(['bash',str(SCRIPT)],env={**env,'FAIL_PRIVATE_JOB':'1' if fail else '0'},
                               text=True,capture_output=True,timeout=30)
     passed=run(); assert passed.returncode==0, passed.stderr
-    for number, name in ((121,'FLOWHIVE_SEQUENTIAL_CHECKPOINTS'),(122,'FLOWHIVE_AUTOMATIC_FIRST_DRAFT')):
+    for number, name in ((121,'FLOWHIVE_SEQUENTIAL_CHECKPOINTS'),(122,'FLOWHIVE_AUTOMATIC_FIRST_DRAFT'),
+                         (123,'MODULE064_EXTERNAL_GENERATION_APPROVAL'),(124,'MODULE025_SERVICE_SCOPE')):
         marker=f'MIGRATION_{number}_{name}=APPLIED_AND_VERIFIED'
         assert marker in passed.stdout and passed.stdout.index('PRIVATE_JOB_VERIFIED')<passed.stdout.index(marker)
     for label in ('notifications','sequential','automatic'):
         subprocess.run(['sha256sum','--check','--status',f'database/flowhive-{label}.sha256'],cwd=captured,check=True)
+    for manifest in ('module064-approval.sha256', 'module025-service-scope.sha256'):
+        subprocess.run(['sha256sum','--check','--status',f'database/{manifest}'],cwd=captured,check=True)
     assert (captured/'entrypoint.sh').read_text()==inside+'\n'
     failed=run(True); assert failed.returncode!=0
     assert 'MIGRATION_121_FLOWHIVE_SEQUENTIAL_CHECKPOINTS=APPLIED_AND_VERIFIED' not in failed.stdout
     assert 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED' not in failed.stdout
-    for label in ('sequential','automatic'):
-        manifest=captured/f'database/flowhive-{label}.sha256'
+    assert 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED' not in failed.stdout
+    assert 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED' not in failed.stdout
+    for name in ('flowhive-sequential', 'flowhive-automatic', 'module064-approval', 'module025-service-scope'):
+        manifest=captured/f'database/{name}.sha256'
         target=captured/manifest.read_text().splitlines()[0].split()[-1]
         original=target.read_bytes(); target.chmod(0o644); target.write_bytes(original+b'\n-- changed package\n')
         assert subprocess.run(['sha256sum','--check','--status',str(manifest)],cwd=captured).returncode!=0

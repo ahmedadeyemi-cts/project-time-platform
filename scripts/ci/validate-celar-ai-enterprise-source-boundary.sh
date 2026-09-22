@@ -4,6 +4,11 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
+if [[ "$HEAD_BRANCH" == feature/module025-service-scope-20260921 ]]; then
+  python3 tests/service-scope/release_scope.py
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == fix/flowhive-sow-private-generation-20260921 ]]; then
   python3 tests/flowhive-sow-private-generation-scope.py
   exit 0

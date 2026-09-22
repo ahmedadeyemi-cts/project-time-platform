@@ -56,6 +56,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -63,9 +64,15 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: '10.0.x'
+      - name: Validate exact Service Scope feature boundary
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: python3 tests/service-scope/release_scope.py
       - name: Verify source boundaries and provider feedback
         run: |
           python3 tests/service-scope/source_boundaries.py
+          python3 tests/service-scope/release_scope.py --self-test
           node --test tests/service-scope/generation-feedback.test.mjs
           bash -n scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
       - name: Build API
@@ -86,6 +93,11 @@ jobs:
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci --ignore-scripts
-      - name: Bundle frontend without invoking deployment scripts
+      - name: Build complete frontend with required source generation and validation
         working-directory: src/frontend/project-time-web
-        run: npx --no-install vite build
+        run: npm run build
+      - name: Restore generated frontend sources after validation
+        if: always()
+        run: node src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs
+      - name: Verify generated builds preserve tracked source
+        run: git diff --exit-code
