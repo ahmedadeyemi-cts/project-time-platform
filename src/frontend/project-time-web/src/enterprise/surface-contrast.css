@@ -1,0 +1,269 @@
+/* Surface-local foregrounds, shared by every routed module.
+ * Page text is not interchangeable with text on an inverse (navy) surface.
+ * Capture the page palette before rebinding legacy foreground aliases locally.
+ * Do not change permissions, opacity of whole panels, or application state.
+ */
+:root,
+body[data-theme] {
+  --contrast-page-text: var(--uss-app-text, #172033);
+  --contrast-page-muted: var(--uss-app-muted, #52627a);
+  --contrast-page-link: var(--uss-app-link, #005ea8);
+  --contrast-page-surface: var(--uss-app-surface, #ffffff);
+  --contrast-page-subtle: var(--uss-app-surface-subtle, #f4f7fb);
+  --contrast-page-border: var(--uss-app-border, #ced9e3);
+  --contrast-primary-bg: #00569a;
+  --contrast-primary-text: #ffffff;
+  --contrast-inverse-bg: #062746;
+  --contrast-inverse-text: #ffffff;
+  --contrast-inverse-muted: #edf5fc;
+  --contrast-inverse-link: #c2edff;
+  /* Keep even the brightest composite of the gradient readable for small text. */
+  --uss-app-header-copy: #edf5fc;
+  --uss-app-header-label: #c2edff;
+  --uss-app-header-background:
+    radial-gradient(circle at 88% 12%, rgba(19, 168, 191, 0.18), transparent 33%),
+    linear-gradient(135deg, #06192b 0%, #123f68 58%, #0b5263 100%);
+}
+
+/* These are actual inverse surfaces, not every element named "header".
+ * Legacy module headers are adopted by CriticalRoutePresentationBoundary.
+ * Keeping aliases local also repairs high-specificity legacy typography rules.
+ */
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true'],
+  .welcome-dashboard-hero,
+  [data-contrast-surface='inverse'],
+  main.app-shell table thead th
+) {
+  --uss-app-text: var(--contrast-inverse-text);
+  --uss-app-muted: var(--contrast-inverse-muted);
+  --uss-app-link: var(--contrast-inverse-link);
+  --pulse-theme-text: var(--contrast-inverse-text);
+  --pulse-theme-muted: var(--contrast-inverse-muted);
+  --pulse-theme-link: var(--contrast-inverse-link);
+  --pulse-enterprise-text: var(--contrast-inverse-text);
+  --pulse-enterprise-muted: var(--contrast-inverse-muted);
+  --readable-text: var(--contrast-inverse-text);
+  --readable-muted: var(--contrast-inverse-muted);
+  --readable-link: var(--contrast-inverse-link);
+  --text: var(--contrast-inverse-text);
+  --muted: var(--contrast-inverse-muted);
+  --text-color: var(--contrast-inverse-text);
+  --muted-color: var(--contrast-inverse-muted);
+}
+
+:root :is(
+  .welcome-dashboard-hero,
+  [data-contrast-surface='inverse']
+) {
+  background: var(--uss-app-header-background);
+  color: var(--contrast-inverse-text);
+}
+
+/* Pair the background and foreground for ALL table headers, including pinned
+ * matrix columns. Do not alter positioning, scrolling, dimensions, or z-index.
+ */
+:root main.app-shell table thead th {
+  background: var(--contrast-inverse-bg) !important;
+  color: var(--contrast-inverse-text) !important;
+}
+
+/* Sort/filter buttons are independent control surfaces, not bare header text. */
+:root main.app-shell table thead th button {
+  background: var(--contrast-page-surface);
+  color: var(--contrast-page-text);
+}
+
+/* Text-only descendants inherit the surface's foreground. A nested control or
+ * independently colored surface is a boundary, never painted white blindly.
+ */
+:root :is(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true'],
+  .welcome-dashboard-hero,
+  [data-contrast-surface='inverse'],
+  main.app-shell table thead th
+) :is(h1, h2, h3, h4, strong, b, span, small, p, code, dt, dd, label, legend):not(:where(button, a, input, select, textarea, [role='button'], [role='status'],
+  [data-contrast-surface='surface'], [data-contrast-tone], .badge,
+  .uss-status-card, .uss-filter-bar, .uss-table-wrap, .panel, .card) *):not(:where([role='button'], [role='status'], [data-contrast-surface='surface'],
+  [data-contrast-tone], .badge)) {
+  color: var(--contrast-inverse-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+:root :is(.rpm-role-heading, .roles-matrix-role-heading) small {
+  background: #173f62;
+  color: #ffffff !important;
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+/* Surface/control boundaries reset aliases rather than inheriting white text
+ * into a white input, a light card, or a colored permission badge.
+ */
+:where(input, select, textarea, option,
+  [data-contrast-surface='surface'], .uss-status-card, .uss-filter-bar,
+  .uss-table-wrap, .panel, .card) {
+  --uss-app-text: var(--contrast-page-text);
+  --uss-app-muted: var(--contrast-page-muted);
+  --uss-app-link: var(--contrast-page-link);
+  --pulse-theme-text: var(--contrast-page-text);
+  --pulse-theme-muted: var(--contrast-page-muted);
+  --pulse-theme-link: var(--contrast-page-link);
+  --pulse-enterprise-text: var(--contrast-page-text);
+  --pulse-enterprise-muted: var(--contrast-page-muted);
+  --readable-text: var(--contrast-page-text);
+  --readable-muted: var(--contrast-page-muted);
+  --readable-link: var(--contrast-page-link);
+  --text: var(--contrast-page-text);
+  --muted: var(--contrast-page-muted);
+  --text-color: var(--contrast-page-text);
+  --muted-color: var(--contrast-page-muted);
+}
+
+:root [data-contrast-surface='surface'] {
+  background: var(--contrast-page-surface);
+  color: var(--contrast-page-text);
+}
+
+/* A label inside a button/badge must follow that component's actual color,
+ * not the surrounding page's muted palette. currentColor deliberately keeps
+ * primary, secondary, disabled, success, warning, and error variants distinct.
+ */
+:where(button, [role='button'], [role='status'], .badge, [data-contrast-tone],
+  .welcome-quick-actions a, .rpm-level-reference article > span,
+  .ai-provider-center__status) {
+  --uss-app-text: currentColor;
+  --uss-app-muted: currentColor;
+  --pulse-theme-text: currentColor;
+  --pulse-theme-muted: currentColor;
+  --pulse-enterprise-text: currentColor;
+  --pulse-enterprise-muted: currentColor;
+  --readable-text: currentColor;
+  --readable-muted: currentColor;
+  --text: currentColor;
+  --muted: currentColor;
+}
+
+:root :is(button, [role='button'], [role='status'], .badge, [data-contrast-tone])
+  :is(span, strong, small, code) {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+/* Link blue becomes lighter in dark mode; it must not also be the background
+ * of a white-label primary button. Use a stable accessible action pair.
+ */
+:root main.app-shell :is(
+  .primary-action, button.primary, .button-primary, [class$='-primary-action']
+):not(:disabled) {
+  background: var(--contrast-primary-bg) !important;
+  color: var(--contrast-primary-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+:root .welcome-quick-actions a,
+:root .welcome-quick-actions a:hover {
+  background: #ffffff;
+  color: #06253d !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+/* Disabled remains non-interactive; do not fade the entire text subtree. */
+:root :is(.projectpulse-module-standard > header, .uss-enterprise-page-header,
+  [data-enterprise-page-header='true'], .welcome-dashboard-hero) button:disabled {
+  opacity: 1;
+}
+
+/* Native select popup colors and placeholders are separate from header text. */
+:root :is(input, textarea)::placeholder {
+  color: var(--contrast-page-muted) !important;
+  opacity: 1;
+  -webkit-text-fill-color: currentColor !important;
+}
+:root select option {
+  background: var(--contrast-page-surface);
+  color: var(--contrast-page-text);
+}
+
+/* Dashboard nested rows and matrix panels previously retained literal white
+ * fills in dark mode. Pair their text and backgrounds in both themes.
+ */
+:root :is(
+  .welcome-card, .roles-permissions-matrix, .roles-matrix-panel,
+  .roles-matrix-summary-grid article, .roles-matrix-table-wrap,
+  .rpm-summary-grid article, .rpm-toolbar, .rpm-permission-table-wrap,
+  .rpm-reference-grid article, .rpm-level-reference article,
+  .rpm-detail-overlay > article
+) {
+  background: var(--contrast-page-surface) !important;
+  color: var(--contrast-page-text);
+  border-color: var(--contrast-page-border);
+}
+:root :is(
+  .welcome-week-days div, .welcome-metric-list div, .welcome-health-list div,
+  .welcome-project-list a, .welcome-recent-list a,
+  .roles-matrix-toolbar, .roles-matrix-scroll-note, .rpm-scroll-note,
+  .recommended-access-grid article, .roles-breakdown-list article,
+  .governance-signal-list article, .module-coverage-list div
+) {
+  background: var(--contrast-page-subtle) !important;
+  color: var(--contrast-page-text);
+  border-color: var(--contrast-page-border);
+}
+:root :is(.role-welcome-dashboard, .roles-permissions-matrix, .role-permission-matrix-v2)
+  :is(.welcome-card-heading h2, .welcome-card-heading > strong,
+    .welcome-metric-list dt, .welcome-metric-list dd,
+    .welcome-health-list dt, .welcome-health-list dd,
+    .welcome-project-list strong, .welcome-recent-list strong) {
+  color: var(--contrast-page-text) !important;
+}
+:root :is(.welcome-card-heading span, .welcome-week-days span,
+  .welcome-project-list span, .welcome-recent-list small,
+  .welcome-card-copy, .welcome-empty, .recommended-access-grid p,
+  .roles-breakdown-list p, .governance-signal-list p) {
+  color: var(--contrast-page-muted) !important;
+}
+:root :is(.welcome-card-link, .welcome-priority-links a,
+  .welcome-recent-list a > span, .rpm-permission-table td code,
+  .roles-matrix-table td code, .rpm-scroll-note strong,
+  .roles-matrix-scroll-note strong) {
+  color: var(--contrast-page-link) !important;
+}
+:root :is(.rpm-permission-table, .roles-matrix-table) tbody td {
+  background: var(--contrast-page-surface) !important;
+  color: var(--contrast-page-text);
+}
+:root :is(.rpm-permission-table, .roles-matrix-table) tbody tr:hover td {
+  background: var(--contrast-page-subtle) !important;
+}
+/* Permission colors stay meaningful, including the smaller scope description. */
+:root .rpm-decision button {
+  background: #f1f5f9;
+  color: #475569;
+  opacity: 1;
+}
+:root .rpm-decision-allow button { background: #dcfce7; color: #166534; }
+:root .rpm-decision-deny button { background: #fee2e2; color: #991b1b; }
+
+@media (forced-colors: active) {
+  :root main.app-shell table thead th,
+  :root :is(.welcome-dashboard-hero, [data-contrast-surface='inverse']) {
+    --contrast-inverse-text: CanvasText;
+    --contrast-inverse-muted: CanvasText;
+    --contrast-inverse-link: LinkText;
+    background: Canvas !important;
+    color: CanvasText !important;
+    border-color: CanvasText;
+  }
+  :root :is(.rpm-role-heading, .roles-matrix-role-heading) small {
+    background: Canvas;
+    color: CanvasText !important;
+  }
+}

@@ -1,0 +1,48 @@
+name: Platform Surface Contrast
+
+on:
+  pull_request:
+    paths:
+      - 'src/frontend/project-time-web/**'
+      - '.github/workflows/platform-surface-contrast.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-surface-contrast-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contrast:
+    name: Light and dark rendered text contrast
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: src/frontend/project-time-web
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Run complete production build and existing validations
+        run: npm run build
+      - name: Check actual bundled styles in Chromium
+        run: node scripts/validate-theme-contrast.mjs
+      - name: Preserve contrast evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-surface-contrast-${{ github.event.pull_request.number }}
+          path: src/frontend/project-time-web/artifacts/theme-contrast/
+          if-no-files-found: warn
+          retention-days: 14
