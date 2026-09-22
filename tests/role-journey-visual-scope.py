@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
-"""Validate PR1143's exact UI scope and prepare its historical test fixture.
+"""Validate PR1143's exact UI scope without modifying shared test sources.
 
-The existing workflow runs every shared admission assertion after this script.
-Fixture preparation adds three missing paths to an exact hash-pinned test-data
-array in the disposable checkout. No release implementation, approval, assertion,
-workflow permission, or deployment controller is modified or bypassed.
+The existing workflow runs every checked-in admission assertion after this
+validator. This script cannot authorize a deployment or waive a failed check.
 """
 from __future__ import annotations
 
-import difflib
 import hashlib
 import os
 from pathlib import Path
@@ -43,27 +40,6 @@ REGISTRATION = (
 )
 FIXTURE = "tests/flowhive-psa-admission.test.mjs"
 GUARD = "scripts/release-test/flowhive-psa-admission.mjs"
-FIXTURE_SHA256 = "49dcae941dc881fd494b4fb2b99e9f28d9df7f9f594c9202d534b1ac7b3a7e8fc"
-OLD_PATHS = (
-    ".github/workflows/flowhive-psa-release-control-ci.yml",
-    ".github/workflows/projectpulse-release-test-control-ci.yml",
-    "src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs",
-    "src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs",
-    "src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs",
-    "src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs",
-    "src/frontend/project-time-web/src/module-availability-bridge.js",
-    "src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js",
-    "src/frontend/project-time-web/tests/role-journeys.test.mjs",
-    "tests/FlowHiveDetailedPlannerTests/Program.cs",
-    "tests/flowhive-psa-release-control.mjs",
-)
-MISSING_PATHS = (
-    "src/backend/ProjectTime.Api/DynamicRbacAdministrationModule.g.cs",
-    "src/backend/ProjectTime.Api/ScopedRolePolicyPersistence.g.cs",
-    "tests/flowhive-psa-admission.test.mjs",
-)
-CORRECT_PATHS = tuple(sorted((*OLD_PATHS, *MISSING_PATHS)))
-ARRAY = re.compile(r"^const ROLEREPAIR_RELEASE_FILES = \[\n(?:[^\n]*\n)*?\]", re.MULTILINE)
 
 
 def require(condition: bool, message: str) -> None:
@@ -115,26 +91,6 @@ def must_reject(check: Callable[[], object]) -> None:
     raise RuntimeError("A negative scope fixture was incorrectly accepted.")
 
 
-def array_text(paths: tuple[str, ...]) -> str:
-    return "const ROLEREPAIR_RELEASE_FILES = [\n" + "".join(f"  '{path}',\n" for path in paths) + "]"
-
-
-def repair_fixture(source: str, guard: str) -> str:
-    matches = list(ARRAY.finditer(source))
-    require(len(matches) == 1, "Historical fixture array must be unique.")
-    match = matches[0]
-    require(match.group() == array_text(OLD_PATHS), "Unexpected historical fixture inventory.")
-    guard_matches = list(ARRAY.finditer(guard))
-    require(len(guard_matches) == 1, "Release guard inventory must be unique.")
-    require(guard_matches[0].group() == array_text(CORRECT_PATHS),
-            "Reviewed 14-file inventory no longer matches the unchanged release guard.")
-    # Only the literal test-data array changes; all other bytes remain identical.
-    result = source[:match.start()] + array_text(CORRECT_PATHS) + source[match.end():]
-    require(result.replace(array_text(CORRECT_PATHS), array_text(OLD_PATHS), 1) == source,
-            "Fixture correction changed content outside the inventory.")
-    return result
-
-
 def self_test() -> None:
     stale, current = "1" * 40, INTEGRATED_MAIN_SHA
     relations = {(stale, current), (current, current), (current, "HEAD")}
@@ -160,42 +116,18 @@ def self_test() -> None:
     must_reject(lambda: verify_workflow(before, after + "            exit 0\n"))
     must_reject(lambda: verify_workflow(before, after.replace("existing_test", "true")))
     must_reject(lambda: verify_workflow(before, before))
-    old = array_text(OLD_PATHS)
-    correct = array_text(CORRECT_PATHS)
-    suffix = "\ntest('positive and negative assertions stay unchanged', () => {});\n"
-    require(repair_fixture(old + suffix, correct) == correct + suffix, "Fixture repair failed.")
-    must_reject(lambda: repair_fixture(old + "\n" + old, correct))
-    must_reject(lambda: repair_fixture(old.replace(OLD_PATHS[0], "unreviewed"), correct))
-    must_reject(lambda: repair_fixture(old, correct.replace(MISSING_PATHS[0], "unreviewed")))
-    must_reject(lambda: repair_fixture(correct, correct))
-    require(len(CORRECT_PATHS) == len(set(CORRECT_PATHS)) == 14, "Expected exactly 14 paths.")
-    require(set(CORRECT_PATHS) - set(OLD_PATHS) == set(MISSING_PATHS), "Unexpected added path.")
-    print("ROLE_JOURNEY_SCOPE_AND_FIXTURE_NEGATIVE_TESTS=PASS")
+    print("ROLE_JOURNEY_SCOPE_NEGATIVE_TESTS=PASS")
 
 
-def prepare_historical_fixture() -> None:
-    require(os.environ.get("GITHUB_ACTIONS") == "true", "Fixture preparation is CI-only.")
-    fixture = Path(FIXTURE)
-    guard = Path(GUARD)
-    require(fixture.is_file() and not fixture.is_symlink(), "Expected a regular test file.")
-    require(guard.is_file() and not guard.is_symlink(), "Expected a regular release guard.")
+def report_unchanged_admission_sources() -> None:
+    """Bind diagnostics to the checked-in sources; never rewrite tests."""
     subprocess.run(["git", "diff", "--exit-code", "HEAD", "--", FIXTURE, GUARD], check=True)
-    before = fixture.read_bytes()
-    guard_before = guard.read_bytes()
-    require(hashlib.sha256(before).hexdigest() == FIXTURE_SHA256,
-            "Historical test source changed; fixture preparation requires renewed review.")
-    corrected = repair_fixture(before.decode("utf-8"), guard_before.decode("utf-8")).encode("utf-8")
-    print("ADMISSION_FIXTURE_CORRECTION=ADD_THREE_MISSING_TEST_DATA_PATHS")
-    print(f"ADMISSION_ORIGINAL_TEST_SHA256={hashlib.sha256(before).hexdigest()}")
-    print(f"ADMISSION_EXECUTED_TEST_SHA256={hashlib.sha256(corrected).hexdigest()}")
-    print("".join(difflib.unified_diff(before.decode().splitlines(keepends=True),
-                                     corrected.decode().splitlines(keepends=True),
-                                     fromfile=FIXTURE, tofile=FIXTURE)), end="")
-    fixture.write_bytes(corrected)
-    require(guard.read_bytes() == guard_before, "Release guard unexpectedly changed.")
-    subprocess.run(["git", "diff", "--check", "--", FIXTURE], check=True)
-    print("RELEASE_GUARD=BYTE_IDENTICAL")
-    print("ALL_SHARED_ADMISSION_ASSERTIONS=PRESERVED_AND_REQUIRED")
+    for name in (FIXTURE, GUARD):
+        source = Path(name).read_bytes()
+        blob = hashlib.sha1(b"blob " + str(len(source)).encode() + b"\0" + source).hexdigest()
+        print(f"ADMISSION_SOURCE:{name}:git-blob={blob}:sha256={hashlib.sha256(source).hexdigest()}")
+    print("SHARED_ADMISSION_TESTS=ORIGINAL_CHECKED_IN_SOURCE")
+    print("RELEASE_GUARD=UNCHANGED")
 
 
 def main() -> None:
@@ -221,7 +153,7 @@ def main() -> None:
     subprocess.run(["git", "diff", "--check", f"{scope_base}...HEAD"], check=True)
     print("ROLE_JOURNEY_EXACT_UI_SCOPE=PASS")
     print("DEPLOYMENT_CONTROLLER_MODIFICATIONS=NONE")
-    prepare_historical_fixture()
+    report_unchanged_admission_sources()
 
 
 if __name__ == "__main__":
