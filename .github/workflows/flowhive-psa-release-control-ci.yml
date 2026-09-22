@@ -501,6 +501,7 @@ jobs:
               '.github/workflows/projectpulse-release-test-control-ci.yml' \
               'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
               'scripts/release-test/flowhive-psa-admission.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
               'tests/flowhive-psa-release-control.mjs' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-candidate-refresh-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-candidate-refresh-actual"
@@ -620,6 +621,7 @@ jobs:
               'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md' \
               'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
               'scripts/release-test/flowhive-psa-admission.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
               'tests/flowhive-psa-release-control.mjs' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-portfolio-db-alias-control-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-portfolio-db-alias-control-actual"
