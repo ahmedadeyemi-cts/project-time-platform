@@ -30,13 +30,36 @@ internal static class DatabaseChecks
             async Task Apply(string path) => await Run(await File.ReadAllTextAsync(path));
             async Task<long> Count(string query) => Convert.ToInt64(await new NpgsqlCommand(query, sql).ExecuteScalarAsync());
             await Apply("database/migrations/061_celar_ai_capability_routing.sql");
-            // Minimal predecessor record fixture; real additive migrations execute unchanged.
+            // Fixture only the unrelated older document-worker and workspace
+            // records. Run the real routing/hardening/approval SQL unchanged;
+            // a fabricated 071 ledger row cannot satisfy its physical schema.
             await Run("""
                 CREATE TABLE module025_sow_gsd_engagements (engagement_id uuid PRIMARY KEY, service_overview text NOT NULL);
+                CREATE TABLE pulse_ai_document_processing_jobs (
+                    pulse_ai_document_processing_job_id uuid PRIMARY KEY, lease_owner text NULL
+                );
                 INSERT INTO schema_migrations(migration_id, description) VALUES
                   ('099_module025_sow_gsd_workspace','Disposable workspace predecessor'),
-                  ('071_ai_runtime_production_hardening','Disposable route predecessor');
+                  ('052_pulse_ai_private_document_runtime','Disposable document-worker predecessor'),
+                  ('053_pulse_ai_private_rag_orchestration','Disposable document-worker predecessor');
                 """);
+            using (var incompleteStore = new CelarAiCapabilityRoutingStore(NullLogger<CelarAiCapabilityRoutingStore>.Instance))
+            {
+                var rejected = false;
+                try { await incompleteStore.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning); }
+                catch (InvalidOperationException exception) when (exception.Message == "module064_route_store_unavailable")
+                { rejected = true; }
+                check(rejected, "missing_real_migration071_still_blocks_route_reads");
+            }
+            await Apply("database/migrations/071_ai_runtime_production_hardening.sql");
+            check(await Count("SELECT count(*) FROM schema_migrations WHERE migration_id='071_ai_runtime_production_hardening'") == 1,
+                "real_hardening_migration_records_its_own_receipt");
+            using (var hardenedStore = new CelarAiCapabilityRoutingStore(NullLogger<CelarAiCapabilityRoutingStore>.Instance))
+            {
+                var legacyRoute = await hardenedStore.LoadRouteAsync(CelarAiCapabilityCatalog.SowGsdPlanning);
+                check(legacyRoute.Persisted && !legacyRoute.ExternalGenerationApprovalSchemaReady,
+                    "real_migration071_restores_reads_without_granting_external_approval");
+            }
             await Apply("database/migrations/123_module064_external_generation_approval.sql");
             await using (var insert = new NpgsqlCommand("INSERT INTO module025_sow_gsd_engagements VALUES (@id,'Existing saved text')", sql))
             { insert.Parameters.AddWithValue("id", row.EngagementId); await insert.ExecuteNonQueryAsync(); }
