@@ -4,7 +4,8 @@ using System.Text.RegularExpressions;
 namespace ProjectTime.Api.Ai;
 
 // Constructed only after permission checks on server-loaded Module 025 evidence.
-// No source passage, identity, attachment or commercial value is provider input.
+// Legacy submissions use closed technical capsules. The separate Service Scope
+// contract sends only its explicitly authorized field; never the engagement DTO.
 internal sealed class Module025ExternalSowAdapter
 {
     private static readonly (string Name, string Pattern)[] Technologies =
@@ -50,6 +51,8 @@ internal sealed class Module025ExternalSowAdapter
     private readonly string[] _technologies;
     private readonly string[] _operations;
     private readonly string[] _facts;
+    internal bool UsesFullServiceScope => _evidence.ServiceScopeOnly;
+    internal ProjectPulseAiGenerationRequest PreparePrivateScope() => Module025ServiceScopePolicy.Request(_evidence, false);
     internal PulseAiPrivateRagAnswer? AcceptedAnswer { get; private set; }
     internal string? ValidationCategory { get; private set; }
     internal string? ValidationField { get; private set; }
@@ -69,6 +72,8 @@ internal sealed class Module025ExternalSowAdapter
     {
         if (evidence.PhaseExecution is null || !Module025GenerationEngine.Phases.Contains(evidence.PhaseExecution.Phase)
             || evidence.ServiceOverview.Length > 30_000 || evidence.ServiceOverview.Length < 20) return null;
+        if (evidence.ServiceScopeOnly)
+            return new(evidence, [], [], []);
         var source = evidence.ServiceOverview;
         // A keyword capsule must not reverse exclusions or negated scope. Until
         // these constraints have a closed representation, retain the private path.
@@ -100,6 +105,11 @@ internal sealed class Module025ExternalSowAdapter
     {
         diagnostic = "sanitized_external_policy_disabled";
         if (!PolicyEnabled) return null;
+        if (UsesFullServiceScope)
+        {
+            diagnostic = "module025_full_service_scope_ready";
+            return Module025ServiceScopePolicy.Request(_evidence, true);
+        }
         var capsule = "Requested technologies: " + string.Join(", ", _technologies)
             + ".\nRequested operations: " + string.Join(", ", _operations) + ".\n" + string.Join("\n", _facts);
         // A customer may itself have a technology's name. Fail closed rather
@@ -129,6 +139,25 @@ internal sealed class Module025ExternalSowAdapter
         try
         {
             using var json = JsonDocument.Parse(content, new JsonDocumentOptions { MaxDepth = 32 });
+            if (UsesFullServiceScope)
+            {
+                // Full author-entered text was explicitly approved, not sanitized.
+                // Require the canonical shape and real overview, never synthesize
+                // a passing result from task prose when the narrative is missing.
+                var violation = Module025PhaseOutputContract.Diagnose(json.RootElement, _evidence.PhaseExecution!.Phase);
+                if (violation is not null)
+                { diagnostic = "module025_service_scope_output_invalid"; ValidationCategory = violation.Value.Rule;
+                    ValidationField = violation.Value.Field; return false; }
+                var objective = json.RootElement.EnumerateObject().First(p =>
+                    p.Name.Equals("objective", StringComparison.OrdinalIgnoreCase)).Value.GetString() ?? "";
+                if (_evidence.PhaseExecution.Phase == "Plan" && (objective.Length < 600 || objective.Length > 4000
+                    || objective.Trim() == _evidence.ServiceOverview.Trim()))
+                { diagnostic = "module025_service_overview_incomplete"; ValidationCategory = "expanded_overview_required";
+                    ValidationField = "$.objective"; return false; }
+                AcceptedAnswer = PulseAiPrivateRagService.Module025ExternalAnswer(content, _evidence, provider, correlationId);
+                diagnostic = "module025_service_scope_phase_validated";
+                return true;
+            }
             // Inspect every string, including unknown properties, before parsing
             // the plan. Inspect values, not JSON field names. Only approved public
             // product terminology is removed from the strict identity check.

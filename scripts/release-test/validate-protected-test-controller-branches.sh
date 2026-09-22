@@ -21,7 +21,10 @@ is_planner_release_control_branch() {
     *) return 1 ;;
   esac
 }
-if [[ "$HEAD_BRANCH" == fix/module064-generation-sequence-20260921 ]]; then
+if [[ "$HEAD_BRANCH" == feature/module025-service-scope-20260921 ]]; then
+  python3 tests/service-scope/release_scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/module064-generation-sequence-20260921 ]]; then
   python3 tests/module064-generation-sequence-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/flowhive-installed-verifier-20260921 ]]; then
