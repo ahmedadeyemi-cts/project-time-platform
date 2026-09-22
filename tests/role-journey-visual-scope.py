@@ -93,16 +93,30 @@ def self_test() -> None:
 
 def report_fixture_source() -> None:
     """Report only checked-in test code, never credentials or runtime data."""
-    source = Path("tests/flowhive-psa-admission.test.mjs").read_bytes()
+    target = Path("tests/flowhive-psa-admission.test.mjs")
+    source = target.read_bytes()
     lines = source.decode("utf-8").splitlines()
-    title = "the exact repaired 14-file SOW/My Role branch remains admissible after control merges"
-    matches = [index for index, line in enumerate(lines) if title in line]
     print(f"ADMISSION_CHECKED_IN_SOURCE_SHA256={hashlib.sha256(source).hexdigest()}")
-    print(f"ADMISSION_FIXTURE_TITLE_MATCHES={len(matches)}")
-    for index in matches:
-        stop = next((i for i in range(index + 1, len(lines)) if lines[i].startswith("test(")), min(index + 110, len(lines)))
-        for i in range(max(0, index - 4), min(stop, index + 110)):
-            print(f"ADMISSION_FIXTURE_SOURCE:{i + 1}:{lines[i]}")
+    for i, line in enumerate(lines[:32]):
+        print(f"ADMISSION_IMPORT:{i + 1}:{line}")
+    for index, line in enumerate(lines):
+        if "const ROLEREPAIR_RELEASE_FILES" in line:
+            for i in range(index, min(len(lines), index + 28)):
+                print(f"ADMISSION_CONSTANT:{i + 1}:{lines[i]}")
+    # Follow only local JavaScript imports already named by the checked-in test.
+    for relative in sorted(set(re.findall(r"from ['\"]([^'\"]+)['\"]", source.decode("utf-8")))):
+        if not relative.startswith("."):
+            continue
+        path = (target.parent / relative).resolve()
+        root = Path.cwd().resolve()
+        require(path.is_relative_to(root), "Diagnostic import must remain inside the checkout.")
+        if path.suffix != ".mjs" or not path.is_file():
+            continue
+        imported = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(imported):
+            if "function admitMergedGovernedSuccessor" in line or "const ROLEREPAIR_RELEASE_FILES" in line:
+                for i in range(index, min(len(imported), index + 95)):
+                    print(f"ADMISSION_IMPORT_SOURCE:{path.relative_to(root)}:{i + 1}:{imported[i]}")
 
 
 def main() -> None:
