@@ -14,114 +14,33 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify fixed source transformations and create blobs only
+      - name: Run exact reviewed content transformations without expression substitution
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
-          [[ "$(git rev-parse HEAD^)" == dadc1c4c8486e5d87f6f169867096d3a680bdfe5 ]]
+          [[ "$(git rev-parse HEAD^)" == bef9628836270f830a9f850255281fb7e485f3e8 ]]
           python3 - <<'PY'
-          import hashlib, json, os, subprocess
-          from pathlib import Path
-          from urllib.request import Request, urlopen
-          BR = 'feature/module025-service-scope-20260921'
-          BASE = 'dc7297037c77a711276c7a36cd0048b4b54c6035'
-          HEAD = '5e21e97d24c547ce0bc0c5a4e54ad5e30c267d46'
-          hashes = {
-          '.github/module025-service-scope-files.txt': (None, '85f4b390e44c12b77c804bfb63ea1f6ee9283db7e454f8daaefb38940394b2af'),
-          '.github/workflows/celar-ai-ask-operations-ci.yml': ('f998f2463e10585b670e6add9ac3bcf0c7f2c8751c01fe9d5ba9245293fe617e', '4dc6fab389d7cdf104d306a880f3d748b9dcb8aa34a23b27bbec55d5e616b8e8'),
-          '.github/workflows/flowhive-psa-release-control-ci.yml': ('93e87dad498c211422c66d13b10b3708004896c273a9984891156a0c85e94001', 'c66a738214105c49e6ffa3a7dc46a250acad35bfef2b769be4c6cc0ab97aeb21'),
-          '.github/workflows/module-management-owner-drawer-ci.yml': ('158d677a7e62322c1b46839e78c1921560247611a9789c06c02286a6a46b9a30', '38126962209cab6023dfb10c9fba2eb5f37a07f03095d884db7404731e4af65f'),
-          '.github/workflows/module025-service-scope-ci.yml': ('b7587c3f463634d09e048112e2d9e506406b273b3321d6c16c332386ae4ccafe', 'e5ef250db953b495128bfaa5eadbdd15916d269f2ad5239003f07c49dfb93259'),
-          'docs/production-readiness/foundation/initialization-review.json': ('8fd898cb2a6a6cf23ec44965331e9b8e8c497a161c3d23b6e682413e0dc2b153', 'a7a289341c29bb440c28aa05acedf2b16e890b676233b289223e66d63d583147'),
-          'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh': ('4dc69a29f17c3e150c6c91f12f417132845cc37e27c798afcf1f1511d9000502', 'd21d603a59d9ebd355b5f17b5d9d4c256f61d813ac89d19788b8cf0e1c34bc0b'),
-          'scripts/release-test/validate-protected-test-controller-branches.sh': ('352112ef2237d8217c47850d6e28e6ec2b02b505e9c0d1745cc2cd8885479535', '9572ad3ecbe16060798379761a846bb03694e0864ba593543647c95f62b820b7'),
-          'tests/flowhive-migration-package.test.py': ('ca1a2f8e86f377dfd4a29c9400a950b53c5a7ae54263c643d9dacb4c3d77932d', '5d9430a66477d0653aedf26d67c90501cab4af4759635a54bbcff50c6a9bf0e6'),
-          'tests/flowhive-psa-admission.test.mjs': ('905de028a1205907aa4bd0c10cbe3da9979ce8bd50c87494e46e0d28a15d7e38', 'b3b81602731f580c9e16775b6392b7f0bf2ab57276614616a390e317e6ce7834'),
-          'tests/module025-generation-feedback.test.mjs': ('c5c13637fc0ca69ce782ab9379bffa74368c68d84c0b77348ec9e705c7f6dc04', '8a73c8a8e0f0807d8e79b3b02c11cfbbdb353e804ca83e9310d5862cfb153f8e'),
-          }
-          assert os.environ['GITHUB_REPOSITORY'] == 'ahmedadeyemi-cts/project-time-platform'
-          assert os.environ['GITHUB_EVENT_NAME'] == 'push'
-          output = {}
-          for path, (before, after) in hashes.items():
-              p = Path(path)
-              assert not p.is_symlink()
-              data = p.read_bytes() if p.exists() else None
-              assert (hashlib.sha256(data).hexdigest() if data is not None else None) == before, path
-              output[path] = data.decode() if data is not None else ''
-          def replace(path, old, new):
-              assert output[path].count(old) == 1, path
-              output[path] = output[path].replace(old,new,1)
-          replace('.github/workflows/module025-service-scope-ci.yml',
-              '      - name: Bundle frontend without invoking deployment scripts\n        working-directory: src/frontend/project-time-web\n        run: npx --no-install vite build\n',
-              '      - name: Build complete frontend with required source generation and validation\n        working-directory: src/frontend/project-time-web\n        run: npm run build\n      - name: Restore generated frontend sources after validation\n        if: always()\n        run: node src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs\n      - name: Verify generated builds preserve tracked source\n        run: git diff --exit-code\n')
-          replace('tests/module025-generation-feedback.test.mjs', "'Claude: unsupported_contract'", "'Claude (reported): unsupported_contract'")
-          replace('tests/flowhive-migration-package.test.py',
-              "                 'verify-module064-external-generation-approval.sql'):",
-              "                 'verify-module064-external-generation-approval.sql', 'verify-module025-service-scope.sql'):")
-          replace('tests/flowhive-migration-package.test.py',
-              "    for number, name in ((121,'FLOWHIVE_SEQUENTIAL_CHECKPOINTS'),(122,'FLOWHIVE_AUTOMATIC_FIRST_DRAFT')):",
-              "    for number, name in ((121,'FLOWHIVE_SEQUENTIAL_CHECKPOINTS'),(122,'FLOWHIVE_AUTOMATIC_FIRST_DRAFT'),\n                         (123,'MODULE064_EXTERNAL_GENERATION_APPROVAL'),(124,'MODULE025_SERVICE_SCOPE')):")
-          replace('tests/flowhive-migration-package.test.py',
-              "    assert (captured/'entrypoint.sh').read_text()==inside+'\\n'",
-              "    for manifest in ('module064-approval.sha256', 'module025-service-scope.sha256'):\n        subprocess.run(['sha256sum','--check','--status',f'database/{manifest}'],cwd=captured,check=True)\n    assert (captured/'entrypoint.sh').read_text()==inside+'\\n'")
-          replace('tests/flowhive-migration-package.test.py',
-              "    for label in ('sequential','automatic'):\n        manifest=captured/f'database/flowhive-{label}.sha256'",
-              "    assert 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED' not in failed.stdout\n    assert 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED' not in failed.stdout\n    for name in ('flowhive-sequential', 'flowhive-automatic', 'module064-approval', 'module025-service-scope'):\n        manifest=captured/f'database/{name}.sha256'")
-          path = 'docs/production-readiness/foundation/initialization-review.json'
-          data = json.loads(output[path]); name = 'database/migrations/124_module025_service_scope.sql'
-          assert not any(entry['path'] == name for entry in data['scripts'])
-          data['scripts'].append({'path':name,'sha256':hashlib.sha256(Path(name).read_bytes()).hexdigest(),'signals':['data_mutation'],'decision':'review_required','rationale':''})
-          data['scripts'].sort(key=lambda entry:entry['path'])
-          output[path] = json.dumps(data,indent=2)+'\n'
-          old = 'if [[ "$HEAD_BRANCH" == fix/flowhive-sow-private-generation-20260921 ]]; then'
-          replace('scripts/ci/validate-celar-ai-enterprise-source-boundary.sh',old,
-              f'if [[ "$HEAD_BRANCH" == {BR} ]]; then\n  python3 tests/service-scope/release_scope.py\n  exit 0\nfi\n\n'+old)
-          replace('scripts/release-test/validate-protected-test-controller-branches.sh',
-              'if [[ "$HEAD_BRANCH" == fix/module064-generation-sequence-20260921 ]]; then',
-              f'if [[ "$HEAD_BRANCH" == {BR} ]]; then\n  python3 tests/service-scope/release_scope.py\n  node tests/validate-systemwide-image-build-controller.mjs\nelif [[ "$HEAD_BRANCH" == fix/module064-generation-sequence-20260921 ]]; then')
-          replace('.github/workflows/flowhive-psa-release-control-ci.yml',
-              '          if [[ "$GITHUB_HEAD_REF" == fix/module064-generation-sequence-20260921 ]]; then',
-              f'          if [[ "$GITHUB_HEAD_REF" == {BR} ]]; then\n            python3 tests/service-scope/release_scope.py\n          elif [[ "$GITHUB_HEAD_REF" == fix/module064-generation-sequence-20260921 ]]; then')
-          old = '          if [[ "$HEAD_BRANCH" == fix/flowhive-sow-private-generation-20260921 ]]; then'
-          replace('.github/workflows/module-management-owner-drawer-ci.yml',old,
-              f'          if [[ "$HEAD_BRANCH" == {BR} ]]; then\n            python3 tests/service-scope/release_scope.py\n            exit 0\n          fi\n'+old)
-          replace('.github/workflows/celar-ai-ask-operations-ci.yml',
-              '          if [[ "$HEAD_BRANCH" == fix/module076-migration084-ci-credentials-* ]]; then',
-              f'          if [[ "$HEAD_BRANCH" == {BR} ]]; then\n            python3 tests/service-scope/release_scope.py\n          elif [[ "$HEAD_BRANCH" == fix/module076-migration084-ci-credentials-* ]]; then')
-          replace('tests/flowhive-psa-admission.test.mjs',
-              'const module025VerifierCorrection = module064SequenceRepair ||',
-              f"const module025ServiceScope = process.env.GITHUB_HEAD_REF === '{BR}';\nconst module025VerifierCorrection = module025ServiceScope || module064SequenceRepair ||")
-          replace('tests/flowhive-psa-admission.test.mjs',
-              'const module025VerifierBase = module064SequenceRepair ?',
-              f"const module025VerifierBase = module025ServiceScope ? '{BASE}' : module064SequenceRepair ?")
-          replace('.github/workflows/module025-service-scope-ci.yml',
-              '      - name: Verify source boundaries and provider feedback\n',
-              "      - name: Validate exact Service Scope feature boundary\n        if: github.event_name == 'pull_request'\n        env:\n          GITHUB_HEAD_REF: ${{ github.head_ref }}\n        run: python3 tests/service-scope/release_scope.py\n      - name: Verify source boundaries and provider feedback\n")
-          replace('.github/workflows/module025-service-scope-ci.yml',
-              '          python3 tests/service-scope/source_boundaries.py\n',
-              '          python3 tests/service-scope/source_boundaries.py\n          python3 tests/service-scope/release_scope.py --self-test\n')
-          replace('.github/workflows/module025-service-scope-ci.yml',
-              '      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09\n        with:\n          persist-credentials: false\n',
-              '      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09\n        with:\n          fetch-depth: 0\n          persist-credentials: false\n')
-          original_paths = subprocess.check_output(['git','diff','--name-only',BASE,HEAD]).decode().splitlines()
-          paths = set(original_paths) | set(hashes) | {'tests/module064-migration-rollout.test.py','tests/service-scope/release_scope.py'}
-          output['.github/module025-service-scope-files.txt'] = '\n'.join(sorted(paths))+'\n'
-          for path, content in output.items():
-              assert hashlib.sha256(content.encode()).hexdigest() == hashes[path][1], 'Output mismatch: '+path
-          entries=[]
-          for path, content in output.items():
-              blob = subprocess.check_output(['git','hash-object','--stdin'],input=content.encode()).decode().strip()
-              request=Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',
-                  data=json.dumps({'content':content,'encoding':'utf-8'}).encode(), method='POST',
-                  headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
-              with urlopen(request,timeout=30) as response: result=json.load(response)
-              assert result['sha'] == blob
-              mode='100755' if Path(path).exists() and Path(path).stat().st_mode & 0o111 else '100644'
-              entries.append({'path':path,'mode':mode,'type':'blob','sha':blob})
-              print('VERIFIED_CONTENT_BLOB',path,blob)
-          Path(os.environ['RUNNER_TEMP'],'pr1140-reviewed-blobs.json').write_text(json.dumps(entries,indent=2)+'\n')
-          print('BRANCH_MUTATION=NONE UAT_MUTATION=NONE PRODUCTION_MUTATION=NONE')
+          import subprocess
+          # The parent contains the readable, previously reviewed transformations.
+          # Reading that immutable Git blob prevents Actions from interpolating
+          # expressions that belong to the generated target workflow instead.
+          ref = 'bef9628836270f830a9f850255281fb7e485f3e8'
+          path = '.github/workflows/pr1140-reviewed-validation-blobs.yml'
+          source = subprocess.check_output(['git', 'show', ref + ':' + path])
+          digest = subprocess.check_output(['git', 'hash-object', '--stdin'], input=source).decode().strip()
+          assert digest == '5bed5603c2eda7a09a2cfbac1e1bdcd7715b71c4'
+          start = "          python3 - <<'PY'\n"
+          end = "          PY\n"
+          text = source.decode()
+          assert text.count(start) == 1 and text.count(end) == 1
+          body = text.split(start, 1)[1].split(end, 1)[0]
+          lines = body.splitlines(keepends=True)
+          assert all(not line.strip() or line.startswith('          ') for line in lines)
+          program = ''.join(line[10:] if line.startswith('          ') else line for line in lines)
+          # That fixed program checks all input/output hashes before creating
+          # content-addressed blobs. It cannot merge, deploy, or update refs.
+          exec(compile(program, path + '@' + ref, 'exec'), {'__name__': '__main__'})
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
