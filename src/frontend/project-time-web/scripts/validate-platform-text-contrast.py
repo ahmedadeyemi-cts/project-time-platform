@@ -68,13 +68,44 @@ def fixtures() -> str:
             <label>Filter <input data-contrast-check="{name}.input" value="Assigned projects"></label>
           </div>
         </header></article>''')
+    legacy_surfaces = (
+        'group2b-resilience-hero', 'group3-hero', 'group4-hero', 'group5-hero',
+        'project-closeout-hero', 'closeout-email-hero', 'engineer-closeout-hero',
+        'flowhive-hero', 'capacity-forecast-hero', 'defect-tracker-hero',
+        'governed-operations-hero', 'eg-hero', 'ffla-hero', 'ffl-hero',
+        'celar-ai-platform-hero', 'pulse-ai-doc-header', 'pulse-ai-rag-header',
+        'pulse-ai-runtime-header', 'pulse-ai-hero', 'pulse-ai-deep-header',
+        'celar-ops-header', 'modules-directory-hero',
+        'projectpulse-view-as-drawer__header', 'pulse-display-preferences-drawer__header',
+    )
+    for surface in legacy_surfaces:
+        fragments.append(f'''<article class="contrast-fixture"><div class="{surface}">
+          {label('h2', surface + '.title', 'Workspace overview')}
+          {label('p', surface + '.copy', 'Review the information for your role.')}
+          {label('small', surface + '.detail', 'Updated today')}
+          {label('span', surface + '.label', 'Project status')}
+        </div></article>''')
+    fragments.append(f'''<article class="contrast-fixture"><div class="welcome-card">
+      <div class="welcome-card-heading">
+        {label('span', 'dashboard-card.eyebrow', 'YOUR PROJECTS')}
+        {label('h2', 'dashboard-card.title', 'Current assignments')}
+      </div>
+      {label('p', 'dashboard-card.copy', 'There are no overdue assignments.', 'class="welcome-card-copy"')}
+      {label('a', 'dashboard-card.link', 'View assigned projects', 'class="welcome-card-link" href="#project-workspace"')}
+    </div></article>''')
+    fragments.append(f'''<article class="contrast-fixture celar-ai-contextual-chat">
+      <header class="help-header">
+        {label('strong', 'assistant.title', 'Ask Celar AI')}
+        {label('span', 'assistant.copy', 'Help with your current workspace')}
+      </header>
+    </article>''')
     for name, table_class in (('matrix', 'roles-matrix-table'), ('shared', 'uss-table'), ('generic', 'contrast-table')):
         fragments.append(f'''<article class="contrast-fixture"><div class="contrast-scroll">
           <table class="{table_class}"><thead><tr>
             <th>{label('span', name + '.page', 'Page')}</th>
             <th>{label('span', name + '.permission', 'Permission')}</th>
             <th>{label('span', name + '.description', 'Description')}</th>
-            <th><div class="roles-matrix-role-heading">
+            <th><div class="{'roles-matrix-role-heading' if name == 'matrix' else ''}">
               {label('strong', name + '.role', 'Project Management Lead')}
               {label('small', name + '.role-code', 'PROJECT_MANAGEMENT_LEAD')}
             </div></th></tr></thead><tbody><tr>

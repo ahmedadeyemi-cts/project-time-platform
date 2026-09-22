@@ -1,6 +1,7 @@
-/* PULSE_SURFACE_CONTRAST_V1
- * Foreground colors belong to their surface, not to the selected page theme.
- * Imported by the final contrast guard; no runtime DOM recoloring is required.
+/* PULSE_SURFACE_CONTRAST_V2
+ * Foregrounds follow the painted surface, not the page's light/dark theme.
+ * The explicit legacy inventory below was reviewed against the production CSS.
+ * Do not infer an inverse surface from arbitrary 'header' or 'blue' class names.
  */
 :root {
   --uss-app-header-copy: #e6f2ff;
@@ -11,20 +12,52 @@
   --pulse-table-header-background: #062b49;
   --pulse-table-header-text: #ffffff;
   --pulse-table-header-muted: #e6f2ff;
+  --pulse-allow-background: #dcfce7;
+  --pulse-allow-text: #166534;
+  --pulse-unset-background: #f1f5f9;
+  --pulse-unset-text: #475569;
 }
 
-/* Match the canonical route-header contract, including the welcome dashboard.
- * Existing enterprise typography reads these local aliases instead of painting
- * light-mode body text on an inverse surface. These aliases are deliberately
- * NOT applied to the document, the navigation bar, or every element with 'blue'
- * or 'header' in its class name.
- */
-:where(
+:root[data-theme='dark'], body[data-theme='dark'] {
+  --pulse-allow-background: #183f31;
+  --pulse-allow-text: #d9f8e7;
+  --pulse-unset-background: #27364a;
+  --pulse-unset-text: #e5edf8;
+}
+
+/* The canonical theme supports body-owned theme state as well as root-owned
+ * state. Keep enterprise surface aliases paired in that legacy mode too. */
+:root[data-pulse-experience='enterprise'] body[data-theme='dark'] {
+  --pulse-enterprise-bg: #07111d;
+  --pulse-enterprise-bg-accent: #0a2631;
+  --pulse-enterprise-surface: #101f31;
+  --pulse-enterprise-surface-soft: #15273c;
+  --pulse-enterprise-surface-strong: #1b3048;
+  --pulse-enterprise-text: #f2f7fc;
+  --pulse-enterprise-muted: #a9b9ca;
+  --pulse-enterprise-border: rgba(217, 234, 247, 0.13);
+  --pulse-enterprise-border-strong: rgba(104, 188, 255, 0.34);
+  --pulse-enterprise-blue: #68bcff;
+}
+
+/* Nested blocks keep this audited inverse-surface inventory in one place.
+ * Native nesting is compiled with the application's existing CSS build. */
+:root body :is(
   .welcome-dashboard-hero,
   .projectpulse-module-standard > header,
   .uss-enterprise-page-header,
   [data-enterprise-page-header='true'],
-  [data-contrast-surface='inverse']
+  [data-contrast-surface='inverse'],
+  .group2b-resilience-hero, .group3-hero, .group4-hero, .group5-hero,
+  .project-closeout-hero, .closeout-email-hero, .engineer-closeout-hero,
+  .flowhive-hero, .capacity-forecast-hero, .defect-tracker-hero,
+  .governed-operations-hero, .eg-hero, .ffla-hero, .ffl-hero,
+  .celar-ai-platform-hero, .pulse-ai-doc-header, .pulse-ai-rag-header,
+  .pulse-ai-runtime-header, .pulse-ai-system-workbench > header,
+  .pulse-ai-hero, .pulse-ai-deep-header, .celar-ops-header,
+  .modules-directory-hero, .projectpulse-view-as-drawer__header,
+  .pulse-display-preferences-drawer__header,
+  :where(:root[data-pulse-experience='enterprise']) .celar-ai-contextual-chat .help-header
 ) {
   --pulse-surface-text: #ffffff;
   --pulse-surface-muted: #e6f2ff;
@@ -35,54 +68,68 @@
   --readable-muted: var(--pulse-surface-muted);
   --text-color: var(--pulse-surface-text);
   --muted-color: var(--pulse-surface-muted);
-  color: var(--pulse-surface-text);
+  background: var(--uss-app-header-background) !important;
+  color: var(--pulse-surface-text) !important;
+
+  & :is(h1, h2, h3, h4, h5, h6, p, small, strong, b, span, label, legend, dt, dd, code, li, em, .muted, .subtitle, .helper-text, .supporting-text) {
+    color: var(--pulse-surface-text, var(--uss-app-text)) !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+
+  & :is(p, small, .muted, .subtitle, .helper-text, .supporting-text) {
+    color: var(--pulse-surface-muted, var(--uss-app-muted)) !important;
+    opacity: 1;
+  }
+
+  & :is(.eyebrow, .uss-module-label, [class*='__eyebrow'], [class$='-eyebrow']) {
+    color: var(--pulse-surface-label, var(--uss-app-header-label)) !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+
+  /* An inset card is independently painted; reset its foreground AND paint.
+   * Excludes translucent hero metrics/badges that remain inverse surfaces. */
+  & :is(.panel, .card, .uss-status-card, .uss-filter-bar, [data-contrast-surface='base'], [role='dialog'], [role='menu']) {
+    background: var(--uss-app-surface) !important;
+    color: var(--uss-app-text) !important;
+  }
+
+  & a:not([class]):not([role='button']):not(.welcome-quick-actions a) {
+    color: var(--pulse-surface-text);
+    -webkit-text-fill-color: currentColor;
+    text-decoration: underline;
+  }
+
+  /* Dimmed controls used compounded opacity, making their labels unreadable.
+   * Keep the disabled attribute/cursor and existing disabled color variant. */
+  & :is(button, input, select, textarea):disabled {
+    opacity: 1 !important;
+  }
+
+  @media (forced-colors: active) {
+    --pulse-surface-text: CanvasText;
+    --pulse-surface-muted: CanvasText;
+    --pulse-surface-label: CanvasText;
+    background: Canvas !important;
+    color: CanvasText !important;
+  }
 }
 
-:root body .welcome-dashboard-hero {
+/* The contextual assistant has an existing high-specificity background rule. */
+:root[data-pulse-experience='enterprise'] body .celar-ai-contextual-chat .help-header {
   background: var(--uss-app-header-background) !important;
 }
 
-/* Legacy modules sometimes set an explicit color on the label itself. Correct
- * those text nodes, not all descendants. Interactive and independent surfaces
- * below establish their own foreground contract.
- */
-:root body :where(
-  .welcome-dashboard-hero,
-  .projectpulse-module-standard > header,
-  .uss-enterprise-page-header,
-  [data-enterprise-page-header='true'],
-  [data-contrast-surface='inverse']
-) :is(h1, h2, h3, h4, h5, h6, p, small, strong, b, label, dt, dd, code, .muted, .subtitle, .helper-text, .supporting-text) {
-  color: var(--pulse-surface-text, var(--uss-app-text)) !important;
+/* Quick-action links are white controls, not ordinary links on the hero. */
+:root body .welcome-quick-actions a {
+  color: #06253d !important;
   -webkit-text-fill-color: currentColor !important;
 }
 
-:root body :where(
-  .welcome-dashboard-hero,
-  .projectpulse-module-standard > header,
-  .uss-enterprise-page-header,
-  [data-enterprise-page-header='true'],
-  [data-contrast-surface='inverse']
-) :is(p, small, .muted, .subtitle, .helper-text, .supporting-text) {
-  color: var(--pulse-surface-muted, var(--uss-app-muted)) !important;
-  opacity: 1;
+/* Retain the orange warning distinction while viewing another identity. */
+:root body .projectpulse-view-as-drawer.is-active .projectpulse-view-as-drawer__header {
+  background: linear-gradient(135deg, #71380b, #804208) !important;
 }
 
-:root body :where(
-  .welcome-dashboard-hero,
-  .projectpulse-module-standard > header,
-  .uss-enterprise-page-header,
-  [data-enterprise-page-header='true'],
-  [data-contrast-surface='inverse']
-) :is(.eyebrow, .uss-module-label, [class*='__eyebrow'], [class$='-eyebrow']) {
-  color: var(--pulse-surface-label, var(--uss-app-header-label)) !important;
-  -webkit-text-fill-color: currentColor !important;
-}
-
-/* An inset card, form, dialog or popover is a new surface. Do not leak inverse
- * colors into it. The explicit data attribute is the reusable opt-in for new
- * independently painted components.
- */
 :where(
   .panel, .card, .welcome-card, .uss-status-card, .uss-filter-bar,
   .roles-matrix-panel, .group2b-resilience-card,
@@ -99,11 +146,9 @@
   --muted-color: var(--uss-app-muted);
 }
 
-/* Button/link colors are owned by the control's existing background variant.
- * currentColor lets a nested label inherit a white primary button's dark text,
- * a blue button's light text, or the disabled control's readable foreground.
- * Inputs and options keep the base control palette rather than the hero text.
- */
+/* A control's own background variant owns its foreground. currentColor makes
+ * nested labels inherit that foreground, including white buttons with dark text.
+ * Reset base aliases for controls instead of leaking the inverse page palette. */
 :where(button, a, input, select, textarea, option) {
   --pulse-surface-text: currentColor;
   --pulse-surface-muted: currentColor;
@@ -114,23 +159,6 @@
   --readable-muted: var(--uss-app-muted);
 }
 
-:root body :where(
-  .welcome-dashboard-hero,
-  .projectpulse-module-standard > header,
-  .uss-enterprise-page-header,
-  [data-enterprise-page-header='true'],
-  [data-contrast-surface='inverse']
-) a:not([class]):not([role='button']) {
-  color: #ffffff;
-  -webkit-text-fill-color: currentColor;
-  text-decoration: underline;
-}
-
-/* The enterprise table theme already paints every eligible column header navy.
- * Pair that paint with foregrounds on the cell AND its nested labels, including
- * role names, role-code pills and pinned matrix columns. This does not touch
- * tbody status colors, row headers or navigation.
- */
 :root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled thead th:not([class*='celar-ai'] *),
 :root body :is(.roles-matrix-table, .uss-table) thead th {
   --pulse-surface-text: var(--pulse-table-header-text);
@@ -142,30 +170,79 @@
   background: var(--pulse-table-header-background) !important;
   color: var(--pulse-table-header-text) !important;
   -webkit-text-fill-color: currentColor !important;
-}
 
-:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled thead th:not([class*='celar-ai'] *) :is(strong, small, span, p, code, label, abbr),
-:root body :is(.roles-matrix-table, .uss-table) thead th :is(strong, small, span, p, code, label, abbr) {
-  color: var(--pulse-surface-text) !important;
-  -webkit-text-fill-color: currentColor !important;
-  opacity: 1;
+  & :is(strong, small, span, p, code, label, abbr) {
+    color: var(--pulse-surface-text) !important;
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1;
+  }
 }
 
 :root body .roles-matrix-role-heading small {
-  background: #163f61;
+  background: #163f61 !important;
   color: var(--pulse-table-header-muted) !important;
   -webkit-text-fill-color: currentColor !important;
 }
 
-:root body .roles-matrix-table .roles-matrix-cell-button small {
+:root body .roles-matrix-cell-button small {
   color: inherit !important;
   -webkit-text-fill-color: currentColor !important;
   opacity: 1;
 }
 
-/* Preserve explicit system colors rather than forcing branded colors over the
- * operating system's high-contrast palette.
- */
+/* Dashboard cards use the base palette, including their small labels and links.
+ * Their original hard-coded teal/gray colors were too dark on dark-mode cards. */
+:root body .welcome-card {
+  background: var(--uss-app-surface) !important;
+  color: var(--uss-app-text) !important;
+}
+:root body .welcome-card :is(.welcome-card-heading h2, .welcome-metric-list dd, .welcome-health-list dd) {
+  color: var(--uss-app-text) !important;
+}
+:root body .welcome-card :is(.welcome-card-heading span, .welcome-card-copy, .welcome-empty, .welcome-week-days span, .welcome-project-list span, .welcome-recent-list small, .welcome-metric-list dt, .welcome-health-list dt) {
+  color: var(--uss-app-muted) !important;
+}
+:root body .welcome-card :is(.welcome-card-link, .welcome-priority-links a, .welcome-card-heading > strong, .welcome-recent-list a > span) {
+  color: var(--uss-app-link) !important;
+}
+:root body .welcome-card :is(.welcome-week-days div, .welcome-metric-list div, .welcome-health-list div, .welcome-project-list a, .welcome-recent-list a) {
+  background: var(--uss-app-surface-subtle) !important;
+  color: var(--uss-app-text) !important;
+}
+
+/* Pinned body cells must switch together with their text; preserve positioning,
+ * scroll behavior and the semantic allow/unset states rather than bleaching
+ * every table cell. Inline permission-decision button palettes remain intact. */
+:root body .roles-matrix-table tbody td {
+  background: var(--uss-app-surface) !important;
+  color: var(--uss-app-text) !important;
+}
+:root body .roles-matrix-table tbody td small {
+  color: var(--uss-app-muted);
+}
+:root body .roles-matrix-table tbody tr:hover td {
+  background: var(--uss-app-surface-subtle) !important;
+}
+:root body .roles-matrix-table tbody td.granted {
+  background: var(--pulse-allow-background) !important;
+  color: var(--pulse-allow-text) !important;
+}
+:root body .roles-matrix-table tbody td.not-granted {
+  background: var(--pulse-unset-background) !important;
+  color: var(--pulse-unset-text) !important;
+}
+
+/* Body-owned legacy dark mode needs the same paired base table/control paint.
+ * Inverse header rules above are more specific and retain their navy palette. */
+:root body[data-theme='dark'] :where(table) :is(th, td) {
+  background-color: var(--uss-app-surface);
+  color: var(--uss-app-text);
+}
+:root body[data-theme='dark'] :where(input, select, textarea) {
+  background-color: var(--uss-app-control);
+  color: var(--uss-app-text);
+}
+
 @media (forced-colors: active) {
   :root {
     --uss-app-header-copy: CanvasText;
@@ -174,24 +251,16 @@
     --pulse-table-header-background: Canvas;
     --pulse-table-header-text: CanvasText;
     --pulse-table-header-muted: CanvasText;
+    --pulse-allow-background: Canvas;
+    --pulse-allow-text: CanvasText;
+    --pulse-unset-background: Canvas;
+    --pulse-unset-text: CanvasText;
   }
-
-  :where(
-    .welcome-dashboard-hero,
-    .projectpulse-module-standard > header,
-    .uss-enterprise-page-header,
-    [data-enterprise-page-header='true'],
-    [data-contrast-surface='inverse']
-  ) {
-    --pulse-surface-text: CanvasText;
-    --pulse-surface-muted: CanvasText;
-    --pulse-surface-label: CanvasText;
-    background: Canvas !important;
-    color: CanvasText !important;
-  }
-
   :root body .roles-matrix-role-heading small {
-    background: Canvas;
+    background: Canvas !important;
     border: 1px solid CanvasText;
+  }
+  :root body .projectpulse-view-as-drawer.is-active .projectpulse-view-as-drawer__header {
+    background: Canvas !important;
   }
 }
