@@ -1,0 +1,44 @@
+name: PR1140 Protected UAT dispatch recovery checks
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/module025-protected-uat-control.yml'
+      - '.github/workflows/pr1140-uat-recovery-ci.yml'
+      - 'scripts/release-test/recover-pr1140-uat-orphan.py'
+      - 'scripts/release-test/validate-protected-test-controller-branches.sh'
+      - 'tests/test-pr1140-uat-recovery.py'
+      - 'tests/pr1140-uat-recovery-scope.py'
+permissions:
+  contents: read
+concurrency:
+  group: pr1140-uat-recovery-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  recovery_contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          show-progress: false
+      - name: Verify exact six-file recovery and unchanged application authority
+        if: github.head_ref == 'fix/pr1140-protected-uat-dispatch-recovery'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 tests/pr1140-uat-recovery-scope.py
+      - name: Run new and previous exact-orphan negative tests without live access
+        run: |
+          python3 tests/test-pr1139-uat-recovery.py -v
+          python3 tests/test-pr1140-uat-recovery.py -v
+          node tests/validate-systemwide-image-build-controller.mjs
+      - name: Verify unchanged actual Test and production controllers
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD:.github/workflows/projectpulse-deploy-test.yml)" = 634983f88d5ce3161b626010c3e20c41a80e3758
+          git diff --exit-code "$BASE_SHA" HEAD -- .github/workflows/projectpulse-deploy-test.yml .github/workflows/projectpulse-deploy-production.yml src database
+          git diff --check "$BASE_SHA"...HEAD

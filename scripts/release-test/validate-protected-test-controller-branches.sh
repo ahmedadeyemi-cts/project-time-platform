@@ -3,6 +3,14 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+# PR1140_RECOVERY_SCOPE_BEGIN
+if [[ "$HEAD_BRANCH" == fix/pr1140-protected-uat-dispatch-recovery ]]; then
+  python3 tests/pr1140-uat-recovery-scope.py
+  python3 tests/test-pr1140-uat-recovery.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
+# PR1140_RECOVERY_SCOPE_END
 # PR1139_RECOVERY_SCOPE_BEGIN
 if [[ "$HEAD_BRANCH" == fix/pr1139-protected-uat-dispatch-recovery ]]; then
   [[ "$PR_NUMBER" == '1141' ]] || fail 'This recovery scope is restricted to PR #1141.'

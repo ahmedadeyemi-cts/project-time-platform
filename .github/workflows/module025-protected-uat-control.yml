@@ -249,6 +249,14 @@ jobs:
               quarantined_runs+=("$run_id")
               continue
             fi
+            # PR1140_UAT_RECOVERY_BEGIN
+            if [[ "$run_id" == '35739149661' ]]; then
+              python3 scripts/release-test/recover-pr1140-uat-orphan.py \
+                || fail 'PR 1140 orphan recovery did not meet its exact safety contract.'
+              quarantined_runs+=("$run_id")
+              continue
+            fi
+            # PR1140_UAT_RECOVERY_END
             # PR1139_UAT_RECOVERY_END
             run_status="$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .status' <<<"$runs_json")"
             blocking_runs+=("${run_id}:${run_status}")
