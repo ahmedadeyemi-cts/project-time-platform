@@ -1,0 +1,67 @@
+name: Read exact PR1140 migration failure
+on:
+  push:
+    branches: ['ops/pr1140-migration-diagnostics-20260922']
+    paths: ['.github/workflows/pr1140-migration-diagnostics.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: e81b458f77c6af114c06585475386568a060450d
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+      - name: Capture pinned source and exact failed migration log window
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = ahmedadeyemi-cts/project-time-platform
+          test "$(git rev-parse HEAD)" = e81b458f77c6af114c06585475386568a060450d
+          mkdir -m 0700 "$RUNNER_TEMP/pr1140-migration-evidence"
+          gh api repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/106794173906 > "$RUNNER_TEMP/job.json"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          job=json.loads((Path(os.environ['RUNNER_TEMP'])/'job.json').read_text())
+          assert job['run_id']==35742090904 and job['id']==106794173906
+          assert job['head_sha']=='e81b458f77c6af114c06585475386568a060450d'
+          assert job['status']=='completed' and job['conclusion']=='failure'
+          step=next(s for s in job['steps'] if s['number']==25)
+          assert step['conclusion']=='failure' and step['name'].startswith('Apply and verify governed migrations')
+          PY
+          gh api repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/106794173906/logs > "$RUNNER_TEMP/job.log"
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          job=json.loads((root/'job.json').read_text())
+          step=next(s for s in job['steps'] if s['number']==25)
+          start=step['started_at'][:19]; end=step['completed_at'][:19]
+          lines=(root/'job.log').read_text(encoding='utf-8-sig',errors='replace').splitlines()
+          selected=[re.sub(r'\x1b\[[0-9;]*m','',line) for line in lines if start<=line[:19]<=end]
+          assert selected, 'Migration log window is empty'
+          target=root/'pr1140-migration-evidence'
+          (target/'migration-window.log').write_text('\n'.join(selected)+'\n')
+          errors=[line for line in selected if re.search(r'error:|fatal:|exception|failed|permission denied',line,re.I)]
+          (target/'migration-errors.log').write_text('\n'.join(errors)+'\n')
+          (target/'job.json').write_text(json.dumps(job,indent=2)+'\n')
+          print('MIGRATION_WINDOW_LINES='+str(len(selected)))
+          print('\n'.join(errors[-12:])[-7000:])
+          PY
+          git archive --format=zip HEAD -o "$RUNNER_TEMP/pr1140-migration-evidence/source-e81b458.zip"
+          echo 'DEPLOYMENT_MUTATION=NONE CLOUD_ACCESS=NONE'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr1140-migration-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr1140-migration-evidence
+          if-no-files-found: error
+          retention-days: 1
