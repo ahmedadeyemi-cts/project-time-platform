@@ -100,7 +100,7 @@
   }
 
   /* Dimmed controls used compounded opacity, making their labels unreadable.
-   * Keep the disabled attribute/cursor and existing disabled color variant. */
+   * Keep the disabled attribute and cursor; the shared neutral palette below owns its paint. */
   & :is(button, input, select, textarea):disabled {
     opacity: 1 !important;
   }
@@ -117,6 +117,21 @@
 /* The contextual assistant has an existing high-specificity background rule. */
 :root[data-pulse-experience='enterprise'] body .celar-ai-contextual-chat .help-header {
   background: var(--uss-app-header-background) !important;
+}
+
+/* Classic presentation keeps a light/base assistant header, not the branded
+ * inverse surface. Pair its supporting label with the selected base theme. */
+:root:not([data-pulse-experience='enterprise']) body .celar-ai-contextual-chat .help-header {
+  background: var(--uss-app-surface-subtle) !important;
+  color: var(--uss-app-text) !important;
+}
+:root:not([data-pulse-experience='enterprise']) body .celar-ai-contextual-chat .help-header strong {
+  color: var(--uss-app-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+:root:not([data-pulse-experience='enterprise']) body .celar-ai-contextual-chat .help-header :is(span, small, p) {
+  color: var(--uss-app-muted) !important;
+  -webkit-text-fill-color: currentColor !important;
 }
 
 /* Quick-action links are white controls, not ordinary links on the hero. */
@@ -188,6 +203,35 @@
   color: inherit !important;
   -webkit-text-fill-color: currentColor !important;
   opacity: 1;
+}
+
+/* Shared enterprise primary actions otherwise use the light-blue link token
+ * with white text in dark mode. Keep actions dark blue; canonical inverse-header
+ * button variants still win through their existing important declarations. */
+:root[data-pulse-experience='enterprise'][data-theme='dark'] body :is(.primary-action, button.primary, .button-primary, [class$='-primary-action']):not(.danger, .is-danger, [data-variant='danger']),
+:root[data-pulse-experience='enterprise'] body[data-theme='dark'] :is(.primary-action, button.primary, .button-primary, [class$='-primary-action']):not(.danger, .is-danger, [data-variant='danger']) {
+  background: #00569a;
+  color: #ffffff;
+}
+
+/* Disabled is still disabled, but readable. Use an opaque neutral paint pair
+ * rather than fading the control and its text together. */
+:root body :is(button, input, select, textarea):disabled {
+  background: var(--readable-disabled-bg) !important;
+  color: var(--readable-disabled-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1 !important;
+}
+
+/* Selected navigation/theme labels previously used white on a mid-blue that
+ * failed normal-text contrast. Preserve the blue selected-state distinction. */
+:root[data-pulse-experience='enterprise'][data-theme='dark'] body .enterprise-top-bar :is(.enterprise-top-navigation > a.active, .enterprise-more-button.active),
+:root[data-pulse-experience='enterprise'] body[data-theme='dark'] .enterprise-top-bar :is(.enterprise-top-navigation > a.active, .enterprise-more-button.active),
+:root[data-pulse-experience='enterprise'][data-theme='dark'] body .pulse-header-theme-switcher button:is(.active, [aria-pressed='true']),
+:root[data-pulse-experience='enterprise'] body[data-theme='dark'] .pulse-header-theme-switcher button:is(.active, [aria-pressed='true']) {
+  background: #00569a !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: currentColor !important;
 }
 
 /* Dashboard cards use the base palette, including their small labels and links.

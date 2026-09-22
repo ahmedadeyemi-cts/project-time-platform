@@ -99,6 +99,16 @@ def fixtures() -> str:
         {label('span', 'assistant.copy', 'Help with your current workspace')}
       </header>
     </article>''')
+    fragments.append('''<article class="contrast-fixture panel">
+      <h2>Standard controls</h2>
+      <button class="primary-action"><span data-contrast-check="control.primary">Create project</span></button>
+      <button class="primary-action" disabled><span data-contrast-check="control.disabled">Unavailable</span></button>
+      <button class="secondary-action"><small data-contrast-check="control.secondary">View details</small></button>
+      <div class="pulse-experience-switcher"><button class="active"><span data-contrast-check="switcher.active">Enterprise</span></button></div>
+      <div class="enterprise-top-bar"><nav class="enterprise-top-navigation"><a class="active" href="#dashboard"><span data-contrast-check="navigation.active">Dashboard</span></a></nav></div>
+      <div class="pulse-header-theme-switcher"><button class="active"><span data-contrast-check="theme.active">Dark</span></button></div>
+      <div class="tabs"><button class="active"><span data-contrast-check="tab.active">Overview</span></button></div>
+    </article>''')
     for name, table_class in (('matrix', 'roles-matrix-table'), ('shared', 'uss-table'), ('generic', 'contrast-table')):
         fragments.append(f'''<article class="contrast-fixture"><div class="contrast-scroll">
           <table class="{table_class}"><thead><tr>
