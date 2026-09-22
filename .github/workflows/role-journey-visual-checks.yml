@@ -9,6 +9,8 @@ on:
       - 'src/frontend/project-time-web/src/effective-role-authority.js'
       - 'src/frontend/project-time-web/tests/role-journey*.mjs'
       - 'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs'
+      - 'scripts/release-test/run-flowhive-my-role-browser.py'
+      - 'tests/role-journey-browser-contract.test.py'
       - '.github/workflows/role-journey-visual-checks.yml'
 permissions:
   contents: read
@@ -29,3 +31,7 @@ jobs:
       - name: Verify role isolation, workflow coverage and route contracts
         working-directory: src/frontend/project-time-web
         run: node --test tests/role-journeys.test.mjs tests/role-journey-access.test.mjs tests/role-journey-experience.test.mjs
+      - name: Verify installed browser selector and fail-closed role readiness
+        run: |
+          python3 tests/role-journey-browser-contract.test.py
+          python3 -m py_compile scripts/release-test/run-flowhive-my-role-browser.py
