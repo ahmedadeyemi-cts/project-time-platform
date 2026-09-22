@@ -1,0 +1,48 @@
+name: Prepare migration124 review checksum
+on:
+  push:
+    branches: ['ops/pr1140-migration-diagnostics-20260922']
+    paths: ['.github/workflows/prepare-migration124-review-checksum.yml']
+permissions:
+  contents: write
+jobs:
+  prepare:
+    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == '1915c4285500a93982067a5a8d6c18eadec64597'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 436010a2838c94e7b94251fbdada16453b917dcf
+          persist-credentials: false
+          show-progress: false
+      - name: Change one checksum and preserve every review decision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          from urllib.request import Request,urlopen
+          assert os.environ['GITHUB_REPOSITORY']=='ahmedadeyemi-cts/project-time-platform'
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='436010a2838c94e7b94251fbdada16453b917dcf'
+          path=Path('docs/production-readiness/foundation/initialization-review.json')
+          original=path.read_bytes()
+          assert hashlib.sha256(original).hexdigest()=='a7a289341c29bb440c28aa05acedf2b16e890b676233b289223e66d63d583147'
+          old='a63226167c304835a203ca55d74535c184e612468e9300ed0423d05f2dbf981b'
+          new='aebe71514db6689a4081f7898b945e42d79f3297bc0f6d64bf4dcd252c00d94e'
+          assert original.decode().count(old)==1
+          result=original.decode().replace(old,new,1).encode()
+          assert hashlib.sha256(result).hexdigest()=='5087ee6a16dda4743ba7f20820c0fa2b51d938fc0faba59782983e23539eb2d1'
+          before=json.loads(original);after=json.loads(result)
+          item=next(v for v in after['scripts'] if v['path']=='database/migrations/124_module025_service_scope.sql')
+          assert item['sha256']==new and item['decision']=='review_required'
+          item['sha256']=old
+          assert before==after
+          expected=hashlib.sha1(b'blob '+str(len(result)).encode()+b'\0'+result).hexdigest()
+          assert expected=='a2950209689bed5aee4412d63b7f63e274c61a4b'
+          request=Request('https://api.github.com/repos/ahmedadeyemi-cts/project-time-platform/git/blobs',data=json.dumps({'content':result.decode(),'encoding':'utf-8'}).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+          with urlopen(request,timeout=30) as response: actual=json.load(response)['sha']
+          assert actual==expected
+          print('REVIEW_CHECKSUM_BLOB='+actual)
+          print('BRANCH_MUTATION=NONE REVIEW_APPROVAL=UNCHANGED DEPLOYMENT_MUTATION=NONE')
