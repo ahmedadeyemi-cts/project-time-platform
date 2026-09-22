@@ -26,8 +26,6 @@ jobs:
       matrix:
         browser: [chromium, firefox]
         layout: [table, enterprise, classic]
-    env:
-      SURFACE_TYPESCRIPT_MODULE: ${{ runner.temp }}/surface-tools/node_modules/typescript/lib/typescript.js
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -49,6 +47,7 @@ jobs:
       - name: Derive fixtures and preserve source provenance
         working-directory: src/frontend/project-time-web
         run: |
+          export SURFACE_TYPESCRIPT_MODULE="$RUNNER_TEMP/surface-tools/node_modules/typescript/lib/typescript.js"
           mkdir -p "$RUNNER_TEMP/module-surface-evidence"
           node --check scripts/generate-module-surface-fixtures.cjs
           "$RUNNER_TEMP/surface-venv/bin/python" -m py_compile scripts/validate-module-surface-contrast.py
