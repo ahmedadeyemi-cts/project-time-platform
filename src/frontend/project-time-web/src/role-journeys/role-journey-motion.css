@@ -1,0 +1,50 @@
+/* All art is local SVG/CSS. No GIF/video downloads, third-party animation
+   service, AI calls, fake customer records or additional runtime dependencies. */
+.rj-visual-experience .rj-at-a-glance { display: grid; gap: 8px; margin-top: 24px; padding: 18px; border-radius: 12px; background: var(--rj-soft); border: 1px solid var(--rj-line); }
+.rj-at-a-glance strong { font-size: 22px; }
+.rj-at-a-glance span { font-size: 13px; color: var(--rj-muted); }
+.rj-motion-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block: 16px; }
+.rj-scene { margin: 20px 0; padding: 14px; border: 1px solid var(--rj-line); border-radius: 16px; background: var(--rj-soft); }
+.rj-scene svg { display: block; width: 100%; height: auto; max-height: 240px; overflow: visible; }
+.rj-scene-card { fill: var(--rj-bg); stroke: var(--rj-line); stroke-width: 2; }
+.rj-scene-connector { fill: none; stroke: var(--rj-accent); stroke-width: 3; stroke-dasharray: 6 7; animation: rj-flow-dashes 3s linear infinite; }
+.rj-scene-arrow, .rj-scene-ink { fill: none; stroke: var(--rj-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.rj-moving-page { animation: rj-transfer-page 4s ease-in-out infinite; }
+.rj-moving-page rect { fill: var(--rj-accent); }
+.rj-moving-page path { fill: none; stroke: var(--rj-on-accent); stroke-width: 1.5; }
+.rj-scene text { fill: var(--rj-text); font: 600 14px system-ui, sans-serif; }
+.rj-scene figcaption { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 6px 0; line-height: 1.5; }
+.rj-scene figcaption span { font-size: 13px; color: var(--rj-muted); }
+.rj-scene[data-motion="paused"] * { animation-play-state: paused !important; }
+.rj-visual-experience .rj-stepper { grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; }
+.rj-visual-experience .rj-stepper li::after { display: none; }
+.rj-visual-experience .rj-stepper [aria-current="step"] { box-shadow: inset 0 -4px 0 var(--rj-accent); }
+.rj-workspace-map { border: 1px solid var(--rj-line); border-radius: 12px; padding: 14px 18px; margin-block: 24px; }
+.rj-workspace-map summary { min-height: 44px; padding: 10px 0; cursor: pointer; font-weight: 700; }
+.rj-workspace-map ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; list-style: none; padding: 0; }
+.rj-workspace-map li { padding: 14px; border: 1px solid var(--rj-line); border-radius: 10px; background: var(--rj-soft); min-width: 0; }
+.rj-workspace-map a { display: grid; gap: 6px; min-height: 44px; }
+.rj-workspace-map small { color: var(--rj-muted); }
+.rj-workspace-map p { font-size: 13px; }
+@keyframes rj-flow-dashes { to { stroke-dashoffset: -52; } }
+@keyframes rj-transfer-page { 0%, 15% { transform: translateX(0); opacity: 1; } 45% { opacity: .25; } 75%, 100% { transform: translateX(248px); opacity: 1; } }
+@media (max-width: 720px) {
+  .rj-visual-experience .rj-stepper { grid-template-columns: 1fr; }
+  .rj-visual-experience .rj-role-list, .rj-workspace-map ul { grid-template-columns: 1fr; }
+  .rj-scene { padding: 6px; }
+  .rj-scene figcaption { display: grid; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rj-visual-experience *, .rj-visual-experience *::before, .rj-visual-experience *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (forced-colors: active) {
+  .rj-scene-card { fill: Canvas; stroke: CanvasText; }
+  .rj-scene-connector, .rj-scene-arrow, .rj-scene-ink { stroke: CanvasText; }
+  .rj-moving-page rect { fill: Highlight; }
+  .rj-moving-page path { stroke: HighlightText; }
+  .rj-scene text { fill: CanvasText; }
+}
+@media print {
+  .rj-motion-controls, .rj-selector input { display: none; }
+  .rj-scene * { animation: none !important; }
+}
