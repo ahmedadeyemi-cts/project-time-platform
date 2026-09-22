@@ -1,0 +1,62 @@
+name: Module Surface Contrast CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/module-surface-contrast-ci.yml'
+      - 'src/frontend/project-time-web/src/**'
+      - 'src/frontend/project-time-web/scripts/*surface*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module-surface-contrast-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  surfaces:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Build the complete frontend without source drift
+        run: |
+          npm ci --prefix src/frontend/project-time-web
+          npm run build --prefix src/frontend/project-time-web
+          git diff --exit-code
+      - name: Collect checked-in rendering sources for the initial audit
+        env:
+          AUDIT_DIR: ${{ runner.temp }}/module-surface-audit
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, zipfile
+          root = pathlib.Path('src/frontend/project-time-web')
+          output = pathlib.Path(os.environ['AUDIT_DIR'])
+          output.mkdir(parents=True, exist_ok=True)
+          files = [p for p in (root/'src').rglob('*') if p.is_file() and p.suffix in {'.css','.jsx','.svg'}]
+          files += [p for p in (root/'scripts').glob('*contrast.py') if p.is_file()]
+          files += [root/'src/module-availability-registry.js',root/'dist/index.html']
+          files += list((root/'dist/assets').glob('*.css'))
+          manifest = {'checkout': subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), 'files': []}
+          with zipfile.ZipFile(output/'render-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for path in sorted(set(files)):
+                  if path.is_symlink(): raise RuntimeError('Unexpected source symlink')
+                  data = path.read_bytes()
+                  relative = str(path.relative_to(root))
+                  archive.writestr(relative,data)
+                  manifest['files'].append({'path':relative,'sha256':hashlib.sha256(data).hexdigest()})
+          (output/'source-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print('AUDITED_RENDERING_SOURCE_FILES='+str(len(files)))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module-surface-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/module-surface-audit
+          if-no-files-found: error
+          retention-days: 1
