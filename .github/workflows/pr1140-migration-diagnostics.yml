@@ -38,7 +38,7 @@ jobs:
           step=next(s for s in job['steps'] if s['number']==25)
           assert step['conclusion']=='failure' and step['name'].startswith('Apply and verify governed migrations')
           PY
-          gh api repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/106794173906/logs > "$RUNNER_TEMP/job.log"
+          gh api --allow-escape-sequences repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/106794173906/logs > "$RUNNER_TEMP/job.log"
           python3 - <<'PY'
           import json,os,re
           from pathlib import Path
@@ -49,6 +49,7 @@ jobs:
           lines=(root/'job.log').read_text(encoding='utf-8-sig',errors='replace').splitlines()
           selected=[re.sub(r'\x1b\[[0-9;]*m','',line) for line in lines if start<=line[:19]<=end]
           assert selected, 'Migration log window is empty'
+          selected=[''.join(c for c in line if c=='\t' or c.isprintable()) for line in selected]
           target=root/'pr1140-migration-evidence'
           (target/'migration-window.log').write_text('\n'.join(selected)+'\n')
           errors=[line for line in selected if re.search(r'error:|fatal:|exception|failed|permission denied',line,re.I)]
