@@ -3,6 +3,15 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+# MIGRATION_THROTTLE_SCOPE_BEGIN
+if [[ "$HEAD_BRANCH" == fix/uat-migration-throttle-recovery-20260922 ]]; then
+  python3 tests/uat-migration-throttle-scope.py
+  python3 tests/test-azure-migration-throttle.py
+  python3 tests/test-pr1140-migration-retry-recovery.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
+# MIGRATION_THROTTLE_SCOPE_END
 # PR1140_RECOVERY_SCOPE_BEGIN
 if [[ "$HEAD_BRANCH" == fix/pr1140-protected-uat-dispatch-recovery ]]; then
   python3 tests/pr1140-uat-recovery-scope.py

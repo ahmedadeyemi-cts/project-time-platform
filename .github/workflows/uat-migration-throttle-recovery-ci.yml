@@ -1,0 +1,49 @@
+name: UAT migration throttle and exact retry recovery
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/uat-migration-throttle-recovery-ci.yml'
+      - '.github/workflows/module025-protected-uat-control.yml'
+      - 'scripts/release-test/azure-migration-throttle.sh'
+      - 'scripts/release-test/run-flowhive-authority-migration-094-job.sh'
+      - 'scripts/release-test/recover-pr1140-migration-retry-orphan.py'
+      - 'scripts/release-test/validate-protected-test-controller-branches.sh'
+      - 'tests/test-azure-migration-throttle.py'
+      - 'tests/test-pr1140-migration-retry-recovery.py'
+      - 'tests/uat-migration-throttle-scope.py'
+      - 'tests/pr1140-uat-recovery-scope.py'
+permissions:
+  contents: read
+concurrency:
+  group: uat-migration-throttle-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          show-progress: false
+      - name: Verify exact ten-file repair boundary
+        if: github.head_ref == 'fix/uat-migration-throttle-recovery-20260922'
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: python3 tests/uat-migration-throttle-scope.py
+      - name: Exercise offline backoff and all retained recovery gates
+        run: |
+          python3 tests/test-azure-migration-throttle.py -v
+          python3 tests/test-pr1139-uat-recovery.py -v
+          python3 tests/test-pr1140-uat-recovery.py -v
+          python3 tests/test-pr1140-migration-retry-recovery.py -v
+          node tests/validate-systemwide-image-build-controller.mjs
+          bash tests/test-pulse-ai-runtime-job-query-shape.sh
+      - name: Require unchanged application SQL and production controller
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --exit-code "$BASE_SHA" HEAD -- src database .github/workflows/projectpulse-deploy-test.yml .github/workflows/projectpulse-deploy-production.yml
+          git diff --check "$BASE_SHA" HEAD
