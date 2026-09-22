@@ -29,6 +29,7 @@ public static class PulseAiPrivateDocumentPipelineModule
             (Func<Guid, HttpContext, PulseAiPrivateDocumentPipelineService, CancellationToken, Task<IResult>>)GetProcessingPreviewAsync);
 
         endpoints.MapPulseAiPrivateRuntimeEndpoints();
+        endpoints.MapLayaDecisionEndpoints();
         return endpoints;
     }
 

@@ -15,6 +15,10 @@ esac
 [[ "$ACR" =~ ^[a-zA-Z0-9]+$ && "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]]
 API="$(az containerapp show -g "${AZURE_RESOURCE_GROUP:?}" -n "${AZURE_API_APP:?}" -o json --only-show-errors)"
 jq -e '.tags.environment == "test"' <<<"$API" >/dev/null
+# LAYA_RELEASE_BEGIN runtime_role
+LAYA_RUNTIME_ROLE="$(jq -er '[.properties.template.containers[].env[]? | select(.name == "PTP_DB_USER") | .value | select(type == "string" and length > 0)] | unique | if length == 1 then .[0] else error("One explicit API database role is required for Laya grants") end' <<<"$API")"
+[[ "$LAYA_RUNTIME_ROLE" =~ ^[a-zA-Z_][a-zA-Z0-9_.@-]{0,62}$ ]] || { echo 'STOP: Unexpected API database role.' >&2; exit 1; }
+# LAYA_RELEASE_END runtime_role
 unset API
 CONTEXT="$(mktemp -d "${RUNNER_TEMP:-/tmp}/module025-retention-106-XXXXXX")"
 trap 'rm -rf -- "$CONTEXT"' EXIT
@@ -28,6 +32,13 @@ install -m 0444 "$ROOT/database/migrations/119_module025_temporary_handoffs.sql"
 install -m 0444 "$ROOT/database/migrations/120_module025_handoff_notifications.sql" "$CONTEXT/migration-120.sql"
 printf '%s\n' "$RELEASE" > "$CONTEXT/release-commit"
 (cd "$CONTEXT" && sha256sum migration-106.sql migration-110.sql migration-111.sql migration-116.sql migration-117.sql migration-118.sql migration-119.sql migration-120.sql release-commit > SHA256SUMS)
+# LAYA_RELEASE_BEGIN migration_files
+install -m 0444 "$ROOT/deployment/laya/schema.sql" "$CONTEXT/laya-schema.sql"
+install -m 0444 "$ROOT/deployment/laya/grants.sql" "$CONTEXT/laya-grants.sql"
+install -m 0444 "$ROOT/deployment/laya/verify-database.sql" "$CONTEXT/laya-verify.sql"
+printf '%s\n' "$LAYA_RUNTIME_ROLE" > "$CONTEXT/laya-runtime-role"
+(cd "$CONTEXT" && sha256sum laya-schema.sql laya-grants.sql laya-verify.sql laya-runtime-role >> SHA256SUMS)
+# LAYA_RELEASE_END migration_files
 cat > "$CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -43,6 +54,14 @@ psql -X -v ON_ERROR_STOP=1 --file migration-117.sql
 psql -X -v ON_ERROR_STOP=1 --file migration-118.sql
 psql -X -v ON_ERROR_STOP=1 --file migration-119.sql
 psql -X -v ON_ERROR_STOP=1 --file migration-120.sql
+# LAYA_RELEASE_BEGIN migration_apply
+LAYA_RUNTIME_ROLE="$(cat laya-runtime-role)"
+[[ "$LAYA_RUNTIME_ROLE" =~ ^[a-zA-Z_][a-zA-Z0-9_.@-]{0,62}$ ]]
+psql -X -v ON_ERROR_STOP=1 --file laya-schema.sql
+psql -X -v ON_ERROR_STOP=1 -v "runtime_role=$LAYA_RUNTIME_ROLE" --file laya-grants.sql
+psql -X -v ON_ERROR_STOP=1 -v "runtime_role=$LAYA_RUNTIME_ROLE" --file laya-verify.sql
+echo 'LAYA_DATABASE_SCHEMA_AND_API_GRANTS=APPLIED_AND_VERIFIED'
+# LAYA_RELEASE_END migration_apply
 verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT (
   EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='106_module025_sow_sell_register')
@@ -105,6 +124,10 @@ RUN apk add --no-cache bash coreutils ca-certificates
 WORKDIR /opt/projectpulse/release
 COPY migration-106.sql migration-110.sql migration-111.sql migration-116.sql migration-117.sql migration-118.sql migration-119.sql migration-120.sql release-commit SHA256SUMS entrypoint.sh ./
 RUN chmod 0444 migration-106.sql migration-110.sql migration-111.sql migration-116.sql migration-117.sql migration-118.sql migration-119.sql migration-120.sql release-commit SHA256SUMS && chmod 0555 entrypoint.sh
+# LAYA_RELEASE_BEGIN migration_image
+COPY laya-schema.sql laya-grants.sql laya-verify.sql laya-runtime-role ./
+RUN chmod 0444 laya-schema.sql laya-grants.sql laya-verify.sql laya-runtime-role
+# LAYA_RELEASE_END migration_image
 ENTRYPOINT ["/opt/projectpulse/release/entrypoint.sh"]
 DOCKERFILE
 TAG="module025-retention-migrator:${RELEASE:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -127,3 +150,8 @@ mkdir -p "${EVIDENCE_DIR:?}"
 jq -n --arg source "$RELEASE" --arg image "$MAIN_RELEASE_MIGRATION_IMAGE" \
   '{status:"applied_and_verified",migrations:["106_module025_sow_sell_register","110_module025_ungenerated_draft_delete","111_connectwise_sell_provider","116_module025_governed_ownership_transfer","117_module025_template_candidates","118_module025_work_tracking","119_module025_temporary_handoffs","120_module025_handoff_notifications"],sourceCommit:$source,image:$image,productionMutation:false}' \
   > "$EVIDENCE_DIR/module025-retention-migration.json"
+# LAYA_RELEASE_BEGIN migration_evidence
+jq -n --arg source "$RELEASE" --arg image "$MAIN_RELEASE_MIGRATION_IMAGE" \
+  '{status:"applied_and_verified",schema:"celar_laya_decisions_v1",sourceCommit:$source,image:$image,apiRoleGrantsVerified:true,productionMutation:false,providerOrderChanged:false}' \
+  > "$EVIDENCE_DIR/laya-database-migration.json"
+# LAYA_RELEASE_END migration_evidence

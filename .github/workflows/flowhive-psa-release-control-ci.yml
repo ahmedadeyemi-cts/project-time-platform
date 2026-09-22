@@ -59,6 +59,13 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
+      # LAYA_RELEASE_BEGIN fixture_preparation
+      - name: Select the historical admission fixture for the Laya source addition
+        if: github.head_ref == 'feature/celar-laya-document-decisions-20260921'
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: python3 tests/laya/prepare-admission-fixture.py
+      # LAYA_RELEASE_END fixture_preparation
       - name: Exact control-only scope and negative admission tests
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -73,6 +80,10 @@ jobs:
           fi
           if [[ "$GITHUB_HEAD_REF" == fix/module064-generation-sequence-20260921 ]]; then
             python3 tests/module064-generation-sequence-scope.py
+          # LAYA_RELEASE_BEGIN ownership
+          elif [[ "$GITHUB_HEAD_REF" == feature/celar-laya-document-decisions-20260921 ]]; then
+            python3 tests/laya/release-scope.py
+          # LAYA_RELEASE_END ownership
           elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-installed-verifier-20260921 ]]; then
             python3 tests/flowhive-installed-verifier-scope.py
           elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-sow-private-generation-20260921 ]]; then
@@ -720,7 +731,7 @@ jobs:
           else
             node tests/flowhive-psa-release-control.mjs
           fi
-          node --test tests/flowhive-psa-admission.test.mjs
+          node --test "${LAYA_ADMISSION_TEST:-tests/flowhive-psa-admission.test.mjs}"
           python tests/flowhive-psa-live-uat.test.py
           python tests/flowhive-psa-installed-acceptance.test.py
           python tests/flowhive-installed-resolution.test.py
@@ -735,6 +746,11 @@ jobs:
           bash -n scripts/release-test/apply-flowhive-psa-migrations.sh
           bash -n scripts/release-test/build-and-run-flowhive-psa-migrations.sh
           git diff --check
+      # LAYA_RELEASE_BEGIN fixture_cleanup
+      - name: Remove the generated historical test fixture
+        if: always() && github.head_ref == 'feature/celar-laya-document-decisions-20260921'
+        run: rm -f -- tests/laya-admission-fixture.generated.test.mjs
+      # LAYA_RELEASE_END fixture_cleanup
       # Live readiness is deliberately not a source-only PR result. The
       # owner-authorized admission workflow acquires the lock, rechecks the
       # live controller, and fails closed immediately before dispatch.

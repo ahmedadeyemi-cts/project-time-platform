@@ -6,6 +6,7 @@ import './ai-provider-configuration-center.css';
 import './projectpulse-module-standard.css';
 import CelarAiAvailabilityCard from './CelarAiAvailabilityCard.jsx';
 import AiProviderReadinessPanel from './ai/AiProviderReadinessPanel.jsx';
+import LayaDecisionPanel from './ai/LayaDecisionPanel.jsx';
 
 const PROVIDER_LABELS = {
   deepseek_v4: 'DeepSeek v4',
@@ -467,6 +468,7 @@ export default function AiProviderConfigurationCenter() {
 
           <CelarAiProviderBridgePanel />
           <CelarAiCapabilityRoutingPanel />
+          <LayaDecisionPanel />
 
           <section className="ai-provider-center__locked" aria-label="Controlled configuration boundary">
             <div>

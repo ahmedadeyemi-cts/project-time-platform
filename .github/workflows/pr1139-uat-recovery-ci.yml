@@ -1,0 +1,33 @@
+name: PR1139 Protected UAT dispatch recovery checks
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/module025-protected-uat-control.yml'
+      - '.github/workflows/pr1139-uat-recovery-ci.yml'
+      - 'scripts/release-test/recover-pr1139-uat-orphan.py'
+      - 'tests/test-pr1139-uat-recovery.py'
+permissions:
+  contents: read
+concurrency:
+  group: pr1139-uat-recovery-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  recovery_contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run offline negative recovery and exact supervisor preservation tests
+        run: python3 tests/test-pr1139-uat-recovery.py -v
+      - name: Verify the deployment and production controllers were not changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD:.github/workflows/projectpulse-deploy-test.yml)" = 634983f88d5ce3161b626010c3e20c41a80e3758
+          git diff --exit-code "$BASE_SHA" HEAD -- .github/workflows/projectpulse-deploy-test.yml .github/workflows/projectpulse-deploy-production.yml
+          git diff --check "$BASE_SHA"...HEAD
