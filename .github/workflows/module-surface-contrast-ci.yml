@@ -6,6 +6,8 @@ on:
       - '.github/workflows/module-surface-contrast-ci.yml'
       - 'src/frontend/project-time-web/src/**'
       - 'src/frontend/project-time-web/scripts/*surface*'
+      - 'src/frontend/project-time-web/package*.json'
+      - 'src/frontend/project-time-web/vite.config.js'
 
 permissions:
   contents: read
@@ -16,8 +18,16 @@ concurrency:
 
 jobs:
   surfaces:
+    name: Module surfaces (${{ matrix.browser }}, ${{ matrix.layout }})
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
+        layout: [table, enterprise, classic]
+    env:
+      SURFACE_TYPESCRIPT_MODULE: ${{ runner.temp }}/surface-tools/node_modules/typescript/lib/typescript.js
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -30,33 +40,42 @@ jobs:
           npm ci --prefix src/frontend/project-time-web
           npm run build --prefix src/frontend/project-time-web
           git diff --exit-code
-      - name: Collect checked-in rendering sources for the initial audit
-        env:
-          AUDIT_DIR: ${{ runner.temp }}/module-surface-audit
+      - name: Install isolated source-parser and browser-test dependencies
         run: |
-          python3 - <<'PY'
-          import hashlib, json, os, pathlib, subprocess, zipfile
-          root = pathlib.Path('src/frontend/project-time-web')
-          output = pathlib.Path(os.environ['AUDIT_DIR'])
-          output.mkdir(parents=True, exist_ok=True)
-          files = [p for p in (root/'src').rglob('*') if p.is_file() and p.suffix in {'.css','.jsx','.svg'}]
-          files += [p for p in (root/'scripts').glob('*contrast.py') if p.is_file()]
-          files += [root/'src/module-availability-registry.js',root/'dist/index.html']
-          files += list((root/'dist/assets').glob('*.css'))
-          manifest = {'checkout': subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), 'files': []}
-          with zipfile.ZipFile(output/'render-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
-              for path in sorted(set(files)):
-                  if path.is_symlink(): raise RuntimeError('Unexpected source symlink')
-                  data = path.read_bytes()
-                  relative = str(path.relative_to(root))
-                  archive.writestr(relative,data)
-                  manifest['files'].append({'path':relative,'sha256':hashlib.sha256(data).hexdigest()})
-          (output/'source-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
-          print('AUDITED_RENDERING_SOURCE_FILES='+str(len(files)))
-          PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          npm install --prefix "$RUNNER_TEMP/surface-tools" --ignore-scripts --no-audit --no-fund typescript@5.8.3
+          python3 -m venv "$RUNNER_TEMP/surface-venv"
+          "$RUNNER_TEMP/surface-venv/bin/pip" install playwright==1.55.0 Pillow==11.3.0
+          "$RUNNER_TEMP/surface-venv/bin/python" -m playwright install --with-deps '${{ matrix.browser }}'
+      - name: Derive fixtures and preserve source provenance
+        working-directory: src/frontend/project-time-web
+        run: |
+          mkdir -p "$RUNNER_TEMP/module-surface-evidence"
+          node --check scripts/generate-module-surface-fixtures.cjs
+          "$RUNNER_TEMP/surface-venv/bin/python" -m py_compile scripts/validate-module-surface-contrast.py
+          node scripts/generate-module-surface-fixtures.cjs "$PWD" "$RUNNER_TEMP/module-surface-evidence/fixtures.json"
+          git rev-parse HEAD > "$RUNNER_TEMP/module-surface-evidence/checkout.txt"
+          sha256sum src/enterprise/enterprise-owned-surface-contrast.css scripts/generate-module-surface-fixtures.cjs scripts/validate-module-surface-contrast.py > "$RUNNER_TEMP/module-surface-evidence/source-sha256.txt"
+      - name: Verify every source-derived module fixture in both theme ownership modes
+        working-directory: src/frontend/project-time-web
+        run: |
+          "$RUNNER_TEMP/surface-venv/bin/python" scripts/validate-module-surface-contrast.py \
+            --fixtures "$RUNNER_TEMP/module-surface-evidence/fixtures.json" \
+            --browsers '${{ matrix.browser }}' --layouts '${{ matrix.layout }}' \
+            --output "$RUNNER_TEMP/module-surface-evidence/desktop"
+      - name: Verify the reported On-Call and OEM surfaces at compact width
+        working-directory: src/frontend/project-time-web
+        run: |
+          "$RUNNER_TEMP/surface-venv/bin/python" scripts/validate-module-surface-contrast.py \
+            --fixtures "$RUNNER_TEMP/module-surface-evidence/fixtures.json" \
+            --browsers '${{ matrix.browser }}' --layouts '${{ matrix.layout }}' \
+            --filter 'OnCallSchedulingCenter|OemVendorDirectoryCenter' --width 800 \
+            --output "$RUNNER_TEMP/module-surface-evidence/compact"
+          git diff --exit-code
+      - name: Retain measurements, uncovered text, source inventory and screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: module-surface-audit-${{ github.run_id }}
-          path: ${{ runner.temp }}/module-surface-audit
-          if-no-files-found: error
-          retention-days: 1
+          name: module-surface-contrast-${{ matrix.browser }}-${{ matrix.layout }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/module-surface-evidence
+          if-no-files-found: warn
+          retention-days: 7
