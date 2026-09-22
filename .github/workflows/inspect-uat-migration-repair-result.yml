@@ -1,0 +1,65 @@
+name: Read repaired Protected UAT result
+on:
+  push:
+    branches: ['ops/pr1140-migration-diagnostics-20260922']
+    paths: ['.github/workflows/inspect-uat-migration-repair-result.yml']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  evidence:
+    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == '5db08f62dc1229a7a870783fa07b408f6c68ac99'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Read only the authorized exact deployment until terminal status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = ahmedadeyemi-cts/project-time-platform
+          mkdir -m 0700 "$RUNNER_TEMP/repaired-uat-evidence"
+          for attempt in $(seq 1 60); do
+            gh api repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/106868834595 > "$RUNNER_TEMP/job.json"
+            python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          job=json.loads((Path(os.environ['RUNNER_TEMP'])/'job.json').read_text())
+          assert job['run_id']==35764009825 and job['id']==106868834595
+          assert job['head_sha']=='436010a2838c94e7b94251fbdada16453b917dcf'
+          assert job['head_branch']=='main'
+          PY
+            if [[ "$(jq -r .status "$RUNNER_TEMP/job.json")" == completed ]]; then break; fi
+            sleep 30
+          done
+          [[ "$(jq -r .status "$RUNNER_TEMP/job.json")" == completed ]]
+          gh api --allow-escape-sequences repos/ahmedadeyemi-cts/project-time-platform/actions/jobs/106868834595/logs > "$RUNNER_TEMP/job.log"
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP']);target=root/'repaired-uat-evidence'
+          job=json.loads((root/'job.json').read_text())
+          lines=(root/'job.log').read_text(encoding='utf-8-sig',errors='replace').splitlines()
+          lines=[re.sub(r'\x1b\[[0-9;]*m','',line) for line in lines]
+          lines=[''.join(c for c in line if c=='\t' or c.isprintable()) for line in lines]
+          step=next(s for s in job['steps'] if s['number']==25)
+          start=step['started_at'][:19];end=step['completed_at'][:19]
+          selected=[line for line in lines if start<=line[:19]<=end]
+          (target/'migration-window.log').write_text('\n'.join(selected)+'\n')
+          errors=[line for line in lines if re.search(r'error:|fatal:|exception|failed|permission denied',line,re.I) and not re.search(r'echo |fail\(|\|\| fail|##\[group\]|\[36;1m',line)]
+          (target/'error-candidates.log').write_text('\n'.join(errors[-100:])+'\n')
+          # Exact standalone output markers only; echoed script text is not evidence.
+          markers=[line for line in lines if re.match(r'^\d{4}-\d\d-\d\dT[^ ]+ (?:MIGRATION_[A-Z0-9_]+|FLOWHIVE_AUTHORITY_MIGRATION_094_PRIVATE_NETWORK_JOB|SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB|MODULE025_[A-Z0-9_]+|PROTECTED_TEST_[A-Z0-9_]+)=',line)]
+          (target/'verified-output-markers.log').write_text('\n'.join(markers)+'\n')
+          (target/'job.json').write_text(json.dumps(job,indent=2)+'\n')
+          summary={'run_id':job['run_id'],'job_id':job['id'],'head_sha':job['head_sha'],'status':job['status'],'conclusion':job['conclusion'],'migration_step':step,'migration124_marker_seen':any(re.search(r' MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED$',line) for line in markers),'failed_steps':[s['name'] for s in job['steps'] if s['conclusion']=='failure'],'deployment_mutation_by_collector':False}
+          (target/'result.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print(json.dumps(summary))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: repaired-uat-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/repaired-uat-evidence
+          retention-days: 1
+          if-no-files-found: error
