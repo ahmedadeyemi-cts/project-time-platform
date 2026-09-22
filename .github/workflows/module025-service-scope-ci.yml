@@ -19,6 +19,29 @@ concurrency:
   group: module025-service-scope-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  source-diagnostics:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/module025-service-scope-20260921'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Archive tracked source and exact merge inputs only
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/scope-source"
+          git archive HEAD -o "$RUNNER_TEMP/scope-source/pr-source.zip"
+          git archive dc7297037c77a711276c7a36cd0048b4b54c6035 -o "$RUNNER_TEMP/scope-source/main-source.zip"
+          git archive e858712038d29dc611fb27db28b96e43aef164a0 -o "$RUNNER_TEMP/scope-source/base-source.zip"
+          git log -1 --format='%H %T %P' HEAD > "$RUNNER_TEMP/scope-source/pr-identity.txt"
+          git log -1 --format='%H %T %P' dc7297037c77a711276c7a36cd0048b4b54c6035 > "$RUNNER_TEMP/scope-source/main-identity.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: service-scope-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/scope-source
+          retention-days: 1
   contracts:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -50,7 +73,16 @@ jobs:
       - name: Verify real router, complete scope payload and PostgreSQL persistence
         env:
           MODULE025_SCOPE_TEST_DATABASE: Host=127.0.0.1;Port=${{ job.services.postgres.ports[5432] }};Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-scope-tests;Database=postgres
-        run: dotnet run --project tests/Module025ServiceScopeTests --configuration Release -p:BuildProjectReferences=false
+        run: |
+          set -o pipefail
+          dotnet run --project tests/Module025ServiceScopeTests --configuration Release -p:BuildProjectReferences=false 2>&1 | tee "$RUNNER_TEMP/service-scope-tests.log"
+      - name: Retain isolated test diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: service-scope-tests-${{ github.run_id }}
+          path: ${{ runner.temp }}/service-scope-tests.log
+          retention-days: 1
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci --ignore-scripts
