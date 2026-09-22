@@ -1,0 +1,100 @@
+name: Prepare exact PR1142 source blobs
+on:
+  push:
+    branches: ['ops/pr1140-cancel-stalled-uat-20260922']
+    paths: ['.github/workflows/pr1142-prepare-recovery-blobs.yml']
+permissions:
+  contents: write
+jobs:
+  prepare_source:
+    if: github.actor == 'ahmedadeyemi-cts' && github.run_attempt == 1 && github.event.before == '30b7bbeeb9c19d121cfc5013fc02edd9ac9beddf'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 4e8871cf9a7c4643483d178feecff67ec6d78d12
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+      - name: Verify and publish only the two exact content blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, json, os, re, subprocess
+          BASE = '4e8871cf9a7c4643483d178feecff67ec6d78d12'
+          REPOSITORY = 'ahmedadeyemi-cts/project-time-platform'
+          assert os.environ['GITHUB_REPOSITORY'] == REPOSITORY
+          assert os.environ['GITHUB_REF'] == 'refs/heads/ops/pr1140-cancel-stalled-uat-20260922'
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True, timeout=30).strip()
+          assert git('rev-parse', 'HEAD') == BASE
+          read = subprocess.run(['gh', 'api', f'repos/{REPOSITORY}/git/ref/heads/main'], capture_output=True, text=True, timeout=30, check=True)
+          assert json.loads(read.stdout)['object']['sha'] == BASE
+          supervisor_addition = '''            # PR1140_UAT_RECOVERY_BEGIN
+                      if [[ "$run_id" == '35739149661' ]]; then
+                        python3 scripts/release-test/recover-pr1140-uat-orphan.py \\
+                          || fail 'PR 1140 orphan recovery did not meet its exact safety contract.'
+                        quarantined_runs+=("$run_id")
+                        continue
+                      fi
+                      # PR1140_UAT_RECOVERY_END
+          '''
+          # The leading indentation below is part of the YAML block scalar;
+          # normalize the following lines to the same exact shell indentation.
+          supervisor_addition = supervisor_addition.splitlines(keepends=True)
+          supervisor_addition = supervisor_addition[0] + ''.join(line[10:] for line in supervisor_addition[1:])
+          scope_addition = '''# PR1140_RECOVERY_SCOPE_BEGIN
+          if [[ "$HEAD_BRANCH" == fix/pr1140-protected-uat-dispatch-recovery ]]; then
+            python3 tests/pr1140-uat-recovery-scope.py
+            python3 tests/test-pr1140-uat-recovery.py
+            node tests/validate-systemwide-image-build-controller.mjs
+            return
+          fi
+          # PR1140_RECOVERY_SCOPE_END
+          '''
+          changes = [
+              ('.github/workflows/module025-protected-uat-control.yml', 'f136cc0d5b05123ceb6e1bb4573555f911e4d1f2',
+               '            # PR1139_UAT_RECOVERY_END\n', supervisor_addition),
+              ('scripts/release-test/validate-protected-test-controller-branches.sh', 'b6c5eadb213c2d3130c2d4e47c4b207e6aa514f8',
+               '# PR1139_RECOVERY_SCOPE_BEGIN\n', scope_addition),
+          ]
+          outputs = []
+          for path, before_blob, anchor, addition in changes:
+              assert git('rev-parse', 'HEAD:' + path) == before_blob
+              before = Path(path).read_text()
+              assert before.count(anchor) == 1 and addition not in before
+              after = before.replace(anchor, addition + anchor, 1)
+              assert after.replace(addition, '', 1) == before
+              if path.endswith('.sh'):
+                  subprocess.run(['bash', '-n'], input=after, text=True, check=True)
+              else:
+                  assert addition == (
+                      '            # PR1140_UAT_RECOVERY_BEGIN\n'
+                      '            if [[ "$run_id" == \'35739149661\' ]]; then\n'
+                      '              python3 scripts/release-test/recover-pr1140-uat-orphan.py \\\n'
+                      '                || fail \'PR 1140 orphan recovery did not meet its exact safety contract.\'\n'
+                      '              quarantined_runs+=("$run_id")\n'
+                      '              continue\n'
+                      '            fi\n'
+                      '            # PR1140_UAT_RECOVERY_END\n')
+              raw = after.encode()
+              expected = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+              request = json.dumps({'content': after, 'encoding': 'utf-8'})
+              response = subprocess.run(['gh', 'api', '--method', 'POST', f'repos/{REPOSITORY}/git/blobs', '--input', '-'],
+                                        input=request, capture_output=True, text=True, timeout=30, check=True)
+              assert json.loads(response.stdout)['sha'] == expected
+              outputs.append({'path': path, 'before_blob': before_blob, 'blob_sha': expected,
+                              'sha256': hashlib.sha256(raw).hexdigest()})
+          print('PR1142_REVIEWED_CONTENT_BLOBS=' + json.dumps(outputs, sort_keys=True))
+          print('BRANCH_MUTATION=NONE DEPLOYMENT_MUTATION=NONE')
+          (Path(os.environ['RUNNER_TEMP']) / 'pr1142-source-blobs.json').write_text(json.dumps(outputs, indent=2) + '\n')
+      - name: Retain reviewed source identities
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr1142-source-blobs-${{ github.run_id }}
+          path: ${{ runner.temp }}/pr1142-source-blobs.json
+          if-no-files-found: error
+          retention-days: 1
