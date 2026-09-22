@@ -18,6 +18,9 @@ import sys
 from typing import Callable
 
 IMPLEMENTATION_SHA = "ccfbf8476467955236168535f9daf01b324c9842"
+# This main commit includes the independently merged PR1144 and was integrated
+# into PR1143. A stale pull_request.base.sha must not reclassify its changes.
+INTEGRATED_MAIN_SHA = "85baec3d490db1643bca06643c8843b836a89aab"
 BRANCH = "feature/role-scoped-animated-user-stories-20260922"
 WORKFLOW = ".github/workflows/flowhive-psa-release-control-ci.yml"
 SELF = "tests/role-journey-visual-scope.py"
@@ -72,6 +75,23 @@ def git(*args: str) -> str:
     return subprocess.run(["git", *args], check=True, text=True, capture_output=True).stdout
 
 
+def is_ancestor(older: str, newer: str) -> bool:
+    result = subprocess.run(["git", "merge-base", "--is-ancestor", older, newer],
+                            text=True, capture_output=True)
+    require(result.returncode in {0, 1}, "Unable to verify commit ancestry.")
+    return result.returncode == 0
+
+
+def validate_scope_base(event_base: str, trusted_main: str,
+                        ancestor: Callable[[str, str], bool]) -> str:
+    for value in (event_base, trusted_main):
+        require(re.fullmatch(r"[0-9a-f]{40}", value) is not None, "Exact base SHA is required.")
+    require(ancestor(event_base, trusted_main), "Event base is not in trusted main history.")
+    require(ancestor(INTEGRATED_MAIN_SHA, trusted_main), "Trusted main lost the reviewed integration.")
+    require(ancestor(trusted_main, "HEAD"), "Update PR1143 with trusted main before validating scope.")
+    return trusted_main
+
+
 def verify_paths(paths: list[str]) -> None:
     actual = frozenset(paths)
     require(len(paths) == len(actual), "Duplicate scope entry.")
@@ -116,6 +136,17 @@ def repair_fixture(source: str, guard: str) -> str:
 
 
 def self_test() -> None:
+    stale, current = "1" * 40, INTEGRATED_MAIN_SHA
+    relations = {(stale, current), (current, current), (current, "HEAD")}
+    ancestor = lambda older, newer: (older, newer) in relations
+    require(validate_scope_base(stale, current, ancestor) == current, "Stale-base normalization failed.")
+    require(validate_scope_base(current, current, ancestor) == current, "Current-base validation failed.")
+    for missing in relations:
+        must_reject(lambda missing=missing: validate_scope_base(
+            stale, current, lambda older, newer: (older, newer) in relations - {missing}))
+    for invalid in ("", "HEAD", "-HEAD", "a" * 39, "A" * 40):
+        must_reject(lambda invalid=invalid: validate_scope_base(invalid, current, ancestor))
+        must_reject(lambda invalid=invalid: validate_scope_base(stale, invalid, ancestor))
     paths = sorted(EXPECTED)
     verify_paths(paths)
     must_reject(lambda: verify_paths(paths[:-1]))
@@ -174,18 +205,20 @@ def main() -> None:
     require(not sys.argv[1:], "Unsupported arguments.")
     require(os.environ.get("GITHUB_HEAD_REF") == BRANCH, "Unexpected source branch.")
     base = os.environ.get("BASE_SHA", "")
-    require(re.fullmatch(r"[0-9a-f]{40}", base) is not None, "Exact base SHA is required.")
-    merge_base = git("merge-base", base, "HEAD").strip()
+    trusted_main = git("rev-parse", "refs/remotes/origin/main").strip()
+    scope_base = validate_scope_base(base, trusted_main, is_ancestor)
+    print(f"ROLE_JOURNEY_EVENT_BASE_SHA={base}")
+    print(f"ROLE_JOURNEY_INTEGRATED_MAIN_SHA={scope_base}")
     subprocess.run(["git", "merge-base", "--is-ancestor", IMPLEMENTATION_SHA, "HEAD"], check=True)
-    changed = git("diff", "--name-only", "--no-renames", f"{merge_base}...HEAD").splitlines()
+    changed = git("diff", "--name-only", "--no-renames", f"{scope_base}...HEAD").splitlines()
     verify_paths(changed)
-    for entry in git("diff", "--name-status", "--no-renames", f"{merge_base}...HEAD").splitlines():
+    for entry in git("diff", "--name-status", "--no-renames", f"{scope_base}...HEAD").splitlines():
         require(entry.split("\t", 1)[0] in {"A", "M"}, "Deletion, rename or type change is not allowed.")
     for path in changed:
         require(git("ls-tree", "HEAD", "--", path).startswith("100644 blob "), f"Non-regular file: {path}")
     subprocess.run(["git", "diff", "--exit-code", IMPLEMENTATION_SHA, "HEAD", "--", *IMPLEMENTATION_FILES], check=True)
-    verify_workflow(git("show", f"{merge_base}:{WORKFLOW}"), Path(WORKFLOW).read_text(encoding="utf-8"))
-    subprocess.run(["git", "diff", "--check", f"{merge_base}...HEAD"], check=True)
+    verify_workflow(git("show", f"{scope_base}:{WORKFLOW}"), Path(WORKFLOW).read_text(encoding="utf-8"))
+    subprocess.run(["git", "diff", "--check", f"{scope_base}...HEAD"], check=True)
     print("ROLE_JOURNEY_EXACT_UI_SCOPE=PASS")
     print("DEPLOYMENT_CONTROLLER_MODIFICATIONS=NONE")
     prepare_historical_fixture()
