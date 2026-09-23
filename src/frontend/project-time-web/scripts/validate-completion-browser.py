@@ -120,8 +120,14 @@ def main():
             minimum=min(measure.ratio(row) for row in rows)
             assert minimum>=4.5, [(r['text'],measure.ratio(r)) for r in rows if measure.ratio(r)<4.5]
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+2'), 'Unexpected horizontal overflow'
-            button=page.locator('.completion-form').get_by_role('button',name='Save confirmation',exact=True);button.focus()
-            expect(button).to_be_focused();assert button.evaluate("el=>getComputedStyle(el).outlineStyle!=='none'")
+            button=page.locator('.completion-form').get_by_role('button',name='Save confirmation',exact=True)
+            button.focus()
+            # Establish actual keyboard modality; focus() after clicking is not :focus-visible.
+            page.keyboard.press('Tab')
+            expect(page.locator('.completion-form').get_by_role('button',name='Cancel',exact=True)).to_be_focused()
+            page.keyboard.press('Shift+Tab')
+            expect(button).to_be_focused()
+            assert button.evaluate("el=>el.matches(':focus-visible') && getComputedStyle(el).outlineStyle!=='none'"), 'Keyboard focus indicator missing'
             name=f'{browser_name}-{theme}-{owner}-{width}'
             page.screenshot(path=str(args.output/f'{name}.png'),full_page=True)
             report['cases'].append(dict(name=name,visibleTextChecks=len(rows),minimumContrast=minimum))
