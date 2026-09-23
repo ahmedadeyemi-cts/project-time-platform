@@ -1,0 +1,78 @@
+name: Project completion checklist
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/completion-checklist-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/CompletionWorkflowPolicy.cs'
+      - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleCompletionWorkflow.cs'
+      - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CertiniaBillingModule.cs'
+      - 'src/frontend/project-time-web/src/ProjectCompletionChecklist.jsx'
+      - 'src/frontend/project-time-web/src/completion-checklist-model.mjs'
+      - 'src/frontend/project-time-web/src/project-completion-checklist.css'
+      - 'src/frontend/project-time-web/src/ProjectManagerWorkloadCenter.jsx'
+      - 'src/frontend/project-time-web/src/ProjectCloseoutCenter.jsx'
+      - 'src/frontend/project-time-web/src/InvoiceBillingCenter.jsx'
+      - 'src/frontend/project-time-web/tests/completion-checklist.test.mjs'
+      - 'tests/CompletionWorkflowTests/**'
+permissions:
+  contents: read
+concurrency:
+  group: completion-checklist-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  api-and-database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Start isolated disposable PostgreSQL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PGPASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$PGPASSWORD"
+          echo "PGPASSWORD=$PGPASSWORD" >> "$GITHUB_ENV"
+          echo 'PGPORT=55432' >> "$GITHUB_ENV"
+          export POSTGRES_PASSWORD="$PGPASSWORD"
+          docker run --detach --name completion-test-db -e POSTGRES_PASSWORD -p 127.0.0.1:55432:5432 postgres:16
+          ready=false
+          for attempt in $(seq 1 45); do
+            if docker exec completion-test-db pg_isready -U postgres; then ready=true; break; fi
+            sleep 2
+          done
+          [[ "$ready" == true ]]
+      - name: Compile actual API and regression executable
+        run: dotnet build tests/CompletionWorkflowTests/CompletionWorkflowTests.csproj --configuration Release
+      - name: Exercise actual handlers and immutable audit persistence
+        run: dotnet run --project tests/CompletionWorkflowTests/CompletionWorkflowTests.csproj --configuration Release --no-build
+      - name: Remove disposable database service
+        if: always()
+        run: docker rm --force completion-test-db || true
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: src/frontend/project-time-web
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - run: npm ci
+      - run: node --test tests/completion-checklist.test.mjs
+      - run: node scripts/validate-module-040-guided-closeout.mjs
+      - name: Build full production frontend and preserve generated source
+        run: |
+          npm run build
+          git diff --exit-code
