@@ -322,3 +322,11 @@ tests/flowhive-psa-release-workflow.test.py
 FILES
 sed -i 's/^[[:space:]]*//' "$CIT/e-flowhive-protected-cutover-files"
 LC_ALL=C sort -u "$CIT/e-flowhive-protected-cutover-files" -o "$CIT/e-flowhive-protected-cutover-files"
+
+# MODULE065_TEAMS_APPLICATION_SCOPE_BEGIN
+if [[ "$HEAD_BRANCH" == 'fix/module065-teams-delivery-app-availability-20260923' ]]; then
+  python3 tests/teams-delivery-release-scope.py "$CIT/allowed-release-files"
+  python3 tests/test-teams-delivery-release-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+fi
+# MODULE065_TEAMS_APPLICATION_SCOPE_END
