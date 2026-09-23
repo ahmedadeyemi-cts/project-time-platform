@@ -1,7 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
+import { createRequire } from 'node:module';
+// The fixture bundler is test-only. Do not rely on Vite's transitive packages
+// or add it to the application's production dependency graph.
+const require = createRequire(import.meta.url);
+const { build } = require(process.env.USER_GUIDE_ESBUILD_MODULE
+  ? path.resolve(process.env.USER_GUIDE_ESBUILD_MODULE)
+  : 'esbuild');
 const web=fileURLToPath(new URL('../',import.meta.url));
 const index=process.argv.indexOf('--output');
 if(index<0 || !process.argv[index+1]) throw new Error('Expected --output directory');
