@@ -263,6 +263,14 @@ jobs:
               quarantined_runs+=("$run_id")
               continue
             fi
+            # PR1151_UAT_SUPERSESSION_BEGIN
+            if [[ "$run_id" == '35891884845' ]]; then
+              python3 scripts/release-test/verify-pr1151-uat-supersession.py \
+                || fail 'PR 1151/1152 supersession did not meet its exact safety contract.'
+              quarantined_runs+=("$run_id")
+              continue
+            fi
+            # PR1151_UAT_SUPERSESSION_END
             # MIGRATION_RETRY_RECOVERY_END
             # PR1140_UAT_RECOVERY_END
             # PR1139_UAT_RECOVERY_END
