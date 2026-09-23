@@ -6,7 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="Security/**/*.cs" />
-    <ProjectReference Include="../../src/backend/ProjectTime.Api/ProjectTime.Api.csproj" />
+    <ProjectReference Include="../../../src/backend/ProjectTime.Api/ProjectTime.Api.csproj" />
   </ItemGroup>
 </Project>

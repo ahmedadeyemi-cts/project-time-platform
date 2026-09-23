@@ -39,18 +39,44 @@ jobs:
         run: |
           set -Eeuo pipefail
           dotnet run --project tests/AgentFoundationTests --configuration Release -p:BuildProjectReferences=false 2>&1 | tee "$RUNNER_TEMP/agent-foundation-tests.txt"
+          dotnet run --project tests/AgentFoundationTests/Security --configuration Release -p:BuildProjectReferences=false 2>&1 | tee -a "$RUNNER_TEMP/agent-foundation-tests.txt"
       - name: Verify role-scoped presentation and stale-context rejection
         run: node --test tests/agent-foundation/workspace.test.mjs
       - name: Install locked frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci
-      - name: Compile unmounted assistant component and build actual frontend
+      - name: Compile unmounted assistant with the installed Vite toolchain
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
-          ./node_modules/.bin/esbuild src/agents/WorkAssistantPanel.jsx --bundle --external:react --outfile="$RUNNER_TEMP/agent-foundation-panel.js"
-          npm run build
+          node --input-type=module <<'JS'
+          import { build } from 'vite';
+          import react from '@vitejs/plugin-react';
+          import { resolve } from 'node:path';
+          import { access } from 'node:fs/promises';
+          if (!process.env.RUNNER_TEMP) throw new Error('Runner output directory required');
+          const outDir = resolve(process.env.RUNNER_TEMP, 'agent-foundation-panel');
+          await build({
+            configFile: false,
+            root: process.cwd(),
+            plugins: [react()],
+            build: {
+              outDir,
+              emptyOutDir: false,
+              lib: {
+                entry: resolve('src/agents/WorkAssistantPanel.jsx'),
+                formats: ['es'],
+                fileName: () => 'agent-foundation-panel.js'
+              }
+            }
+          });
+          await access(resolve(outDir, 'agent-foundation-panel.js'));
+          console.log('AGENT_ASSISTANT_COMPONENT_BUILD=PASS');
+          JS
+      - name: Build actual frontend with all existing validators
+        working-directory: src/frontend/project-time-web
+        run: npm run build
       - name: Verify build left tracked source unchanged
         run: git diff --exit-code
       - name: Retain synthetic runtime test evidence

@@ -53,9 +53,11 @@ public sealed class AgentKernel
         var run = await OwnedAsync(id, actor, token);
         if (run.Revision != expectedRevision || run.Status != AgentRunStatus.Ready)
             throw new AgentBoundaryException("agent_run_changed_or_not_ready");
-        if (clock.GetUtcNow() >= run.DeadlineAt || run.ModelCalls >= limits.MaximumModelCalls)
-            return await ReplaceAsync(run, run with { Status = AgentRunStatus.Blocked, Diagnostic = "agent_budget_exhausted" }, token);
         var access = await CheckAsync(run, "model", token);
+        await ReauthorizeEvidenceAsync(run, token);
+        if (clock.GetUtcNow() >= run.DeadlineAt || run.ModelCalls >= limits.MaximumModelCalls)
+            return await ReplaceAsync(run, run with { Status = AgentRunStatus.Blocked,
+                Diagnostic = "agent_budget_exhausted", Note = "", Evidence = [], Handoff = null }, token);
         var stepDeadline = clock.GetUtcNow().AddSeconds(limits.StepSeconds);
         if (stepDeadline > run.DeadlineAt) stepDeadline = run.DeadlineAt;
         // Durable reservation BEFORE inference. Concurrent requests cannot both
@@ -64,14 +66,17 @@ public sealed class AgentKernel
             ModelCalls = run.ModelCalls + 1, StepDeadlineAt = stepDeadline,
             PolicyRevision = access.PolicyRevision }, token);
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
-        budget.CancelAfter(stepDeadline - clock.GetUtcNow());
         AgentRun next;
         try
         {
+            var remaining = stepDeadline - clock.GetUtcNow();
+            if (remaining <= TimeSpan.Zero) throw new AgentBoundaryException("agent_step_timeout");
+            budget.CancelAfter(remaining);
             var capability = AgentCapabilityCatalog.Get(run.Capability);
             var reply = await model.DecideAsync(run, capability, budget.Token).WaitAsync(budget.Token);
             AgentDecisionParser.Validate(reply.Decision);
             await CheckAsync(run, "after_model", budget.Token);
+            await ReauthorizeEvidenceAsync(run, budget.Token);
             next = run with { Provider = reply.Provider, Routing = reply.Routing,
                 Note = reply.Decision.Note, Diagnostic = "" };
             switch (reply.Decision.Kind)
@@ -119,14 +124,16 @@ public sealed class AgentKernel
                     break;
                 default: throw new AgentBoundaryException("agent_decision_invalid");
             }
-            // Recheck the kill switch, permission and source after an expensive
-            // operation. Generated text and a successful tool do not grant access.
+            // Recheck the kill switch, permission and every evidence field's
+            // owning tool, including newly read evidence, before exposing output.
             await CheckAsync(run, "save_proposal", budget.Token);
+            await ReauthorizeEvidenceAsync(next, budget.Token);
         }
         catch (OperationCanceledException)
         {
             next = run with { Status = token.IsCancellationRequested ? AgentRunStatus.Cancelled : AgentRunStatus.Blocked,
-                Diagnostic = token.IsCancellationRequested ? "agent_cancelled" : "agent_step_timeout", Note = "", Handoff = null };
+                Diagnostic = token.IsCancellationRequested ? "agent_cancelled" : "agent_step_timeout",
+                Note = "", Handoff = null, Evidence = [] };
         }
         catch (AgentBoundaryException exception)
         {
@@ -137,7 +144,8 @@ public sealed class AgentKernel
         {
             // Do not expose provider bodies, database errors, credentials or
             // retrieved text as a diagnostic. No automatic repeat of this step.
-            next = run with { Status = AgentRunStatus.Blocked, Diagnostic = "agent_step_unavailable", Note = "", Handoff = null };
+            next = run with { Status = AgentRunStatus.Blocked, Diagnostic = "agent_step_unavailable",
+                Note = "", Handoff = null, Evidence = [] };
         }
         using var saveBudget = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         return await ReplaceAsync(run, next with { StepDeadlineAt = null }, saveBudget.Token);
@@ -153,6 +161,7 @@ public sealed class AgentKernel
         if (string.IsNullOrWhiteSpace(answer) || answer.Length > 1000 || run.Goal.Length + answer.Length + 24 > 4000)
             throw new AgentBoundaryException("agent_input_invalid");
         await CheckAsync(run, "supply_input", token);
+        await ReauthorizeEvidenceAsync(run, token);
         if (clock.GetUtcNow() >= run.DeadlineAt) throw new AgentBoundaryException("agent_budget_exhausted");
         // Explicit owner input is still untrusted task data, not permission or
         // a change to the authoritative resource. Budgets never reset on resume.
@@ -170,7 +179,21 @@ public sealed class AgentKernel
             throw new AgentBoundaryException("agent_recovery_not_eligible");
         await CheckAsync(run, "recover", token);
         return await ReplaceAsync(run, run with { Status = AgentRunStatus.Blocked, StepDeadlineAt = null,
-            Diagnostic = "agent_interrupted_outcome_unknown", Note = "", Handoff = null }, token);
+            Diagnostic = "agent_interrupted_outcome_unknown", Note = "", Handoff = null, Evidence = [] }, token);
+    }
+
+    private async Task ReauthorizeEvidenceAsync(AgentRun run, CancellationToken token)
+    {
+        var capability = AgentCapabilityCatalog.Get(run.Capability);
+        foreach (var item in run.Evidence)
+        {
+            if (!capability.ReadTools.Contains(item.Tool) || item.SourceVersion != run.Resource.SourceVersion)
+                throw new AgentBoundaryException("agent_cached_evidence_invalid");
+            // A broad model permission cannot keep a revoked tool/field grant
+            // alive through cached memory. Do not fetch it again or silently drop
+            // it and reuse a proposal that depended on the revoked evidence.
+            await CheckAsync(run, "read:" + item.Tool, token);
+        }
     }
 
     private AgentOptions Guard(AgentActor actor, CancellationToken token)
