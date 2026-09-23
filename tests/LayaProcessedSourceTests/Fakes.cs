@@ -16,6 +16,7 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
 {
     public Guid AllowedUser, AllowedDocument;
     public Source? Current;
-    public Task<Source?> ResolveAsync(Guid user, Guid document, CancellationToken ct) =>
+    public Task<Source?> ResolveAsync(Guid user, Guid document, CancellationToken ct,
+        bool processingAdmission = false, bool classificationAdmission = false) =>
         Task.FromResult(user == AllowedUser && document == AllowedDocument ? Current : null);
 }
