@@ -23,7 +23,9 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
     public async Task<PulseAiAuthorizedDocumentSource?> ResolveAsync(
         Guid effectiveUserId,
         Guid documentId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool processingAdmission = false,
+        bool classificationAdmission = false)
     {
         if (MissingDatabaseConfiguration().Count > 0) return null;
         try
@@ -37,8 +39,8 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
                 SELECT
                     d.project_intake_document_id,
                     d.project_id,
-                    p.project_code,
-                    p.project_name,
+                    COALESCE(p.project_code, ''),
+                    COALESCE(p.project_name, 'Unassigned document'),
                     COALESCE(c.client_name, 'No customer'),
                     COALESCE(d.document_type, 'other'),
                     LOWER(COALESCE(d.document_category, d.document_type, 'other')),
@@ -71,17 +73,116 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
                     d.work_register_document_id,
                     COALESCE(work_register.stored_file_path, '')
                 FROM project_intake_documents d
-                JOIN projects p ON p.project_id = d.project_id
+                LEFT JOIN projects p ON p.project_id = d.project_id
                 LEFT JOIN clients c ON c.client_id = p.client_id
                 LEFT JOIN work_register_documents work_register
                   ON work_register.work_register_document_id = d.work_register_document_id
                  AND work_register.project_id = d.project_id
                 WHERE d.project_intake_document_id = @document_id
                   AND d.is_active = TRUE
-                  AND d.project_id IS NOT NULL
-                  AND COALESCE(d.engineering_visible, FALSE) = TRUE
+                  AND (
+                    d.project_id IS NOT NULL
+                    OR (
+                        (@processing_admission = TRUE OR @classification_admission = TRUE)
+                        AND @can_queue = TRUE
+                        AND (
+                            @is_service_principal = TRUE
+                            OR EXISTS (
+                                SELECT 1
+                                FROM pulse_ai_document_processing_jobs processing_job
+                                WHERE processing_job.project_intake_document_id = d.project_intake_document_id
+                                  AND (processing_job.actual_user_id = @user_id
+                                       OR processing_job.effective_user_id = @user_id
+                                       OR processing_job.requested_by_user_id = @user_id)
+                                  AND processing_job.job_status NOT IN ('cancelled','quarantined')
+                            )
+                            OR EXISTS (
+                                SELECT 1
+                                FROM pulse_ai_laya_classification_jobs classification_job
+                                WHERE classification_job.project_intake_document_id = d.project_intake_document_id
+                                  AND classification_job.service_principal_user_id = @user_id
+                                  AND classification_job.job_status IN ('queued','running','retry_wait')
+                            )
+                        )
+                    )
+                  )
+                  AND (
+                    COALESCE(d.engineering_visible, FALSE) = TRUE
+                    OR (
+                        @processing_admission = TRUE
+                        AND @can_queue = TRUE
+                        AND EXISTS (
+                            SELECT 1
+                            FROM pulse_ai_document_processing_jobs processing_job
+                            WHERE processing_job.project_intake_document_id = d.project_intake_document_id
+                              AND (processing_job.actual_user_id = @user_id
+                                   OR processing_job.effective_user_id = @user_id
+                                   OR processing_job.requested_by_user_id = @user_id)
+                              AND processing_job.job_status NOT IN ('cancelled','quarantined')
+                        )
+                    )
+                    OR (
+                        @classification_admission = TRUE
+                        AND @can_queue = TRUE
+                        AND EXISTS (
+                            SELECT 1
+                            FROM pulse_ai_laya_classification_jobs classification_job
+                            WHERE classification_job.project_intake_document_id = d.project_intake_document_id
+                              AND classification_job.document_version_id = d.pulse_ai_active_version_id
+                              AND classification_job.service_principal_user_id = @user_id
+                              AND classification_job.job_status IN ('queued','running','retry_wait')
+                        )
+                    )
+                    OR (
+                        @processing_admission = TRUE
+                        AND @can_queue = TRUE
+                        AND @is_service_principal = TRUE
+                        AND EXISTS (
+                            SELECT 1
+                            FROM pulse_ai_document_processing_jobs processing_job
+                            WHERE processing_job.project_intake_document_id = d.project_intake_document_id
+                              AND processing_job.job_status NOT IN ('cancelled','quarantined')
+                        )
+                    )
+                  )
                   AND (
                     @is_broad = TRUE
+                    OR (
+                        @processing_admission = TRUE
+                        AND @can_queue = TRUE
+                        AND @is_service_principal = TRUE
+                        AND EXISTS (
+                            SELECT 1
+                            FROM pulse_ai_document_processing_jobs processing_job
+                            WHERE processing_job.project_intake_document_id = d.project_intake_document_id
+                              AND processing_job.job_status NOT IN ('cancelled','quarantined')
+                        )
+                    )
+                    OR (
+                        @processing_admission = TRUE
+                        AND @can_queue = TRUE
+                        AND EXISTS (
+                            SELECT 1
+                            FROM pulse_ai_document_processing_jobs processing_job
+                            WHERE processing_job.project_intake_document_id = d.project_intake_document_id
+                              AND (processing_job.actual_user_id = @user_id
+                                   OR processing_job.effective_user_id = @user_id
+                                   OR processing_job.requested_by_user_id = @user_id)
+                              AND processing_job.job_status NOT IN ('cancelled','quarantined')
+                        )
+                    )
+                    OR (
+                        @classification_admission = TRUE
+                        AND @can_queue = TRUE
+                        AND EXISTS (
+                            SELECT 1
+                            FROM pulse_ai_laya_classification_jobs classification_job
+                            WHERE classification_job.project_intake_document_id = d.project_intake_document_id
+                              AND classification_job.document_version_id = d.pulse_ai_active_version_id
+                              AND classification_job.service_principal_user_id = @user_id
+                              AND classification_job.job_status IN ('queued','running','retry_wait')
+                        )
+                    )
                     OR p.project_manager_user_id = @user_id
                     OR EXISTS (
                         SELECT 1 FROM project_assignments pa
@@ -109,6 +210,10 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("document_id", documentId);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
+            command.Parameters.AddWithValue("processing_admission", processingAdmission);
+            command.Parameters.AddWithValue("classification_admission", classificationAdmission);
+            command.Parameters.AddWithValue("can_queue", access.CanQueue);
+            command.Parameters.AddWithValue("is_service_principal", access.IsDocumentServicePrincipal);
             command.Parameters.AddWithValue("user_id", effectiveUserId);
             await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             {
@@ -318,7 +423,9 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
             && servicePrincipalUserId != Guid.Empty
             && UserId == servicePrincipalUserId
             && PermissionCodes.Contains("QUEUE_PULSE_AI_DOCUMENT_PROCESSING");
-        public bool IsBroadScope => RoleCodes.Overlaps(BroadRoles) || IsDocumentServicePrincipal;
+        public bool IsBroadScope => RoleCodes.Overlaps(BroadRoles);
+        public bool IsSuperAdministrator => RoleCodes.Contains("SUPER_ADMINISTRATOR");
+        public bool CanQueue => IsSuperAdministrator || PermissionCodes.Contains("QUEUE_PULSE_AI_DOCUMENT_PROCESSING");
         public string ScopeLabel => IsBroadScope
             ? "organization_document_scope"
             : RoleCodes.Overlaps(new HashSet<string>(StringComparer.OrdinalIgnoreCase)

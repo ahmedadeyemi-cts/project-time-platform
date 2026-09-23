@@ -9,6 +9,18 @@ on:
       - 'src/frontend/project-time-web/tests/laya-processing-state.test.mjs'
       - 'tests/LayaProcessedSourceTests/**'
       - 'tests/laya/**'
+      - 'database/migrations/125_automatic_document_admission_laya.sql'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+      - 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeSourceResolver.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentPreparation.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs'
+      - 'tests/FlowHivePreparationTests/**'
+      - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/laya-processed-source-ci.yml'
 permissions:
   contents: read
@@ -29,25 +41,33 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Verify incremental boundary
         run: python3 tests/laya/processed-source-scope.py
+      - name: Validate release migration wiring
+        run: |
+          bash -n scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          grep -Fq '125_automatic_document_admission_laya.sql' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          grep -Fq 'database/migrations/125_automatic_document_admission_laya.sql' .github/workflows/projectpulse-deploy-test.yml
       - name: Start disposable evidence database
         shell: bash
         run: |
           set -Eeuo pipefail
           PASSWORD="$(openssl rand -hex 24)"
           echo "::add-mask::$PASSWORD"
-          CONNECTION="Host=127.0.0.1;Port=5432;Username=postgres;Password=$PASSWORD;Database=laya_evidence"
+          CONNECTION="Host=127.0.0.1;Port=5432;Username=postgres;Password=$PASSWORD;Database=flowhive_execution_test"
           echo "::add-mask::$CONNECTION"
           printf 'LAYA_PROCESSED_TEST_DB=%s\n' "$CONNECTION" >> "$GITHUB_ENV"
+          printf 'FLOWHIVE_TEST_DB=%s\n' "$CONNECTION" >> "$GITHUB_ENV"
           export POSTGRES_PASSWORD="$PASSWORD"
           docker run -d --name laya-evidence --publish 127.0.0.1:5432:5432 \
-            --env POSTGRES_PASSWORD --env POSTGRES_DB=laya_evidence postgres:16
+            --env POSTGRES_PASSWORD --env POSTGRES_DB=flowhive_execution_test postgres:16
           for attempt in {1..30}; do
-            if docker exec laya-evidence pg_isready -U postgres -d laya_evidence >/dev/null; then exit 0; fi
+            if docker exec laya-evidence pg_isready -U postgres -d flowhive_execution_test >/dev/null; then exit 0; fi
             sleep 1
           done
           exit 1
       - name: Execute real receipt SQL, checksums and replacement locks
         run: dotnet run --project tests/LayaProcessedSourceTests/LayaProcessedSourceTests.csproj --configuration Release
+      - name: Execute authenticated association admission against disposable PostgreSQL
+        run: dotnet run --project tests/FlowHivePreparationTests/FlowHivePreparationTests.csproj --configuration Release -- --database
       - name: Build actual API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-self-contained
       - name: Cleanup disposable database

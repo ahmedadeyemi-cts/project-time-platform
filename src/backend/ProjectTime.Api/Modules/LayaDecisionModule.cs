@@ -110,10 +110,13 @@ public static class LayaDecisionModule
                 if (project.Length > 100) return Fail("invalid_project_filter", 400);
                 var documents = await pipeline.ListInventoryAsync(effective.Value, project, "", "", 500, ct);
                 var stages = await evidenceReader.StagesAsync(documents.Select(d => d.DocumentId).ToArray(), ct);
+                var classifications = await evidenceReader.ClassificationStatesAsync(documents.Select(d => d.DocumentId).ToArray(), ct);
                 return Results.Ok(new { limit = 500, documents = documents.Select(d => new
                 {
                     documentId = d.DocumentId, fileName = d.OriginalFileName, projectCode = d.ProjectCode,
                     processingStage = stages.GetValueOrDefault(d.DocumentId, "unknown"),
+                    classification = classifications.GetValueOrDefault(d.DocumentId,
+                        new LayaClassificationStatus("unknown", 0, "", "")),
                     previewAdmitted = false, evidenceSource = LayaProcessedSourceReader.ContractVersion
                 }) });
             }
@@ -122,7 +125,12 @@ public static class LayaDecisionModule
             // Read the worker's actual scan/extraction receipt, never global preview flags.
             var processed = await evidenceReader.ReadAsync(effective.Value, documentId, ct);
             if (processed is null) return Fail("document_not_found_or_not_authorized", 404);
-            if (action == "processing-state") return Results.Ok(processed.ToPublicEvidence());
+            if (action == "processing-state")
+            {
+                var classification = (await evidenceReader.ClassificationStatesAsync([documentId], ct))
+                    .GetValueOrDefault(documentId, new LayaClassificationStatus("unknown", 0, "", ""));
+                return Results.Ok(new { processing = processed.ToPublicEvidence(), classification });
+            }
             var source = processed.SourceSha256;
             if (action == "history")
                 return Results.Ok(new { sourceSha256 = source, history = await HistoryAsync(db, documentId, ct) });

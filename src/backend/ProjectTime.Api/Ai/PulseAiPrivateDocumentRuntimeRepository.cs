@@ -306,15 +306,16 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                         d.project_id,
                         service_user.user_id AS actor_user_id
                     FROM project_intake_documents d
-                    JOIN projects p ON p.project_id = d.project_id
+                    LEFT JOIN projects p ON p.project_id = d.project_id
                     JOIN app_users service_user
                       ON service_user.user_id = @service_principal_user_id
                      AND COALESCE(service_user.is_active, FALSE) = TRUE
                     WHERE d.is_active = TRUE
-                      AND lower(trim(COALESCE(p.status,''))) NOT IN ('closed','completed','cancelled','canceled','archived')
+                      AND (
+                          d.project_id IS NULL
+                          OR lower(trim(COALESCE(p.status,''))) NOT IN ('closed','completed','cancelled','canceled','archived')
+                      )
                       AND COALESCE(d.upload_source,'') <> 'celar_ai_chat_attachment'
-                      AND COALESCE(d.engineering_visible, FALSE) = TRUE
-                      AND COALESCE(d.ai_timesheet_context_enabled, FALSE) = TRUE
                       AND COALESCE(d.pulse_ai_processing_status, 'not_requested') = 'not_requested'
                       AND EXISTS (
                           SELECT 1
@@ -330,7 +331,6 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                             AND service_assignment.is_active = TRUE
                             AND service_permission.permission_code = 'QUEUE_PULSE_AI_DOCUMENT_PROCESSING'
                       )
-                      AND replace(replace(lower(trim(COALESCE(d.document_category,d.document_type,''))),'-','_'),' ','_')=ANY(@planning_categories)
                       AND NOT EXISTS (
                           SELECT 1
                           FROM pulse_ai_document_processing_jobs existing
@@ -341,9 +341,6 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                             )
                       )
                     ORDER BY
-                        CASE WHEN LOWER(COALESCE(d.document_category, d.document_type, '')) IN (
-                            'sow','statement_of_work','gsd','global_solution_design'
-                        ) THEN 0 ELSE 1 END,
                         d.uploaded_at,
                         d.project_intake_document_id
                     FOR UPDATE OF d SKIP LOCKED
@@ -369,7 +366,6 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 command.Parameters.AddWithValue("maximum_attempts", options.MaximumAttempts);
                 command.Parameters.AddWithValue("correlation_id", correlationId);
                 command.Parameters.AddWithValue("service_principal_user_id", options.DocumentServicePrincipalUserId!.Value);
-                command.Parameters.AddWithValue("planning_categories", ProjectTime.Api.Modules.ProjectPlanningDocumentPreparation.Categories);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 queued = await reader.ReadAsync(cancellationToken)
                     ? new AutoQueueResult(
@@ -408,7 +404,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 string.Empty,
                 new
                 {
-                    admission = "worker_enabled_and_document_ai_context_eligible",
+                    admission = "worker_enabled_and_security_document_admission",
                     rawDocumentTextLogged = false,
                     externalProviderCalled = false
                 },

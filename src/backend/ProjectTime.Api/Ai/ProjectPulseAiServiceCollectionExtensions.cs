@@ -129,8 +129,11 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<PulseAiPrivateOcrClient>();
         services.AddSingleton<PulseAiPrivateEmbeddingClient>();
         services.AddSingleton<PulseAiPrivateDocumentRuntimeRepository>();
+        services.AddSingleton<LayaProcessedSourceReader>();
+        services.AddSingleton<LayaAutomaticClassificationRepository>();
         services.AddSingleton<PulseAiPrivateDocumentRuntimeService>();
         services.AddHostedService<PulseAiPrivateDocumentRuntimeWorker>();
+        services.AddHostedService<LayaAutomaticClassificationWorker>();
         services.AddSingleton<CelarAiConversationAttachmentRepository>();
         services.AddSingleton<CelarAiConversationAttachmentService>();
         services.AddHostedService<CelarAiConversationAttachmentRetentionWorker>();

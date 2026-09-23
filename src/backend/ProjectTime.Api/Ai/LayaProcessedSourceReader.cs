@@ -58,9 +58,12 @@ public sealed class LayaProcessedSourceReader(PulseAiPrivateRuntimeSourceResolve
         """;
 
     public async Task<LayaProcessedSource?> ReadAsync(Guid effectiveUserId, Guid documentId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool processingAdmission = false,
+        bool classificationAdmission = false)
     {
-        var source = await resolver.ResolveAsync(effectiveUserId, documentId, cancellationToken);
+        var source = await resolver.ResolveAsync(
+            effectiveUserId, documentId, cancellationToken, processingAdmission, classificationAdmission);
         if (source is null) return null;
         await using var db = new NpgsqlConnection(ProjectPulseAiDatabaseConnection.Resolve());
         await db.OpenAsync(cancellationToken);
@@ -101,7 +104,8 @@ public sealed class LayaProcessedSourceReader(PulseAiPrivateRuntimeSourceResolve
         // A current database version cannot authorize different replacement bytes.
         if (!await CurrentBytesMatchAsync(source.StoragePath, result.SourceSha256, cancellationToken))
             return new(documentId, result.VersionId, result.SourceSha256, "needs_attention", "document_source_integrity_failed");
-        var current = await resolver.ResolveAsync(effectiveUserId, documentId, cancellationToken);
+        var current = await resolver.ResolveAsync(
+            effectiveUserId, documentId, cancellationToken, processingAdmission, classificationAdmission);
         if (current is null) return null;
         if (current.StoragePath != source.StoragePath || current.UploadedAt != source.UploadedAt)
             return new(documentId, result.VersionId, result.SourceSha256, "needs_attention", "document_source_changed");
@@ -122,6 +126,40 @@ public sealed class LayaProcessedSourceReader(PulseAiPrivateRuntimeSourceResolve
         command.Parameters.AddWithValue("ids", authorizedIds.Take(500).Distinct().ToArray());
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) result[reader.GetGuid(0)] = Code(reader.GetString(1), "unknown");
+        return result;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, LayaClassificationStatus>> ClassificationStatesAsync(
+        IReadOnlyList<Guid> authorizedIds,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<Guid, LayaClassificationStatus>();
+        if (authorizedIds.Count == 0) return result;
+        await using var db = new NpgsqlConnection(ProjectPulseAiDatabaseConnection.Resolve());
+        await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT project_intake_document_id,
+                   COALESCE(pulse_ai_laya_classification_status,'not_requested'),
+                   COALESCE(pulse_ai_laya_policy_version,0),
+                   COALESCE(pulse_ai_laya_model_revision,''),
+                   COALESCE(pulse_ai_laya_error_code,'')
+            FROM project_intake_documents
+            WHERE is_active=TRUE AND project_intake_document_id=ANY(@ids)
+            """, db) { CommandTimeout = 15 };
+        command.Parameters.AddWithValue("ids", authorizedIds.Take(500).Distinct().ToArray());
+        try
+        {
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result[reader.GetGuid(0)] = new(
+                    Code(reader.GetString(1), "unknown"), reader.GetInt64(2),
+                    reader.GetString(3), Code(reader.GetString(4), ""));
+        }
+        catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
+        {
+            // The additive status projection is unavailable on an older database;
+            // callers retain the existing processing state instead of guessing.
+        }
         return result;
     }
 
@@ -208,3 +246,9 @@ public sealed record LayaProcessedSource(Guid DocumentId, Guid? VersionId, strin
         evidenceSource = LayaProcessedSourceReader.ContractVersion, rawDocumentTextReturned = false
     };
 }
+
+public sealed record LayaClassificationStatus(
+    string Status,
+    long PolicyVersion,
+    string ModelRevision,
+    string ErrorCode);

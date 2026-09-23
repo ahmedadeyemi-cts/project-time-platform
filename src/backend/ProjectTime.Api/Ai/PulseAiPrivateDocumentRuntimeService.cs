@@ -1,3 +1,5 @@
+using Npgsql;
+
 namespace ProjectTime.Api.Ai;
 
 public sealed class PulseAiPrivateDocumentRuntimeService
@@ -9,6 +11,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
     private readonly PulseAiPrivateMalwareScanner _malwareScanner;
     private readonly PulseAiPrivateOcrClient _ocrClient;
     private readonly PulseAiPrivateEmbeddingClient _embeddingClient;
+    private readonly LayaAutomaticClassificationRepository _layaClassification;
     private readonly ILogger<PulseAiPrivateDocumentRuntimeService> _logger;
 
     public PulseAiPrivateDocumentRuntimeService(
@@ -19,6 +22,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         PulseAiPrivateMalwareScanner malwareScanner,
         PulseAiPrivateOcrClient ocrClient,
         PulseAiPrivateEmbeddingClient embeddingClient,
+        LayaAutomaticClassificationRepository layaClassification,
         ILogger<PulseAiPrivateDocumentRuntimeService> logger)
     {
         _repository = repository;
@@ -28,6 +32,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         _malwareScanner = malwareScanner;
         _ocrClient = ocrClient;
         _embeddingClient = embeddingClient;
+        _layaClassification = layaClassification;
         _logger = logger;
     }
 
@@ -442,7 +447,23 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             var source = await _sourceResolver.ResolveAsync(
                 effectiveUserId.Value,
                 job.DocumentId,
-                cancellationToken);
+                cancellationToken,
+                processingAdmission: true);
+            // Security processing is owned by the configured service identity.
+            // Preserve conversation-owner authorization first; if an ordinary
+            // upload was admitted by a user without queue permission, the
+            // service identity may still process the exact durable job without
+            // inheriting retrieval or planning scope.
+            if (source is null
+                && options.DocumentServicePrincipalUserId is Guid servicePrincipalUserId
+                && servicePrincipalUserId != effectiveUserId.Value)
+            {
+                source = await _sourceResolver.ResolveAsync(
+                    servicePrincipalUserId,
+                    job.DocumentId,
+                    cancellationToken,
+                    processingAdmission: true);
+            }
             if (source is null)
             {
                 await FailAsync(job, "authorization_revoked", "The document is no longer available in the effective user's authorized scope.", cancellationToken);
@@ -788,6 +809,26 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 embeddings,
                 lexicalOnly,
                 cancellationToken);
+            if (!string.Equals(source.UploadSource, CelarAiConversationAttachmentPolicy.UploadSource, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    await _layaClassification.EnqueueIfPermittedAsync(
+                        options,
+                        source.DocumentId,
+                        source.ProjectId,
+                        versionId,
+                        extraction.SourceSha256,
+                        cancellationToken);
+                }
+                catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
+                {
+                    _logger.LogWarning(
+                        "Automatic Laya classification admission is unavailable until its additive schema is applied. DocumentId={DocumentId} Diagnostic={Diagnostic}",
+                        source.DocumentId,
+                        exception.SqlState);
+                }
+            }
             return Result(
                 lexicalOnly ? "completed_lexical_only" : "completed_private_hybrid_index",
                 job,

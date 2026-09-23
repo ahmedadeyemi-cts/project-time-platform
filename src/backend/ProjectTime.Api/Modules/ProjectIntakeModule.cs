@@ -452,6 +452,22 @@ public static class ProjectIntakeModule
 
         await InsertAuditLogAsync(connection, "project_intake_document_uploaded", "project_intake_request", requestId, actor.ActualUserId);
 
+        // Intake uploads are accepted before a project is selected. Admit the
+        // file to the security-owned durable processing queue now, while the
+        // document is still projectless. This does not grant retrieval,
+        // planning, or AI access; those remain project/source-authorized.
+        var preparationQueued = 0;
+        await using (var admissionTransaction = await connection.BeginTransactionAsync(context.RequestAborted))
+        {
+            preparationQueued = await ProjectPlanningDocumentPreparation.QueueAssociatedAsync(
+                connection,
+                admissionTransaction,
+                context,
+                documentId: documentId,
+                token: context.RequestAborted);
+            await admissionTransaction.CommitAsync(context.RequestAborted);
+        }
+
         return Results.Ok(new
         {
             status = "uploaded",
@@ -459,6 +475,7 @@ public static class ProjectIntakeModule
             projectIntakeDocumentId = documentId,
             documentType,
             documentCategory,
+            preparationQueued,
             engineeringVisible,
             aiTimesheetContextEnabled,
             originalFileName = safeOriginalFileName,

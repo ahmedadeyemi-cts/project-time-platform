@@ -76,8 +76,10 @@ internal static class ProjectPlanningDocumentPreparation
     internal static async Task<int> QueueAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
         Guid actor, Guid? projectId, Guid? documentId, CancellationToken token)
     {
-        // Do not broaden visibility/AI consent or revive terminal jobs. New revisions are reset
-        // by the existing Work Register bridge; active jobs deduplicate through its unique index.
+        // Security admission is deliberately broader than retrieval/indexing consent: every
+        // accepted project document gets a durable scan/extraction job. The existing planner
+        // resolver still enforces engineering visibility, source authority and AI readiness.
+        // Never revive terminal jobs; active jobs deduplicate through the unique index.
         const string sql = """
             WITH queued AS (
                 INSERT INTO pulse_ai_document_processing_jobs(
@@ -86,14 +88,16 @@ internal static class ProjectPlanningDocumentPreparation
                 SELECT d.project_intake_document_id, d.project_id, @actor, @actor, @actor,
                        'project_document_associated', 90, @correlation
                   FROM project_intake_documents d
-                  JOIN projects p ON p.project_id=d.project_id
+                  LEFT JOIN projects p ON p.project_id=d.project_id
                   JOIN app_users actor ON actor.user_id=@actor AND actor.is_active=TRUE
                  WHERE (@project::uuid IS NULL OR d.project_id=@project)
                    AND (@document::uuid IS NULL OR d.project_intake_document_id=@document)
-                   AND lower(trim(COALESCE(p.status,''))) NOT IN ('closed','completed','cancelled','canceled','archived')
-                   AND d.is_active=TRUE AND d.engineering_visible=TRUE AND d.ai_timesheet_context_enabled=TRUE
+                   AND (
+                       d.project_id IS NULL
+                       OR lower(trim(COALESCE(p.status,''))) NOT IN ('closed','completed','cancelled','canceled','archived')
+                   )
+                   AND d.is_active=TRUE
                    AND COALESCE(d.pulse_ai_processing_status,'not_requested')='not_requested'
-                   AND replace(replace(lower(trim(COALESCE(d.document_category,d.document_type,''))),'-','_'),' ','_')=ANY(@categories)
                    AND COALESCE(d.upload_source,'')<>'celar_ai_chat_attachment'
                 ON CONFLICT (project_intake_document_id)
                     WHERE job_status IN ('queued','scanning','extracting','awaiting_ocr','embedding','indexing','retry_wait','cancel_requested')
@@ -119,7 +123,6 @@ internal static class ProjectPlanningDocumentPreparation
         command.Parameters.AddWithValue("actor", actor);
         command.Parameters.Add("project", NpgsqlDbType.Uuid).Value = (object?)projectId ?? DBNull.Value;
         command.Parameters.Add("document", NpgsqlDbType.Uuid).Value = (object?)documentId ?? DBNull.Value;
-        command.Parameters.AddWithValue("categories", Categories);
         command.Parameters.AddWithValue("correlation", $"association-{Guid.NewGuid():N}");
         return (int)(await command.ExecuteScalarAsync(token) ?? 0);
     }

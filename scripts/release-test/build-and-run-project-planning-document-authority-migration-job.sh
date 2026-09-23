@@ -13,6 +13,7 @@ CUSTOMER_SOURCE_MIGRATION_FILE="$ROOT/database/migrations/098_customer_directory
 MODULE025_MIGRATION_FILE="$ROOT/database/migrations/099_module025_sow_gsd_workspace.sql"
 MODULE001B_CATALOG_MIGRATION_FILE="$ROOT/database/migrations/100_module001b_catalog_ownership_reconciliation.sql"
 MODULE025_PROJECT_NAME_MIGRATION_FILE="$ROOT/database/migrations/109_module025_project_name.sql"
+AUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE="$ROOT/database/migrations/125_automatic_document_admission_laya.sql"
 MIGRATION_RUNNER="$ROOT/scripts/release-test/run-project-planning-document-authority-migration-job.sh"
 EVIDENCE_ROOT="${EVIDENCE_DIR:-}"
 CONTEXT=""
@@ -42,6 +43,7 @@ trap cleanup EXIT INT TERM
 [[ -s "$MODULE025_MIGRATION_FILE" ]] || fail "Module 025 SOW/GSD migration 099 source is missing."
 [[ -s "$MODULE001B_CATALOG_MIGRATION_FILE" ]] || fail "Module 001B catalog migration 100 source is missing."
 [[ -s "$MODULE025_PROJECT_NAME_MIGRATION_FILE" ]] || fail "Module 025 project name migration 109 source is missing."
+[[ -s "$AUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE" ]] || fail "Automatic document admission migration 125 source is missing."
 [[ -s "$MIGRATION_RUNNER" ]] || fail "Migration 096 private-network runner is missing."
 for command_name in az jq mktemp install chmod node; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required."
@@ -75,6 +77,8 @@ install -m 0444 "$ROOT/scripts/release-test/verify-module064-external-generation
 install -m 0444 "$ROOT/database/migrations/124_module025_service_scope.sql" "$CONTEXT/database/migrations/124_module025_service_scope.sql"
 install -m 0444 "$ROOT/scripts/release-test/verify-module025-service-scope.sql" "$CONTEXT/database/verify-module025-service-scope.sql"
 (cd "$CONTEXT" && sha256sum database/migrations/124_module025_service_scope.sql database/verify-module025-service-scope.sql > database/module025-service-scope.sha256)
+install -m 0444 "$AUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE" "$CONTEXT/database/migrations/125_automatic_document_admission_laya.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/125_automatic_document_admission_laya.sql > database/automatic-admission-laya.sha256)
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -143,6 +147,9 @@ echo 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED'
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/124_module025_service_scope.sql"
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-module025-service-scope.sql"
 echo 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED'
+(cd "$ROOT" && sha256sum --check --status database/automatic-admission-laya.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/125_automatic_document_admission_laya.sql"
+echo 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA=APPLIED_AND_VERIFIED'
 
 
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
@@ -238,6 +245,18 @@ SQL
   echo "ERROR: Module 001B catalog migration 100 verification failed: $module001b_catalog_verification" >&2
   exit 1
 }
+automatic_admission_laya_verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
+SELECT
+  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='125_automatic_document_admission_laya')::text || '|' ||
+  (to_regclass('public.pulse_ai_laya_classification_jobs') IS NOT NULL)::text || '|' ||
+  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_intake_documents' AND column_name='pulse_ai_laya_classification_status')::text || '|' ||
+  EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='ux_pulse_ai_laya_classification_jobs_identity')::text;
+SQL
+)"
+[[ "$automatic_admission_laya_verification" == 'true|true|true|true' ]] || {
+  echo "ERROR: Automatic document admission/Laya migration 125 verification failed: $automatic_admission_laya_verification" >&2
+  exit 1
+}
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED'
@@ -245,6 +264,7 @@ echo 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_109_MODULE025_PROJECT_NAME=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA=APPLIED_AND_VERIFIED'
 ENTRYPOINT
 chmod 0555 "$CONTEXT/entrypoint.sh"
 
@@ -307,6 +327,7 @@ echo 'MIGRATION_121_FLOWHIVE_SEQUENTIAL_CHECKPOINTS=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA=APPLIED_AND_VERIFIED'
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"
@@ -322,6 +343,14 @@ echo 'MIGRATION_098_CUSTOMER_SOURCE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_109_MODULE025_PROJECT_NAME=APPLIED_AND_VERIFIED'
+
+if [[ -n "$EVIDENCE_ROOT" ]]; then
+  install -d -m 0700 "$EVIDENCE_ROOT"
+  automatic_admission_laya_sha256="$(sha256sum "$ROOT/database/migrations/125_automatic_document_admission_laya.sql" | cut -d ' ' -f 1)"
+  jq -n --arg releaseCommit "$RELEASE_COMMIT" --arg image "$RELIABILITY_MIGRATION_IMAGE" --arg sha256 "$automatic_admission_laya_sha256" \
+    '{status:"applied_and_verified",migration:"125_automatic_document_admission_laya",sha256:$sha256,releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,deliveryBoundary:"test_only_or_locked",productionMutation:false}' \
+    > "$EVIDENCE_ROOT/migration-125.json"
+fi
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"
