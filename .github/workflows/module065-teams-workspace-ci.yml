@@ -1,0 +1,39 @@
+name: Module 065 Teams workspace checks
+on:
+  pull_request:
+    paths:
+      - 'src/frontend/project-time-web/src/MicrosoftTeamsNotificationPanel.jsx'
+      - 'src/frontend/project-time-web/src/microsoft-teams-notification-state.mjs'
+      - 'src/frontend/project-time-web/src/microsoft-teams-notifications.css'
+      - 'tests/teams-workspace/**'
+      - 'docs/repairs/module065-teams-workspace.md'
+      - '.github/workflows/module065-teams-workspace-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: module065-teams-workspace-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Test Teams form state, feedback and scope contracts
+        run: node --test tests/teams-workspace/state.test.mjs
+      - name: Install the existing locked frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --ignore-scripts
+      - name: Build the actual frontend with all existing validators
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+      - name: Restore generated frontend sources
+        if: always()
+        run: node src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs
+      - name: Verify build did not change tracked source
+        run: git diff --exit-code
