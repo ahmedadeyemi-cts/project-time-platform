@@ -1,0 +1,11 @@
+.celar-work-assistant { color: inherit; background: inherit; border: 1px solid currentColor; border-radius: .6rem; padding: 1rem; margin-block: 1rem; max-width: 65rem; }
+.celar-work-assistant h2 { margin-block: 0 .65rem; }
+.celar-work-assistant p { line-height: 1.5; overflow-wrap: anywhere; }
+.celar-work-assistant label { display: grid; gap: .5rem; font-weight: 600; }
+.celar-work-assistant textarea { box-sizing: border-box; width: 100%; min-height: 7rem; padding: .75rem; color: inherit; background: inherit; border: 1px solid currentColor; font: inherit; resize: vertical; }
+.celar-agent-actions { display: flex; flex-wrap: wrap; gap: .65rem; margin-block: .75rem; }
+.celar-agent-actions button { min-height: 2.75rem; padding: .65rem .9rem; color: inherit; background: inherit; border: 1px solid currentColor; border-radius: .3rem; font: inherit; cursor: pointer; }
+.celar-agent-actions button:disabled { cursor: not-allowed; opacity: .6; }
+.celar-work-assistant :focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+.celar-agent-proposal { white-space: pre-wrap; }
+@media (max-width: 36rem) { .celar-agent-actions button { width: 100%; } }
