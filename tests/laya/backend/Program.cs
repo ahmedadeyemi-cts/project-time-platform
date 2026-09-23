@@ -72,7 +72,7 @@ await Call("POST",path,404,new{requestId=Guid.NewGuid()},actor:Fixture.ScopedAdm
 Fixture.Unsafe=true; await Call("POST",path,422,new{requestId=Guid.NewGuid()}); Fixture.Unsafe=false;
 Check(Fixture.Inferences==0,"unauthorized or unsafe documents must not infer");
 var state=await Call("GET",$"/documents/{Fixture.Doc}/processing-state",200);
-Check(state["readyForClassification"]!.GetValue<bool>(),"document receipt state is exposed without raw text");
+Check(state["processing"]!["readyForClassification"]!.GetValue<bool>(),"document receipt state is exposed without raw text");
 var listing=await Call("GET","/documents",200);
 Check(listing["documents"]![0]!["processingStage"]!.GetValue<string>()=="ready","list uses durable processing stage");
 var id=Guid.NewGuid();
