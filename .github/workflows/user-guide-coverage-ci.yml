@@ -38,12 +38,18 @@ jobs:
           npm ci
           npm run build
           git diff --exit-code
-          node scripts/build-user-guide-browser-fixture.mjs --output "$RUNNER_TEMP/user-guide-fixture"
       - name: Install isolated browser dependencies
         run: |
+          npm install --prefix "$RUNNER_TEMP/user-guide-node" --no-audit --no-fund --save-exact esbuild@0.25.12
           python3 -m venv "$RUNNER_TEMP/user-guide-venv"
           "$RUNNER_TEMP/user-guide-venv/bin/pip" install playwright==1.55.0
           "$RUNNER_TEMP/user-guide-venv/bin/python" -m playwright install --with-deps chromium firefox
+      - name: Build the isolated generated-guide browser fixture
+        working-directory: src/frontend/project-time-web
+        run: |
+          USER_GUIDE_ESBUILD_MODULE="$RUNNER_TEMP/user-guide-node/node_modules/esbuild" \
+            node scripts/build-user-guide-browser-fixture.mjs --output "$RUNNER_TEMP/user-guide-fixture"
+          git diff --exit-code
       - name: Verify generated guide, role boundaries, search, print and theme contrast
         working-directory: src/frontend/project-time-web
         run: |
