@@ -111,6 +111,7 @@ try {
     var racing = await Project(c); var sameRevision = Request(Value(await Get(racing,pm)));
     var race = await Task.WhenAll(Save(racing,"delivery",sameRevision,pm),Save(racing,"delivery",sameRevision with {OperationId=Guid.NewGuid()},pm));
     Check(race.Select(Status).Order().SequenceEqual(new[]{200,409}) && await Count(c,racing)==1, "concurrent attestations save one revision, not two");
+    passed += await CertiniaQueueChecks.RunAsync(c, pm, ptc, billing);
     Console.WriteLine($"COMPLETION_DATABASE_TESTS=PASS assertions={passed}");
 } finally {
     Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection",null);

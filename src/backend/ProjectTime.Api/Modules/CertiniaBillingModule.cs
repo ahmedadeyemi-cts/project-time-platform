@@ -9,7 +9,7 @@ using Npgsql;
 
 namespace ProjectTime.Api.Modules;
 
-public static class CertiniaBillingModule
+public static partial class CertiniaBillingModule
 {
     private const string SystemCode = "CERTINIA";
     private static readonly string[] ExternalIdFields =
@@ -243,7 +243,7 @@ public static class CertiniaBillingModule
             enableRangeProcessing: false);
     }
 
-    private static async Task<IResult> QueueOrSendAsync(
+    private static async Task<IResult> QueueOrSendCoreAsync(
         Guid invoiceId,
         CertiniaInvoiceSendRequest request,
         HttpContext context)
@@ -1603,7 +1603,14 @@ public static class CertiniaBillingModule
         });
         var includeResourceNames = outputOptions.IncludeAnyNames;
 
-        await using var transaction = await connection.BeginTransactionAsync();
+        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        await ValidateCompletionQueueAsync(connection, transaction, invoice, actorUserId);
+        var reusable = await ReuseCompletionQueueAsync(connection, transaction, invoice.Header.BillingInvoiceId);
+        if (reusable is not null)
+        {
+            await transaction.CommitAsync();
+            return reusable;
+        }
         Guid outboxId;
         string deliveryStatus;
         int attemptCount;
@@ -1680,6 +1687,7 @@ public static class CertiniaBillingModule
             outboxId = reader.GetGuid(0);
             deliveryStatus = reader.GetString(1);
             attemptCount = reader.GetInt32(2);
+            await reader.DisposeAsync();
 
             await AppendInvoiceEventAsync(
                 connection,
@@ -1810,37 +1818,9 @@ public static class CertiniaBillingModule
             skipped);
     }
 
-    private static async Task<CertiniaOutboxClaim?> ClaimOutboxAsync(
-        NpgsqlConnection connection,
-        Guid outboxId)
-    {
-        await using var command = new NpgsqlCommand("""
-            UPDATE external_integration_outbox
-            SET
-                delivery_status = 'processing',
-                attempt_count = attempt_count + 1,
-                last_attempt_at = NOW(),
-                updated_at = NOW(),
-                last_error = ''
-            WHERE external_integration_outbox_id = @outbox_id
-              AND delivery_status IN ('pending', 'failed')
-            RETURNING
-                external_integration_outbox_id,
-                local_entity_id,
-                attempt_count,
-                payload_json::text;
-            """, connection);
-        command.Parameters.AddWithValue("outbox_id", outboxId);
-        await using var reader = await command.ExecuteReaderAsync();
-
-        if (!await reader.ReadAsync()) return null;
-
-        return new CertiniaOutboxClaim(
-            reader.GetGuid(0),
-            reader.IsDBNull(1) ? null : reader.GetGuid(1),
-            reader.GetInt32(2),
-            reader.GetString(3));
-    }
+    private static Task<CertiniaOutboxClaim?> ClaimOutboxAsync(
+        NpgsqlConnection connection, Guid outboxId) =>
+        ClaimCompletionSafeOutboxAsync(connection, outboxId);
 
     private static async Task<CertiniaTransportResponse> SendToCertiniaAsync(
         CertiniaConfiguration configuration,
