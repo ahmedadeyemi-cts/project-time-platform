@@ -2,7 +2,10 @@
 .teams-notifications-workspace {
   --teams-border: var(--border-color, #d7e3ef);
   --teams-muted: var(--text-secondary, var(--muted, #526577));
-  --teams-subtle: var(--surface-subtle, #f5f9fc);
+  /* Both root-owned and body-owned themes define --surface. Do not paint a
+     light fallback beneath inherited dark-theme text when --surface-subtle
+     is absent. Keep the background and foreground in the same theme. */
+  --teams-subtle: var(--surface-subtle, var(--surface, #f5f9fc));
   --teams-success: #166534;
   --teams-warning: #854d0e;
   --teams-danger: #991b1b;
