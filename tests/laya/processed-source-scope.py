@@ -7,6 +7,7 @@ def git(*args):
 base = git('merge-base','origin/main','HEAD').strip()
 allowed = set('''
 docs/implementation/automatic-document-admission-laya-20260923.md
+docs/production-readiness/foundation/initialization-review.json
 src/backend/ProjectTime.Api/Ai/LayaProcessedSourceReader.cs
 src/backend/ProjectTime.Api/Modules/LayaDecisionModule.cs
 src/frontend/project-time-web/src/ai/LayaDecisionPanel.jsx
@@ -16,11 +17,13 @@ tests/LayaProcessedSourceTests/LayaProcessedSourceTests.csproj
 tests/LayaProcessedSourceTests/Fakes.cs
 tests/LayaProcessedSourceTests/Program.cs
 tests/LayaProcessedSourceTests/fixture.sql
+tests/FlowHivePreparationTests/Program.cs
 tests/laya/backend/Fakes.cs
 tests/laya/backend/Program.cs
 tests/laya/release-scope.py
 tests/laya/processed-source-scope.py
 .github/workflows/laya-processed-source-ci.yml
+.github/workflows/module-management-owner-drawer-ci.yml
 database/migrations/125_automatic_document_admission_laya.sql
 scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
 src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs
