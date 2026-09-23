@@ -2,120 +2,123 @@
 
 Date: September 23, 2026
 Source baseline: `4c31007053359b1cf41681d686742f6c08fbb3b6`
-Status: Draft repair specification. This commit does not implement or activate document processing. No application code, configuration, migrations, or deployed environments have changed.
+Status: Draft repair specification. This PR does not yet implement or activate the application-code fix. No application configuration, database migration, or deployed environment has changed.
 
-## Owner-requested outcome
+## Required outcome
 
-Every accepted document upload or replacement must automatically enter the existing malware, format, and text-extraction checks. A user must not have to open Module 064, click AI Planner, or manually submit each document for routine preparation. Existing unprocessed documents need automatic, bounded recovery rather than wholesale re-upload.
+Every accepted document upload or replacement must automatically enter the existing malware, format, and text-extraction checks. Users must not need to visit Module 064, click AI Planner, or manually queue each document. Existing unprocessed documents need bounded automatic recovery instead of wholesale re-upload.
 
-An upload starts processing immediately through a durable queue; it does not finish instantly. The initial receipt must say received/queued, not clean, approved, indexed, or ready. Successful check-in means the exact document version and its processing evidence are registered. It is not business approval of a SOW, contract, authoritative version, or customer handoff.
+Processing starts through a durable queue as soon as the upload is registered; it does not finish instantly. The initial receipt must say received/queued, not clean, approved, indexed, or ready. Check-in means the exact version and its processing evidence are registered. It must not silently approve a SOW, contract, authoritative version, or customer handoff.
 
-Security admission and AI retrieval permission are independent. Scan accepted uploads without turning on engineering visibility, widening project access, setting AI-consent flags, or exposing a private conversation attachment to anyone else. Unsupported or prohibited formats must be rejected with an explicit reason; they must not be converted or marked ready to satisfy a dashboard.
+Security admission and AI retrieval permission are independent. Scan accepted uploads without changing engineering visibility, project access, AI consent, or private conversation ownership. Unsupported or prohibited formats need an explicit rejection, not forced conversion or fabricated readiness.
 
-## Source findings to repair
+## Source findings
 
-### 1. Laya consumes the preview path instead of durable processing evidence
+### Laya reads preview state instead of durable processing evidence
 
-`src/backend/ProjectTime.Api/Modules/LayaDecisionModule.cs` maps the inventory's `ProductionAdmissionReady` to `previewAdmitted`. Classification then calls `BuildProcessingPreviewAsync` and returns `decision_document_admission_required` for failed extraction, failed safety, OCR-required input, or an invalid source hash. These are distinct failures but the UI reports one generic message.
+`src/backend/ProjectTime.Api/Modules/LayaDecisionModule.cs` maps the preview inventory's `ProductionAdmissionReady` to `previewAdmitted`. Classification calls `BuildProcessingPreviewAsync` and returns `decision_document_admission_required` for unsuccessful extraction, failed safety, OCR-required input, or an invalid source hash. The frontend collapses these distinct reasons into a generic warning.
 
-The health request is separate from document admission. A ready Laya gateway does not prove that a particular source version has been scanned or extracted.
+The health request is independent of document admission. A ready gateway is not proof that the selected version has a successful scan, extraction, or index receipt.
 
-### 2. Preview state depends on global flags, not a current scan receipt
+### Preview readiness depends on global flags
 
-`PulseAiPrivateDocumentPipelineService.ToInventoryItem` combines extension support, file availability, path confinement, `MalwareScanAttested`, and `ExtractionPreviewEnabled`. It does not derive its Boolean from a completed per-version processing receipt. The two preview flags default to false in `PulseAiPrivateDocumentPipelineContracts.cs`; their live values have not been inspected.
+`PulseAiPrivateDocumentPipelineService.ToInventoryItem` combines extension support, file availability, path confinement, `MalwareScanAttested`, and `ExtractionPreviewEnabled`. It does not use a completed per-version worker receipt. The preview flags default to false in `PulseAiPrivateDocumentPipelineContracts.cs`; their live values have not been inspected.
 
-Do not flip a global malware-attestation flag to manufacture success. Require genuine scan evidence bound to the current file bytes.
+Do not flip a global attestation flag to clear the warning. Admission must require genuine scan evidence for the current bytes.
 
-### 3. The durable document worker already owns the safety sequence
+### The durable worker already owns the safety sequence
 
-`PulseAiPrivateDocumentRuntimeService.ProcessNextAsync` reauthorizes the source, creates an immutable snapshot, calls the scanner, quarantines an infected result, requires a clean result, compares the scan hash with the snapshot hash, and only then extracts text. It supports approved private OCR and downstream indexing.
+`PulseAiPrivateDocumentRuntimeService.ProcessNextAsync` reauthorizes the source, creates an immutable snapshot, runs the scanner, quarantines infected input, requires a clean result, compares source hashes, and extracts only after these checks. It supports approved private OCR and downstream indexing.
 
-Reuse this owner and its scanner/extraction components. Do not put an independent scanner or unsafeguarded parser inside the Laya panel.
+Reuse this owner and its scanner/extraction components. Do not create an independent scanner or unsafeguarded file parser inside Laya.
 
-### 4. Automatic queuing is planning-specific, not universal upload admission
+### Existing automatic queuing is planning-specific
 
-`PulseAiPrivateDocumentRuntimeRepository.EnqueueNextEligibleDocumentAsync` selects active, engineering-visible, AI-eligible project documents in recognized planning categories and `not_requested` state. It excludes chat attachments and closed/archived project states and deduplicates active jobs.
+`PulseAiPrivateDocumentRuntimeRepository.EnqueueNextEligibleDocumentAsync` selects active, engineering-visible, AI-eligible project documents in recognized planning categories and `not_requested` state. It excludes chat attachments and closed/archived project states and avoids duplicate active jobs.
 
-`ProjectPlanningDocumentPreparation.QueueAssociatedAsync` is an existing transaction-bound upload/association hook with similar eligibility restrictions, migration checks, identity checks, and release boundaries. Some preparation wording still instructs users to click AI Planner to initiate preparation.
+`ProjectPlanningDocumentPreparation.QueueAssociatedAsync` is an existing transactional upload/association hook, with migration, identity, release, and planning-eligibility checks. The canonical `Program.cs` already calls it during project association, supporting-document upload, and Work Register project-document upload. The correct repair is to complete coverage and separate security admission from optional AI preparation, not assert that no upload hook exists.
 
-The worker and automatic queue have explicit runtime enablement requirements. The recovery worker requires a dedicated authorized service principal, not a substituted human administrator. Source defaults are not proof of live configuration.
+Worker execution and automatic recovery have explicit configuration requirements. The recovery worker requires a dedicated authorized service principal; a human administrator must not be substituted. Source defaults are not live-state evidence.
 
-### 5. Preserve the separate owner-only chat-attachment path
+### Preserve owner-only chat processing
 
-Chat attachment upload already creates queued processing under its existing owner. Such files intentionally do not inherit engineering visibility or project-wide AI eligibility. A general backlog sweep must not enroll, expose, or resurrect them. Their existing owner-scoped queue, retention, revocation, and retrieval rules remain authoritative.
+`CelarAiConversationAttachmentService` already queues its uploads under the owning user's path. Chat attachments intentionally do not inherit engineering visibility or project-wide AI eligibility. A broad project backfill must not enroll, expose, or resurrect them. Preserve their owner-scoped queue, retention, revocation, and retrieval checks.
 
-### 6. Legacy Word support is inconsistent
+### Corrected finding: legacy .doc IS wired into the generated build
 
-`.doc` is in `PulseAiPrivateDocumentPipelinePolicy.SupportedExtensions`, and `PulseAiLegacyBinaryWordExtraction` exists. However, the inspected `PulseAiPrivateDocumentExtractionService.ExtractAsync` dispatch has no `.doc` branch. A file reaching that switch falls into unsupported-format handling.
+The earlier preview-source-only inspection was incomplete. The canonical `PulseAiPrivateDocumentExtractionService.cs` lacks a `.doc` switch branch, but it is not the final compiled source.
 
-Verify both signature recognition and execution wiring before declaring support. Use the intended bounded, private text-only converter only after the same safety gates. Do not rename a `.doc` file to `.docx`, execute macros or embedded objects, or silently relax the format policy. This is a source defect, not proof of every live document's individual failure reason.
+`src/backend/ProjectTime.Api/Directory.Build.props` runs `EnableFlowHiveLegacyWordExtraction` before `CoreCompile`, explicitly depending on `GenerateScopedRbacSources`. The target invokes `build/enable-flowhive-legacy-word-extraction.py`, which adds `.doc` dispatch, OLE/text-compatible signature handling, and sealed immutable-snapshot handling to the generated compiler copy. `PulseAiLegacyBinaryWordExtraction` supplies the private converter. `tests/FlowHiveDetailedPlannerTests/Program.cs` already includes compiled legacy-word regression cases.
+
+The post-processor was executed successfully on a temporary copy of the baseline extractor during this review; the expected `.doc`, signature, and path-policy markers were present. This is a generated-source check, not a full .NET build or live file-extraction test.
+
+Do NOT add a duplicate converter or declare `.doc` unsupported merely from its extension or the canonical switch. Inspect the running build, actual format, extractor availability, and specific per-file error. Do not rename `.doc` to `.docx` or relax macro/signature checks.
 
 ## Implementation work packages
 
-### A. Inventory and connect upload paths
+### A. Durable admission at upload
 
-- [ ] Enumerate actual document creation and replacement handlers, including project upload/association, intake/handoff, generated SOW/GSD registration, approved integration imports, and owner-only chat attachments.
-- [ ] Confirm which handlers persist into the shared document registry and which require a separately scoped adapter.
+- [ ] Enumerate actual creation/replacement/import handlers and their storage/registry owners. Include intake supporting uploads, intake request attachments, Work Register upload/save/association, generated SOW/GSD registration, approved integration imports, and private chat attachments. Review expense/template upload surfaces separately rather than assuming they share the same document registry.
 - [ ] Persist the upload and its admission job atomically, or persist a transactional outbox entry with recovery.
-- [ ] Bind each job to the document/version, source hash or immutable source identity, owning scope, and policy version.
-- [ ] Deduplicate repeated events without reusing an older version's clean receipt for replacement bytes.
-- [ ] Keep pending uploads restricted from ordinary delivery, inference, or retrieval until the applicable checks succeed. Review download and external-handoff paths, not only the AI panel.
-- [ ] Do not make browser lifetime or a best-effort untracked task responsible for completing preparation.
+- [ ] Bind work to document/version, source hash or immutable source identity, owning scope, and policy version.
+- [ ] Deduplicate repeated events while ensuring replacement bytes receive new scan evidence.
+- [ ] Keep pending files restricted from ordinary delivery, inference, and retrieval until applicable checks pass; inspect download and external-handoff paths, not just the AI panel.
+- [ ] Make the queue survive closed browsers, restarts, and interrupted workers. Do not depend on an untracked fire-and-forget task.
 
-### B. Use one authoritative admission lifecycle
+### B. Authoritative processing state
 
-Required user-facing progression:
+Required progression:
 
 `Received -> Queued -> Scanning -> Format validation -> Extracting/OCR -> Checked in -> Indexed for permitted AI use`
 
-- [ ] Preserve actual scanner execution, immutable-snapshot verification, path confinement, size limits, signature checks, archive-expansion protection, and private extraction/OCR.
-- [ ] Represent security status, extraction status, indexing eligibility, business approval/version authority, and optional Laya classification separately.
-- [ ] Keep scanner unavailable, malicious, unsupported, encrypted, corrupt, missing, awaiting OCR, and retry pending as distinct outcomes.
-- [ ] Retain limits, deadlines, cancellation, leases, and immutable processing evidence.
-- [ ] Do not mark absent or partially processed evidence as a complete document.
-- [ ] Do not make successful Laya inference a prerequisite for security scanning or permitted indexing.
+- [ ] Preserve actual scanner execution, immutable-snapshot checks, path confinement, size/signature/archive limits, and approved private OCR.
+- [ ] Represent security admission, extraction availability/limitations, AI indexing, business approval/version authority, and optional Laya recommendation separately.
+- [ ] Distinguish scanner unavailable, infected, unsupported, encrypted, corrupt, missing, awaiting OCR, retry pending, and exhausted failure.
+- [ ] Preserve leases, cancellation, bounded concurrency/deadlines, and processing audit evidence.
+- [ ] Keep business approval separate from technical processing success.
+- [ ] Do not require successful Laya inference before scanning or permitted indexing can finish.
 
-### C. Recover existing uploads
+### C. Existing-document recovery
 
-- [ ] Add a bounded, restartable backlog reconciliation that discovers unprocessed current versions without assuming they are safe.
-- [ ] Prefer new upload work over historical bulk recovery and bound concurrent CPU/memory pressure.
-- [ ] Keep active-job deduplication, attempt limits, and per-version idempotency.
-- [ ] Do not endlessly retry permanent failures or silently revive quarantine, cancelled work, revoked files, expired attachments, or archived projects.
+- [ ] Reconcile existing current versions in bounded, resumable batches without assuming they are safe.
+- [ ] Prefer new upload work over historical bulk recovery and cap resource use.
+- [ ] Preserve active-job deduplication and attempt limits.
+- [ ] Do not endlessly retry permanent failures, clear quarantine, reactivate cancelled work, resurrect revoked/expired attachments, or reopen archived projects.
 - [ ] Record actual discovered, queued, processed, excluded, failed, and quarantined counts with reasons.
-- [ ] Preserve the distinction between security admission and whether a document may be used for project planning or AI retrieval.
+- [ ] Keep security admission separate from eligibility for planning or AI retrieval.
 
-### D. Connect Laya to processed source evidence
+### D. Laya processed-source adapter
 
-- [ ] Replace the preview-only prerequisite with a server-owned read of the current durable document version, successful scan evidence, and extracted section.
-- [ ] Verify current source/version hashes against scan and extraction receipts.
-- [ ] Reauthorize before reading text, before inference, and before persisting or returning a recommendation.
-- [ ] Reject replacement or revocation during inference and prevent stale results from being published.
-- [ ] Preserve the existing 300-Unicode-scalar excerpt policy, fixed checkpoint, bounded transport, labels, and human-review-only behavior for this repair.
-- [ ] Make history/status reads inspect persisted evidence rather than reparsing file content.
-- [ ] Continue preparation automatically while a user sees a pending state; do not require a classification request to discover that admission has not happened.
-- [ ] Keep Laya busy/unavailable separate from scan/extraction failure. No cloud fallback for private source text.
+- [ ] Replace the preview-only prerequisite with an authorized read of the current durable version, successful scan evidence, and extracted section.
+- [ ] Match current source/version hashes against both scan and extraction receipts.
+- [ ] Reauthorize before reading text, before inference, and before saving/returning a recommendation.
+- [ ] Reject replacement or revocation during inference; do not publish stale results.
+- [ ] Preserve the existing 300-Unicode-scalar excerpt policy, fixed model revision, labels, bounded transport, and human-review-only behavior in this repair.
+- [ ] Make status/history reads inspect persisted evidence rather than reparse files.
+- [ ] While preparation is pending, show the actual stage and let the queue continue automatically.
+- [ ] Keep Laya busy/unavailable separate from admission failures. No cloud fallback for private source text.
 
-### E. Show actionable state across the application
+### E. Consistent UI status
 
-- [ ] Return sanitized current-version stage, stage timestamp, scan/extraction/index states, and bounded blocker codes/messages.
-- [ ] Preserve raw-text, storage-path, credential, and unrelated-record privacy.
-- [ ] Use the same authoritative status in upload receipts, document lists, Module 064, and chat attachment selection.
-- [ ] Update pending state using existing events or bounded polling that stops on hidden/unmounted pages and handles identity changes.
-- [ ] Replace the generic admission warning with the actual failed stage and recovery action.
-- [ ] Keep good contrast in light/dark modes and keyboard/screen-reader access.
+- [ ] Return current-version stage, stage timestamp, scan/extraction/index status, and sanitized bounded blocker codes/messages.
+- [ ] Do not expose raw text, storage paths, credentials, or unrelated records.
+- [ ] Use the same authoritative state in upload receipts, document lists, Module 064, and chat attachment selection.
+- [ ] Use existing events or bounded polling; stop polling on hidden/unmounted pages and clear stale state on identity changes.
+- [ ] Replace the generic admission warning with a specific failed stage and recovery action.
+- [ ] Preserve light/dark contrast, keyboard interaction, and screen-reader status announcements.
 
-### F. Verify chat retrieval after indexing
+### F. Verify Celar document answers
 
 - [ ] Demonstrate that an authorized question retrieves and cites the newly prepared current document.
-- [ ] Before readiness, return a processing or evidence-limited answer rather than guessing.
-- [ ] Preserve actual/effective-user scope, current source authorization, version precedence, and revocation.
-- [ ] Keep private chat attachments isolated from broad project-document search.
+- [ ] Before readiness, report processing or missing evidence instead of guessing.
+- [ ] Preserve effective-user scope, current source authorization, version precedence, and revocation.
+- [ ] Keep private attachments out of broad project-document search.
 
-Optional Laya chat-intent routing is NOT part of this repair. It would require a separate bounded typed contract, evaluation, privacy enforcement, and application integration. Document admission must not wait for that work. Laya must never grant permissions or authorize public disclosure. Module 064 remains the generative-provider configuration and ordering authority.
+Optional Laya chat-intent routing is outside this repair. It requires a separate typed contract and evaluation and must not delay document admission. Laya must not grant permissions or authorize public disclosure. Module 064 remains authoritative for generative-provider configuration and order.
 
-## Runtime evidence needed before selecting configuration changes
+## Runtime evidence to collect
 
-Use existing authenticated read endpoints; do not paste credentials or environment dumps into the PR:
+Use authenticated read endpoints; never paste tokens or environment dumps into the PR:
 
 ```text
 GET /api/celar-ai/v1/documents/pipeline/readiness
@@ -125,36 +128,38 @@ GET /api/celar-ai/v1/documents/{documentId}/runtime-state
 GET /api/celar-ai/v1/documents/runtime/jobs
 ```
 
-Inspect worker/queue enablement, processing principal authorization, shared storage, scanner configuration and actual results, migration readiness, current-version state, extraction error codes, and index readiness. A configuration flag, green gateway badge, or source-code comment is not a completed live processing test.
+Inspect worker/queue enablement, processing-principal authorization, shared storage, scanner configuration and actual results, migration readiness, current-version state, extractor diagnostics, and indexing. A flag, source comment, or green gateway badge is not an end-to-end processing test.
 
-## Release-blocking acceptance tests
+## Release-blocking acceptance
 
 | Case | Required observation |
 | --- | --- |
-| New supported upload | Durable admission queued without visiting Module 064 or clicking AI Planner. |
-| Browser closed or application restarted | Work remains queued/recoverable and completes or exposes a specific failure. |
-| Native DOCX, text PDF, spreadsheet | Real scanner and corresponding extraction paths produce version-bound evidence. |
-| Genuine legacy DOC | Approved signature and bounded converter path work, or a precise unsupported/converter failure is shown. |
-| Scanned PDF | Approved private OCR returns cited text or an explicit OCR failure/limitation. |
-| Invalid/oversized/encrypted/corrupt input | Controlled, distinct failure; no fabricated clean/ready state. |
-| Simulated infected scanner result | Quarantine; no extraction, Laya call, indexing, normal download, or external handoff. Use mocks rather than malicious files. |
-| Scanner unavailable | Never interpreted as clean; bounded retry and named failure. |
-| Duplicate upload event | No duplicate active job for the same version and scope. |
-| Replacement during processing | Old receipt cannot authorize new bytes or publish stale extracted text. |
-| Revocation/deletion during processing | No stale result, citation, or classification is returned or retained as current. |
-| Backlog interruption | Recovery resumes without duplicate work or bypassing exclusions. |
-| Role/project/conversation isolation | No cross-user document, status, excerpt, cache, or search leakage. |
-| Laya use | Exact clean extracted version is consumed; human review and original recommendation are retained. |
-| Status consistency | Upload list, Module 064, and chat agree on the current stage. |
-| Chat after indexing | Answer has grounded current-document citations in the effective user's scope. |
-| Unrelated behavior | Provider order, business approval, original history, and release controls are unchanged. |
+| New supported upload | Durable admission queued without Module 064 or AI Planner interaction. |
+| Browser closed/application restarted | Recoverable work completes or exposes a specific failure. |
+| DOCX, text PDF, spreadsheet | Real scanner and corresponding extraction paths produce version-bound evidence. |
+| Legacy DOC | Existing generated-build converter runs safely, or exposes the precise format/runtime failure. |
+| Scanned PDF | Approved private OCR produces cited text or a clear limitation/failure. |
+| Invalid/oversized/encrypted/corrupt input | Controlled distinct outcome; no fabricated ready state. |
+| Mock infected scanner result | Quarantine prevents extraction, Laya, indexing, ordinary download and external handoff. No malicious file is needed for unit testing. |
+| Scanner unavailable | Never clean; bounded retry and named failure. |
+| Duplicate event | No duplicate active job for the same version/scope. |
+| Replacement | Old scan evidence cannot authorize new bytes or stale output. |
+| Revocation/deletion | No stale result, citation or recommendation becomes current. |
+| Interrupted backlog | Recovery resumes without duplicate work or bypassing exclusions. |
+| Role/project/conversation isolation | No cross-user document, status, excerpt, cache or search leakage. |
+| Laya classification | Exact clean extracted version consumed; original recommendation and human review retained. |
+| UI consistency | Upload list, Module 064 and chat agree on current state. |
+| Post-index chat | Grounded current-document citations within effective-user scope. |
+| Regression | Provider order, business approvals, original history and release controls unchanged. |
 
-Required evidence: actual backend/frontend builds, database/queue tests, negative authorization tests, browser tests, and authenticated Protected UAT end-to-end receipts. None of the new repair acceptance tests is claimed to have passed in this specification commit.
+Before release, require actual backend/frontend builds, database/queue tests, negative authorization tests, browser tests, and authenticated Protected UAT upload-to-answer receipts. No repair acceptance pass is claimed by this specification PR. The generated-source check above only corrects the legacy-Word finding.
 
-## Migration, deployment, and rollback
+## Release and rollback boundaries
 
-Determine whether independent security-admission state or a durable outbox needs a migration after reviewing the owning schema. Reserve an unused migration identifier through the repository's normal process. Do not mutate existing applied migrations or invent an approval reference.
+Determine whether independent security-admission state or an outbox requires a migration after reviewing the owning schema, then reserve an unused identifier through the normal process. Do not alter applied migrations or invent approval references.
 
-Do not enable workers, change service principals, grant permissions, or alter runtime settings merely by creating this PR. Implementation and validation should occur on this isolated branch. Keep the PR draft until it contains tested code and its release gates are met. No merge, Protected UAT deployment, Production deployment, provider change, or schema application is authorized or performed by this specification commit.
+Do not enable workers, grant permissions, change service principals, or alter runtime settings merely by creating this PR. Keep it draft until implementation and validation are complete. No merge, Protected UAT deployment, Production deployment, provider change, or schema application is performed here.
 
-Document eventual rollback boundaries before activation, preserving processing receipts and quarantine history. Never roll back by marking all pending documents clean or deleting their evidence.
+A temporary read-only, exact-branch source-preparation workflow was used for repository inspection and removed from the final diff. Its run packaged tracked source only with credentials disabled and one-day artifact retention; it was not a build or a document-processing test. No branch-write or deployment authority was introduced.
+
+Plan rollback before eventual activation and preserve scan receipts, original versions, and quarantine history. Never roll back by marking pending files clean or deleting their evidence.
