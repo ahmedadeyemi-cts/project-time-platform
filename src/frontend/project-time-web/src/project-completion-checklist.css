@@ -1,0 +1,37 @@
+/* Paired local surfaces prevent inherited inverse-header text from hiding controls. */
+.completion-checklist { --completion-bg:#fff; --completion-fg:#162c42; --completion-soft:#edf3f8; --completion-border:#7890a5; --completion-warn-bg:#fff3d6; --completion-warn-fg:#573900; background:var(--completion-bg); color:var(--completion-fg); border:1px solid var(--completion-border); border-radius:14px; padding:1.25rem; margin:1rem 0; font-size:1rem; line-height:1.5; }
+:root[data-theme="dark"] .completion-checklist, body[data-theme="dark"] .completion-checklist { --completion-bg:#132335; --completion-fg:#edf5ff; --completion-soft:#22374c; --completion-border:#91a6bd; --completion-warn-bg:#453519; --completion-warn-fg:#ffe1a5; }
+.completion-checklist :is(h2,h3,p,label,legend,dt,dd,summary,span,strong) { color:inherit; opacity:1; }
+.completion-heading { display:flex; gap:1rem; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; background:var(--completion-bg); color:var(--completion-fg); }
+.completion-eyebrow { font-weight:700; margin:0; }
+.completion-heading h2 { margin:.25rem 0; font-size:1.4rem; }
+.completion-notice, .completion-progress { padding:.8rem; background:var(--completion-soft); color:var(--completion-fg); border-radius:8px; }
+.completion-warning { background:var(--completion-warn-bg); color:var(--completion-warn-fg); padding:.8rem; border:1px solid currentColor; border-radius:8px; }
+.completion-steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; }
+.completion-steps article { padding:1rem; background:var(--completion-soft); color:var(--completion-fg); border:1px solid var(--completion-border); border-radius:10px; min-width:0; }
+.completion-steps h3 { margin:.5rem 0; font-size:1.05rem; }
+.completion-steps p { margin:.5rem 0; }
+.completion-step-number { display:inline-flex; justify-content:center; align-items:center; width:2rem; height:2rem; border:2px solid currentColor; border-radius:50%; font-weight:700; }
+.completion-checklist :is(button,input,textarea,select) { font:inherit; background:var(--completion-bg); color:var(--completion-fg); border:1px solid var(--completion-border); border-radius:6px; padding:.55rem .7rem; opacity:1; }
+.completion-checklist button { cursor:pointer; font-weight:600; white-space:normal; }
+.completion-checklist button:hover:not(:disabled) { outline:2px solid currentColor; outline-offset:1px; }
+.completion-checklist :is(button,input,textarea,select,summary):focus-visible { outline:3px solid currentColor; outline-offset:3px; }
+.completion-checklist button:disabled { cursor:not-allowed; border-style:dashed; }
+.completion-reference, .completion-role-note { font-size:.9rem; overflow-wrap:anywhere; }
+.completion-checklist :is(dd,dt,summary) { overflow-wrap:anywhere; }
+.completion-checklist dt { font-weight:700; margin-top:.5rem; }
+.completion-checklist dd { margin-left:0; }
+.completion-checklist summary { cursor:pointer; font-weight:600; margin:.65rem 0; }
+.completion-form { padding:1rem; margin-top:1rem; border:2px solid var(--completion-border); border-radius:10px; }
+.completion-checklist fieldset { margin:0; padding:.8rem; border:1px solid var(--completion-border); min-width:0; color:var(--completion-fg); }
+.completion-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.85rem; }
+.completion-checklist label { display:flex; flex-direction:column; gap:.3rem; margin:.6rem 0; font-weight:600; }
+.completion-checklist :is(input,textarea,select) { width:100%; box-sizing:border-box; min-width:0; }
+.completion-checklist input[type="checkbox"] { width:1.2rem; height:1.2rem; flex:0 0 auto; margin-top:.15rem; accent-color:auto; }
+.completion-wide { grid-column:1 / -1; }
+.completion-checklist .completion-confirm, .completion-invoice-selection label { display:flex; flex-direction:row; gap:.75rem; align-items:flex-start; padding:.75rem; background:var(--completion-soft); border-radius:6px; }
+.completion-actions { display:flex; flex-wrap:wrap; gap:.65rem; margin-top:1rem; }
+.completion-corrections { margin-top:1rem; }
+@media (max-width:1100px) { .completion-steps { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:620px) { .completion-steps,.completion-fields { grid-template-columns:1fr; } .completion-checklist { padding:.8rem; } .completion-wide { grid-column:auto; } }
+@media print { .completion-checklist { display:none !important; } }
