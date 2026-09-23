@@ -652,7 +652,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
       <nav className="m042-tabs" aria-label="Invoice Center views">
         <button type="button" className={view === 'queue' ? 'active' : ''} onClick={() => setView('queue')}>Active billing candidates</button>
         <button type="button" className={view === 'closed' ? 'active' : ''} onClick={() => setView('closed')}>Recently closed</button>
-        <button type="button" className={view === 'reports' ? 'active' : ''} onClick={() => setView('reports')}>History &amp; integrationsations</button>
+        <button type="button" className={view === 'reports' ? 'active' : ''} onClick={() => setView('reports')}>History &amp; integrations</button>
       </nav>
 
       {view === 'reports' ? (
@@ -933,10 +933,17 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                         {!selectedRows.length && !selectedEvidenceRows.length ? (
                           <tr>
                             <td colSpan="6">
-                              <div className="m042-empty-state">
-                                <strong>No approved uninvoiced sources</strong>
-                                <span>Complete approvals or mark a governed expense/milestone package ready in Module 039.</span>
-                              </div>
+                              {selected.invoiceHistory?.length ? (
+                                <div className="m042-empty-state">
+                                  <strong>No remaining approved uninvoiced sources</strong>
+                                  <span>Previously posted invoices already contain approved labor and governed package items. Review invoice history for PDF, Excel, and Certinia delivery details.</span>
+                                </div>
+                              ) : (
+                                <div className="m042-empty-state">
+                                  <strong>No approved uninvoiced sources</strong>
+                                  <span>Complete approvals or mark a governed expense/milestone package ready in Module 039.</span>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ) : null}
