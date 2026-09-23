@@ -1,3 +1,4 @@
+import ProjectCompletionChecklist from './ProjectCompletionChecklist.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import CertiniaInvoiceDeliveryPanel from './CertiniaInvoiceDeliveryPanel';
 import './invoice-billing-enhancements.css';
@@ -12,10 +13,10 @@ const columns = [
   ['projectManager', 'Project Manager', 'Ownership', false],
   ['coordinator', 'Project Team Coordinator', 'Ownership', false],
   ['assignedEngineers', 'Assigned engineers', 'Ownership', false],
-  ['certiniaId', 'Certinia ID', 'External IDs', true],
-  ['sellQuoteId', 'ConnectWise SELL Quote', 'External IDs', true],
+  ['certiniaId', 'Certinia ID', 'External IDs', false],
+  ['sellQuoteId', 'ConnectWise SELL Quote', 'External IDs', false],
   ['commercialSource', 'Commercial source', 'Billing data', false],
-  ['salesforceId', 'Salesforce ID / Quote', 'External IDs', true],
+  ['salesforceId', 'Salesforce ID / Quote', 'External IDs', false],
   ['purchaseOrder', 'Purchase order', 'External IDs', false],
   ['approvedLines', 'Approved billing lines', 'Billing data', true],
   ['approvedHours', 'Approved billing hours', 'Billing data', false],
@@ -210,11 +211,11 @@ function candidateCellValue(candidate, columnKey, selections) {
     const laborCount = Number(candidate.approvedLineCount || 0);
     const nonLaborCount = Number(candidate.readyNonLaborLineCount || 0);
     const count = laborCount + nonLaborCount;
-    return count ? `${count} (${laborCount} labor, ${nonLaborCount} package)` : candidate.invoiceHistory?.length ? '0 — fully invoiced' : '0 — none approved';
+    return count ? `${count} (${laborCount} labor, ${nonLaborCount} package)` : candidate.invoiceHistory?.length ? '0 — no remaining eligible lines' : '0 — none approved';
   }
   if (columnKey === 'approvedHours') {
     const hours = Number(candidate.approvedHours || 0);
-    return hours ? formatHours(hours) : candidate.invoiceHistory?.length ? '0.00 — fully invoiced' : '0.00 — none approved';
+    return hours ? formatHours(hours) : candidate.invoiceHistory?.length ? '0.00 — no remaining eligible time' : '0.00 — none approved';
   }
 
   if (columnKey === 'effectiveRate') {
@@ -228,7 +229,7 @@ function candidateCellValue(candidate, columnKey, selections) {
     const status = candidate.rateResolutionStatus;
     if (status === 'selection_required') return 'Select a commercial rate';
     if (status === 'missing_rate') return 'Missing commercial rate';
-    return candidate.invoiceHistory?.length ? 'Fully invoiced' : 'No eligible time';
+    return candidate.invoiceHistory?.length ? 'No remaining eligible time' : 'No eligible time';
   }
 
   if (columnKey === 'candidateAmount') {
@@ -610,9 +611,10 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
       <section className="m042-notice" aria-label="How to generate an invoice">
         <strong>Create an invoice in three steps</strong>
-        <ol><li>Find and select the customer project below.</li><li>Review approved billing lines, rates, expenses, and external references.</li><li>Use Generate Partial Invoice for eligible work, or Generate Final Invoice after closeout requirements are met. Download the saved invoice from invoice history.</li></ol>
+        <ol><li>Find and select the customer project below.</li><li>Review approved billing lines, rates, expenses, and external references.</li><li>Use Generate Partial Invoice for eligible work, or Generate Final Invoice for final reconciliation before closing the project. Download the saved invoice from invoice history.</li></ol>
       </section>
 
+      <p className="m042-live-mode">Choose the path that matches your work: create an invoice in Pulse using the commercial setup below, or record billing already handled outside Pulse in the selected project’s completion checklist. SELL/rate readiness applies to invoice creation, not manual evidence recording. The same checklist is also available in PM Delivery &amp; closeout and Project Closeout.</p>
       <details className="m042-preview-mode m042-live-mode" aria-label="Module 042 live data status"><summary>Commercial source details</summary>
         <strong>Commercial source guard</strong>
         <span>
@@ -716,6 +718,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
             <div className="m042-column-count"><strong>{visibleColumns.length}</strong><small>columns shown</small></div>
           </section>
 
+          {selected ? <ProjectCompletionChecklist projectId={selected.projectId} /> : null}
           <section className="m042-workspace">
             <div className="m042-card">
               <header className="m042-card-head">
@@ -804,7 +807,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                     </div>
                   </section>
 
-                  <section className="m0423-commercial" aria-label="ConnectWise SELL commercial source">
+                  <details className="m0423-commercial" aria-label="ConnectWise SELL commercial source">
+                    <summary>Commercial setup for invoices created in Pulse</summary>
                     <header>
                       <div>
                         <span>Commercial source</span>
@@ -833,7 +837,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                         ))}
                       </div>
                     ) : <p>No active commercial rate lines are available for this project.</p>}
-                  </section>
+                  </details>
 
                   <section className="m042-resource-list">
                     <span>Assigned engineers</span>
@@ -929,10 +933,17 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                         {!selectedRows.length && !selectedEvidenceRows.length ? (
                           <tr>
                             <td colSpan="6">
-                              <div className="m042-empty-state">
-                                <strong>No approved uninvoiced sources</strong>
-                                <span>Complete approvals or mark a governed expense/milestone package ready in Module 039.</span>
-                              </div>
+                              {selected.invoiceHistory?.length ? (
+                                <div className="m042-empty-state">
+                                  <strong>No remaining approved uninvoiced sources</strong>
+                                  <span>Previously posted invoices already contain approved labor and governed package items. Review invoice history for PDF, Excel, and Certinia delivery details.</span>
+                                </div>
+                              ) : (
+                                <div className="m042-empty-state">
+                                  <strong>No approved uninvoiced sources</strong>
+                                  <span>Complete approvals or mark a governed expense/milestone package ready in Module 039.</span>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ) : null}

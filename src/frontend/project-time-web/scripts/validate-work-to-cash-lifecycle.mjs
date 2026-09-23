@@ -76,7 +76,16 @@ requireText(lifecycle, [
   'BuildCloseoutBlockersAsync',
   'requiresInvoiceReadiness',
   'if (requiresInvoiceReadiness)',
-  'if (requiresInvoiceReadiness && readiness?.ReviewStatus != "ready")',
+  'if (requiresInvoiceReadiness && !manualReconciled && readiness?.ReviewStatus != "ready")',
+  'var manualReconciled = CompletionWorkflowPolicy.HasCurrentManualReconciliation(completion, completionBasis);',
+  'if (requiresInvoiceReadiness && !CompletionWorkflowPolicy.IsFullyBilled(completion, completionBasis))',
+  'if (eligible > 0 && !manualReconciled)',
+  'if (pending > 0)',
+  'if (nonLaborPackages > 0 && !manualReconciled)',
+  'if (!hasFinalInvoice && !manualReconciled)',
+  'if (operation == "complete" && blockers.Count > 0)',
+  'Record delivery completion in the completion checklist.',
+  'Record customer acceptance evidence for the completed delivery',
   'billing_invoice_lines',
   'JOIN billing_invoices invoice',
   "lower(COALESCE(invoice.invoice_status, '')) <> 'void'",
@@ -270,7 +279,11 @@ requireText(lifecycle, [
 requireText(lifecycle, [
   'operation == "request"\n            || prior is null\n            || string.IsNullOrWhiteSpace(prior.PriorProjectStatus)',
   "WHEN EXCLUDED.closeout_status <> 'closed'",
-  "SET closeout_status = 'reopened',\n                prior_project_status = ''",
+  "SET closeout_status = 'reopened',",
+  "delivery_complete = FALSE, customer_acceptance_complete = FALSE,",
+  "billing_complete = FALSE, time_expense_complete = FALSE, billing_disposition = ''",
+  "prior_project_status = ''",
+  'await ResetCompletionAfterReopenAsync(connection, transaction, projectId,',
   'command.Parameters.AddWithValue("prior_project_status", priorProjectStatus)'
 ], 'Repeatable closeout-cycle status restoration');
 

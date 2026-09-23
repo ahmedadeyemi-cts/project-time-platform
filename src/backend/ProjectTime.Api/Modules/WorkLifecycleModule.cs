@@ -4,7 +4,7 @@ using NpgsqlTypes;
 
 namespace ProjectTime.Api.Modules;
 
-public static class WorkLifecycleModule
+public static partial class WorkLifecycleModule
 {
     private static readonly string[] LifecycleApprovedTimeStatuses =
     [
@@ -91,6 +91,7 @@ public static class WorkLifecycleModule
 
     public static void MapWorkLifecycleEndpoints(this WebApplication app)
     {
+        MapCompletionChecklistEndpoints(app);
         app.MapGet(
             "/api/work-lifecycle/dashboard",
             (Func<HttpContext, Task<IResult>>)GetDashboardAsync);
@@ -581,6 +582,8 @@ public static class WorkLifecycleModule
 
             UPDATE work_closeout_records
             SET closeout_status = 'reopened',
+                delivery_complete = FALSE, customer_acceptance_complete = FALSE,
+                billing_complete = FALSE, time_expense_complete = FALSE, billing_disposition = '',
                 prior_project_status = '',
                 reason = @reason,
                 reopened_by_user_id = @actor_user_id,
@@ -595,6 +598,9 @@ public static class WorkLifecycleModule
             command.Parameters.AddWithValue("actor_user_id", access.ActualUserId);
             await command.ExecuteNonQueryAsync(context.RequestAborted);
         }
+
+        await ResetCompletionAfterReopenAsync(connection, transaction, projectId,
+            access.ActualUserId, reason, context.RequestAborted);
 
         await InsertAuditAsync(
             connection,
@@ -646,7 +652,8 @@ public static class WorkLifecycleModule
             "non_billable",
             "write_off_approved"
         };
-        if (!allowedDispositions.Contains(disposition))
+        if (!allowedDispositions.Contains(disposition)
+            && !(operation == "request" && disposition.Length == 0))
         {
             return Results.BadRequest(new
             {
@@ -1168,6 +1175,13 @@ public static class WorkLifecycleModule
         var requiresLaborInvoice = !project.ContractType.Contains(
             "Fixed",
             StringComparison.OrdinalIgnoreCase);
+        var completion = await LoadCompletionStateAsync(connection, transaction, project.ProjectId, cancellationToken);
+        var completionBasis = await LoadCompletionBillingBasisAsync(connection, transaction, project.ProjectId, cancellationToken);
+        var manualReconciled = CompletionWorkflowPolicy.HasCurrentManualReconciliation(completion, completionBasis);
+        if (completion.Delivery is null) blockers.Add("Record delivery completion in the completion checklist.");
+        if (!CompletionWorkflowPolicy.IsAccepted(completion)) blockers.Add("Record customer acceptance evidence for the completed delivery; pending conditions do not count as acceptance.");
+        if (requiresInvoiceReadiness && !CompletionWorkflowPolicy.IsFullyBilled(completion, completionBasis))
+            blockers.Add("Confirm fully billed against the current charge evidence. Sent to Certinia alone is not billing completion.");
 
         if (requiresInvoiceReadiness)
         {
@@ -1230,9 +1244,9 @@ public static class WorkLifecycleModule
                 var eligible = reader.GetInt64(0);
                 var pending = reader.GetInt64(1);
                 var nonLaborPackages = reader.GetInt64(2);
-                if (eligible > 0) blockers.Add($"{eligible} approved billable time entr{(eligible == 1 ? "y is" : "ies are")} not invoiced.");
+                if (eligible > 0 && !manualReconciled) blockers.Add($"{eligible} approved billable time entr{(eligible == 1 ? "y is" : "ies are")} not invoiced.");
                 if (pending > 0) blockers.Add($"{pending} billable time entr{(pending == 1 ? "y still requires" : "ies still require")} approval or disposition.");
-                if (nonLaborPackages > 0) blockers.Add($"{nonLaborPackages} ready non-labor package{(nonLaborPackages == 1 ? " remains" : "s remain")} uninvoiced.");
+                if (nonLaborPackages > 0 && !manualReconciled) blockers.Add($"{nonLaborPackages} ready non-labor package{(nonLaborPackages == 1 ? " remains" : "s remain")} uninvoiced.");
             }
         }
 
@@ -1248,7 +1262,7 @@ public static class WorkLifecycleModule
             if (count > 0) blockers.Add($"{count} project task{(count == 1 ? " remains" : "s remain")} open.");
         }
 
-        if (requiresInvoiceReadiness && readiness?.ReviewStatus != "ready")
+        if (requiresInvoiceReadiness && !manualReconciled && readiness?.ReviewStatus != "ready")
         {
             blockers.Add("The latest billing readiness package is not marked ready.");
         }
@@ -1280,7 +1294,7 @@ public static class WorkLifecycleModule
                     command.Parameters.AddWithValue("project_id", project.ProjectId);
                     var hasFinalInvoice = Convert.ToBoolean(
                         await command.ExecuteScalarAsync(cancellationToken) ?? false);
-                    if (!hasFinalInvoice) blockers.Add("Final invoice disposition was selected, but no final invoice exists.");
+                    if (!hasFinalInvoice && !manualReconciled) blockers.Add("Final invoice disposition was selected, but no final invoice exists.");
                 }
                 break;
             case "no_further_billing":
