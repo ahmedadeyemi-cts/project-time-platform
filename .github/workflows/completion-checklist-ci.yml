@@ -1,0 +1,160 @@
+name: Project completion checklist
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/completion-checklist-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/CompletionWorkflowPolicy.cs'
+      - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleCompletionWorkflow.cs'
+      - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CertiniaBillingModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CertiniaCompletionBoundary.cs'
+      - 'src/frontend/project-time-web/src/ProjectCompletionChecklist.jsx'
+      - 'src/frontend/project-time-web/src/completion-checklist-model.mjs'
+      - 'src/frontend/project-time-web/src/project-completion-checklist.css'
+      - 'src/frontend/project-time-web/src/ProjectManagerWorkloadCenter.jsx'
+      - 'src/frontend/project-time-web/src/ProjectCloseoutCenter.jsx'
+      - 'src/frontend/project-time-web/src/InvoiceBillingCenter.jsx'
+      - 'src/frontend/project-time-web/tests/completion-checklist.test.mjs'
+      - 'tests/CompletionWorkflowTests/**'
+      - 'src/frontend/project-time-web/scripts/*completion-browser*'
+      - 'src/frontend/project-time-web/src/guide/guide-completion.js'
+      - 'src/frontend/project-time-web/vite.config.js'
+      - 'src/frontend/project-time-web/scripts/completion-build-compatibility.mjs'
+      - 'src/frontend/project-time-web/tests/completion-build-compatibility.test.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: completion-checklist-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  source-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Capture checked-in text sources only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/completion-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/completion-source/checkout.txt"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, zipfile
+          paths = subprocess.check_output(['git','ls-files','-z','src','tests','database','scripts','docs','.github'], text=True).split('\0')
+          suffixes = {'.cs','.csproj','.sql','.jsx','.js','.mjs','.css','.py','.sh','.json','.yml','.yaml','.md','.html','.props','.targets'}
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'completion-source'
+          manifest = {}
+          with zipfile.ZipFile(out / 'source.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for name in paths:
+                  path = pathlib.Path(name)
+                  if not name or path.suffix not in suffixes or not path.is_file() or path.is_symlink():
+                      continue
+                  content = subprocess.check_output(['git','show',f'HEAD:{name}'])
+                  archive.writestr(name,content)
+                  manifest[name] = hashlib.sha256(content).hexdigest()
+          (out/'sha256.json').write_text(json.dumps(manifest,sort_keys=True,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: completion-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/completion-source
+          retention-days: 1
+          if-no-files-found: error
+  api-and-database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Start isolated disposable PostgreSQL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PGPASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$PGPASSWORD"
+          echo "PGPASSWORD=$PGPASSWORD" >> "$GITHUB_ENV"
+          echo 'PGPORT=55432' >> "$GITHUB_ENV"
+          export POSTGRES_PASSWORD="$PGPASSWORD"
+          docker run --detach --name completion-test-db -e POSTGRES_PASSWORD -p 127.0.0.1:55432:5432 postgres:16
+          ready=false
+          for attempt in $(seq 1 45); do
+            if docker exec completion-test-db pg_isready -U postgres; then ready=true; break; fi
+            sleep 2
+          done
+          [[ "$ready" == true ]]
+      - name: Compile actual API and regression executable
+        run: dotnet build tests/CompletionWorkflowTests/CompletionWorkflowTests.csproj --configuration Release
+      - name: Exercise actual handlers and immutable audit persistence
+        run: dotnet run --project tests/CompletionWorkflowTests/CompletionWorkflowTests.csproj --configuration Release --no-build
+      - name: Verify merged agent foundation behavior remains disabled
+        run: |
+          dotnet run --project tests/AgentFoundationTests/AgentFoundationTests.csproj --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/AgentFoundationTests/Security/AgentEvidenceSecurityTests.csproj --configuration Release -p:BuildProjectReferences=false
+      - name: Retain source drift diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/completion-api-diagnostics"
+          git rev-parse HEAD > "$RUNNER_TEMP/completion-api-diagnostics/checkout.txt"
+          git diff -- src > "$RUNNER_TEMP/completion-api-diagnostics/build-source.diff"
+          cp src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs "$RUNNER_TEMP/completion-api-diagnostics/"
+          cp src/backend/ProjectTime.Api/Modules/WorkLifecycleCompletionWorkflow.cs "$RUNNER_TEMP/completion-api-diagnostics/"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: failure()
+        with:
+          name: completion-api-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/completion-api-diagnostics
+          retention-days: 1
+          if-no-files-found: ignore
+      - name: Remove disposable database service
+        if: always()
+        run: docker rm --force completion-test-db || true
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: src/frontend/project-time-web
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - run: npm ci
+      - run: node --test tests/completion-checklist.test.mjs tests/completion-build-compatibility.test.mjs
+      - name: Verify merged assistant contract boundaries
+        run: node --test ../../../tests/agent-foundation/workspace.test.mjs
+      - run: node scripts/validate-module-040-guided-closeout.mjs
+      - name: Build full production frontend and preserve generated source
+        run: |
+          npm run build
+          git diff --exit-code
+      - name: Build isolated real-component browser fixture
+        run: |
+          npm install --prefix "$RUNNER_TEMP/completion-tools" --no-audit --no-fund esbuild@0.25.12
+          COMPLETION_ESBUILD_MODULE="$RUNNER_TEMP/completion-tools/node_modules/esbuild" node scripts/build-completion-browser-fixture.mjs --output "$RUNNER_TEMP/completion-fixture"
+      - name: Exercise confirmations, role changes, retry and themes in two browsers
+        run: |
+          python3 -m venv "$RUNNER_TEMP/completion-browser"
+          "$RUNNER_TEMP/completion-browser/bin/pip" install --disable-pip-version-check playwright==1.57.0
+          "$RUNNER_TEMP/completion-browser/bin/python" -m playwright install --with-deps chromium firefox
+          sha256sum scripts/validate-completion-browser.py src/ProjectCompletionChecklist.jsx
+          "$RUNNER_TEMP/completion-browser/bin/python" scripts/validate-completion-browser.py --fixture "$RUNNER_TEMP/completion-fixture" --output "$RUNNER_TEMP/completion-browser-evidence"
+      - name: Retain completion browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: completion-browser-${{ github.run_id }}
+          path: ${{ runner.temp }}/completion-browser-evidence
+          if-no-files-found: ignore
+          retention-days: 3

@@ -1,3 +1,4 @@
+import ProjectCompletionChecklist from './ProjectCompletionChecklist.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './project-closeout-center.css';
@@ -560,7 +561,11 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
 
   async function saveGovernedCloseout(operation) {
     if (!selectedProject?.projectId) return;
-    if (operation !== 'reopen' && (!formReady || blockers.length)) {
+    if (operation !== 'reopen' && normalizeText(closeoutForm.reason).length < 5) {
+      setActionState({ busy: '', tone: 'warning', message: 'Enter a specific audit reason to save closeout progress.' });
+      return;
+    }
+    if (operation === 'complete' && (!formReady || blockers.length)) {
       setActionState({
         busy: '',
         tone: 'warning',
@@ -762,6 +767,8 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
         </div>
       </section>
 
+      {selectedProject ? <ProjectCompletionChecklist projectId={selectedProject.projectId} onSaved={refreshSelectedProject} /> : null}
+
       {selectedProject ? (
         <section className="project-closeout-summary-grid" aria-label="Selected project closeout summary" hidden={activeView !== 'readiness'}>
           <article><span>Project status</span><strong>{titleCase(selectedProject.projectStatus)}</strong><small>{selectedProject.projectCode}</small></article>
@@ -877,6 +884,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
 
         <fieldset className="project-closeout-confirmations">
           <legend>Required Project Manager confirmations</legend>
+          <p>Save progress even while checks remain. Delivery, acceptance and fully billed evidence are recorded in the checklist above; final closeout rechecks those records on the server.</p>
           {[
             ['deliveryComplete', 'Delivery is complete', 'All agreed implementation work and project tasks are finished.'],
             ['customerAcceptanceComplete', 'Customer acceptance is complete', 'Acceptance evidence or an approved equivalent is recorded.'],
@@ -903,7 +911,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
           <button
             type="button"
             className="module040-primary"
-            disabled={Boolean(actionState.busy) || !capabilities?.canRequestCloseout || !formReady || blockers.length > 0 || normalizeStatus(closeoutStatus) === 'closed'}
+            disabled={Boolean(actionState.busy) || !capabilities?.canRequestCloseout || normalizeText(closeoutForm.reason).length < 5 || normalizeStatus(closeoutStatus) === 'closed'}
             onClick={() => saveGovernedCloseout('request')}
           >
             {actionState.busy === 'request' ? 'Requesting…' : 'Request project closeout'}

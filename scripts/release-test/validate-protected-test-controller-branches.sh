@@ -11,6 +11,14 @@ if [[ "$HEAD_BRANCH" == fix/uat-migration-throttle-recovery-20260922 ]]; then
   node tests/validate-systemwide-image-build-controller.mjs
   return
 fi
+# PR1151_UAT_SUPERSESSION_SCOPE_BEGIN
+if [[ "$HEAD_BRANCH" == fix/pr1151-uat-orphan-20260923 ]]; then
+  python3 tests/pr1151-uat-supersession-scope.py
+  python3 tests/test-pr1151-uat-supersession.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
+# PR1151_UAT_SUPERSESSION_SCOPE_END
 # MIGRATION_THROTTLE_SCOPE_END
 # PR1140_RECOVERY_SCOPE_BEGIN
 if [[ "$HEAD_BRANCH" == fix/pr1140-protected-uat-dispatch-recovery ]]; then
