@@ -1,13 +1,14 @@
+import { withCompletionGuide } from './guide-completion.js';
 // Learning content never grants permissions or changes application state.
-export const GUIDE_BASELINE = '8d0baeb69b9594b30dc203f12e729e482e758f46';
-export const GUIDE_EDITION = '2026.09.22';
+export const GUIDE_BASELINE = '4c31007053359b1cf41681d686742f6c08fbb3b6';
+export const GUIDE_EDITION = '2026.09.23';
 export const ALL = ['*'];
 export const ADMIN = ['ADMINISTRATOR', 'SUPER_ADMINISTRATOR'];
 export const DELIVERY = ['PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_COORDINATOR', 'ENGINEERING_LEAD', ...ADMIN];
 export const FINANCE = ['ACCOUNTING', 'BILLING', 'PROJECT_TEAM_COORDINATOR', ...ADMIN];
 export const SALES = ['SALES', 'INSIDE_SALES', 'SOLUTION_ARCHITECT', 'SOLUTION_ARCHITECT_MANAGER', ...ADMIN];
 export const how = (title, steps, outcome, handoff) => ({ title, steps, outcome, handoff });
-export const topic = (route, roles, responsibility, prerequisites, procedures, limitations, sources) => ({
+export const topic = (route, roles, responsibility, prerequisites, procedures, limitations, sources) => withCompletionGuide({
   route, roles, responsibility, prerequisites, procedures, limitations,
   sources: sources.map(path => path.startsWith('docs/') || path.startsWith('src/') || path.startsWith('scripts/') ? path : `src/frontend/project-time-web/src/${path}`)
 });

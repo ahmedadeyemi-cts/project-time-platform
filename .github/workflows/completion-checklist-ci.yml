@@ -7,6 +7,7 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleCompletionWorkflow.cs'
       - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/CertiniaBillingModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CertiniaCompletionBoundary.cs'
       - 'src/frontend/project-time-web/src/ProjectCompletionChecklist.jsx'
       - 'src/frontend/project-time-web/src/completion-checklist-model.mjs'
       - 'src/frontend/project-time-web/src/project-completion-checklist.css'
@@ -15,6 +16,8 @@ on:
       - 'src/frontend/project-time-web/src/InvoiceBillingCenter.jsx'
       - 'src/frontend/project-time-web/tests/completion-checklist.test.mjs'
       - 'tests/CompletionWorkflowTests/**'
+      - 'src/frontend/project-time-web/scripts/*completion-browser*'
+      - 'src/frontend/project-time-web/src/guide/guide-completion.js'
 permissions:
   contents: read
 concurrency:
@@ -127,3 +130,21 @@ jobs:
         run: |
           npm run build
           git diff --exit-code
+      - name: Build isolated real-component browser fixture
+        run: |
+          npm install --prefix "$RUNNER_TEMP/completion-tools" --no-audit --no-fund esbuild@0.25.12
+          COMPLETION_ESBUILD_MODULE="$RUNNER_TEMP/completion-tools/node_modules/esbuild" node scripts/build-completion-browser-fixture.mjs --output "$RUNNER_TEMP/completion-fixture"
+      - name: Exercise confirmations, role changes, retry and themes in two browsers
+        run: |
+          python3 -m venv "$RUNNER_TEMP/completion-browser"
+          "$RUNNER_TEMP/completion-browser/bin/pip" install --disable-pip-version-check playwright==1.57.0
+          "$RUNNER_TEMP/completion-browser/bin/python" -m playwright install --with-deps chromium firefox
+          "$RUNNER_TEMP/completion-browser/bin/python" scripts/validate-completion-browser.py --fixture "$RUNNER_TEMP/completion-fixture" --output "$RUNNER_TEMP/completion-browser-evidence"
+      - name: Retain completion browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: completion-browser-${{ github.run_id }}
+          path: ${{ runner.temp }}/completion-browser-evidence
+          if-no-files-found: ignore
+          retention-days: 3
