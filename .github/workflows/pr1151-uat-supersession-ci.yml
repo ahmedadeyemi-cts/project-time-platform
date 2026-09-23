@@ -1,0 +1,48 @@
+name: PR1151 and PR1152 exact UAT supersession checks
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pr1151-uat-supersession-ci.yml'
+      - '.github/workflows/module025-protected-uat-control.yml'
+      - 'scripts/release-test/verify-pr1151-uat-supersession.py'
+      - 'scripts/release-test/validate-protected-test-controller-branches.sh'
+      - 'tests/pr1151-uat-supersession-scope.py'
+      - 'tests/test-pr1151-uat-supersession.py'
+      - 'tests/pr1140-uat-recovery-scope.py'
+permissions:
+  contents: read
+concurrency:
+  group: pr1151-uat-supersession-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          show-progress: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify exact repair and frozen deployment authority
+        if: github.head_ref == 'fix/pr1151-uat-orphan-20260923'
+        run: python3 tests/pr1151-uat-supersession-scope.py
+      - name: Exercise new and retained negative cases without live access
+        run: |
+          python3 tests/test-pr1151-uat-supersession.py -v
+          python3 tests/test-pr1139-uat-recovery.py -v
+          python3 tests/test-pr1140-uat-recovery.py -v
+          python3 tests/test-pr1140-migration-retry-recovery.py -v
+          node tests/module025-deployment-startup-recovery.test.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+      - name: Require untouched Test and production deployment code and source stability
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --exit-code "$BASE_SHA" HEAD -- src database .github/workflows/projectpulse-deploy-test.yml .github/workflows/projectpulse-deploy-production.yml
+          git diff --exit-code
+          git diff --check "$BASE_SHA" HEAD
