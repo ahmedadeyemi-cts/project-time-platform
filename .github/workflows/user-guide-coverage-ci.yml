@@ -6,6 +6,7 @@ on:
       - '.github/workflows/user-guide-coverage-ci.yml'
       - 'src/frontend/project-time-web/src/**'
       - 'src/frontend/project-time-web/scripts/*guide*'
+      - 'src/frontend/project-time-web/package*.json'
       - 'docs/user-guide/**'
 
 permissions:
@@ -18,42 +19,41 @@ concurrency:
 jobs:
   guide:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-      - name: Collect checked-in source for the guide audit
-        env:
-          AUDIT_DIR: ${{ runner.temp }}/guide-source-audit
-        run: |
-          python3 - <<'PY'
-          import hashlib, json, os, pathlib, subprocess, zipfile
-          output = pathlib.Path(os.environ['AUDIT_DIR'])
-          output.mkdir(parents=True, exist_ok=True)
-          names = subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
-          suffixes = {'.cs','.csproj','.props','.targets','.jsx','.tsx','.ts','.js','.mjs','.cjs','.css','.json','.sql','.md','.yml','.yaml','.py','.sh','.html','.svg'}
-          roots = ('src/','database/','scripts/','tests/','docs/','.github/')
-          manifest = {'checkout':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'trackedPaths':[n for n in names if n],'files':[]}
-          with zipfile.ZipFile(output/'guide-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
-              for name in names:
-                  if not name: continue
-                  path=pathlib.Path(name)
-                  if path.is_symlink() or not path.is_file(): continue
-                  if not (name.startswith(roots) or path.parent == pathlib.Path('.')): continue
-                  if path.suffix not in suffixes and path.name not in {'Dockerfile','Dockerfile.web','Dockerfile.api'}: continue
-                  if path.name.startswith(('.env','appsettings')) or path.stat().st_size > 6000000: continue
-                  data=path.read_bytes()
-                  try: data.decode('utf-8')
-                  except UnicodeDecodeError: continue
-                  archive.writestr(name,data)
-                  manifest['files'].append({'path':name,'sha256':hashlib.sha256(data).hexdigest()})
-          (output/'source-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
-          print('GUIDE_AUDIT_SOURCE_FILES='+str(len(manifest['files'])))
-          PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          name: guide-source-audit-${{ github.run_id }}
-          path: ${{ runner.temp }}/guide-source-audit
+          node-version: '22'
+      - name: Validate authored module and role coverage
+        working-directory: src/frontend/project-time-web
+        run: |
+          node scripts/validate-user-guide.mjs --output "$RUNNER_TEMP/user-guide-evidence/coverage.json"
+          node scripts/export-user-guide.mjs --output "$RUNNER_TEMP/user-guide-evidence/PULSE-USER-GUIDE.md"
+      - name: Build the complete frontend and preserve source stability
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci
+          npm run build
+          git diff --exit-code
+          node scripts/build-user-guide-browser-fixture.mjs --output "$RUNNER_TEMP/user-guide-fixture"
+      - name: Install isolated browser dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/user-guide-venv"
+          "$RUNNER_TEMP/user-guide-venv/bin/pip" install playwright==1.55.0
+          "$RUNNER_TEMP/user-guide-venv/bin/python" -m playwright install --with-deps chromium firefox
+      - name: Verify generated guide, role boundaries, search, print and theme contrast
+        working-directory: src/frontend/project-time-web
+        run: |
+          "$RUNNER_TEMP/user-guide-venv/bin/python" scripts/validate-user-guide-browser.py \
+            --fixture "$RUNNER_TEMP/user-guide-fixture" --output "$RUNNER_TEMP/user-guide-evidence/browser"
+      - name: Retain guide reference and verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: user-guide-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/user-guide-evidence
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
