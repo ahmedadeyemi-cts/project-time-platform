@@ -1,0 +1,13 @@
+:root { color-scheme: light; --bg:#eef4f9; --surface:#fff; --ink:#142c47; --muted:#415976; --line:#b6c8da; }
+:root[data-theme='dark'] { color-scheme:dark; --bg:#07111f; --surface:#11253a; --ink:#edf5fb; --muted:#b5c7d8; --line:#49647e; }
+* { box-sizing:border-box; }
+body { margin:0; padding:clamp(20px,5vw,60px); background:var(--bg); color:var(--ink); font:16px/1.6 system-ui,sans-serif; }
+main { max-width:760px; margin:0 auto; padding:clamp(24px,5vw,48px); border:1px solid var(--line); border-radius:20px; background:var(--surface); }
+h1 { font-size:clamp(26px,4vw,38px); line-height:1.2; margin:12px 0 24px; }
+p { margin:0 0 22px; }
+.eyebrow { font-size:12px; font-weight:800; letter-spacing:.1em; }
+a { display:inline-flex; min-height:48px; align-items:center; padding:10px 24px; margin:0 0 24px; border:2px solid transparent; border-radius:10px; background:#075b9b; color:#fff; font-weight:700; text-decoration:none; }
+a:focus-visible { outline:3px solid var(--ink); outline-offset:4px; }
+.note,#host-status { color:var(--muted); font-size:14px; }
+#host-status { border-top:1px solid var(--line); padding-top:18px; margin-bottom:0; }
+@media (forced-colors:active) { a { border-color:ButtonText; } }

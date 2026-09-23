@@ -59,6 +59,7 @@ function TeamsNotificationWorkspace({ environment }) {
     if (!active.current || operation.current) return;
     if (mode === 'save' && !access.canSave) return;
     if (mode === 'test' && (!access.canTest || !validRecipient(recipient) || confirmation !== 'SEND TEAMS TEST')) return;
+    if (mode === 'check' && (!access.canTest || !validRecipient(recipient))) return;
     const token = { controller: new AbortController() };
     operation.current = token;
     const current = () => active.current && operation.current === token;
@@ -68,6 +69,16 @@ function TeamsNotificationWorkspace({ environment }) {
     let resultNotice = null;
     let mutationFailed = false;
     try {
+      if (mode === 'check') {
+        const result = await request(`${path}/check-installation`, {
+          method: 'POST', signal: token.controller.signal, headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipient: recipient.trim() }),
+        });
+        resultNotice = { tone: result.status === 'installation_verified' ? 'success' : 'warning',
+          text: [result.message, result.diagnosticCode, result.clientId ? `Services client: ${result.clientId}.` : '',
+            result.installedVersion ? `Installed version: ${result.installedVersion}.` : '',
+            result.graphRequestId ? `Microsoft request: ${result.graphRequestId}.` : ''].filter(Boolean).join(' ') };
+      }
       if (mode === 'save' || mode === 'test') {
         const result = await request(mode === 'test' ? `${path}/test-delivery` : path, {
           method: mode === 'test' ? 'POST' : 'PUT', signal: token.controller.signal,
@@ -84,7 +95,8 @@ function TeamsNotificationWorkspace({ environment }) {
       }
     } catch (error) {
       mutationFailed = true;
-      resultNotice = { tone: 'danger', text: `${error.message} A save or send may have reached the server; it will not be retried automatically.` };
+      resultNotice = { tone: 'danger', text: mode === 'check' ? `${error.message} The installation check does not send a notification.`
+        : `${error.message} A save or send may have reached the server; it will not be retried automatically.` };
     }
     if (!current()) return;
     try {
@@ -151,7 +163,7 @@ function TeamsNotificationWorkspace({ environment }) {
     {access.wrongEnvironment && <div className="teams-notifications-notice warning" role="alert">Open the {environmentName} application to change its connection. The returned configuration belongs to {saved.environment}.</div>}
     {!fresh && !busy && state && <div className="teams-notifications-notice warning" role="status">Displayed information may be stale. Refresh status before saving or sending.</div>}
     {notice && <div className={`teams-notifications-notice ${notice.tone}`} role={notice.tone === 'danger' ? 'alert' : 'status'}>{notice.text}</div>}
-    <p className="teams-notifications-progress" role="status" aria-live="polite">{busy === 'load' ? 'Loading Teams configuration…' : busy === 'refresh' ? 'Refreshing configuration and delivery history…' : busy === 'save' ? 'Saving configuration…' : busy === 'test' ? 'Submitting one test and checking the recorded result…' : ''}</p>
+    <p className="teams-notifications-progress" role="status" aria-live="polite">{busy === 'load' ? 'Loading Teams configuration…' : busy === 'refresh' ? 'Refreshing configuration and delivery history…' : busy === 'save' ? 'Saving configuration…' : busy === 'check' ? 'Checking the recipient and installed app without sending a notification…' : busy === 'test' ? 'Submitting one test and checking the recorded result…' : ''}</p>
 
     <div className="teams-notifications-grid">
       <section className="teams-notifications-section" aria-labelledby={`${id}-configuration`}>
@@ -159,7 +171,7 @@ function TeamsNotificationWorkspace({ environment }) {
         <label className="teams-notifications-switch"><input type="checkbox" checked={Boolean(draft?.enabled)} disabled={inputBlocked} onChange={event => setDraft({ ...draft, enabled: event.target.checked })} /><span><strong>Enable Teams delivery</strong><small>Permits delivery only within the existing environment and recipient rules.</small></span></label>
         <label className="microsoft-integration-field" htmlFor={`${id}-app`}><span>Teams app ID</span>
           <input id={`${id}-app`} value={draft?.teamsAppId || ''} disabled={inputBlocked} spellCheck={false} autoComplete="off" aria-describedby={`${id}-app-help`} aria-invalid={Boolean(draft?.teamsAppId && !validTeamsAppId(draft.teamsAppId))} onChange={event => setDraft({ ...draft, teamsAppId: event.target.value.trim() })} placeholder="App ID from the installed Teams manifest" />
-          <small id={`${id}-app-help`}>Use the Teams package ID, not the Entra client ID. No secret is entered here.</small>
+          <small id={`${id}-app-help`}>Keep the Teams manifest package ID here. Pulse resolves the catalog and personal-installation IDs automatically; do not substitute the Entra client ID.</small>
         </label>
         {draft?.teamsAppId && !validTeamsAppId(draft.teamsAppId) && <p className="teams-notifications-validation">Enter a valid, nonempty Teams app GUID.</p>}
         <div className="microsoft-integration-actions teams-notifications-actions">
@@ -170,11 +182,12 @@ function TeamsNotificationWorkspace({ environment }) {
       </section>
 
       <section className="teams-notifications-section" aria-labelledby={`${id}-test`}>
-        <div className="teams-notifications-section-title"><span aria-hidden="true" className="teams-notifications-step">02</span><div><h3 id={`${id}-test`}>Test one recipient</h3><p>This sends a real notification. It does not enable automatic delivery.</p></div></div>
+        <div className="teams-notifications-section-title"><span aria-hidden="true" className="teams-notifications-step">02</span><div><h3 id={`${id}-test`}>Test one recipient</h3><p>Check installation first without a notification. Sending a test remains a separate, explicitly confirmed action.</p></div></div>
         <label className="microsoft-integration-field" htmlFor={`${id}-recipient`}><span>Recipient sign-in address</span>
-          <input id={`${id}-recipient`} type="email" value={recipient} disabled={inputBlocked || environment !== 'test'} autoComplete="off" aria-describedby={`${id}-recipient-help`} onChange={event => setRecipient(event.target.value)} placeholder="user@your-tenant.example" />
+          <input id={`${id}-recipient`} type="email" value={recipient} disabled={inputBlocked || environment !== 'test'} autoComplete="off" aria-describedby={`${id}-recipient-help`} onChange={event => { setRecipient(event.target.value); setNotice(null); }} placeholder="user@your-tenant.example" />
           <small id={`${id}-recipient-help`}>The user needs PulseApp installed in the matching Teams tenant. SuperAdmins may test another tenant user; other administrators may test only themselves.</small>
         </label>
+        <div className="microsoft-integration-actions teams-notifications-actions"><button className="secondary-action" type="button" disabled={!access.canTest || !validRecipient(recipient)} onClick={() => void perform('check')}>{busy === 'check' ? 'Checking installation…' : 'Check installation (no notification)'}</button></div>
         <label className="microsoft-integration-field" htmlFor={`${id}-confirm`}><span>Type SEND TEAMS TEST to confirm</span>
           <input id={`${id}-confirm`} value={confirmation} disabled={inputBlocked || environment !== 'test'} autoComplete="off" spellCheck={false} onChange={event => setConfirmation(event.target.value)} placeholder="SEND TEAMS TEST" />
         </label>
@@ -183,13 +196,18 @@ function TeamsNotificationWorkspace({ environment }) {
       </section>
     </div>
 
+    <details className="teams-notifications-section"><summary>PulseApp installation and availability</summary>
+      <p className="teams-notifications-help">Update the existing PulseApp with the reviewed app package, including its personal Notifications tab. A Teams administrator must make the app available to the pilot user and install it in that user’s personal scope. This page cannot override tenant policy.</p>
+      <p className="teams-notifications-help">The updated package requests TeamsActivity.Send.User for notifications and TeamsAppInstallation.Read.User to verify its installation. Neither permission reads chats or manages other apps. Keep the services client ID linked through webApplicationInfo.id.</p>
+    </details>
+
     <section className="teams-notifications-history" aria-labelledby={`${id}-history`}>
       <div className="microsoft-integration-card-heading"><div><h3 id={`${id}-history`}>Recent delivery results</h3><p className="teams-notifications-help">{allRows.length} recent records loaded. Results are not a complete delivery audit.</p></div>
         <label className="microsoft-integration-field teams-notifications-filter" htmlFor={`${id}-filter`}><span>Show</span><select id={`${id}-filter`} value={filter} onChange={event => setFilter(event.target.value)}><option value="all">All results</option><option value="attention">Needs review</option><option value="accepted">Accepted by Microsoft</option></select></label>
       </div>
       {rows.length > 0 ? <div className="teams-notifications-table" role="region" aria-label="Teams delivery history" tabIndex={0}><table><caption className="teams-notifications-visually-hidden">Recent Teams delivery requests. Updated times use your local time zone.</caption><thead><tr><th scope="col">Recipient</th><th scope="col">Result and next step</th><th scope="col">Updated (local time)</th></tr></thead><tbody>{rows.map((row, index) => {
         const presentation = deliveryPresentation(row);
-        return <tr key={`${row.recipient}-${row.updatedAt}-${index}`}><td>{row.recipient}</td><td><Badge tone={presentation.tone}>{presentation.label}</Badge><p>{presentation.detail}</p><details><summary>Technical details</summary><code>{row.diagnosticCode || 'No diagnostic code supplied'}</code></details></td><td>{localTimestamp(row.updatedAt)}</td></tr>;
+        return <tr key={`${row.recipient}-${row.updatedAt}-${index}`}><td>{row.recipient}</td><td><Badge tone={presentation.tone}>{presentation.label}</Badge><p>{row.diagnosticMessage || presentation.detail}</p><details><summary>Technical details</summary><code>{row.diagnosticCode || 'No diagnostic code supplied'}</code>{row.graphErrorCode && <code>Microsoft code: {row.graphErrorCode}</code>}{row.graphRequestId && <code>Microsoft request: {row.graphRequestId}</code>}</details></td><td>{localTimestamp(row.updatedAt)}</td></tr>;
       })}</tbody></table></div> : <div className="teams-notifications-empty">{!state ? 'Delivery history has not been loaded.' : allRows.length ? 'No recent results match this filter.' : 'No delivery requests are recorded yet. Saving configuration does not send a test.'}</div>}
     </section>
   </article>;

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.30/MicrosoftTeams.schema.json",
+  "version": "1.0.2",
+  "manifestVersion": "1.30",
+  "id": "1e9ddbc8-4618-43f4-82a6-dd3efefd2481",
+  "name": { "short": "PulseApp", "full": "US Signal Pulse Application" },
+  "developer": { "name": "US Signal", "websiteUrl": "https://ussignal.com", "privacyUrl": "https://ussignal.com/legal/policies/", "termsOfUseUrl": "https://ussignal.com/legal/" },
+  "description": { "short": "Pulse work notifications and secure access to your workspace.", "full": "Receive personal Pulse activity notifications and open your authorized US Signal Pulse workspace. Project records, time, approvals and confidential details stay in Pulse. This UAT package does not provide a chat bot or grant business approval authority." },
+  "icons": { "outline": "outline.png", "color": "color.png" },
+  "accentColor": "#0e0142",
+  "defaultInstallScope": "personal",
+  "validDomains": ["phd-west-test.onenecklab.com"],
+  "staticTabs": [
+    { "entityId": "pulse-notifications", "name": "Notifications", "contentUrl": "https://phd-west-test.onenecklab.com/teams-notifications/index.html", "websiteUrl": "https://phd-west-test.onenecklab.com/#dashboard", "scopes": ["personal"] }
+  ],
+  "webApplicationInfo": { "id": "f30f7ad8-663d-447c-a8e6-ac908b738167", "resource": "https://phd-west-test.onenecklab.com" },
+  "authorization": { "permissions": { "resourceSpecific": [
+    { "name": "TeamsActivity.Send.User", "type": "Application" },
+    { "name": "TeamsAppInstallation.Read.User", "type": "Application" }
+  ] } }
+}

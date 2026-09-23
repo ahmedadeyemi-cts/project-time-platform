@@ -13,11 +13,13 @@ public static class MicrosoftTeamsNotificationModule
     internal sealed record Configuration(string Environment, bool Enabled, Guid? TeamsAppId, int Revision);
     private sealed record SaveRequest(bool Enabled, Guid? TeamsAppId, int ExpectedRevision);
     private sealed record TestRequest(string Recipient, string Confirmation);
+    private sealed record CheckRequest(string Recipient);
     public static WebApplication MapMicrosoftTeamsNotificationEndpoints(this WebApplication app)
     {
         app.MapGet("/api/microsoft-integration/teams", (Func<HttpContext, Task<IResult>>)GetAsync);
         app.MapPut("/api/microsoft-integration/teams", (Func<HttpContext, Task<IResult>>)SaveAsync);
         app.MapPost("/api/microsoft-integration/teams/test-delivery", (Func<HttpContext, Task<IResult>>)TestAsync);
+        app.MapPost("/api/microsoft-integration/teams/check-installation", (Func<HttpContext, Task<IResult>>)CheckInstallationAsync);
         return app;
     }
 
@@ -34,7 +36,13 @@ public static class MicrosoftTeamsNotificationModule
         await using var command = new NpgsqlCommand("SELECT recipient,status,diagnostic_code,updated_at FROM module065_teams_delivery WHERE environment=@env ORDER BY updated_at DESC LIMIT 20", connection);
         command.Parameters.AddWithValue("env", environment);
         await using var reader = await command.ExecuteReaderAsync(context.RequestAborted);
-        while (await reader.ReadAsync(context.RequestAborted)) deliveries.Add(new { recipient = reader.GetString(0), status = reader.GetString(1), diagnosticCode = reader.GetString(2), updatedAt = reader.GetFieldValue<DateTimeOffset>(3) });
+        while (await reader.ReadAsync(context.RequestAborted))
+        {
+            var evidence = MicrosoftTeamsNotificationProtocol.ReadStored(reader.GetString(2));
+            deliveries.Add(new { recipient = reader.GetString(0), status = reader.GetString(1), diagnosticCode = evidence.Code,
+                diagnosticMessage = evidence.Message, graphErrorCode = evidence.GraphErrorCode, graphRequestId = evidence.RequestId,
+                updatedAt = reader.GetFieldValue<DateTimeOffset>(3) });
+        }
         return Results.Ok(new { configuration, deliveries, readOnly = AdminExperienceCommon.IsViewAs(context),
             message = "Requires a Teams app installed for each recipient and consent for TeamsActivity.Send (or TeamsActivity.Send.User resource-specific consent). Saving is not a successful connection test." });
     }
@@ -90,7 +98,7 @@ public static class MicrosoftTeamsNotificationModule
             return Results.Conflict(new { message = "Teams tests require the active Test profile with an unlocked recipient boundary." });
         var configuration = await LoadAsync(connection, "test", context.RequestAborted);
         if (!configuration.Enabled || configuration.TeamsAppId is null) return Results.Conflict(new { message = "Save and enable a Teams app ID first." });
-        var result = await DeliverOneAsync(connection, configuration, Guid.NewGuid(), request.Recipient.Trim(), context, context.RequestAborted);
+        var result = await DeliverOneAsync(connection, configuration, Guid.NewGuid(), request.Recipient.Trim(), context, context.RequestAborted, manualTest: true);
         return Results.Json(new { status = result, message = result == "sent" ? "Microsoft Graph accepted the Teams test. Confirm receipt in Teams." : "Teams test was not confirmed. Review the delivery diagnostic below." }, statusCode: result == "sent" ? 200 : 502);
     }
 
@@ -125,7 +133,42 @@ public static class MicrosoftTeamsNotificationModule
         return await reader.ReadAsync(ct) ? new(environment, reader.GetBoolean(0), reader.IsDBNull(1) ? null : reader.GetGuid(1), reader.GetInt32(2)) : new(environment, false, null, 0);
     }
 
-    private static async Task<string> DeliverOneAsync(NpgsqlConnection connection, Configuration configuration, Guid dispatchId, string recipient, HttpContext? context, CancellationToken ct)
+    private static async Task<IResult> CheckInstallationAsync(HttpContext context)
+    {
+        if (!AiProviderConfigurationModule.SameOrigin(context)) return Results.Json(new { message = "A same-origin request is required." }, statusCode: 403);
+        var access = await AdminExperienceCommon.AuthorizeAsync(context);
+        if (access.Failure is not null) return access.Failure;
+        if (AdminExperienceCommon.IsViewAs(context)) return Results.Json(new { message = "Exit View-As to check this tenant user's Teams installation." }, statusCode: 403);
+        CheckRequest? request;
+        try { request = await context.Request.ReadFromJsonAsync<CheckRequest>(cancellationToken: context.RequestAborted); }
+        catch (JsonException) { return Results.BadRequest(new { message = "Enter one recipient sign-in address." }); }
+        if (request is null || !ValidEmail(request.Recipient)) return Results.BadRequest(new { message = "Enter one valid tenant sign-in address." });
+        if (!access.Context!.Roles.Contains("SUPER_ADMINISTRATOR") && !request.Recipient.Trim().Equals(access.Context.Email, StringComparison.OrdinalIgnoreCase))
+            return Results.Json(new { message = "Only a SuperAdmin may check another recipient." }, statusCode: 403);
+        var environment = MicrosoftEnvironmentRuntimeResolver.Resolve(context);
+        if (environment is not ("test" or "production")) return Results.Conflict(new { message = "Runtime environment is unresolved." });
+        await using var connection = new NpgsqlConnection(access.Context.ConnectionString);
+        await connection.OpenAsync(context.RequestAborted);
+        var configuration = await LoadAsync(connection, environment, context.RequestAborted);
+        if (configuration.TeamsAppId is null || configuration.TeamsAppId == Guid.Empty)
+            return Results.Conflict(new { message = "Save the Teams package ID first." });
+        try
+        {
+            var services = await MicrosoftTeamsServicesSnapshot.LoadAsync(connection, environment, context.RequestAborted);
+            using var client = NewClient();
+            var result = await MicrosoftTeamsNotificationProtocol.ExecuteAsync(client, services.Profile.TenantId, services.Profile.ClientId,
+                services.Secret, configuration.TeamsAppId.Value, request.Recipient, false, _ => Task.FromResult(false), context.RequestAborted);
+            return Results.Ok(new { status = result.Status, diagnosticCode = result.Diagnostic.Code, message = result.Diagnostic.Message,
+                result.Diagnostic.GraphErrorCode, graphRequestId = result.Diagnostic.RequestId, result.CatalogAppId, result.InstalledVersion,
+                services.Profile.TenantId, services.Profile.ClientId, configuration.Environment, notificationSent = false });
+        }
+        catch (Exception error) when (error is InvalidDataException or JsonException or KeyNotFoundException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
+        { return Results.Conflict(new { message = "The saved environment services profile or credential is incomplete. Save it in Module 065; no notification was sent." }); }
+    }
+
+    private static HttpClient NewClient() => new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = TimeSpan.FromSeconds(30) };
+
+    private static async Task<string> DeliverOneAsync(NpgsqlConnection connection, Configuration configuration, Guid dispatchId, string recipient, HttpContext? context, CancellationToken ct, bool manualTest = false)
     {
         var id = Guid.NewGuid();
         // Durable claim before any external call. Unknown outcomes are never automatically replayed.
@@ -133,47 +176,35 @@ public static class MicrosoftTeamsNotificationModule
         claim.Parameters.AddWithValue("id", id); claim.Parameters.AddWithValue("dispatch", dispatchId);
         claim.Parameters.AddWithValue("env", configuration.Environment); claim.Parameters.AddWithValue("recipient", recipient.Trim().ToLowerInvariant());
         if (await claim.ExecuteNonQueryAsync(ct) != 1) return "already_claimed";
-        string status = "failed", diagnostic = "teams_configuration_incomplete";
-        var attempted = false;
+        var result = new MicrosoftTeamsNotificationProtocol.Outcome("failed", new("teams_services_configuration_incomplete", "The saved Module 065 services profile or credential is incomplete. No notification was sent."));
         try
         {
-            var readiness = await Module065ProjectNotificationDelivery.GetReadinessAsync(context, ct);
-            var tenant = Environment.GetEnvironmentVariable("PROJECTPULSE_M365_TENANT_ID");
-            var clientId = Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_ID");
-            var secret = Environment.GetEnvironmentVariable("PROJECTPULSE_M365_CLIENT_SECRET");
-            var origin = Environment.GetEnvironmentVariable("PROJECTPULSE_PUBLIC_BASE_URL") ?? Environment.GetEnvironmentVariable("PROJECTPULSE_PUBLIC_URL");
-            if (string.IsNullOrWhiteSpace(origin) && context is not null) origin = context.Request.Scheme + "://" + context.Request.Host;
-            if (readiness.ConfiguredEnvironment == configuration.Environment && readiness.RuntimeEnvironment == configuration.Environment
-                && Guid.TryParse(tenant, out var tenantId) && Guid.TryParse(clientId, out _) && !string.IsNullOrWhiteSpace(secret)
-                && Uri.TryCreate(origin, UriKind.Absolute, out var baseUri) && baseUri.Scheme == "https")
-            {
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(20));
-                using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
-                using var tokenResponse = await client.PostAsync($"https://login.microsoftonline.com/{tenantId:D}/oauth2/v2.0/token", new FormUrlEncodedContent(new Dictionary<string,string> {
-                    ["client_id"] = clientId!, ["client_secret"] = secret!, ["scope"] = "https://graph.microsoft.com/.default", ["grant_type"] = "client_credentials"
-                }), timeout.Token);
-                diagnostic = "teams_token_http_" + (int)tokenResponse.StatusCode;
-                if (tokenResponse.IsSuccessStatusCode)
+            var services = await MicrosoftTeamsServicesSnapshot.LoadAsync(connection, configuration.Environment, ct);
+            using var client = NewClient();
+            result = await MicrosoftTeamsNotificationProtocol.ExecuteAsync(client, services.Profile.TenantId, services.Profile.ClientId,
+                services.Secret, configuration.TeamsAppId!.Value, recipient, true, async token =>
                 {
-                    using var token = JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync(timeout.Token));
-                    using var message = new HttpRequestMessage(HttpMethod.Post, "https://graph.microsoft.com/v1.0/users/" + Uri.EscapeDataString(recipient) + "/teamwork/sendActivityNotification");
-                    message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.RootElement.GetProperty("access_token").GetString());
-                    // Generic text avoids exposing project or personnel details on a lock screen.
-                    message.Content = JsonContent.Create(new { topic = new { source = "text", value = "Pulse notification", webUrl = new Uri(baseUri, "/#dashboard").AbsoluteUri }, activityType = "systemDefault", teamsAppId = configuration.TeamsAppId,
-                        previewText = new { content = "A Pulse notification is available. Open Pulse to review it." }, templateParameters = new[] { new { name = "systemDefaultText", value = "A Pulse notification is available." } } });
-                    attempted = true;
-                    using var response = await client.SendAsync(message, timeout.Token);
-                    status = response.IsSuccessStatusCode ? "sent" : (int)response.StatusCode >= 500 ? "outcome_unknown" : "failed";
-                    diagnostic = "teams_graph_http_" + (int)response.StatusCode;
-                }
-            }
+                    var current = await LoadAsync(connection, configuration.Environment, token);
+                    if (!current.Enabled || current != configuration) return false;
+                    var latest = await MicrosoftTeamsServicesSnapshot.LoadAsync(connection, configuration.Environment, token);
+                    if (!services.Matches(latest) || latest.Profile.RecipientBoundary == "locked"
+                        || MicrosoftEnvironmentRuntimeResolver.Resolve(context) != configuration.Environment) return false;
+                    if (!manualTest) return latest.Profile.RecipientBoundary == "production_governed";
+                    if (context is null || configuration.Environment != "test" || AdminExperienceCommon.IsViewAs(context)) return false;
+                    var access = await AdminExperienceCommon.AuthorizeAsync(context);
+                    return access.Failure is null && (access.Context!.Roles.Contains("SUPER_ADMINISTRATOR")
+                        || recipient.Equals(access.Context.Email, StringComparison.OrdinalIgnoreCase));
+                }, ct);
         }
-        catch (Exception) { status = attempted ? "outcome_unknown" : "failed"; diagnostic = attempted ? "teams_delivery_outcome_unknown" : "teams_connection_failed"; }
+        catch (Exception error) when (error is InvalidDataException or JsonException or KeyNotFoundException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
+        { /* Do not expose source configuration, credential or raw provider text. */ }
         using var persistTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await using var update = new NpgsqlCommand("UPDATE module065_teams_delivery SET status=@status,diagnostic_code=@code,updated_at=now() WHERE delivery_id=@id", connection);
-        update.Parameters.AddWithValue("status", status); update.Parameters.AddWithValue("code", diagnostic); update.Parameters.AddWithValue("id", id);
+        update.Parameters.AddWithValue("status", result.Status);
+        update.Parameters.AddWithValue("code", MicrosoftTeamsNotificationProtocol.Store(result.Diagnostic));
+        update.Parameters.AddWithValue("id", id);
         await update.ExecuteNonQueryAsync(persistTimeout.Token);
-        return status;
+        return result.Status;
     }
-    private static bool ValidEmail(string? value) => !string.IsNullOrWhiteSpace(value) && MailAddress.TryCreate(value.Trim(), out var address) && address.Address == value.Trim();
+    private static bool ValidEmail(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 320 && MailAddress.TryCreate(value.Trim(), out var address) && address.Address == value.Trim();
 }
