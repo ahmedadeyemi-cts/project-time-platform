@@ -18,6 +18,9 @@ on:
       - 'tests/CompletionWorkflowTests/**'
       - 'src/frontend/project-time-web/scripts/*completion-browser*'
       - 'src/frontend/project-time-web/src/guide/guide-completion.js'
+      - 'src/frontend/project-time-web/vite.config.js'
+      - 'src/frontend/project-time-web/scripts/completion-build-compatibility.mjs'
+      - 'src/frontend/project-time-web/tests/completion-build-compatibility.test.mjs'
 permissions:
   contents: read
 concurrency:
@@ -124,7 +127,7 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
       - run: npm ci
-      - run: node --test tests/completion-checklist.test.mjs
+      - run: node --test tests/completion-checklist.test.mjs tests/completion-build-compatibility.test.mjs
       - run: node scripts/validate-module-040-guided-closeout.mjs
       - name: Build full production frontend and preserve generated source
         run: |

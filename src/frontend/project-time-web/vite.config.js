@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import roleJourneysPlugin from './scripts/role-journeys-vite-plugin.mjs';
+import { normalizeCompletionCommercialRegion, createSourceTransactionPlugin } from './scripts/completion-build-compatibility.mjs';
 
 const webRoot = fileURLToPath(new URL('./', import.meta.url));
 const celarAiProductionBackupRoot = path.join(webRoot, '.celar-ai-production-build-backup');
@@ -107,13 +108,7 @@ function fulfilledSourceWarnings(source, payload) {
         id,
         'Module 042 commercial source label'
       );
-      code = replaceExactly(
-        code,
-        '<section className="m0423-commercial" aria-label="ConnectWise SELL commercial source">',
-        '<section className="m0423-commercial" aria-label="Commercial source">',
-        id,
-        'Module 042 commercial source aria label'
-      );
+      code = normalizeCompletionCommercialRegion(code, id);
       code = replaceExactly(
         code,
         "<strong>{selected.commercial?.commercialSource === 'SELL' ? 'ConnectWise SELL' : 'Current stored rates'}</strong>",
@@ -181,23 +176,11 @@ function verifyFlowHiveBrowserContract() {
   console.log('WORK_REGISTER_BROWSER_SOW_GSD_DELETE=VERIFIED');
 }
 
-const celarAiProductionSourceTransaction = {
-  name: 'celar-ai-production-source-transaction',
-  apply: 'build',
-  async buildStart() {
-    await prepareCelarAiProductionSources();
-  },
-  async buildEnd(error) {
-    if (error) await restoreCelarAiProductionSources();
-  },
-  async closeBundle() {
-    try {
-      verifyFlowHiveBrowserContract();
-    } finally {
-      await restoreCelarAiProductionSources();
-    }
-  }
-};
+const celarAiProductionSourceTransaction = createSourceTransactionPlugin({
+  prepare: prepareCelarAiProductionSources,
+  restore: restoreCelarAiProductionSources,
+  verify: verifyFlowHiveBrowserContract
+});
 
 export default defineConfig({
   plugins: [customerSourceAuthorityCompatibility, roleJourneysPlugin(), react(), celarAiProductionSourceTransaction],
