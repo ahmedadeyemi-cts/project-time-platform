@@ -63,6 +63,15 @@ def verify_insertion(before, after, anchor, addition):
             marker, extension = extensions[anchor]
             assert expected.count(marker) == 1
             expected = expected.replace(marker, extension + marker, 1)
+    if after != expected:
+        exact_successor = {
+            SUPERVISOR_ANCHOR: ('            # MIGRATION_RETRY_RECOVERY_END\n', '            # PR1151_UAT_SUPERSESSION_BEGIN\n            if [[ "$run_id" == \'35891884845\' ]]; then\n              python3 scripts/release-test/verify-pr1151-uat-supersession.py \\\n                || fail \'PR 1151/1152 supersession did not meet its exact safety contract.\'\n              quarantined_runs+=("$run_id")\n              continue\n            fi\n            # PR1151_UAT_SUPERSESSION_END\n'),
+            REGISTRY_ANCHOR: ('# MIGRATION_THROTTLE_SCOPE_END\n', '# PR1151_UAT_SUPERSESSION_SCOPE_BEGIN\nif [[ "$HEAD_BRANCH" == fix/pr1151-uat-orphan-20260923 ]]; then\n  python3 tests/pr1151-uat-supersession-scope.py\n  python3 tests/test-pr1151-uat-supersession.py\n  node tests/validate-systemwide-image-build-controller.mjs\n  return\nfi\n# PR1151_UAT_SUPERSESSION_SCOPE_END\n'),
+        }
+        if anchor in exact_successor:
+            marker, extension = exact_successor[anchor]
+            assert expected.count(marker) == 1
+            expected = expected.replace(marker, extension + marker, 1)
     assert after == expected, 'Unrelated supervisor or registry change'
 
 
