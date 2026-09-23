@@ -1,0 +1,31 @@
+name: Document admission source preparation
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/document-admission-source-preparation.yml'
+permissions:
+  contents: read
+jobs:
+  prepare-source:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/automatic-document-admission-laya-20260923'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Package tracked source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/admission-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/admission-source/source-commit.txt"
+          git archive --format=tar HEAD src tests database deployment scripts .github > "$RUNNER_TEMP/admission-source/source.tar"
+          sha256sum "$RUNNER_TEMP/admission-source/source.tar" > "$RUNNER_TEMP/admission-source/source-sha256.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: document-admission-source-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/admission-source/
+          if-no-files-found: error
+          retention-days: 1
