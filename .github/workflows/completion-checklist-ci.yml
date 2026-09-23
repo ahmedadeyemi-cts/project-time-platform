@@ -93,7 +93,9 @@ jobs:
       - name: Exercise actual handlers and immutable audit persistence
         run: dotnet run --project tests/CompletionWorkflowTests/CompletionWorkflowTests.csproj --configuration Release --no-build
       - name: Verify merged agent foundation behavior remains disabled
-        run: dotnet run --project tests/AgentFoundationTests/AgentFoundationTests.csproj --configuration Release
+        run: |
+          dotnet run --project tests/AgentFoundationTests/AgentFoundationTests.csproj --configuration Release -p:BuildProjectReferences=false
+          dotnet run --project tests/AgentFoundationTests/Security/AgentEvidenceSecurityTests.csproj --configuration Release -p:BuildProjectReferences=false
       - name: Retain source drift diagnostics
         if: failure()
         shell: bash
@@ -131,7 +133,7 @@ jobs:
       - run: npm ci
       - run: node --test tests/completion-checklist.test.mjs tests/completion-build-compatibility.test.mjs
       - name: Verify merged assistant contract boundaries
-        run: node --test ../../../tests/agent-foundation/work-assistant-contract.test.mjs
+        run: node --test ../../../tests/agent-foundation/workspace.test.mjs
       - run: node scripts/validate-module-040-guided-closeout.mjs
       - name: Build full production frontend and preserve generated source
         run: |
