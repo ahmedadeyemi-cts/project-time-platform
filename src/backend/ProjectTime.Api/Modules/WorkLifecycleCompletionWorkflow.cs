@@ -21,7 +21,7 @@ public static partial class WorkLifecycleModule
     }
 
     private static bool CanReadCompletion(WorkRegisterAccess access, WorkLifecycleProject project) =>
-        access.ActualUserId != Guid.Empty && access.RoleCodes.Count > 0
+        access.ActualUserId != Guid.Empty && access.RoleCodes.Any()
         && (access.CanEditAll || project.ProjectManagerUserId == access.ActualUserId
             || access.RoleCodes.Any(BillingRoles.Contains));
 
