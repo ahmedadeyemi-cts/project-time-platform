@@ -23,6 +23,7 @@ var builder=WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
 builder.WebHost.UseUrls("http://127.0.0.1:0");
 builder.Services.AddSingleton<PulseAiPrivateDocumentPipelineService>();
+builder.Services.AddSingleton<PulseAiPrivateRuntimeSourceResolver>();
 await using var app=builder.Build();
 app.Use(async (context,next) =>
 {
@@ -70,6 +71,10 @@ await Call("PUT","",409,new{enabled=false,version=1});
 await Call("POST",path,404,new{requestId=Guid.NewGuid()},actor:Fixture.ScopedAdmin);
 Fixture.Unsafe=true; await Call("POST",path,422,new{requestId=Guid.NewGuid()}); Fixture.Unsafe=false;
 Check(Fixture.Inferences==0,"unauthorized or unsafe documents must not infer");
+var state=await Call("GET",$"/documents/{Fixture.Doc}/processing-state",200);
+Check(state["readyForClassification"]!.GetValue<bool>(),"document receipt state is exposed without raw text");
+var listing=await Call("GET","/documents",200);
+Check(listing["documents"]![0]!["processingStage"]!.GetValue<string>()=="ready","list uses durable processing stage");
 var id=Guid.NewGuid();
 var result=await Call("POST",path,200,new{requestId=id});
 var decision=result["decisionId"]!.GetValue<string>();
