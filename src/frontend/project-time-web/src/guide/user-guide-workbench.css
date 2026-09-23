@@ -1,0 +1,76 @@
+/* Paired surfaces for the learning library; never rely on inverse hero text. */
+.current-user-guide .guide-workbench {
+  --guide-bg: var(--uss-app-surface, #ffffff);
+  --guide-text: var(--uss-app-text, #172033);
+  --guide-muted: var(--uss-app-muted, #52627a);
+  --guide-border: var(--uss-app-border-strong, #8798aa);
+  --guide-subtle: var(--uss-app-surface-subtle, #f4f7fb);
+  --guide-link: var(--uss-app-link, #005ea8);
+  display: grid; gap: 1.1rem; min-width: 0;
+  color: var(--guide-text); line-height: 1.6;
+}
+.current-user-guide .guide-card,
+.current-user-guide .guide-module-content,
+.current-user-guide .guide-procedure,
+.current-user-guide .guide-role-detail {
+  background: var(--guide-bg) !important; color: var(--guide-text) !important;
+}
+.current-user-guide .guide-card { border: 1px solid var(--guide-border); border-radius: 14px; padding: clamp(1rem, 2vw, 1.5rem); min-width: 0; }
+.current-user-guide .guide-workbench :is(h2,h3,h4,p,span,strong,dt,dd,li,summary,label,code) { color: inherit; opacity: 1; }
+.current-user-guide .guide-workbench h2 { margin: 0 0 .5rem; font-size: 1.45rem; }
+.current-user-guide .guide-workbench h3 { margin: 1.1rem 0 .4rem; font-size: 1.15rem; }
+.current-user-guide .guide-workbench h4 { margin: .4rem 0; font-size: 1.05rem; }
+.current-user-guide .guide-workbench p { margin: .45rem 0; }
+.current-user-guide .guide-workbench :is(ul,ol) { padding-left: 1.6rem; margin: .6rem 0; }
+.current-user-guide .guide-workbench li { margin: .3rem 0; }
+.current-user-guide .guide-workbench summary { cursor: pointer; font-weight: 750; padding: .6rem .1rem; }
+.current-user-guide .guide-workbench details > summary::marker { color: var(--guide-link); }
+.current-user-guide .guide-workbench details:not(.guide-module) { border-top: 1px solid var(--guide-border); margin-top: .65rem; }
+.current-user-guide .guide-workbench :is(input,select,button,.guide-open-workspace) {
+  border: 1px solid var(--guide-border); background: var(--guide-bg) !important;
+  color: var(--guide-text) !important; font: inherit; border-radius: 8px; min-height: 42px; padding: .55rem .8rem; opacity: 1;
+}
+.current-user-guide .guide-workbench button { cursor: pointer; }
+.current-user-guide .guide-workbench :is(button,.guide-open-workspace):hover { background: var(--guide-subtle) !important; }
+.current-user-guide .guide-workbench :is(a,button,input,select,summary):focus-visible { outline: 3px solid var(--uss-app-focus, #0078b9); outline-offset: 3px; }
+.current-user-guide .guide-workbench label { display: grid; gap: .3rem; font-weight: 700; }
+.current-user-guide .guide-filters { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: .9rem; }
+.current-user-guide .guide-filters :is(input,select) { width: 100%; min-width: 0; }
+.current-user-guide .guide-workbench input::placeholder { color: var(--guide-muted); opacity: 1; }
+.current-user-guide .guide-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; margin-top: 1rem; }
+.current-user-guide .guide-toolbar .guide-checkbox { display: flex; align-items: center; gap: .5rem; }
+.current-user-guide .guide-checkbox input { width: 1.15rem; height: 1.15rem; min-height: auto; }
+.current-user-guide .guide-section-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.current-user-guide .guide-section-heading button { flex-shrink: 0; }
+.current-user-guide .guide-workbench :is(.guide-caption,.guide-access-note) { color: var(--guide-muted) !important; font-size: .9rem; }
+.current-user-guide .guide-open-workspace { display: inline-block; margin: .7rem .6rem .7rem 0; text-decoration: underline; text-underline-offset: .15em; }
+.current-user-guide .guide-workbench .guide-boundary { background: var(--guide-subtle) !important; color: var(--guide-text) !important; padding: .85rem 1rem; border-left: 4px solid var(--guide-link); border-radius: 6px; }
+.current-user-guide .guide-module { margin: .8rem 0; }
+.current-user-guide .guide-module-number { font-weight: 700; margin-right: .6rem; }
+.current-user-guide .guide-module-category { display: block; font-size: .9rem; font-weight: 500; }
+.current-user-guide .guide-procedure { border-top: 1px solid var(--guide-border); margin: 1rem 0; padding-top: .75rem; }
+.current-user-guide .guide-workbench dl { margin: .6rem 0; }
+.current-user-guide .guide-workbench dt { font-weight: 750; }
+.current-user-guide .guide-workbench dd { margin: .2rem 0 .6rem; }
+.current-user-guide .guide-glossary { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem 1.5rem; }
+.current-user-guide .guide-provenance code { overflow-wrap: anywhere; white-space: normal; font-size: .82rem; }
+.current-user-guide .guide-print-only { display: none; }
+@media (max-width: 800px) {
+  .current-user-guide .guide-filters,.current-user-guide .guide-glossary { grid-template-columns: 1fr; }
+  .current-user-guide .guide-section-heading { flex-direction: column; }
+  .current-user-guide .guide-workbench { overflow-wrap: anywhere; }
+}
+@media print {
+  .current-user-guide .guide-no-print,.current-user-guide .guide-provenance { display: none !important; }
+  .current-user-guide .guide-print-only { display: block; }
+  .current-user-guide .guide-workbench { --guide-bg:#fff; --guide-text:#172033; --guide-muted:#52627a; --guide-subtle:#f4f7fb; --guide-border:#8798aa; --guide-link:#005ea8; }
+  .current-user-guide .guide-card { box-shadow: none; padding: .6rem; }
+  .current-user-guide .guide-procedure { break-inside: avoid; }
+}
+@media (forced-colors: active) {
+  .current-user-guide .guide-workbench { --guide-bg:Canvas; --guide-text:CanvasText; --guide-muted:CanvasText; --guide-border:CanvasText; --guide-subtle:Canvas; --guide-link:LinkText; }
+}
+.current-user-guide > .system-user-guide-header { display:flex; align-items:center; gap:1.5rem; padding:1.5rem; border-radius:16px; background:#0b2f52 !important; color:#fff !important; }
+.current-user-guide > .system-user-guide-header :is(h1,p) { color:#fff !important; margin:.4rem 0; }
+.current-user-guide > .system-user-guide-header .uss-logo-lockup { flex-shrink:0; background:#fff; border-radius:10px; padding:.4rem; }
+@media(max-width:680px) { .current-user-guide > .system-user-guide-header { align-items:flex-start; flex-direction:column; } }
