@@ -92,6 +92,8 @@ jobs:
         run: dotnet build tests/CompletionWorkflowTests/CompletionWorkflowTests.csproj --configuration Release
       - name: Exercise actual handlers and immutable audit persistence
         run: dotnet run --project tests/CompletionWorkflowTests/CompletionWorkflowTests.csproj --configuration Release --no-build
+      - name: Verify merged agent foundation behavior remains disabled
+        run: dotnet run --project tests/AgentFoundationTests/AgentFoundationTests.csproj --configuration Release
       - name: Retain source drift diagnostics
         if: failure()
         shell: bash
@@ -128,6 +130,8 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
       - run: npm ci
       - run: node --test tests/completion-checklist.test.mjs tests/completion-build-compatibility.test.mjs
+      - name: Verify merged assistant contract boundaries
+        run: node --test ../../../tests/agent-foundation/work-assistant-contract.test.mjs
       - run: node scripts/validate-module-040-guided-closeout.mjs
       - name: Build full production frontend and preserve generated source
         run: |
@@ -142,6 +146,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/completion-browser"
           "$RUNNER_TEMP/completion-browser/bin/pip" install --disable-pip-version-check playwright==1.57.0
           "$RUNNER_TEMP/completion-browser/bin/python" -m playwright install --with-deps chromium firefox
+          sha256sum scripts/validate-completion-browser.py src/ProjectCompletionChecklist.jsx
           "$RUNNER_TEMP/completion-browser/bin/python" scripts/validate-completion-browser.py --fixture "$RUNNER_TEMP/completion-fixture" --output "$RUNNER_TEMP/completion-browser-evidence"
       - name: Retain completion browser evidence
         if: always()
