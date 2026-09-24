@@ -21,6 +21,9 @@ tests/FlowHivePreparationTests/Program.cs
 tests/LayaLeaseTests/LayaLeaseTests.csproj
 tests/LayaLeaseTests/Program.cs
 src/backend/ProjectTime.Api/Ai/LayaWorkerLease.cs
+src/backend/ProjectTime.Api/Ai/PulseAiDocumentIndexAuthorization.cs
+tests/LayaIndexAuthorizationTests/LayaIndexAuthorizationTests.csproj
+tests/LayaIndexAuthorizationTests/Program.cs
 tests/laya/backend/Fakes.cs
 tests/laya/backend/Program.cs
 tests/laya/release-scope.py

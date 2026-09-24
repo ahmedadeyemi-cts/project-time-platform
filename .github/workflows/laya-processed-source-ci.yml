@@ -9,6 +9,8 @@ on:
       - 'src/frontend/project-time-web/tests/laya-processing-state.test.mjs'
       - 'tests/LayaProcessedSourceTests/**'
       - 'tests/LayaLeaseTests/**'
+      - 'tests/LayaIndexAuthorizationTests/**'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiDocumentIndexAuthorization.cs'
       - 'src/backend/ProjectTime.Api/Ai/LayaWorkerLease.cs'
       - 'tests/laya/**'
       - 'database/migrations/125_automatic_document_admission_laya.sql'
@@ -72,6 +74,10 @@ jobs:
         run: dotnet run --project tests/LayaProcessedSourceTests/LayaProcessedSourceTests.csproj --configuration Release
       - name: Execute authenticated association admission against disposable PostgreSQL
         run: dotnet run --project tests/FlowHivePreparationTests/FlowHivePreparationTests.csproj --configuration Release -- --database
+      - name: Execute transactional indexing authorization and revocation tests
+        env:
+          LAYA_INDEX_TEST_DISPOSABLE: '1'
+        run: dotnet run --project tests/LayaIndexAuthorizationTests/LayaIndexAuthorizationTests.csproj --configuration Release
       - name: Build actual API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-self-contained
       - name: Cleanup disposable database

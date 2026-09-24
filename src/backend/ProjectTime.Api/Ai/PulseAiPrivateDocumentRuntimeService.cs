@@ -444,8 +444,9 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 await FailAsync(job, "authorization_identity_missing", "The effective user identity is unavailable.", cancellationToken);
                 return Result("failed", job, null, 0, 0, 0, "authorization_identity_missing", []);
             }
+            var sourceReaderUserId = effectiveUserId.Value;
             var source = await _sourceResolver.ResolveAsync(
-                effectiveUserId.Value,
+                sourceReaderUserId,
                 job.DocumentId,
                 cancellationToken,
                 processingAdmission: true);
@@ -458,8 +459,9 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 && options.DocumentServicePrincipalUserId is Guid servicePrincipalUserId
                 && servicePrincipalUserId != effectiveUserId.Value)
             {
+                sourceReaderUserId = servicePrincipalUserId;
                 source = await _sourceResolver.ResolveAsync(
-                    servicePrincipalUserId,
+                    sourceReaderUserId,
                     job.DocumentId,
                     cancellationToken,
                     processingAdmission: true);
@@ -470,6 +472,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 return Result("failed", job, null, 0, 0, 0, "authorization_revoked", []);
             }
 
+            var registeredSource = source;
             var pipelineOptions = _pipeline.Options() with
             {
                 ExtractionPreviewEnabled = true,
@@ -703,8 +706,20 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     cancellationToken);
             }
 
-            var chunks = _extractor.CreateChunks(extraction, pipelineOptions);
-            if (chunks.Count == 0)
+            // Recheck the original registered version, not the private snapshot's
+            // filename. Security admission alone does not authorize an AI index.
+            var authorizedCurrentSource = await _sourceResolver.ResolveAsync(
+                sourceReaderUserId, job.DocumentId, cancellationToken, processingAdmission: true);
+            if (!SameRegisteredSource(registeredSource, authorizedCurrentSource))
+                throw new PulseAiDocumentPublicationRejectedException("index_source_authorization_changed");
+            var indexDecision = await PulseAiDocumentIndexAuthorization.InspectAsync(
+                job, registeredSource, extraction.SourceSha256, cancellationToken);
+            if (!indexDecision.SourceCurrent)
+                throw new PulseAiDocumentPublicationRejectedException(indexDecision.DiagnosticCode);
+            var chunks = indexDecision.IndexAllowed
+                ? _extractor.CreateChunks(extraction, pipelineOptions)
+                : Array.Empty<PulseAiDocumentChunk>();
+            if (indexDecision.IndexAllowed && chunks.Count == 0)
             {
                 await FailAsync(job, "no_retrievable_chunks", "No citation-preserving chunks were generated.", cancellationToken);
                 return Result("failed", job, null, extraction.SectionCount, 0, 0, "no_retrievable_chunks", extraction.Warnings);
@@ -712,8 +727,8 @@ public sealed class PulseAiPrivateDocumentRuntimeService
 
             await _repository.MarkStageAsync(
                 job,
-                "embedding",
-                "embedding",
+                indexDecision.IndexAllowed ? "embedding" : "extracting",
+                indexDecision.IndexAllowed ? "embedding" : "extracting",
                 "private_extraction_completed",
                 new
                 {
@@ -721,6 +736,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     extraction.SectionCount,
                     extraction.CharacterCount,
                     chunkCount = chunks.Count,
+                    indexingAuthorized = indexDecision.IndexAllowed,
                     extraction.SourceSha256,
                     rawDocumentTextLogged = false
                 },
@@ -741,7 +757,9 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 return Result("cancelled", job, null, extraction.SectionCount, chunks.Count, 0, "cancellation_requested", extraction.Warnings);
             }
 
-            var embeddings = options.EmbeddingConfigured
+            var embeddings = !indexDecision.IndexAllowed
+                ? PulseAiDocumentIndexAuthorization.NotRequested(indexDecision.DiagnosticCode)
+                : options.EmbeddingConfigured
                 ? await _embeddingClient.GenerateAsync(
                     chunks.Select(chunk => chunk.Text).ToArray(),
                     options,
@@ -754,7 +772,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     [],
                     "embedding_not_configured",
                     DateTimeOffset.UtcNow);
-            var lexicalOnly = !embeddings.Succeeded;
+            var lexicalOnly = indexDecision.IndexAllowed && !embeddings.Succeeded;
             if (lexicalOnly && !options.LexicalOnlyCompletionApproved)
             {
                 return await RetryOrFailAsync(
@@ -774,9 +792,10 @@ public sealed class PulseAiPrivateDocumentRuntimeService
 
             await _repository.MarkStageAsync(
                 job,
-                "indexing",
-                "indexing",
-                embeddings.Succeeded ? "private_embeddings_completed" : "lexical_only_completion_selected",
+                indexDecision.IndexAllowed ? "indexing" : "extracting",
+                indexDecision.IndexAllowed ? "indexing" : "extracting",
+                !indexDecision.IndexAllowed ? "ai_indexing_not_authorized"
+                    : embeddings.Succeeded ? "private_embeddings_completed" : "lexical_only_completion_selected",
                 new
                 {
                     embeddingCount = embeddings.Succeeded ? embeddings.Vectors.Count : 0,
@@ -800,15 +819,24 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     new { immutableSnapshotIntegrityVerified = false, rawDocumentTextLogged = false },
                     cancellationToken);
             }
-            var versionId = await _repository.PersistProcessedDocumentAsync(
+            authorizedCurrentSource = await _sourceResolver.ResolveAsync(
+                sourceReaderUserId, job.DocumentId, cancellationToken, processingAdmission: true);
+            if (!SameRegisteredSource(registeredSource, authorizedCurrentSource))
+                throw new PulseAiDocumentPublicationRejectedException("index_source_authorization_changed");
+            if (!await SourceStillMatchesAsync(registeredSource.StoragePath,
+                    immutableSnapshot.SourceSha256, cancellationToken))
+                throw new PulseAiDocumentPublicationRejectedException("index_original_source_changed");
+            var persisted = await _repository.PersistProcessedDocumentAsync(
                 job,
-                source,
+                registeredSource,
                 scan,
                 extraction,
                 chunks,
                 embeddings,
                 lexicalOnly,
+                indexDecision.IndexAllowed,
                 cancellationToken);
+            var versionId = persisted.VersionId;
             if (!string.Equals(source.UploadSource, CelarAiConversationAttachmentPolicy.UploadSource, StringComparison.OrdinalIgnoreCase))
             {
                 try
@@ -830,14 +858,22 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 }
             }
             return Result(
-                lexicalOnly ? "completed_lexical_only" : "completed_private_hybrid_index",
+                !persisted.Indexed ? "completed_security_preparation_only"
+                    : lexicalOnly ? "completed_lexical_only" : "completed_private_hybrid_index",
                 job,
                 versionId,
                 extraction.SectionCount,
-                chunks.Count,
-                embeddings.Succeeded ? embeddings.Vectors.Count : 0,
-                string.Empty,
+                persisted.ChunkCount,
+                persisted.EmbeddedChunkCount,
+                persisted.IndexDiagnosticCode,
                 extraction.Warnings);
+        }
+        catch (PulseAiDocumentPublicationRejectedException exception)
+        {
+            // The replacement/revocation owner is authoritative. Do not overwrite
+            // its current document state through a generic retry completion.
+            await _repository.CancelStalePublicationAsync(job, exception.DiagnosticCode, callerCancellationToken);
+            return Result("cancelled", job, null, 0, 0, 0, exception.DiagnosticCode, []);
         }
         catch (OperationCanceledException) when (callerCancellationToken.IsCancellationRequested)
         {
@@ -879,6 +915,14 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             catch (OperationCanceledException) { }
         }
     }
+
+    private static bool SameRegisteredSource(
+        PulseAiAuthorizedDocumentSource original, PulseAiAuthorizedDocumentSource? current) =>
+        current is not null && current.DocumentId == original.DocumentId
+        && current.ProjectId == original.ProjectId && current.StoragePath == original.StoragePath
+        && current.StoredFileName == original.StoredFileName && current.OriginalFileName == original.OriginalFileName
+        && current.UploadedAt == original.UploadedAt && current.SizeBytes == original.SizeBytes
+        && current.UploadSource == original.UploadSource;
 
     private static string ResolveExtractionFailureDiagnostic(PulseAiDocumentExtractionResult extraction)
     {
