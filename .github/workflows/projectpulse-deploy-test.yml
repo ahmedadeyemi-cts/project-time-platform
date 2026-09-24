@@ -268,6 +268,7 @@ jobs:
             database/migrations/106_module025_sow_sell_register.sql \
             database/migrations/107_module_066_operation_authorization_and_raid_actor.sql \
             database/migrations/109_module025_project_name.sql \
+            database/migrations/125_automatic_document_admission_laya.sql \
             database/rollback/096_project_planning_document_authority_rollback.sql \
             database/rollback/097_project_planning_identity_safe_admission_rollback.sql \
             database/rollback/103_module_066_flowhive_enterprise_psa_revamp_rollback.sql \
@@ -347,7 +348,7 @@ jobs:
             '{
               environment:"test",
               applicationRelease:$releaseCommit,
-              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission"],
+              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","125_automatic_document_admission_laya"],
               migrationScope:$migrationScope,
               module025SowGsdUat:true,
               utilizationRoleScopingUat:true,
