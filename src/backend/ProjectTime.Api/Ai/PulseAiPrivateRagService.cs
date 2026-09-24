@@ -523,13 +523,13 @@ public sealed partial class PulseAiPrivateRagService
             modelSchema: "PulseAiPrivateFlowHivePlan",
             systemInstruction: FlowHiveSystemInstruction(
                 feature,
-                hasModule025AuthoritativeScope: authoritativeSource is not null,
-                hasModule025ReferenceScope: referenceSource is not null),
+                hasModule025AuthoritativeScope: authoritativeSource is not null)
+                + (referenceSource is not null ? Module025ReferenceSystemGuidance : string.Empty),
             userInstruction: FlowHiveUserInstruction(
                 feature,
                 requestedOutcome,
-                hasModule025AuthoritativeScope: authoritativeSource is not null,
-                hasModule025ReferenceScope: referenceSource is not null),
+                hasModule025AuthoritativeScope: authoritativeSource is not null)
+                + (referenceSource is not null ? Module025ReferenceUserGuidance : string.Empty),
             flowHive: true,
             retrieveAuthorizedDocuments: true,
             usePrivateModelWhenAvailable: usePrivateModelWhenAvailable,
@@ -604,10 +604,9 @@ public sealed partial class PulseAiPrivateRagService
             var retrieval = flowHiveExecution?.State.Evidence is { } pinnedEvidence
                 ? flowHiveExecution.PinEvidence(pinnedEvidence)
                 : authoritativeSource is not null
-                ? Module025AuthoritativeScopeRetrieval(query,
-                    referenceSource is null
-                        ? [authoritativeSource]
-                        : [authoritativeSource, referenceSource])
+                ? (referenceSource is null
+                    ? Module025AuthoritativeScopeRetrieval(query, authoritativeSource)
+                    : Module025MultiScopeRetrieval(query, [authoritativeSource, referenceSource]))
                 : retrieveAuthorizedDocuments
                     ? await _retrieval.RetrieveAsync(
                         access,
@@ -1687,12 +1686,18 @@ public sealed partial class PulseAiPrivateRagService
             SourceModule: "025");
     }
 
+    // Single-authoritative-source retrieval. Signature preserved (name + two
+    // parameters) because Module025GenerationEngineTests resolves it reflectively
+    // by name and invokes it as (query, chunk). Do not overload this name.
     private static PulseAiPrivateRetrievalResult Module025AuthoritativeScopeRetrieval(
         PulseAiPrivateRetrievalQuery query,
         PulseAiPrivateRetrievedChunk source) =>
-        Module025AuthoritativeScopeRetrieval(query, [source]);
+        Module025MultiScopeRetrieval(query, [source]);
 
-    private static PulseAiPrivateRetrievalResult Module025AuthoritativeScopeRetrieval(
+    // Retrieval for the co-equal citation set [primary, reference?]. Kept under a
+    // DISTINCT name so the reflectively-invoked single-source method above stays
+    // unambiguous.
+    private static PulseAiPrivateRetrievalResult Module025MultiScopeRetrieval(
         PulseAiPrivateRetrievalQuery _,
         IReadOnlyList<PulseAiPrivateRetrievedChunk> sources) =>
         new(
@@ -2067,7 +2072,7 @@ public sealed partial class PulseAiPrivateRagService
         var source = CreateModule025AuthoritativeScopeSource(evidence)
             ?? throw new JsonException("module025_phase_source_invalid");
         var (chunks, citationIds) = Module025ScopeChunks(evidence, source);
-        var retrieval = Module025AuthoritativeScopeRetrieval(null!, chunks);
+        var retrieval = Module025MultiScopeRetrieval(null!, chunks);
         var plan = ParseModule025PlanContent(content, retrieval, [evidence.PhaseExecution!.Phase]);
         return new(Guid.NewGuid(), "completed", CelarAiCapabilityCatalog.SowGsdPlanning, "sow_draft",
             "direct_knowledge", provider, string.Empty, null, evidence.EngagementNumber, evidence.CustomerName,
@@ -2085,7 +2090,7 @@ public sealed partial class PulseAiPrivateRagService
         var source = CreateModule025AuthoritativeScopeSource(evidence)
             ?? throw new JsonException("module025_phase_source_invalid");
         var (chunks, _) = Module025ScopeChunks(evidence, source);
-        var retrieval = Module025AuthoritativeScopeRetrieval(null!, chunks);
+        var retrieval = Module025MultiScopeRetrieval(null!, chunks);
         return ParseModule025PlanContent(JsonSerializer.Serialize(plan), retrieval,
             phase is null ? Module025DeliveryPhases : [phase]);
     }
@@ -3777,14 +3782,24 @@ public sealed partial class PulseAiPrivateRagService
         The directConclusion must be polished customer-facing prose, detailed enough for invoice review, and limited to facts supported by the Engineer note and authorized evidence. It remains subject to Engineer review and explicit application.
         """;
 
+    // Reference-scope (citation 2) guidance is appended by the caller when an
+    // author-selected canonical reference is present. It is NOT a parameter of the
+    // instruction factories below: FlowHiveDetailedPlannerTests resolves
+    // FlowHiveSystemInstruction reflectively by name and invokes it with two
+    // arguments, so the signatures must stay (feature, hasModule025AuthoritativeScope).
+    internal const string Module025ReferenceSystemGuidance =
+        "\nA second server-authorized source is supplied as citation 2: an admin-managed canonical SOW TEMPLATE. Citation 1 (the saved Service Overview) is the authoritative customer scope; citation 2 is a structural and scope PRECEDENT only, never customer-specific truth and never an approval. Use citation 2 to inform the delivery structure, phase breakdown and typical activities that the requested service normally requires, but never copy its specific quantities, names, environments or commitments as if they were this customer's facts, and preserve any customer-specific unknown as an assumption or open question. Continue to cite citation 1 as each task's scope anchor.";
+
+    internal const string Module025ReferenceUserGuidance =
+        "\nCitation 2 is a canonical template precedent for delivery structure only; use it to shape phases and typical activities, but never import its specifics as this customer's facts and keep every task anchored to citation 1.";
+
     private static string FlowHiveSystemInstruction(
         string feature,
-        bool hasModule025AuthoritativeScope = false,
-        bool hasModule025ReferenceScope = false)
+        bool hasModule025AuthoritativeScope = false)
     {
         if (hasModule025AuthoritativeScope)
         {
-            var instruction = $$"""
+            return $$"""
                 You are Celar AI preparing a private, exhaustive, customer-understandable, review-only SOW/GSD delivery plan for capability {{feature}}.
                 The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. It establishes the requested service boundary but may be intentionally brief. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
                 Use professional technical knowledge to expand the requested technology service into the real work normally required for successful delivery. This includes discovery and inventory, compatibility and readiness checks, architecture and change design, prerequisites and backups, controlled implementation sequencing, rollback preparation, functional and operational validation, documentation, knowledge transfer, handoff, and closeout when applicable to the requested service.
@@ -3796,11 +3811,6 @@ public sealed partial class PulseAiPrivateRagService
                 Citation 1 supports the requested service boundary. Treat model-derived implementation procedures, durations, hours, dependencies, and technical recommendations as reviewable proposals—not as facts proven by the citation. Never invent the customer's topology, node count, hardware model, installed options, licensing entitlement, maintenance window, credentials, backup state, interoperability, or acceptance decision; put those unknowns in assumptions or openQuestions.
                 Include top-level objective, milestones where useful, dependencies, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. The Solution Architect must modify and validate the draft before any separately authorized approval or baseline.
                 """;
-            if (hasModule025ReferenceScope)
-            {
-                instruction += "\nA second server-authorized source is supplied as citation 2: an admin-managed canonical SOW TEMPLATE. Citation 1 (the saved Service Overview) is the authoritative customer scope; citation 2 is a structural and scope PRECEDENT only, never customer-specific truth and never an approval. Use citation 2 to inform the delivery structure, phase breakdown and typical activities that the requested service normally requires, but never copy its specific quantities, names, environments or commitments as if they were this customer's facts, and preserve any customer-specific unknown as an assumption or open question. Continue to cite citation 1 as each task's scope anchor.";
-            }
-            return instruction;
         }
 
         return $"""
@@ -3822,21 +3832,15 @@ public sealed partial class PulseAiPrivateRagService
     private static string FlowHiveUserInstruction(
         string feature,
         string requestedOutcome,
-        bool hasModule025AuthoritativeScope = false,
-        bool hasModule025ReferenceScope = false)
+        bool hasModule025AuthoritativeScope = false)
     {
         if (hasModule025AuthoritativeScope)
         {
-            var instruction = $"""
+            return $"""
                 Build the complete implementation-grade delivery plan required for {feature} from citation 1 and the requested outcome.
                 Determine the technology-specific work that must actually occur, then divide it into detailed Plan, Design, Implement, Validate, and Release work packages. Explain the sequence, dependencies, evidence, acceptance conditions, responsibilities, safeguards, rollback approach, and handoff in customer-ready language.
                 Keep every task traceable to citation 1 as its scope anchor. Explicitly label inferred procedures and estimates as assumptions and preserve unsupported customer-environment facts as openQuestions. Do not return generic phase boilerplate or simply restate the Service Overview.
                 """;
-            if (hasModule025ReferenceScope)
-            {
-                instruction += "\nCitation 2 is a canonical template precedent for delivery structure only; use it to shape phases and typical activities, but never import its specifics as this customer's facts and keep every task anchored to citation 1.";
-            }
-            return instruction;
         }
 
         return $"""
