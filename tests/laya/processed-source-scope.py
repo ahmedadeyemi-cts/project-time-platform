@@ -18,6 +18,9 @@ tests/LayaProcessedSourceTests/Fakes.cs
 tests/LayaProcessedSourceTests/Program.cs
 tests/LayaProcessedSourceTests/fixture.sql
 tests/FlowHivePreparationTests/Program.cs
+tests/LayaLeaseTests/LayaLeaseTests.csproj
+tests/LayaLeaseTests/Program.cs
+src/backend/ProjectTime.Api/Ai/LayaWorkerLease.cs
 tests/laya/backend/Fakes.cs
 tests/laya/backend/Program.cs
 tests/laya/release-scope.py
@@ -94,7 +97,8 @@ for marker in ('database/migrations/125_automatic_document_admission_laya.sql',
         raise SystemExit('Trusted Test release is missing migration 125 wiring: '+marker)
 worker = (ROOT/'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs').read_text()
 for marker in ('DocumentServicePrincipalUserId != job.ServicePrincipalUserId',
-               'SaveDecisionAsync', 'MaximumAttempts', 'RenewLeaseAsync'):
+               'SaveDecisionAsync', 'MaximumAttempts', 'RenewLeaseAsync',
+               'LayaWorkerLease.RunAsync', 'LayaProcessedSourceReader.SameEvidence'):
     if marker not in worker:
         raise SystemExit('Missing worker safety contract: '+marker)
 classification_repository = (ROOT/'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs').read_text()

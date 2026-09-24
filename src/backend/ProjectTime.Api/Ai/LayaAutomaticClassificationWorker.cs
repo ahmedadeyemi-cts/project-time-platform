@@ -41,7 +41,11 @@ public sealed class LayaAutomaticClassificationWorker : BackgroundService
                     continue;
                 }
 
-                await ProcessAsync(job, options, stoppingToken);
+                await LayaWorkerLease.RunAsync(
+                    token => ProcessAsync(job, options, token),
+                    token => _repository.RenewLeaseAsync(job, options.LeaseSeconds, token),
+                    TimeSpan.FromSeconds(Math.Max(5, options.LeaseSeconds / 3)),
+                    stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -63,8 +67,6 @@ public sealed class LayaAutomaticClassificationWorker : BackgroundService
         PulseAiPrivateRuntimeOptions options,
         CancellationToken cancellationToken)
     {
-        using var processingStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var heartbeat = RenewLeaseAsync(job, options.LeaseSeconds, processingStop, cancellationToken);
         try
         {
             if (options.DocumentServicePrincipalUserId != job.ServicePrincipalUserId)
@@ -97,7 +99,27 @@ public sealed class LayaAutomaticClassificationWorker : BackgroundService
 
             var answer = LayaDecisionContract.Validate(
                 await LayaDecisionTransport.SendAsync(processed.Excerpt, cancellationToken));
-            await _repository.SaveDecisionAsync(job, processed, answer, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            // Permission, retention and source evidence can change during inference.
+            // Re-read through the owning resolver before the existing transaction
+            // locks and verifies the current version during SaveDecisionAsync.
+            var current = await _sourceReader.ReadAsync(
+                job.ServicePrincipalUserId, job.DocumentId, cancellationToken,
+                classificationAdmission: true);
+            if (current is null || !LayaProcessedSourceReader.SameEvidence(processed, current))
+            {
+                await _repository.CompleteAsync(job, "cancelled", "laya_source_changed",
+                    "The authorized source or its evidence changed during classification.",
+                    new { sourceChanged = true, rawDocumentTextLogged = false }, cancellationToken);
+                return;
+            }
+            await _repository.SaveDecisionAsync(job, current, answer, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A lost lease or stopped host must not write a failed/retry outcome
+            // with stale ownership. The lease coordinator/recovery owns that path.
+            throw;
         }
         catch (LayaDecisionFailure exception)
         {
@@ -113,10 +135,6 @@ public sealed class LayaAutomaticClassificationWorker : BackgroundService
                 new { rawDocumentTextLogged = false, externalFallbackAllowed = false },
                 cancellationToken);
         }
-        catch (OperationCanceledException) when (processingStop.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            // The lease owner changed; the next worker will recover the bounded job.
-        }
         catch (Exception exception)
         {
             var retry = job.AttemptCount < job.MaximumAttempts;
@@ -128,28 +146,6 @@ public sealed class LayaAutomaticClassificationWorker : BackgroundService
                     : "Automatic Laya classification reached its bounded retry limit.",
                 new { diagnostic = exception.GetType().Name, rawDocumentTextLogged = false },
                 cancellationToken);
-        }
-        finally
-        {
-            processingStop.Cancel();
-            try { await heartbeat; } catch (OperationCanceledException) { }
-        }
-    }
-
-    private async Task RenewLeaseAsync(
-        LayaClassificationJob job,
-        int leaseSeconds,
-        CancellationTokenSource processingStop,
-        CancellationToken cancellationToken)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(5, leaseSeconds / 3)));
-        while (await timer.WaitForNextTickAsync(cancellationToken))
-        {
-            if (!await _repository.RenewLeaseAsync(job, leaseSeconds, cancellationToken))
-            {
-                processingStop.Cancel();
-                return;
-            }
         }
     }
 
