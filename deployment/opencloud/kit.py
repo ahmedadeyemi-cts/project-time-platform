@@ -13,7 +13,7 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-COMMON = ['README.md', 'HANDOFF.md', 'RUNBOOK.md', 'GITHUB_DEPLOYMENTS.md', 'readiness.json', 'kit.py']
+COMMON = ['README.md', 'HANDOFF.md', 'RUNBOOK.md', 'GITHUB_DEPLOYMENTS.md', 'RUNTIME_INVENTORY.md', 'readiness.json', 'kit.py']
 FILES = {
     'pulse': ['compose.pulse.yaml', 'compose.integration-egress.yaml', '.env.example',
               'pulse-runtime.env.example', 'api-entrypoint.sh', 'schema-check.sql', 'Caddyfile'],
