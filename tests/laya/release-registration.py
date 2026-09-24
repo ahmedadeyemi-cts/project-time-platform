@@ -31,6 +31,14 @@ GATE_BLOBS = {
     'scripts/release-test/validate-protected-test-controller-branches.sh': '425e702b13cfe982fa23db2274c5c3864f537dbc',
     '.github/workflows/flowhive-psa-release-control-ci.yml': 'a66a3c7f67cac18fc8e45df372f4013b5b888bb7',
     '.github/workflows/flowhive-enterprise-psa-ci.yml': 'b3f63304b3a7d6e322c56669cd848ab403187b0a',
+    '.github/workflows/celar-laya-integration.yml': 'fbebf7749df46e7387a3313e021ecf82dac5309e',
+    '.github/workflows/pr1140-uat-recovery-ci.yml': '5932050759784b19aae136c0cde337fcb87e0c34',
+    '.github/workflows/pr1151-uat-supersession-ci.yml': '8f99a4ba72d802d95b183265d26ef8c6b8f97f7f',
+    '.github/workflows/uat-migration-throttle-recovery-ci.yml': '0ed9a29b7aeca0b0f516160d4e11aedd1e358b4a',
+    'tests/flowhive-psa-release-workflow.test.py': '9ed0b01edd404d03598518ad226d23fe74bb48d5',
+    'tests/pr1140-uat-recovery-scope.py': 'd164cfd1059b4d928a176d143553d0f570d81f7c',
+    'tests/test-pr1140-uat-recovery.py': '72999c53daefa3efe4b23b9d52902baf944bdc5b',
+    'tests/test-pr1151-uat-supersession.py': 'd33b2ee8548c5dc3eccc2c33acff93e8b01c224d',
 }
 FIXTURE = 'tests/laya/release-admission-fixture.py'
 FIXTURE_BLOB = 'bc84334a045f396738b54f60cb688a2ba13424c6'
@@ -69,6 +77,11 @@ tests/laya/processed-source-scope.py
 tests/laya/release-scope.py
 '''.split())
 IMMUTABLE = frozenset('''
+scripts/release-test/recover-pr1139-uat-orphan.py
+scripts/release-test/recover-pr1140-uat-orphan.py
+scripts/release-test/recover-pr1140-migration-retry-orphan.py
+scripts/release-test/verify-pr1151-uat-supersession.py
+tests/flowhive-psa-admission.test.mjs
 .github/CODEOWNERS
 .github/flowhive-psa-protected-test-candidate.json
 .github/flowhive-psa-protected-cutover.json
