@@ -58,3 +58,13 @@ logs/
 # Python bytecode
 __pycache__/
 *.py[cod]
+
+# Verity — config under .verity/ IS tracked (smoke.json, deploy.compose.yml,
+# db-bootstrap.sql, deploy.env.example, SHIPYARD.md, deploy-access.md).
+# Only the local/secret/generated files are ignored:
+.verity/deploy.env
+.verity/release.env
+.verity/db-baseline.dump
+.verity/db-baseline.sql
+.verity/db-baseline.marker
+.verity/backups/

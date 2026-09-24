@@ -1,0 +1,50 @@
+# Verity Shipyard deploy topology.
+#
+# Images are pinned by DIGEST (WEB_IMAGE / API_IMAGE) — never by mutable tag —
+# so staging and prod run byte-identical artifacts. deploy.sh sources the pinned
+# values from .verity/release.env (written by scripts/verity/pin-digests.sh) and
+# operator config from .verity/deploy.env.
+name: projectpulse
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ProjectPulse}
+      POSTGRES_USER: ${POSTGRES_USER:-projectpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .verity/deploy.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-projectpulse} -d ${POSTGRES_DB:-ProjectPulse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    image: ${API_IMAGE:?run scripts/verity/pin-digests.sh first}
+    environment:
+      ASPNETCORE_HTTP_PORTS: "5080"
+      # Full connection string comes from .verity/deploy.env (never committed), so
+      # no credential-shaped literal lives in a tracked file. This is the app's
+      # canonical key (first-non-empty wins in its resolver).
+      ConnectionStrings__ProjectPulse: ${DB_CONNECTION_STRING:?set DB_CONNECTION_STRING in .verity/deploy.env}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    image: ${WEB_IMAGE:?run scripts/verity/pin-digests.sh first}
+    environment:
+      API_UPSTREAM: http://api:5080
+      NGINX_RESOLVER: 127.0.0.11
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
