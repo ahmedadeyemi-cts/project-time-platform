@@ -1,0 +1,76 @@
+name: Module 065 Teams delivery and app package checks
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftTeams*.cs'
+      - 'src/frontend/project-time-web/src/MicrosoftTeamsNotificationPanel.jsx'
+      - 'src/frontend/project-time-web/public/teams-notifications/**'
+      - 'deployment/teams/**'
+      - 'deployment/containers/web/default.conf.template'
+      - 'scripts/teams/**'
+      - 'tests/MicrosoftTeamsDeliveryTests/**'
+      - 'docs/repairs/module065-teams-delivery.md'
+      - '.github/workflows/module065-teams-delivery-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: module065-teams-delivery-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  delivery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile the actual API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release
+      - name: Execute the actual Graph protocol and credential envelope with synthetic transport
+        run: dotnet run --project tests/MicrosoftTeamsDeliveryTests -c Release
+      - name: Build actual frontend and preserve all existing validators
+        run: |
+          npm ci --prefix src/frontend/project-time-web --ignore-scripts
+          npm run build --prefix src/frontend/project-time-web
+          node --test tests/teams-workspace/state.test.mjs
+          node --check src/frontend/project-time-web/public/teams-notifications/landing.js
+          git diff --exit-code
+      - name: Install isolated package and browser validators
+        run: |
+          python3 -m venv "$RUNNER_TEMP/teams-checks"
+          "$RUNNER_TEMP/teams-checks/bin/pip" install Pillow==11.3.0 jsonschema==4.25.1 playwright==1.55.0
+          "$RUNNER_TEMP/teams-checks/bin/python" -m playwright install --with-deps chromium
+      - name: Generate and validate the complete Teams app package
+        run: |
+          mkdir -p "$RUNNER_TEMP/teams-evidence"
+          curl --fail --silent --show-error --max-time 30 https://developer.microsoft.com/en-us/json-schemas/teams/v1.30/MicrosoftTeams.schema.json -o "$RUNNER_TEMP/teams-schema.json"
+          curl --fail --silent --show-error --max-time 30 https://res.cdn.office.net/teams-js/2.56.0/js/MicrosoftTeams.min.js -o "$RUNNER_TEMP/teams-evidence/teams-sdk.js"
+          test -s "$RUNNER_TEMP/teams-evidence/teams-sdk.js"
+          "$RUNNER_TEMP/teams-checks/bin/python" scripts/teams/build-package.py --output "$RUNNER_TEMP/teams-evidence/PulseApp-UAT-1.0.2.zip"
+          "$RUNNER_TEMP/teams-checks/bin/python" scripts/teams/validate-package.py "$RUNNER_TEMP/teams-evidence/PulseApp-UAT-1.0.2.zip" "$RUNNER_TEMP/teams-schema.json"
+          sha256sum "$RUNNER_TEMP/teams-evidence/PulseApp-UAT-1.0.2.zip" > "$RUNNER_TEMP/teams-evidence/package.sha256"
+      - name: Verify exact Nginx framing boundary and rendered landing
+        run: |
+          mkdir -p "$RUNNER_TEMP/teams-nginx"
+          API_UPSTREAM=http://127.0.0.1:1 NGINX_RESOLVER=127.0.0.1 envsubst '${API_UPSTREAM} ${NGINX_RESOLVER}' < deployment/containers/web/default.conf.template > "$RUNNER_TEMP/teams-nginx/default.conf"
+          docker run -d --name pulse-teams-check -p 18080:8080 \
+            -v "$RUNNER_TEMP/teams-nginx/default.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/src/frontend/project-time-web/dist:/usr/share/nginx/html:ro" \
+            nginxinc/nginx-unprivileged:1.31.3-alpine
+          "$RUNNER_TEMP/teams-checks/bin/python" scripts/teams/validate-landing.py "$RUNNER_TEMP/teams-evidence"
+      - name: Preserve package and measured acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module065-teams-delivery-${{ github.run_id }}
+          path: ${{ runner.temp }}/teams-evidence
+          retention-days: 7
+      - name: Remove isolated web server
+        if: always()
+        run: docker rm -f pulse-teams-check || true

@@ -1,0 +1,97 @@
+/* Module 065 only. Reuse Pulse colors, shared form/button classes and theme tokens. */
+.teams-notifications-workspace {
+  --teams-border: var(--border-color, #d7e3ef);
+  --teams-muted: var(--text-secondary, var(--muted, #526577));
+  /* Both root-owned and body-owned themes define --surface. Do not paint a
+     light fallback beneath inherited dark-theme text when --surface-subtle
+     is absent. Keep the background and foreground in the same theme. */
+  --teams-subtle: var(--surface-subtle, var(--surface, #f5f9fc));
+  --teams-success: #166534;
+  --teams-warning: #854d0e;
+  --teams-danger: #991b1b;
+  display: grid;
+  gap: 1.25rem;
+  color: var(--text, #172033);
+  border-color: var(--teams-border);
+  padding: clamp(1rem, 2vw, 1.5rem);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.teams-notifications-workspace *,
+.teams-notifications-workspace *::before,
+.teams-notifications-workspace *::after { box-sizing: border-box; }
+.teams-notifications-workspace h2,
+.teams-notifications-workspace h3,
+.teams-notifications-workspace p { margin-top: 0; }
+.teams-notifications-workspace h3 { font-size: 1.05rem; margin-bottom: 0.4rem; }
+.teams-notifications-workspace p { line-height: 1.55; }
+.teams-notifications-heading { flex-wrap: wrap; }
+.teams-notifications-heading > div:first-child { flex: 1 1 24rem; min-width: 0; }
+.teams-notifications-heading-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.teams-notifications-copy { max-width: 56rem; color: var(--teams-muted); margin-bottom: 0; }
+.teams-notifications-workspace .eyebrow { color: var(--primary, #075b9b); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; margin-bottom: 0.35rem; }
+.teams-notifications-badge { display: inline-flex; align-items: center; padding: 0.35rem 0.65rem; border: 1px solid var(--teams-border); border-radius: 999px; font-size: 0.78rem; line-height: 1.35; font-weight: 750; background: var(--teams-subtle); color: var(--text, #172033); overflow-wrap: anywhere; }
+.teams-notifications-badge.success { color: var(--teams-success); border-color: color-mix(in srgb, var(--teams-success) 30%, var(--teams-border)); background: color-mix(in srgb, var(--teams-success) 7%, var(--surface, #fff)); }
+.teams-notifications-badge.warning { color: var(--teams-warning); border-color: color-mix(in srgb, var(--teams-warning) 30%, var(--teams-border)); background: color-mix(in srgb, var(--teams-warning) 7%, var(--surface, #fff)); }
+.teams-notifications-badge.danger { color: var(--teams-danger); border-color: color-mix(in srgb, var(--teams-danger) 30%, var(--teams-border)); background: color-mix(in srgb, var(--teams-danger) 7%, var(--surface, #fff)); }
+.teams-notifications-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.8rem; }
+.teams-notifications-summary > div { min-width: 0; padding: 1rem; border: 1px solid var(--teams-border); border-radius: 0.8rem; background: var(--teams-subtle); display: flex; flex-direction: column; gap: 0.5rem; }
+.teams-notifications-summary > div > span { color: var(--teams-muted); font-size: 0.8rem; font-weight: 700; }
+.teams-notifications-summary strong { font-size: 1rem; line-height: 1.35; }
+.teams-notifications-summary small { color: var(--teams-muted); line-height: 1.5; }
+.teams-notifications-notice { padding: 0.85rem 1rem; border: 1px solid var(--teams-border); border-left: 4px solid var(--primary, #075b9b); border-radius: 0.65rem; background: var(--teams-subtle); line-height: 1.55; overflow-wrap: anywhere; }
+.teams-notifications-notice.warning { border-left-color: var(--teams-warning); }
+.teams-notifications-notice.danger { border-left-color: var(--teams-danger); }
+.teams-notifications-notice.success { border-left-color: var(--teams-success); }
+.teams-notifications-progress { color: var(--teams-muted); margin: 0; }
+.teams-notifications-progress:empty { display: none; }
+.teams-notifications-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.teams-notifications-section { display: flex; flex-direction: column; align-items: stretch; gap: 1rem; padding: 1.15rem; border: 1px solid var(--teams-border); border-radius: 0.8rem; min-width: 0; }
+.teams-notifications-section-title { display: flex; align-items: flex-start; gap: 0.7rem; }
+.teams-notifications-section-title p { font-size: 0.88rem; color: var(--teams-muted); margin-bottom: 0; }
+.teams-notifications-step { display: inline-flex; justify-content: center; align-items: center; flex-shrink: 0; width: 2rem; height: 2rem; border: 1px solid var(--teams-border); border-radius: 0.55rem; background: var(--teams-subtle); color: var(--primary, #075b9b); font-size: 0.78rem; font-weight: 800; }
+.teams-notifications-switch { display: flex; align-items: flex-start; gap: 0.65rem; margin: 0; padding: 0.85rem; background: var(--teams-subtle); border: 1px solid var(--teams-border); border-radius: 0.65rem; cursor: pointer; }
+.teams-notifications-switch input[type='checkbox'] { width: 1.2rem; height: 1.2rem; flex-shrink: 0; margin: 0.15rem 0 0; accent-color: var(--primary, #075b9b); }
+.teams-notifications-switch span { display: grid; gap: 0.3rem; min-width: 0; }
+.teams-notifications-switch small { font-size: 0.82rem; font-weight: 400; color: var(--teams-muted); line-height: 1.5; }
+.teams-notifications-workspace .microsoft-integration-field { gap: 0.45rem; font-size: 0.88rem; }
+.teams-notifications-workspace .microsoft-integration-field input,
+.teams-notifications-workspace .microsoft-integration-field select { display: block; width: 100%; min-width: 0; min-height: 2.75rem; padding: 0.7rem 0.8rem; border: 1px solid var(--teams-border); border-radius: 0.6rem; background: var(--surface, #fff); color: var(--text, #172033); font: inherit; font-weight: 500; }
+.teams-notifications-workspace .microsoft-integration-field small { font-size: 0.8rem; color: var(--teams-muted); font-weight: 400; line-height: 1.5; }
+.teams-notifications-workspace input[aria-invalid='true'] { border-color: var(--teams-danger); }
+.teams-notifications-validation { color: var(--teams-danger); font-size: 0.82rem; margin-bottom: 0; }
+.teams-notifications-workspace button.primary-action,
+.teams-notifications-workspace button.secondary-action { display: inline-flex; align-items: center; justify-content: center; min-height: 2.65rem; padding: 0.65rem 1rem; border: 1px solid var(--primary, #075b9b); border-radius: 0.6rem; background: var(--primary, #075b9b); color: #fff; font: inherit; font-size: 0.85rem; font-weight: 700; line-height: 1.4; cursor: pointer; white-space: normal; }
+.teams-notifications-workspace button.secondary-action { border-color: var(--teams-border); background: var(--surface, #fff); color: var(--text, #172033); }
+.teams-notifications-workspace button:disabled,
+.teams-notifications-workspace input:disabled,
+.teams-notifications-workspace select:disabled { opacity: 0.58; cursor: not-allowed; }
+.teams-notifications-workspace button:not(:disabled):hover { filter: brightness(0.96); }
+.teams-notifications-workspace :is(button, input, select, summary, [tabindex]):focus-visible { outline: 3px solid var(--primary, #075b9b); outline-offset: 3px; }
+.teams-notifications-actions { justify-content: flex-start; gap: 0.6rem; margin-top: auto; }
+.teams-notifications-help { color: var(--teams-muted); font-size: 0.82rem; margin-bottom: 0; line-height: 1.5; }
+.teams-notifications-history { min-width: 0; border-top: 1px solid var(--teams-border); padding-top: 1.25rem; }
+.teams-notifications-filter { width: 13rem; flex-shrink: 0; }
+.teams-notifications-table { width: 100%; overflow-x: auto; border: 1px solid var(--teams-border); border-radius: 0.7rem; margin-top: 1rem; overscroll-behavior-inline: contain; }
+.teams-notifications-table table { width: 100%; min-width: 640px; border-collapse: collapse; table-layout: fixed; font-size: 0.85rem; }
+.teams-notifications-table th { padding: 0.8rem 1rem; background: var(--teams-subtle); color: var(--teams-muted); text-align: left; font-size: 0.75rem; font-weight: 800; }
+.teams-notifications-table th:first-child { width: 28%; }
+.teams-notifications-table th:last-child { width: 23%; }
+.teams-notifications-table td { padding: 1rem; border-top: 1px solid var(--teams-border); vertical-align: top; overflow-wrap: anywhere; color: var(--text, #172033); }
+.teams-notifications-table td p { color: var(--teams-muted); margin: 0.55rem 0; font-size: 0.8rem; }
+.teams-notifications-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--teams-subtle) 45%, var(--surface, #fff)); }
+.teams-notifications-table summary { cursor: pointer; color: var(--primary, #075b9b); padding-block: 0.35rem; }
+.teams-notifications-table code { display: block; padding: 0.65rem; margin-top: 0.35rem; border-radius: 0.4rem; background: var(--teams-subtle); color: var(--text, #172033); font-size: 0.75rem; white-space: normal; overflow-wrap: anywhere; }
+.teams-notifications-empty { margin-top: 1rem; padding: 1.25rem; border: 1px dashed var(--teams-border); border-radius: 0.7rem; background: var(--teams-subtle); color: var(--teams-muted); text-align: center; line-height: 1.55; }
+.teams-notifications-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+[data-theme='dark'] .teams-notifications-workspace { --teams-success: #86efac; --teams-warning: #fde68a; --teams-danger: #fca5a5; }
+@media (max-width: 1000px) { .teams-notifications-grid { grid-template-columns: 1fr; } }
+@media (max-width: 680px) {
+  .teams-notifications-summary { grid-template-columns: 1fr; }
+  .teams-notifications-heading-actions { width: 100%; }
+  .teams-notifications-heading-actions button { width: 100%; }
+  .teams-notifications-section { padding: 1rem; }
+  .teams-notifications-history .microsoft-integration-card-heading { flex-direction: column; }
+  .teams-notifications-filter { width: 100%; }
+  .teams-notifications-actions button { width: 100%; }
+}
