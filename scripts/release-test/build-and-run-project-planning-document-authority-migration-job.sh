@@ -147,9 +147,9 @@ echo 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED'
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/124_module025_service_scope.sql"
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-module025-service-scope.sql"
 echo 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED'
+
 (cd "$ROOT" && sha256sum --check --status database/automatic-admission-laya.sha256)
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/125_automatic_document_admission_laya.sql"
-echo 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA=APPLIED_AND_VERIFIED'
 
 
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'

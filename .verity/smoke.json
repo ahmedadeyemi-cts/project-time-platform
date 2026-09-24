@@ -1,0 +1,33 @@
+{
+  "baseUrl": "http://localhost:8080",
+  "flows": [
+    {
+      "name": "app shell loads and mounts the SPA",
+      "steps": [
+        { "goto": "/" },
+        { "expectSelector": "#root" }
+      ]
+    },
+    {
+      "name": "deep link falls back to the SPA (nginx try_files)",
+      "steps": [
+        { "goto": "/dashboard" },
+        { "expectSelector": "#root" }
+      ]
+    },
+    {
+      "name": "unknown app route serves the SPA rather than a hard 404",
+      "steps": [
+        { "goto": "/modules" },
+        { "expectSelector": "#root" }
+      ]
+    },
+    {
+      "name": "health endpoint is reachable through the web proxy",
+      "steps": [
+        { "goto": "/health" },
+        { "expectSelector": "body" }
+      ]
+    }
+  ]
+}

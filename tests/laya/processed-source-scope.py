@@ -1,13 +1,17 @@
 """PR1153 source boundary and automatic-admission safety checks."""
 from pathlib import Path
 import subprocess
+import sys
 ROOT = Path(__file__).resolve().parents[2]
+# Release machinery must already be accepted in main. This application cannot
+# alter inherited controllers, migration wiring, or its persistent owner gates.
+subprocess.run([sys.executable, str(ROOT / 'tests/laya/release-registration.py'),
+                '--application'], cwd=ROOT, check=True)
 def git(*args):
     return subprocess.check_output(['git','-C',str(ROOT),*args],text=True)
 base = git('merge-base','origin/main','HEAD').strip()
 allowed = set('''
 docs/implementation/automatic-document-admission-laya-20260923.md
-docs/production-readiness/foundation/initialization-review.json
 src/backend/ProjectTime.Api/Ai/LayaProcessedSourceReader.cs
 src/backend/ProjectTime.Api/Modules/LayaDecisionModule.cs
 src/frontend/project-time-web/src/ai/LayaDecisionPanel.jsx
@@ -29,9 +33,6 @@ tests/laya/backend/Program.cs
 tests/laya/release-scope.py
 tests/laya/processed-source-scope.py
 .github/workflows/laya-processed-source-ci.yml
-.github/workflows/module-management-owner-drawer-ci.yml
-database/migrations/125_automatic_document_admission_laya.sql
-scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
 src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs
 src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs
 src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
@@ -40,16 +41,15 @@ src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeSourceResolver.cs
 src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
 src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentPreparation.cs
 src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs
-.github/workflows/projectpulse-deploy-test.yml
 '''.split())
 changed=set(git('diff','--name-only',base,'HEAD').splitlines())
 if not changed or changed-allowed:
     raise SystemExit('Unexpected incremental processed-source paths: '+','.join(sorted(changed-allowed)))
 for row in git('diff','--name-status',base,'HEAD').splitlines():
     if row.split('\t',1)[0] not in {'A','M'}: raise SystemExit('No rename/delete is permitted in this source-reader change')
-# This batch owns the additive admission/classification migration, durable
-# workers, and the existing release migration entrypoint. It does not own
-# provider routing, scanner fallback, gateway changes, or chat intent routing.
+# This application owns durable admission and classification behavior only.
+# Migration125 and release controls are inherited from the independent control
+# change; provider routing, scanner fallback and chat intent remain outside scope.
 for path in (
     'src/backend/ProjectTime.Api/Ai/LayaDecisionContract.cs',
     'src/backend/ProjectTime.Api/Ai/LayaDecisionTransport.cs',

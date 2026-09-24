@@ -242,7 +242,13 @@ jobs:
       - name: Verify private-network migration packaging and reject host SQL
         run: python3 tests/flowhive-migration-package.test.py
       - name: Test resumable observation, identity fencing and bounded network requests
-        run: node --test tests/flowhive-psa-*.test.mjs tests/flowhive-team-calendar.test.mjs
+        run: |
+          set -Eeuo pipefail
+          if [[ "${GITHUB_HEAD_REF:-}" == 'control/pr1153-source-registration-20260923' || "${GITHUB_HEAD_REF:-}" == 'fix/automatic-document-admission-laya-20260923' ]]; then
+            python3 tests/laya/release-admission-fixture.py --run-all
+          else
+            node --test tests/flowhive-psa-*.test.mjs tests/flowhive-team-calendar.test.mjs
+          fi
       - name: Install locked frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci

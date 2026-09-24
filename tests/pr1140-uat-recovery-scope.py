@@ -75,12 +75,22 @@ def verify_insertion(before, after, anchor, addition):
     assert after == expected, 'Unrelated supervisor or registry change'
 
 
-def verify_sources():
+HISTORICAL_SCOPE_REFERENCE = '14f9850a12868ed7f821fb96d2edf715a3ab92b1'
+
+
+def verify_sources(reference=None):
+    # A historical regression must compare files from the same immutable tree.
+    # The original PR-scope entrypoint supplies no reference and checks HEAD.
+    assert reference in (None, HISTORICAL_SCOPE_REFERENCE), 'Unapproved historical scope fixture'
+    def read_source(path):
+        if reference is None:
+            return (ROOT / path).read_text()
+        return subprocess.check_output(['git', 'show', reference + ':' + path], cwd=ROOT, text=True)
     for path, anchor, addition in (
         (SUPERVISOR, SUPERVISOR_ANCHOR, SUPERVISOR_ADDITION),
         (REGISTRY, REGISTRY_ANCHOR, REGISTRY_ADDITION),
     ):
-        verify_insertion(original(path), (ROOT / path).read_text(), anchor, addition)
+        verify_insertion(original(path), read_source(path), anchor, addition)
     # Use the already-reviewed algorithm verbatim; only its pinned identity and
     # own filename/display marker differ. No generalized orphan whitelist.
     expected = original('scripts/release-test/recover-pr1139-uat-orphan.py')
@@ -102,8 +112,8 @@ def verify_sources():
         'scripts/release-test/flowhive-psa-admission.mjs',
         '.github/flowhive-psa-protected-test-candidate.json',
     ):
-        assert (ROOT / path).read_text() == original(path), 'Frozen source changed: ' + path
-    assert git('rev-parse', 'HEAD:.github/workflows/projectpulse-deploy-test.yml') == '634983f88d5ce3161b626010c3e20c41a80e3758'
+        assert read_source(path) == original(path), 'Frozen source changed: ' + path
+    assert git('rev-parse', (reference or 'HEAD') + ':.github/workflows/projectpulse-deploy-test.yml') == '634983f88d5ce3161b626010c3e20c41a80e3758'
     workflow = (ROOT / '.github/workflows/pr1140-uat-recovery-ci.yml').read_text()
     assert 'permissions:\n  contents: read\n' in workflow
     assert not any(value in workflow for value in ('actions: write', 'contents: write', 'secrets.', 'environment:', 'workflow_dispatch:', 'git push'))

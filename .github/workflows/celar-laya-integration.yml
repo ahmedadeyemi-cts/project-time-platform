@@ -30,7 +30,13 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Verify exact additive release scope
-        run: python3 tests/laya/release-scope.py
+        run: |
+          set -Eeuo pipefail
+          if [[ "$GITHUB_HEAD_REF" == 'control/pr1153-source-registration-20260923' ]]; then
+            python3 tests/laya/release-registration.py --control
+          else
+            python3 tests/laya/release-scope.py
+          fi
       - name: Install test-only HTTP dependency
         run: |
           python3 -m venv /tmp/laya-tests

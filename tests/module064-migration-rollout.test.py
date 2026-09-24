@@ -30,7 +30,29 @@ def fragments(spec):
     return package, apply, f"echo '{marker}'\n"
 
 
+# Exact content proposal against current main, reviewed together with the release patch.
+# Preserve the pre-existing 123/124 checks by removing only these exact additions.
+LAYA_BASE = '14f9850a12868ed7f821fb96d2edf715a3ab92b1'
+LAYA_RUNNER_EDITS = [(937, 937, '.sql"\nAUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE="$ROOT/database/migrations/125_automatic_document_admission_laya'), (2224, 2224, ' source is missing."\n[[ -s "$AUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE" ]] || fail "Automatic document admission migration 125'), (6345, 6345, '.sha256)\ninstall -m 0444 "$AUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE" "$CONTEXT/database/migrations/125_automatic_document_admission_laya.sql"\n(cd "$CONTEXT" && sha256sum database/migrations/125_automatic_document_admission_laya.sql > database/automatic-admission-laya'), (11716, 11716, '\n\n(cd "$ROOT" && sha256sum --check --status database/automatic-admission-laya.sha256)\npsql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/125_automatic_document_admission_laya.sql"'), (18941, 18941, 'automatic_admission_laya_verification="$(psql -X -At -v ON_ERROR_STOP=1 <<\'SQL\'\nSELECT\n  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id=\'125_automatic_document_admission_laya\')::text || \'|\' ||\n  (to_regclass(\'public.pulse_ai_laya_classification_jobs\') IS NOT NULL)::text || \'|\' ||\n  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=\'public\' AND table_name=\'project_intake_documents\' AND column_name=\'pulse_ai_laya_classification_status\')::text || \'|\' ||\n  EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname=\'public\' AND indexname=\'ux_pulse_ai_laya_classification_jobs_identity\')::text;\nSQL\n)"\n[[ "$automatic_admission_laya_verification" == \'true|true|true|true\' ]] || {\n  echo "ERROR: Automatic document admission/Laya migration 125 verification failed: $automatic_admission_laya_verification" >&2\n  exit 1\n}\n'), (19302, 19302, "=APPLIED_AND_VERIFIED'\necho 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA"), (21792, 21792, "echo 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA=APPLIED_AND_VERIFIED'\n"), (22795, 22795, '\n\nif [[ -n "$EVIDENCE_ROOT" ]]; then\n  install -d -m 0700 "$EVIDENCE_ROOT"\n  automatic_admission_laya_sha256="$(sha256sum "$ROOT/database/migrations/125_automatic_document_admission_laya.sql" | cut -d \' \' -f 1)"\n  jq -n --arg releaseCommit "$RELEASE_COMMIT" --arg image "$RELIABILITY_MIGRATION_IMAGE" --arg sha256 "$automatic_admission_laya_sha256" \\\n    \'{status:"applied_and_verified",migration:"125_automatic_document_admission_laya",sha256:$sha256,releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,deliveryBoundary:"test_only_or_locked",productionMutation:false}\' \\\n    > "$EVIDENCE_ROOT/migration-125.json"\nfi')]
+
+
+def without_laya_additions(source):
+    baseline = subprocess.check_output(['git', 'show', LAYA_BASE + ':' + RUNNER], cwd=ROOT, text=True)
+    expected = baseline
+    for start, end, replacement in reversed(LAYA_RUNNER_EDITS):
+        expected = expected[:start] + replacement + expected[end:]
+    assert source == expected, 'Unreviewed migration runner content or ordering changed'
+    entrypoint = source.split("cat > \"$CONTEXT/entrypoint.sh\" <<'ENTRYPOINT'\n", 1)[1].split('\nENTRYPOINT\n', 1)[0]
+    marker = "echo 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA=APPLIED_AND_VERIFIED'"
+    assert entrypoint.count(marker) == 1
+    assert entrypoint.index('/124_module025_') < entrypoint.index('/125_automatic_document_')
+    assert entrypoint.index('[[ \"$automatic_admission_laya_verification\"') < entrypoint.index(marker)
+    assert source.count(marker) == 2
+    return baseline
+
+
 def verify_source(source):
+    source = without_laya_additions(source)
     # Main already contains 123 and all earlier rollouts. Permit only the exact
     # approved additive 124 package, entrypoint invocation and success receipt.
     baseline = subprocess.check_output(['git', 'show', BASE + ':' + RUNNER], cwd=ROOT, text=True)
