@@ -1751,6 +1751,16 @@
       "rationale": ""
     },
     {
+      "path": "database/migrations/125_automatic_document_admission_laya.sql",
+      "sha256": "70b853399995480735fa1d2447f1497a47b9ad206308f68ace7efb4f647d4dcc",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "Adds the Protected Test-only universal security admission and durable Module 064 classification job schema. Requires migration-order, least-privilege service identity, quarantine/revocation, and live UAT review before any production consideration."
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [
