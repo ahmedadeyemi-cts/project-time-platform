@@ -1,0 +1,12 @@
+.local/
+_build/
+out/
+*.env
+!*.env.example
+*.dump
+*.sql.gz
+*.tar
+*.tar.gz
+*.pem
+*.key
+*.crt

@@ -1,0 +1,152 @@
+name: pulse-opencloud-dev
+# Candidate definition, not an authorized release. See ../readiness.json.
+# API outbound access is intentionally absent during restored-data staging.
+services:
+  edge:
+    image: ${CADDY_IMAGE:?Supply an approved Caddy image digest}
+    platform: ${TARGET_PLATFORM:?Select the qualified CPU architecture}
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports: ["${HTTPS_BIND_IP:-0.0.0.0}:443:8443"]
+    environment:
+      PULSE_HOSTNAME: pulse-dev.ussignal.cloud
+    configs:
+      - source: edge_config
+        target: /etc/caddy/Caddyfile
+    secrets:
+      - source: tls_certificate
+        target: tls-certificate
+      - source: tls_key
+        target: tls-key
+    volumes:
+      - edge_data:/data
+      - edge_config:/config
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=32m,mode=1777"]
+    networks: [ingress]
+    depends_on:
+      web:
+        condition: service_started
+  web:
+    image: ${PULSE_WEB_IMAGE:?Supply the approved Pulse web image digest}
+    platform: ${TARGET_PLATFORM}
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      API_UPSTREAM: http://api:5080
+      NGINX_RESOLVER: 127.0.0.11
+    networks: [ingress, application]
+    depends_on:
+      api:
+        condition: service_started
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+  api:
+    image: ${PULSE_API_IMAGE:?Supply the approved OpenCloud API image digest}
+    platform: ${TARGET_PLATFORM}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    env_file: ["${PULSE_LOCAL_DIR:?Set the secure host configuration directory}/pulse-runtime.env"]
+    environment:
+      ASPNETCORE_HTTP_PORTS: "5080"
+      PROJECTPULSE_ENVIRONMENT: test
+      PROJECTPULSE_PUBLIC_URL: https://pulse-dev.ussignal.cloud
+      PTP_DB_HOST: database
+      PTP_DB_PORT: "5432"
+      PTP_DB_NAME: ${PULSE_DB_NAME:-ProjectPulse}
+      PTP_DB_USER: ${PULSE_DB_USER:-ptp_app}
+      PROJECTPULSE_UPLOAD_ROOT: /opt/project-time-platform/uploads
+      PROJECTPULSE_STORAGE_PATH: /var/lib/projectpulse
+      PROJECTPULSE_ARTIFACT_STORAGE_PATH: /var/lib/projectpulse/artifacts
+    secrets:
+      - source: api_database_password
+        target: api-database-password
+    volumes:
+      - uploads:/opt/project-time-platform/uploads
+      - application_state:/var/lib/projectpulse
+      - application_keys:/home/app/.aspnet/DataProtection-Keys
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=512m,mode=1777"]
+    networks: [application, database]
+    depends_on:
+      schema_check:
+        condition: service_completed_successfully
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+  database:
+    image: ${POSTGRES_IMAGE:?Pin the PostgreSQL image matching the approved database baseline}
+    platform: ${TARGET_PLATFORM}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      POSTGRES_DB: ${PULSE_DB_NAME:-ProjectPulse}
+      POSTGRES_USER: pulse_bootstrap
+      POSTGRES_PASSWORD_FILE: /run/secrets/database-owner-password
+    secrets:
+      - source: database_owner_password
+        target: database-owner-password
+    volumes:
+      - database:/var/lib/postgresql/data
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U pulse_bootstrap -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    stop_grace_period: 90s
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+  schema_check:
+    image: ${POSTGRES_IMAGE}
+    platform: ${TARGET_PLATFORM}
+    restart: "no"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      PGHOST: database
+      PGDATABASE: ${PULSE_DB_NAME:-ProjectPulse}
+      PGUSER: ${PULSE_DB_USER:-ptp_app}
+      PGCONNECT_TIMEOUT: "10"
+    secrets:
+      - source: api_database_password
+        target: api-database-password
+    configs:
+      - source: schema_check
+        target: /checks/schema-check.sql
+    command: [sh, -ec, 'export PGPASSWORD="$$(cat /run/secrets/api-database-password)"; exec psql -X --no-password -v ON_ERROR_STOP=1 -f /checks/schema-check.sql']
+    networks: [database]
+    depends_on:
+      database:
+        condition: service_healthy
+networks:
+  ingress: {}
+  application: {internal: true}
+  database: {internal: true}
+configs:
+  edge_config:
+    file: ./Caddyfile
+  schema_check:
+    file: ./schema-check.sql
+secrets:
+  tls_certificate:
+    file: ${PULSE_LOCAL_DIR}/tls/fullchain.pem
+  tls_key:
+    file: ${PULSE_LOCAL_DIR}/tls/private.key
+  database_owner_password:
+    file: ${PULSE_LOCAL_DIR}/database-owner-password
+  api_database_password:
+    file: ${PULSE_LOCAL_DIR}/api-database-password
+volumes:
+  database: {external: true, name: pulse-dev-database}
+  uploads: {external: true, name: pulse-dev-uploads}
+  application_state: {external: true, name: pulse-dev-state}
+  application_keys: {external: true, name: pulse-dev-keys}
+  edge_data: {external: true, name: pulse-dev-edge-data}
+  edge_config: {external: true, name: pulse-dev-edge-config}
