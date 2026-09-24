@@ -1,0 +1,36 @@
+name: OpenCloud packaging validation
+on:
+  pull_request:
+    paths:
+      - 'deployment/opencloud/**'
+      - '.github/workflows/opencloud-packaging-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: opencloud-packaging-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  source-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Capture exact checked-in build context for packaging assessment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/opencloud-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/opencloud-source/source-commit.txt"
+          git archive --format=zip HEAD > "$RUNNER_TEMP/opencloud-source/source.zip"
+          (cd "$RUNNER_TEMP/opencloud-source" && sha256sum source.zip > SHA256SUMS)
+          docker version
+          docker compose version
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opencloud-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencloud-source
+          retention-days: 1
+          if-no-files-found: error
