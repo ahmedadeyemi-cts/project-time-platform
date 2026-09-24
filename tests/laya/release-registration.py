@@ -26,8 +26,8 @@ tests/module064-migration-rollout.test.py
 # seals include all pre-existing branches, owner checks, build steps and guards;
 # they are not hashes of a list of filenames.
 GATE_BLOBS = {
-    '.github/workflows/module-management-owner-drawer-ci.yml': '201cfe4042ab92021634e81e0d5b52ba92949770',
-    'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh': 'ee63a7abfbaa764ec102eb7db9453513bcd1f2fd',
+    '.github/workflows/module-management-owner-drawer-ci.yml': '507ba3b7eb03a2c79f5f313bc41a6dd82bb80d01',
+    'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh': 'bea9c4d14e76e19ca8308c256ad83ad7d07c861a',
     'scripts/release-test/validate-protected-test-controller-branches.sh': '425e702b13cfe982fa23db2274c5c3864f537dbc',
     '.github/workflows/flowhive-psa-release-control-ci.yml': 'a66a3c7f67cac18fc8e45df372f4013b5b888bb7',
     '.github/workflows/flowhive-enterprise-psa-ci.yml': 'b3f63304b3a7d6e322c56669cd848ab403187b0a',
@@ -39,6 +39,8 @@ GATE_BLOBS = {
     'tests/pr1140-uat-recovery-scope.py': 'd164cfd1059b4d928a176d143553d0f570d81f7c',
     'tests/test-pr1140-uat-recovery.py': '72999c53daefa3efe4b23b9d52902baf944bdc5b',
     'tests/test-pr1151-uat-supersession.py': 'd33b2ee8548c5dc3eccc2c33acff93e8b01c224d',
+    'scripts/release-test/verify-module025-quarantine-controller.py': '84263240e4bc8b41777e7958a4af6dbdb70fff12',
+    'tests/laya/test_release_registration.py': '5d2ab30f6a7d1d7b0669f480d71b6321dc3817b9',
 }
 FIXTURE = 'tests/laya/release-admission-fixture.py'
 FIXTURE_BLOB = 'bc84334a045f396738b54f60cb688a2ba13424c6'
@@ -135,10 +137,31 @@ def context():
     return base, {row.split('\t', 1)[1] for row in rows}
 
 
+CANONICAL_REVIEW_ENTRY = {'path': 'database/migrations/125_module025_canonical_references.sql', 'sha256': '8ffcada76170f9447c090cf2009c14c4c9cd0517e515dfd83e9b5a852abac070', 'signals': ['data_mutation'], 'review_default': 'review_required', 'decision': 'review_required', 'rationale': 'Tracks the canonical-reference SQL already merged in PR1159. This entry is review inventory, not execution or production approval.'}
+CATALOG_PATH = 'docs/production-readiness/foundation/initialization-review.json'
+
+
+def expected_core(path):
+    original = git('show', RELEASE_PATCH + ':' + path)
+    if path != CATALOG_PATH:
+        return original
+    import json
+    catalog = json.loads(original)
+    require(all(row['path'] != CANONICAL_REVIEW_ENTRY['path'] for row in catalog['scripts']),
+            'Canonical catalog entry must be a single additive registration')
+    catalog['scripts'].append(CANONICAL_REVIEW_ENTRY)
+    catalog['scripts'].sort(key=lambda row: row['path'])
+    return (json.dumps(catalog, indent=2) + '\n').encode()
+
+
 def check_core():
     git('merge-base', '--is-ancestor', RELEASE_PATCH, 'HEAD')
     for path in CORE:
-        verify_bytes(path, (ROOT / path).read_bytes(), git('show', RELEASE_PATCH + ':' + path))
+        verify_bytes(path, (ROOT / path).read_bytes(), expected_core(path))
+    canonical_source = git('show', '82e54cd8b7eefaac04f9df77162504a4c628a104:' + CANONICAL_REVIEW_ENTRY['path'])
+    verify_bytes(CANONICAL_REVIEW_ENTRY['path'], (ROOT / CANONICAL_REVIEW_ENTRY['path']).read_bytes(), canonical_source)
+    require(hashlib.sha256(canonical_source).hexdigest() == CANONICAL_REVIEW_ENTRY['sha256'],
+            'Merged canonical SQL identity changed')
     for path, expected in GATE_BLOBS.items():
         require(git_blob((ROOT / path).read_bytes()) == expected,
                 'Control wiring differs from its complete reviewed contents: ' + path)
@@ -194,7 +217,7 @@ def check_protected(paths):
     check_control()
     # Re-evaluate every requested path. A filename match never establishes safety.
     for path in paths:
-        verify_bytes(path, (ROOT / path).read_bytes(), git('show', RELEASE_PATCH + ':' + path))
+        verify_bytes(path, (ROOT / path).read_bytes(), expected_core(path))
 
 
 def self_test():

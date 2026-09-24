@@ -167,6 +167,8 @@ jobs:
             echo 'PR719_MODULE_MANAGEMENT_COMBINED_SOURCE_BOUNDARY=PASS'
           elif [[ "$HEAD_BRANCH" == 'control/pr1153-source-registration-20260923' ]]; then
             python3 tests/laya/release-registration.py --control
+          elif [[ "$HEAD_BRANCH" == 'fix/automatic-document-admission-laya-20260923' ]]; then
+            python3 tests/laya/release-registration.py --application
           else
             echo 'Module Management repair changed an unexpected source path.' >&2
             diff -u "$RUNNER_TEMP/module-management-focused.txt" "$RUNNER_TEMP/module-management-actual.txt" || true

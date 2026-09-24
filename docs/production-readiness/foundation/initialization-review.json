@@ -1761,6 +1761,16 @@
       "rationale": "Adds the Protected Test-only universal security admission and durable Module 064 classification job schema. Requires migration-order, least-privilege service identity, quarantine/revocation, and live UAT review before any production consideration."
     },
     {
+      "path": "database/migrations/125_module025_canonical_references.sql",
+      "sha256": "8ffcada76170f9447c090cf2009c14c4c9cd0517e515dfd83e9b5a852abac070",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "Tracks the canonical-reference SQL already merged in PR1159. This entry is review inventory, not execution or production approval."
+    },
+    {
       "path": "database/seed-data/001_non_project_time_categories.sql",
       "sha256": "88748fb714fe3fe2ecce9b02bd4717b9da99d51ab2671f37ed451b1c7b64c22c",
       "signals": [

@@ -102,6 +102,10 @@ if [[ "$HEAD_BRANCH" == 'control/pr1153-source-registration-20260923' ]]; then
   python3 tests/laya/release-registration.py --control
   ALLOWED_DATABASE='^database/migrations/125_automatic_document_admission_laya\.sql$'
   publish_mode OWNED_SOURCE
+elif [[ "$HEAD_BRANCH" == 'fix/automatic-document-admission-laya-20260923' ]]; then
+  python3 tests/laya/release-registration.py --application
+  ALLOWED_DATABASE='a^'
+  publish_mode OWNED_SOURCE
 elif [[ "$HEAD_BRANCH" == 'feature/module025-review-timing-delete-reliability-20260918' ]]; then
   node tests/module025-review-timing-delete-scope.mjs
   ALLOWED_DATABASE='^database/migrations/110_module025_ungenerated_draft_delete\.sql$'
