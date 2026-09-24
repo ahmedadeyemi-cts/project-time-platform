@@ -56,6 +56,29 @@ public sealed record CelarAiComposeRequest(
 /// yet. This type is intentionally internal so the public Celar compose endpoint
 /// cannot accept caller-asserted authoritative evidence.
 /// </summary>
+/// <summary>
+/// Phase 1 reference-source kind. Only <see cref="Canonical"/> (admin-managed
+/// identity-free template) is implemented; <c>PriorVersion</c> (same-engagement
+/// customer scope) is deliberately reserved for a later phase and NOT added here.
+/// </summary>
+internal enum Module025ReferenceKind
+{
+    Canonical
+}
+
+/// <summary>
+/// Server-owned optional reference attached to a Module 025 detailed-scope
+/// generation as a co-equal authoritative citation (citation 2). This type is
+/// intentionally internal and constructed server-side only: the client submits a
+/// canonical identifier, never reference text.
+/// </summary>
+internal sealed record Module025ReferenceSource(
+    Module025ReferenceKind Kind,
+    Guid ReferenceId,
+    string Label,
+    string ReferenceText,
+    DateTimeOffset SavedAt);
+
 internal sealed record CelarAiAuthoritativeScopeEvidence(
     Guid EngagementId,
     int Revision,
@@ -66,6 +89,13 @@ internal sealed record CelarAiAuthoritativeScopeEvidence(
     Module025PhaseExecution? PhaseExecution = null)
 {
     internal bool ServiceScopeOnly { get; init; }
+
+    /// <summary>
+    /// Optional author-selected canonical template reference. When present the
+    /// generation injects it as citation 2 (a structural/scope precedent, not
+    /// customer-specific truth). Absent = single-citation behaviour as before.
+    /// </summary>
+    internal Module025ReferenceSource? Reference { get; init; }
 }
 
 public sealed record CelarAiTimelineItem(

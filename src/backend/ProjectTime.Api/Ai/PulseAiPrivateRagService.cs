@@ -460,6 +460,20 @@ public sealed partial class PulseAiPrivateRagService
                     "The saved Module 025 Service Overview did not satisfy the private source-evidence boundary.");
             }
         }
+        PulseAiPrivateRetrievedChunk? referenceSource = null;
+        if (authoritativeSource is not null && authoritativeScopeEvidence!.Reference is not null)
+        {
+            // The primary already passed the same-customer guard above. Build the
+            // co-equal citation 2 from the neutralized canonical template; any
+            // reference failure fails closed without changing the saved draft.
+            referenceSource = CreateModule025ReferenceScopeSource(authoritativeScopeEvidence.Reference);
+            if (referenceSource is null)
+                return Blocked(
+                    feature,
+                    purpose,
+                    "module025_reference_scope_invalid",
+                    "The selected canonical reference did not satisfy the identity-neutralization boundary.");
+        }
         if (authoritativeSource is null
             && !request.ProjectId.HasValue
             && projectCode.Length == 0
@@ -509,16 +523,19 @@ public sealed partial class PulseAiPrivateRagService
             modelSchema: "PulseAiPrivateFlowHivePlan",
             systemInstruction: FlowHiveSystemInstruction(
                 feature,
-                hasModule025AuthoritativeScope: authoritativeSource is not null),
+                hasModule025AuthoritativeScope: authoritativeSource is not null,
+                hasModule025ReferenceScope: referenceSource is not null),
             userInstruction: FlowHiveUserInstruction(
                 feature,
                 requestedOutcome,
-                hasModule025AuthoritativeScope: authoritativeSource is not null),
+                hasModule025AuthoritativeScope: authoritativeSource is not null,
+                hasModule025ReferenceScope: referenceSource is not null),
             flowHive: true,
             retrieveAuthorizedDocuments: true,
             usePrivateModelWhenAvailable: usePrivateModelWhenAvailable,
             cancellationToken,
             authoritativeSource,
+            referenceSource: referenceSource,
             phaseExecution: authoritativeScopeEvidence?.PhaseExecution,
             flowHiveExecution: request.FlowHiveExecution);
     }
@@ -563,6 +580,7 @@ public sealed partial class PulseAiPrivateRagService
         bool usePrivateModelWhenAvailable,
         CancellationToken cancellationToken,
         PulseAiPrivateRetrievedChunk? authoritativeSource = null,
+        PulseAiPrivateRetrievedChunk? referenceSource = null,
         string? structuredContext = null,
         Module025PhaseExecution? phaseExecution = null,
         FlowHiveSequentialExecution? flowHiveExecution = null)
@@ -586,7 +604,10 @@ public sealed partial class PulseAiPrivateRagService
             var retrieval = flowHiveExecution?.State.Evidence is { } pinnedEvidence
                 ? flowHiveExecution.PinEvidence(pinnedEvidence)
                 : authoritativeSource is not null
-                ? Module025AuthoritativeScopeRetrieval(query, authoritativeSource)
+                ? Module025AuthoritativeScopeRetrieval(query,
+                    referenceSource is null
+                        ? [authoritativeSource]
+                        : [authoritativeSource, referenceSource])
                 : retrieveAuthorizedDocuments
                     ? await _retrieval.RetrieveAsync(
                         access,
@@ -1584,9 +1605,96 @@ public sealed partial class PulseAiPrivateRagService
             SourceModule: "025");
     }
 
+    /// <summary>
+    /// Builds citation 2 from an author-selected canonical template reference.
+    /// The reference text is passed through DEFENSIVE identity neutralization
+    /// (reusing <see cref="PulseAiEscalationSanitizer"/>); if the source carried
+    /// residual customer/person/organization/account identity (or collides with a
+    /// customer identity) generation FAILS CLOSED (returns null). Raw reference
+    /// text is never injected and the NEUTRALIZED text is what is hashed/emitted.
+    /// </summary>
+    internal static PulseAiPrivateRetrievedChunk? CreateModule025ReferenceScopeSource(
+        Module025ReferenceSource reference)
+    {
+        var label = Clean(reference.Label, 300);
+        var referenceText = Clean(
+            reference.ReferenceText,
+            Module025ReferenceSourcePolicy.MaximumReferenceTextCharacters);
+        if (reference.ReferenceId == Guid.Empty
+            || label.Length == 0
+            || referenceText.Length < 20
+            || reference.SavedAt == default)
+        {
+            return null;
+        }
+
+        var sanitizer = new PulseAiEscalationSanitizer();
+        var neutralization = sanitizer.Sanitize(new PulseAiSanitizationRequest(
+            Purpose: "module025_reference_scope_neutralization",
+            Content: referenceText,
+            Classification: "generic",
+            SensitiveTerms: [],
+            AcknowledgePreviewOnly: true));
+        var neutralized = neutralization.SanitizedCapsule?.Trim() ?? string.Empty;
+        if (neutralized.Length < 20) return null;
+
+        // A canonical template must be identity-free. If neutralization had to
+        // remove any customer/person/organization/account/contact identity, the
+        // source is not a clean template: fail closed rather than inject it.
+        string[] identityCategories =
+        [
+            "named_people_and_customers",
+            "organization_and_customer_names",
+            "user_and_account_identifiers",
+            "locations_and_facilities",
+            "email_addresses",
+            "phone_numbers",
+            "government_identifiers",
+            "postal_addresses",
+            "secrets_and_credentials",
+            "high_entropy_tokens"
+        ];
+        if (neutralization.RemovedCategories.Any(identityCategories.Contains))
+            return null;
+
+        var textHash = Sha256(neutralized);
+        var sourceHash = Sha256($"module025-reference|{reference.ReferenceId:D}|{label}|{textHash}");
+        return new PulseAiPrivateRetrievedChunk(
+            ChunkId: sourceHash,
+            DocumentVersionId: reference.ReferenceId,
+            DocumentId: reference.ReferenceId,
+            ProjectId: null,
+            ProjectCode: string.Empty,
+            ProjectName: label,
+            CustomerName: string.Empty,
+            DocumentCategory: "module025_reference_template",
+            DocumentVersion: "module025-canonical-reference",
+            Classification: "author_selected_reference_scope",
+            OriginalFileName: label,
+            CitationAnchor: "Reference Template",
+            PageNumber: null,
+            SheetName: null,
+            SectionTitle: "Reference Template",
+            Text: neutralized,
+            SourceSha256: sourceHash,
+            TextSha256: textHash,
+            LexicalScore: 1m,
+            SemanticScore: 1m,
+            CombinedScore: 1m,
+            ProcessedAt: reference.SavedAt,
+            RankOrder: 2,
+            SourceType: "module025_reference_scope",
+            SourceModule: "025");
+    }
+
+    private static PulseAiPrivateRetrievalResult Module025AuthoritativeScopeRetrieval(
+        PulseAiPrivateRetrievalQuery query,
+        PulseAiPrivateRetrievedChunk source) =>
+        Module025AuthoritativeScopeRetrieval(query, [source]);
+
     private static PulseAiPrivateRetrievalResult Module025AuthoritativeScopeRetrieval(
         PulseAiPrivateRetrievalQuery _,
-        PulseAiPrivateRetrievedChunk source) =>
+        IReadOnlyList<PulseAiPrivateRetrievedChunk> sources) =>
         new(
             Status: "module025_authoritative_scope_ready",
             // Migration 053 constrains this column to the existing retrieval
@@ -1594,15 +1702,15 @@ public sealed partial class PulseAiPrivateRagService
             // exact Module 025 provenance without weakening that schema contract.
             RetrievalMode: "direct_knowledge",
             ResolvedProjectId: null,
-            ResolvedProjectCode: source.ProjectCode,
-            ResolvedProjectName: source.ProjectName,
-            CandidateCount: 1,
-            AuthorizedCandidateCount: 1,
-            Chunks: [source],
+            ResolvedProjectCode: sources[0].ProjectCode,
+            ResolvedProjectName: sources[0].ProjectName,
+            CandidateCount: sources.Count,
+            AuthorizedCandidateCount: sources.Count,
+            Chunks: [.. sources],
             MissingEvidence: [],
             Conflicts: [],
             CoverageScore: 1m,
-            DataAsOf: source.ProcessedAt,
+            DataAsOf: sources[0].ProcessedAt,
             DiagnosticCode: string.Empty);
 
     private static IReadOnlyList<PulseAiPrivateAnswerCitation> Citations(
@@ -1958,11 +2066,12 @@ public sealed partial class PulseAiPrivateRagService
     {
         var source = CreateModule025AuthoritativeScopeSource(evidence)
             ?? throw new JsonException("module025_phase_source_invalid");
-        var retrieval = Module025AuthoritativeScopeRetrieval(null!, source);
+        var (chunks, citationIds) = Module025ScopeChunks(evidence, source);
+        var retrieval = Module025AuthoritativeScopeRetrieval(null!, chunks);
         var plan = ParseModule025PlanContent(content, retrieval, [evidence.PhaseExecution!.Phase]);
         return new(Guid.NewGuid(), "completed", CelarAiCapabilityCatalog.SowGsdPlanning, "sow_draft",
             "direct_knowledge", provider, string.Empty, null, evidence.EngagementNumber, evidence.CustomerName,
-            null, plan, Citations([source], [1]),
+            null, plan, Citations(chunks, citationIds),
             [evidence.ServiceScopeOnly
                 ? "The saved Service Scope is authoritative. The expanded overview, tasks, assumptions and estimates are AI proposals, not approved scope changes or independently verified vendor guidance."
                 : "Technical work packages were proposed from a closed technology capsule. The saved Service Overview remains authoritative; quantities, versions, customer constraints and all effort estimates require Solution Architect review."],
@@ -1975,9 +2084,24 @@ public sealed partial class PulseAiPrivateRagService
         if (plan is null) throw new JsonException("module025_phase_plan_missing");
         var source = CreateModule025AuthoritativeScopeSource(evidence)
             ?? throw new JsonException("module025_phase_source_invalid");
-        var retrieval = Module025AuthoritativeScopeRetrieval(null!, source);
+        var (chunks, _) = Module025ScopeChunks(evidence, source);
+        var retrieval = Module025AuthoritativeScopeRetrieval(null!, chunks);
         return ParseModule025PlanContent(JsonSerializer.Serialize(plan), retrieval,
             phase is null ? Module025DeliveryPhases : [phase]);
+    }
+
+    // Assembles the authoritative citation set for the SOW/GSD per-phase path.
+    // Citation 1 is the saved Service Overview (authoritative customer scope);
+    // citation 2, when an author selected a canonical reference, is the
+    // neutralized template precedent. Any reference-neutralization failure throws
+    // module025_reference_scope_invalid so the generation fails closed.
+    private static (IReadOnlyList<PulseAiPrivateRetrievedChunk> Chunks, IReadOnlyCollection<int> CitationIds)
+        Module025ScopeChunks(CelarAiAuthoritativeScopeEvidence evidence, PulseAiPrivateRetrievedChunk source)
+    {
+        if (evidence.Reference is null) return ([source], [1]);
+        var reference = CreateModule025ReferenceScopeSource(evidence.Reference)
+            ?? throw new JsonException("module025_reference_scope_invalid");
+        return ([source, reference], [1, 2]);
     }
 
     private static async Task<PulseAiPrivateModelResult> GenerateModule025SinglePhaseAsync(
@@ -3655,11 +3779,12 @@ public sealed partial class PulseAiPrivateRagService
 
     private static string FlowHiveSystemInstruction(
         string feature,
-        bool hasModule025AuthoritativeScope = false)
+        bool hasModule025AuthoritativeScope = false,
+        bool hasModule025ReferenceScope = false)
     {
         if (hasModule025AuthoritativeScope)
         {
-            return $$"""
+            var instruction = $$"""
                 You are Celar AI preparing a private, exhaustive, customer-understandable, review-only SOW/GSD delivery plan for capability {{feature}}.
                 The supplied Module 025 Saved Service Overview is server-authorized author input and citation 1. It establishes the requested service boundary but may be intentionally brief. Never describe it or the generated draft as approved, published, contractually binding, customer-accepted, scheduled, assigned, or completed.
                 Use professional technical knowledge to expand the requested technology service into the real work normally required for successful delivery. This includes discovery and inventory, compatibility and readiness checks, architecture and change design, prerequisites and backups, controlled implementation sequencing, rollback preparation, functional and operational validation, documentation, knowledge transfer, handoff, and closeout when applicable to the requested service.
@@ -3671,6 +3796,11 @@ public sealed partial class PulseAiPrivateRagService
                 Citation 1 supports the requested service boundary. Treat model-derived implementation procedures, durations, hours, dependencies, and technical recommendations as reviewable proposals—not as facts proven by the citation. Never invent the customer's topology, node count, hardware model, installed options, licensing entitlement, maintenance window, credentials, backup state, interoperability, or acceptance decision; put those unknowns in assumptions or openQuestions.
                 Include top-level objective, milestones where useful, dependencies, requiredRoles, assumptions, risks, outOfScopeItems, openQuestions, conflicts, citationIds:[1], confidence, and confidenceExplanation. The Solution Architect must modify and validate the draft before any separately authorized approval or baseline.
                 """;
+            if (hasModule025ReferenceScope)
+            {
+                instruction += "\nA second server-authorized source is supplied as citation 2: an admin-managed canonical SOW TEMPLATE. Citation 1 (the saved Service Overview) is the authoritative customer scope; citation 2 is a structural and scope PRECEDENT only, never customer-specific truth and never an approval. Use citation 2 to inform the delivery structure, phase breakdown and typical activities that the requested service normally requires, but never copy its specific quantities, names, environments or commitments as if they were this customer's facts, and preserve any customer-specific unknown as an assumption or open question. Continue to cite citation 1 as each task's scope anchor.";
+            }
+            return instruction;
         }
 
         return $"""
@@ -3692,15 +3822,21 @@ public sealed partial class PulseAiPrivateRagService
     private static string FlowHiveUserInstruction(
         string feature,
         string requestedOutcome,
-        bool hasModule025AuthoritativeScope = false)
+        bool hasModule025AuthoritativeScope = false,
+        bool hasModule025ReferenceScope = false)
     {
         if (hasModule025AuthoritativeScope)
         {
-            return $"""
+            var instruction = $"""
                 Build the complete implementation-grade delivery plan required for {feature} from citation 1 and the requested outcome.
                 Determine the technology-specific work that must actually occur, then divide it into detailed Plan, Design, Implement, Validate, and Release work packages. Explain the sequence, dependencies, evidence, acceptance conditions, responsibilities, safeguards, rollback approach, and handoff in customer-ready language.
                 Keep every task traceable to citation 1 as its scope anchor. Explicitly label inferred procedures and estimates as assumptions and preserve unsupported customer-environment facts as openQuestions. Do not return generic phase boilerplate or simply restate the Service Overview.
                 """;
+            if (hasModule025ReferenceScope)
+            {
+                instruction += "\nCitation 2 is a canonical template precedent for delivery structure only; use it to shape phases and typical activities, but never import its specifics as this customer's facts and keep every task anchored to citation 1.";
+            }
+            return instruction;
         }
 
         return $"""
