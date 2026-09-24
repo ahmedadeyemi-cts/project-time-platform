@@ -63,6 +63,7 @@ public static class Module025SowGsdModule
     {
         MapModule025TemplateCatalogEndpoints(app);
         MapModule025WorkTrackingEndpoints(app);
+        app.MapModule025CanonicalReferenceEndpoints();
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/handoff-notifications", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)HandoffNotificationStatusAsync);
         app.MapGet("/api/module025/sow-gsd/team-work", (Func<string?, string?, HttpContext, CancellationToken, Task<IResult>>)TeamWorkAsync);
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/transfer-options", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)TransferOptionsAsync);
@@ -442,6 +443,25 @@ public static class Module025SowGsdModule
             message = "Enter a meaningful multi-word Service Overview that identifies the requested technical work, expected outcome, and any known platform/version details before generating scope."
         });
 
+        // Optional canonical reference selection. Empty/absent body = today's
+        // behavior. When the kill-switch is OFF any selection is ignored entirely.
+        Guid? canonicalReferenceId = null;
+        if (Module025ReferenceSourcePolicy.Enabled)
+        {
+            var selection = await ReadCanonicalReferenceSelectionAsync(context, cancellationToken);
+            if (selection.HasValue)
+            {
+                var currentAccess = await context.RequestServices
+                    .GetRequiredService<PulseAiPrivateRagRepository>()
+                    .LoadAccessAsync(access.EffectiveUserId, cancellationToken);
+                if (!HasGenerationAuthority(access, currentAccess, protectedTestUatGrant))
+                    return Forbidden("module025_reference_scope");
+                var validation = await ValidateActiveCanonicalReferenceAsync(connection, selection.Value, cancellationToken);
+                if (validation is not null) return validation;
+                canonicalReferenceId = selection.Value;
+            }
+        }
+
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using (var generationLock = new NpgsqlCommand(
             "SELECT pg_advisory_xact_lock(hashtextextended(@engagement_id::text,725));",
@@ -532,6 +552,7 @@ public static class Module025SowGsdModule
                 access.IsManager,
                 expectedRevision = current.Revision,
                 correlationId,
+                canonicalReferenceId,
                 queuedAt = DateTimeOffset.UtcNow
             },
             cancellationToken);
@@ -697,12 +718,96 @@ public static class Module025SowGsdModule
                         && Module025ProtectedTestUatAccess.MatchesWorkerGrant(protectedTestUatGrant)));
     }
 
+    // Reads the optional { canonicalReferenceId } body without breaking the
+    // backward-compatible empty/absent-body contract. Identifier only; the client
+    // never submits reference text.
+    private static async Task<Guid?> ReadCanonicalReferenceSelectionAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        if (context.Request.ContentLength is null or 0) return null;
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: cancellationToken);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
+            if (TryJsonProperty(document.RootElement, "canonicalReferenceId", out var value)
+                && value.ValueKind == JsonValueKind.String
+                && Guid.TryParse(value.GetString(), out var id)
+                && id != Guid.Empty)
+            {
+                return id;
+            }
+        }
+        catch (JsonException) { }
+        return null;
+    }
+
+    private static async Task<bool> CanonicalReferenceSchemaReadyAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("SELECT to_regclass('public.module025_canonical_references') IS NOT NULL;", connection);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    private static async Task<IResult?> ValidateActiveCanonicalReferenceAsync(NpgsqlConnection connection, Guid referenceId, CancellationToken cancellationToken)
+    {
+        if (!await CanonicalReferenceSchemaReadyAsync(connection, cancellationToken))
+            return Results.Json(new { status = "module025_reference_scope_migration_required", migration = "125_module025_canonical_references", message = "Apply the Module 025 canonical-reference migration before selecting a reference." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        await using var command = new NpgsqlCommand("SELECT 1 FROM module025_canonical_references WHERE id=@id AND active=TRUE;", connection);
+        command.Parameters.AddWithValue("id", referenceId);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            return Results.BadRequest(new { status = "module025_reference_scope_invalid", message = "The selected canonical reference is not an active reference." });
+        return null;
+    }
+
+    // Durability: re-load the persisted selection by generationId and re-validate
+    // it (still exists, still active, neutralization passes). Never trust the
+    // queued value blindly. Returns a Blocked outcome when a selected reference is
+    // no longer valid so the generation fails without changing the saved draft.
+    private static async Task<(Module025ReferenceSource? Reference, Module025GenerationExecutionOutcome? Error)> LoadQueuedCanonicalReferenceAsync(
+        NpgsqlConnection connection, Guid engagementId, Guid generationId, string correlationId, CancellationToken cancellationToken)
+    {
+        Guid? referenceId = null;
+        await using (var lookup = new NpgsqlCommand("""
+            SELECT evidence_json->>'canonicalReferenceId'
+            FROM module025_sow_gsd_events
+            WHERE engagement_id=@engagement_id AND event_type='ai_generation_queued'
+              AND evidence_json->>'generationId'=@generation_id
+            ORDER BY event_id DESC LIMIT 1;
+            """, connection))
+        {
+            lookup.Parameters.AddWithValue("engagement_id", engagementId);
+            lookup.Parameters.AddWithValue("generation_id", generationId.ToString());
+            if (await lookup.ExecuteScalarAsync(cancellationToken) is string candidate
+                && Guid.TryParse(candidate, out var parsed) && parsed != Guid.Empty)
+            {
+                referenceId = parsed;
+            }
+        }
+        if (!referenceId.HasValue) return (null, null);
+
+        Module025GenerationExecutionOutcome Invalid() => new(
+            StatusCodes.Status409Conflict, "module025_reference_scope_invalid",
+            "The selected canonical reference is no longer available. The saved SOW/GSD draft was not changed.",
+            correlationId, false, "module025_reference_scope_invalid");
+
+        if (!await CanonicalReferenceSchemaReadyAsync(connection, cancellationToken)) return (null, Invalid());
+        await using var command = new NpgsqlCommand("SELECT label, source_text, updated_at FROM module025_canonical_references WHERE id=@id AND active=TRUE;", connection);
+        command.Parameters.AddWithValue("id", referenceId.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return (null, Invalid());
+        var reference = new Module025ReferenceSource(
+            Module025ReferenceKind.Canonical, referenceId.Value,
+            reader.GetString(0), reader.GetString(1), reader.GetFieldValue<DateTimeOffset>(2));
+        // Re-run neutralization now; residual identity fails closed.
+        if (PulseAiPrivateRagService.CreateModule025ReferenceScopeSource(reference) is null) return (null, Invalid());
+        return (reference, null);
+    }
+
     private static async Task<Module025GenerationExecutionOutcome> ExecuteGenerationAsync(Guid engagementId, int expectedRevision, Guid generationId, Module025AccessContext access, Module025ProtectedTestUatAccess.WorkerGrant? protectedTestUatGrant, HttpContext context, CancellationToken cancellationToken)
     {
         var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Module025SowGsd");
         var queueCorrelationId = Clean(context.TraceIdentifier, 160);
 
         Module025EngagementRow current;
+        Module025ReferenceSource? reference = null;
         try
         {
             var opened = await OpenConnectionAsync(context, cancellationToken);
@@ -782,6 +887,12 @@ public static class Module025SowGsdModule
                         queueCorrelationId,
                         false);
                 }
+                if (Module025ReferenceSourcePolicy.Enabled)
+                {
+                    var loaded = await LoadQueuedCanonicalReferenceAsync(snapshotConnection, engagementId, generationId, queueCorrelationId, cancellationToken);
+                    if (loaded.Error is not null) return loaded.Error;
+                    reference = loaded.Reference;
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -820,7 +931,7 @@ public static class Module025SowGsdModule
             var evidence = new CelarAiAuthoritativeScopeEvidence(
                 current.EngagementId, current.Revision, current.EngagementNumber,
                 current.CustomerName, current.EffectiveServiceScope, current.UpdatedAt)
-                { ServiceScopeOnly = current.ServiceScope is not null };
+                { ServiceScopeOnly = current.ServiceScope is not null, Reference = reference };
             var source = PulseAiPrivateRagService.CreateModule025AuthoritativeScopeSource(evidence)
                 ?? throw new InvalidOperationException("module025_source_invalid");
             var journal = new Module025GenerationJournal(BuildConnectionString()!, engagementId,
@@ -1647,7 +1758,7 @@ public static class Module025SowGsdModule
         stateChanged = false
     };
 
-    private static async Task<Module025AccessContext?> ResolveAccessAsync(NpgsqlConnection connection, HttpContext context, CancellationToken cancellationToken)
+    internal static async Task<Module025AccessContext?> ResolveAccessAsync(NpgsqlConnection connection, HttpContext context, CancellationToken cancellationToken)
     {
         var actual = ProjectPulseActualSessionAuthority.ReadUserId(context, "ProjectPulseActualUserId", "ProjectPulseSessionUserId");
         var effective = ProjectPulseActualSessionAuthority.ReadUserId(context, "ProjectPulseEffectiveUserId", "ProjectPulseSessionUserId") ?? actual;
@@ -2156,7 +2267,7 @@ public static class Module025SowGsdModule
     private static void AddDistinct(List<string> target, string? value) { var clean = Clean(value, 12_000); if (clean.Length > 0 && !target.Contains(clean, StringComparer.OrdinalIgnoreCase)) target.Add(clean); }
     private static void AddDistinct(List<string> target, IEnumerable<string>? values) { foreach (var value in values ?? Array.Empty<string>()) AddDistinct(target, value); }
 
-    private static async Task<(NpgsqlConnection? Connection, IResult? Error)> OpenConnectionAsync(HttpContext context, CancellationToken cancellationToken)
+    internal static async Task<(NpgsqlConnection? Connection, IResult? Error)> OpenConnectionAsync(HttpContext context, CancellationToken cancellationToken)
     {
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString)) return (null, Results.Json(new { status = "module025_storage_unavailable", message = "The Module 025 database connection is not configured." }, statusCode: StatusCodes.Status503ServiceUnavailable));
@@ -2198,7 +2309,7 @@ public static class Module025SowGsdModule
     }
 
     private static async Task<IResult?> AuthorizeViewAsync(HttpContext context) => await GovernedOperationsReadModule.AuthorizeAsync(context, ModuleNumber, ViewRoles, new[] { "VIEW_SOW_GSD_025", "MANAGE_SOW_GSD_025", "MANAGE_ALL" });
-    private static bool SameOrigin(HttpContext context) { if (!context.Request.Headers.TryGetValue("Origin", out var values)) return true; if (!Uri.TryCreate(values.ToString(), UriKind.Absolute, out var origin)) return false; return string.Equals(origin.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase) && string.Equals(origin.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase) && origin.Port == (context.Request.Host.Port ?? (context.Request.IsHttps ? 443 : 80)); }
+    internal static bool SameOrigin(HttpContext context) { if (!context.Request.Headers.TryGetValue("Origin", out var values)) return true; if (!Uri.TryCreate(values.ToString(), UriKind.Absolute, out var origin)) return false; return string.Equals(origin.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase) && string.Equals(origin.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase) && origin.Port == (context.Request.Host.Port ?? (context.Request.IsHttps ? 443 : 80)); }
     private static string NormalizeCommercialModel(string? value) => string.Equals(value?.Trim(), "fixed", StringComparison.OrdinalIgnoreCase) || string.Equals(value?.Trim(), "fixed_price", StringComparison.OrdinalIgnoreCase) ? "fixed" : "time_and_materials";
     private static string NormalizeCustomerProgram(string? value) { var normalized = value?.Trim().ToLowerInvariant(); return normalized is "toyota" or "hyundai" ? normalized : "standard"; }
     private static string TemplateKey(string customerProgram) => customerProgram is "toyota" or "hyundai" ? Module025SowGsdDocumentExporter.HaeaGsdTemplateKey : Module025SowGsdDocumentExporter.StandardGsdTemplateKey;
@@ -2283,10 +2394,10 @@ public static class Module025SowGsdModule
     private static IReadOnlySet<string> Split(string value) => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
     private static string SafeFileName(string value) => new(value.Select(character => Path.GetInvalidFileNameChars().Contains(character) ? '-' : character).ToArray());
 
-    private static IResult SessionRequired() => Results.Unauthorized();
-    private static IResult Forbidden(string capability) => Results.Json(new { status = "module025_forbidden", capability, message = "Your current Pulse role or reporting scope does not grant this Module 025 operation." }, statusCode: StatusCodes.Status403Forbidden);
+    internal static IResult SessionRequired() => Results.Unauthorized();
+    internal static IResult Forbidden(string capability) => Results.Json(new { status = "module025_forbidden", capability, message = "Your current Pulse role or reporting scope does not grant this Module 025 operation." }, statusCode: StatusCodes.Status403Forbidden);
     private static IResult MigrationRequired() => Results.Json(new { status = "module025_migration_required", migration = MigrationId, message = "Apply the Module 025 SOW/GSD workspace migration before using this workflow." }, statusCode: StatusCodes.Status503ServiceUnavailable);
-    private static IResult OriginRejected() => Results.Json(new { status = "origin_rejected", message = "The request origin is not allowed." }, statusCode: StatusCodes.Status403Forbidden);
+    internal static IResult OriginRejected() => Results.Json(new { status = "origin_rejected", message = "The request origin is not allowed." }, statusCode: StatusCodes.Status403Forbidden);
     private static IResult RequestTooLarge() => Results.Json(new { status = "request_too_large", message = $"Module 025 request bodies are limited to {MaximumRequestBytes} bytes." }, statusCode: StatusCodes.Status413PayloadTooLarge);
     private static IResult RevisionConflict(int currentRevision) => Results.Conflict(new { status = "module025_revision_conflict", currentRevision, message = "This SOW/GSD changed after it was loaded. Reload the latest revision before saving again." });
     private static IResult StateConflict(string status, string message) => Results.Conflict(new { status, message });

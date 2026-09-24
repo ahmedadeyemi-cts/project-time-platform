@@ -11,3 +11,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Module064GeminiTests")]
 
 [assembly: InternalsVisibleTo("Module025ServiceScopeTests")]
+
+[assembly: InternalsVisibleTo("Module025CanonicalReferenceTests")]

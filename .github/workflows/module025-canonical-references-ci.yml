@@ -1,0 +1,48 @@
+name: Module 025 SOW canonical reference sources
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/**'
+      - 'database/migrations/125_module025_canonical_references.sql'
+      - 'tests/Module025CanonicalReferenceTests/**'
+      - '.github/workflows/module025-canonical-references-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: module025-canonical-references-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-canonical-tests
+        ports: ['5432/tcp']
+        options: >-
+          --health-cmd pg_isready --health-interval 3s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api --configuration Release
+      - name: Verify canonical reference contract, neutralization, and PostgreSQL migration
+        env:
+          MODULE025_CANONICAL_TEST_DATABASE: Host=127.0.0.1;Port=${{ job.services.postgres.ports[5432] }};Username=postgres;Password=${{ github.run_id }}-${{ github.run_attempt }}-canonical-tests;Database=postgres
+        run: |
+          set -o pipefail
+          dotnet run --project tests/Module025CanonicalReferenceTests --configuration Release -p:BuildProjectReferences=false 2>&1 | tee "$RUNNER_TEMP/canonical-reference-tests.log"
+      - name: Retain isolated test diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: canonical-reference-tests-${{ github.run_id }}
+          path: ${{ runner.temp }}/canonical-reference-tests.log
+          retention-days: 1
