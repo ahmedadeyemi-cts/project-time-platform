@@ -59,6 +59,22 @@ if (args.Length == 3 && args[0] == "--prepare-template")
     return;
 }
 
+if (args.Length >= 1 && args[0] == "--emit-samples")
+{
+    // Golden reference samples produced by the LIVE exporters offline (modelCalls=0)
+    // from a fixed, non-customer fixture engagement. Deterministic ids/dates; Office
+    // package metadata (timestamps) is normalized so a second run reproduces the samples.
+    var dir = args.Length >= 2 ? args[1] : Path.Combine("docs", "samples", "module025");
+    Directory.CreateDirectory(dir);
+    var sample = BuildSampleModel();
+    var haea = sample with { Engagement = sample.Engagement with { GsdTemplateKey = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.HaeaGsdTemplateKey } };
+    WriteSample(Path.Combine(dir, "sample-sow.docx"), ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateSowDocx(sample));
+    WriteSample(Path.Combine(dir, "sample-gsd.xlsx"), ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(sample));
+    WriteSample(Path.Combine(dir, "sample-gsd-haea.xlsx"), ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(haea));
+    Console.WriteLine("MODULE025_SAMPLES_WRITTEN dir=" + dir + " modelCalls=0");
+    return;
+}
+
 RunExportTests(args.Length > 0 ? args[0] : Path.Combine(Path.GetTempPath(), "module025-exports"));
 
 static void RunExportTests(string output)
@@ -241,7 +257,217 @@ static void RunExportTests(string output)
     File.WriteAllBytes(Path.Combine(output, "Acceptance-Contract-GSD.xlsx"), ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(gateModel, draft: true));
     File.WriteAllText(Path.Combine(output, "Acceptance-Contract-Tasks.json"), System.Text.Json.JsonSerializer.Serialize(gatePhases,
         new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+
+    // ===================================================================================
+    // Standards-spec assertions — one per stable id in
+    // docs/module025-sow-gsd-output-standards.md. Each is checked against FRESHLY generated
+    // live-exporter output from the golden fixture (the same fixture the samples use). Drift
+    // in any guarantee fails this run. Each assertion is tagged with its id (e.g. [SOW-FONT-01]).
+    // ===================================================================================
+    var std = BuildSampleModel();
+    var stdSow = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateSowDocx(std);
+    using (var sowZip = new System.IO.Compression.ZipArchive(new MemoryStream(stdSow)))
+    {
+        string SowPart(string name) { using var reader = new StreamReader(sowZip.GetEntry(name)!.Open()); return reader.ReadToEnd(); }
+        var stylesXml = SowPart("word/styles.xml");
+        // [SOW-FONT-01]
+        Check(stylesXml.Contains("w:ascii=\"Arial\"") && stylesXml.Contains("w:color w:val=\"000000\"") && stylesXml.Contains("w:sz w:val=\"22\""),
+            "[SOW-FONT-01] SOW body is Arial, black 000000, 11pt (w:sz=22)");
+        // [SOW-FONT-01]
+        Check(stylesXml.Contains("w:styleId=\"Title\"") && stylesXml.Contains("w:sz w:val=\"38\"") && stylesXml.Contains("w:sz w:val=\"26\"")
+            && stylesXml.Contains("w:sz w:val=\"30\"") && stylesXml.Contains("w:sz w:val=\"24\""),
+            "[SOW-FONT-01] SOW heading sizes Title 19 / Subtitle 13 / H1 15 / H2 12 pt");
+        // [SOW-LETTERHEAD-01]
+        Check(sowZip.GetEntry("word/media/us-signal.png") != null
+            && SowPart("word/header1.xml").Contains("rIdLogo")
+            && SowPart("word/_rels/header1.xml.rels").Contains("media/us-signal.png"),
+            "[SOW-LETTERHEAD-01] SOW header embeds the US Signal PNG letterhead");
+        var footerXml = SowPart("word/footer1.xml");
+        // [SOW-FOOTER-01]
+        Check(footerXml.Contains("US Signal | Statement of Work | Page") && footerXml.Contains("w:jc w:val=\"right\"") && footerXml.Contains("w:instr=\"PAGE\""),
+            "[SOW-FOOTER-01] right-aligned footer 'US Signal | Statement of Work | Page N'");
+        var documentXml = SowPart("word/document.xml");
+        // [SOW-PAGE-01]
+        Check(documentXml.Contains("w:w=\"12240\"") && documentXml.Contains("w:h=\"15840\""),
+            "[SOW-PAGE-01] US Letter page size (12240 x 15840 twips)");
+        int PhaseAt(string label) => documentXml.IndexOf("xml:space=\"preserve\">" + label + "</w:t>", StringComparison.Ordinal);
+        var order = new[] { PhaseAt("Plan"), PhaseAt("Design"), PhaseAt("Implement"), PhaseAt("Validate"), PhaseAt("Release") };
+        // [SOW-PHASES-01]
+        Check(order.All(index => index > 0) && order.Zip(order.Skip(1), (a, b) => a < b).All(ok => ok),
+            "[SOW-PHASES-01] phase Heading1 order Plan -> Design -> Implement -> Validate -> Release");
+        // [SOW-PHASES-01]
+        Check(new[] { "Execution Approach", "Deliverables", "US Signal Responsibilities", "Customer Responsibilities",
+                "Prerequisites", "Dependencies", "Assumptions", "Acceptance Criteria", "Validation Steps", "Risks / Considerations" }
+            .All(sub => documentXml.Contains(sub)),
+            "[SOW-PHASES-01] each phase carries the standard subsections");
+        // [SOW-DRAFT-01]
+        Check(!documentXml.Contains("DRAFT - Not approved"), "[SOW-DRAFT-01] confirmed SOW carries no draft marker");
+    }
+    using (var sowDraftZip = new System.IO.Compression.ZipArchive(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateSowDocx(std, draft: true))))
+    {
+        using var reader = new StreamReader(sowDraftZip.GetEntry("word/document.xml")!.Open());
+        // [SOW-DRAFT-01]
+        Check(reader.ReadToEnd().Contains("DRAFT - Not approved"), "[SOW-DRAFT-01] draft SOW shows 'DRAFT - Not approved' marker");
+    }
+    var expectedSheets = new[] { "Summary", "Phase Breakdown", "Totals Sheet", "SELL SKUs", "Plan", "Design", "Implement", "Validate", "Release", "Architect Notes", "Gotcha Items", "Assumptions Responsibilities" };
+    using (var stdGsd = new XLWorkbook(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(std))))
+    {
+        // [GSD-SHEETS-01]
+        Check(stdGsd.Worksheets.Select(s => s.Name).SequenceEqual(expectedSheets), "[GSD-SHEETS-01] standard 12-sheet template layout verbatim");
+        // [GSD-FONT-01]
+        Check(stdGsd.Worksheets.All(s => s.Style.Font.FontName == "Arial"), "[GSD-FONT-01] whole-workbook Arial font");
+        var totalsSheet = stdGsd.Worksheet("Totals Sheet");
+        // [GSD-GUARDS-01]
+        Check(totalsSheet.Cell("B3").GetString() == "RESOURCE ALLOCATION REQUIRES REVIEW"
+            && totalsSheet.Cell("B29").GetString() == "PRICING REQUIRES APPROVED RATES"
+            && stdGsd.Worksheet("SELL SKUs").Cell("D5").GetString().Contains("No SKU, rate or price is inferred")
+            && stdGsd.Worksheet("Phase Breakdown").Cell("B8").GetString() == "Role allocation pending",
+            "[GSD-GUARDS-01] review/rate guard cells present, no invented allocations or rates");
+        // [GSD-RECONCILE-01]
+        Check(stdGsd.Worksheet("Summary").Cell("F4").GetDouble() == (double)std.FinalHours,
+            "[GSD-RECONCILE-01] reviewed hours reconcile without template surcharges");
+    }
+    using (var haeaGsd = new XLWorkbook(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(
+        std with { Engagement = std.Engagement with { GsdTemplateKey = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.HaeaGsdTemplateKey } }))))
+    {
+        // [GSD-HAEA-01]
+        Check(haeaGsd.Worksheet(1).Name == "HAEA GSD", "[GSD-HAEA-01] HAEA program generates from-scratch layout");
+    }
+    var partialPhasesStd = std.Phases.Select((phase, index) => index == 0
+        ? phase with { Tasks = new[] { new ProjectTime.Api.Modules.Module025TaskEstimate(new Guid("00000000-0000-0000-0000-0000000000c3").ToString(), "Pending task allocation", null) } }
+        : phase).ToArray();
+    var partialStd = std with { Phases = partialPhasesStd, Engagement = std.Engagement with { Phases = partialPhasesStd } };
+    using (var draftGsd = new XLWorkbook(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(partialStd, draft: true))))
+    {
+        // [GSD-DRAFT-01]
+        Check(draftGsd.Worksheet("Summary").Cell("E1").GetString().StartsWith("DRAFT")
+            && draftGsd.Worksheet("Summary").Cell("F4").GetString() == "",
+            "[GSD-DRAFT-01] draft marks Summary!E1 DRAFT and blanks partial totals");
+    }
+    using (var injGsd = new XLWorkbook(new MemoryStream(ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(
+        std with { Engagement = std.Engagement with { CustomerName = "=HYPERLINK(\"https://example.invalid\")" } }))))
+    {
+        // [SAFETY-INJECTION-01]
+        Check(!injGsd.Worksheet("Summary").Cell("C11").HasFormula, "[SAFETY-INJECTION-01] formula-looking customer text stored as a literal");
+    }
+    var stdGsdBytes = ProjectTime.Api.Modules.Module025SowGsdDocumentExporter.CreateGsdXlsx(std);
+    using (var leakArchive = new System.IO.Compression.ZipArchive(new MemoryStream(stdGsdBytes)))
+    using (var leakBook = new XLWorkbook(new MemoryStream(stdGsdBytes)))
+    {
+        var packageXml = string.Join(" ", leakArchive.Entries.Where(p => p.FullName.EndsWith(".xml") || p.FullName.EndsWith(".rels")).Select(p => { using var reader = new StreamReader(p.Open()); return reader.ReadToEnd(); }));
+        var cellText = string.Join(" ", leakBook.Worksheets.SelectMany(s => s.CellsUsed()).Where(c => !c.HasFormula).Select(c => c.GetString()));
+        // [SAFETY-LEAK-01]
+        Check(new[] { "sharepoint.com", "Poudre", "Stephanie", "McDonald", "Shaffer", "206140", "OneNeck", "Dashboard 1 migration" }
+            .All(marker => !packageXml.Contains(marker, StringComparison.OrdinalIgnoreCase) && !cellText.Contains(marker, StringComparison.OrdinalIgnoreCase)),
+            "[SAFETY-LEAK-01] no reference/customer data leakage in package or cells");
+    }
+
     Console.WriteLine("MODULE025_EXPORT_TESTS=PASS modelCalls=0");
+}
+
+static ProjectTime.Api.Modules.Module025DocumentModel BuildSampleModel()
+{
+    using var json = System.Text.Json.JsonDocument.Parse("{}");
+    var empty = json.RootElement.Clone();
+    string[] codes = { "plan", "design", "implement", "validate", "release" };
+    var phases = codes.Select((code, i) => new ProjectTime.Api.Modules.Module025PhaseRow(
+        code, i, 8m, 12m + i,
+        "Deliver the reviewed " + code + " scope for the sample engagement.",
+        new[] { "Review the agreed " + code + " requirements", "Complete the approved " + code + " activities" },
+        new[] { "Record the " + code + " configuration decisions" },
+        new[] { "Reviewed " + code + " delivery record" },
+        new[] { "Provide the agreed " + code + " services and review the results" },
+        new[] { "Provide access and confirm the " + code + " outcomes" },
+        new[] { "Confirm the " + code + " prerequisites are in place" },
+        new[] { "Depends on completion of the prior-phase deliverables" },
+        new[] { "Assumes the reviewed " + code + " scope is unchanged" },
+        Array.Empty<string>(),
+        new[] { "Customer reviews the documented " + code + " results" },
+        new[] { "Validate the " + code + " outcome against the acceptance criteria" },
+        new[] { "Schedule risk if the " + code + " prerequisites are delayed" },
+        "Reviewed phase estimate; task allocation pending.",
+        Array.Empty<int>(), false, DateTimeOffset.UnixEpoch)).ToArray();
+    var e = new ProjectTime.Api.Modules.Module025EngagementRow(
+        new Guid("00000000-0000-0000-0000-0000000000a1"), "SOW-SAMPLE-0001",
+        new Guid("00000000-0000-0000-0000-0000000000b2"), "Sample Solution Architect", "Architecture", "Delivery", null,
+        "Sample Engagement Customer", "manual", "fixed", "standard", "standard_gsd", null,
+        "Sample Account Executive", null, "Sample Inside Sales",
+        "Deliver the agreed project scope using the five delivery phases.",
+        "Sample Platform Modernization", empty, empty,
+        "review_ready", true, 2, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, phases);
+    return new ProjectTime.Api.Modules.Module025DocumentModel(e, phases, 40m, phases.Sum(p => p.FinalHours));
+}
+
+static void WriteSample(string path, byte[] bytes)
+{
+    File.WriteAllBytes(path, bytes);
+    NormalizeOfficeZip(path);
+}
+
+// OpenXML/ClosedXML embed nondeterministic package metadata: creation/modification
+// timestamps, per-entry zip mod times, and — for the from-scratch package writer — a
+// random-GUID ".psmdcp" core-properties part (referenced from _rels/.rels). Normalize
+// all of those to fixed values so a second sample run reproduces the committed bytes;
+// the exporters' own document content is already deterministic for a fixed fixture.
+static void NormalizeOfficeZip(string path)
+{
+    var fixedTime = new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    const string psmdcpFixed = "package/services/metadata/core-properties/core.psmdcp";
+    var entries = new List<(string Name, byte[] Data)>();
+    string? psmdcpOriginal = null;
+    using (var source = System.IO.Compression.ZipFile.OpenRead(path))
+        foreach (var entry in source.Entries)
+        {
+            using var stream = entry.Open();
+            using var memory = new MemoryStream();
+            stream.CopyTo(memory);
+            if (entry.FullName.EndsWith(".psmdcp", StringComparison.OrdinalIgnoreCase)) psmdcpOriginal = entry.FullName;
+            entries.Add((entry.FullName, memory.ToArray()));
+        }
+    System.Xml.Linq.XNamespace dcterms = "http://purl.org/dc/terms/";
+    using var output = new FileStream(path, FileMode.Create);
+    using var archive = new System.IO.Compression.ZipArchive(output, System.IO.Compression.ZipArchiveMode.Create);
+    foreach (var (originalName, originalData) in entries)
+    {
+        var name = originalName;
+        var data = originalData;
+        // Fix the timestamps in either core-properties part (docProps/core.xml or the .psmdcp).
+        if (name == "docProps/core.xml" || name.EndsWith(".psmdcp", StringComparison.OrdinalIgnoreCase))
+        {
+            System.Xml.Linq.XDocument xml;
+            using (var input = new MemoryStream(data)) xml = System.Xml.Linq.XDocument.Load(input);
+            foreach (var node in xml.Descendants(dcterms + "created").Concat(xml.Descendants(dcterms + "modified")))
+                node.Value = "1980-01-01T00:00:00Z";
+            using var buffer = new MemoryStream();
+            xml.Save(buffer);
+            data = buffer.ToArray();
+        }
+        // Give the random-GUID core-properties part a stable name and repoint its relationship.
+        if (psmdcpOriginal != null && name == psmdcpOriginal) name = psmdcpFixed;
+        // The root package rels of a from-scratch workbook carry random psmdcp names and
+        // random Relationship ids that nothing references by id (they resolve by Type).
+        // Stabilize both so the sample is reproducible; worksheet rels are left untouched.
+        if (name == "_rels/.rels")
+        {
+            System.Xml.Linq.XDocument xml;
+            using (var input = new MemoryStream(data)) xml = System.Xml.Linq.XDocument.Load(input);
+            var index = 1;
+            foreach (var relationship in xml.Descendants().Where(node => node.Name.LocalName == "Relationship"))
+            {
+                var target = relationship.Attribute("Target");
+                if (target != null && target.Value.EndsWith(".psmdcp", StringComparison.OrdinalIgnoreCase))
+                    target.Value = "/" + psmdcpFixed;
+                relationship.SetAttributeValue("Id", "rId" + index++);
+            }
+            using var buffer = new MemoryStream();
+            xml.Save(buffer);
+            data = buffer.ToArray();
+        }
+        var entry = archive.CreateEntry(name, System.IO.Compression.CompressionLevel.Optimal);
+        entry.LastWriteTime = fixedTime;
+        using var stream = entry.Open();
+        stream.Write(data);
+    }
 }
 
 static void Check(bool result, string message)
