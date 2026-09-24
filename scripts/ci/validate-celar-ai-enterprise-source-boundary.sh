@@ -98,7 +98,11 @@ if [[ "$HEAD_BRANCH" == 'feature/deepseek-v4-dgx-primary-20260904' ]]; then
   exit 0
 fi
 
-if [[ "$HEAD_BRANCH" == 'feature/module025-review-timing-delete-reliability-20260918' ]]; then
+if [[ "$HEAD_BRANCH" == 'control/pr1153-source-registration-20260923' ]]; then
+  python3 tests/laya/release-registration.py --control
+  ALLOWED_DATABASE='^database/migrations/125_automatic_document_admission_laya\.sql$'
+  publish_mode OWNED_SOURCE
+elif [[ "$HEAD_BRANCH" == 'feature/module025-review-timing-delete-reliability-20260918' ]]; then
   node tests/module025-review-timing-delete-scope.mjs
   ALLOWED_DATABASE='^database/migrations/110_module025_ungenerated_draft_delete\.sql$'
   publish_mode MODULE025_REVIEW_TIMING_DELETE
@@ -719,9 +723,15 @@ if [[ ( "$HEAD_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$HEAD_BR
   PROHIBITED="$(grep -Fvx "$FLOWHIVE_PROXY_LIMIT" <<<"$PROHIBITED" || true)"
 fi
 if [[ -n "$PROHIBITED" ]]; then
-  echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2
-  printf '%s\n' "$PROHIBITED" >&2
-  exit 1
+  if [[ "$HEAD_BRANCH" == 'control/pr1153-source-registration-20260923' ]]; then
+    # Content-bound release review, not an application exemption. The list is
+    # not filtered: every protected path must have the exact reviewed bytes.
+    python3 tests/laya/release-registration.py --protected-list "$PROHIBITED"
+  else
+    echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2
+    printf '%s\n' "$PROHIBITED" >&2
+    exit 1
+  fi
 fi
 
 for protected in \

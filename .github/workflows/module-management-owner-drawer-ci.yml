@@ -165,6 +165,8 @@ jobs:
             echo 'MODULE_MANAGEMENT_FOCUSED_SOURCE_BOUNDARY=PASS'
           elif cmp -s "$RUNNER_TEMP/module-management-actual.txt" "$RUNNER_TEMP/pr719-reviewed.txt"; then
             echo 'PR719_MODULE_MANAGEMENT_COMBINED_SOURCE_BOUNDARY=PASS'
+          elif [[ "$HEAD_BRANCH" == 'control/pr1153-source-registration-20260923' ]]; then
+            python3 tests/laya/release-registration.py --control
           else
             echo 'Module Management repair changed an unexpected source path.' >&2
             diff -u "$RUNNER_TEMP/module-management-focused.txt" "$RUNNER_TEMP/module-management-actual.txt" || true
@@ -172,8 +174,12 @@ jobs:
           fi
 
           if grep -Eq '^database/|^\.github/workflows/projectpulse-deploy-|production|secret|infrastructure' "$RUNNER_TEMP/module-management-actual.txt"; then
-            echo 'The focused UI and authority repair crossed a protected deployment, migration, secret, or infrastructure boundary.' >&2
-            exit 1
+            if [[ "$HEAD_BRANCH" == 'control/pr1153-source-registration-20260923' ]]; then
+              python3 tests/laya/release-registration.py --protected-list "$(grep -E '^database/|^\.github/workflows/projectpulse-deploy-|production|secret|infrastructure' "$RUNNER_TEMP/module-management-actual.txt")"
+            else
+              echo 'The focused UI and authority repair crossed a protected deployment, migration, secret, or infrastructure boundary.' >&2
+              exit 1
+            fi
           fi
 
       - name: Set up .NET 10
