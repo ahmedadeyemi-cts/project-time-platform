@@ -1,3 +1,4 @@
+.github/flowhive-auto-first-draft-files.txt
 .github/flowhive-enterprise-psa-release-files.txt
 .github/flowhive-planner-output-budget-release-files.txt
 .github/flowhive-planner-parallel-phases-release-files.txt
