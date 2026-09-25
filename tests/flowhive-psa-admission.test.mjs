@@ -468,11 +468,15 @@ test('trusted-main source drift starts at the approved application merge and rej
     : execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
   const manifest = fs.readFileSync(new URL('../.github/flowhive-psa-release-control-files.txt', import.meta.url), 'utf8')
     .trim().split(/\r?\n/);
+  // Current main also contains the separately reviewed auto-first-draft manifest.
+  // This historical fixture accepts that manifest file itself without changing
+  // the protected candidate's checked-in release-control manifest.
+  const currentHistoricalControlFiles = [...new Set([...manifest, '.github/flowhive-auto-first-draft-files.txt'])].sort();
   assert.doesNotThrow(() => execFileSync('git', ['merge-base', '--is-ancestor', approval.mergeCommit, currentMain], { stdio: 'ignore' }));
   const mergeBoundaryChanges = execFileSync('git', ['diff', '--name-only', `${approval.mergeCommit}..${currentMain}`], { encoding: 'utf8' })
     .split(/\r?\n/).filter(Boolean);
   assert.ok(mergeBoundaryChanges.includes('.github/flowhive-enterprise-psa-release-files.txt'));
-  assert.doesNotThrow(() => verifySourceDrift(mergeBoundaryChanges, manifest));
+  assert.doesNotThrow(() => verifySourceDrift(mergeBoundaryChanges, currentHistoricalControlFiles));
   assert.throws(() => verifySourceDrift([...mergeBoundaryChanges, 'src/backend/ProjectTime.Api/Program.cs'], manifest));
   const oldPrBaseChanges = execFileSync('git', ['diff', '--name-only', `${approval.sourceBase}..${currentMain}`], { encoding: 'utf8' })
     .split(/\r?\n/).filter(Boolean);
