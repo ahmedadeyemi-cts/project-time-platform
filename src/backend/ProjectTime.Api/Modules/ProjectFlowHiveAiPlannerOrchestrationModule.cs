@@ -1245,6 +1245,32 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                 .Where(task => task.IsCritical && !task.IsSummary)
                 .Select(task => new CriticalPathItem(task.WbsNumber, task.Name, task.StartDate, task.EndDate))
                 .ToArray();
+
+        IReadOnlyList<PulseAiPrivateRetrievedChunk> evidenceChunks =
+            run.PhaseCheckpoint?.Evidence?.Chunks ?? Array.Empty<PulseAiPrivateRetrievedChunk>();
+        var completedPhasePlans = run.PhaseCheckpoint?.Phases
+            .Where(phase => phase.Status == "completed" && phase.Plan is not null)
+            .Select(phase => phase.Plan!)
+            .ToArray() ?? Array.Empty<PulseAiPrivateFlowHivePlan>();
+        var approvedSowCitationCount = evidenceChunks.Count(chunk =>
+            ContainsPlanningMarker(chunk.DocumentCategory, "sow")
+            || ContainsPlanningMarker(chunk.SourceType, "sow")
+            || ContainsPlanningMarker(chunk.OriginalFileName, "sow")
+            || ContainsPlanningMarker(chunk.OriginalFileName, "statement of work"));
+        var scopeOfServicesCitationCount = evidenceChunks.Count(chunk =>
+            (ContainsPlanningMarker(chunk.DocumentCategory, "sow")
+             || ContainsPlanningMarker(chunk.SourceType, "sow")
+             || ContainsPlanningMarker(chunk.OriginalFileName, "sow")
+             || ContainsPlanningMarker(chunk.OriginalFileName, "statement of work"))
+            && (ContainsPlanningMarker(chunk.SectionTitle, "scope")
+                || ContainsPlanningMarker(chunk.SectionTitle, "service overview")
+                || ContainsPlanningMarker(chunk.CitationAnchor, "scope")
+                || ContainsPlanningMarker(chunk.CitationAnchor, "service overview")));
+        var plannerConfidence = completedPhasePlans.Length == 0
+            ? (decimal?)null
+            : completedPhasePlans.Min(plan => plan.Confidence);
+        var sourceGrounded = run.GeneratedPlan?.CelarAiCitationIds?.Count > 0
+            || completedPhasePlans.Any(plan => plan.Tasks.Any(task => task.CitationIds.Count > 0));
         return new
         {
             module = "066",
@@ -1255,6 +1281,8 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             phases = (run.PhaseCheckpoint ?? FlowHiveSequentialState.Empty(run.SourceVersionFingerprint)).Progress(run.Terminal, run.CompletedAt),
             progressPercent = run.ProgressPercent,
             terminal = run.Terminal,
+            confidence = plannerConfidence,
+            executionPath = evidenceChunks.Count > 0 ? "private_sow_grounded_sequential" : "private_evidence_pending",
             plan = workingDraftPersisted ? run.GeneratedPlan : null,
             schedule,
             validation = workingDraftPersisted ? run.Validation : null,
@@ -1291,7 +1319,12 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             planningEvidence = new
             {
                 phaseOrder = new[] { "Plan", "Design", "Implement", "Validate", "Release" },
-                sourceGrounded = run.GeneratedPlan?.CelarAiCitationIds?.Count > 0,
+                sourceGrounded,
+                evidenceCitationCount = evidenceChunks.Count,
+                approvedSowCitationCount,
+                scopeOfServicesCitationCount,
+                scopeOfServicesLocated = scopeOfServicesCitationCount > 0,
+                completedPhaseCount = completedPhasePlans.Length,
                 automaticPrivateProcessing = true,
                 automaticWorkingCopyPersistence = !ProjectFlowHivePlannerReview.RequiresReview(run.Plan, run.ExpectedWorkingRowVersion),
                 requestPollingReadOnly = true,
@@ -1311,6 +1344,10 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                     contract = ProjectFlowHivePlannerReview.Contract, persisted = true } : null,
             stateChanged = workingDraftPersisted
         };
+
+        static bool ContainsPlanningMarker(string? value, string marker) =>
+            !string.IsNullOrWhiteSpace(value)
+            && value.Contains(marker, StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<OpenOutcome> OpenAsync(

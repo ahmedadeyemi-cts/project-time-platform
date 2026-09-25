@@ -4,7 +4,7 @@ import './ai-operation-progress.css';
 
 export const planningPhases = ['Plan', 'Design', 'Implement', 'Validate', 'Release'];
 
-export default function AiPhaseProgress({ phases, terminal = false, completedAt }) {
+export default function AiPhaseProgress({ phases, terminal = false, completedAt, showDiagnostics = false }) {
   const [clock, setClock] = useState(Date.now());
   const rows = planningPhases.map((name, index) => phases?.find(p => p.name === name)
     || { name, number: index + 1, status: 'pending' });
@@ -30,6 +30,8 @@ export default function AiPhaseProgress({ phases, terminal = false, completedAt 
           {operationDuration(row.startedAt, row.completedAt || (terminal ? completedAt : null) || clock)} elapsed
         </span> : <span>—</span>}
         {row.taskCount > 0 && <small>{row.taskCount} WBS tasks validated</small>}
+        {terminal && status === 'needs_attention' && !row.taskCount ? <small>No validated WBS task set was saved for this stage.</small> : null}
+        {showDiagnostics && row.diagnosticCode ? <small className="ai-phase-diagnostic">Admin diagnostic: {row.diagnosticCode}</small> : null}
       </li>;
     })}</ol>
     <p>Each stage uses the same prepared project scope. The complete WBS is checked for dependencies and schedule before it becomes a review draft.</p>

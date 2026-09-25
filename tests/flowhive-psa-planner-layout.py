@@ -27,6 +27,10 @@ styles = '\n'.join([
 ])
 headers = ['WBS', 'Task name', 'Start date', 'End date', 'Days', 'Progress',
            'Predecessor', 'Type', 'Comments', 'Notes', 'Assigned identity']
+nav_labels = ['Portfolio', 'Archive', 'Delivery overview', 'Planner', 'Kanban', 'Monthly calendar',
+              'Meetings', 'Timeline & risk', 'Financials', 'Status & RAID', 'AI Planning Workspace',
+              'Branded exports', 'Governance']
+nav = '<nav class="flowhive-view-tabs">' + ''.join(f'<button>{label}</button>' for label in nav_labels) + '</nav>'
 long_description = ('Record the project-specific migration readiness outcome '
                     'and retain its validation evidence. ') * 8
 date_input = '<input type="date" value="2026-09-08" aria-label="Scheduled date">'
@@ -39,7 +43,7 @@ rows = ''.join(f'''<tr class="flowhive-work-row phase-plan">
 <td><textarea class="flowhive-sheet-textarea">Review comments</textarea></td><td><textarea class="flowhive-sheet-textarea">Internal notes</textarea></td><td><select><option>Unassigned</option></select></td></tr>''' for index in range(4))
 html = f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>html{{font:16px Arial,sans-serif}}body{{margin:16px}}main{{display:grid;min-width:0}}{styles}</style></head><body><main>
-<section class="project-flowhive-center projectpulse-module-standard"><div class="flowhive-view-panel"><div class="flowhive-table-wrap">
+<section class="project-flowhive-center projectpulse-module-standard">{nav}<div class="flowhive-view-panel"><div class="flowhive-table-wrap">
 <table class="flowhive-task-table flowhive-planner-table flowhive-smartsheet-table"><thead><tr>{''.join(f'<th>{value}</th>' for value in headers)}</tr></thead><tbody>{rows}
 <tr class="flowhive-task-detail-row"><td colspan="11"><div class="flowhive-task-detail-panel">Expanded task details remain in the scroll surface.</div></td></tr></tbody></table>
 </div></div></section></main></body></html>'''
@@ -60,10 +64,13 @@ with sync_playwright() as playwright:
                         const checks = [];
                         const check = (name, passed) => checks.push({name, passed: Boolean(passed)});
                         const wrapper = document.querySelector('.flowhive-table-wrap');
+                        const nav = document.querySelector('.flowhive-view-tabs');
                         const table = document.querySelector('table');
                         const nameCell = document.querySelector('.flowhive-work-row td:nth-child(2)');
                         const rect = nameCell.getBoundingClientRect();
                         check('no page-level horizontal overflow', document.documentElement.scrollWidth <= window.innerWidth + 1);
+                        check('navigation labels do not wrap', [...nav.querySelectorAll('button')].every(button => getComputedStyle(button).whiteSpace === 'nowrap'));
+                        check('navigation overflow is contained', nav.clientWidth <= window.innerWidth && getComputedStyle(nav).overflowX === 'auto');
                         check('task grid scroll is contained', wrapper.scrollWidth > wrapper.clientWidth && wrapper.clientWidth <= window.innerWidth);
                         check('task name column is bounded', rect.width >= 300 && rect.width <= 400);
                         check('description wraps', getComputedStyle(nameCell.querySelector('small')).whiteSpace === 'normal');

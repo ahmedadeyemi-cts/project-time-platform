@@ -176,18 +176,28 @@
 
 .flowhive-view-tabs {
   display: flex;
+  align-items: stretch;
   gap: 0.35rem;
+  width: 100%;
   padding: 0.3rem;
-  width: fit-content;
+  overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--flowhive-line);
   border-radius: 0.8rem;
   background: var(--flowhive-soft);
+  scrollbar-width: thin;
 }
 
 .flowhive-view-tabs button {
-  padding: 0.58rem 0.85rem;
+  flex: 1 0 auto;
+  min-width: max-content;
+  padding: 0.58rem 0.68rem;
   color: #425568;
   background: transparent;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 .flowhive-view-tabs button:hover,
@@ -528,8 +538,6 @@
   }
 
   .flowhive-view-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
   }
 
@@ -805,6 +813,129 @@
 
 .flowhive-ai-planner-summary .privacy {
   background: rgb(227 248 239 / 70%);
+}
+
+.flowhive-retained-draft-notice {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid #c58a1c;
+  border-radius: 0.75rem;
+  color: var(--flowhive-ink);
+  background: color-mix(in srgb, var(--flowhive-surface) 86%, #f5c35d 14%);
+}
+
+.flowhive-retained-draft-notice span {
+  color: var(--flowhive-muted);
+  line-height: 1.45;
+}
+
+.flowhive-phase-plan-overview {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 0.9rem;
+  background: var(--flowhive-surface);
+}
+
+.flowhive-phase-plan-overview > header span {
+  color: var(--flowhive-blue);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.flowhive-phase-plan-overview h3,
+.flowhive-phase-plan-overview h4,
+.flowhive-phase-plan-overview p {
+  margin: 0;
+}
+
+.flowhive-phase-plan-overview > header p {
+  margin-top: 0.3rem;
+  color: var(--flowhive-muted);
+  line-height: 1.45;
+}
+
+.flowhive-phase-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(13.5rem, 1fr));
+  gap: 0.65rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+}
+
+.flowhive-phase-plan-grid article {
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  min-width: 13.5rem;
+  padding: 0.8rem;
+  border: 1px solid var(--flowhive-line);
+  border-radius: 0.75rem;
+  background: var(--flowhive-soft);
+}
+
+.flowhive-phase-plan-grid article.needs-depth {
+  border-color: #c58a1c;
+  background: color-mix(in srgb, var(--flowhive-soft) 88%, #f5c35d 12%);
+}
+
+.flowhive-phase-plan-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.flowhive-phase-plan-heading > span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.8rem;
+  min-height: 1.8rem;
+  border-radius: 0.45rem;
+  color: #ffffff;
+  background: var(--flowhive-navy);
+  font-weight: 850;
+}
+
+.flowhive-phase-plan-heading strong,
+.flowhive-phase-plan-grid article > small,
+.flowhive-phase-plan-grid article > p {
+  color: var(--flowhive-muted);
+  font-size: 0.76rem;
+}
+
+.flowhive-phase-plan-grid article > p {
+  line-height: 1.4;
+}
+
+.flowhive-phase-plan-grid ol {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flowhive-phase-plan-grid li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.4rem;
+  color: var(--flowhive-ink);
+  font-size: 0.77rem;
+  line-height: 1.35;
+}
+
+.flowhive-phase-plan-grid li span {
+  color: var(--flowhive-blue);
+  font-weight: 850;
+}
+
+.flowhive-phase-depth-warning {
+  font-weight: 800;
 }
 
 .flowhive-smartsheet-table {
