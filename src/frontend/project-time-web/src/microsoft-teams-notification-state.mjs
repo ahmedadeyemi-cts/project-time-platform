@@ -4,6 +4,15 @@ export function validTeamsAppId(value) {
     && !/^0{8}-(?:0{4}-){3}0{12}$/.test(value.trim());
 }
 
+export function validWorkflowUrl(value) {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'https:' && !url.username && !url.password
+      && (url.hostname.endsWith('.api.powerplatform.com') || url.hostname.endsWith('.logic.azure.com'));
+  } catch { return false; }
+}
+
 export function validRecipient(value) {
   // This is only an input check, not Entra identity or installation verification.
   return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -12,7 +21,10 @@ export function validRecipient(value) {
 export function configurationChanged(saved, draft) {
   if (!saved || !draft) return false;
   return saved.enabled !== draft.enabled
-    || String(saved.teamsAppId || '').toLowerCase() !== String(draft.teamsAppId || '').trim().toLowerCase();
+    || String(saved.deliveryMode || 'power_automate') !== String(draft.deliveryMode || 'power_automate')
+    || String(saved.teamsAppId || '').toLowerCase() !== String(draft.teamsAppId || '').trim().toLowerCase()
+    || String(saved.workflowTriggerUrl || '') !== String(draft.workflowTriggerUrl || '').trim()
+    || String(saved.workflowAudience || '') !== String(draft.workflowAudience || '').trim();
 }
 
 export function workspaceAccess(state, draft, environment, busy, fresh = true) {
@@ -26,12 +38,16 @@ export function workspaceAccess(state, draft, environment, busy, fresh = true) {
   const readOnly = state?.readOnly !== false;
   const blocked = Boolean(busy || !fresh || !validEnvironment || !validConfiguration || !draft
     || wrongEnvironment || readOnly);
-  const validId = validTeamsAppId(draft?.teamsAppId);
+  const mode = draft?.deliveryMode || 'power_automate';
+  const validMode = mode === 'power_automate' || mode === 'graph_app';
+  const validDestination = mode === 'power_automate' ? validWorkflowUrl(draft?.workflowTriggerUrl) : validTeamsAppId(draft?.teamsAppId);
+  const savedMode = saved?.deliveryMode || 'power_automate';
+  const savedDestination = savedMode === 'power_automate' ? validWorkflowUrl(saved?.workflowTriggerUrl) : validTeamsAppId(saved?.teamsAppId);
   return {
     blocked, readOnly, dirty, wrongEnvironment, revisionConflict,
-    canSave: !blocked && !revisionConflict && dirty && (!draft.enabled || validId),
+    canSave: !blocked && !revisionConflict && dirty && validMode && (!draft.enabled || validDestination),
     canTest: !blocked && !revisionConflict && !dirty && environment === 'test'
-      && saved?.enabled === true && validTeamsAppId(saved.teamsAppId),
+      && saved?.enabled === true && savedDestination,
   };
 }
 
@@ -47,7 +63,11 @@ export function deliveryPresentation(row) {
   };
   if (row?.status === 'failed') {
     let detail = 'The request failed. Review the diagnostic and the configured Microsoft services connection.';
-    if (code === 'teams_graph_http_400') detail = 'Microsoft rejected the request. The HTTP code alone does not identify the cause; review the sender request and app setup.';
+    if (code === 'teams_workflow_accepted') detail = 'Power Automate accepted the request. Confirm the flow run and resulting Teams message.';
+    else if (code === 'teams_workflow_not_authorized') detail = 'Power Automate rejected the centralized Microsoft services identity. Verify the HTTP trigger allows this service principal.';
+    else if (code === 'teams_workflow_rate_limited') detail = 'Power Automate rate-limited this request. Preserve it for a deliberate later retry.';
+    else if (code.startsWith('teams_workflow_http_')) detail = 'Power Automate did not confirm the workflow request. Review its run history and request identifier.';
+    else if (code === 'teams_graph_http_400') detail = 'Microsoft rejected the request. The HTTP code alone does not identify the cause; review the sender request and app setup.';
     else if (code === 'teams_graph_http_403') detail = 'Microsoft refused this request. Verify the sending app’s permission, recipient access, and app installation.';
     else if (code === 'teams_graph_http_404') detail = 'Microsoft could not resolve the requested resource. Verify the recipient identity, tenant, and app installation.';
     else if (code === 'teams_graph_http_429') detail = 'Microsoft rate-limited this request. Review provider guidance before a deliberate retry.';
