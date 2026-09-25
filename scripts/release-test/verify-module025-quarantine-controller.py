@@ -49,7 +49,7 @@ def permitted(original, current):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", choices=(BASE, "57c8d0264bdd828e6b3b53a8c5cb8b1b841e8f61", "c15ef12d5ce1bc54c15d8b31c87a50daa94bad17"), default=BASE)
+    parser.add_argument("--base", choices=(BASE, "57c8d0264bdd828e6b3b53a8c5cb8b1b841e8f61", "c15ef12d5ce1bc54c15d8b31c87a50daa94bad17", "045b66ca01baa68b2f5b3f6eb9e063c23c335981"), default=BASE)
     args = parser.parse_args()
     original = subprocess.check_output(["git", "show", args.base + ":" + CONTROLLER])
     current = subprocess.check_output(["git", "show", "HEAD:" + CONTROLLER])

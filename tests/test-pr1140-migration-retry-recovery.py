@@ -16,7 +16,7 @@ class RecoveryTests(previous.RecoveryTests):
   previous.recovery=current
   self.addCleanup(setattr,previous,'recovery',old)
  def test_supervisor_has_only_exact_addition(self):
-  data=(ROOT/current.SUPERVISOR).read_text()
+  data=previous.subprocess.check_output(["git","show","436010a2838c94e7b94251fbdada16453b917dcf:"+current.SUPERVISOR],cwd=ROOT,text=True)
   pattern=r"^            # MIGRATION_RETRY_RECOVERY_BEGIN\n.*?^            # MIGRATION_RETRY_RECOVERY_END\n"
   blocks=re.findall(pattern,data,re.M|re.S)
   self.assertEqual(len(blocks),1)

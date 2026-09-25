@@ -101,7 +101,7 @@ def verify_sources(reference=None):
         ('2026-09-21T19:35:24Z', '2026-09-22T14:16:21Z'),
     ):
         expected = expected.replace(before, after)
-    assert (ROOT / 'scripts/release-test/recover-pr1140-uat-orphan.py').read_text() == expected
+    assert read_source('scripts/release-test/recover-pr1140-uat-orphan.py') == expected
     for path in (
         '.github/workflows/projectpulse-deploy-test.yml',
         '.github/workflows/projectpulse-deploy-production.yml',

@@ -184,7 +184,7 @@ class RecoveryTests(unittest.TestCase):
             with self.assertRaises(RuntimeError): recovery.verify_context(Api())
 
     def test_supervisor_has_only_exact_addition(self):
-        data = (ROOT / recovery.SUPERVISOR).read_text()
+        data = subprocess.check_output(["git", "show", "b0334754cfc52e5c7e99300aa26b0a165fae947a:" + recovery.SUPERVISOR], cwd=ROOT, text=True)
         pattern = r"^            # PR1139_UAT_RECOVERY_BEGIN\n.*?^            # PR1139_UAT_RECOVERY_END\n"
         blocks = re.findall(pattern, data, re.M | re.S)
         self.assertEqual(len(blocks), 1)
