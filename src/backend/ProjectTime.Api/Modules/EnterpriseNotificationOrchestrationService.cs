@@ -373,9 +373,7 @@ internal static class EnterpriseNotificationOrchestrationService
                 cancellationToken);
         }
 
-        // Teams is an independent delivery channel. A failed email must not suppress a Teams alert,
-        // and a Teams failure must never replay an email that already succeeded.
-        if (dispatch is not null && deliveryResult.Status != "suppressed")
+        if (dispatch is not null && deliveryResult.Sent)
             await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection, dispatch, context, cancellationToken);
 
         var eventStatus = deliveryResult.Status == "failed"
