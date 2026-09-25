@@ -348,7 +348,7 @@ jobs:
             '{
               environment:"test",
               applicationRelease:$releaseCommit,
-              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","125_automatic_document_admission_laya"],
+              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","125_automatic_document_admission_laya","126_module065_power_automate_teams_delivery"],
               migrationScope:$migrationScope,
               module025SowGsdUat:true,
               utilizationRoleScopingUat:true,
@@ -800,6 +800,7 @@ jobs:
           install -m 0644 database/migrations/112_optional_ai_providers.sql "$MIGRATION_CONTEXT/database/migrations/112_optional_ai_providers.sql"
           install -m 0644 database/migrations/113_module065_teams_notifications.sql "$MIGRATION_CONTEXT/database/migrations/113_module065_teams_notifications.sql"
           install -m 0644 database/migrations/114_module064_private_admin_override.sql "$MIGRATION_CONTEXT/database/migrations/114_module064_private_admin_override.sql"
+          install -m 0644 database/migrations/126_module065_power_automate_teams_delivery.sql "$MIGRATION_CONTEXT/database/migrations/126_module065_power_automate_teams_delivery.sql"
           printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$MIGRATION_CONTEXT/release-commit"
           cat > "$MIGRATION_CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
           #!/usr/bin/env bash
@@ -817,7 +818,8 @@ jobs:
             "$ROOT/database/migrations/093_assigned_work_canonical_visibility_repair.sql" \
             "$ROOT/database/migrations/112_optional_ai_providers.sql" \
             "$ROOT/database/migrations/113_module065_teams_notifications.sql" \
-            "$ROOT/database/migrations/114_module064_private_admin_override.sql"; do
+            "$ROOT/database/migrations/114_module064_private_admin_override.sql" \
+            "$ROOT/database/migrations/126_module065_power_automate_teams_delivery.sql"; do
             [[ -f "$migration" ]] || { echo "ERROR: Missing migration $migration" >&2; exit 1; }
             psql -X -v ON_ERROR_STOP=1 --file "$migration"
           done
@@ -877,15 +879,18 @@ jobs:
           echo 'MIGRATION_093=APPLIED_AND_VERIFIED'
           enterprise_verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
           SELECT (
-            (SELECT count(*) FROM schema_migrations WHERE migration_id IN ('112_optional_ai_providers','113_module065_teams_notifications','114_module064_private_admin_override')) = 3
+            (SELECT count(*) FROM schema_migrations WHERE migration_id IN ('112_optional_ai_providers','113_module065_teams_notifications','114_module064_private_admin_override','126_module065_power_automate_teams_delivery')) = 4
             AND to_regclass('public.module065_teams_configuration') IS NOT NULL
             AND to_regclass('public.module065_teams_delivery') IS NOT NULL
             AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='ai_private_model_profiles' AND column_name='administrator_override')
+            AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='module065_teams_configuration' AND column_name='delivery_mode')
+            AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='module065_teams_configuration' AND column_name='workflow_trigger_url')
+            AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='module065_teams_configuration' AND column_name='workflow_audience')
           )::text;
           SQL
           )"
           [[ "$enterprise_verified" == true ]] || { echo 'ERROR: Enterprise integration migrations failed verification.' >&2; exit 1; }
-          echo 'MIGRATIONS_112_113_114=APPLIED_AND_VERIFIED'
+          echo 'MIGRATIONS_112_113_114_126=APPLIED_AND_VERIFIED'
 
           ENTRYPOINT
           chmod 0555 "$MIGRATION_CONTEXT/entrypoint.sh"
@@ -915,8 +920,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           jq -n --arg api "$API_IMAGE" --arg web "$WEB_IMAGE" --arg migration "$MIGRATION_IMAGE" '{apiImage:$api,webImage:$web,migrationImage:$migration}' > "$EVIDENCE_DIR/immutable-images.json"
 
-      # Compatibility contract: Apply and verify governed system-wide migrations plus Module 025 project-name migration 109 inside Test private network.
-      - name: Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network
+      # Compatibility contract: Apply and verify governed system-wide migrations including Module 065 Power Automate migration 126.
+      - name: Apply and verify governed migrations through Module 065 Power Automate migration 126 inside Test private network
         if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
         id: migration
         shell: bash
@@ -948,7 +953,7 @@ jobs:
             PROJECTPULSE_RELEASE_ROOT="$PWD" bash "$GITHUB_WORKSPACE/control/scripts/release-test/build-and-run-flowhive-psa-migrations.sh"
           fi
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
-          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation","109_module025_project_name"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
+          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation","109_module025_project_name","126_module065_power_automate_teams_delivery"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
         if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
