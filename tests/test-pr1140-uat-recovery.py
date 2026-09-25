@@ -31,7 +31,7 @@ class RecoveryTests(legacy.RecoveryTests):
             self.assertNotIn(forbidden, text)
 
     def test_exact_scope_and_unchanged_algorithm(self):
-        scope.verify_sources()
+        scope.verify_sources(reference=scope.HISTORICAL_SCOPE_REFERENCE)
         scope.verify_paths(scope.EXPECTED)
         for paths in (scope.EXPECTED - {scope.SUPERVISOR},
                       scope.EXPECTED | {'.github/workflows/projectpulse-deploy-production.yml'}):
@@ -49,6 +49,11 @@ class RecoveryTests(legacy.RecoveryTests):
         for value in changed:
             with self.assertRaises(AssertionError):
                 scope.verify_insertion(before, value, scope.SUPERVISOR_ANCHOR, scope.SUPERVISOR_ADDITION)
+
+    def test_historical_fixture_cannot_select_an_arbitrary_revision(self):
+        for reference in ('HEAD', 'origin/main', '0' * 40):
+            with self.assertRaises(AssertionError):
+                scope.verify_sources(reference=reference)
 
     def test_pinned_identity_is_the_observed_pr1140_request(self):
         self.assertEqual(recovery.RUN_ID, 35739149661)

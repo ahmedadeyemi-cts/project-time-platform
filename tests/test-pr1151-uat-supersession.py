@@ -169,8 +169,14 @@ class SupersessionTests(unittest.TestCase):
             with self.assertRaises(RuntimeError): r.GitHub().read('anything')
 
     def test_actual_old_deployment_guard_rejects_superseded_main_before_azure(self):
-        data = (ROOT / r.DEPLOYMENT).read_bytes()
+        data = subprocess.check_output(['git', 'show', r.OLD_SHA + ':' + r.DEPLOYMENT], cwd=ROOT)
         self.assertEqual(hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest(), r.DEPLOYMENT_BLOB)
+        self.assert_main_guard(data)
+
+    def test_current_deployment_guard_rejects_superseded_main_before_azure(self):
+        self.assert_main_guard((ROOT / r.DEPLOYMENT).read_bytes())
+
+    def assert_main_guard(self, data):
         source = data.decode()
         marker = '      - name: Guard exact source and validate release\n'
         start = source.index(marker)

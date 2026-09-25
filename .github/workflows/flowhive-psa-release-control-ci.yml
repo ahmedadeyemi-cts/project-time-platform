@@ -78,7 +78,15 @@ jobs:
             python3 tests/module064-provider-controls-scope.py
             exit 0
           fi
-          if [[ "$GITHUB_HEAD_REF" == feature/module025-service-scope-20260921 ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'control/pr1153-source-registration-20260923' ]]; then
+            python3 tests/laya/release-registration.py --control
+            python3 tests/module064-migration-rollout.test.py
+            node tests/validate-systemwide-image-build-controller.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/automatic-document-admission-laya-20260923' ]]; then
+            python3 tests/laya/release-registration.py --application
+            python3 tests/laya/processed-source-scope.py
+            node tests/validate-systemwide-image-build-controller.mjs
+          elif [[ "$GITHUB_HEAD_REF" == feature/module025-service-scope-20260921 ]]; then
             python3 tests/service-scope/release_scope.py
           elif [[ "$GITHUB_HEAD_REF" == feature/role-scoped-animated-user-stories-20260922 ]]; then
             python3 tests/role-journey-visual-scope.py
@@ -734,6 +742,10 @@ jobs:
             BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
           else
             node tests/flowhive-psa-release-control.mjs
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'control/pr1153-source-registration-20260923' || "$GITHUB_HEAD_REF" == 'fix/automatic-document-admission-laya-20260923' ]]; then
+            python3 tests/laya/release-admission-fixture.py --prepare
+            LAYA_ADMISSION_TEST=tests/laya-release-admission.generated.test.mjs
           fi
           # Preserve the exact executed test source and TAP output so a fixture
           # failure can be correlated with this checkout, not a stale job log.

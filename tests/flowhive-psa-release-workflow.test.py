@@ -223,6 +223,26 @@ class PmAcceptanceDeltaTests(unittest.TestCase):
                 with self.assertRaises(AssertionError):verify_pm_acceptance_delta(self.before,changed)
 
 
+LAYA_CONTROL_BRANCH = 'control/pr1153-source-registration-20260923'
+
+
+def verify_laya_release_delta(before, after):
+    expected = copy.deepcopy(before)
+    guards = [step for step in expected['jobs']['deploy']['steps']
+              if step.get('name') == 'Guard exact source and validate release']
+    assert len(guards) == 1
+    run = guards[0]['run']
+    anchor = '  database/migrations/109_module025_project_name.sql ' + chr(92) + '\n'
+    addition = '  database/migrations/125_automatic_document_admission_laya.sql ' + chr(92) + '\n'
+    assert run.count(anchor) == 1 and addition not in run
+    run = run.replace(anchor, anchor + addition, 1)
+    receipt = '"097_project_planning_identity_safe_admission"],'
+    assert run.count(receipt) == 1
+    run = run.replace(receipt, '"097_project_planning_identity_safe_admission","125_automatic_document_admission_laya"],', 1)
+    guards[0]['run'] = run
+    assert after == expected, 'Unrelated migration125 deployment change'
+
+
 class WorkflowContract(unittest.TestCase):
     def setUp(self):self.doc=load((ROOT/CONTROLLER).read_text())
     def test_parsed_workflow(self):verify(self.doc)
@@ -478,6 +498,22 @@ class WorkflowContract(unittest.TestCase):
         assert artifact['if']=='always()'
         assert artifact['uses'].startswith('actions/upload-artifact@')
         assert artifact['with']['if-no-files-found']=='ignore'
+    def test_migration125_delta_rejects_weakened_or_unrelated_controls(self):
+        before = load(git_show('14f9850a12868ed7f821fb96d2edf715a3ab92b1', CONTROLLER))
+        after = load(git_show('e2315413b61cc0893c3771b40f428b6fc61bd53f', CONTROLLER))
+        verify_laya_release_delta(before, after)
+        mutations = []
+        changed = copy.deepcopy(after); changed['jobs']['deploy']['environment'] = 'production'; mutations.append(changed)
+        changed = copy.deepcopy(after); changed['permissions']['contents'] = 'write'; mutations.append(changed)
+        changed = copy.deepcopy(after); changed['jobs']['deploy']['steps'].pop(); mutations.append(changed)
+        changed = copy.deepcopy(after)
+        guard = next(s for s in changed['jobs']['deploy']['steps'] if s.get('name') == 'Guard exact source and validate release')
+        guard['run'] += '\necho unreviewed\n'; mutations.append(changed)
+        mutations.append(before)
+        for changed in mutations:
+            with self.assertRaises(AssertionError):
+                verify_laya_release_delta(before, changed)
+
     def test_control_only_merge_cannot_trigger_an_unintended_deployment(self):
         self.assertNotIn('push', self.doc['on'])
         self.assertEqual(list(self.doc['on']), ['workflow_dispatch'])
@@ -485,6 +521,9 @@ class WorkflowContract(unittest.TestCase):
         base=os.environ.get('CONTROL_BASE')
         if not base:self.skipTest('Exact main controller comparison runs in PR CI with CONTROL_BASE.')
         old=load(subprocess.check_output(['git','show',base+':'+CONTROLLER],cwd=ROOT,text=True))
+        if os.environ.get('GITHUB_HEAD_REF') == LAYA_CONTROL_BRANCH:
+            verify_laya_release_delta(old, self.doc)
+            return
         if os.environ.get('GITHUB_HEAD_REF') == 'fix/module025-standard-download-formats-20260919':
             subprocess.run(['python3', str(ROOT/'tests/module025-export-deploy.test.py')], check=True)
             subprocess.run(['node', str(ROOT/'tests/module025-standard-download-formats-scope.mjs')], check=True)

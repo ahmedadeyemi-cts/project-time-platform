@@ -45,5 +45,13 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git diff --exit-code "$BASE_SHA" HEAD -- src database .github/workflows/projectpulse-deploy-test.yml .github/workflows/projectpulse-deploy-production.yml
+          set -Eeuo pipefail
+          if [[ "$GITHUB_HEAD_REF" == 'control/pr1153-source-registration-20260923' ]]; then
+            python3 tests/laya/release-registration.py --control
+            git diff --exit-code "$BASE_SHA" HEAD -- src .github/workflows/projectpulse-deploy-production.yml
+            git diff --exit-code
+          else
+            git diff --exit-code "$BASE_SHA" HEAD -- src database .github/workflows/projectpulse-deploy-test.yml .github/workflows/projectpulse-deploy-production.yml
+            git diff --check "$BASE_SHA" HEAD
+          fi
           git diff --check "$BASE_SHA" HEAD
