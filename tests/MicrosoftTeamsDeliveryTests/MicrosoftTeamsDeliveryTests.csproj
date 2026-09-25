@@ -3,6 +3,7 @@
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/MicrosoftTeamsNotificationProtocol.cs" Link="MicrosoftTeamsNotificationProtocol.cs" />
+    <Compile Include="../../src/backend/ProjectTime.Api/Modules/MicrosoftTeamsWorkflowProtocol.cs" Link="MicrosoftTeamsWorkflowProtocol.cs" />
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/MicrosoftTeamsServicesSnapshot.cs" Link="MicrosoftTeamsServicesSnapshot.cs" />
   </ItemGroup>
 </Project>

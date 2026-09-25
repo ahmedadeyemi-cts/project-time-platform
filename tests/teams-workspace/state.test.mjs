@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   configurationChanged, deliveryPresentation, localTimestamp, recentDeliveries,
-  validRecipient, validTeamsAppId, workspaceAccess,
+  validRecipient, validTeamsAppId, validWorkflowUrl, workspaceAccess,
 } from '../../src/frontend/project-time-web/src/microsoft-teams-notification-state.mjs';
 
 const appId = '11111111-2222-4333-8444-555555555555';
-const saved = { environment: 'test', enabled: true, teamsAppId: appId, revision: 6 };
+const workflowUrl = 'https://tenant.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/example/triggers/manual/paths/invoke';
+const saved = { environment: 'test', enabled: true, deliveryMode: 'power_automate', teamsAppId: appId, workflowTriggerUrl: workflowUrl, workflowAudience: 'https://service.flow.microsoft.com/', revision: 6 };
 const state = { configuration: saved, readOnly: false };
 const access = (overrides = {}, draft = { ...saved }, environment = 'test', busy = false, fresh = true) =>
   workspaceAccess({ ...state, ...overrides }, draft, environment, busy, fresh);
@@ -17,6 +18,11 @@ test('validates app GUIDs without accepting the zero identifier or malformed val
   assert.equal(validTeamsAppId(` ${appId.toUpperCase()} `), true);
   for (const value of ['', null, undefined, {}, '00000000-0000-0000-0000-000000000000', 'not-an-app', `${appId}/other`])
     assert.equal(validTeamsAppId(value), false);
+});
+test('validates supported Power Automate trigger URLs', () => {
+  assert.equal(validWorkflowUrl(workflowUrl), true);
+  assert.equal(validWorkflowUrl('https://example.logic.azure.com/workflows/x/triggers/manual/paths/invoke'), true);
+  for (const value of ['', null, 'http://tenant.environment.api.powerplatform.com/x', 'https://example.com/x']) assert.equal(validWorkflowUrl(value), false);
 });
 test('recipient format is an input check, not identity verification', () => {
   assert.equal(validRecipient('pilot@example.invalid'), true);
@@ -29,12 +35,17 @@ test('unchanged saved settings cannot trigger an unnecessary save', () => {
   assert.equal(configurationChanged(saved, { ...saved, teamsAppId: appId.toUpperCase() }), false);
 });
 test('dirty configuration must be saved or reset before a test', () => {
-  const dirty = access({}, { ...saved, teamsAppId: '66666666-7777-4888-8999-aaaaaaaaaaaa' });
+  const dirty = access({}, { ...saved, workflowTriggerUrl: 'https://other.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/other/triggers/manual/paths/invoke' });
   assert.equal(dirty.dirty, true); assert.equal(dirty.canSave, true); assert.equal(dirty.canTest, false);
 });
-test('disabling delivery is allowed without making the app ID valid', () => {
-  assert.equal(access({}, { ...saved, enabled: false, teamsAppId: '' }).canSave, true);
-  assert.equal(access({}, { ...saved, enabled: true, teamsAppId: 'invalid' }).canSave, false);
+test('Power Automate mode does not require a Teams app ID', () => {
+  assert.equal(access({}, { ...saved, teamsAppId: '' }).canTest, true);
+  assert.equal(access({}, { ...saved, workflowTriggerUrl: 'invalid' }).canSave, false);
+});
+test('legacy graph-app mode still requires a Teams app ID', () => {
+  const legacy = { ...saved, deliveryMode: 'graph_app', workflowTriggerUrl: null };
+  assert.equal(access({ configuration: legacy }, { ...legacy, teamsAppId: appId }).canTest, true);
+  assert.equal(access({ configuration: legacy }, { ...legacy, teamsAppId: 'invalid' }).canTest, false);
 });
 test('missing, true, and malformed readOnly values fail closed', () => {
   for (const readOnly of [undefined, null, true, 'false']) {

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import {
   deliveryPresentation, localTimestamp, recentDeliveries, validRecipient,
-  validTeamsAppId, workspaceAccess,
+  validTeamsAppId, validWorkflowUrl, workspaceAccess,
 } from './microsoft-teams-notification-state.mjs';
 import './microsoft-teams-notifications.css';
 
@@ -85,7 +85,11 @@ function TeamsNotificationWorkspace({ environment }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(mode === 'test'
             ? { recipient: recipient.trim(), confirmation: 'SEND TEAMS TEST' }
-            : { enabled: draft.enabled, teamsAppId: draft.teamsAppId?.trim() || null, expectedRevision: draft.revision }),
+            : { enabled: draft.enabled, deliveryMode: draft.deliveryMode || 'power_automate',
+                teamsAppId: draft.teamsAppId?.trim() || null,
+                workflowTriggerUrl: draft.workflowTriggerUrl?.trim() || null,
+                workflowAudience: draft.workflowAudience?.trim() || 'https://service.flow.microsoft.com/',
+                expectedRevision: draft.revision }),
         });
         resultNotice = mode === 'save'
           ? { tone: 'neutral', text: 'Configuration saved. This does not verify notification delivery.' }
@@ -136,13 +140,15 @@ function TeamsNotificationWorkspace({ environment }) {
           : !fresh ? 'Refresh the saved configuration before testing.'
             : access.revisionConflict ? 'Configuration changed elsewhere. Reset to the latest saved values.'
               : access.dirty ? 'Save or reset your configuration changes before testing.'
-                : !saved.enabled || !validTeamsAppId(saved.teamsAppId) ? 'Save an enabled Teams app ID before testing.' : '';
+                : !saved.enabled ? 'Enable Teams delivery before testing.'
+                  : (saved.deliveryMode || 'power_automate') === 'power_automate' && !validWorkflowUrl(saved.workflowTriggerUrl) ? 'Save the Power Automate workflow trigger URL before testing.'
+                    : (saved.deliveryMode || 'power_automate') === 'graph_app' && !validTeamsAppId(saved.teamsAppId) ? 'Save an enabled Teams app ID before testing.' : '';
 
   return <article className="microsoft-integration-card wide teams-notifications-workspace" data-module="065-teams" aria-labelledby={`${id}-heading`}>
     <header className="microsoft-integration-card-heading teams-notifications-heading">
       <div><p className="eyebrow">MODULE 065 · MICROSOFT TEAMS</p>
         <h2 id={`${id}-heading`}>Teams notifications</h2>
-        <p className="teams-notifications-copy">Activity-feed alerts for the people who need to act. Configure delivery, test one recipient, and review the results here.</p>
+        <p className="teams-notifications-copy">Send Pulse notifications through the centrally managed Microsoft connection. Power Automate is the recommended mode for personal and group Teams messages alongside email.</p>
       </div>
       <div className="teams-notifications-heading-actions">
         <Badge>{environmentName} environment</Badge>
@@ -169,11 +175,34 @@ function TeamsNotificationWorkspace({ environment }) {
       <section className="teams-notifications-section" aria-labelledby={`${id}-configuration`}>
         <div className="teams-notifications-section-title"><span aria-hidden="true" className="teams-notifications-step">01</span><div><h3 id={`${id}-configuration`}>Delivery configuration</h3><p>Uses the existing Module 065 Microsoft services connection.</p></div></div>
         <label className="teams-notifications-switch"><input type="checkbox" checked={Boolean(draft?.enabled)} disabled={inputBlocked} onChange={event => setDraft({ ...draft, enabled: event.target.checked })} /><span><strong>Enable Teams delivery</strong><small>Permits delivery only within the existing environment and recipient rules.</small></span></label>
-        <label className="microsoft-integration-field" htmlFor={`${id}-app`}><span>Teams app ID</span>
-          <input id={`${id}-app`} value={draft?.teamsAppId || ''} disabled={inputBlocked} spellCheck={false} autoComplete="off" aria-describedby={`${id}-app-help`} aria-invalid={Boolean(draft?.teamsAppId && !validTeamsAppId(draft.teamsAppId))} onChange={event => setDraft({ ...draft, teamsAppId: event.target.value.trim() })} placeholder="App ID from the installed Teams manifest" />
-          <small id={`${id}-app-help`}>Keep the Teams manifest package ID here. Pulse resolves the catalog and personal-installation IDs automatically; do not substitute the Entra client ID.</small>
+        <label className="microsoft-integration-field" htmlFor={`${id}-mode`}><span>Teams delivery method</span>
+          <select id={`${id}-mode`} value={draft?.deliveryMode || 'power_automate'} disabled={inputBlocked}
+            onChange={event => setDraft({ ...draft, deliveryMode: event.target.value })}>
+            <option value="power_automate">Power Automate Workflow — recommended</option>
+            <option value="graph_app">Legacy custom Teams app</option>
+          </select>
+          <small>Power Automate uses the existing Module 065 Microsoft services identity; recipients do not install PulseApp.</small>
         </label>
-        {draft?.teamsAppId && !validTeamsAppId(draft.teamsAppId) && <p className="teams-notifications-validation">Enter a valid, nonempty Teams app GUID.</p>}
+        {(draft?.deliveryMode || 'power_automate') === 'power_automate' ? <>
+          <label className="microsoft-integration-field" htmlFor={`${id}-workflow`}><span>Power Automate HTTP trigger URL</span>
+            <input id={`${id}-workflow`} value={draft?.workflowTriggerUrl || ''} disabled={inputBlocked} spellCheck={false} autoComplete="off"
+              aria-invalid={Boolean(draft?.workflowTriggerUrl && !validWorkflowUrl(draft.workflowTriggerUrl))}
+              onChange={event => setDraft({ ...draft, workflowTriggerUrl: event.target.value.trim() })} placeholder="https://…api.powerplatform.com/…/triggers/manual/…" />
+            <small>Create one centrally owned flow and paste its OAuth-protected trigger URL here. Pulse authenticates with the saved Module 065 services app.</small>
+          </label>
+          <label className="microsoft-integration-field" htmlFor={`${id}-audience`}><span>OAuth audience</span>
+            <input id={`${id}-audience`} value={draft?.workflowAudience || 'https://service.flow.microsoft.com/'} disabled={inputBlocked} spellCheck={false}
+              onChange={event => setDraft({ ...draft, workflowAudience: event.target.value.trim() })} />
+            <small>Commercial Microsoft 365 uses https://service.flow.microsoft.com/.</small>
+          </label>
+        </> : <>
+          <label className="microsoft-integration-field" htmlFor={`${id}-app`}><span>Teams app ID</span>
+            <input id={`${id}-app`} value={draft?.teamsAppId || ''} disabled={inputBlocked} spellCheck={false} autoComplete="off"
+              aria-invalid={Boolean(draft?.teamsAppId && !validTeamsAppId(draft.teamsAppId))}
+              onChange={event => setDraft({ ...draft, teamsAppId: event.target.value.trim() })} placeholder="Legacy Teams manifest package ID" />
+            <small>Only required for the legacy Graph-app delivery mode.</small>
+          </label>
+        </>}
         <div className="microsoft-integration-actions teams-notifications-actions">
           <button className="primary-action" type="button" disabled={!access.canSave} onClick={() => void perform('save')}>{busy === 'save' ? 'Saving…' : 'Save Teams configuration'}</button>
           <button className="secondary-action" type="button" disabled={access.blocked || (!access.dirty && !access.revisionConflict)} onClick={() => { setDraft({ ...saved }); setNotice(null); }}>Reset changes</button>
@@ -182,12 +211,12 @@ function TeamsNotificationWorkspace({ environment }) {
       </section>
 
       <section className="teams-notifications-section" aria-labelledby={`${id}-test`}>
-        <div className="teams-notifications-section-title"><span aria-hidden="true" className="teams-notifications-step">02</span><div><h3 id={`${id}-test`}>Test one recipient</h3><p>Check installation first without a notification. Sending a test remains a separate, explicitly confirmed action.</p></div></div>
+        <div className="teams-notifications-section-title"><span aria-hidden="true" className="teams-notifications-step">02</span><div><h3 id={`${id}-test`}>Test one recipient</h3><p>Power Automate sends directly through the Flow bot; no PulseApp installation is required.</p></div></div>
         <label className="microsoft-integration-field" htmlFor={`${id}-recipient`}><span>Recipient sign-in address</span>
           <input id={`${id}-recipient`} type="email" value={recipient} disabled={inputBlocked || environment !== 'test'} autoComplete="off" aria-describedby={`${id}-recipient-help`} onChange={event => { setRecipient(event.target.value); setNotice(null); }} placeholder="user@your-tenant.example" />
-          <small id={`${id}-recipient-help`}>The user needs PulseApp installed in the matching Teams tenant. SuperAdmins may test another tenant user; other administrators may test only themselves.</small>
+          <small id={`${id}-recipient-help`}>Use the recipient’s Microsoft sign-in address. In Power Automate mode, the recipient does not install or configure anything.</small>
         </label>
-        <div className="microsoft-integration-actions teams-notifications-actions"><button className="secondary-action" type="button" disabled={!access.canTest || !validRecipient(recipient)} onClick={() => void perform('check')}>{busy === 'check' ? 'Checking installation…' : 'Check installation (no notification)'}</button></div>
+        {(saved?.deliveryMode || 'power_automate') === 'graph_app' && <div className="microsoft-integration-actions teams-notifications-actions"><button className="secondary-action" type="button" disabled={!access.canTest || !validRecipient(recipient)} onClick={() => void perform('check')}>{busy === 'check' ? 'Checking installation…' : 'Check legacy app installation'}</button></div>}
         <label className="microsoft-integration-field" htmlFor={`${id}-confirm`}><span>Type SEND TEAMS TEST to confirm</span>
           <input id={`${id}-confirm`} value={confirmation} disabled={inputBlocked || environment !== 'test'} autoComplete="off" spellCheck={false} onChange={event => setConfirmation(event.target.value)} placeholder="SEND TEAMS TEST" />
         </label>
@@ -196,9 +225,9 @@ function TeamsNotificationWorkspace({ environment }) {
       </section>
     </div>
 
-    <details className="teams-notifications-section"><summary>PulseApp installation and availability</summary>
-      <p className="teams-notifications-help">Update the existing PulseApp with the reviewed app package, including its personal Notifications tab. A Teams administrator must make the app available to the pilot user and install it in that user’s personal scope. This page cannot override tenant policy.</p>
-      <p className="teams-notifications-help">The updated package requests TeamsActivity.Send.User for notifications and TeamsAppInstallation.Read.User to verify its installation. Neither permission reads chats or manages other apps. Keep the services client ID linked through webApplicationInfo.id.</p>
+    <details className="teams-notifications-section"><summary>Power Automate routing contract</summary>
+      <p className="teams-notifications-help">Pulse sends one authenticated workflow envelope containing the approved recipients, subject, message, severity and Pulse link. The centrally owned flow posts individual reminders as Flow bot chats and can post cost-risk events to an approved group-chat or channel branch.</p>
+      <p className="teams-notifications-help">Email and Teams are recorded as separate channels. A failure in one channel must not replay a successful delivery in the other.</p>
     </details>
 
     <section className="teams-notifications-history" aria-labelledby={`${id}-history`}>
