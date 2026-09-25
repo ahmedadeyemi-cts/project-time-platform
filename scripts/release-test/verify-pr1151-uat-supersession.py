@@ -22,6 +22,9 @@ CREATED = "2026-09-23T16:53:39Z"
 DEPLOYMENT = ".github/workflows/projectpulse-deploy-test.yml"
 SUPERVISOR = ".github/workflows/module025-protected-uat-control.yml"
 DEPLOYMENT_BLOB = "634983f88d5ce3161b626010c3e20c41a80e3758"
+# PR1158 is already merged: the only additions are migration125 artifact/evidence entries.
+# Retain the historical identity and recognize only the complete reviewed new controller.
+MIGRATION125_DEPLOYMENT_BLOB = "be0296f7ad5ac5839fb52ee9aac2502973e60cdb"
 SELF = "scripts/release-test/verify-pr1151-uat-supersession.py"
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -87,9 +90,11 @@ def verify_context(api: GitHub) -> str:
     require(api.read("git/ref/heads/main").get("object", {}).get("sha") == current
             and git("rev-parse", "HEAD") == current, "Not exact current main")
     git("merge-base", "--is-ancestor", OLD_SHA, current)
-    for revision in (OLD_SHA, current):
-        require(git("rev-parse", f"{revision}:{DEPLOYMENT}") == DEPLOYMENT_BLOB,
-                "The pinned pre-Azure deployment guard changed")
+    require(git("rev-parse", f"{OLD_SHA}:{DEPLOYMENT}") == DEPLOYMENT_BLOB,
+            "The pinned historical deployment controller changed")
+    require(git("rev-parse", f"{current}:{DEPLOYMENT}") in
+            (DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB),
+            "The deployment controller is not an exact reviewed version")
     git("diff", "--exit-code", "HEAD", "--", DEPLOYMENT, SUPERVISOR, SELF)
     return current
 
@@ -104,7 +109,7 @@ def verify(api: GitHub, context=verify_context) -> dict:
             "result": "already_cancelled" if state == "already_cancelled"
                       else "verified_non_executable_orphan",
             "superseding_commit": current, "jobs": 0, "pending_approvals": 0,
-            "deployment_controller_unchanged": True,
+            "deployment_guard_unchanged": True,
             "cancelled": state == "already_cancelled", "cancellation_attempted": False,
             "deployment_performed": False}
 

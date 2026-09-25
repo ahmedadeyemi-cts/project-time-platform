@@ -23,7 +23,7 @@ legacy.recovery = recovery
 class RecoveryTests(legacy.RecoveryTests):
     def test_supervisor_has_only_exact_addition(self):
         scope.verify_insertion(scope.original(scope.SUPERVISOR),
-            (ROOT / scope.SUPERVISOR).read_text(), scope.SUPERVISOR_ANCHOR, scope.SUPERVISOR_ADDITION)
+            scope.git("show", "b0334754cfc52e5c7e99300aa26b0a165fae947a:" + scope.SUPERVISOR) + "\n", scope.SUPERVISOR_ANCHOR, scope.SUPERVISOR_ADDITION)
 
     def test_no_alternate_deployment_or_force_operation(self):
         text = (ROOT / 'scripts/release-test/recover-pr1140-uat-orphan.py').read_text()

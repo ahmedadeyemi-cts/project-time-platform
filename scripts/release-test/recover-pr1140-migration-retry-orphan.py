@@ -24,6 +24,9 @@ CREATED = "2026-09-22T17:34:19Z"
 DEPLOYMENT = ".github/workflows/projectpulse-deploy-test.yml"
 SUPERVISOR = ".github/workflows/module025-protected-uat-control.yml"
 DEPLOYMENT_BLOB = "634983f88d5ce3161b626010c3e20c41a80e3758"
+# PR1158 is already merged: the only additions are migration125 artifact/evidence entries.
+# Retain the historical identity and recognize only the complete reviewed new controller.
+MIGRATION125_DEPLOYMENT_BLOB = "be0296f7ad5ac5839fb52ee9aac2502973e60cdb"
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -112,7 +115,8 @@ def verify_context(api: GitHub) -> str:
             "The release is not exact current main")
     git("merge-base", "--is-ancestor", OLD_SHA, current)
     require(git("rev-parse", f"{OLD_SHA}:{DEPLOYMENT}") == DEPLOYMENT_BLOB
-            and git("rev-parse", f"{current}:{DEPLOYMENT}") == DEPLOYMENT_BLOB,
+            and git("rev-parse", f"{current}:{DEPLOYMENT}") in
+            (DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB),
             "The actual Test deployment controller changed")
     git("diff", "--exit-code", "HEAD", "--", DEPLOYMENT, SUPERVISOR,
         "scripts/release-test/recover-pr1140-migration-retry-orphan.py")
@@ -145,7 +149,7 @@ def recover(api: GitHub, verify=verify_context, sleep=time.sleep) -> dict:
     return {"run_id": RUN_ID, "result": "verified_non_executable_orphan",
             "cancel_http_status": http_status, "cancelled": False,
             "superseding_commit": current, "jobs": 0, "pending_approvals": 0,
-            "deployment_controller_unchanged": True, "deployment_performed": False}
+            "deployment_guard_unchanged": True, "deployment_performed": False}
 
 
 if __name__ == "__main__":

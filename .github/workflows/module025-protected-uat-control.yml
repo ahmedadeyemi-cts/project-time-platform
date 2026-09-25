@@ -230,7 +230,7 @@ jobs:
             if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_8" && \
                   "$requested_sha" != '045b66ca01baa68b2f5b3f6eb9e063c23c335981' ]] && \
                git merge-base --is-ancestor '045b66ca01baa68b2f5b3f6eb9e063c23c335981' HEAD && \
-               git diff --quiet '045b66ca01baa68b2f5b3f6eb9e063c23c335981' HEAD -- .github/workflows/projectpulse-deploy-test.yml && \
+               python3 scripts/release-test/verify-module025-quarantine-controller.py --base '045b66ca01baa68b2f5b3f6eb9e063c23c335981' && \
                verify_zero_job_quarantine "$run_id" \
                  '045b66ca01baa68b2f5b3f6eb9e063c23c335981' \
                  'main' \

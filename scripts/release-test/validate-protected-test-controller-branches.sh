@@ -50,6 +50,10 @@ if [[ "$HEAD_BRANCH" == 'control/pr1153-source-registration-20260923' ]]; then
   python3 tests/laya/release-registration.py --control
   python3 tests/module064-migration-rollout.test.py
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == 'control/uat-migration125-guard-compatibility-20260925' ]]; then
+  python3 tests/uat-migration125-compatibility-scope.py
+  python3 tests/test-uat-migration125-compatibility.py
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == 'fix/automatic-document-admission-laya-20260923' ]]; then
   python3 tests/laya/release-registration.py --application
   python3 tests/laya/processed-source-scope.py
