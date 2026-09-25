@@ -25,8 +25,10 @@ client secret. No second Entra application or user-specific credential is introd
 The HTTP trigger receives:
 
 - eventId / idempotencyKey
-- destinationType: individual or group_chat
+- destinationType: individual, group_chat or channel
 - recipients
+- optional conversationId for an existing group chat
+- optional teamId and channelId for an existing Teams channel
 - subject and message
 - severity / notificationType / sourceModule
 - Pulse URL
@@ -57,9 +59,16 @@ Recommended branches:
    - Recipient: current recipient
 
 2. destinationType == group_chat
-   - Route to an approved existing group chat or Teams channel owned by the project/cost
-     review process. Do not create a new chat for every alert.
-   - Post the subject/message and an Open Pulse link.
+   - In the Teams action, choose Group chat -> Enter custom value.
+   - Bind the value to conversationId from the HTTP trigger.
+   - Pulse can therefore route different events to different existing group chats without
+     hard-coding one conversation in Power Automate.
+   - When conversationId is empty, fail the branch or use an explicitly reviewed fallback;
+     do not silently create a new chat for every event.
+
+3. destinationType == channel
+   - Bind Team and Channel to the supplied teamId/channelId custom values.
+   - Use this for stable shared operational destinations where membership changes over time.
 
 The Power Automate connection should be organization-owned with backup owners. Do not tie
 the flow to an employee who may leave or lose access.
