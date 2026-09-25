@@ -246,7 +246,7 @@ public static class MicrosoftTeamsNotificationModule
     {
         var dispatchId = Guid.NewGuid();
         var envelope = new MicrosoftTeamsWorkflowProtocol.Envelope(
-            dispatchId.ToString("D"), "individual", [recipient], "Pulse Teams notification test",
+            dispatchId.ToString("D"), "individual", [recipient], null, null, null, "Pulse Teams notification test",
             "This is a Test notification from Pulse. No custom Pulse Teams app is required.",
             "information", "manual_test", "065", PublicPulseUrl(), dispatchId.ToString("D"));
         return await DeliverWorkflowEnvelopeAsync(connection, configuration, dispatchId, "workflow-test:" + recipient,
@@ -263,8 +263,19 @@ public static class MicrosoftTeamsNotificationModule
             dispatch.NotificationType.Contains("cost", StringComparison.OrdinalIgnoreCase)
             || dispatch.Subject.Contains("cost", StringComparison.OrdinalIgnoreCase)
             || dispatch.EventKey.Contains("cost", StringComparison.OrdinalIgnoreCase));
+        var conversationId = dispatch.Metadata.ValueKind == JsonValueKind.Object
+            && dispatch.Metadata.TryGetProperty("teamsConversationId", out var conversationValue)
+            && conversationValue.ValueKind == JsonValueKind.String ? conversationValue.GetString() : null;
+        var teamId = dispatch.Metadata.ValueKind == JsonValueKind.Object
+            && dispatch.Metadata.TryGetProperty("teamsTeamId", out var teamValue)
+            && teamValue.ValueKind == JsonValueKind.String ? teamValue.GetString() : null;
+        var channelId = dispatch.Metadata.ValueKind == JsonValueKind.Object
+            && dispatch.Metadata.TryGetProperty("teamsChannelId", out var channelValue)
+            && channelValue.ValueKind == JsonValueKind.String ? channelValue.GetString() : null;
+        var destinationType = !string.IsNullOrWhiteSpace(teamId) && !string.IsNullOrWhiteSpace(channelId)
+            ? "channel" : group ? "group_chat" : "individual";
         var envelope = new MicrosoftTeamsWorkflowProtocol.Envelope(
-            dispatch.DispatchId.ToString("D"), group ? "group_chat" : "individual", recipients,
+            dispatch.DispatchId.ToString("D"), destinationType, recipients, conversationId, teamId, channelId,
             dispatch.Subject, dispatch.TextBody, dispatch.AlertSeverity, dispatch.NotificationType,
             dispatch.SourceModule, PublicPulseUrl(), dispatch.DispatchId.ToString("D"));
         await DeliverWorkflowEnvelopeAsync(connection, configuration, dispatch.DispatchId,
