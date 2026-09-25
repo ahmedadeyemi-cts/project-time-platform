@@ -1,0 +1,101 @@
+name: Laya processed source checks
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Ai/LayaProcessedSourceReader.cs'
+      - 'src/backend/ProjectTime.Api/Modules/LayaDecisionModule.cs'
+      - 'src/frontend/project-time-web/src/ai/LayaDecisionPanel.jsx'
+      - 'src/frontend/project-time-web/src/ai/laya-processing-state.js'
+      - 'src/frontend/project-time-web/tests/laya-processing-state.test.mjs'
+      - 'tests/LayaProcessedSourceTests/**'
+      - 'tests/LayaLeaseTests/**'
+      - 'tests/LayaIndexAuthorizationTests/**'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiDocumentIndexAuthorization.cs'
+      - 'src/backend/ProjectTime.Api/Ai/LayaWorkerLease.cs'
+      - 'tests/laya/**'
+      - 'database/migrations/125_automatic_document_admission_laya.sql'
+      - 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+      - 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeSourceResolver.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentPreparation.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs'
+      - 'tests/FlowHivePreparationTests/**'
+      - '.github/workflows/projectpulse-deploy-test.yml'
+      - '.github/workflows/laya-processed-source-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: laya-processed-source-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  receipts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify incremental boundary
+        run: python3 tests/laya/processed-source-scope.py
+      - name: Execute lease lifecycle and cancellation regressions
+        run: dotnet run --project tests/LayaLeaseTests/LayaLeaseTests.csproj --configuration Release
+      - name: Validate release migration wiring
+        run: |
+          bash -n scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          grep -Fq '125_automatic_document_admission_laya.sql' scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          grep -Fq 'database/migrations/125_automatic_document_admission_laya.sql' .github/workflows/projectpulse-deploy-test.yml
+      - name: Start disposable evidence database
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$PASSWORD"
+          CONNECTION="Host=127.0.0.1;Port=5432;Username=postgres;Password=$PASSWORD;Database=flowhive_execution_test"
+          echo "::add-mask::$CONNECTION"
+          printf 'LAYA_PROCESSED_TEST_DB=%s\n' "$CONNECTION" >> "$GITHUB_ENV"
+          printf 'FLOWHIVE_TEST_DB=%s\n' "$CONNECTION" >> "$GITHUB_ENV"
+          export POSTGRES_PASSWORD="$PASSWORD"
+          docker run -d --name laya-evidence --publish 127.0.0.1:5432:5432 \
+            --env POSTGRES_PASSWORD --env POSTGRES_DB=flowhive_execution_test postgres:16
+          for attempt in {1..30}; do
+            if docker exec laya-evidence pg_isready -U postgres -d flowhive_execution_test >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Execute real receipt SQL, checksums and replacement locks
+        run: dotnet run --project tests/LayaProcessedSourceTests/LayaProcessedSourceTests.csproj --configuration Release
+      - name: Execute authenticated association admission against disposable PostgreSQL
+        run: dotnet run --project tests/FlowHivePreparationTests/FlowHivePreparationTests.csproj --configuration Release -- --database
+      - name: Execute transactional indexing authorization and revocation tests
+        env:
+          LAYA_INDEX_TEST_DISPOSABLE: '1'
+        run: dotnet run --project tests/LayaIndexAuthorizationTests/LayaIndexAuthorizationTests.csproj --configuration Release
+      - name: Build actual API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-self-contained
+      - name: Cleanup disposable database
+        if: always()
+        run: docker rm -f laya-evidence || true
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Test processing guidance
+        working-directory: src/frontend/project-time-web
+        run: node --test tests/laya-processing-state.test.mjs
+      - name: Locked production frontend build
+        working-directory: src/frontend/project-time-web
+        run: npm ci && npm run build

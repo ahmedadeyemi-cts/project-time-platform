@@ -23,6 +23,7 @@ public static class LayaDecisionModule
         Map("", "PUT", "configure");
         Map("/health", "POST", "health");
         Map("/documents", "GET", "documents");
+        Map("/documents/{documentId:guid}/processing-state", "GET", "processing-state");
         Map("/documents/{documentId:guid}/classifications", "POST", "classify");
         Map("/documents/{documentId:guid}/classifications", "GET", "history");
         Map("/documents/{documentId:guid}/classifications/{decisionId:guid}/review", "POST", "review");
@@ -102,28 +103,43 @@ public static class LayaDecisionModule
                     stateTokenBudget = 450, productionAccuracyValidated = false });
             }
             var pipeline = c.RequestServices.GetRequiredService<PulseAiPrivateDocumentPipelineService>();
+            var evidenceReader = new LayaProcessedSourceReader(c.RequestServices.GetRequiredService<PulseAiPrivateRuntimeSourceResolver>());
             if (action == "documents")
             {
                 var project = c.Request.Query["projectCode"].ToString().Trim();
                 if (project.Length > 100) return Fail("invalid_project_filter", 400);
                 var documents = await pipeline.ListInventoryAsync(effective.Value, project, "", "", 500, ct);
+                var stages = await evidenceReader.StagesAsync(documents.Select(d => d.DocumentId).ToArray(), ct);
+                var classifications = await evidenceReader.ClassificationStatesAsync(documents.Select(d => d.DocumentId).ToArray(), ct);
                 return Results.Ok(new { limit = 500, documents = documents.Select(d => new
                 {
                     documentId = d.DocumentId, fileName = d.OriginalFileName, projectCode = d.ProjectCode,
-                    previewAdmitted = d.ProductionAdmissionReady
+                    processingStage = stages.GetValueOrDefault(d.DocumentId, "unknown"),
+                    classification = classifications.GetValueOrDefault(d.DocumentId,
+                        new LayaClassificationStatus("unknown", 0, "", "")),
+                    previewAdmitted = false, evidenceSource = LayaProcessedSourceReader.ContractVersion
                 }) });
             }
             if (action == "classify" && !policy.Enabled) return Fail("decision_capability_disabled", 409);
             var documentId = Guid.Parse(c.Request.RouteValues["documentId"]!.ToString()!);
-            // Re-run the existing scoped admission pipeline; IDs never confer authority.
-            var preview = await pipeline.BuildProcessingPreviewAsync(effective.Value, documentId, ct);
-            if (preview is null) return Fail("document_not_found_or_not_authorized", 404);
-            var source = preview.Extraction.SourceSha256.ToLowerInvariant();
+            // Read the worker's actual scan/extraction receipt, never global preview flags.
+            var processed = await evidenceReader.ReadAsync(effective.Value, documentId, ct);
+            if (processed is null) return Fail("document_not_found_or_not_authorized", 404);
+            if (action == "processing-state")
+            {
+                var classification = (await evidenceReader.ClassificationStatesAsync([documentId], ct))
+                    .GetValueOrDefault(documentId, new LayaClassificationStatus("unknown", 0, "", ""));
+                return Results.Ok(new { processing = processed.ToPublicEvidence(), classification });
+            }
+            var source = processed.SourceSha256;
             if (action == "history")
                 return Results.Ok(new { sourceSha256 = source, history = await HistoryAsync(db, documentId, ct) });
-            if (!preview.Extraction.ExtractionSucceeded || !preview.Extraction.Safety.AllowedForPreview
-                || preview.Extraction.OcrRequired || !Regex.IsMatch(source, "^[0-9a-f]{64}$"))
-                return Fail("decision_document_admission_required", 422);
+            if (!processed.Ready)
+                return Results.Json(new
+                {
+                    status = "decision_document_admission_required", processing = processed.ToPublicEvidence(),
+                    reviewRequired = true, externalFallbackAllowed = false, workflowActionsPerformed = 0
+                }, statusCode: 422);
             if (action == "review")
             {
                 var body = await BodyAsync(c, ["label"]);
@@ -132,6 +148,8 @@ public static class LayaDecisionModule
                     return Fail("decision_invalid_label", 400);
                 var decisionId = Guid.Parse(c.Request.RouteValues["decisionId"]!.ToString()!);
                 await using var tx = await db.BeginTransactionAsync(ct);
+                if (!await LayaProcessedSourceReader.LockCurrentVersionAsync(db, tx, processed, ct))
+                    return Fail("decision_source_changed", 409);
                 await using var insert = Command(db, tx, """
                     INSERT INTO celar_laya_reviews(decision_id,reviewed_label,reviewed_by)
                     SELECT decision_id,@label,@actor FROM celar_laya_decisions
@@ -154,27 +172,27 @@ public static class LayaDecisionModule
             if (prior is not null)
                 return prior["sourceSha256"]?.GetValue<string>() == source
                     ? Results.Ok(prior) : Fail("decision_source_changed", 409);
-            var section = preview.Extraction.Sections.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Text));
-            if (section is null) return Fail("decision_text_unavailable", 422);
-            var excerpt = LayaDecisionContract.Excerpt(section.Text.Trim());
+            var excerpt = processed.Excerpt;
             var answer = LayaDecisionContract.Validate(await LayaDecisionTransport.SendAsync(excerpt, ct));
             // Do not disclose/persist a returned recommendation after revocation or replacement.
-            var current = await pipeline.BuildProcessingPreviewAsync(effective.Value, documentId, ct);
+            var current = await evidenceReader.ReadAsync(effective.Value, documentId, ct);
             if (current is null) return Fail("document_not_found_or_not_authorized", 404);
-            if (!current.Extraction.Safety.AllowedForPreview
-                || !current.Extraction.ExtractionSucceeded
-                || current.Extraction.SourceSha256.ToLowerInvariant() != source)
+            if (!LayaProcessedSourceReader.SameEvidence(processed, current))
                 return Fail("decision_source_changed", 409);
             if (!LayaDecisionTransport.DeploymentAllowed()) return Fail("decision_deployment_not_allowed", 423);
             await using var decisionTx = await db.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
             var finalPolicy = await ReadPolicyAsync(db, decisionTx, true, ct);
+            if (!await LayaProcessedSourceReader.LockCurrentVersionAsync(db, decisionTx, processed, ct))
+                return Fail("decision_source_changed", 409);
             if (!finalPolicy.Enabled || finalPolicy.Version != policy.Version)
                 return Fail("decision_configuration_changed", 409);
             var decision = Guid.NewGuid();
             answer["excerptPolicy"] = LayaDecisionContract.ExcerptPolicy;
             answer["excerptSha256"] = LayaDecisionContract.Sha256(excerpt);
             answer["excerptCharacters"] = excerpt.EnumerateRunes().Count();
-            answer["sourceSectionIndex"] = section.SectionIndex;
+            answer["sourceSectionIndex"] = processed.SectionIndex;
+            answer["sourceVersionId"] = processed.VersionId!.Value.ToString();
+            answer["sourceEvidenceContract"] = LayaProcessedSourceReader.ContractVersion;
             answer["analyzedWholeDocument"] = false;
             await using var save = Command(db, decisionTx, """
                 INSERT INTO celar_laya_decisions(decision_id,document_id,source_sha256,request_id,created_by,policy_version,evidence)

@@ -57,6 +57,37 @@ namespace ProjectTime.Api.Ai
             """)!.AsObject();
         }
     }
+    public sealed class PulseAiPrivateRuntimeSourceResolver { }
+    public sealed record LayaProcessedSource(Guid DocumentId, Guid? VersionId, string SourceSha256,
+        string Stage, string DiagnosticCode)
+    {
+        public bool Ready => Stage == "ready";
+        public string Excerpt { get; init; } = "";
+        public int SectionIndex { get; init; }
+        public string SectionSha256 { get; init; } = "";
+        public object ToPublicEvidence() => new { stage=Stage, diagnosticCode=DiagnosticCode, readyForClassification=Ready };
+    }
+    public sealed record LayaClassificationStatus(string Status, long PolicyVersion,
+        string ModelRevision, string ErrorCode);
+    public sealed class LayaProcessedSourceReader(PulseAiPrivateRuntimeSourceResolver resolver)
+    {
+        public const string ContractVersion = "laya-processed-source-v1";
+        public Task<LayaProcessedSource?> ReadAsync(Guid user, Guid document, CancellationToken ct) =>
+            Task.FromResult(user != Fixture.Admin || document != Fixture.Doc || Fixture.Revoked ? null
+                : new LayaProcessedSource(document, Fixture.Doc, Fixture.Hash,
+                    Fixture.Unsafe ? "needs_attention" : "ready", Fixture.Unsafe ? "document_processing_evidence_incomplete" : "")
+                { Excerpt=Fixture.PrivateText, SectionIndex=0, SectionSha256=Fixture.Hash });
+        public Task<IReadOnlyDictionary<Guid,string>> StagesAsync(IReadOnlyList<Guid> ids,CancellationToken ct) =>
+            Task.FromResult<IReadOnlyDictionary<Guid,string>>(ids.ToDictionary(id=>id,_=>Fixture.Unsafe?"needs_attention":"ready"));
+        public Task<IReadOnlyDictionary<Guid,LayaClassificationStatus>> ClassificationStatesAsync(
+            IReadOnlyList<Guid> ids, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyDictionary<Guid,LayaClassificationStatus>>(
+                ids.ToDictionary(id => id, _ => new LayaClassificationStatus("not_requested", 0, "", "")));
+        public static bool SameEvidence(LayaProcessedSource a,LayaProcessedSource b) =>
+            a.Ready && b.Ready && a.SourceSha256==b.SourceSha256 && a.VersionId==b.VersionId;
+        public static Task<bool> LockCurrentVersionAsync(Npgsql.NpgsqlConnection db,Npgsql.NpgsqlTransaction tx,LayaProcessedSource expected,CancellationToken ct) =>
+            Task.FromResult(!Fixture.Revoked && !Fixture.Unsafe && Fixture.Hash==expected.SourceSha256);
+    }
     public sealed record Document(Guid DocumentId, string OriginalFileName, string ProjectCode, bool ProductionAdmissionReady);
     public sealed record Safety(bool AllowedForPreview);
     public sealed record Section(int SectionIndex, string Text);

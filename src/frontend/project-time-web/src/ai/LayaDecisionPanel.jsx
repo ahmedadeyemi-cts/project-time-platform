@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import './laya-decisions.css';
+import { processingStageLabel, processingMessage, shouldPollProcessing } from './laya-processing-state.js';
 
 const ROOT = '/api/ai-configuration/decisions/laya';
 const LABELS = { sow: 'Statement of work', invoice: 'Invoice', purchase_order: 'Purchase order', other: 'Other' };
@@ -28,6 +29,7 @@ async function api(path, method, body, signal) {
   if (!response.ok) {
     const error = new Error(MESSAGES[data.status] || 'The request could not be completed. No automated workflow action was taken.');
     error.status = response.status;
+    error.processing = data.processing;
     throw error;
   }
   return data;
@@ -46,6 +48,9 @@ export default function LayaDecisionPanel() {
   const [history, setHistory] = useState([]);
   const [sourceHash, setSourceHash] = useState('');
   const [labels, setLabels] = useState({});
+  const [processing, setProcessing] = useState(null);
+  const [processingError, setProcessingError] = useState('');
+  const [authorityEpoch, setAuthorityEpoch] = useState(0);
   const pending = useRef(null);
   const alive = useRef(false);
   const locked = useRef(false);
@@ -62,6 +67,7 @@ export default function LayaDecisionPanel() {
       if (alive.current) {
         if (e.status === 401 || e.status === 403) setHidden(true);
         else setError(e.name === 'AbortError' ? 'The request ended before completion. Refresh the history before retrying.' : e.message);
+        if (e.processing) setProcessing(e.processing);
         setHealth(null);
       }
     } finally {
@@ -70,6 +76,21 @@ export default function LayaDecisionPanel() {
       locked.current = false;
     }
   }
+
+  useEffect(() => {
+    const events = ['projectpulse:view-as-changed', 'projectpulse:auth-session-changed', 'projectpulse:auth-session-cleared'];
+    const reset = () => {
+      pending.current?.abort(); setConfig(null); setDocuments([]); setDocumentId('');
+      setHistory([]); setHealth(null); setSourceHash(''); setProcessing(null);
+      setError(''); setNotice(''); setHidden(false); setAuthorityEpoch(value => value + 1);
+    };
+    const storageChanged = event => {
+      if (event.key === null || ['projectPulseAuthSession','projectPulseViewAsUser'].includes(event.key)) reset();
+    };
+    events.forEach(event => window.addEventListener(event, reset));
+    window.addEventListener('storage', storageChanged);
+    return () => { events.forEach(event => window.removeEventListener(event, reset)); window.removeEventListener('storage', storageChanged); };
+  }, []);
 
   useEffect(() => {
     alive.current = true;
@@ -83,7 +104,44 @@ export default function LayaDecisionPanel() {
       }
     });
     return () => { alive.current = false; controller.abort(); pending.current?.abort(); };
-  }, []);
+  }, [authorityEpoch]);
+
+  useEffect(() => {
+    setProcessing(null); setProcessingError('');
+    if (!documentId || hidden) return undefined;
+    const controller = new AbortController();
+    let timer;
+    let running = false;
+    let activeRequest;
+    let attempts = 0;
+    let complete = false;
+    async function refresh() {
+      if (controller.signal.aborted || document.hidden || running || complete) return;
+      running = true;
+      activeRequest = new AbortController();
+      const requestDeadline = setTimeout(() => activeRequest?.abort(), 20000);
+      try {
+        const data = await api(`/documents/${encodeURIComponent(documentId)}/processing-state`, 'GET', undefined, activeRequest.signal);
+        if (controller.signal.aborted) return;
+        setProcessing(data); setProcessingError('');
+        complete = !shouldPollProcessing(data);
+        if (!complete && ++attempts < 120) timer = setTimeout(refresh, 5000);
+        else if (!complete) setProcessingError('Automatic refresh paused. Reselect this document to check again; background processing is unaffected.');
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          setProcessing(null); setProcessingError(e.name === 'AbortError' ? 'Processing verification timed out. Reselect this document to retry; no readiness was assumed.' : e.message);
+          if (e.status === 401 || e.status === 403) { setHistory([]); setDocuments([]); setHidden(true); }
+        }
+      } finally { clearTimeout(requestDeadline); activeRequest = null; running = false; }
+    }
+    function visibility() {
+      clearTimeout(timer);
+      if (!document.hidden && !complete && attempts < 120) refresh();
+    }
+    document.addEventListener('visibilitychange', visibility);
+    refresh();
+    return () => { controller.abort(); activeRequest?.abort(); clearTimeout(timer); document.removeEventListener('visibilitychange', visibility); };
+  }, [documentId, hidden, authorityEpoch]);
 
   async function refreshHistory(id, signal) {
     const data = await api(`/documents/${encodeURIComponent(id)}/classifications`, 'GET', undefined, signal);
@@ -125,10 +183,12 @@ export default function LayaDecisionPanel() {
       })}>Load documents</button>
       <label>Document<select value={documentId} onChange={e => { setDocumentId(e.target.value); setHistory([]); setSourceHash(''); }}>
         <option value="">Select a document</option>
-        {documents.map(doc => <option key={doc.documentId} value={doc.documentId}>{doc.projectCode} · {doc.fileName}{doc.previewAdmitted ? '' : ' · admission check required'}</option>)}
+        {documents.map(doc => <option key={doc.documentId} value={doc.documentId}>{doc.projectCode} · {doc.fileName} · {processingStageLabel(doc.processingStage)}</option>)}
       </select></label>
+      {documentId && <p role="status">{processingMessage(processing)}</p>}
+      {processingError && <p role="alert" className="laya-decisions__error">{processingError}</p>}
       <div className="laya-decisions__actions">
-        <button type="button" disabled={!documentId || !config?.effectiveEnabled} onClick={() => run(async signal => {
+        <button type="button" disabled={!documentId || !config?.effectiveEnabled || !processing?.readyForClassification} onClick={() => run(async signal => {
           await api(`/documents/${encodeURIComponent(documentId)}/classifications`, 'POST', { requestId: crypto.randomUUID() }, signal);
           await refreshHistory(documentId, signal);
           if (alive.current && !signal.aborted) setNotice('Recommendation recorded. Review or correct it below.');

@@ -306,15 +306,16 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                         d.project_id,
                         service_user.user_id AS actor_user_id
                     FROM project_intake_documents d
-                    JOIN projects p ON p.project_id = d.project_id
+                    LEFT JOIN projects p ON p.project_id = d.project_id
                     JOIN app_users service_user
                       ON service_user.user_id = @service_principal_user_id
                      AND COALESCE(service_user.is_active, FALSE) = TRUE
                     WHERE d.is_active = TRUE
-                      AND lower(trim(COALESCE(p.status,''))) NOT IN ('closed','completed','cancelled','canceled','archived')
+                      AND (
+                          d.project_id IS NULL
+                          OR lower(trim(COALESCE(p.status,''))) NOT IN ('closed','completed','cancelled','canceled','archived')
+                      )
                       AND COALESCE(d.upload_source,'') <> 'celar_ai_chat_attachment'
-                      AND COALESCE(d.engineering_visible, FALSE) = TRUE
-                      AND COALESCE(d.ai_timesheet_context_enabled, FALSE) = TRUE
                       AND COALESCE(d.pulse_ai_processing_status, 'not_requested') = 'not_requested'
                       AND EXISTS (
                           SELECT 1
@@ -330,7 +331,6 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                             AND service_assignment.is_active = TRUE
                             AND service_permission.permission_code = 'QUEUE_PULSE_AI_DOCUMENT_PROCESSING'
                       )
-                      AND replace(replace(lower(trim(COALESCE(d.document_category,d.document_type,''))),'-','_'),' ','_')=ANY(@planning_categories)
                       AND NOT EXISTS (
                           SELECT 1
                           FROM pulse_ai_document_processing_jobs existing
@@ -341,9 +341,6 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                             )
                       )
                     ORDER BY
-                        CASE WHEN LOWER(COALESCE(d.document_category, d.document_type, '')) IN (
-                            'sow','statement_of_work','gsd','global_solution_design'
-                        ) THEN 0 ELSE 1 END,
                         d.uploaded_at,
                         d.project_intake_document_id
                     FOR UPDATE OF d SKIP LOCKED
@@ -369,7 +366,6 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 command.Parameters.AddWithValue("maximum_attempts", options.MaximumAttempts);
                 command.Parameters.AddWithValue("correlation_id", correlationId);
                 command.Parameters.AddWithValue("service_principal_user_id", options.DocumentServicePrincipalUserId!.Value);
-                command.Parameters.AddWithValue("planning_categories", ProjectTime.Api.Modules.ProjectPlanningDocumentPreparation.Categories);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 queued = await reader.ReadAsync(cancellationToken)
                     ? new AutoQueueResult(
@@ -408,7 +404,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 string.Empty,
                 new
                 {
-                    admission = "worker_enabled_and_document_ai_context_eligible",
+                    admission = "worker_enabled_and_security_document_admission",
                     rawDocumentTextLogged = false,
                     externalProviderCalled = false
                 },
@@ -1204,7 +1200,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task<Guid> PersistProcessedDocumentAsync(
+    public async Task<PulseAiPreparedDocumentResult> PersistProcessedDocumentAsync(
         PulseAiPrivateProcessingJob job,
         PulseAiAuthorizedDocumentSource source,
         PulseAiPrivateMalwareScanResult scan,
@@ -1212,6 +1208,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         IReadOnlyList<PulseAiDocumentChunk> chunks,
         PulseAiPrivateEmbeddingResult embeddings,
         bool lexicalOnly,
+        bool indexingRequested,
         CancellationToken cancellationToken = default)
     {
         await using var connection = new NpgsqlConnection(ConnectionString());
@@ -1219,6 +1216,22 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         try
         {
+            if (!scan.Clean || scan.Infected || !extraction.ExtractionSucceeded
+                || source.DocumentId != extraction.DocumentId || scan.SourceSha256 != extraction.SourceSha256)
+                throw new PulseAiDocumentPublicationRejectedException("index_scan_extraction_evidence_invalid");
+            // Authorize inside the SAME transaction that publishes chunks. A
+            // revoked consent during embedding cannot leak a new lexical/vector index.
+            var indexDecision = await PulseAiDocumentIndexAuthorization.LockAsync(
+                connection, transaction, job, source, extraction.SourceSha256, cancellationToken);
+            if (!indexDecision.SourceCurrent)
+                throw new PulseAiDocumentPublicationRejectedException(indexDecision.DiagnosticCode);
+            var indexAllowed = indexingRequested && indexDecision.IndexAllowed;
+            if (!indexAllowed)
+            {
+                chunks = Array.Empty<PulseAiDocumentChunk>();
+                embeddings = PulseAiDocumentIndexAuthorization.NotRequested(indexDecision.DiagnosticCode);
+                lexicalOnly = false;
+            }
             var documentVersion = $"{source.OriginalFileName}@{source.UploadedAt:O}";
             const string versionSql = """
                 INSERT INTO pulse_ai_document_versions (
@@ -1280,7 +1293,8 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
             versionCommand.Parameters.AddWithValue("embedding_model", embeddings.Succeeded ? embeddings.Model : string.Empty);
             versionCommand.Parameters.AddWithValue("embedding_dimension", embeddings.Succeeded ? embeddings.Dimension : DBNull.Value);
             versionCommand.Parameters.AddWithValue("index_provider", PulseAiPrivateRuntimePolicy.IndexProvider);
-            versionCommand.Parameters.AddWithValue("index_status", embeddings.Succeeded ? "embedding_ready" : "lexical_ready");
+            versionCommand.Parameters.AddWithValue("index_status", !indexAllowed ? "inactive"
+                : embeddings.Succeeded ? "embedding_ready" : "lexical_ready");
             versionCommand.Parameters.AddWithValue("effective_at", source.UploadedAt);
             versionCommand.Parameters.AddWithValue("job_id", job.JobId);
             var versionId = (Guid)(await versionCommand.ExecuteScalarAsync(cancellationToken)
@@ -1414,13 +1428,14 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                     pulse_ai_processing_error_code = '',
                     pulse_ai_processing_updated_at = NOW(),
                     extraction_status = CASE WHEN @embedding_ready THEN 'indexed' ELSE 'processed' END,
-                    ai_context_last_processed_at = NOW()
+                    ai_context_last_processed_at = CASE WHEN @index_allowed THEN NOW() ELSE NULL END
                 WHERE project_intake_document_id = @document_id;
                 """;
             await using var documentCommand = new NpgsqlCommand(documentSql, connection, transaction);
             documentCommand.Parameters.AddWithValue("version_id", versionId);
             documentCommand.Parameters.AddWithValue("classification", source.Classification);
             documentCommand.Parameters.AddWithValue("embedding_ready", embeddings.Succeeded);
+            documentCommand.Parameters.AddWithValue("index_allowed", indexAllowed);
             documentCommand.Parameters.AddWithValue("document_id", source.DocumentId);
             await documentCommand.ExecuteNonQueryAsync(cancellationToken);
 
@@ -1447,7 +1462,9 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                   AND lease_owner = @lease_owner
                   AND lease_token = @lease_token
                   AND lease_generation = @lease_generation
-                  AND lease_expires_at > NOW();
+                  AND lease_expires_at > clock_timestamp()
+                  AND cancellation_requested = FALSE
+                  AND job_status IN ('extracting','embedding','indexing');
                 """;
             await using var jobCommand = new NpgsqlCommand(jobSql, connection, transaction);
             jobCommand.Parameters.AddWithValue("job_id", job.JobId);
@@ -1471,6 +1488,8 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 chunkCount = chunks.Count,
                 embeddedChunkCount = embeddings.Succeeded ? embeddings.Vectors.Count : 0,
                 lexicalOnly,
+                indexingAuthorized = indexAllowed,
+                indexDiagnosticCode = indexAllowed ? "" : indexDecision.DiagnosticCode,
                 rawTextLogged = false,
                 externalProviderCalled = false
             }));
@@ -1497,18 +1516,47 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                     chunkCount = chunks.Count,
                     embeddedChunkCount = embeddings.Succeeded ? embeddings.Vectors.Count : 0,
                     lexicalOnly,
+                    indexingAuthorized = indexAllowed,
+                    indexDiagnosticCode = indexAllowed ? "" : indexDecision.DiagnosticCode,
                     rawTextLogged = false,
                     externalProviderCalled = false
                 },
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return versionId;
+            return new(versionId, indexAllowed, chunks.Count,
+                embeddings.Succeeded ? embeddings.Vectors.Count : 0,
+                indexAllowed ? "" : indexDecision.DiagnosticCode);
         }
         catch
         {
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    public async Task CancelStalePublicationAsync(
+        PulseAiPrivateProcessingJob job, string diagnosticCode, CancellationToken cancellationToken)
+    {
+        // Cancel only the owned job. Never mark replacement bytes failed/ready or
+        // alter the document row after its source, project, or owner was revoked.
+        await using var db = new NpgsqlConnection(ConnectionString());
+        await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            UPDATE pulse_ai_document_processing_jobs
+            SET job_status='cancelled', completed_at=NOW(), lease_owner='', lease_token=NULL,
+                lease_heartbeat_at=NULL, lease_expires_at=NULL, diagnostic_code=@code,
+                diagnostic_message='Publication cancelled because its source or authorization changed.'
+            WHERE pulse_ai_document_processing_job_id=@job AND lease_owner=@owner
+              AND lease_token=@token AND lease_generation=@generation
+              AND lease_expires_at>clock_timestamp()
+              AND job_status IN ('extracting','embedding','indexing','cancel_requested')
+            """, db) { CommandTimeout = 15 };
+        command.Parameters.AddWithValue("job", job.JobId);
+        command.Parameters.AddWithValue("owner", job.LeaseOwner);
+        command.Parameters.Add("token", NpgsqlDbType.Uuid).Value = (object?)job.LeaseToken ?? DBNull.Value;
+        command.Parameters.AddWithValue("generation", job.LeaseGeneration);
+        command.Parameters.AddWithValue("code", Clean(diagnosticCode, 120, "index_publication_cancelled"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task CompleteTerminalAsync(
