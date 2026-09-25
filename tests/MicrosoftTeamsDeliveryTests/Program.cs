@@ -98,6 +98,71 @@ foreach(var configured in new[]{Convert.ToBase64String(RandomNumberGenerator.Get
  tag[0]^=1;failed=false;try{MicrosoftTeamsServicesSnapshot.Decrypt(cipher,nonce,tag,configured,"onenecklab");}catch(CryptographicException){failed=true;}Check(failed,"tampered credential denied");
  CryptographicOperations.ZeroMemory(plain);CryptographicOperations.ZeroMemory(key);
 }
+
+var workflowUrl = "https://tenant.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/test/triggers/manual/paths/invoke";
+var workflowEnvelope = new MicrosoftTeamsWorkflowProtocol.Envelope(
+    Guid.NewGuid().ToString("D"), "individual", new[] { "pilot@example.invalid" }, null, null, null,
+    "Pulse test", "Test message", "information", "manual_test", "065",
+    "https://phd-west-test.onenecklab.com/#dashboard", Guid.NewGuid().ToString("D"));
+
+Check(MicrosoftTeamsWorkflowProtocol.ValidTriggerUrl(workflowUrl, out var workflowEndpoint) && workflowEndpoint is not null, "Power Automate URL accepted");
+Check(!MicrosoftTeamsWorkflowProtocol.ValidTriggerUrl("http://tenant.environment.api.powerplatform.com/x", out _), "Power Automate requires HTTPS");
+Check(!MicrosoftTeamsWorkflowProtocol.ValidTriggerUrl("https://example.com/x", out _), "Power Automate host allowlist");
+
+async Task<(MicrosoftTeamsWorkflowProtocol.Outcome Result, FakeHttp Handler)> RunWorkflow(int workflowStatus = 202, int tokenStatus = 200, string? audience = null)
+{
+    var handler = new FakeHttp(async (request, index) => {
+        if (index == 0)
+        {
+            Check(request.RequestUri!.Host == "login.microsoftonline.com", "workflow token authority fixed");
+            var body = await request.Content!.ReadAsStringAsync();
+            Check(body.Contains("https%3A%2F%2Fservice.flow.microsoft.com%2F.default"), "workflow commercial audience requested");
+            return tokenStatus == 200 ? Response(200, "{\"access_token\":\"workflow-token\"}") : Response(tokenStatus, "{}");
+        }
+        Check(index == 1, "workflow sends once");
+        Check(request.RequestUri!.Host.EndsWith(".api.powerplatform.com", StringComparison.Ordinal), "workflow destination restricted");
+        Check(request.Headers.Authorization?.ToString() == "Bearer workflow-token", "workflow bearer token");
+        Check(request.Headers.Contains("x-pulse-event-id") && request.Headers.Contains("x-pulse-idempotency-key"), "workflow idempotency headers");
+        using var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+        var root = json.RootElement;
+        Check(root.GetProperty("destinationType").GetString() == "individual", "workflow destination type");
+        Check(root.GetProperty("recipients").GetArrayLength() == 1, "workflow recipients bounded");
+        Check(root.GetProperty("subject").GetString() == "Pulse test", "workflow subject serialized");
+        var response = Response(workflowStatus, workflowStatus >= 400 ? "{\"error\":{}}" : "{}");
+        response.Headers.Add("x-ms-request-id", requestId);
+        response.Headers.Add("x-ms-workflow-run-id", "workflow-run-1");
+        return response;
+    });
+    using var http = new HttpClient(handler);
+    var result = await MicrosoftTeamsWorkflowProtocol.ExecuteAsync(http, tenant, clientId, "synthetic-secret",
+        audience ?? "https://service.flow.microsoft.com/", workflowUrl, workflowEnvelope, CancellationToken.None);
+    return (result, handler);
+}
+
+var workflowSuccess = await RunWorkflow();
+Check(workflowSuccess.Result.Status == "sent", "workflow 2xx accepted");
+Check(workflowSuccess.Result.Diagnostic.Code == "teams_workflow_accepted", "workflow accepted diagnostic");
+Check(workflowSuccess.Result.Diagnostic.RequestId == requestId, "workflow request ID retained");
+Check(workflowSuccess.Result.WorkflowRunId == "workflow-run-1", "workflow run ID retained");
+Check(workflowSuccess.Handler.Requests.Count == 2, "workflow one token and one send");
+
+var workflowDenied = await RunWorkflow(403);
+Check(workflowDenied.Result.Status == "failed" && workflowDenied.Result.Diagnostic.Code == "teams_workflow_not_authorized", "workflow authorization failure classified");
+var workflowLimited = await RunWorkflow(429);
+Check(workflowLimited.Result.Status == "failed" && workflowLimited.Result.Diagnostic.Code == "teams_workflow_rate_limited", "workflow rate limit classified");
+var workflowUnknown = await RunWorkflow(503);
+Check(workflowUnknown.Result.Status == "outcome_unknown", "workflow server failure remains unknown");
+var workflowTokenFailure = await RunWorkflow(tokenStatus: 401);
+Check(workflowTokenFailure.Result.Status == "failed" && workflowTokenFailure.Handler.Requests.Count == 1, "workflow token failure prevents send");
+
+var tooManyRecipients = workflowEnvelope with { Recipients = Enumerable.Range(0, 101).Select(i => $"u{i}@example.invalid").ToArray() };
+using (var http = new HttpClient(new FakeHttp((_, _) => throw new Exception("network must not be called"))))
+{
+    var result = await MicrosoftTeamsWorkflowProtocol.ExecuteAsync(http, tenant, clientId, "synthetic-secret",
+        "https://service.flow.microsoft.com/", workflowUrl, tooManyRecipients, CancellationToken.None);
+    Check(result.Diagnostic.Code == "teams_workflow_recipient_count_invalid", "workflow recipient bound enforced");
+}
+
 Console.WriteLine($"TEAMS_PROTOCOL_ASSERTIONS={count}; LIVE_MICROSOFT_CALLS=0; RESULT=PASS");
 sealed class FakeHttp(Func<HttpRequestMessage,int,Task<HttpResponseMessage>> respond):HttpMessageHandler {
  internal List<(Uri Uri,string? Authorization)> Requests {get;}=[];
