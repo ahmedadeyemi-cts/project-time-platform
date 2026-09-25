@@ -11,6 +11,8 @@ on:
         description: Enter APPLY-MODULE065-MIGRATION-126-TO-PROTECTED-UAT
         required: true
         type: string
+  issue_comment:
+    types: [created]
 
 permissions:
   id-token: write
@@ -22,6 +24,13 @@ concurrency:
 
 jobs:
   migrate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 1169 &&
+       github.event.issue.pull_request &&
+       github.event.comment.author_association == 'OWNER' &&
+       startsWith(github.event.comment.body, 'APPLY MODULE065 MIGRATION126 PROTECTED UAT SHA '))
     name: Apply and verify Module 065 migration 126
     environment: test
     runs-on: ubuntu-24.04
@@ -34,10 +43,32 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Resolve authorized migration request
+        id: request
+        shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$DISPATCH_CONFIRMATION" == APPLY-MODULE065-MIGRATION-126-TO-PROTECTED-UAT ]]
+            RELEASE_COMMIT="$DISPATCH_RELEASE_COMMIT"
+          else
+            [[ "${{ github.event.issue.number }}" == 1169 ]]
+            [[ "${{ github.event.comment.author_association }}" == OWNER ]]
+            [[ "$COMMENT_BODY" =~ ^APPLY\ MODULE065\ MIGRATION126\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]]
+            RELEASE_COMMIT="${BASH_REMATCH[1]}"
+          fi
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+
       - name: Check out exact merged release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ inputs.release_commit }}
+          ref: ${{ steps.request.outputs.release_commit }}
           path: release
           fetch-depth: 0
           persist-credentials: false
@@ -46,12 +77,10 @@ jobs:
         id: guard
         shell: bash
         env:
-          RELEASE_COMMIT: ${{ inputs.release_commit }}
-          CONFIRMATION: ${{ inputs.confirmation }}
+          RELEASE_COMMIT: ${{ steps.request.outputs.release_commit }}
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_REF" == refs/heads/main ]]
-          [[ "$CONFIRMATION" == APPLY-MODULE065-MIGRATION-126-TO-PROTECTED-UAT ]]
           [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$(git -C control rev-parse HEAD)" == "$GITHUB_SHA" ]]
           [[ "$(git -C release rev-parse HEAD)" == "$RELEASE_COMMIT" ]]
