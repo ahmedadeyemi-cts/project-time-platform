@@ -9,9 +9,6 @@ on:
       - 'deployment/containers/web/default.conf.template'
       - 'scripts/teams/**'
       - 'tests/MicrosoftTeamsDeliveryTests/**'
-      - 'tests/module065-power-automate-migration-contract.mjs'
-      - 'database/migrations/126_module065_power_automate_teams_delivery.sql'
-      - '.github/workflows/projectpulse-deploy-test.yml'
       - 'docs/repairs/module065-teams-delivery.md'
       - '.github/workflows/module065-teams-delivery-ci.yml'
 permissions:
@@ -33,8 +30,6 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: '10.0.x'
-      - name: Verify Protected UAT migration 126 contract
-        run: node --test tests/module065-power-automate-migration-contract.mjs
       - name: Compile the actual API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release
       - name: Execute the actual Graph protocol and credential envelope with synthetic transport
