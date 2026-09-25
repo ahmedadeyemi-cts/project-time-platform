@@ -20,11 +20,14 @@ export function validRecipient(value) {
 
 export function configurationChanged(saved, draft) {
   if (!saved || !draft) return false;
-  return saved.enabled !== draft.enabled
-    || String(saved.deliveryMode || 'power_automate') !== String(draft.deliveryMode || 'power_automate')
-    || String(saved.teamsAppId || '').toLowerCase() !== String(draft.teamsAppId || '').trim().toLowerCase()
-    || String(saved.workflowTriggerUrl || '') !== String(draft.workflowTriggerUrl || '').trim()
-    || String(saved.workflowAudience || '') !== String(draft.workflowAudience || '').trim();
+  const savedMode = String(saved.deliveryMode || 'power_automate');
+  const draftMode = String(draft.deliveryMode || 'power_automate');
+  if (saved.enabled !== draft.enabled || savedMode !== draftMode) return true;
+  if (draftMode === 'power_automate') {
+    return String(saved.workflowTriggerUrl || '') !== String(draft.workflowTriggerUrl || '').trim()
+      || String(saved.workflowAudience || '') !== String(draft.workflowAudience || '').trim();
+  }
+  return String(saved.teamsAppId || '').toLowerCase() !== String(draft.teamsAppId || '').trim().toLowerCase();
 }
 
 export function workspaceAccess(state, draft, environment, busy, fresh = true) {
