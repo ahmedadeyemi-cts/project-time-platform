@@ -856,7 +856,7 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
     : plannerProviderDeadlineRetry
     ? approval.mergeCommit
     : process.env.GITHUB_HEAD_REF
-      ? '50317992e55349c52bef56f26383f105152f7f5d'
+      ? 'b82bea8ad3874e58ab8d42f01017942fa9d8765e'
     : 'f7ee256fb851cbdeb083c2ff6fe8ad650ee4d203');
   assert.equal(approval.sourceBase, reviewedMain);
   assert.equal(approval.sha, candidate);
@@ -965,7 +965,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   assert.equal(approval.successorCheckBinding.supersedes.installedAcceptanceRunId,
     module025VerifierCorrection ? 35043700143 : plannerCelarResponseContractRepair ? approval.successorCheckBinding.supersedes.installedAcceptanceRunId : module025AdmissionManifestRefresh || module025CandidateRefresh || dispatchValidation ? 35043700143 : plannerLiveCelarBudgetApproval || plannerLiveCelarCompactPromptRepair || module025ManualTriggerExactCandidate ? 35031315112 : plannerCelarApprovalRefresh || plannerCelarRequiredCheckRefresh ? 35021148203 : plannerCandidateApprovalRefresh || plannerCandidateRefresh || plannerAdmissionEvidenceCorrection ? 34988294166 : portfolioDbAliasCandidateRefresh || plannerLiveCompletionRepair ? 34947291372 : plannerLiveCapacityCandidateRefresh ? 34939610524 : plannerParallelPhaseCandidateRefresh || plannerRuntimeCheckOmission || plannerCapacitySafe ? 34927190194 : plannerLiveCapacityRepair || plannerCapacitySafeCandidateRefresh ? 34933208336 : plannerCompactPhaseControl ? 34920855999
       : module025SowRoleCandidateRefresh1014 || plannerProviderDeadlineRetry || plannerProviderDeadlineCandidateRefresh || plannerControlCandidateApproval || plannerAdmissionManifestRefresh ? 34895217042
-      : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 35021148203);
+      : module025SowRoleCandidateRefresh1009 || module025MyRoleLiveVerifier ? 34878722284 : 35043700143);
 });
 test('workflow-dispatch evidence is candidate-bound and cannot substitute another run', () => {
   if (workflowDispatchChecks.length === 0) {
