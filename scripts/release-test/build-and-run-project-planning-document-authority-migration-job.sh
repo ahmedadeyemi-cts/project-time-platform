@@ -79,6 +79,8 @@ install -m 0444 "$ROOT/scripts/release-test/verify-module025-service-scope.sql" 
 (cd "$CONTEXT" && sha256sum database/migrations/124_module025_service_scope.sql database/verify-module025-service-scope.sql > database/module025-service-scope.sha256)
 install -m 0444 "$AUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE" "$CONTEXT/database/migrations/125_automatic_document_admission_laya.sql"
 (cd "$CONTEXT" && sha256sum database/migrations/125_automatic_document_admission_laya.sql > database/automatic-admission-laya.sha256)
+install -m 0444 "$ROOT/database/migrations/127_flowhive_pm_automatic_planning_defaults.sql" "$CONTEXT/database/migrations/127_flowhive_pm_automatic_planning_defaults.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/127_flowhive_pm_automatic_planning_defaults.sql > database/flowhive-pm-defaults.sha256)
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -151,6 +153,8 @@ echo 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED'
 (cd "$ROOT" && sha256sum --check --status database/automatic-admission-laya.sha256)
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/125_automatic_document_admission_laya.sql"
 
+(cd "$ROOT" && sha256sum --check --status database/flowhive-pm-defaults.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/127_flowhive_pm_automatic_planning_defaults.sql"
 
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
@@ -257,6 +261,23 @@ SQL
   echo "ERROR: Automatic document admission/Laya migration 125 verification failed: $automatic_admission_laya_verification" >&2
   exit 1
 }
+flowhive_pm_defaults_verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
+SELECT
+  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='127_flowhive_pm_automatic_planning_defaults')::text || '|' ||
+  (to_regclass('public.project_flowhive_auto_plan_user_defaults') IS NOT NULL)::text || '|' ||
+  EXISTS(
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_class t ON t.oid=c.conrelid
+    WHERE t.relname='project_flowhive_auto_plans'
+      AND c.conname='project_flowhive_auto_plans_source_check'
+      AND pg_get_constraintdef(c.oid) LIKE '%pm_default%'
+  )::text;
+SQL
+)"
+[[ "$flowhive_pm_defaults_verification" == 'true|true|true' ]] || {
+  echo "ERROR: FlowHive PM automatic planning migration 127 verification failed: $flowhive_pm_defaults_verification" >&2
+  exit 1
+}
 echo 'MIGRATION_096=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_097=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_098_OWNER_STORAGE=APPLIED_AND_VERIFIED'
@@ -265,6 +286,7 @@ echo 'MIGRATION_099_MODULE025_SOW_GSD=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_100_MODULE001B_CATALOG=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_109_MODULE025_PROJECT_NAME=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_127_FLOWHIVE_PM_AUTOMATIC_PLANNING_DEFAULTS=APPLIED_AND_VERIFIED'
 ENTRYPOINT
 chmod 0555 "$CONTEXT/entrypoint.sh"
 
@@ -328,6 +350,7 @@ echo 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED'
 echo 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA=APPLIED_AND_VERIFIED'
+echo 'MIGRATION_127_FLOWHIVE_PM_AUTOMATIC_PLANNING_DEFAULTS=APPLIED_AND_VERIFIED'
 
 if [[ -n "$EVIDENCE_ROOT" ]]; then
   install -d -m 0700 "$EVIDENCE_ROOT"

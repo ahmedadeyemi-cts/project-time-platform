@@ -5,10 +5,18 @@ import './project-flowhive-automation.css';
 
 const labels = {
   disabled: 'Off', waiting_documents: 'Waiting for documents', waiting_start_date: 'Start date needed',
-  waiting_pm: 'Project Manager needed', preparation_paused: 'Preparation paused', generating: 'Generating draft',
-  ready_for_review: 'Ready for PM review', existing_plan: 'Existing plan preserved',
+  waiting_pm: 'Project Manager needed', preparation_paused: 'Preparation paused', generating: 'Building your plan',
+  ready_for_review: 'Ready for review', existing_plan: 'Existing plan preserved',
   cancelled: 'Cancelled', archived: 'Archived', needs_attention: 'Needs attention'
 };
+
+function statusTone(status) {
+  if (status === 'ready_for_review') return 'ready';
+  if (status === 'generating') return 'working';
+  if (['waiting_documents', 'waiting_start_date', 'waiting_pm'].includes(status)) return 'waiting';
+  if (['needs_attention', 'preparation_paused', 'cancelled'].includes(status)) return 'attention';
+  return 'neutral';
+}
 
 export default function ProjectFlowHiveAutomation({ projectId, getJson, putJson, onLoadDraft, onState }) {
   const [state, setState] = useState(null);
@@ -20,6 +28,7 @@ export default function ProjectFlowHiveAutomation({ projectId, getJson, putJson,
   const observedProject = useRef(null);
   const publish = useRef(onState);
   publish.current = onState;
+
   useEffect(() => {
     const current = ++epoch.current;
     const controller = new AbortController();
@@ -48,13 +57,16 @@ export default function ProjectFlowHiveAutomation({ projectId, getJson, putJson,
     return () => { epoch.current += 1; controller.abort(); window.clearTimeout(timer); };
   }, [projectId, getJson, refresh]);
 
-  async function save(enabled, defaults = false) {
-    if (busy || !state || !(defaults ? state.defaults?.canManage : state.canManage)) return;
+  async function save(enabled, scope = 'project') {
+    if (busy || !state) return;
+    const target = scope === 'organization' ? state.defaults : scope === 'personal' ? state.myDefault : state;
+    if (!(scope === 'project' ? state.canManage : target?.canManage)) return;
     const current = ++epoch.current;
     setBusy(true); setSaveError('');
     try {
-      const value = await putJson(`/api/project-flowhive/projects/${projectId}/ai-planner/automation${defaults ? '/default' : ''}`, {
-        enabled, expectedVersion: defaults ? state.defaults.rowVersion : state.rowVersion
+      const suffix = scope === 'organization' ? '/default' : scope === 'personal' ? '/my-default' : '';
+      const value = await putJson(`/api/project-flowhive/projects/${projectId}/ai-planner/automation${suffix}`, {
+        enabled, expectedVersion: target?.rowVersion ?? null
       });
       if (current !== epoch.current) return;
       if (value.projectId !== projectId) throw new Error('Project identity changed. Reload the setting.');
@@ -68,34 +80,56 @@ export default function ProjectFlowHiveAutomation({ projectId, getJson, putJson,
   }
 
   const running = state?.status === 'generating';
-  return <section className="flowhive-automation" aria-label="AI Planner settings">
-    <header><div><h3>AI Planner settings</h3><p>Prepare the first draft automatically, then review it with your project team.</p></div>
-      <strong role="status">{state ? labels[state.status] || 'Checking status' : error ? 'Status unavailable' : 'Checking status…'}</strong>
+  const tone = statusTone(state?.status);
+  return <section className="flowhive-automation flowhive-automation-top" aria-label="Automatic planning">
+    <header>
+      <div><span className="flowhive-automation-kicker">Automatic planning</span><h3>Let FlowHive prepare the first draft</h3>
+        <p>FlowHive waits for the current SOW, project documents, assigned PM, and start date. You review the draft before anything becomes a baseline.</p></div>
+      <strong className={`flowhive-automation-status ${tone}`} role="status">{state ? labels[state.status] || 'Checking status' : error ? 'Status unavailable' : 'Checking…'}</strong>
     </header>
-    {error && <p role="alert">{error}</p>}
-    {saveError && <p role="alert">{saveError}</p>}
-    <label className="flowhive-automation-toggle"><input type="checkbox" checked={Boolean(state?.enabled)}
-      disabled={!state?.canManage || busy} onChange={event => save(event.target.checked)} />
-      <span><strong>Automatically create the first AI plan</strong><small>Wait for the current SOW and supporting documents, an assigned PM and a project start date. Create one draft for review. Existing plans and edits are preserved.</small></span>
-    </label>
-    <p>{state?.message || 'Checking this project’s automatic planning setting.'}</p>
-    {state && !state.canManage && <small>Your PM or an authorized administrator can change this setting.</small>}
-    {running && <p>Turning this setting off stops this automatic run. Restarting a cancelled or failed run requires an explicit AI Planner action.</p>}
-    {state?.runId && <>
+
+    {error && <p className="flowhive-automation-alert" role="alert">{error}</p>}
+    {saveError && <p className="flowhive-automation-alert" role="alert">{saveError}</p>}
+
+    <div className="flowhive-automation-choice-grid">
+      <label className="flowhive-automation-toggle flowhive-automation-choice">
+        <input type="checkbox" checked={Boolean(state?.enabled)}
+          disabled={!state?.canManage || busy} onChange={event => save(event.target.checked, 'project')} />
+        <span><strong>Automatically create the first AI plan for this project</strong>
+          <small>Recommended when this project has a current SOW. Existing plans and edits are never replaced automatically.</small></span>
+      </label>
+
+      {state?.myDefault?.canManage ? <label className="flowhive-automation-toggle flowhive-automation-choice">
+        <input type="checkbox" checked={Boolean(state.myDefault.enabled)}
+          disabled={busy} onChange={event => save(event.target.checked, 'personal')} />
+        <span><strong>Use automatic planning for new projects assigned to me</strong>
+          <small>This is your personal PM preference. It applies only to future projects assigned to you and does not change another PM’s projects.</small></span>
+      </label> : null}
+    </div>
+
+    <div className="flowhive-automation-next">
+      <strong>{state?.message || 'Checking this project’s planning readiness.'}</strong>
+      {state && !state.canManage ? <small>Your assigned PM, PM lead, or administrator can change this project setting.</small> : null}
+      {running ? <small>You can leave this page while FlowHive works. The plan continues on the server.</small> : null}
+    </div>
+
+    {state?.runId ? <div className="flowhive-automation-progress">
       <AiOperationProgress title="Automatic AI plan" startedAt={state.createdAt} completedAt={state.completedAt}
         active={running} stage={labels[state.status]} />
       <AiPhaseProgress phases={state.phases} terminal={!running} completedAt={state.completedAt} />
-    </>}
+    </div> : null}
+
     <div className="flowhive-automation-actions">
       {state?.status === 'ready_for_review' && <button type="button" className="primary" onClick={onLoadDraft}>Review working draft</button>}
-      <button type="button" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Check automatic plan status</button>
-      {busy && <span role="status">Saving setting…</span>}
+      <button type="button" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh status</button>
+      {busy && <span role="status">Saving…</span>}
     </div>
-    {state?.defaults?.canManage && <details className="flowhive-automation-defaults"><summary>Administrator default for new projects</summary>
+
+    {state?.defaults?.canManage ? <details className="flowhive-automation-defaults">
+      <summary>Organization default for administrators</summary>
       <label className="flowhive-automation-toggle"><input type="checkbox" checked={Boolean(state.defaults.enabled)} disabled={busy}
-        onChange={event => save(event.target.checked, true)} /><span><strong>Enable for new projects</strong>
-        <small>Applies to projects created after this default is enabled. It does not opt existing projects in or change their individual settings. Turning the default off affects future enrollment only.</small></span></label>
-      <p>A PM can turn automatic planning off for an individual project. Generation starts after its documents and scheduling information are ready.</p>
-    </details>}
+        onChange={event => save(event.target.checked, 'organization')} /><span><strong>Enable automatic planning for new projects when no PM preference is set</strong>
+        <small>This organization-wide fallback applies only to future projects. An individual PM preference takes precedence.</small></span></label>
+    </details> : null}
   </section>;
 }

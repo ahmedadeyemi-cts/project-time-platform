@@ -269,7 +269,9 @@ jobs:
             database/migrations/107_module_066_operation_authorization_and_raid_actor.sql \
             database/migrations/109_module025_project_name.sql \
             database/migrations/125_automatic_document_admission_laya.sql \
+            database/migrations/127_flowhive_pm_automatic_planning_defaults.sql \
             database/rollback/096_project_planning_document_authority_rollback.sql \
+            database/rollback/127_flowhive_pm_automatic_planning_defaults_rollback.sql \
             database/rollback/097_project_planning_identity_safe_admission_rollback.sql \
             database/rollback/103_module_066_flowhive_enterprise_psa_revamp_rollback.sql \
             database/rollback/104_flowhive_bounded_ai_execution_rollback.sql \
@@ -348,7 +350,7 @@ jobs:
             '{
               environment:"test",
               applicationRelease:$releaseCommit,
-              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","125_automatic_document_admission_laya"],
+              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","115_module_066_task_notifications","121_flowhive_sequential_phase_checkpoints","122_flowhive_automatic_first_draft","123_module064_external_generation_approval","124_module025_service_scope","125_automatic_document_admission_laya","127_flowhive_pm_automatic_planning_defaults"],
               migrationScope:$migrationScope,
               module025SowGsdUat:true,
               utilizationRoleScopingUat:true,
@@ -948,7 +950,7 @@ jobs:
             PROJECTPULSE_RELEASE_ROOT="$PWD" bash "$GITHUB_WORKSPACE/control/scripts/release-test/build-and-run-flowhive-psa-migrations.sh"
           fi
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
-          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation","109_module025_project_name"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
+          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation","109_module025_project_name","115_module_066_task_notifications","121_flowhive_sequential_phase_checkpoints","122_flowhive_automatic_first_draft","123_module064_external_generation_approval","124_module025_service_scope","125_automatic_document_admission_laya","127_flowhive_pm_automatic_planning_defaults"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
         if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')

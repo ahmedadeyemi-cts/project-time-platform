@@ -431,10 +431,22 @@ def _local_chat_completions() -> Any:
             return gateway._error("module025_deadline_invalid" if feature == "sow_gsd_planning"
                                   else "flowhive_deadline_invalid", 400)
         deadline_seconds = min(deadline_seconds, int(supplied))
-        # The durable router owns attempts. Do not restart inference on another
-        # local model after the caller's bounded phase has already expired.
-        candidates = candidates[:1]
-        attempt_budgets = [deadline_seconds]
+        if feature == "project_flowhive_plan":
+            # FlowHive is a durable background workflow, but one slow local model
+            # must not terminate the entire five-phase project plan. Prefer the
+            # instruction-tuned local model for structured planning, then fail
+            # over within the single caller-owned phase deadline. Module 064
+            # still owns the provider-level sequence; this is only Celar's
+            # internal model selection for its own target.
+            preferred = ["qwen3:4b-instruct", "gemma3:4b", "llama3.2:3b"]
+            candidates = [name for name in preferred if name in APPROVED_GENERATION_MODELS]
+            # Leave enough time for a second/third local model instead of allowing
+            # the first candidate to consume the whole 150-second phase window.
+            attempt_budgets = [65, 50, 25][:len(candidates)]
+        else:
+            # Module 025 retains its reviewed single-model phase behavior.
+            candidates = candidates[:1]
+            attempt_budgets = [deadline_seconds]
     deadline = time.monotonic() + deadline_seconds
     last_body: dict[str, Any] = {"error": {"code": "private_runtime_unavailable"}}
     last_status = 502

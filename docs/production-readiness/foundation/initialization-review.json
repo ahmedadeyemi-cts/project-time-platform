@@ -203,8 +203,8 @@
       "rationale": ""
     },
     {
-      "path": "database/migrations/019h_azure_admin_entra_sync_foundation.sql",
-      "sha256": "6df84b81b88588a8a8221116e474b2ccd0477b20ea73196f6208bd54d67227fd",
+      "path": "database/migrations/019h1_user_administration.sql",
+      "sha256": "f421afde7c4726e0bb9da4671870988750b94d0d49f221bd5863a4349bc108fd",
       "signals": [
         "data_mutation"
       ],
@@ -212,8 +212,8 @@
       "rationale": ""
     },
     {
-      "path": "database/migrations/019h1_user_administration.sql",
-      "sha256": "f421afde7c4726e0bb9da4671870988750b94d0d49f221bd5863a4349bc108fd",
+      "path": "database/migrations/019h_azure_admin_entra_sync_foundation.sql",
+      "sha256": "6df84b81b88588a8a8221116e474b2ccd0477b20ea73196f6208bd54d67227fd",
       "signals": [
         "data_mutation"
       ],
@@ -232,24 +232,6 @@
     {
       "path": "database/migrations/019k_project_allocation_used_hours.sql",
       "sha256": "85bca863bc427c99a0ab2929fd35494c2ebdb6eef6f6188711d6fac4f67872e9",
-      "signals": [
-        "data_mutation"
-      ],
-      "decision": "review_required",
-      "rationale": ""
-    },
-    {
-      "path": "database/migrations/019m_b_azure_graph_selective_import.sql",
-      "sha256": "d780f7fdcb92a67fe714f6a4df499ed9a907f929992d8357b92df8e039c28140",
-      "signals": [
-        "data_mutation"
-      ],
-      "decision": "review_required",
-      "rationale": ""
-    },
-    {
-      "path": "database/migrations/019m_entra_sso_foundation.sql",
-      "sha256": "679b7e89ce6f156a503b819b30e2f2807b6560424e45b8b1c9192a7c78abc9c4",
       "signals": [
         "data_mutation"
       ],
@@ -603,6 +585,24 @@
     {
       "path": "database/migrations/019m-z-holiday-dashboard-assigned-tasks.sql",
       "sha256": "6492d8a10bb900f15a82725a2cdbb4180d6d7cf7757a844462a945d3507f5c1e",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m_b_azure_graph_selective_import.sql",
+      "sha256": "d780f7fdcb92a67fe714f6a4df499ed9a907f929992d8357b92df8e039c28140",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": ""
+    },
+    {
+      "path": "database/migrations/019m_entra_sso_foundation.sql",
+      "sha256": "679b7e89ce6f156a503b819b30e2f2807b6560424e45b8b1c9192a7c78abc9c4",
       "signals": [
         "data_mutation"
       ],
@@ -1779,6 +1779,16 @@
       "review_default": "review_required",
       "decision": "review_required",
       "rationale": "Adds environment-scoped Power Automate Teams delivery settings to Module 065 while retaining the legacy Graph-app mode. Requires Protected UAT migration verification and live flow acceptance before any production consideration."
+    },
+    {
+      "path": "database/migrations/127_flowhive_pm_automatic_planning_defaults.sql",
+      "sha256": "17a10eb887481b4c9eb9fed668c57c05e4abd74e56b4b0be9a990583ad99f51e",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "Adds prospective per-PM FlowHive automatic-planning defaults; does not alter existing project enrollment."
     },
     {
       "path": "database/seed-data/001_non_project_time_categories.sql",

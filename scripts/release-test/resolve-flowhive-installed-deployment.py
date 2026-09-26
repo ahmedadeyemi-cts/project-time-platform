@@ -37,6 +37,16 @@ STANDARD_MAIN_MIGRATIONS = (
     "099_module025_sow_gsd_workspace",
     "100_module001b_catalog_ownership_reconciliation",
 )
+CURRENT_MAIN_MIGRATIONS = STANDARD_MAIN_MIGRATIONS + (
+    "109_module025_project_name",
+    "115_module_066_task_notifications",
+    "121_flowhive_sequential_phase_checkpoints",
+    "122_flowhive_automatic_first_draft",
+    "123_module064_external_generation_approval",
+    "124_module025_service_scope",
+    "125_automatic_document_admission_laya",
+    "127_flowhive_pm_automatic_planning_defaults",
+)
 LEGACY_MIGRATION_STEP = "Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network"
 CURRENT_MIGRATION_STEP = "Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network"
 MIGRATION_STEPS = (LEGACY_MIGRATION_STEP, CURRENT_MIGRATION_STEP)
@@ -249,9 +259,11 @@ def resolve(run: dict, jobs: list[dict], artifact: dict, archive: bytes, manifes
             require(application == controller, "main_release_identity_not_bound_to_controller")
             boundary = read_receipt(bundle, "release-boundary.json")
             require(boundary.get("applicationRelease") == application and boundary.get("environment") == "test" and boundary.get("productionMutation") is False, "main_release_boundary_invalid")
-            expected_migrations = list(STANDARD_MAIN_MIGRATIONS)
-            if any(step["name"] == CURRENT_MIGRATION_STEP for step in jobs[0]["steps"]):
-                expected_migrations.append("109_module025_project_name")
+            expected_migrations = list(
+                CURRENT_MAIN_MIGRATIONS
+                if any(step["name"] == CURRENT_MIGRATION_STEP for step in jobs[0]["steps"])
+                else STANDARD_MAIN_MIGRATIONS
+            )
             require(
                 migrations.get("status") == "applied_and_verified"
                 and migrations.get("productionMutation") is False
