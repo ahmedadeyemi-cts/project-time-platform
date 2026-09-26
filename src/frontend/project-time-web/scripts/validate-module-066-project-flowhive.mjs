@@ -441,7 +441,7 @@ assertInvariant(
     frontend.includes('flowhive-smartsheet-table') &&
     frontend.includes('flowhive-phase-toggle') &&
     frontend.includes('projectEndDate') &&
-    frontend.includes('Approved SOW Scope of Services located') &&
+    frontend.includes('Current SOW scope evidence located') &&
     frontend.includes('Ordered work steps') &&
     frontend.includes('dependencyTypeHelp.FS') && frontend.includes('title=\"Work Breakdown Structure number') &&
     frontend.includes("updateTask(index, 'comments'") &&

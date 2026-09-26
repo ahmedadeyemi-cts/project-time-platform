@@ -44,6 +44,14 @@ const plannerPhases = [
 ];
 
 const plannerStatuses = ['not_started', 'in_progress', 'blocked', 'complete'];
+const flowHiveAdministratorRoles = new Set(['SUPER_ADMINISTRATOR', 'SYSTEM_ADMINISTRATOR', 'ADMINISTRATOR']);
+const phasePlanningQuestions = {
+  Plan: 'What must be discovered, confirmed, scheduled, licensed, accessed, and made ready before delivery begins?',
+  Design: 'What target design, configuration, integration, transition path, rollback approach, and test design are required before implementation?',
+  Implement: 'What exact technical changes, configuration, migration, upgrade, backup, cutover, and rollback-preparation steps deliver the approved scope?',
+  Validate: 'What functional, integration, security, resilience, performance, remediation, retest, and acceptance checks prove the scoped change works?',
+  Release: 'What production handoff, monitoring, documentation, knowledge transfer, acceptance, support transition, and closeout steps complete the scope?'
+};
 const enterprisePhases = phaseDefinitions();
 const defaultControls = { contractType: 'unknown', currencyCode: 'USD', approvedBudget: null, expenseBudget: null, contingencyBudget: null, forecastAtCompletion: null, percentCompleteMethod: 'task_weighted', statusReportCadence: 'weekly', customerSharingEnabled: false, financialNotes: '' };
 const defaultRaid = { planId: null, itemType: 'risk', title: '', description: '', status: 'open', priority: 'medium', probability: null, impact: null, ownerUserId: null, dueDate: null, mitigation: '', sourceKind: 'manual', sourceReference: '' };
@@ -138,6 +146,7 @@ function formatHours(value) {
 }
 
 function formatPercent(value) {
+  if (value === null || value === undefined || value === '') return 'Not recorded';
   const number = Number(value);
   return Number.isFinite(number) ? `${Math.round(number * 100)}%` : 'Not recorded';
 }
@@ -564,6 +573,16 @@ export default function ProjectFlowHiveCenter() {
   const canAdministerPlanner = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdministerPlanner && !enterprise?.access?.isViewAs);
   const canAdoptBaseline = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdoptBaseline && !enterprise?.access?.isViewAs);
   const capabilityLabel = enterprise?.access?.capabilityLabel || 'Project scope resolving';
+  const isFlowHiveAdministrator = Boolean(
+    enterprise?.access?.isAdministrator
+    || (portfolio?.access?.roles || []).some((role) => flowHiveAdministratorRoles.has(String(role || '').toUpperCase()))
+  );
+  const latestPlannerNeedsAttention = Boolean(
+    aiPreview?.terminal
+    && ['needs_attention', 'failed'].includes(String(aiPreview?.status || '').toLowerCase())
+    && !aiPreview?.candidateAvailable
+    && !aiPreview?.workingDraft?.persisted
+  );
   const scheduleByWbs = useMemo(() => new Map(
     (schedule?.tasks || []).map((task) => [task.wbsNumber, task])
   ), [schedule]);
@@ -1262,10 +1281,10 @@ export default function ProjectFlowHiveCenter() {
         </div>
       </header>
 
-      <aside className="flowhive-foundation-notice" aria-label="Governed production boundary">
+      {isFlowHiveAdministrator ? <aside className="flowhive-foundation-notice" aria-label="Governed production boundary">
         <strong>FlowHive builds project plans from the selected project's current Work Register SOW, GSD, and authorized supporting documents.</strong>
         <span>AI Planner saves only the editable working copy. Immutable versions and reviewed baselines remain explicit PM and Engineering review actions.</span>
-      </aside>
+      </aside> : null}
 
       {portfolio?.access ? (
         <div className="flowhive-access-banner">
@@ -1319,7 +1338,8 @@ export default function ProjectFlowHiveCenter() {
       /> : null}
 
       {(busy === 'ai-planner' || aiPreview?.runId) && <AiPhaseProgress phases={aiPreview?.phases}
-        terminal={Boolean(aiPreview?.terminal)} completedAt={aiPreview?.completedAt} />}
+        terminal={Boolean(aiPreview?.terminal)} completedAt={aiPreview?.completedAt}
+        showDiagnostics={isFlowHiveAdministrator} />}
 
       <nav className="flowhive-view-tabs" aria-label="Project FlowHive views">
         {views.map((view) => (
@@ -1395,11 +1415,29 @@ export default function ProjectFlowHiveCenter() {
                 <label>SOW version<input value={draftPlan.sowVersion} onChange={(event) => updatePlan('sowVersion', event.target.value)} placeholder="Approved SOW version" /></label>
               </div>
               {aiPreview ? <aside className="flowhive-ai-planner-summary">
-                <div><span>AI Planner result</span><strong>{labelFrom(aiPreview.status)}</strong><small>{aiPreview.planningEvidence?.scopeOfServicesLocated ? 'Approved SOW Scope of Services located' : 'SOW scope evidence requires review'}</small></div>
-                <div><span>Private evidence</span><strong>{aiPreview.planningEvidence?.approvedSowCitationCount ?? 0} SOW citation(s)</strong><small>{aiPreview.planningEvidence?.scopeOfServicesCitationCount ?? 0} scope citation(s)</small></div>
-                <div><span>Evidence score</span><strong>{formatPercent(aiPreview.confidence)}</strong><small>{labelFrom(aiPreview.executionPath)}</small></div>
-                <div className="privacy"><span>External privacy</span><strong>No private SOW content sent</strong><small>Only a fixed identity-free planning blueprint is eligible for Claude/OpenAI.</small></div>
+                <div><span>AI Planner result</span><strong>{labelFrom(aiPreview.status)}</strong><small>{aiPreview.planningEvidence?.scopeOfServicesLocated ? 'Current SOW scope evidence located' : aiPreview.planningEvidence?.evidenceCitationCount > 0 ? 'Project evidence loaded; SOW scope section needs review' : 'Resolving current project evidence'}</small></div>
+                <div><span>Private evidence</span><strong>{Number.isFinite(Number(aiPreview.planningEvidence?.approvedSowCitationCount)) ? String(aiPreview.planningEvidence.approvedSowCitationCount) + ' SOW citation(s)' : 'Checking SOW evidence'}</strong><small>{Number.isFinite(Number(aiPreview.planningEvidence?.scopeOfServicesCitationCount)) ? String(aiPreview.planningEvidence.scopeOfServicesCitationCount) + ' scope citation(s)' : 'Scope citations not yet recorded'}</small></div>
+                <div><span>Evidence score</span><strong>{formatPercent(aiPreview.confidence)}</strong><small>{labelFrom(aiPreview.executionPath || 'private evidence pending')}</small></div>
+                <div className="privacy"><span>External privacy</span><strong>Private SOW content remains private</strong><small>Raw SOW/GSD evidence is limited to approved private targets; public providers receive only fixed identity-free planning guidance.</small></div>
               </aside> : null}
+              {latestPlannerNeedsAttention ? <aside className="flowhive-retained-draft-notice" role="status">
+                <strong>Latest AI generation did not replace this working copy.</strong>
+                <span>The plan below is the previously saved draft. Regenerate after reviewing the failed phase; a new plan is applied only after all five SOW-grounded phases pass validation.</span>
+              </aside> : null}
+              <section className="flowhive-phase-plan-overview" aria-label="Five-phase project plan coverage">
+                <header><div><span>Project plan coverage</span><h3>SOW-derived delivery phases</h3><p>Each phase answers a different delivery question against the same current SOW/GSD evidence. A generated phase should contain multiple executable tasks, not a single generic placeholder.</p></div></header>
+                <div className="flowhive-phase-plan-grid">{plannerPhases.map((phase) => {
+                  const phaseTasks = draftPlan.tasks.filter((task) => !task.isSummary && task.parentWbsNumber === phase.wbs);
+                  const needsDepth = phaseTasks.length < 3;
+                  return <article key={phase.wbs} className={needsDepth ? 'needs-depth' : ''}>
+                    <div className="flowhive-phase-plan-heading"><span>{phase.wbs}</span><div><h4>{phase.name}</h4><strong>{phaseTasks.length} detailed task{phaseTasks.length === 1 ? '' : 's'}</strong></div></div>
+                    <p>{phasePlanningQuestions[phase.name]}</p>
+                    {phaseTasks.length ? <ol>{phaseTasks.slice(0, 5).map((task) => <li key={task.clientTaskId || task.wbsNumber}><span>{task.wbsNumber}</span>{task.name}</li>)}</ol> : <small>No detailed tasks are present.</small>}
+                    {phaseTasks.length > 5 ? <small>+ {phaseTasks.length - 5} more detailed task(s)</small> : null}
+                    {needsDepth ? <small className="flowhive-phase-depth-warning">Needs regeneration for a substantive SOW-derived breakdown.</small> : null}
+                  </article>;
+                })}</div>
+              </section>
               {(draftPlan.milestones || []).length ? <details className="flowhive-milestone-disclosure"><summary>Project milestones ({draftPlan.milestones.length})</summary><section className="flowhive-milestone-list"><header><div><h3>Project milestones</h3><p>Source-backed release and acceptance gates. Target dates are calculated from predecessor tasks.</p></div><strong>{draftPlan.milestones.length}</strong></header><div>{draftPlan.milestones.map((milestone) => <article key={milestone.clientMilestoneId}><div><span>{milestone.predecessorWbs}</span><h4>{milestone.name}</h4></div><p>{milestone.description}</p><small>{formatDate(milestone.targetDate)} · {(milestone.citationIds || []).length} citation(s)</small></article>)}</div></section></details> : null}
               <div className="flowhive-table-heading"><div><h3>AI Planner work breakdown</h3><p>Expand each phase and task for complete steps, inputs, outputs, validation, acceptance, responsibilities, risks, questions, and private citations. Use the Add task action on the Plan, Design, Implement, Validate, or Release phase header. Drag tasks to reorder or move them between phases.</p></div></div>
               <div className="flowhive-table-wrap">

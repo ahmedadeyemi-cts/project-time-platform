@@ -59,7 +59,7 @@ var module025Payload = JsonSerializer.Serialize(new
         readinessRequirements = new[] { "Required approvals, inputs, access, backup or rollback evidence, and customer contacts are available before work begins." },
         riskConsiderations = new[] { "Unsupported compatibility, missing entitlement, unavailable access, or an unapproved change condition can pause delivery and require replanning." },
         customerDecisions = new[] { "Confirm the actual CUCM topology, installed options, target compatibility, licensing entitlement, and approved change window." },
-        workPackages = Enumerable.Range(1, 2).Select(packageIndex => new
+        workPackages = Enumerable.Range(1, 3).Select(packageIndex => new
         {
             wbsNumber = $"{phaseIndex + 1}.{packageIndex}",
             title = $"{phase} CUCM work package {packageIndex}",
@@ -123,32 +123,41 @@ PulseAiPrivateModelResult Result(string content) => new("private_model_completed
 string Payload(string phase) => JsonSerializer.Serialize(template with { Tasks=template.Tasks.Where(t=>t.Phase==phase)
     .Select((t,i)=>t with { CitationIds=i==0 ? [1] : [2], Predecessors=i==0 ? (phase=="Plan" ? [] : [$"{Array.IndexOf(FlowHiveSequentialExecution.Phases,phase)}.2"]) : [$"{Array.IndexOf(FlowHiveSequentialExecution.Phases,phase)+1}.1"] }).ToArray(), Milestones=[], CitationIds=[1,2] });
 string Phase(PulseAiPrivateModelRequest r) => FlowHiveSequentialExecution.Phases.Single(p=>r.UserInstruction.Contains($": {p}."));
-var execution = Execution(); var calls = new List<string>(); string? snapshot = null;
+var execution = Execution(); var calls = new List<string>();
 var completed = await PulseAiPrivateRagService.GenerateFlowHiveSequentialAsync(request, evidence, execution, (r,ct) => {
     var phase = Phase(r); var index = Array.IndexOf(FlowHiveSequentialExecution.Phases,phase);
     Check(calls.Count==index, "sequential phase order " + phase);
     Check(saves.Last().Phases.Take(index).All(p=>p.Status=="completed"), "previous phases committed before " + phase);
     Check(saves.Last().Phases[index].Status=="processing", "timer saved before provider " + phase);
-    var current = JsonSerializer.Serialize(r.Sources); snapshot ??= current;
-    Check(current==snapshot, "same pinned SOW/GSD for " + phase);
-    Check(r.SystemInstruction.Contains("Service Overview or Scope") && r.UserInstruction.Contains(FlowHiveSequentialExecution.PhasePurpose(phase)), "phase scope and purpose " + phase);
+    var pinnedByChunk = execution.State.Evidence!.Chunks.ToDictionary(chunk => chunk.ChunkId);
+    Check(r.Sources.Count > 0 && r.Sources.All(chunk =>
+        pinnedByChunk.TryGetValue(chunk.ChunkId, out var pinnedChunk)
+        && pinnedChunk.RankOrder == chunk.RankOrder
+        && pinnedChunk.DocumentVersionId == chunk.DocumentVersionId
+        && pinnedChunk.SourceSha256 == chunk.SourceSha256),
+        "phase sources retain stable pinned citation identities " + phase);
+    Check(r.Sources.Any(chunk => chunk.DocumentId == sow.DocumentId), "phase retains the current SOW " + phase);
+    Check(r.SystemInstruction.Contains("SOW Scope of Services") && r.UserInstruction.Contains(FlowHiveSequentialExecution.PhasePurpose(phase)), "phase scope and purpose " + phase);
     Check(r.UserInstruction.Contains(request.UserInstruction), "PM requested outcome preserved " + phase);
     Check(r.OutputSchemaName == FlowHiveSequentialExecution.PhaseSchema,
         "phase request selects bounded gateway workload " + phase);
-    Check(r.SystemInstruction.Contains("\"requiredRoles\"") && r.SystemInstruction.Contains("\"customerResponsibilities\""),
-        "phase includes the exact task JSON contract " + phase);
+    Check(r.SystemInstruction.Contains("\"requiredRoles\"") && r.SystemInstruction.Contains("\"citationIds\"")
+        && r.SystemInstruction.Contains("\"detailedSteps\""),
+        "phase uses the compact task JSON contract " + phase);
+    Check(r.MaximumOutputTokens == FlowHiveSequentialExecution.MaximumOutputTokens,
+        "phase output budget uses compact contract " + phase);
     if(index>0) Check(r.SystemInstruction.Contains($"{index}.2"), "prior outputs available " + phase);
     calls.Add(phase); return Task.FromResult(Result(Payload(phase)));
 }, default);
 Check(completed.Succeeded && calls.Count==5, "five phases assemble successfully");
 var plan=JsonSerializer.Deserialize<PulseAiPrivateFlowHivePlan>(completed.Content)!;
-Check(plan.Tasks.Count==10 && plan.Tasks.All(t=>t.EstimatedHours>0 && t.EstimatedDurationDays>0), "complete executable WBS retains positive estimates");
-Check(plan.Tasks.Count(t=>t.CitationIds.Contains(2))==5, "GSD citations preserved through shared detail validation");
+Check(plan.Tasks.Count==15 && plan.Tasks.All(t=>t.EstimatedHours>0 && t.EstimatedDurationDays>0), "complete executable WBS retains three or more tasks per phase and positive estimates");
+Check(plan.Tasks.Count(t=>t.CitationIds.Contains(2))==10, "GSD citations preserved through shared detail validation");
 var query=new PulseAiPrivateRetrievalQuery(Guid.NewGuid(),Guid.NewGuid(),CelarAiCapabilityCatalog.ProjectFlowHivePlan,"planning","CUCM upgrade",project,null,null,"fixture","fixture",false,true,[],20,40,1m,0m,0m,null,[],"fixture");
 var outerParser=typeof(PulseAiPrivateRagService).GetMethod("ParseFlowHive",BindingFlags.NonPublic|BindingFlags.Static)!;
 var answer=(PulseAiPrivateRagAnswer)outerParser.Invoke(null,[Guid.NewGuid(),query,execution.State.Evidence,completed,
     PulseAiPrivateRagOptions.FromEnvironment() with { MinimumEvidenceScore=0m,MinimumConfidence=0m },true,null,true])!;
-Check(answer.Status=="completed" && answer.FlowHivePlan!.Tasks.Count(t=>t.CitationIds.Contains(2))==5
+Check(answer.Status=="completed" && answer.FlowHivePlan!.Tasks.Count(t=>t.CitationIds.Contains(2))==10
     && answer.Citations.Any(c=>c.DocumentId==gsd.DocumentId),"production RAG parser preserves phase detail and GSD citation identities");
 
 Check(plan.Tasks.Single(t=>t.Wbs=="3.1").Predecessors.Contains("2.2"), "cross-phase dependencies preserved");
@@ -198,7 +207,10 @@ foreach (var (feature, schema, workload) in new[] {
     var response = await ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(CelarAiCapabilityTargets.CelarAi,
         token => modelClient.GenerateAsync(request with { FeatureCode=feature, OutputSchemaName=schema }, privateOptions, token), CancellationToken.None);
     Check(response.Succeeded && transport.Workload == workload, "actual private HTTP client workload " + feature + "/" + schema);
-    Check(transport.Deadline == (workload.Length > 0 ? "300" : ""), "actual HTTP phase deadline " + feature + "/" + schema);
+    var expectedDeadline = workload == "flowhive_phase_v1"
+        ? FlowHiveSequentialExecution.GatewayPhaseTimeoutSeconds.ToString()
+        : workload == "module025_phase_v4" ? Module025GenerationEngine.GatewayPhaseTimeoutSeconds.ToString() : "";
+    Check(transport.Deadline == expectedDeadline, "actual HTTP phase deadline " + feature + "/" + schema);
 }
 var withoutRoute = await modelClient.GenerateAsync(request, privateOptions);
 Check(!withoutRoute.Succeeded && withoutRoute.DiagnosticCode == "module064_route_store_unavailable",
