@@ -1302,6 +1302,10 @@ export default function ProjectFlowHiveCenter() {
         <span>{selectedProject ? `PM: ${selectedProject.projectManagerName || 'Unassigned'} · AE: ${selectedProject.accountExecutiveName || 'Unassigned'}` : 'Select a project to see its delivery team.'}</span>
       </div>
 
+      {selectedProjectId ? <ProjectFlowHiveAutomation key={`automation-${selectedProjectId}`}
+        projectId={selectedProjectId} getJson={getJson} putJson={putJson} onLoadDraft={loadWorkingCopy}
+        onState={setAutomaticPlan} /> : null}
+
       {activeView === 'kanban' ? <ProjectFlowHivePsaWorkspace
         mode="kanban" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
         schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
@@ -1350,10 +1354,6 @@ export default function ProjectFlowHiveCenter() {
       </nav>
 
       {selectedProjectId ? <ProjectFlowHiveDocumentReadiness key={selectedProjectId} projectId={selectedProjectId} getJson={getJson} onState={updateDocumentReadiness} /> : null}
-      {selectedProjectId && ['planner', 'ai'].includes(activeView) ? <ProjectFlowHiveAutomation key={`automation-${selectedProjectId}`}
-        projectId={selectedProjectId} getJson={getJson} putJson={putJson} onLoadDraft={loadWorkingCopy}
-        onState={setAutomaticPlan} /> : null}
-
       {activeView === 'portfolio' || activeView === 'archive' ? (
         <div className="flowhive-view-panel">
           {activeView === 'archive' ? <header><h3>Archived project plans</h3><p>Closed, completed and cancelled projects appear here automatically. Open a plan to view its work breakdown, saved versions and history. Reopening a project in Work Register returns it to the active portfolio.</p></header> : <p>Active projects. Closed projects and their plans are available in Archive.</p>}

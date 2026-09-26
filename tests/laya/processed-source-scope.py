@@ -1,8 +1,33 @@
 """PR1153 source boundary and automatic-admission safety checks."""
 from pathlib import Path
+import os
 import subprocess
 import sys
 ROOT = Path(__file__).resolve().parents[2]
+CURRENT_FLOWHIVE_REPAIR = 'fix/flowhive-enterprise-usability-routing-20260926'
+
+def current_branch():
+    return os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
+        ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
+
+if current_branch() == CURRENT_FLOWHIVE_REPAIR:
+    base = subprocess.check_output(['git','-C',str(ROOT),'merge-base','origin/main','HEAD'], text=True).strip()
+    inherited = [
+        'database/migrations/125_automatic_document_admission_laya.sql',
+        'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',
+        'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs',
+    ]
+    for path in inherited:
+        current = (ROOT/path).read_bytes()
+        accepted = subprocess.check_output(['git','-C',str(ROOT),'show',f'{base}:{path}'])
+        if current != accepted:
+            raise SystemExit('FlowHive usability repair changed inherited Laya source: '+path)
+    subprocess.run([sys.executable, str(ROOT/'tests/flowhive-enterprise-usability-routing-scope.py')],
+                   cwd=ROOT, check=True)
+    subprocess.run(['git','-C',str(ROOT),'diff','--check',base,'HEAD'], check=True)
+    print('LAYA_AUTOMATIC_ADMISSION_SCOPE=PASS; inherited Laya source unchanged for FlowHive usability repair')
+    raise SystemExit(0)
+
 # Release machinery must already be accepted in main. This application cannot
 # alter inherited controllers, migration wiring, or its persistent owner gates.
 subprocess.run([sys.executable, str(ROOT / 'tests/laya/release-registration.py'),

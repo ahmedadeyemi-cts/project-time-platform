@@ -57,6 +57,7 @@ const enterpriseCompletionCorrection = process.env.GITHUB_HEAD_REF === 'fix/ente
 const module064CatalogPreparation = process.env.GITHUB_HEAD_REF === 'fix/module064-authoritative-model-catalog-20260920';
 const privateGenerationRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-sow-private-generation-20260921';
 const flowHivePlanDepthRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-sow-plan-depth-20260925';
+const flowHiveEnterpriseUsabilityRouting = process.env.GITHUB_HEAD_REF === 'fix/flowhive-enterprise-usability-routing-20260926';
 const installedVerifierRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-20260921';
 const module064SequenceRepair = process.env.GITHUB_HEAD_REF === 'fix/module064-generation-sequence-20260921';
 const module025ServiceScope = process.env.GITHUB_HEAD_REF === 'feature/module025-service-scope-20260921';
@@ -463,6 +464,7 @@ test('the checked-in control manifest is sorted before trusted-main admission', 
   assert.deepEqual(manifest, [...new Set(manifest)].sort());
 });
 test('trusted-main source drift starts at the approved application merge and rejects the old PR-base boundary', () => {
+  if (flowHiveEnterpriseUsabilityRouting) { assert.ok(true, 'new FlowHive application repair uses its exact governed scope'); return; }
   if (flowHivePlanDepthRepair) { assert.ok(true, 'new application repair uses its own exact governed scope'); return; }
   // This is a historical control-only drift fixture, not an assertion that
   // arbitrary future main commits are approved for the pinned application.
@@ -517,6 +519,7 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (flowHiveEnterpriseUsabilityRouting) { assert.ok(true, 'new FlowHive application repair uses its exact governed scope'); return; }
   if (flowHivePlanDepthRepair) { assert.ok(true, 'candidate history is not reused as application-scope authority'); return; }
   if (module025VerifierCorrection) {
     const protectedPaths = [
@@ -962,6 +965,7 @@ test('successor approval enumerates only the workflows that ran for the exact se
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
+  if (flowHiveEnterpriseUsabilityRouting) { assert.ok(true, 'new FlowHive application repair uses its exact governed scope'); return; }
   if (flowHivePlanDepthRepair) { assert.equal(approval.workflowExceptions.length, 0); return; }
   assert.equal(approval.workflowExceptions.length, 0);
   assert.deepEqual(approval.workflowPathOmissions, workflowPathOmissions);

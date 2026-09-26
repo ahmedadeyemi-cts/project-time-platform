@@ -10,6 +10,7 @@ internal sealed record FlowHiveAutomationRequest(bool Enabled, Guid? ExpectedVer
 internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
 {
     internal const string AutomationMigration = "122_flowhive_automatic_first_draft";
+    internal const string PersonalAutomationDefaultMigration = "127_flowhive_pm_automatic_planning_defaults";
     internal const string AutomationNotification = "FLOWHIVE_FIRST_DRAFT_READY";
 
     private static void MapAutomationEndpoints(IEndpointRouteBuilder endpoints)
@@ -22,6 +23,8 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         endpoints.MapPut("/api/project-flowhive/projects/{projectId:guid}/ai-planner/automation/default",
             (Guid projectId, FlowHiveAutomationRequest request, HttpContext context, CancellationToken token) =>
                 SetAutomationAsync(projectId, request, context, true, token));
+        endpoints.MapPut("/api/project-flowhive/projects/{projectId:guid}/ai-planner/automation/my-default",
+            (Func<Guid, FlowHiveAutomationRequest, HttpContext, CancellationToken, Task<IResult>>)SetPersonalAutomationDefaultAsync);
     }
 
     internal static async Task<bool> AutomationReadyAsync(NpgsqlConnection connection, CancellationToken token)
@@ -51,14 +54,113 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             ? await ProjectPlanningAccessResolver.ResolveForActorAsync(connection, actor.ActualUserId, projectId, "066", token)
             : access;
         var state = await ReadAutomationAsync(connection, projectId, token);
+        var personalDefault = await ReadPersonalAutomationDefaultAsync(connection, actor.ActualUserId, token);
         return Results.Ok(new
         {
             projectId, state.Enabled, state.RowVersion, state.Status, message = AutomationMessage(state.Status),
             state.RunId, state.CreatedAt, state.CompletedAt, state.Phases,
             canManage = own && durableAccess.CanAdministerPlanner,
+            myDefault = new
+            {
+                enabled = personalDefault.Enabled,
+                rowVersion = personalDefault.RowVersion,
+                appliesAfter = personalDefault.AppliesAfter,
+                canManage = own && durableAccess.CanAdministerPlanner
+            },
             defaults = new { enabled = state.DefaultEnabled, rowVersion = state.DefaultVersion,
                 appliesAfter = state.AppliesAfter, canManage = own && durableAccess.IsAdministrator }
         });
+    }
+
+
+
+    private static async Task<IResult> SetPersonalAutomationDefaultAsync(Guid projectId, FlowHiveAutomationRequest request,
+        HttpContext context, CancellationToken token)
+    {
+        var opened = await OpenAsync(projectId, context, requireEdit: true, token);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        if (!await AutomationReadyAsync(connection, token)) return AutomationUnavailable();
+        if (!await PersonalAutomationDefaultReadyAsync(connection, token))
+            return Results.Json(new { status = "flowhive_pm_default_migration_required", stateChanged = false,
+                message = "Personal automatic-planning defaults are not installed yet." }, statusCode: 503);
+        var actor = opened.Access!;
+        if (actor.ActualUserId != actor.EffectiveUserId || ProjectPulseActualSessionAuthority.IsViewAs(context))
+            return Results.Json(new { status = "view_as_read_only", stateChanged = false }, statusCode: 403);
+        var access = await ProjectPlanningAccessResolver.ResolveForActorAsync(connection, actor.ActualUserId, projectId, "066", token);
+        if (!access.CanAdministerPlanner)
+            return Results.Json(new { status = "flowhive_automation_forbidden", stateChanged = false,
+                message = "Only an assigned PM, authorized PM lead or administrator can change this preference." }, statusCode: 403);
+
+        try
+        {
+            await using var transaction = await connection.BeginTransactionAsync(token);
+            await LockAutomationProjectAsync(connection, transaction, projectId, token);
+            Guid? currentVersion;
+            await using (var current = new NpgsqlCommand(
+                "SELECT row_version FROM project_flowhive_auto_plan_user_defaults WHERE user_id=@actor FOR UPDATE;",
+                connection, transaction))
+            {
+                current.Parameters.AddWithValue("actor", actor.ActualUserId);
+                currentVersion = await current.ExecuteScalarAsync(token) as Guid?;
+            }
+            if (currentVersion != request.ExpectedVersion)
+                throw new PlannerConflict("flowhive_automation_version_conflict", "Your automatic-planning preference changed. Reload it before saving.");
+            await using (var save = new NpgsqlCommand("""
+                INSERT INTO project_flowhive_auto_plan_user_defaults(user_id,enabled,applies_after)
+                VALUES(@actor,@enabled,CASE WHEN @enabled THEN clock_timestamp() ELSE NULL END)
+                ON CONFLICT(user_id) DO UPDATE SET enabled=@enabled,
+                    applies_after=CASE WHEN @enabled AND NOT project_flowhive_auto_plan_user_defaults.enabled
+                        THEN clock_timestamp() ELSE project_flowhive_auto_plan_user_defaults.applies_after END,
+                    row_version=gen_random_uuid(),updated_at=NOW();
+                """, connection, transaction))
+            {
+                save.Parameters.AddWithValue("actor", actor.ActualUserId);
+                save.Parameters.AddWithValue("enabled", request.Enabled);
+                await save.ExecuteNonQueryAsync(token);
+            }
+            await using (var audit = new NpgsqlCommand("""
+                INSERT INTO project_flowhive_auto_plan_events(project_id,actor_user_id,event_code,enabled)
+                VALUES(NULL,@actor,'pm_default_changed',@enabled);
+                """, connection, transaction))
+            {
+                audit.Parameters.AddWithValue("actor", actor.ActualUserId);
+                audit.Parameters.AddWithValue("enabled", request.Enabled);
+                await audit.ExecuteNonQueryAsync(token);
+            }
+            await transaction.CommitAsync(token);
+        }
+        catch (PlannerConflict exception)
+        {
+            return Results.Conflict(new { status = exception.Code, message = exception.Message, stateChanged = false });
+        }
+        return await GetAutomationAsync(projectId, context, token);
+    }
+
+    private sealed record PersonalAutomationDefault(bool Enabled, Guid? RowVersion, DateTimeOffset? AppliesAfter);
+
+    private static async Task<bool> PersonalAutomationDefaultReadyAsync(NpgsqlConnection connection, CancellationToken token)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id=@migration);", connection);
+        command.Parameters.AddWithValue("migration", PersonalAutomationDefaultMigration);
+        return await command.ExecuteScalarAsync(token) is true;
+    }
+
+    private static async Task<PersonalAutomationDefault> ReadPersonalAutomationDefaultAsync(
+        NpgsqlConnection connection, Guid userId, CancellationToken token)
+    {
+        if (!await PersonalAutomationDefaultReadyAsync(connection, token))
+            return new(false, null, null);
+        await using var command = new NpgsqlCommand("""
+            SELECT enabled,row_version,applies_after
+            FROM project_flowhive_auto_plan_user_defaults WHERE user_id=@user;
+            """, connection);
+        command.Parameters.AddWithValue("user", userId);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token)) return new(false, null, null);
+        return new(reader.GetBoolean(0), reader.GetGuid(1),
+            reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2));
     }
 
     private static async Task<IResult> SetAutomationAsync(Guid projectId, FlowHiveAutomationRequest request,
@@ -181,9 +283,36 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
 
     internal static async Task EnrollNewProjectsAsync(NpgsqlConnection connection, CancellationToken token)
     {
-        // Prospective opt-in only. ON CONFLICT also preserves a PM's explicit opt-out.
-        // Current administrator authority is required; a revoked default cannot enroll projects.
-        await using var command = new NpgsqlCommand("""
+        // Prospective enrollment only. A PM's personal preference wins for projects
+        // assigned to that PM. When no personal preference exists, the organization
+        // administrator default remains the fallback. An explicit project row always
+        // wins because ON CONFLICT never overwrites it.
+        var personalReady = await PersonalAutomationDefaultReadyAsync(connection, token);
+        var sql = personalReady ? """
+            WITH candidates AS (
+              SELECT p.project_id,
+                     COALESCE(ud.enabled,d.enabled) AS enabled,
+                     CASE WHEN ud.user_id IS NOT NULL THEN p.project_manager_user_id ELSE d.authorized_by_user_id END AS actor,
+                     CASE WHEN ud.user_id IS NOT NULL THEN 'pm_default' ELSE 'new_project_default' END AS source,
+                     CASE WHEN ud.user_id IS NOT NULL THEN ud.applies_after ELSE d.applies_after END AS applies_after
+              FROM projects p
+              CROSS JOIN project_flowhive_auto_plan_defaults d
+              LEFT JOIN project_flowhive_auto_plan_user_defaults ud ON ud.user_id=p.project_manager_user_id
+              WHERE d.singleton=TRUE
+                AND lower(trim(COALESCE(p.status,''))) NOT IN ('closed','completed','cancelled','canceled','archived')
+            ), enrolled AS (
+              INSERT INTO project_flowhive_auto_plans(project_id,enabled,authorized_by_user_id,source)
+              SELECT c.project_id,TRUE,c.actor,c.source FROM candidates c
+              JOIN app_users u ON u.user_id=c.actor AND u.is_active=TRUE
+              WHERE c.enabled=TRUE AND c.applies_after IS NOT NULL AND EXISTS(
+                    SELECT 1 FROM projects p2 WHERE p2.project_id=c.project_id AND p2.created_at>=c.applies_after)
+              ON CONFLICT(project_id) DO NOTHING RETURNING project_id,authorized_by_user_id,source
+            )
+            INSERT INTO project_flowhive_auto_plan_events(project_id,actor_user_id,event_code,enabled)
+              SELECT project_id,authorized_by_user_id,
+                CASE WHEN source='pm_default' THEN 'pm_default_applied' ELSE 'new_project_default_applied' END,TRUE
+              FROM enrolled;
+            """ : """
             WITH enrolled AS (
               INSERT INTO project_flowhive_auto_plans(project_id,enabled,authorized_by_user_id,source)
               SELECT p.project_id,TRUE,d.authorized_by_user_id,'new_project_default'
@@ -191,14 +320,12 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
               JOIN app_users u ON u.user_id=d.authorized_by_user_id AND u.is_active=TRUE
               WHERE d.singleton=TRUE AND d.enabled=TRUE AND p.created_at>=d.applies_after
                 AND lower(trim(COALESCE(p.status,''))) NOT IN ('closed','completed','cancelled','canceled','archived')
-                AND EXISTS(SELECT 1 FROM app_user_role_assignments a JOIN app_roles r USING(app_role_id)
-                  WHERE a.user_id=u.user_id AND a.is_active=TRUE AND r.is_active=TRUE
-                    AND upper(r.role_code) IN ('ADMINISTRATOR','SYSTEM_ADMINISTRATOR','SUPER_ADMINISTRATOR'))
               ON CONFLICT(project_id) DO NOTHING RETURNING project_id,authorized_by_user_id
             )
             INSERT INTO project_flowhive_auto_plan_events(project_id,actor_user_id,event_code,enabled)
               SELECT project_id,authorized_by_user_id,'new_project_default_applied',TRUE FROM enrolled;
-            """, connection);
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
         await command.ExecuteNonQueryAsync(token);
     }
 
