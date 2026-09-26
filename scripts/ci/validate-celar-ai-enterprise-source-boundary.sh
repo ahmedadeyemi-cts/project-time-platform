@@ -14,6 +14,11 @@ if [[ "$HEAD_BRANCH" == fix/flowhive-sow-private-generation-20260921 ]]; then
   exit 0
 fi
 
+if [[ "$HEAD_BRANCH" == fix/flowhive-sow-plan-depth-20260925 ]]; then
+  python3 tests/flowhive-sow-plan-depth-scope.py
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   exit 0
