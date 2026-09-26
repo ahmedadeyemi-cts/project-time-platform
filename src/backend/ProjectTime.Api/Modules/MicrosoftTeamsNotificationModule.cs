@@ -326,8 +326,10 @@ public static class MicrosoftTeamsNotificationModule
         update.Parameters.AddWithValue("status", outcome.Status);
         update.Parameters.AddWithValue("code", JsonSerializer.Serialize(new {
             code = outcome.Diagnostic.Code, message = outcome.Diagnostic.Message, requestId = outcome.Diagnostic.RequestId,
-            workflowRunId = outcome.WorkflowRunId, tokenIdentity = manualTest && configuration.Environment == "test"
-                ? outcome.Diagnostic.TokenIdentity : null
+            workflowRunId = outcome.WorkflowRunId, tokenIdentity = manualTest && configuration.Environment == "test" && outcome.Diagnostic.TokenIdentity is not null
+                ? new { audience = outcome.Diagnostic.TokenIdentity.Audience, tenantId = outcome.Diagnostic.TokenIdentity.TenantId,
+                    objectId = outcome.Diagnostic.TokenIdentity.ObjectId, appId = outcome.Diagnostic.TokenIdentity.AppId }
+                : null
         }));
         update.Parameters.AddWithValue("id", id);
         await update.ExecuteNonQueryAsync(persistTimeout.Token);
