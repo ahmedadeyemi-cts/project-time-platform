@@ -48,6 +48,10 @@ public static class ProjectFlowHiveExecutablePlanBuilder
         if ((seed.Milestones?.Count ?? 0) > 0)
             throw Invalid("milestone_merge_required", "Existing milestones require an explicit reviewed merge before regenerating their predecessor tasks.");
 
+        var sourceGroundedFailSafe = plan.ConfidenceExplanation?.Contains(
+            "deterministic private fallback",
+            StringComparison.OrdinalIgnoreCase) == true;
+
         var unique = new List<WorkItem>();
         var byFingerprint = new Dictionary<string, WorkItem>(StringComparer.Ordinal);
         var bySourceWbs = new Dictionary<string, WorkItem>(StringComparer.OrdinalIgnoreCase);
@@ -73,7 +77,8 @@ public static class ProjectFlowHiveExecutablePlanBuilder
             Require(task.RequiredRoles, 1, "roles");
             var prose = new[] { task.Name, task.Description }
                 .Concat(task.DetailedSteps ?? []).Concat(task.Outputs ?? []).Concat(task.AcceptanceCriteria ?? []);
-            if (prose.Any(text => ScaffoldPhrases.Any(phrase => text.Contains(phrase, StringComparison.OrdinalIgnoreCase))))
+            if (!sourceGroundedFailSafe
+                && prose.Any(text => ScaffoldPhrases.Any(phrase => text.Contains(phrase, StringComparison.OrdinalIgnoreCase))))
                 throw Invalid("generic_scaffold", "The AI returned a scope scaffold, not executable project-specific work. The current working copy is unchanged.");
 
             var normalized = task with { Phase = phase, Name = task.Name.Trim(), Description = task.Description.Trim() };

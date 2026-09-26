@@ -100,6 +100,13 @@ Reject(() => Build(plan with { Tasks = [sources[0] with { DetailedSteps = ["Repe
 Reject(() => Build(plan with { Tasks = [sources[0] with { Name = "Plan" }, .. sources.Skip(1)] }), "task_name");
 Reject(() => Build(plan with { Tasks = [sources[0] with { Description = "Too brief" }, .. sources.Skip(1)] }), "task_description");
 Reject(() => Build(plan with { Tasks = [sources[0] with { Name = "Recommended delivery process steps" }, .. sources.Skip(1)] }), "generic_scaffold");
+var failSafePlan = plan with
+{
+    ConfidenceExplanation = "The deterministic private fallback preserves citation-grounded scope and complete review fields.",
+    Tasks = [sources[0] with { Name = "Recommended delivery process steps" }, .. sources.Skip(1)]
+};
+Check(ProjectFlowHiveExecutablePlanBuilder.Build(seed, failSafePlan, authorized).Tasks!.Any(task => !task.IsSummary),
+    "server-owned citation-grounded fail-safe may use deterministic review steps");
 Reject(() => Build(plan with { Tasks = [sources[0] with { Phase = "Delivery" }, .. sources.Skip(1)] }), "phase");
 Reject(() => Build(plan with { Tasks = sources.Take(4).ToArray() }), "phase_coverage");
 Reject(() => Build(plan with { Tasks = [sources[0] with { Predecessors = ["missing"] }, .. sources.Skip(1)] }), "unknown_predecessor");

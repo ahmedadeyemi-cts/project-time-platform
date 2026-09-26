@@ -201,7 +201,7 @@ var privateOptions = PulseAiPrivateRagOptions.FromEnvironment() with {
 foreach (var (feature, schema, workload) in new[] {
     (CelarAiCapabilityCatalog.ProjectFlowHivePlan, FlowHiveSequentialExecution.PhaseSchema, "flowhive_phase_v1"),
     (CelarAiCapabilityCatalog.SowGsdPlanning, "module025_detailed_phase", "module025_phase_v4"),
-    (CelarAiCapabilityCatalog.ProjectFlowHivePlan, "FlowHive", ""),
+    (CelarAiCapabilityCatalog.ProjectFlowHivePlan, "FlowHive", "flowhive_phase_v1"),
     (CelarAiCapabilityCatalog.SowGsdPlanning, FlowHiveSequentialExecution.PhaseSchema, "") })
 {
     var response = await ProjectPulseDeepSeekProvider.RunPrivateTargetAsync(CelarAiCapabilityTargets.CelarAi,
