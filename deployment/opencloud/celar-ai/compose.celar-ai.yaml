@@ -1,0 +1,152 @@
+name: celarai-opencloud-dev
+# All CPU runtime services remain independently managed in one deployment bundle.
+# Namespace sharing retains the existing gateway's strict 127.0.0.1 checks.
+# Recreate this entire bundle together when changing edge/namespace identity.
+services:
+  edge:
+    image: ${CADDY_IMAGE:?Supply the reviewed Caddy image digest}
+    platform: ${TARGET_PLATFORM:?Select the qualified CPU architecture}
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports: ["${HTTPS_BIND_IP:-0.0.0.0}:443:8443"]
+    environment:
+      CELAR_HOSTNAME: celarai-dev.ussignal.cloud
+    configs:
+      - source: edge_config
+        target: /etc/caddy/Caddyfile
+    secrets:
+      - source: tls_certificate
+        target: tls-certificate
+      - source: tls_key
+        target: tls-key
+    volumes:
+      - edge_data:/data
+      - edge_config:/config
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=32m,mode=1777"]
+  gateway:
+    image: ${CELAR_GATEWAY_IMAGE:?Supply the reviewed Celar gateway image digest}
+    platform: ${TARGET_PLATFORM}
+    network_mode: service:edge
+    depends_on: [edge, ollama, clamav, laya]
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: [gateway]
+    secrets:
+      - source: runtime_token
+        target: runtime-token
+    volumes:
+      - gateway_state:/var/lib/celar-ai/gateway
+      - laya_socket:/run/celar-laya:ro
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=768m,mode=1777"]
+    mem_limit: 2g
+    pids_limit: 64
+    ulimits:
+      nofile: {soft: 4096, hard: 4096}
+      fsize: {soft: 67108864, hard: 67108864}
+    healthcheck:
+      test: [CMD, python3, /opt/opencloud/runtime.py, health]
+      interval: 30s
+      timeout: 15s
+      retries: 6
+      start_period: 120s
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+  ollama:
+    image: ${OLLAMA_IMAGE:?Supply the reviewed Ollama image digest}
+    platform: ${TARGET_PLATFORM}
+    network_mode: service:edge
+    depends_on: [edge]
+    restart: unless-stopped
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HOME: /tmp/ollama-home
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_MODELS: /var/lib/ollama/models
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_QUEUE: "64"
+    volumes:
+      - models:/var/lib/ollama
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=256m,mode=1777"]
+    mem_limit: 16g
+    pids_limit: 256
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+  clamav:
+    image: ${CELAR_GATEWAY_IMAGE}
+    platform: ${TARGET_PLATFORM}
+    network_mode: service:edge
+    depends_on: [edge]
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: [/usr/sbin/clamd]
+    command: [--foreground=true, --config-file=/opt/opencloud/clamd.conf]
+    volumes:
+      - signatures:/var/lib/clamav:ro
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=256m,mode=1777"]
+    mem_limit: 2g
+    pids_limit: 64
+  signature_updates:
+    image: ${CELAR_GATEWAY_IMAGE}
+    platform: ${TARGET_PLATFORM}
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: [/usr/bin/freshclam]
+    command: [--daemon, --foreground=true, --config-file=/opt/opencloud/freshclam.conf]
+    volumes:
+      - signatures:/var/lib/clamav
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777"]
+    mem_limit: 512m
+    pids_limit: 32
+  laya:
+    image: ${CELAR_LAYA_IMAGE:?The installed Laya worker must be packaged and qualified first}
+    platform: ${TARGET_PLATFORM}
+    network_mode: none
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - laya_models:/opt/celar-laya/models:ro
+      - laya_socket:/run/celar-laya
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=512m,mode=1777"]
+    mem_limit: 8g
+    pids_limit: 128
+    # Default command belongs to the reviewed Laya image. It must expose the
+    # existing /run/celar-laya/decision.sock protocol, not a public model port.
+configs:
+  edge_config:
+    file: ./Caddyfile
+secrets:
+  tls_certificate:
+    file: ${CELAR_LOCAL_DIR}/tls/fullchain.pem
+  tls_key:
+    file: ${CELAR_LOCAL_DIR}/tls/private.key
+  runtime_token:
+    file: ${CELAR_LOCAL_DIR}/runtime-token
+volumes:
+  models: {external: true, name: celarai-dev-models}
+  signatures: {external: true, name: celarai-dev-signatures}
+  gateway_state: {external: true, name: celarai-dev-gateway-state}
+  laya_models: {external: true, name: celarai-dev-laya-models}
+  laya_socket: {external: true, name: celarai-dev-laya-socket}
+  edge_data: {external: true, name: celarai-dev-edge-data}
+  edge_config: {external: true, name: celarai-dev-edge-config}

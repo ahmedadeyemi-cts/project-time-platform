@@ -1,0 +1,149 @@
+name: OpenCloud packaging validation
+on:
+  pull_request:
+    paths:
+      - 'deployment/opencloud/**'
+      - '.github/workflows/opencloud-packaging-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: opencloud-packaging-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  source-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Retain exact tracked source for reproducible packaging assessment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/opencloud-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/opencloud-source/source-commit.txt"
+          git archive --format=zip HEAD > "$RUNNER_TEMP/opencloud-source/source.zip"
+          (cd "$RUNNER_TEMP/opencloud-source" && sha256sum source.zip > SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opencloud-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencloud-source
+          retention-days: 1
+          if-no-files-found: error
+  configuration-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Python and shell syntax
+        run: |
+          python3 -m py_compile deployment/opencloud/*.py deployment/opencloud/celar-ai/runtime.py
+          sh -n deployment/opencloud/pulse/api-entrypoint.sh
+      - name: Unit and package-integrity tests
+        run: |
+          python3 deployment/opencloud/tests.py
+          python3 deployment/opencloud/test-image-archives.py
+      - name: Real Docker Compose syntax and topology validation
+        run: python3 deployment/opencloud/kit.py validate
+      - name: Real isolated PostgreSQL gate tests
+        run: python3 deployment/opencloud/test-database.py
+      - name: Verify both Caddy configs with synthetic certificates and no network
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/opencloud-tls"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=synthetic.invalid' \
+            -keyout "$RUNNER_TEMP/opencloud-tls/tls-key" -out "$RUNNER_TEMP/opencloud-tls/tls-certificate" >/dev/null 2>&1
+          chmod 0644 "$RUNNER_TEMP/opencloud-tls/"*
+          for package in pulse celar-ai; do
+            docker run --rm --network none \
+              -e PULSE_HOSTNAME=pulse-dev.ussignal.cloud -e CELAR_HOSTNAME=celarai-dev.ussignal.cloud \
+              -v "$PWD/deployment/opencloud/$package/Caddyfile:/etc/caddy/Caddyfile:ro" \
+              -v "$RUNNER_TEMP/opencloud-tls:/run/secrets:ro" \
+              caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          done
+      - name: Assemble the two configuration handoffs
+        run: python3 deployment/opencloud/kit.py bundle --output "$RUNNER_TEMP/opencloud-handoffs"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opencloud-configuration-handoffs-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencloud-handoffs
+          retention-days: 14
+          if-no-files-found: error
+  candidate-image-builds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [api, web, celar]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Build exact tracked candidate and run isolated image checks
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: python3 deployment/opencloud/build-images.py "$COMPONENT" --output "$RUNNER_TEMP/opencloud-build-evidence"
+      - name: Export and reimport the tested Docker image
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: python3 deployment/opencloud/image-archives.py save-built --component "$COMPONENT" --output "$RUNNER_TEMP/opencloud-build-evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opencloud-loadable-${{ matrix.component }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencloud-build-evidence
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error
+  runtime-image-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Resolve, export and verify candidate dependency images
+        run: python3 deployment/opencloud/image-archives.py dependencies --output "$RUNNER_TEMP/opencloud-dependencies"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opencloud-loadable-dependencies-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencloud-dependencies
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error
+  downloadable-image-packages:
+    needs: [configuration-contracts, candidate-image-builds, runtime-image-dependencies]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [pulse, celar-ai]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: opencloud-loadable-*-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencloud-images
+      - name: Assemble checksummed packages containing real image archives
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: python3 deployment/opencloud/image-archives.py assemble --package "$PACKAGE" --input "$RUNNER_TEMP/opencloud-images" --output "$RUNNER_TEMP/opencloud-image-packages"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ matrix.package }}-docker-image-package-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencloud-image-packages
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error

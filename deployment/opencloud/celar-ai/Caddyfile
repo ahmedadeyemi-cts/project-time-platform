@@ -1,0 +1,32 @@
+{
+    admin off
+    auto_https off
+}
+https://{$CELAR_HOSTNAME}:8443 {
+    tls /run/secrets/tls-certificate /run/secrets/tls-key
+    request_body {
+        max_size 36MB
+    }
+    @runtime path /health /v1/chat/completions /v1/embeddings /v1/extract /v1/scan /v1/decisions/*
+    handle @runtime {
+        reverse_proxy 127.0.0.1:8787 {
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 3630s
+            }
+        }
+    }
+    handle /v1/maintenance/* {
+        respond "Container maintenance controller is not qualified; no schedule changes applied." 503
+    }
+    handle {
+        respond "Not found" 404
+    }
+    header {
+        -Server
+        Strict-Transport-Security max-age=31536000
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        Cache-Control no-store
+    }
+}

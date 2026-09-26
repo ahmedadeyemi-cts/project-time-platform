@@ -1,0 +1,11 @@
+# Apply only after the restored-data queue/notification review is approved.
+# This enables outbound connectivity, NOT an exemption from runtime privacy,
+# hostname, consent or credential checks. Normal users still use public HTTPS.
+services:
+  api:
+    networks:
+      - application
+      - database
+      - approved_egress
+networks:
+  approved_egress: {}
