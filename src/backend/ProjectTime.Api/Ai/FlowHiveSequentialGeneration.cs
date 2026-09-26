@@ -33,7 +33,7 @@ internal sealed class FlowHiveSequentialExecution(
     internal const int MaximumTasksPerPhase = 8;
     internal const int MaximumOutputTokens = 3072;
     internal const string PhaseSchema = "flowhive_detailed_phase";
-    internal const int GatewayPhaseTimeoutSeconds = 150;
+    internal const int GatewayPhaseTimeoutSeconds = 75;
     internal static readonly TimeSpan PhaseBudget = TimeSpan.FromSeconds(210);
     internal FlowHiveSequentialState State { get; private set; } = saved ??
         FlowHiveSequentialState.Empty(ProjectFlowHiveExecutionPolicy.VersionFingerprint(documents));
@@ -45,6 +45,39 @@ internal sealed class FlowHiveSequentialExecution(
             throw new InvalidOperationException("flowhive_phase_source_changed");
         await persist(next, token);
         State = next;
+    }
+
+    internal async Task CompleteFromGeneratedPlanAsync(
+        PulseAiPrivateFlowHivePlan plan,
+        bool sourceGroundedFailSafe,
+        CancellationToken token)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var phases = Phases.Select(phase =>
+        {
+            var existing = State.Phases.Single(row => row.Phase == phase);
+            var tasks = plan.Tasks
+                .Where(task => string.Equals(task.Phase, phase, StringComparison.Ordinal))
+                .ToArray();
+            var phasePlan = plan with
+            {
+                Tasks = tasks,
+                Milestones = [],
+                CitationIds = tasks.SelectMany(task => task.CitationIds)
+                    .Distinct()
+                    .OrderBy(value => value)
+                    .ToArray()
+            };
+            return existing with
+            {
+                Status = "completed",
+                StartedAt = existing.StartedAt ?? now,
+                CompletedAt = now,
+                Plan = phasePlan,
+                DiagnosticCode = sourceGroundedFailSafe ? "source_grounded_fail_safe" : "whole_wbs_generation"
+            };
+        }).ToArray();
+        await SaveAsync(State with { Phases = phases }, token);
     }
 
     internal PulseAiPrivateRetrievalResult PinEvidence(PulseAiPrivateRetrievalResult evidence)

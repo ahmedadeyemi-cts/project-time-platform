@@ -76,6 +76,9 @@ elif [[ "$HEAD_BRANCH" == fix/flowhive-sow-plan-depth-20260925 ]]; then
 elif [[ "$HEAD_BRANCH" == fix/flowhive-enterprise-usability-routing-20260926 ]]; then
   python3 tests/flowhive-enterprise-usability-routing-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/flowhive-source-grounded-failsafe-20260926 ]]; then
+  python3 tests/flowhive-whole-wbs-failsafe-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
