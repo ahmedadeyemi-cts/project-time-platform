@@ -822,7 +822,10 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             await StopRunAsync(connection, runId, "working_copy_changed", "A plan was created while automatic generation was running. Existing work was preserved; review it before generating again.", cancellationToken);
             return;
         }
-        if (ProjectFlowHivePlannerReview.RequiresReview(current.Plan, current.ExpectedWorkingRowVersion))
+        var replaceableLegacyAiDraft = await IsReplaceableLegacyAiWorkingCopyAsync(
+            connection, transaction, projectId, current.ExpectedWorkingRowVersion, cancellationToken);
+        if (ProjectFlowHivePlannerReview.RequiresReview(current.Plan, current.ExpectedWorkingRowVersion)
+            && !replaceableLegacyAiDraft)
         {
             await UpdateRunAsync(connection, runId, FinalStatus(schedule), "candidate_review_required", 100, [],
                 sourceWarnings.Concat(["The AI work breakdown is saved as a separate proposal. Existing tasks, milestones, assignments and dates have not been replaced."]).ToArray(),
@@ -1090,6 +1093,60 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
         return runId;
+    }
+
+    private static async Task<bool> IsReplaceableLegacyAiWorkingCopyAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid projectId,
+        Guid? expectedVersion,
+        CancellationToken cancellationToken)
+    {
+        if (!expectedVersion.HasValue) return false;
+        await using var command = new NpgsqlCommand("""
+            SELECT working_payload
+            FROM project_flowhive_working_copies
+            WHERE project_id=@project AND row_version=@version
+            FOR UPDATE;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("project", projectId);
+        command.Parameters.AddWithValue("version", expectedVersion.Value);
+        var payload = await command.ExecuteScalarAsync(cancellationToken) as string;
+        if (string.IsNullOrWhiteSpace(payload)) return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            var root = document.RootElement;
+            var sourceKind = root.TryGetProperty("sourceKind", out var source) ? source.GetString() ?? string.Empty : string.Empty;
+            var revision = root.TryGetProperty("revisionLabel", out var revisionElement) ? revisionElement.GetString() ?? string.Empty : string.Empty;
+            var notes = root.TryGetProperty("notes", out var notesElement) ? notesElement.GetString() ?? string.Empty : string.Empty;
+            if (!string.Equals(sourceKind, "celar_ai", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            var legacyMarker = revision.Contains("Celar AI detailed Planner review", StringComparison.OrdinalIgnoreCase)
+                || notes.Contains("flowhive-five-phase-detailed-work-package-v1-20260818", StringComparison.OrdinalIgnoreCase);
+            if (!legacyMarker) return false;
+
+            if (root.TryGetProperty("tasks", out var tasks) && tasks.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var task in tasks.EnumerateArray())
+                {
+                    var percent = task.TryGetProperty("percentComplete", out var percentElement)
+                        && percentElement.TryGetDecimal(out var parsedPercent) ? parsedPercent : 0m;
+                    var status = task.TryGetProperty("status", out var statusElement)
+                        ? statusElement.GetString() ?? "not_started" : "not_started";
+                    if (percent > 0m || !string.Equals(status, "not_started", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
+            }
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static async Task<WorkingCopyResult?> SaveWorkingCopyAsync(
