@@ -235,9 +235,11 @@ public sealed class PulseAiPrivateModelClient
                 httpRequest.Headers.Add("X-Pulse-AI-Deadline-Seconds",
                     Module025GenerationEngine.GatewayPhaseTimeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
-            else if (request.FeatureCode == CelarAiCapabilityCatalog.ProjectFlowHivePlan
-                && request.OutputSchemaName == FlowHiveSequentialExecution.PhaseSchema)
+            else if (request.FeatureCode == CelarAiCapabilityCatalog.ProjectFlowHivePlan)
             {
+                // FlowHive now generates one compact WBS instead of five model
+                // phases. Keep the gateway workload marker for the approved
+                // bounded private-runtime contract regardless of response schema.
                 httpRequest.Headers.Add("X-Pulse-AI-Workload", "flowhive_phase_v1");
                 httpRequest.Headers.Add("X-Pulse-AI-Deadline-Seconds",
                     FlowHiveSequentialExecution.GatewayPhaseTimeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
