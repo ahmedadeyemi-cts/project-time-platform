@@ -9,6 +9,7 @@ BASE = 'dc7297037c77a711276c7a36cd0048b4b54c6035'
 RUNNER = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
 CURRENT_FLOWHIVE_WBS_REPAIR = 'fix/flowhive-source-grounded-failsafe-20260926'
 CURRENT_FLOWHIVE_WBS_LIVE_FINAL = 'fix/flowhive-whole-wbs-live-final-20260926'
+CURRENT_FLOWHIVE_REVIEWABLE_PARTIAL = 'fix/flowhive-reviewable-partial-wbs-20260926'
 PACKAGES = (
     ('123_module064_external_generation_approval', 'verify-module064-external-generation-approval.sql',
      'module064-approval', 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED'),
@@ -84,7 +85,7 @@ def main():
     source = (ROOT / RUNNER).read_text()
     branch = os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
         ['git','rev-parse','--abbrev-ref','HEAD'], cwd=ROOT, text=True).strip()
-    if branch in {CURRENT_FLOWHIVE_WBS_REPAIR, CURRENT_FLOWHIVE_WBS_LIVE_FINAL}:
+    if branch in {CURRENT_FLOWHIVE_WBS_REPAIR, CURRENT_FLOWHIVE_WBS_LIVE_FINAL, CURRENT_FLOWHIVE_REVIEWABLE_PARTIAL}:
         base = subprocess.check_output(
             ['git','merge-base','origin/main','HEAD'], cwd=ROOT, text=True).strip()
         inherited = subprocess.check_output(

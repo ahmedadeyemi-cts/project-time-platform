@@ -39,6 +39,11 @@ if [[ "$HEAD_BRANCH" == fix/flowhive-replace-untouched-legacy-ai-draft-20260926 
   exit 0
 fi
 
+if [[ "$HEAD_BRANCH" == fix/flowhive-reviewable-partial-wbs-20260926 ]]; then
+  python3 tests/flowhive-reviewable-partial-wbs-scope.py
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   exit 0

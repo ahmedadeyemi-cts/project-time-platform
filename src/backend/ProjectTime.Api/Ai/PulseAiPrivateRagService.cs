@@ -764,6 +764,24 @@ public sealed partial class PulseAiPrivateRagService
                     DiagnosticCode: model.DiagnosticCode);
             }
 
+            if (flowHive
+                && AllowsDeterministicCitedPlanningFallback(query.FeatureCode)
+                && !IsReviewableWholeWbs(answer.FlowHivePlan))
+            {
+                answer = DeterministicEvidenceAnswer(
+                    answerRunId,
+                    query,
+                    retrieval,
+                    model with
+                    {
+                        DiagnosticCode = string.IsNullOrWhiteSpace(answer.DiagnosticCode)
+                            ? "private_flowhive_reviewable_wbs_missing"
+                            : answer.DiagnosticCode
+                    },
+                    directKnowledge,
+                    flowHive: true);
+            }
+
             var completionSaved = await _repository.CompleteAnswerRunAsync(
                 answer,
                 query,
@@ -1302,6 +1320,21 @@ public sealed partial class PulseAiPrivateRagService
             retrieval.DataAsOf,
             query.CorrelationId,
             model.DiagnosticCode);
+    }
+
+    internal static bool IsReviewableWholeWbs(PulseAiPrivateFlowHivePlan? plan)
+    {
+        if (plan is null || plan.Tasks.Count < 10 || plan.CitationIds.Count == 0)
+            return false;
+        var phases = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
+        return phases.All(phase =>
+                plan.Tasks.Count(task => string.Equals(task.Phase, phase, StringComparison.Ordinal)) >= 2)
+            && plan.Tasks.All(task =>
+                task.CitationIds.Count > 0
+                && task.EstimatedHours is > 0m
+                && task.EstimatedDurationDays > 0m
+                && (task.DetailedSteps?.Count ?? 0) >= 2
+                && task.RequiredRoles.Count > 0);
     }
 
     private static bool AllowsDeterministicCitedPlanningFallback(string featureCode) =>
