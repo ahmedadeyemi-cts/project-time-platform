@@ -116,7 +116,7 @@ async Task<(MicrosoftTeamsWorkflowProtocol.Outcome Result, FakeHttp Handler)> Ru
         {
             Check(request.RequestUri!.Host == "login.microsoftonline.com", "workflow token authority fixed");
             var body = await request.Content!.ReadAsStringAsync();
-            Check(body.Contains("https%3A%2F%2Fservice.flow.microsoft.com%2F.default"), "workflow commercial audience requested");
+            Check(body.Contains("https%3A%2F%2Fservice.flow.microsoft.com%2F%2F.default"), "workflow slash-terminated commercial audience requested");
             return tokenStatus == 200 ? Response(200, "{\"access_token\":\"workflow-token\"}") : Response(tokenStatus, "{}");
         }
         Check(index == 1, "workflow sends once");
