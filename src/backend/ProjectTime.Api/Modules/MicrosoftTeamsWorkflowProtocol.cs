@@ -67,7 +67,10 @@ internal static class MicrosoftTeamsWorkflowProtocol
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         var ct = timeout.Token;
-        var scope = audience.TrimEnd('/') + "/.default";
+        // Power Automate's commercial resource identifier is slash-terminated. Preserve that
+        // resource URI before appending /.default so Entra issues aud=https://service.flow.microsoft.com/.
+        var resource = audience.TrimEnd('/') + "/";
+        var scope = resource + "/.default";
         using var tokenRequest = new HttpRequestMessage(HttpMethod.Post,
             $"https://login.microsoftonline.com/{tenantId:D}/oauth2/v2.0/token")
         {
