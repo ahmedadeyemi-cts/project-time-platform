@@ -1733,7 +1733,7 @@ jobs:
                     'Select or type a customer' \
                     'Inside Sales Representative' \
                     'FlowHive enterprise controls are temporarily unavailable.' \
-                    'This private generation phase can take several minutes' \
+                    'You can leave this page while FlowHive works. The plan continues on the server.' \
                     'flowhive-ai-progress-explanation' \
                     'background:var(--flowhive-surface)' \
                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1' \
