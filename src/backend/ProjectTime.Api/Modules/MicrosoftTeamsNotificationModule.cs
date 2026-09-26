@@ -40,9 +40,13 @@ public static class MicrosoftTeamsNotificationModule
         await using var reader = await command.ExecuteReaderAsync(context.RequestAborted);
         while (await reader.ReadAsync(context.RequestAborted))
         {
-            var evidence = MicrosoftTeamsNotificationProtocol.ReadStored(reader.GetString(2));
+            var stored = reader.GetString(2);
+            var evidence = MicrosoftTeamsNotificationProtocol.ReadStored(stored);
+            var tokenIdentity = environment == "test" ? MicrosoftTeamsWorkflowProtocol.ReadStoredTokenIdentity(stored) : null;
             deliveries.Add(new { recipient = reader.GetString(0), status = reader.GetString(1), diagnosticCode = evidence.Code,
                 diagnosticMessage = evidence.Message, graphErrorCode = evidence.GraphErrorCode, graphRequestId = evidence.RequestId,
+                tokenAudience = tokenIdentity?.Audience, tokenTenantId = tokenIdentity?.TenantId,
+                tokenObjectId = tokenIdentity?.ObjectId, tokenAppId = tokenIdentity?.AppId,
                 updatedAt = reader.GetFieldValue<DateTimeOffset>(3) });
         }
         return Results.Ok(new { configuration, deliveries, readOnly = AdminExperienceCommon.IsViewAs(context),
@@ -310,7 +314,8 @@ public static class MicrosoftTeamsNotificationModule
 
                 using var client = NewClient();
                 outcome = await MicrosoftTeamsWorkflowProtocol.ExecuteAsync(client, services.Profile.TenantId, services.Profile.ClientId,
-                    services.Secret, configuration.WorkflowAudience, configuration.WorkflowTriggerUrl, envelope, ct);
+                    services.Secret, configuration.WorkflowAudience, configuration.WorkflowTriggerUrl, envelope, ct,
+                    captureTokenIdentity: manualTest && configuration.Environment == "test");
             }
         }
         catch (Exception error) when (error is InvalidDataException or JsonException or KeyNotFoundException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
@@ -319,7 +324,11 @@ public static class MicrosoftTeamsNotificationModule
         using var persistTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await using var update = new NpgsqlCommand("UPDATE module065_teams_delivery SET status=@status,diagnostic_code=@code,updated_at=now() WHERE delivery_id=@id", connection);
         update.Parameters.AddWithValue("status", outcome.Status);
-        update.Parameters.AddWithValue("code", JsonSerializer.Serialize(new { code = outcome.Diagnostic.Code, message = outcome.Diagnostic.Message, requestId = outcome.Diagnostic.RequestId, workflowRunId = outcome.WorkflowRunId }));
+        update.Parameters.AddWithValue("code", JsonSerializer.Serialize(new {
+            code = outcome.Diagnostic.Code, message = outcome.Diagnostic.Message, requestId = outcome.Diagnostic.RequestId,
+            workflowRunId = outcome.WorkflowRunId, tokenIdentity = manualTest && configuration.Environment == "test"
+                ? outcome.Diagnostic.TokenIdentity : null
+        }));
         update.Parameters.AddWithValue("id", id);
         await update.ExecuteNonQueryAsync(persistTimeout.Token);
         return outcome.Status;
