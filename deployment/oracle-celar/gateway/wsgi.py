@@ -440,9 +440,9 @@ def _local_chat_completions() -> Any:
             # internal model selection for its own target.
             preferred = ["qwen3:4b-instruct", "gemma3:4b", "llama3.2:3b"]
             candidates = [name for name in preferred if name in APPROVED_GENERATION_MODELS]
-            # Leave enough time for a second/third local model instead of allowing
-            # the first candidate to consume the whole 150-second phase window.
-            attempt_budgets = [65, 50, 25][:len(candidates)]
+            # Whole-WBS generation is one bounded attempt. Do not spend minutes
+            # waiting on a local model when the server can create a cited fail-safe.
+            attempt_budgets = [35, 25, 15][:len(candidates)]
         else:
             # Module 025 retains its reviewed single-model phase behavior.
             candidates = candidates[:1]
