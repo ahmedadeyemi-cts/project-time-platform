@@ -567,11 +567,11 @@ var compactFlowHiveSystemInstruction = (string)flowHiveBatchInstructionFactory.I
     null, ["The prior full planner instruction must not be copied into the live batch."])!;
 Assert(compactFlowHiveSystemInstruction.Length <= 1_800,
     "flowhive_live_batch_system_prompt_is_compact");
-Assert(compactFlowHiveSystemInstruction.Contains("exactly these ten slots", StringComparison.Ordinal)
-       && compactFlowHiveSystemInstruction.Contains("Never omit a slot", StringComparison.Ordinal)
-       && compactFlowHiveSystemInstruction.Contains("untrusted data", StringComparison.Ordinal)
+Assert(compactFlowHiveSystemInstruction.Contains("15 to 25 ordered executable tasks", StringComparison.Ordinal)
+       && compactFlowHiveSystemInstruction.Contains("Do NOT generate separate", StringComparison.Ordinal)
+       && compactFlowHiveSystemInstruction.Contains("untrusted", StringComparison.Ordinal)
        && compactFlowHiveSystemInstruction.Contains("citationId", StringComparison.Ordinal),
-    "flowhive_live_batch_system_prompt_keeps_source_safety_and_task_contract");
+    "flowhive_live_batch_system_prompt_keeps_source_safety_and_whole_wbs_contract");
 Assert(!compactFlowHiveSystemInstruction.Contains("Automatically populate every task field", StringComparison.Ordinal)
        && !compactFlowHiveSystemInstruction.Contains("normally 10 to 20 tasks", StringComparison.Ordinal),
     "flowhive_live_batch_system_prompt_does_not_forward_full_planner_instructions");
@@ -584,11 +584,11 @@ Assert(compactFlowHiveUserInstruction.Length <= 320,
 var flowHiveBatchRepairInstructionFactory = typeof(PulseAiPrivateRagService).GetMethod(
     "FlowHiveBatchRepairSystemInstruction", BindingFlags.NonPublic | BindingFlags.Static)!;
 var compactFlowHiveRepairInstruction = (string)flowHiveBatchRepairInstructionFactory.Invoke(null, [])!;
-Assert(compactFlowHiveRepairInstruction.Contains("exactly ten objects", StringComparison.Ordinal)
-       && compactFlowHiveRepairInstruction.Contains("1.1 Plan", StringComparison.Ordinal)
-       && compactFlowHiveRepairInstruction.Contains("5.2 Release", StringComparison.Ordinal)
-       && compactFlowHiveRepairInstruction.Contains("shorten text rather than omit", StringComparison.Ordinal),
-    "flowhive_batch_structural_repair_preserves_all_slots");
+Assert(compactFlowHiveRepairInstruction.Contains("15 to 25 ordered objects", StringComparison.Ordinal)
+       && compactFlowHiveRepairInstruction.Contains("T01", StringComparison.Ordinal)
+       && compactFlowHiveRepairInstruction.Contains("predecessors", StringComparison.Ordinal)
+       && !compactFlowHiveRepairInstruction.Contains("1.1 Plan", StringComparison.Ordinal),
+    "flowhive_batch_structural_repair_preserves_whole_wbs_contract");
 var flowHiveBatchRepairUserFactory = typeof(PulseAiPrivateRagService).GetMethod(
     "FlowHiveBatchRepairUserInstruction", BindingFlags.NonPublic | BindingFlags.Static)!;
 Assert(((string)flowHiveBatchRepairUserFactory.Invoke(null, [])!).Length <= 220,
@@ -604,24 +604,18 @@ var flowHiveBatchRequest = phaseRequest with
 };
 var flowHiveBatchPayload = JsonSerializer.Serialize(new
 {
-    objective = parsedModule025.Objective,
-    tasks = parsedModule025.Tasks.Select((task, index) => new
+    objective = "Create a reviewable source-grounded project plan from current authorized evidence.",
+    tasks = Enumerable.Range(1, 15).Select(index => new
     {
-        wbs = $"{index / 2 + 1}.{index % 2 + 1}",
-        phase = task.Phase,
-        name = task.Name,
-        description = task.Description,
-        estimatedHours = task.EstimatedHours,
-        estimatedDurationDays = task.EstimatedDurationDays,
-        requiredRoles = task.RequiredRoles,
-        predecessors = task.Predecessors,
+        id = $"T{index:00}",
+        name = $"Authorized project work package {index:00}",
+        description = $"Complete authorized source-grounded project work package {index:00}, preserve objective evidence, and stop for review if a required project fact remains unresolved.",
+        estimatedHours = index is >= 7 and <= 9 ? 8m : 4m,
+        estimatedDurationDays = 1m,
+        requiredRoles = new[] { "Engineer", "Project Manager" },
+        predecessors = index == 1 ? Array.Empty<string>() : new[] { $"T{index - 1:00}" },
         citationId = 1
-    }),
-    assumptions = parsedModule025.Assumptions,
-    risks = parsedModule025.Risks,
-    questions = parsedModule025.OpenQuestions,
-    confidence = parsedModule025.Confidence,
-    confidenceExplanation = parsedModule025.ConfidenceExplanation
+    })
 });
 var flowHiveBatchCalls = 0;
 var flowHiveBatchActive = 0;
@@ -642,10 +636,11 @@ var flowHiveBatchResult = await RunFlowHiveBatch(async (request, token) =>
     Assert(request.MaximumOutputTokens == 1_280, "flowhive_single_batch_output_budget_is_bounded");
     Assert(!request.SystemInstruction.Contains("ONLY Plan tasks", StringComparison.Ordinal),
         "flowhive_single_batch_does_not_scope_to_one_phase");
-    Assert(request.UserInstruction.Contains("exactly two distinct source-grounded work packages per phase", StringComparison.Ordinal),
+    Assert(request.UserInstruction.Contains("one complete executable project WBS", StringComparison.Ordinal),
         "flowhive_single_batch_prompt_is_explicit");
     Assert(!request.SystemInstruction.Contains("detailedSteps", StringComparison.Ordinal)
-           && request.SystemInstruction.Contains("only these compact fields", StringComparison.Ordinal),
+           && request.SystemInstruction.Contains("Each task must contain only:", StringComparison.Ordinal)
+           && request.SystemInstruction.Contains("estimatedHours", StringComparison.Ordinal),
         "flowhive_single_batch_provider_contract_omits_server_completed_fields");
     Assert(request.Sources.Single().Text.Length <= 3_000,
         "flowhive_single_batch_source_is_bounded_for_live_provider_window");
@@ -659,15 +654,15 @@ Assert(flowHiveBatchResult.Succeeded && flowHiveBatchCalls == 1 && flowHiveBatch
     "flowhive_one_slot_provider_uses_one_model_request");
 var flowHiveBatchPlan = (PulseAiPrivateFlowHivePlan)module025Parser.Invoke(
     null, new object[] { flowHiveBatchResult.Content, module025Retrieval })!;
-Assert(flowHiveBatchPlan.Tasks.Count == 10
-       && flowHiveBatchPlan.Tasks.Select(task => task.Wbs).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 10,
-    "flowhive_single_batch_assembles_ten_unique_work_packages");
-Assert(flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Plan") == 2
-       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Design") == 2
-       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Implement") == 2
-       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Validate") == 2
-       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Release") == 2,
-    "flowhive_single_batch_preserves_all_five_phases");
+Assert(flowHiveBatchPlan.Tasks.Count == 15
+       && flowHiveBatchPlan.Tasks.Select(task => task.Wbs).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 15,
+    "flowhive_single_batch_assembles_fifteen_unique_work_packages");
+Assert(flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Plan") == 3
+       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Design") == 3
+       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Implement") == 3
+       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Validate") == 3
+       && flowHiveBatchPlan.Tasks.Count(task => task.Phase == "Release") == 3,
+    "flowhive_single_batch_server_categorizes_complete_wbs_for_display");
 var flowHiveInvalidBatchCalls = 0;
 var flowHiveInvalidBatch = await RunFlowHiveBatch((request, token) =>
 {
@@ -702,8 +697,9 @@ var flowHiveRetry = await RunFlowHiveBatch((request, token) =>
         : new PulseAiPrivateModelResult("private_model_completed", "celar_ai", "test-model",
             flowHiveBatchPayload, 100, flowHiveBatchPayload.Length, "", DateTimeOffset.UtcNow));
 });
-Assert(flowHiveRetry.Succeeded && flowHiveRetryCalls == 2,
-    "flowhive_transient_batch_retry_is_single_and_bounded");
+Assert(!flowHiveRetry.Succeeded && flowHiveRetryCalls == 1
+       && flowHiveRetry.DiagnosticCode.EndsWith("_batch", StringComparison.Ordinal),
+    "flowhive_transient_batch_timeout_returns_immediately_to_source_grounded_failsafe");
 Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("provider_deadline_exceeded"),
     "flowhive_provider_deadline_is_retryable_at_orchestrator_boundary");
 Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("private_module025_phase_deadline_exceeded_phase_design"),

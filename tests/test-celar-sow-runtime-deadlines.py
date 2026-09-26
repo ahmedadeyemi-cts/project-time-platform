@@ -134,7 +134,7 @@ clock[0] = 0
 attempts.clear()
 _, status = ns['_local_chat_completions']()
 assert status == 504
-assert attempts == [('qwen3:4b-instruct', 65), ('gemma3:4b', 50), ('llama3.2:3b', 25)], attempts
+assert attempts == [('qwen3:4b-instruct', 35), ('gemma3:4b', 25), ('llama3.2:3b', 15)], attempts
 
 for feature, workload in [('sow_gsd_planning', 'module025_phase_v4'),
                           ('project_flowhive_plan', 'flowhive_phase_v1')]:

@@ -133,6 +133,8 @@ internal static class ProjectPlanningAiOrchestrator
                     .ToArray());
         }
 
+        var sourceGroundedFailSafeReady = IsSourceGroundedFailSafePlan(composition.FlowHivePlan);
+
         // A private provider deadline is an availability failure, not an
         // evidence-quality failure. Preserve the route diagnostics and let the
         // durable worker consume its existing bounded retry budget. Previously
@@ -145,7 +147,7 @@ internal static class ProjectPlanningAiOrchestrator
             .Where(IsRetryableProviderDiagnostic)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        if (retryableProviderDiagnostics.Length > 0)
+        if (retryableProviderDiagnostics.Length > 0 && !sourceGroundedFailSafeReady)
         {
             return new ProjectPlanningGenerationResult(
                 false,
@@ -164,7 +166,9 @@ internal static class ProjectPlanningAiOrchestrator
                     .ToArray());
         }
 
-        if (sequential is not null && sequential.State.Phases.Any(p => p.Status != "completed" || p.Plan is null))
+        if (sequential is not null
+            && sequential.State.Phases.Any(p => p.Status != "completed" || p.Plan is null)
+            && !sourceGroundedFailSafeReady)
             return ProjectPlanningGenerationResult.Failed("project_planning_phases_incomplete",
                 "Five validated phases are required. Generation stopped without changing the project plan; inspect the saved stage progress.",
                 ["All five delivery phases must finish before WBS assembly."], documents.Warnings);
@@ -186,8 +190,12 @@ internal static class ProjectPlanningAiOrchestrator
             .ToArray();
 
         var privatePlan = composition.FlowHivePlan;
-        // A partial scaffold is not a successful executable plan, regardless of schema shape.
-        var completedStatus = composition.Status == "celar_ai_solution_draft_completed";
+        // Normal model output must complete its evidence contract. The only
+        // accepted partial artifact is the server-owned source-grounded fail-safe,
+        // which is structurally complete across all five phases and still passes
+        // current-version citation validation below.
+        var completedStatus = composition.Status == "celar_ai_solution_draft_completed"
+            || sourceGroundedFailSafeReady;
         var citedPlan = privatePlan is not null
             && privatePlan.Tasks.Count > 0
             && privatePlan.CitationIds.Count > 0
@@ -258,6 +266,9 @@ internal static class ProjectPlanningAiOrchestrator
         generated = ApplySchedule(generated, schedule, composition, documents);
 
         var warnings = composition.Warnings
+            .Concat(sourceGroundedFailSafeReady
+                ? ["AI providers did not complete the whole-WBS synthesis within their bounded deadlines. FlowHive created a complete source-cited review draft from the current private project evidence; PM and Engineering review is required before baseline approval."]
+                : Array.Empty<string>())
             .Concat(documents.Warnings)
             .Concat(schedule.Issues
                 .Where(issue => issue.Code == "project_end_exceeded")
@@ -282,6 +293,26 @@ internal static class ProjectPlanningAiOrchestrator
             schedule,
             composition.MissingEvidence,
             warnings);
+    }
+
+    internal static bool IsSourceGroundedFailSafePlan(PulseAiPrivateFlowHivePlan? plan)
+    {
+        if (plan is null || plan.Tasks.Count < 15 || plan.CitationIds.Count == 0)
+            return false;
+
+        var phases = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
+        return phases.All(phase =>
+                plan.Tasks.Count(task => string.Equals(task.Phase, phase, StringComparison.Ordinal)) >= 3)
+            && plan.Tasks.All(task =>
+                task.CitationIds.Count > 0
+                && task.EstimatedHours > 0m
+                && task.EstimatedDurationDays > 0m
+                && (task.DetailedSteps?.Count ?? 0) >= 2)
+            && string.Equals(
+                plan.ConfidenceExplanation?.Contains("deterministic private fallback", StringComparison.OrdinalIgnoreCase) == true
+                    ? "fail_safe" : string.Empty,
+                "fail_safe",
+                StringComparison.Ordinal);
     }
 
     private static async Task<ProjectPlanningGenerationResult> ReuseOrQueueDurableFlowHivePlanAsync(
