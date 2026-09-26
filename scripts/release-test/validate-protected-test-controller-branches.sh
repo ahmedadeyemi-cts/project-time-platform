@@ -85,6 +85,9 @@ elif [[ "$HEAD_BRANCH" == fix/flowhive-whole-wbs-live-final-20260926 ]]; then
 elif [[ "$HEAD_BRANCH" == fix/flowhive-replace-untouched-legacy-ai-draft-20260926 ]]; then
   python3 tests/flowhive-replace-untouched-legacy-ai-draft-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/flowhive-reviewable-partial-wbs-20260926 ]]; then
+  python3 tests/flowhive-reviewable-partial-wbs-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   node tests/validate-systemwide-image-build-controller.mjs

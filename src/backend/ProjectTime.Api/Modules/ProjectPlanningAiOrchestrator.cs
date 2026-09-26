@@ -190,12 +190,15 @@ internal static class ProjectPlanningAiOrchestrator
             .ToArray();
 
         var privatePlan = composition.FlowHivePlan;
-        // Normal model output must complete its evidence contract. The only
-        // accepted partial artifact is the server-owned source-grounded fail-safe,
-        // which is structurally complete across all five phases and still passes
-        // current-version citation validation below.
+        // A low-confidence model result may still be a useful review artifact.
+        // Accept it only when the whole WBS is structurally complete; current
+        // citation and SOW authority are still enforced immediately below.
+        var reviewablePartialPlanReady =
+            composition.Status == "celar_ai_solution_draft_partial"
+            && PulseAiPrivateRagService.IsReviewableWholeWbs(privatePlan);
         var completedStatus = composition.Status == "celar_ai_solution_draft_completed"
-            || sourceGroundedFailSafeReady;
+            || sourceGroundedFailSafeReady
+            || reviewablePartialPlanReady;
         var citedPlan = privatePlan is not null
             && privatePlan.Tasks.Count > 0
             && privatePlan.CitationIds.Count > 0
@@ -268,6 +271,9 @@ internal static class ProjectPlanningAiOrchestrator
         var warnings = composition.Warnings
             .Concat(sourceGroundedFailSafeReady
                 ? ["AI providers did not complete the whole-WBS synthesis within their bounded deadlines. FlowHive created a complete source-cited review draft from the current private project evidence; PM and Engineering review is required before baseline approval."]
+                : Array.Empty<string>())
+            .Concat(reviewablePartialPlanReady
+                ? ["The AI WBS passed the current-source citation and executable-work checks but remained below the configured confidence threshold. FlowHive saved it as a review-only working draft; PM and Engineering validation is required before baseline approval."]
                 : Array.Empty<string>())
             .Concat(documents.Warnings)
             .Concat(schedule.Issues
