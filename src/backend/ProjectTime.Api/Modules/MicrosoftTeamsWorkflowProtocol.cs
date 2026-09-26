@@ -12,7 +12,8 @@ namespace ProjectTime.Api.Modules;
 /// </summary>
 internal static class MicrosoftTeamsWorkflowProtocol
 {
-    internal sealed record Evidence(string Code, string Message, string? RequestId = null);
+    internal sealed record TokenIdentity(string? Audience, string? TenantId, string? ObjectId, string? AppId);
+    internal sealed record Evidence(string Code, string Message, string? RequestId = null, TokenIdentity? TokenIdentity = null);
     internal sealed record Outcome(string Status, Evidence Diagnostic, string? WorkflowRunId = null);
 
     internal sealed record Envelope(
@@ -50,7 +51,8 @@ internal static class MicrosoftTeamsWorkflowProtocol
         string audience,
         string triggerUrl,
         Envelope envelope,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool captureTokenIdentity = false)
     {
         if (tenantId == Guid.Empty || clientId == Guid.Empty || string.IsNullOrWhiteSpace(clientSecret))
             return Failed("teams_workflow_services_configuration_incomplete", "Save the matching Module 065 Microsoft services connection first.");
@@ -86,6 +88,8 @@ internal static class MicrosoftTeamsWorkflowProtocol
         if (string.IsNullOrWhiteSpace(token) || token.Length > 16384)
             return Failed("teams_workflow_token_missing", "Microsoft did not return a usable Power Automate token.");
 
+        var tokenIdentity = captureTokenIdentity ? ReadTokenIdentity(token) : null;
+
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Headers.Add("x-pulse-event-id", envelope.EventId);
@@ -96,14 +100,54 @@ internal static class MicrosoftTeamsWorkflowProtocol
         var requestId = Header(response, "x-ms-request-id") ?? Header(response, "request-id") ?? Header(response, "client-request-id");
         var runId = Header(response, "x-ms-workflow-run-id");
         if ((int)response.StatusCode is >= 200 and < 300)
-            return new("sent", new("teams_workflow_accepted", "Power Automate accepted the Teams delivery request. The workflow run remains the delivery authority.", requestId), runId);
+            return new("sent", new("teams_workflow_accepted", "Power Automate accepted the Teams delivery request. The workflow run remains the delivery authority.", requestId, tokenIdentity), runId);
 
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
-            return new("failed", new("teams_workflow_rate_limited", "Power Automate rate-limited this request. Preserve the event for a deliberate later retry.", requestId));
+            return new("failed", new("teams_workflow_rate_limited", "Power Automate rate-limited this request. Preserve the event for a deliberate later retry.", requestId, tokenIdentity));
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-            return new("failed", new("teams_workflow_not_authorized", "Power Automate rejected the centralized services identity. Verify the flow trigger allows this service principal.", requestId));
+            return new("failed", new("teams_workflow_not_authorized", "Power Automate rejected the centralized services identity. Compare the Test token claims below with the allowed Power Automate service principal.", requestId, tokenIdentity));
         return new((int)response.StatusCode >= 500 ? "outcome_unknown" : "failed",
-            new($"teams_workflow_http_{(int)response.StatusCode}", "Power Automate did not confirm Teams delivery. Review the workflow run and request identifier before retrying.", requestId), runId);
+            new($"teams_workflow_http_{(int)response.StatusCode}", "Power Automate did not confirm Teams delivery. Review the workflow run and request identifier before retrying.", requestId, tokenIdentity), runId);
+    }
+
+    private static TokenIdentity? ReadTokenIdentity(string token)
+    {
+        try
+        {
+            var parts = token.Split('.');
+            if (parts.Length != 3 || parts[1].Length is < 2 or > 8192) return null;
+            var payload = parts[1].Replace('-', '+').Replace('_', '/');
+            payload += (payload.Length % 4) switch { 2 => "==", 3 => "=", _ => "" };
+            var bytes = Convert.FromBase64String(payload);
+            using var json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 8 });
+            var root = json.RootElement;
+            string? Claim(string name)
+            {
+                if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String) return null;
+                var text = value.GetString();
+                return string.IsNullOrWhiteSpace(text) || text.Length > 512 ? null : text;
+            }
+            return new(Claim("aud"), Claim("tid"), Claim("oid"), Claim("appid") ?? Claim("azp"));
+        }
+        catch (Exception error) when (error is FormatException or JsonException) { return null; }
+    }
+
+    internal static TokenIdentity? ReadStoredTokenIdentity(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 8192 || !value.StartsWith('{')) return null;
+        try
+        {
+            using var json = JsonDocument.Parse(value, new JsonDocumentOptions { MaxDepth = 16 });
+            if (!json.RootElement.TryGetProperty("tokenIdentity", out var identity) || identity.ValueKind != JsonValueKind.Object) return null;
+            string? Text(string name)
+            {
+                if (!identity.TryGetProperty(name, out var item) || item.ValueKind != JsonValueKind.String) return null;
+                var text = item.GetString();
+                return string.IsNullOrWhiteSpace(text) || text.Length > 512 ? null : text;
+            }
+            return new(Text("audience"), Text("tenantId"), Text("objectId"), Text("appId"));
+        }
+        catch (JsonException) { return null; }
     }
 
     private static Outcome Failed(string code, string message) => new("failed", new(code, message));

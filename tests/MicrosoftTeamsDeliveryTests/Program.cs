@@ -148,6 +148,33 @@ Check(workflowSuccess.Handler.Requests.Count == 2, "workflow one token and one s
 
 var workflowDenied = await RunWorkflow(403);
 Check(workflowDenied.Result.Status == "failed" && workflowDenied.Result.Diagnostic.Code == "teams_workflow_not_authorized", "workflow authorization failure classified");
+string Base64Url(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value)).TrimEnd('=').Replace('+','-').Replace('/','_');
+var diagnosticOid = Guid.Parse("77777777-7777-4777-8777-777777777777");
+var diagnosticToken = $"{Base64Url("{\"alg\":\"none\"}")}.{Base64Url(J(new { aud="https://service.flow.microsoft.com/", tid=tenant, oid=diagnosticOid, azp=clientId }))}.signature";
+var diagnosticHandler = new FakeHttp((request, index) => {
+    if (index == 0) return Task.FromResult(Response(200, J(new { access_token = diagnosticToken })));
+    Check(index == 1, "diagnostic workflow sends once");
+    Check(request.Headers.Authorization?.Parameter == diagnosticToken, "diagnostic bearer used but never persisted");
+    var response = Response(403, "{}");
+    response.Headers.Add("x-ms-request-id", requestId);
+    return Task.FromResult(response);
+});
+using (var diagnosticHttp = new HttpClient(diagnosticHandler))
+{
+    var diagnostic = await MicrosoftTeamsWorkflowProtocol.ExecuteAsync(diagnosticHttp, tenant, clientId, "synthetic-secret",
+        "https://service.flow.microsoft.com/", workflowUrl, workflowEnvelope, CancellationToken.None, captureTokenIdentity: true);
+    Check(diagnostic.Diagnostic.Code == "teams_workflow_not_authorized", "diagnostic authorization classification");
+    Check(diagnostic.Diagnostic.TokenIdentity?.Audience == "https://service.flow.microsoft.com/", "diagnostic audience captured");
+    Check(diagnostic.Diagnostic.TokenIdentity?.TenantId == tenant.ToString(), "diagnostic tenant captured");
+    Check(diagnostic.Diagnostic.TokenIdentity?.ObjectId == diagnosticOid.ToString(), "diagnostic object captured");
+    Check(diagnostic.Diagnostic.TokenIdentity?.AppId == clientId.ToString(), "diagnostic azp captured");
+    var storedIdentity = MicrosoftTeamsWorkflowProtocol.ReadStoredTokenIdentity(J(new { tokenIdentity = new {
+        audience = diagnostic.Diagnostic.TokenIdentity?.Audience, tenantId = diagnostic.Diagnostic.TokenIdentity?.TenantId,
+        objectId = diagnostic.Diagnostic.TokenIdentity?.ObjectId, appId = diagnostic.Diagnostic.TokenIdentity?.AppId } }));
+    Check(storedIdentity?.ObjectId == diagnosticOid.ToString(), "stored diagnostic identity roundtrip");
+    Check(!J(diagnostic.Diagnostic).Contains(diagnosticToken), "raw bearer never retained in diagnostic");
+}
+
 var workflowLimited = await RunWorkflow(429);
 Check(workflowLimited.Result.Status == "failed" && workflowLimited.Result.Diagnostic.Code == "teams_workflow_rate_limited", "workflow rate limit classified");
 var workflowUnknown = await RunWorkflow(503);
