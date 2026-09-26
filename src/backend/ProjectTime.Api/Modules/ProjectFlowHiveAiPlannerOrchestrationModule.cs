@@ -630,13 +630,24 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         generationToken.CancelAfter(ProjectFlowHiveExecutionPolicy.InferenceBudget);
         using var observation = CancellationTokenSource.CreateLinkedTokenSource(generationToken.Token);
         var observer = ObserveCancellationAsync(run.RunId, generationToken, observation.Token);
-        var sequential = new FlowHiveSequentialExecution(documents, run.PhaseCheckpoint,
+        var phaseProjection = new FlowHiveSequentialExecution(documents, run.PhaseCheckpoint,
             (state, ct) => PersistPhaseCheckpointAsync(connection, run, state, ct));
+        // Do not pass phaseProjection into the AI composer. FlowHive now asks for
+        // one complete WBS and classifies the finished tasks for display afterward.
+        // This removes five serial inference gates from the critical path.
         var generation = ProjectPlanningAiOrchestrator.GenerateAsync(enterprise, actual, effective, seed, documents,
-            outcome, detail, capability, allowSanitizedExternalFallback, context, generationToken.Token, sequential);
+            outcome, detail, capability, allowSanitizedExternalFallback, context, generationToken.Token, sequential: null);
         try
         {
-            return await generation.WaitAsync(generationToken.Token);
+            var result = await generation.WaitAsync(generationToken.Token);
+            if (result.Succeeded && result.Composition?.FlowHivePlan is { } completedPlan)
+            {
+                await phaseProjection.CompleteFromGeneratedPlanAsync(
+                    completedPlan,
+                    ProjectPlanningAiOrchestrator.IsSourceGroundedFailSafePlan(completedPlan),
+                    generationToken.Token);
+            }
+            return result;
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
