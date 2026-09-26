@@ -1479,8 +1479,11 @@ jobs:
           [[ "$FLOWHIVE_RUN_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'FlowHive AI Planner did not return a durable run identifier.'
 
           FLOWHIVE_READY=false
+          FLOWHIVE_RESULT_MODE=''
           attempt=0
-          # Durable DeepSeek + Oracle generation has a bounded 80-minute window.
+          # Durable project planning is bounded. A valid review candidate is also
+          # a successful terminal outcome when an existing working copy must be
+          # preserved rather than overwritten automatically.
           FLOWHIVE_DEADLINE=$((SECONDS + 4800))
           while (( SECONDS < FLOWHIVE_DEADLINE )); do
             attempt=$(( ${attempt:-0} + 1 ))
@@ -1490,10 +1493,25 @@ jobs:
               and .workingDraft.persisted == true
             ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null 2>&1; then
               FLOWHIVE_READY=true
+              FLOWHIVE_RESULT_MODE='working_draft'
+              break
+            fi
+            if jq -e '
+              (.status == "completed" or .status == "completed_with_schedule_overrun")
+              and .phase == "candidate_review_required"
+              and .candidateAvailable == true
+              and .candidate.persisted == true
+              and .candidate.reviewRequired == true
+              and .candidate.validation.valid == true
+              and .candidate.schedule.valid == true
+              and ((.candidate.plan.tasks // []) | length) > 0
+            ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null 2>&1; then
+              FLOWHIVE_READY=true
+              FLOWHIVE_RESULT_MODE='review_candidate'
               break
             fi
             if jq -e '.terminal == true' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null 2>&1; then
-              fail "FlowHive AI Planner reached terminal status $(jq -r '.status' "$EVIDENCE_DIR/flowhive-ai-planner.json") before a working draft was ready."
+              fail "FlowHive AI Planner reached terminal status $(jq -r '.status' "$EVIDENCE_DIR/flowhive-ai-planner.json") without a persisted working draft or valid review candidate."
             fi
             sleep 10
             flowhive_headers="$(mktemp)"
@@ -1510,18 +1528,28 @@ jobs:
               "$(jq -r '.terminal // false' "$EVIDENCE_DIR/flowhive-ai-planner.json")" \
               >> "$EVIDENCE_DIR/flowhive-ai-planner-polls.log"
           done
-          [[ "$FLOWHIVE_READY" == true ]] || fail 'FlowHive AI Planner did not persist a working draft after automatic document processing.'
+          [[ "$FLOWHIVE_READY" == true ]] || fail 'FlowHive AI Planner did not produce a persisted working draft or valid review candidate after automatic document processing.'
           jq -e '
-            .workingDraft.persisted == true
-            and .workingDraft.immutableVersionCreated == false
-            and .workingDraft.baselineCreated == false
-            and .planningEvidence.sourceGrounded == true
-            and .schedule.valid == true
-            and .scheduleAssessment.estimatesCompressed == false
-            and ((.plan.dependencies // []) | length > 0)
-            and ((.plan.tasks // []) as $tasks
+            . as $root
+            | (if $root.workingDraft.persisted == true then $root.plan else $root.candidate.plan end) as $plan
+            | (if $root.workingDraft.persisted == true then $root.schedule else $root.candidate.schedule end) as $schedule
+            | (
+                ($root.workingDraft.persisted == true
+                  and $root.workingDraft.immutableVersionCreated == false
+                  and $root.workingDraft.baselineCreated == false)
+                or
+                ($root.candidateAvailable == true
+                  and $root.candidate.persisted == true
+                  and $root.candidate.reviewRequired == true
+                  and $root.workingDraft.persisted == false)
+              )
+            and $root.planningEvidence.sourceGrounded == true
+            and $schedule.valid == true
+            and $root.scheduleAssessment.estimatesCompressed == false
+            and (($plan.dependencies // []) | length > 0)
+            and (($plan.tasks // []) as $tasks
               | ($tasks | map(select((.isSummary // false) == false and (.isMilestone // false) == false))) as $executable
-              | ($executable | length) > 0
+              | ($executable | length) >= 10
               and (($executable | map(.phase) | unique) | index("Plan") != null)
               and (($executable | map(.phase) | unique) | index("Design") != null)
               and (($executable | map(.phase) | unique) | index("Implement") != null)
@@ -1536,8 +1564,8 @@ jobs:
                 and ((.estimatedStartDate // "") | length) == 10
                 and ((.estimatedFinishDate // "") | length) == 10
               ))
-          ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null || fail 'FlowHive AI Planner did not satisfy the source-cited five-phase working-draft contract.'
-          echo 'FLOWHIVE_AI_PLANNER_UAT=PASSED'
+          ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null || fail 'FlowHive AI Planner did not satisfy the source-cited reviewable WBS contract.'
+          echo "FLOWHIVE_AI_PLANNER_UAT=PASSED mode=$FLOWHIVE_RESULT_MODE"
 
           FORGE_PAYLOAD="$(mktemp)"
           jq -n '{
