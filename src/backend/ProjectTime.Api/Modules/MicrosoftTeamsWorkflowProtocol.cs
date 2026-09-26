@@ -117,7 +117,7 @@ internal static class MicrosoftTeamsWorkflowProtocol
             var parts = token.Split('.');
             if (parts.Length != 3 || parts[1].Length is < 2 or > 8192) return null;
             var payload = parts[1].Replace('-', '+').Replace('_', '/');
-            payload += payload.Length % 4 switch { 2 => "==", 3 => "=", _ => "" };
+            payload += (payload.Length % 4) switch { 2 => "==", 3 => "=", _ => "" };
             var bytes = Convert.FromBase64String(payload);
             using var json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 8 });
             var root = json.RootElement;
