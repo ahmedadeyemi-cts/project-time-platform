@@ -124,6 +124,7 @@ jobs:
               'tests/flowhive-psa-react-browser.py' \
               'tests/flowhive-psa-review-browser.py' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/flowhive-enterprise-psa-ci.yml' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/technical-wbs-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/technical-wbs-actual"
             cmp -s "$RUNNER_TEMP/technical-wbs-files" "$RUNNER_TEMP/technical-wbs-actual" || { diff -u "$RUNNER_TEMP/technical-wbs-files" "$RUNNER_TEMP/technical-wbs-actual" >&2 || true; exit 1; }
