@@ -317,6 +317,66 @@ public sealed class PostgresProjectFlowHivePlanRepository : IProjectFlowHivePlan
             $"FlowHive draft version {nextVersion} was saved with immutable validation and schedule evidence.");
     }
 
+    public async Task<ProjectFlowHivePersistenceResult> DeleteDraftAsync(
+        Guid actorUserId,
+        Guid planId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        const string lockSql = """
+            SELECT project_id,plan_status,current_version_number,baseline_version_number
+            FROM project_flowhive_plans WHERE plan_id=@plan_id FOR UPDATE;
+            """;
+        Guid projectId;
+        string status;
+        int version;
+        int? baselineVersion;
+        await using (var select = new NpgsqlCommand(lockSql, connection, transaction))
+        {
+            select.Parameters.AddWithValue("plan_id", planId);
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+                return new(false, "plan_not_found", planId, null, "The FlowHive plan was not found.");
+            projectId = reader.GetGuid(0);
+            status = reader.GetString(1);
+            version = reader.GetInt32(2);
+            baselineVersion = reader.IsDBNull(3) ? null : reader.GetInt32(3);
+            await reader.CloseAsync();
+        }
+        if (!await CanManageProjectAsync(connection, transaction, actorUserId, projectId, cancellationToken))
+            return new(false, "forbidden", planId, version, "The current user cannot manage this FlowHive plan.");
+        if (baselineVersion.HasValue || status.Equals("baselined", StringComparison.OrdinalIgnoreCase))
+            return new(false, "baseline_protected", planId, version, "A baselined plan cannot be deleted with Start over.");
+
+        const string progressSql = """
+            SELECT EXISTS(
+                SELECT 1 FROM project_flowhive_plan_versions v,
+                LATERAL jsonb_array_elements(COALESCE(v.plan_payload->'tasks','[]'::jsonb)) task
+                WHERE v.plan_id=@plan_id AND v.version_number=@version
+                  AND (
+                    COALESCE((task->>'percentComplete')::numeric,0) > 0
+                    OR lower(COALESCE(task->>'status','not_started')) NOT IN ('not_started','planned','draft')
+                  ));
+            """;
+        await using (var progress = new NpgsqlCommand(progressSql, connection, transaction))
+        {
+            progress.Parameters.AddWithValue("plan_id", planId);
+            progress.Parameters.AddWithValue("version", version);
+            if (await progress.ExecuteScalarAsync(cancellationToken) is true)
+                return new(false, "progress_protected", planId, version, "A plan with recorded progress cannot be deleted with Start over.");
+        }
+
+        const string deleteSql = "DELETE FROM project_flowhive_plans WHERE plan_id=@plan_id;";
+        await using (var delete = new NpgsqlCommand(deleteSql, connection, transaction))
+        {
+            delete.Parameters.AddWithValue("plan_id", planId);
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return new(true, "flowhive_draft_deleted", planId, version, "The unbaselined FlowHive draft was deleted. Automatic planning may create a clean first draft from the current SOW.");
+    }
+
     public async Task<ProjectFlowHivePersistenceResult> EstablishBaselineAsync(
         Guid actorUserId,
         Guid planId,

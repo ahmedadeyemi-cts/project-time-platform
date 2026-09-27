@@ -342,6 +342,20 @@ public static partial class ProjectFlowHiveScheduleEngine
             {
                 Error(issues, "invalid_remaining_effort", $"{path}.remainingEffortHours", "Remaining effort cannot be negative.");
             }
+            if (!task.IsSummary && string.Equals(request.SourceKind, "celar_ai", StringComparison.OrdinalIgnoreCase))
+            {
+                var phase = (Clean(task.Phase) ?? string.Empty).ToLowerInvariant();
+                var semanticText = string.Join(" ", new[] { task.Name, task.Description }.Concat(task.DetailedSteps ?? [])).ToLowerInvariant();
+                var installation = Regex.IsMatch(semanticText, @"\b(install|deploy|configure|migrate|upgrade|provision|build)\b", RegexOptions.CultureInvariant);
+                var testing = Regex.IsMatch(semanticText, @"\b(test|testing|validate|validation|verify|verification|uat|failover|performance test|recovery test|security test|acceptance test|retest)\b", RegexOptions.CultureInvariant);
+                var releaseWork = Regex.IsMatch(semanticText, @"\b(cutover|go-live|golive|runbook|as-built|as built|knowledge transfer|handoff|hand-off|hypercare|production transition)\b", RegexOptions.CultureInvariant);
+                if (installation && phase == "design")
+                    Error(issues, "phase_semantics_installation", $"{path}.phase", "Installation, configuration, migration, upgrade, provisioning, and build execution belong in Implement, not Design.");
+                if (testing && phase == "implement")
+                    Error(issues, "phase_semantics_testing", $"{path}.phase", "Testing and technical verification belong in Validate, not Implement.");
+                if (releaseWork && phase != "release")
+                    Error(issues, "phase_semantics_release", $"{path}.phase", "Cutover, go-live, runbooks, as-built documentation, knowledge transfer, handoff, hypercare, and production transition belong in Release.");
+            }
             var constraint = Clean(task.ConstraintType) ?? "ASAP";
             if (!ConstraintTypes.Contains(constraint))
             {

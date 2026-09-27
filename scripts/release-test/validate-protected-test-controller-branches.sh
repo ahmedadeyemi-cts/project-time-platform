@@ -94,6 +94,22 @@ elif [[ "$HEAD_BRANCH" == fix/flowhive-frontend-convergence-marker-20260926 ]]; 
 elif [[ "$HEAD_BRANCH" == fix/flowhive-protected-uat-idempotent-20260927 ]]; then
   python3 tests/flowhive-protected-uat-idempotent-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/flowhive-phase-semantics-delete-plan-20260927 ]]; then
+  printf '%s\n' \
+    '.github/workflows/flowhive-enterprise-psa-ci.yml' \
+    '.github/workflows/uat-migration-throttle-recovery-ci.yml' \
+    '.github/workflows/pr1151-uat-supersession-ci.yml' \
+    '.github/workflows/pr1140-uat-recovery-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'src/backend/ProjectTime.Api/Modules/PostgresProjectFlowHivePlanRepository.cs' \
+    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs' \
+    'src/backend/ProjectTime.Api/Modules/ProjectFlowHivePlanningContracts.cs' \
+    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs' \
+    'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' \
+    'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx' \
+    | LC_ALL=C sort -u > "$CIT/phase-semantics-expected"
+  cmp -s "$CIT/diff" "$CIT/phase-semantics-expected" || { diff -u "$CIT/phase-semantics-expected" "$CIT/diff" >&2 || true; fail 'FlowHive phase semantics repair differs from its exact governed file set.'; }
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   node tests/validate-systemwide-image-build-controller.mjs

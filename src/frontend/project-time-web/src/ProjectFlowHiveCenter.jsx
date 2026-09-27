@@ -1037,6 +1037,34 @@ export default function ProjectFlowHiveCenter() {
     }
   }
 
+  async function deleteSavedPlan() {
+    const planId = draftPlan?.planId;
+    if (!planId || !canEditPlanner) return;
+    const current = savedPlans.find((plan) => plan.planId === planId);
+    if (current?.baselineVersion) {
+      setError('This plan has a reviewed baseline and cannot be deleted with Start over.');
+      return;
+    }
+    if (!window.confirm('Delete this unbaselined FlowHive plan and start over from the current SOW? This removes its saved AI draft and immutable draft versions.')) return;
+    const isCurrent = captureWorkspaceOperation(false);
+    setBusy('delete-plan'); setError('');
+    try {
+      await deleteJson(`/api/project-flowhive/plans/${planId}`);
+      if (!isCurrent()) return;
+      setDraftPlan(null); setSchedule(null); setValidation(null); setAiPreview(null); setDirty(false);
+      displayingVersion.current = null; loadedWorkingVersion.current = null;
+      const plansResult = await getJson('/api/project-flowhive/plans');
+      if (!isCurrent()) return;
+      setSavedPlans(plansResult.plans || []);
+      setNotice('Plan deleted. FlowHive can now create a clean first draft from the current SOW.');
+      await loadEnterpriseWorkspace(selectedProjectId, false);
+    } catch (actionError) {
+      if (isCurrent()) setError(actionError.message);
+    } finally {
+      if (isCurrent()) setBusy('');
+    }
+  }
+
   async function establishBaseline() {
     const isCurrent = captureWorkspaceOperation(false);
     if (!draftPlan?.planId) return;
@@ -1392,7 +1420,7 @@ export default function ProjectFlowHiveCenter() {
             <button type="button" onClick={validatePlan} disabled={!selectedProjectId || busy}>Validate</button>
             <button type="button" onClick={calculateSchedule} disabled={!draftPlan || busy}>Calculate schedule</button>
             <button type="button" onClick={saveDraft} disabled={!draftPlan || busy || !canEditPlanner}>{busy === 'save' ? 'Saving…' : 'Save immutable version'}</button>
-            <button type="button" onClick={establishBaseline} disabled={!draftPlan?.planId || busy || !canAdoptBaseline || baselineNote.trim().length < 10}>{busy === 'baseline' ? 'Approving…' : 'Establish reviewed baseline'}</button>
+            <button type="button" onClick={establishBaseline} disabled={!draftPlan?.planId || busy || !canAdoptBaseline || baselineNote.trim().length < 10}>{busy === 'baseline' ? 'Approving…' : 'Establish reviewed baseline'}</button><button type="button" onClick={deleteSavedPlan} disabled={!draftPlan?.planId || busy || !canEditPlanner || Boolean(savedPlans.find((plan) => plan.planId === draftPlan?.planId)?.baselineVersion)}>{busy === 'delete-plan' ? 'Deleting…' : 'Delete plan / Start over'}</button>
           </div>
           <FlowHiveSaveBar dirty={dirty} workingCopy={enterprise?.workingCopy} canManage={canEditPlanner} busy={busy} onSaveWorkingCopy={saveWorkingCopy} onSaveVersion={saveDraft} />
           <div className="flowhive-plan-metadata">
