@@ -145,7 +145,10 @@ var qualifiedUatTask = qualifiedUat.Tasks!.Single(task => task.WbsNumber == "4.1
 Check(qualifiedUatTask.Name.Contains("Cisco Unified Communications Manager", StringComparison.OrdinalIgnoreCase)
       && qualifiedUatTask.Name.Contains("user acceptance testing", StringComparison.OrdinalIgnoreCase),
     "generic UAT fallback name is qualified with cited technical SOW scope");
-Check(ProjectFlowHiveScheduleEngine.Validate(qualifiedUat).Valid,
+var qualifiedUatValidation = ProjectFlowHiveScheduleEngine.Validate(qualifiedUat);
+if (!qualifiedUatValidation.Valid)
+    Console.WriteLine("QUALIFIED_UAT_ISSUES=" + string.Join(" | ", qualifiedUatValidation.Issues.Select(issue => $"{issue.Code}:{issue.Path}:{issue.Message}")));
+Check(qualifiedUatValidation.Valid,
     "SOW-qualified UAT task remains valid for deterministic scheduling");
 
 var duplicateSources = sources.ToList();
