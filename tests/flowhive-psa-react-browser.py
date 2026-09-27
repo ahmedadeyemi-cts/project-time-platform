@@ -210,7 +210,8 @@ async def main(readback_mode=None):
                 assert await page.locator('.flowhive-project-card').count()==1
                 await page.get_by_role('button',name='Archive',exact=True).click()
                 await page.get_by_role('button',name='View archived project',exact=True).click()
-                await page.get_by_text('Archived plan',exact=True).wait_for()
+                await page.get_by_role('heading',name='Project command center',exact=True).wait_for()
+                await page.get_by_role('button',name='WBS plan',exact=True).click()
                 assert await page.get_by_role('button',name='AI Planner',exact=True).is_disabled()
                 assert all([await button.is_disabled() for button in await page.get_by_role('button',name='Save immutable version',exact=True).all()])
                 assert await page.get_by_role('button',name='Establish reviewed baseline',exact=True).is_disabled()
