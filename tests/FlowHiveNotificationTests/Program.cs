@@ -109,20 +109,28 @@ async System.Threading.Tasks.Task Database()
         cmd.Parameters.AddWithValue("payload",JsonSerializer.Serialize(value,json));cmd.Parameters.AddWithValue("schedule",JsonSerializer.Serialize(schedule,json));
         await cmd.ExecuteNonQueryAsync();
     }
+    async System.Threading.Tasks.Task SaveWorking(ProjectFlowHivePlanRequest value)
+    {
+        await using var cmd=new NpgsqlCommand("""
+            INSERT INTO project_flowhive_working_copies(project_id,plan_id,working_payload,updated_by_user_id)
+            VALUES(@project,@plan,@payload::jsonb,@actor)
+            ON CONFLICT(project_id) DO UPDATE
+            SET working_payload=EXCLUDED.working_payload,
+                working_revision=project_flowhive_working_copies.working_revision+1,
+                row_version=gen_random_uuid(),
+                updated_by_user_id=EXCLUDED.updated_by_user_id,
+                updated_at=NOW();
+            """,db);
+        cmd.Parameters.AddWithValue("project",project);
+        cmd.Parameters.AddWithValue("plan",planId);
+        cmd.Parameters.AddWithValue("payload",JsonSerializer.Serialize(value,json));
+        cmd.Parameters.AddWithValue("actor",pm);
+        await cmd.ExecuteNonQueryAsync();
+    }
     await Sql($"INSERT INTO project_flowhive_plans VALUES('{planId}','{project}',NULL,'draft',NOW());");await Save(1,plan);
     await ProjectFlowHiveNotificationSource.ScanAsync(db,"fixture",default);
     Check(await Number("SELECT count(*) FROM enterprise_notification_events")==0,"unsaved draft emits no messages");
-    await using (var working = new NpgsqlCommand("""
-        INSERT INTO project_flowhive_working_copies(project_id,plan_id,working_payload,updated_by_user_id)
-        VALUES(@project,@plan,@payload::jsonb,@actor);
-        """, db))
-    {
-        working.Parameters.AddWithValue("project",project);
-        working.Parameters.AddWithValue("plan",planId);
-        working.Parameters.AddWithValue("payload",JsonSerializer.Serialize(plan,json));
-        working.Parameters.AddWithValue("actor",pm);
-        await working.ExecuteNonQueryAsync();
-    }
+    await SaveWorking(plan);
     var workingObserved=await ProjectFlowHiveNotificationSource.ScanAsync(db,"working-copy",default);
     var workingEventCount=await Number("SELECT count(*) FROM enterprise_notification_events");
     Console.WriteLine($"WORKING_WBS_NOTIFICATION status={workingObserved.Status} created={workingObserved.EventsCreated} eventCount={workingEventCount} diagnostic={workingObserved.DiagnosticCode}");
@@ -169,10 +177,14 @@ async System.Threading.Tasks.Task Database()
     Check(!(await ProjectFlowHiveNotificationSource.ValidateAsync(db,events[0],default)).Current,"disabled before dispatch suppresses");
     await Sql("UPDATE project_flowhive_task_reminder_preferences SET enabled=TRUE,delivery_boundary='production_governed';");
     Check((await ProjectFlowHiveNotificationSource.ValidateAsync(db,events[0],default)).Boundary=="test_only","test events cannot later become live");
-    await Save(2,plan with { Assignments=[] });
+    var unassignedPlan=plan with { Assignments=[] };
+    await Save(2,unassignedPlan);
+    await SaveWorking(unassignedPlan);
     await Sql($"UPDATE project_flowhive_plans SET baseline_version_number=2; INSERT INTO project_flowhive_plan_reviews VALUES('{planId}',2,'approved_for_baseline');");
     Check(!(await ProjectFlowHiveNotificationSource.ValidateAsync(db,ownerEvent,default)).Current,"removed assignee suppressed before delivery");
-    await Save(3,plan with { Tasks=[plan.Tasks![0] with { PercentComplete=100,Status="complete" }] });
+    var completedPlan=plan with { Tasks=[plan.Tasks![0] with { PercentComplete=100,Status="complete" }] };
+    await Save(3,completedPlan);
+    await SaveWorking(completedPlan);
     await Sql($"UPDATE project_flowhive_plans SET baseline_version_number=3; INSERT INTO project_flowhive_plan_reviews VALUES('{planId}',3,'approved_for_baseline');");
     Check(!(await ProjectFlowHiveNotificationSource.ValidateAsync(db,events[0],default)).Current,"completed before dispatch suppresses");
     var suppressed=await EnterpriseNotificationOrchestrationService.ProcessEventAsync(db,ownerEvent,null,null,"fixture-stale",default);
