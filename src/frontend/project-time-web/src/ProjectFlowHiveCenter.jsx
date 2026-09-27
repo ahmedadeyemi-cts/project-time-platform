@@ -22,17 +22,17 @@ import './projectpulse-module-standard.css';
 const views = [
   { id: 'portfolio', label: 'Portfolio' },
   { id: 'archive', label: 'Archive' },
-  { id: 'overview', label: 'Delivery overview' },
-  { id: 'planner', label: 'Planner' },
-  { id: 'kanban', label: 'Kanban' },
-  { id: 'calendar', label: 'Monthly calendar' },
+  { id: 'overview', label: 'Project home' },
+  { id: 'planner', label: 'WBS plan' },
+  { id: 'kanban', label: 'Board' },
+  { id: 'calendar', label: 'Calendar' },
   { id: 'meetings', label: 'Meetings' },
   { id: 'timeline', label: 'Timeline & risk' },
   { id: 'financials', label: 'Financials' },
   { id: 'status', label: 'Status & RAID' },
-  { id: 'ai', label: 'AI Planning Workspace' },
+  { id: 'ai', label: 'AI details' },
   { id: 'exports', label: 'Branded exports' },
-  { id: 'governance', label: 'Governance' }
+  { id: 'governance', label: 'Notifications & governance' }
 ];
 
 const plannerPhases = [
@@ -373,7 +373,7 @@ export default function ProjectFlowHiveCenter() {
     if (value === true) editEpoch.current += 1;
     setDirtyState(value);
   }
-  function chooseProject(projectId, openPlanner = false) {
+  function chooseProject(projectId, openProject = false) {
     if (projectId !== selectedProjectId) {
       if (dirty && !window.confirm('You have unsaved project edits. Discard them and change projects?')) return;
       plannerObservation.current?.abort();
@@ -385,7 +385,7 @@ export default function ProjectFlowHiveCenter() {
       setSelectedProjectId(projectId);
       setDraftPlan(null); setSchedule(null); setValidation(null); setAiPreview(null); setDirty(false);
     }
-    if (openPlanner) setActiveView('planner');
+    if (openProject) setActiveView('overview');
   }
   const [draggedTaskWbs, setDraggedTaskWbs] = useState('');
   const [newRaid, setNewRaid] = useState(defaultRaid);
@@ -1403,7 +1403,7 @@ export default function ProjectFlowHiveCenter() {
               <article className={`flowhive-project-card ${selectedProjectId === project.projectId ? 'selected' : ''}`} key={project.projectId}>
                 <div className="flowhive-project-card-heading"><div><span>{project.customerName}</span><h3>{project.projectCode} · {project.projectName}</h3></div><span className={`flowhive-status ${statusTone(project.status)}`}>{labelFrom(project.status)}</span></div>
                 <dl><div><dt>Project Manager</dt><dd>{project.projectManagerName}</dd></div><div><dt>Account Executive</dt><dd>{project.accountExecutiveName || 'Unassigned'}</dd></div><div><dt>Documents</dt><dd>{Number.isFinite(project.documentCount) ? `${project.documentCount} attached` : 'Checking availability'}</dd></div><div><dt>Current dates</dt><dd>{formatDate(project.startDate)} – {formatDate(project.endDate)}</dd></div><div><dt>Tasks</dt><dd>{project.taskCount}</dd></div><div><dt>Assignments</dt><dd>{project.assignmentCount}</dd></div></dl>
-                <p className="flowhive-document-readiness">{isFlowHiveArchived(project) ? 'Archived automatically when the project closed. Plan history is preserved.' : project.documentCount === 0 ? 'Upload a project document before using AI Planner.' : 'Project documents are prepared in the background. Select this project to see readiness.'}</p><footer><button type="button" onClick={() => chooseProject(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => chooseProject(project.projectId, true)}>{isFlowHiveArchived(project) ? 'View archived plan' : 'Open planner'}</button></footer>
+                <p className="flowhive-document-readiness">{isFlowHiveArchived(project) ? 'Archived automatically when the project closed. Plan history is preserved.' : project.documentCount === 0 ? 'Upload a project document before using AI Planner.' : 'Project documents are prepared in the background. Select this project to see readiness.'}</p><footer><button type="button" onClick={() => chooseProject(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => chooseProject(project.projectId, true)}>{isFlowHiveArchived(project) ? 'View archived project' : 'Open project'}</button></footer>
               </article>
             ))}
           </div>
@@ -1606,7 +1606,7 @@ export default function ProjectFlowHiveCenter() {
           <ProjectFlowHivePsaWorkspace
             mode="governance" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
             schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
-            canManage={Boolean(enterprise?.access?.canManage)} setDirty={setDirty} setNotice={setNotice} setError={setError}
+            canManage={Boolean(enterprise?.access?.canManage)} canAdminister={Boolean(enterprise?.access?.canAdministerPlanner)} setDirty={setDirty} setNotice={setNotice} setError={setError}
           />
         </div>
       ) : null}
