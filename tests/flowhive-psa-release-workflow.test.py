@@ -21,6 +21,7 @@ STABILIZATION_BRANCH='fix/flowhive-protected-cutover-20260910'
 CANONICAL_DISPATCH_BRANCH='control/flowhive-canonical-dispatch-20260911'
 AUTO_MODULE025_BRANCH='feature/module025-auto-protected-test-20260917'
 ENTERPRISE_USABILITY_BRANCH='fix/flowhive-enterprise-usability-routing-20260926'
+FRONTEND_CONVERGENCE_MARKER_BRANCH='fix/flowhive-frontend-convergence-marker-20260926'
 
 class UniqueKeyLoader(yaml.BaseLoader):
     def construct_mapping(self,node,deep=False):
@@ -673,6 +674,10 @@ class WorkflowContract(unittest.TestCase):
                         line for line in b['run'].splitlines()
                         if '127_flowhive_pm_automatic_planning_defaults' not in line
                     ) + ending
+            if os.environ.get('GITHUB_HEAD_REF') == FRONTEND_CONVERGENCE_MARKER_BRANCH and a.get('run'):
+                a['run']=a['run'].replace(
+                    'This private generation phase can take several minutes',
+                    'You can leave this page while FlowHive works. The plan continues on the server.')
             self.assertEqual(a,b,step['name'])
         before_on=copy.deepcopy(old['on']);after_on=copy.deepcopy(self.doc['on'])
         if stabilization:

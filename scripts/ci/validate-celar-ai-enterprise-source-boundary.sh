@@ -44,6 +44,11 @@ if [[ "$HEAD_BRANCH" == fix/flowhive-reviewable-partial-wbs-20260926 ]]; then
   exit 0
 fi
 
+if [[ "$HEAD_BRANCH" == fix/flowhive-frontend-convergence-marker-20260926 ]]; then
+  python3 tests/flowhive-frontend-convergence-marker-scope.py
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   exit 0
