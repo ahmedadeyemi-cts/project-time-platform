@@ -116,6 +116,7 @@ elif [[ "$HEAD_BRANCH" == feature/flowhive-enterprise-pm-ux-notifications-202609
     'scripts/release-test/validate-protected-test-controller-branches.sh' \
     'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveNotificationSource.cs' \
     'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx' \
+    'src/frontend/project-time-web/src/ProjectFlowHiveOverview.jsx' \
     'src/frontend/project-time-web/src/ProjectFlowHivePsaWorkspace.jsx' \
     'src/frontend/project-time-web/src/project-flowhive-center.css' \
     'tests/FlowHiveNotificationTests/Program.cs' \
