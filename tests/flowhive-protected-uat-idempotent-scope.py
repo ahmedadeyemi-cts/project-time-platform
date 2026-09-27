@@ -7,6 +7,9 @@ EXPECTED = sorted({
     ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/module-management-owner-drawer-ci.yml",
     ".github/workflows/projectpulse-deploy-test.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
     "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
     "tests/flowhive-protected-uat-idempotent-scope.py",
@@ -31,6 +34,8 @@ for marker in [
     "candidate_review_required",
     "FlowHive preserved working copy",
     "FLOWHIVE_AI_PLANNER_UAT=PASSED mode=",
+    ".workingCopy.schedule.valid == true",
+    ".workingCopy.validation.valid == true",
 ]:
     assert marker in controller
 assert "projectpulse-deploy-production.yml" not in "\n".join(actual)
