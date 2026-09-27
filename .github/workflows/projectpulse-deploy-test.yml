@@ -211,7 +211,7 @@ jobs:
         run: python3 scripts/release-test/check-flowhive-acceptance-inputs.py --read-only
 
       - name: Install isolated live-browser acceptance dependencies
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true' || (inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports')) }}
+        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true' || inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports') }}
         shell: bash
         run: |
           set -Eeuo pipefail
