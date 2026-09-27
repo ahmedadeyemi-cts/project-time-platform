@@ -780,6 +780,22 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         IReadOnlyList<string> sourceWarnings,
         CancellationToken cancellationToken)
     {
+        // Re-apply the phase contract at the persistence boundary. The AI composition,
+        // candidate builder, checkpoint recovery, and persistence path can evolve
+        // independently; the working copy must never persist a plan that disagrees
+        // with the deterministic Plan/Design/Implement/Validate/Release semantics.
+        generated = ProjectPlanningAiOrchestrator.NormalizeAiPhaseSemantics(generated);
+        validation = ProjectFlowHiveScheduleEngine.Validate(generated);
+        schedule = ProjectFlowHiveScheduleEngine.Calculate(generated);
+        generated = ProjectPlanningAiOrchestrator.ApplyScheduleDates(generated, schedule);
+        if (!validation.Valid || !schedule.Valid)
+        {
+            await StopRunAsync(connection, runId, "phase_semantics_invalid",
+                "The generated candidate could not satisfy the deterministic delivery-phase and schedule contract. Existing work was preserved.",
+                cancellationToken);
+            return;
+        }
+
         // The mutable working copy and the terminal run state are one durable
         // outcome. If either write fails, roll both back so a retry cannot
         // overwrite a saved draft that the operation incorrectly reported as
@@ -824,8 +840,11 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         }
         var replaceableLegacyAiDraft = await IsReplaceableLegacyAiWorkingCopyAsync(
             connection, transaction, projectId, current.ExpectedWorkingRowVersion, cancellationToken);
+        var replaceableInvalidAiDraft = await IsReplaceableInvalidAiWorkingCopyAsync(
+            connection, transaction, projectId, current.ExpectedWorkingRowVersion, cancellationToken);
         if (ProjectFlowHivePlannerReview.RequiresReview(current.Plan, current.ExpectedWorkingRowVersion)
-            && !replaceableLegacyAiDraft)
+            && !replaceableLegacyAiDraft
+            && !replaceableInvalidAiDraft)
         {
             await UpdateRunAsync(connection, runId, FinalStatus(schedule), "candidate_review_required", 100, [],
                 sourceWarnings.Concat(["The AI work breakdown is saved as a separate proposal. Existing tasks, milestones, assignments and dates have not been replaced."]).ToArray(),
@@ -1093,6 +1112,55 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
         return runId;
+    }
+
+    private static async Task<bool> IsReplaceableInvalidAiWorkingCopyAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid projectId,
+        Guid? expectedVersion,
+        CancellationToken cancellationToken)
+    {
+        if (!expectedVersion.HasValue) return false;
+        await using var command = new NpgsqlCommand("""
+            SELECT plan_id,working_payload
+            FROM project_flowhive_working_copies
+            WHERE project_id=@project AND row_version=@version
+            FOR UPDATE;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("project", projectId);
+        command.Parameters.AddWithValue("version", expectedVersion.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return false;
+        var planId = reader.IsDBNull(0) ? (Guid?)null : reader.GetGuid(0);
+        var payload = reader.GetString(1);
+        await reader.CloseAsync();
+        if (planId.HasValue || string.IsNullOrWhiteSpace(payload)) return false;
+
+        ProjectFlowHivePlanRequest? plan;
+        try { plan = JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(payload, Json); }
+        catch (JsonException) { return false; }
+        if (plan is null || !string.Equals(plan.SourceKind, "celar_ai", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (string.IsNullOrWhiteSpace(plan.CelarAiCorrelationId)
+            && string.IsNullOrWhiteSpace(plan.CelarAiProviderCode))
+            return false;
+        if ((plan.Milestones ?? []).Count > 0) return false;
+        if ((plan.Assignments ?? []).Any(item => item.ResourceUserId.HasValue && item.ResourceUserId != Guid.Empty))
+            return false;
+        foreach (var task in plan.Tasks ?? [])
+        {
+            if (task.IsSummary) continue;
+            if (task.PercentComplete > 0m
+                || !string.Equals(task.Status ?? "not_started", "not_started", StringComparison.OrdinalIgnoreCase)
+                || !string.IsNullOrWhiteSpace(task.Comments))
+                return false;
+        }
+
+        var validation = ProjectFlowHiveScheduleEngine.Validate(plan);
+        if (validation.Valid || validation.Issues.Count == 0) return false;
+        return validation.Issues.All(issue =>
+            issue.Code.StartsWith("phase_semantics_", StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<bool> IsReplaceableLegacyAiWorkingCopyAsync(
