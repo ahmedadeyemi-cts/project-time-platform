@@ -43,7 +43,10 @@ public static partial class ProjectFlowHiveScheduleEngine
         if (Match(name, @"\b(target architecture|solution architecture|architecture design|logical design|configuration design|implementation approach|installation approach|deployment approach|migration approach|upgrade approach|test design|design review)\b"))
             return "Design";
 
-        if (Match(name, @"\b(install|installation|deploy|deployment|configure|configuration|migrate|migration|upgrade|provision|provisioning|build)\b"))
+        var planningOrDesignContext = Match(name,
+            @"\b(plan|planning|design|architecture|approach|assessment|assess|discovery|readiness|review|requirements?|governance|strategy|coordination)\b");
+        if (Match(name, @"\b(install|installation|deploy|deployment|configure|configuration|migrate|migration|upgrade|provision|provisioning|build)\b")
+            && !planningOrDesignContext)
             return "Implement";
 
         if (Match(name, @"\b(project initiation|kickoff|requirements elicitation|current-state discovery|current state discovery|existing environment assessment|environment discovery|inventory|logistics|access readiness|prerequisite review|schedule coordination)\b"))
