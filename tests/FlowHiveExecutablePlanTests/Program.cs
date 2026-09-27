@@ -92,7 +92,7 @@ var phaseRepairInput = result with
         _ => task
     }).ToArray()
 };
-var phaseRepair = ProjectPlanningAiOrchestrator.NormalizeAiPhaseSemantics(phaseRepairInput);
+var phaseRepair = ProjectFlowHiveScheduleEngine.NormalizeAiPhaseSemantics(phaseRepairInput);
 Check(phaseRepair.Tasks!.Single(task => task.Name == "Commvault Installation").Phase == "Implement",
     "installation noun is normalized into Implement");
 Check(phaseRepair.Tasks!.Single(task => task.Name == "Backup Validation Testing").Phase == "Validate",
