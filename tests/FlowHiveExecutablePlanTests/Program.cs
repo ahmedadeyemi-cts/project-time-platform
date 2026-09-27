@@ -115,6 +115,8 @@ Check(phaseRepair.Tasks!.Single(task => task.Name == "Backup Validation Testing"
 Check(phaseRepair.Tasks!.Single(task => task.Name == "Runbook and Documentation").Phase == "Release",
     "runbook task is normalized into Release");
 var phaseRepairValidation = ProjectFlowHiveScheduleEngine.Validate(phaseRepair);
+if (!phaseRepairValidation.Valid)
+    Console.WriteLine("PHASE_REPAIR_ISSUES=" + string.Join(" | ", phaseRepairValidation.Issues.Select(issue => $"{issue.Code}:{issue.Path}:{issue.Message}")));
 Check(phaseRepairValidation.Valid, "normalized AI WBS passes deterministic phase validation");
 var phaseRepairSchedule = ProjectFlowHiveScheduleEngine.Calculate(phaseRepair);
 Check(phaseRepairSchedule.Valid, "normalized AI WBS remains schedulable after WBS remapping");
