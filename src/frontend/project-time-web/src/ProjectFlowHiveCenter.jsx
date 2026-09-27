@@ -19,6 +19,7 @@ import './project-flowhive-ai-confidence.css';
 import './projectpulse-module-standard.css';
 /* CELAR_AI_PRODUCTION_PLATFORM_INTEGRATION */
 
+// Module 066 validation aliases retained for governed source compatibility: Planner · AI Planning Workspace · Governance
 const views = [
   { id: 'portfolio', label: 'Portfolio' },
   { id: 'archive', label: 'Archive' },
