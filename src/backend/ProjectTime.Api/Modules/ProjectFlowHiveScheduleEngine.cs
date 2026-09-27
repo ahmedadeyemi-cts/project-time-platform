@@ -37,13 +37,17 @@ public static partial class ProjectFlowHiveScheduleEngine
             if (task.IsSummary) return task;
             var nameText = task.Name ?? string.Empty;
             var phase = task.Phase;
+            var planningIntent = Match(nameText, @"\b(plan|planning|design|architecture|approach|assessment|assess|discovery|readiness|review|requirements?|governance)\b");
+            var explicitDesignIntent = Match(nameText, @"\b(target architecture|solution architecture|architecture design|logical design|configuration design|implementation approach|installation approach|deployment approach|migration approach|upgrade approach|test design)\b");
             if (Match(nameText, @"\b(cutover|go-live|golive|runbook|runbooks|as-built|as built|knowledge transfer|handoff|hand-off|handover|hypercare|production transition|train operations|training operations)\b"))
                 phase = "Release";
             else if (Match(nameText, @"\b(test|testing|backups?|restores?|validate|validation|verify|verification|uat|failover|performance|recovery|security review|acceptance testing|retest|drill)\b")
                 && !Match(nameText, @"\b(test plan|test design|validation method|acceptance criteria)\b"))
                 phase = "Validate";
+            else if (explicitDesignIntent)
+                phase = "Design";
             else if (Match(nameText, @"\b(install|installation|deploy|deployment|configure|configuration|migrate|migration|upgrade|provision|provisioning|build)\b")
-                && !Match(nameText, @"\b(installation approach|implementation approach|deployment approach|migration approach|upgrade approach|configuration design|build design)\b"))
+                && !planningIntent)
                 phase = "Implement";
             return string.Equals(phase, task.Phase, StringComparison.Ordinal) ? task : task with { Phase = phase };
         }).ToArray();
