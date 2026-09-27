@@ -133,15 +133,13 @@ Check(phaseRepairValidation.Valid, "normalized AI WBS passes deterministic phase
 var phaseRepairSchedule = ProjectFlowHiveScheduleEngine.Calculate(phaseRepair);
 Check(phaseRepairSchedule.Valid, "normalized AI WBS remains schedulable after WBS remapping");
 
-var genericUat = result with
+var genericUat = phaseRepair with
 {
-    SourceKind = "celar_ai",
-    Tasks = result.Tasks!.Select(task => task.WbsNumber == "4.1"
+    Tasks = phaseRepair.Tasks!.Select(task => task.WbsNumber == "4.1"
         ? task with { Name = "Conduct User Acceptance Testing", Phase = "Validate" }
         : task).ToArray()
 };
-var qualifiedUat = ProjectPlanningAiOrchestrator.QualifyGenericTechnicalTaskNames(
-    ProjectFlowHiveScheduleEngine.NormalizeAiPhaseSemantics(genericUat));
+var qualifiedUat = ProjectPlanningAiOrchestrator.QualifyGenericTechnicalTaskNames(genericUat);
 var qualifiedUatTask = qualifiedUat.Tasks!.Single(task => task.WbsNumber == "4.1");
 Check(qualifiedUatTask.Name.Contains("Cisco Unified Communications Manager", StringComparison.OrdinalIgnoreCase)
       && qualifiedUatTask.Name.Contains("user acceptance testing", StringComparison.OrdinalIgnoreCase),
