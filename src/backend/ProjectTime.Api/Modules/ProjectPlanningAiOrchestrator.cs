@@ -352,7 +352,7 @@ internal static class ProjectPlanningAiOrchestrator
         var phaseOrder = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
         var executable = phaseOrder.SelectMany(phase => tasks.Where(task => !task.IsSummary && string.Equals(task.Phase, phase, StringComparison.OrdinalIgnoreCase))).ToArray();
         var summaries = phaseOrder.Select((phase, index) => tasks.First(task => task.IsSummary && string.Equals(task.Phase, phase, StringComparison.OrdinalIgnoreCase)) with { WbsNumber = (index + 1).ToString(), ParentWbsNumber = null }).ToArray();
-        var rebuilt = new List<ProjectFlowHiveTaskRequest>();
+        var rebuilt = new List<ProjectFlowHivePlanTaskInput>();
         var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var phase in phaseOrder.Select((name, index) => new { name, wbs = (index + 1).ToString() }))
         {
