@@ -325,7 +325,7 @@ internal static class ProjectPlanningAiOrchestrator
             warnings);
     }
 
-    private static ProjectFlowHivePlanRequest NormalizeAiPhaseSemantics(ProjectFlowHivePlanRequest plan)
+    internal static ProjectFlowHivePlanRequest NormalizeAiPhaseSemantics(ProjectFlowHivePlanRequest plan)
     {
         if (!string.Equals(plan.SourceKind, "celar_ai", StringComparison.OrdinalIgnoreCase) || plan.Tasks is null)
             return plan;
@@ -344,7 +344,7 @@ internal static class ProjectPlanningAiOrchestrator
             else if (Match(nameText, @"\b(test|testing|backups?|restores?|validate|validation|verify|verification|uat|failover|performance|recovery|security review|acceptance testing|retest|drill)\b")
                 && !Match(nameText, @"\b(test plan|test design|validation method|acceptance criteria)\b"))
                 phase = "Validate";
-            else if (Match(nameText, @"\b(install|deploy|configure|migrate|upgrade|provision|build)\b")
+            else if (Match(nameText, @"\b(install|installation|deploy|deployment|configure|configuration|migrate|migration|upgrade|provision|provisioning|build)\b")
                 && !Match(nameText, @"\b(installation approach|implementation approach|deployment approach|migration approach|upgrade approach|configuration design|build design)\b"))
                 phase = "Implement";
             return string.Equals(phase, task.Phase, StringComparison.Ordinal) ? task : task with { Phase = phase };
