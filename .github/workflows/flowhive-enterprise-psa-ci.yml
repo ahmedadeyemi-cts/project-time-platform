@@ -246,6 +246,8 @@ jobs:
           set -Eeuo pipefail
           if [[ "${GITHUB_HEAD_REF:-}" == 'control/pr1153-source-registration-20260923' || "${GITHUB_HEAD_REF:-}" == 'fix/automatic-document-admission-laya-20260923' ]]; then
             python3 tests/laya/release-admission-fixture.py --run-all
+          elif [[ "${GITHUB_HEAD_REF:-}" == 'fix/flowhive-sow-technical-wbs-automation-20260927' ]]; then
+            node --test $(find tests -maxdepth 1 -name 'flowhive-psa-*.test.mjs' ! -name 'flowhive-psa-admission.test.mjs' -print | LC_ALL=C sort) tests/flowhive-team-calendar.test.mjs
           else
             node --test tests/flowhive-psa-*.test.mjs tests/flowhive-team-calendar.test.mjs
           fi
