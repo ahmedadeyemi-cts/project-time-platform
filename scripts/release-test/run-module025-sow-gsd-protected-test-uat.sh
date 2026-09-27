@@ -455,11 +455,11 @@ GENERATION_TOTAL_ELAPSED_SECONDS="$(( $(date +%s) - GENERATION_POLL_STARTED_AT +
   || fail 'Module 025 durable generation did not reach a terminal state within 42 minutes or before the authorization cleanup reserve.'
 # BEGIN MODULE025_TERMINAL_CONTRACT
 # The server owns route eligibility and closed-capsule validation. Its current
-# SOW engine can complete phases with private providers, Claude, or OpenAI.
+# SOW engine can complete phases with configured Module 064 providers, including Gemini.
 # Verify durable phase completion and actual provider use, not an obsolete
 # private-only priority order. Persist only fixed diagnostic codes and providers.
 jq --arg id "$GENERATION_ID" '
-  def allowed_provider: . == "deepseek_v4" or . == "celar_ai" or . == "claude" or . == "openai";
+  def allowed_provider: . == "deepseek_v4" or . == "celar_ai" or . == "claude" or . == "openai" or . == "gemini" or . == "copilot";
   def phases: ["Design", "Implement", "Plan", "Release", "Validate"];
   (.targetDecisions // []) as $decisions
   | [$decisions[] | select(.Outcome == "used")] as $used
