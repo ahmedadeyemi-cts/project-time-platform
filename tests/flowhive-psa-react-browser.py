@@ -206,7 +206,7 @@ async def main(readback_mode=None):
                 await page.add_script_tag(content=(Path(offline)/'app.js').read_text())
             await reload_page()
             if readback_mode=='archive':
-                await page.get_by_role('button',name='Open planner',exact=True).wait_for()
+                await page.get_by_role('button',name='Open project',exact=True).wait_for()
                 assert await page.locator('.flowhive-project-card').count()==1
                 await page.get_by_role('button',name='Archive',exact=True).click()
                 await page.get_by_role('button',name='View archived plan',exact=True).click()
@@ -219,17 +219,17 @@ async def main(readback_mode=None):
                 assert not state['posts'] and not state['errors']
                 print('PASSED: active portfolio excludes closed projects; Archive preserves the plan and disables writes',flush=True)
                 return
-            await page.get_by_role('button',name='Kanban',exact=True).click()
+            await page.get_by_role('button',name='Board',exact=True).click()
             await page.get_by_role('heading',name='Kanban task board',exact=True).wait_for()
-            await page.get_by_role('button',name='Monthly calendar',exact=True).click()
+            await page.get_by_role('button',name='Calendar',exact=True).click()
             await page.get_by_role('heading',name='Monthly project calendar',exact=True).wait_for()
             await page.get_by_role('button',name='Meetings',exact=True).click()
             await page.get_by_role('heading',name='Project meetings and recordings',exact=True).wait_for()
             await page.get_by_role('button',name='Branded exports',exact=True).click()
             await page.get_by_role('heading',name='US Signal branded project exports',exact=True).wait_for()
             assert await page.locator('.flowhive-psa-export-matrix article').count()==6
-            print('PASSED: actual FlowHive entrypoint mounts Kanban, monthly calendar, meetings, and six branded export views',flush=True)
-            await page.get_by_role('button',name='Planner',exact=True).click()
+            print('PASSED: actual FlowHive entrypoint mounts Board, Calendar, meetings, and six branded export views',flush=True)
+            await page.get_by_role('button',name='WBS plan',exact=True).click()
             await page.get_by_label('Plan name',exact=True).wait_for()
             await page.get_by_label('Start date',exact=True).fill('2026-09-10')
             await page.wait_for_timeout(80)
@@ -255,7 +255,7 @@ async def main(readback_mode=None):
                 await page.get_by_role('button',name='AI Planner',exact=True).click()
                 assert len(state['posts'])==1
                 print('PASSED: reopening a saved proposal does not start another AI operation',flush=True)
-                await reload_page();await page.get_by_role('button',name='Planner',exact=True).click()
+                await reload_page();await page.get_by_role('button',name='WBS plan',exact=True).click()
                 await page.get_by_role('region',name='Review generated work breakdown',exact=True).get_by_text('Generated unique task Plan',exact=True).wait_for()
                 assert await page.locator('input[value="Stored project task Plan"]').count()==1
                 assert len(state['posts'])==1 and state['versions'][A]==V1
@@ -282,7 +282,7 @@ async def main(readback_mode=None):
             assert await page.get_by_label('Start date',exact=True).input_value()=='2026-09-10'
             assert await page.locator('.flowhive-work-row input[type=date]').first.input_value()=='2026-09-10'
             assert not await page.get_by_role('heading',name='Project milestones',exact=True).count()
-            await reload_page();await page.get_by_role('button',name='Planner',exact=True).click()
+            await reload_page();await page.get_by_role('button',name='WBS plan',exact=True).click()
             await page.locator('input[value="Generated unique task Plan"]').wait_for()
             assert len(state['posts'])==1
             assert await page.locator('.flowhive-work-row input[type=date]').first.input_value()=='2026-09-10'
@@ -325,7 +325,7 @@ async def main(readback_mode=None):
                 delayed['event'].set()
                 await page.wait_for_timeout(200)
                 assert A not in state['psa_calls'][before_switch:], f'stale {kind} completion reloaded Project A after switching to B'
-                await page.get_by_role('button',name='Planner',exact=True).click()
+                await page.get_by_role('button',name='WBS plan',exact=True).click()
                 await page.get_by_label('Plan name',exact=True).wait_for()
                 assert await page.get_by_label('Plan name',exact=True).input_value()=='Stored plan B'
                 print(f'PASSED: stale Project A {kind} completion cannot overwrite Project B',flush=True)
@@ -346,9 +346,9 @@ async def main(readback_mode=None):
             await release_stale_action('edit')
 
             await select_project(A, wait_for_psa=False)
-            await page.get_by_role('button',name='Governance',exact=True).click()
-            await page.get_by_role('button',name='Save reminder policy',exact=True).wait_for()
-            await page.get_by_role('button',name='Save reminder policy',exact=True).click()
+            await page.get_by_role('button',name='Notifications & governance',exact=True).click()
+            await page.get_by_role('button',name='Save notification settings',exact=True).wait_for()
+            await page.get_by_role('button',name='Save notification settings',exact=True).click()
             for _ in range(500):
                 if state['delayed_action'] is not None: break
                 await asyncio.sleep(.01)
