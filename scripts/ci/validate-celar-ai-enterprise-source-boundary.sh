@@ -49,6 +49,11 @@ if [[ "$HEAD_BRANCH" == fix/flowhive-frontend-convergence-marker-20260926 ]]; th
   exit 0
 fi
 
+if [[ "$HEAD_BRANCH" == fix/flowhive-protected-uat-idempotent-20260927 ]]; then
+  python3 tests/flowhive-protected-uat-idempotent-scope.py
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   exit 0

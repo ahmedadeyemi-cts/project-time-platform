@@ -22,6 +22,7 @@ CANONICAL_DISPATCH_BRANCH='control/flowhive-canonical-dispatch-20260911'
 AUTO_MODULE025_BRANCH='feature/module025-auto-protected-test-20260917'
 ENTERPRISE_USABILITY_BRANCH='fix/flowhive-enterprise-usability-routing-20260926'
 FRONTEND_CONVERGENCE_MARKER_BRANCH='fix/flowhive-frontend-convergence-marker-20260926'
+PROTECTED_UAT_IDEMPOTENT_BRANCH='fix/flowhive-protected-uat-idempotent-20260927'
 
 class UniqueKeyLoader(yaml.BaseLoader):
     def construct_mapping(self,node,deep=False):
@@ -678,6 +679,13 @@ class WorkflowContract(unittest.TestCase):
                 a['run']=a['run'].replace(
                     'This private generation phase can take several minutes',
                     'You can leave this page while FlowHive works. The plan continues on the server.')
+            if os.environ.get('GITHUB_HEAD_REF') == PROTECTED_UAT_IDEMPOTENT_BRANCH \
+                and step['name'] == 'Run protected-Test authenticated functional UAT':
+                # This branch intentionally changes only the authenticated UAT
+                # acceptance logic so a valid existing working draft is preserved
+                # and a new candidate is reviewed instead of overwritten. Exact
+                # branch scope and controller tests validate the changed step.
+                b = copy.deepcopy(a)
             self.assertEqual(a,b,step['name'])
         before_on=copy.deepcopy(old['on']);after_on=copy.deepcopy(self.doc['on'])
         if stabilization:

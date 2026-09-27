@@ -1438,6 +1438,36 @@ jobs:
             or ((.documentCategory // "") | ascii_downcase) == "statement_of_work"
           )' "$EVIDENCE_DIR/flowhive-enterprise.json" >/dev/null || fail 'FlowHive did not resolve the project Work Register SOW without a duplicate upload.'
 
+          # A protected-Test project may already contain a prior, valid AI working
+          # draft from an earlier exact-SHA release. Re-running UAT must prove that
+          # FlowHive preserves that mutable draft and returns a review candidate,
+          # not require destructive overwrite to call the planner healthy.
+          FLOWHIVE_EXISTING_WORKING_ROW_VERSION="$(jq -r '.workingCopy.rowVersion // empty' "$EVIDENCE_DIR/flowhive-enterprise.json")"
+          FLOWHIVE_EXISTING_DRAFT_READY=false
+          if [[ "$FLOWHIVE_EXISTING_WORKING_ROW_VERSION" =~ ^[0-9a-fA-F-]{36}$ ]]             && jq -e '
+              .workingCopy.plan.sourceKind == "celar_ai"
+              and ((.workingCopy.plan.dependencies // []) | length > 0)
+              and ((.workingCopy.plan.tasks // []) as $tasks
+                | ($tasks | map(select((.isSummary // false) == false and (.isMilestone // false) == false))) as $executable
+                | ($executable | length) >= 10
+                and (($executable | map(.phase) | unique) | index("Plan") != null)
+                and (($executable | map(.phase) | unique) | index("Design") != null)
+                and (($executable | map(.phase) | unique) | index("Implement") != null)
+                and (($executable | map(.phase) | unique) | index("Validate") != null)
+                and (($executable | map(.phase) | unique) | index("Release") != null)
+                and all($executable[];
+                  ((.description // "") | length) >= 20
+                  and ((.detailedSteps // []) | length) >= 2
+                  and ((.citationIds // []) | length) > 0
+                  and (.durationWorkingDays // 0) >= 1
+                  and (.remainingEffortHours // -1) >= 0
+                  and ((.estimatedStartDate // "") | length) == 10
+                  and ((.estimatedFinishDate // "") | length) == 10
+                ))
+            ' "$EVIDENCE_DIR/flowhive-enterprise.json" >/dev/null 2>&1; then
+            FLOWHIVE_EXISTING_DRAFT_READY=true
+          fi
+
           PROJECT_ROW="$(jq -c --arg projectId "$PROJECT_ID" '.projects[] | select(.projectId == $projectId)' "$EVIDENCE_DIR/flowhive-portfolio.json" | head -1)"
           [[ -n "$PROJECT_ROW" ]] || fail 'The selected FlowHive UAT project was not present in the PM portfolio.'
           PROJECT_CODE="$(jq -r '.projectCode // "UAT-PROJECT"' <<<"$PROJECT_ROW")"
@@ -1479,6 +1509,7 @@ jobs:
           [[ "$FLOWHIVE_RUN_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'FlowHive AI Planner did not return a durable run identifier.'
 
           FLOWHIVE_READY=false
+          FLOWHIVE_READY_MODE=''
           attempt=0
           # Durable DeepSeek + Oracle generation has a bounded 80-minute window.
           FLOWHIVE_DEADLINE=$((SECONDS + 4800))
@@ -1490,10 +1521,39 @@ jobs:
               and .workingDraft.persisted == true
             ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null 2>&1; then
               FLOWHIVE_READY=true
+              FLOWHIVE_READY_MODE='new_working_draft'
               break
             fi
             if jq -e '.terminal == true' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null 2>&1; then
-              fail "FlowHive AI Planner reached terminal status $(jq -r '.status' "$EVIDENCE_DIR/flowhive-ai-planner.json") before a working draft was ready."
+              if [[ "$FLOWHIVE_EXISTING_DRAFT_READY" == true ]]                 && jq -e '
+                  (.status == "completed" or .status == "completed_with_schedule_overrun")
+                  and .phase == "candidate_review_required"
+                  and .candidateAvailable == true
+                  and .candidate.persisted == true
+                  and .candidate.schedule.valid == true
+                  and .candidate.validation.valid == true
+                  and ((.candidate.plan.dependencies // []) | length > 0)
+                  and ((.candidate.plan.tasks // []) as $tasks
+                    | ($tasks | map(select((.isSummary // false) == false and (.isMilestone // false) == false))) as $executable
+                    | ($executable | length) >= 10
+                    and (($executable | map(.phase) | unique) | index("Plan") != null)
+                    and (($executable | map(.phase) | unique) | index("Design") != null)
+                    and (($executable | map(.phase) | unique) | index("Implement") != null)
+                    and (($executable | map(.phase) | unique) | index("Validate") != null)
+                    and (($executable | map(.phase) | unique) | index("Release") != null)
+                    and all($executable[];
+                      ((.description // "") | length) >= 20
+                      and ((.detailedSteps // []) | length) >= 2
+                      and ((.citationIds // []) | length) > 0
+                      and (.durationWorkingDays // 0) >= 1
+                      and (.remainingEffortHours // -1) >= 0
+                    ))
+                ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null 2>&1; then
+                FLOWHIVE_READY=true
+                FLOWHIVE_READY_MODE='preserved_existing_working_draft'
+                break
+              fi
+              fail "FlowHive AI Planner reached terminal status $(jq -r '.status' "$EVIDENCE_DIR/flowhive-ai-planner.json") before a working draft was ready or a valid existing draft was safely preserved."
             fi
             sleep 10
             flowhive_headers="$(mktemp)"
@@ -1510,34 +1570,67 @@ jobs:
               "$(jq -r '.terminal // false' "$EVIDENCE_DIR/flowhive-ai-planner.json")" \
               >> "$EVIDENCE_DIR/flowhive-ai-planner-polls.log"
           done
-          [[ "$FLOWHIVE_READY" == true ]] || fail 'FlowHive AI Planner did not persist a working draft after automatic document processing.'
-          jq -e '
-            .workingDraft.persisted == true
-            and .workingDraft.immutableVersionCreated == false
-            and .workingDraft.baselineCreated == false
-            and .planningEvidence.sourceGrounded == true
-            and .schedule.valid == true
-            and .scheduleAssessment.estimatesCompressed == false
-            and ((.plan.dependencies // []) | length > 0)
-            and ((.plan.tasks // []) as $tasks
-              | ($tasks | map(select((.isSummary // false) == false and (.isMilestone // false) == false))) as $executable
-              | ($executable | length) > 0
-              and (($executable | map(.phase) | unique) | index("Plan") != null)
-              and (($executable | map(.phase) | unique) | index("Design") != null)
-              and (($executable | map(.phase) | unique) | index("Implement") != null)
-              and (($executable | map(.phase) | unique) | index("Validate") != null)
-              and (($executable | map(.phase) | unique) | index("Release") != null)
-              and all($executable[];
-                ((.description // "") | length) >= 20
-                and ((.detailedSteps // []) | length) > 0
-                and ((.citationIds // []) | length) > 0
-                and (.durationWorkingDays // 0) >= 1
-                and (.remainingEffortHours // -1) >= 0
-                and ((.estimatedStartDate // "") | length) == 10
-                and ((.estimatedFinishDate // "") | length) == 10
-              ))
-          ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null || fail 'FlowHive AI Planner did not satisfy the source-cited five-phase working-draft contract.'
-          echo 'FLOWHIVE_AI_PLANNER_UAT=PASSED'
+          [[ "$FLOWHIVE_READY" == true ]] || fail 'FlowHive AI Planner did not produce a reviewable plan outcome after automatic document processing.'
+          if [[ "$FLOWHIVE_READY_MODE" == 'new_working_draft' ]]; then
+            jq -e '
+              .workingDraft.persisted == true
+              and .workingDraft.immutableVersionCreated == false
+              and .workingDraft.baselineCreated == false
+              and .planningEvidence.sourceGrounded == true
+              and .schedule.valid == true
+              and .scheduleAssessment.estimatesCompressed == false
+              and ((.plan.dependencies // []) | length > 0)
+              and ((.plan.tasks // []) as $tasks
+                | ($tasks | map(select((.isSummary // false) == false and (.isMilestone // false) == false))) as $executable
+                | ($executable | length) > 0
+                and (($executable | map(.phase) | unique) | index("Plan") != null)
+                and (($executable | map(.phase) | unique) | index("Design") != null)
+                and (($executable | map(.phase) | unique) | index("Implement") != null)
+                and (($executable | map(.phase) | unique) | index("Validate") != null)
+                and (($executable | map(.phase) | unique) | index("Release") != null)
+                and all($executable[];
+                  ((.description // "") | length) >= 20
+                  and ((.detailedSteps // []) | length) > 0
+                  and ((.citationIds // []) | length) > 0
+                  and (.durationWorkingDays // 0) >= 1
+                  and (.remainingEffortHours // -1) >= 0
+                  and ((.estimatedStartDate // "") | length) == 10
+                  and ((.estimatedFinishDate // "") | length) == 10
+                ))
+            ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null || fail 'FlowHive AI Planner did not satisfy the source-cited working-draft contract.'
+          else
+            require_get 'FlowHive preserved working copy' "/api/project-flowhive/projects/$PROJECT_ID/enterprise" "$EVIDENCE_DIR/flowhive-enterprise-after.json" "$PROJECT_MANAGER_SESSION" '066'
+            jq -e --arg expectedVersion "$FLOWHIVE_EXISTING_WORKING_ROW_VERSION" '
+              .workingCopy.rowVersion == $expectedVersion
+              and .workingCopy.plan.sourceKind == "celar_ai"
+              and ((.workingCopy.plan.dependencies // []) | length > 0)
+              and ((.workingCopy.plan.tasks // []) as $tasks
+                | ($tasks | map(select((.isSummary // false) == false and (.isMilestone // false) == false))) as $executable
+                | ($executable | length) >= 10
+                and (($executable | map(.phase) | unique) | index("Plan") != null)
+                and (($executable | map(.phase) | unique) | index("Design") != null)
+                and (($executable | map(.phase) | unique) | index("Implement") != null)
+                and (($executable | map(.phase) | unique) | index("Validate") != null)
+                and (($executable | map(.phase) | unique) | index("Release") != null)
+                and all($executable[];
+                  ((.description // "") | length) >= 20
+                  and ((.detailedSteps // []) | length) >= 2
+                  and ((.citationIds // []) | length) > 0
+                  and (.durationWorkingDays // 0) >= 1
+                  and (.remainingEffortHours // -1) >= 0
+                ))
+            ' "$EVIDENCE_DIR/flowhive-enterprise-after.json" >/dev/null || fail 'FlowHive did not preserve the existing source-cited working draft during reviewed regeneration.'
+            jq -e '
+              .workingDraft.persisted == false
+              and .workingDraft.immutableVersionCreated == false
+              and .workingDraft.baselineCreated == false
+              and .candidateAvailable == true
+              and .candidate.persisted == true
+              and .candidate.schedule.valid == true
+              and .candidate.validation.valid == true
+            ' "$EVIDENCE_DIR/flowhive-ai-planner.json" >/dev/null || fail 'FlowHive reviewed regeneration did not preserve the existing draft and retain the new candidate safely.'
+          fi
+          echo "FLOWHIVE_AI_PLANNER_UAT=PASSED mode=$FLOWHIVE_READY_MODE"
 
           FORGE_PAYLOAD="$(mktemp)"
           jq -n '{
