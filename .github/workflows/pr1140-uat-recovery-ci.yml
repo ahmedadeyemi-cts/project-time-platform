@@ -39,7 +39,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
-          if [[ "$GITHUB_HEAD_REF" == 'control/pr1153-source-registration-20260923' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-protected-uat-idempotent-20260927' ]]; then
+            python3 tests/flowhive-protected-uat-idempotent-scope.py
+            git diff --exit-code "$BASE_SHA" HEAD -- src database .github/workflows/projectpulse-deploy-production.yml
+          elif [[ "$GITHUB_HEAD_REF" == 'control/pr1153-source-registration-20260923' ]]; then
             python3 tests/laya/release-registration.py --control
             git diff --exit-code "$BASE_SHA" HEAD -- src .github/workflows/projectpulse-deploy-production.yml
             git diff --exit-code
