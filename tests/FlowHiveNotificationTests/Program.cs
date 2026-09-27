@@ -107,12 +107,25 @@ async System.Threading.Tasks.Task Database()
     }
     await Sql($"INSERT INTO project_flowhive_plans VALUES('{planId}','{project}',NULL,'draft',NOW());");await Save(1,plan);
     await ProjectFlowHiveNotificationSource.ScanAsync(db,"fixture",default);
-    Check(await Number("SELECT count(*) FROM enterprise_notification_events")==0,"draft emits no messages");
+    Check(await Number("SELECT count(*) FROM enterprise_notification_events")==0,"unsaved draft emits no messages");
+    await using (var working = new NpgsqlCommand("""
+        INSERT INTO project_flowhive_working_copies(project_id,plan_id,working_payload,updated_by_user_id)
+        VALUES(@project,@plan,@payload::jsonb,@actor);
+        """, db))
+    {
+        working.Parameters.AddWithValue("project",project);
+        working.Parameters.AddWithValue("plan",planId);
+        working.Parameters.AddWithValue("payload",JsonSerializer.Serialize(plan,json));
+        working.Parameters.AddWithValue("actor",pm);
+        await working.ExecuteNonQueryAsync();
+    }
+    var workingObserved=await ProjectFlowHiveNotificationSource.ScanAsync(db,"working-copy",default);
+    Check(workingObserved.Status=="healthy" && workingObserved.EventsCreated==3,"saved working WBS produces assignment and due-day events");
+    await ProjectFlowHiveNotificationSource.ScanAsync(db,"working-repeat",default);
+    Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3,"working-copy repeat scan idempotent");
     await Sql($"UPDATE project_flowhive_plans SET baseline_version_number=1; INSERT INTO project_flowhive_plan_reviews VALUES('{planId}',1,'approved_for_baseline');");
     var observed=await ProjectFlowHiveNotificationSource.ScanAsync(db,"fixture",default);
-    Check(observed.Status=="healthy" && observed.EventsCreated==3,"approved WBS produces assignment and due-day events");
-    await ProjectFlowHiveNotificationSource.ScanAsync(db,"fixture",default);
-    Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3,"repeat scan idempotent");
+    Check(observed.Status=="healthy" && observed.EventsCreated==0,"baseline adoption does not duplicate working-copy notifications");
     await Sql("DELETE FROM project_flowhive_notification_state;");
     await ProjectFlowHiveNotificationSource.ScanAsync(db,"crash-retry",default);
     Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3,"crash before checkpoint replays without loss or duplicates");
