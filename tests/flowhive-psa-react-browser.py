@@ -249,7 +249,7 @@ async def main(readback_mode=None):
                 assert state['posts'][0]['plan']['milestones'][0]['milestoneId']==SAVED
                 assert await page.locator('input[value="Stored project task Plan"]').count()==1
                 assert not await page.locator('input[value="Generated unique task Plan"]').count()
-                assert await review.locator('summary').count()==5
+                assert await review.locator('.flowhive-review-grid[aria-label="Proposed AI work breakdown"] summary').count()==5
                 assert 'work breakdown is saved and reloaded' not in await page.locator('body').inner_text()
                 print('PASSED: actual FlowHive mounts a five-phase proposal inside AI Planner while preserving the working copy and milestone',flush=True)
                 await page.get_by_role('button',name='AI Planner',exact=True).click()
