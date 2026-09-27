@@ -784,7 +784,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         // candidate builder, checkpoint recovery, and persistence path can evolve
         // independently; the working copy must never persist a plan that disagrees
         // with the deterministic Plan/Design/Implement/Validate/Release semantics.
-        generated = ProjectPlanningAiOrchestrator.NormalizeAiPhaseSemantics(generated);
+        generated = ProjectFlowHiveScheduleEngine.NormalizeAiPhaseSemantics(generated);
         validation = ProjectFlowHiveScheduleEngine.Validate(generated);
         schedule = ProjectFlowHiveScheduleEngine.Calculate(generated);
         generated = ProjectPlanningAiOrchestrator.ApplyScheduleDates(generated, schedule);
