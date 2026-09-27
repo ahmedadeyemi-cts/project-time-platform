@@ -325,56 +325,9 @@ internal static class ProjectPlanningAiOrchestrator
             warnings);
     }
 
-    private static ProjectFlowHivePlanRequest NormalizeAiPhaseSemantics(ProjectFlowHivePlanRequest plan)
-    {
-        if (!string.Equals(plan.SourceKind, "celar_ai", StringComparison.OrdinalIgnoreCase) || plan.Tasks is null)
-            return plan;
+    internal static ProjectFlowHivePlanRequest NormalizeAiPhaseSemantics(ProjectFlowHivePlanRequest plan) =>
+        ProjectFlowHiveScheduleEngine.NormalizeAiPhaseSemantics(plan);
 
-        static bool Match(string text, string pattern) =>
-            System.Text.RegularExpressions.Regex.IsMatch(text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-
-        var tasks = plan.Tasks.Select(task =>
-        {
-            if (task.IsSummary) return task;
-            var nameText = task.Name ?? string.Empty;
-            var text = string.Join(" ", new[] { task.Name, task.Description }.Concat(task.DetailedSteps ?? []));
-            var phase = task.Phase;
-            if (Match(nameText, @"\b(cutover|go-live|golive|runbook|runbooks|as-built|as built|knowledge transfer|handoff|hand-off|handover|hypercare|production transition|train operations|training operations)\b"))
-                phase = "Release";
-            else if (Match(nameText, @"\b(test|testing|backups?|restores?|validate|validation|verify|verification|uat|failover|performance|recovery|security review|acceptance testing|retest|drill)\b")
-                && !Match(nameText, @"\b(test plan|test design|validation method|acceptance criteria)\b"))
-                phase = "Validate";
-            else if (Match(nameText, @"\b(install|deploy|configure|migrate|upgrade|provision|build)\b")
-                && !Match(nameText, @"\b(installation approach|implementation approach|deployment approach|migration approach|upgrade approach|configuration design|build design)\b"))
-                phase = "Implement";
-            return string.Equals(phase, task.Phase, StringComparison.Ordinal) ? task : task with { Phase = phase };
-        }).ToArray();
-
-        var phaseOrder = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
-        var executable = phaseOrder.SelectMany(phase => tasks.Where(task => !task.IsSummary && string.Equals(task.Phase, phase, StringComparison.OrdinalIgnoreCase))).ToArray();
-        var summaries = phaseOrder.Select((phase, index) => tasks.First(task => task.IsSummary && string.Equals(task.Phase, phase, StringComparison.OrdinalIgnoreCase)) with { WbsNumber = (index + 1).ToString(), ParentWbsNumber = null }).ToArray();
-        var rebuilt = new List<ProjectFlowHivePlanTaskInput>();
-        var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var phase in phaseOrder.Select((name, index) => new { name, wbs = (index + 1).ToString() }))
-        {
-            rebuilt.Add(summaries.First(task => string.Equals(task.Phase, phase.name, StringComparison.OrdinalIgnoreCase)));
-            var number = 0;
-            foreach (var task in executable.Where(task => string.Equals(task.Phase, phase.name, StringComparison.OrdinalIgnoreCase)))
-            {
-                number++;
-                var nextWbs = $"{phase.wbs}.{number}";
-                aliases[task.WbsNumber] = nextWbs;
-                rebuilt.Add(task with { WbsNumber = nextWbs, ParentWbsNumber = phase.wbs });
-            }
-        }
-        var dependencies = (plan.Dependencies ?? []).Select(item => item with
-        {
-            PredecessorWbs = aliases.GetValueOrDefault(item.PredecessorWbs, item.PredecessorWbs),
-            SuccessorWbs = aliases.GetValueOrDefault(item.SuccessorWbs, item.SuccessorWbs)
-        }).Where(item => !string.Equals(item.PredecessorWbs, item.SuccessorWbs, StringComparison.OrdinalIgnoreCase)).Distinct().ToArray();
-        var assignments = (plan.Assignments ?? []).Select(item => item with { TaskWbs = aliases.GetValueOrDefault(item.TaskWbs, item.TaskWbs) }).ToArray();
-        return plan with { Tasks = rebuilt, Dependencies = dependencies, Assignments = assignments };
-    }
 
     private static bool IsGenericTechnicalPlaceholder(string? name)
     {
@@ -695,11 +648,9 @@ internal static class ProjectPlanningAiOrchestrator
         catch { return default; }
     }
 
-    private static ProjectFlowHivePlanRequest ApplySchedule(
+    internal static ProjectFlowHivePlanRequest ApplyScheduleDates(
         ProjectFlowHivePlanRequest generated,
-        ProjectFlowHiveScheduleResult schedule,
-        CelarAiComposeResult composition,
-        ProjectPlanningDocumentResolution documents)
+        ProjectFlowHiveScheduleResult schedule)
     {
         var scheduledByWbs = schedule.Tasks
             .GroupBy(task => task.WbsNumber, StringComparer.OrdinalIgnoreCase)
@@ -721,7 +672,19 @@ internal static class ProjectPlanningAiOrchestrator
             Milestones = (generated.Milestones ?? []).Select(milestone =>
                 scheduledByWbs.TryGetValue(milestone.PredecessorWbs, out var predecessor)
                     ? milestone with { TargetDate = predecessor.EndDate }
-                    : milestone).ToArray(),
+                    : milestone).ToArray()
+        };
+    }
+
+    private static ProjectFlowHivePlanRequest ApplySchedule(
+        ProjectFlowHivePlanRequest generated,
+        ProjectFlowHiveScheduleResult schedule,
+        CelarAiComposeResult composition,
+        ProjectPlanningDocumentResolution documents)
+    {
+        generated = ApplyScheduleDates(generated, schedule);
+        return generated with
+        {
             SowVersion = documents.StatementOfWork?.ActiveVersionId?.ToString("D"),
             GsdVersion = documents.GeneralSolutionDesign?.ActiveVersionId?.ToString("D"),
             SourceKind = "celar_ai",

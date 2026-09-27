@@ -81,6 +81,46 @@ Check(scheduled.Tasks.All(task => task.StartDate >= seed.ProjectStartDate!.Value
 var overrun = ProjectFlowHiveScheduleEngine.Calculate(result with { ProjectEndDate = seed.ProjectStartDate });
 Check(overrun.ProjectFinishDate > seed.ProjectStartDate && overrun.PlannedHours == 20m, "target-date overrun does not compress effort");
 
+var retainedDesignTask = result.Tasks!.Single(task => task.WbsNumber == "2.1") with
+{
+    ClientTaskId = Guid.NewGuid(),
+    WbsNumber = "2.2",
+    ParentWbsNumber = "2",
+    Name = "Target architecture and logical design",
+    Phase = "Design"
+};
+var phaseRepairInput = result with
+{
+    SourceKind = "celar_ai",
+    Tasks = [
+        .. result.Tasks!.Select(task => task.WbsNumber switch
+        {
+            "2.1" => task with { Name = "Commvault Installation", Phase = "Design" },
+            "3.1" => task with { Name = "Backup Validation Testing", Phase = "Implement" },
+            "4.1" => task with { Name = "Runbook and Documentation", Phase = "Validate" },
+            _ => task
+        }),
+        retainedDesignTask
+    ],
+    Assignments = [
+        .. result.Assignments!,
+        new ProjectFlowHivePlanAssignmentInput("2.2", null, "Unassigned — Solution Architect", 100m, retainedDesignTask.RemainingEffortHours)
+    ]
+};
+var phaseRepair = ProjectFlowHiveScheduleEngine.NormalizeAiPhaseSemantics(phaseRepairInput);
+Check(phaseRepair.Tasks!.Single(task => task.Name == "Commvault Installation").Phase == "Implement",
+    "installation noun is normalized into Implement");
+Check(phaseRepair.Tasks!.Single(task => task.Name == "Backup Validation Testing").Phase == "Validate",
+    "testing task is normalized into Validate");
+Check(phaseRepair.Tasks!.Single(task => task.Name == "Runbook and Documentation").Phase == "Release",
+    "runbook task is normalized into Release");
+var phaseRepairValidation = ProjectFlowHiveScheduleEngine.Validate(phaseRepair);
+if (!phaseRepairValidation.Valid)
+    Console.WriteLine("PHASE_REPAIR_ISSUES=" + string.Join(" | ", phaseRepairValidation.Issues.Select(issue => $"{issue.Code}:{issue.Path}:{issue.Message}")));
+Check(phaseRepairValidation.Valid, "normalized AI WBS passes deterministic phase validation");
+var phaseRepairSchedule = ProjectFlowHiveScheduleEngine.Calculate(phaseRepair);
+Check(phaseRepairSchedule.Valid, "normalized AI WBS remains schedulable after WBS remapping");
+
 var duplicateSources = sources.ToList();
 duplicateSources.Add(sources[0] with { Wbs = "duplicate-plan", CitationIds = [2] });
 duplicateSources[1] = sources[1] with { Predecessors = ["duplicate-plan"] };
