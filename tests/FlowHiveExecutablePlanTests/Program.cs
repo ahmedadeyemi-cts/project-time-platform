@@ -140,7 +140,8 @@ var genericUat = result with
         ? task with { Name = "Conduct User Acceptance Testing", Phase = "Validate" }
         : task).ToArray()
 };
-var qualifiedUat = ProjectPlanningAiOrchestrator.QualifyGenericTechnicalTaskNames(genericUat);
+var qualifiedUat = ProjectPlanningAiOrchestrator.QualifyGenericTechnicalTaskNames(
+    ProjectFlowHiveScheduleEngine.NormalizeAiPhaseSemantics(genericUat));
 var qualifiedUatTask = qualifiedUat.Tasks!.Single(task => task.WbsNumber == "4.1");
 Check(qualifiedUatTask.Name.Contains("Cisco Unified Communications Manager", StringComparison.OrdinalIgnoreCase)
       && qualifiedUatTask.Name.Contains("user acceptance testing", StringComparison.OrdinalIgnoreCase),
