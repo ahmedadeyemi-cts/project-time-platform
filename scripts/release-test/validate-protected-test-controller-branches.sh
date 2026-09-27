@@ -114,6 +114,7 @@ elif [[ "$HEAD_BRANCH" == fix/flowhive-phase-semantics-delete-plan-20260927 ]]; 
 elif [[ "$HEAD_BRANCH" == feature/flowhive-enterprise-pm-ux-notifications-20260927 ]]; then
   printf '%s\n' \
     '.github/workflows/flowhive-enterprise-psa-ci.yml' \
+    '.github/workflows/flowhive-psa-release-control-ci.yml' \
     '.github/workflows/uat-migration-throttle-recovery-ci.yml' \
     '.github/workflows/pr1151-uat-supersession-ci.yml' \
     '.github/workflows/pr1140-uat-recovery-ci.yml' \
