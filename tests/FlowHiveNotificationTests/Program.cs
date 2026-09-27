@@ -95,7 +95,7 @@ async System.Threading.Tasks.Task Database()
     await Sql("UPDATE enterprise_notification_policies SET delivery_boundary='test_only' WHERE policy_code='FLOWHIVE_TASK_DUE';");
     var planId=Guid.NewGuid();
     await Sql($"INSERT INTO app_users VALUES('{owner}','Fixture engineer','engineer@example.invalid',TRUE),('{pm}','Fixture PM','pm@example.invalid',TRUE); INSERT INTO projects VALUES('{project}','NOTIFY-FIXTURE','active','{pm}');");
-    await Sql($"INSERT INTO project_flowhive_task_reminder_preferences(project_id,enabled,lead_days,timezone_name,quiet_hours_start,quiet_hours_end,updated_by_user_id) VALUES('{project}',TRUE,ARRAY[3,0]::SMALLINT[],'UTC',NULL,NULL,'{pm}');");
+    await Sql($"INSERT INTO project_flowhive_task_reminder_preferences(project_id,enabled,lead_days,timezone_name,quiet_hours_start,quiet_hours_end,updated_by_user_id) VALUES('{project}',TRUE,ARRAY[3,2,1,0]::SMALLINT[],'UTC',NULL,NULL,'{pm}');");
     var today=DateOnly.FromDateTime(DateTime.UtcNow);
     var plan=new ProjectFlowHivePlanRequest(project,"NOTIFY-FIXTURE","Fixture",null,"Fixture","1",today,today.AddDays(20),
         [new(task.Id,null,"1",null,task.Name,"Fixture",1,false,null,null,0,8,"not_started")],[],[new("1",owner,"Fixture engineer",100,8)],null,null,null);
@@ -126,7 +126,7 @@ async System.Threading.Tasks.Task Database()
     var workingObserved=await ProjectFlowHiveNotificationSource.ScanAsync(db,"working-copy",default);
     var workingEventCount=await Number("SELECT count(*) FROM enterprise_notification_events");
     Console.WriteLine($"WORKING_WBS_NOTIFICATION status={workingObserved.Status} created={workingObserved.EventsCreated} eventCount={workingEventCount} diagnostic={workingObserved.DiagnosticCode}");
-    Check(workingObserved.Status=="healthy" && workingObserved.EventsCreated==3 && workingEventCount==3,"saved working WBS produces assignment and due-day events");
+    Check(workingObserved.Status=="healthy" && workingObserved.EventsCreated==3 && workingEventCount==3,"saved working WBS produces assignment and scheduled due reminders");
     await ProjectFlowHiveNotificationSource.ScanAsync(db,"working-repeat",default);
     Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3,"working-copy repeat scan idempotent");
     await Sql($"UPDATE project_flowhive_plans SET baseline_version_number=1; INSERT INTO project_flowhive_plan_reviews VALUES('{planId}',1,'approved_for_baseline');");
