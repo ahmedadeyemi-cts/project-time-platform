@@ -98,9 +98,9 @@ async System.Threading.Tasks.Task Database()
     await Sql($"INSERT INTO project_flowhive_task_reminder_preferences(project_id,enabled,lead_days,timezone_name,quiet_hours_start,quiet_hours_end,updated_by_user_id) VALUES('{project}',TRUE,ARRAY[3,0]::SMALLINT[],'UTC',NULL,NULL,'{pm}');");
     var today=DateOnly.FromDateTime(DateTime.UtcNow);
     var plan=new ProjectFlowHivePlanRequest(project,"NOTIFY-FIXTURE","Fixture",null,"Fixture","1",today,today.AddDays(20),
-        [new(task.Id,null,"1.1",null,task.Name,"Fixture",1,false,null,null,0,8,"not_started")],[],[new("1.1",owner,"Fixture engineer",100,8)],null,null,null);
+        [new(task.Id,null,"1",null,task.Name,"Fixture",1,false,null,null,0,8,"not_started")],[],[new("1",owner,"Fixture engineer",100,8)],null,null,null);
     var schedule=new ProjectFlowHiveScheduleResult(true,"scheduled",today,today.AddDays(20),today,1,1,8,
-        [new("1.1",null,task.Name,today,today,1,0,0,0,0,true,false,0,8,"not_started")],[],"weekdays","test");
+        [new("1",null,task.Name,today,today,1,0,0,0,0,true,false,0,8,"not_started")],[],"weekdays","test");
     var json=new JsonSerializerOptions(JsonSerializerDefaults.Web);
     async System.Threading.Tasks.Task Save(int version,ProjectFlowHivePlanRequest value)
     {
