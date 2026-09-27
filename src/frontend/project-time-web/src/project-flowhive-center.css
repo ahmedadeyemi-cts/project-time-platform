@@ -1679,3 +1679,27 @@
 .flowhive-document-preparation li{margin:.7rem 0;overflow-wrap:anywhere}
 .flowhive-document-preparation li span{display:block;margin-top:.2rem;color:var(--flowhive-muted)}
 .flowhive-milestone-list>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr));gap:.75rem}.flowhive-milestone-list article>div{display:flex;gap:.6rem;align-items:baseline}.flowhive-milestone-list h3,.flowhive-milestone-list h4,.flowhive-ai-operation-progress h4{margin:0}
+
+
+/* PM-first notification experience */
+.flowhive-psa-reminders { display:grid; gap:1rem; }
+.flowhive-psa-reminders > header { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; }
+.flowhive-psa-reminders > header h3 { margin:.15rem 0; color:var(--flowhive-navy); }
+.flowhive-psa-reminders > header p { margin:.25rem 0 0; max-width:72rem; color:var(--flowhive-muted); line-height:1.5; }
+.flowhive-notification-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.7rem; }
+.flowhive-notification-summary article { display:grid; gap:.25rem; padding:.85rem; border:1px solid var(--flowhive-line); border-radius:.8rem; background:var(--flowhive-surface); }
+.flowhive-notification-summary span { color:var(--flowhive-muted); font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+.flowhive-notification-summary strong { color:var(--flowhive-navy); font-size:1rem; }
+.flowhive-notification-summary small { color:var(--flowhive-muted); line-height:1.35; }
+.flowhive-reminder-presets { display:flex; flex-wrap:wrap; gap:.6rem 1rem; padding:.75rem; border:1px solid var(--flowhive-line); border-radius:.75rem; }
+.flowhive-reminder-presets legend { padding:0 .25rem; color:var(--flowhive-navy); font-weight:800; }
+.flowhive-notification-advanced,.flowhive-notification-history { border:1px solid var(--flowhive-line); border-radius:.8rem; background:var(--flowhive-surface); }
+.flowhive-notification-advanced > summary,.flowhive-notification-history > summary { cursor:pointer; padding:.8rem 1rem; color:var(--flowhive-navy); font-weight:800; }
+.flowhive-notification-advanced[open] > :not(summary),.flowhive-notification-history[open] > :not(summary) { margin:.25rem 1rem 1rem; }
+@media (max-width: 900px) {
+  .flowhive-notification-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 600px) {
+  .flowhive-notification-summary { grid-template-columns:1fr; }
+  .flowhive-psa-reminders > header { flex-direction:column; }
+}
