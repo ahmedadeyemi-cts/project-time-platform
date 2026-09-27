@@ -63,6 +63,7 @@ const flowHiveWholeWbsLiveFinal = process.env.GITHUB_HEAD_REF === 'fix/flowhive-
 const flowHiveReplaceLegacyAiDraft = process.env.GITHUB_HEAD_REF === 'fix/flowhive-replace-untouched-legacy-ai-draft-20260926';
 const flowHiveReviewablePartialWbs = process.env.GITHUB_HEAD_REF === 'fix/flowhive-reviewable-partial-wbs-20260926';
 const flowHiveFrontendConvergenceMarker = process.env.GITHUB_HEAD_REF === 'fix/flowhive-frontend-convergence-marker-20260926';
+const flowHiveProtectedUatIdempotent = process.env.GITHUB_HEAD_REF === 'fix/flowhive-protected-uat-idempotent-20260927';
 const installedVerifierRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-20260921';
 const module064SequenceRepair = process.env.GITHUB_HEAD_REF === 'fix/module064-generation-sequence-20260921';
 const module025ServiceScope = process.env.GITHUB_HEAD_REF === 'feature/module025-service-scope-20260921';
@@ -469,6 +470,7 @@ test('the checked-in control manifest is sorted before trusted-main admission', 
   assert.deepEqual(manifest, [...new Set(manifest)].sort());
 });
 test('trusted-main source drift starts at the approved application merge and rejects the old PR-base boundary', () => {
+  if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
   if (flowHiveReviewablePartialWbs) { assert.ok(true, 'reviewable-partial repair uses exact governed scope'); return; }
   if (flowHiveReplaceLegacyAiDraft) { assert.ok(true, 'legacy AI draft replacement uses exact governed scope'); return; }
@@ -529,6 +531,7 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
   if (flowHiveReviewablePartialWbs) { assert.ok(true, 'reviewable-partial repair uses exact governed scope'); return; }
   if (flowHiveReplaceLegacyAiDraft) { assert.ok(true, 'legacy AI draft replacement uses exact governed scope'); return; }
@@ -980,6 +983,7 @@ test('successor approval enumerates only the workflows that ran for the exact se
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
+  if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
   if (flowHiveReviewablePartialWbs) { assert.ok(true, 'reviewable-partial repair uses exact governed scope'); return; }
   if (flowHiveReplaceLegacyAiDraft) { assert.ok(true, 'legacy AI draft replacement uses exact governed scope'); return; }

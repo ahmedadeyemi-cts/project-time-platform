@@ -91,6 +91,9 @@ elif [[ "$HEAD_BRANCH" == fix/flowhive-reviewable-partial-wbs-20260926 ]]; then
 elif [[ "$HEAD_BRANCH" == fix/flowhive-frontend-convergence-marker-20260926 ]]; then
   python3 tests/flowhive-frontend-convergence-marker-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/flowhive-protected-uat-idempotent-20260927 ]]; then
+  python3 tests/flowhive-protected-uat-idempotent-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
