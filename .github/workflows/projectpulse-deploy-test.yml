@@ -1446,6 +1446,8 @@ jobs:
           FLOWHIVE_EXISTING_DRAFT_READY=false
           if [[ "$FLOWHIVE_EXISTING_WORKING_ROW_VERSION" =~ ^[0-9a-fA-F-]{36}$ ]]             && jq -e '
               .workingCopy.plan.sourceKind == "celar_ai"
+              and .workingCopy.schedule.valid == true
+              and .workingCopy.validation.valid == true
               and ((.workingCopy.plan.dependencies // []) | length > 0)
               and ((.workingCopy.plan.tasks // []) as $tasks
                 | ($tasks | map(select((.isSummary // false) == false and (.isMilestone // false) == false))) as $executable
@@ -1603,6 +1605,8 @@ jobs:
             jq -e --arg expectedVersion "$FLOWHIVE_EXISTING_WORKING_ROW_VERSION" '
               .workingCopy.rowVersion == $expectedVersion
               and .workingCopy.plan.sourceKind == "celar_ai"
+              and .workingCopy.schedule.valid == true
+              and .workingCopy.validation.valid == true
               and ((.workingCopy.plan.dependencies // []) | length > 0)
               and ((.workingCopy.plan.tasks // []) as $tasks
                 | ($tasks | map(select((.isSummary // false) == false and (.isMilestone // false) == false))) as $executable
