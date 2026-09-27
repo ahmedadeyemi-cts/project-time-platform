@@ -131,7 +131,7 @@ jobs:
               'src/frontend/project-time-web/src/project-flowhive-center.css' \
               'tests/FlowHiveNotificationTests/Program.cs' \
               'tests/flowhive-psa-react-browser.py' \
-    'tests/flowhive-team-calendar-browser.py' \
+              'tests/flowhive-team-calendar-browser.py' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/pm-ux-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/pm-ux-actual"
             cmp -s "$RUNNER_TEMP/pm-ux-files" "$RUNNER_TEMP/pm-ux-actual" || { diff -u "$RUNNER_TEMP/pm-ux-files" "$RUNNER_TEMP/pm-ux-actual" >&2 || true; exit 1; }
