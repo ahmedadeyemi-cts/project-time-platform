@@ -88,7 +88,7 @@ async def run_case(browser, mode='normal', width=1400, dark=False):
     if mode=='late':
         await page.wait_for_timeout(30)
         await page.evaluate('(id)=>window.remount({projectId:id})',OTHER)
-        await page.get_by_text('Advanced reconciliation',exact=False).click()
+        await page.locator('details.flowhive-advanced-reconciliation > summary').click()
         await page.get_by_text('Existing scoped activity',exact=False).wait_for()
         await page.wait_for_timeout(300)
         await page.get_by_role('button',name='Retain all existing activities separately').click()
