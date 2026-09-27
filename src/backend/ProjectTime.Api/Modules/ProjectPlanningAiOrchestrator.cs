@@ -264,6 +264,8 @@ internal static class ProjectPlanningAiOrchestrator
                     .ToArray());
         }
 
+        generated = NormalizeAiPhaseSemantics(generated);
+
         var genericTechnicalTasks = generated.Tasks
             .Where(task => !task.IsSummary && IsGenericTechnicalPlaceholder(task.Name))
             .Select(task => $"{task.WbsNumber} {task.Name}")
@@ -321,6 +323,56 @@ internal static class ProjectPlanningAiOrchestrator
             schedule,
             composition.MissingEvidence,
             warnings);
+    }
+
+    private static ProjectFlowHivePlanRequest NormalizeAiPhaseSemantics(ProjectFlowHivePlanRequest plan)
+    {
+        if (!string.Equals(plan.SourceKind, "celar_ai", StringComparison.OrdinalIgnoreCase) || plan.Tasks is null)
+            return plan;
+
+        static bool Match(string text, string pattern) =>
+            System.Text.RegularExpressions.Regex.IsMatch(text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        var tasks = plan.Tasks.Select(task =>
+        {
+            if (task.IsSummary) return task;
+            var text = string.Join(" ", new[] { task.Name, task.Description }.Concat(task.DetailedSteps ?? []));
+            var phase = task.Phase;
+            if (Match(text, @"\b(cutover|go-live|golive|runbook|as-built|as built|knowledge transfer|handoff|hand-off|hypercare|production transition)\b"))
+                phase = "Release";
+            else if (Match(text, @"\b(test|testing|validate|validation|verify|verification|uat|failover|performance test|recovery test|security test|acceptance test|retest)\b")
+                && !Match(text, @"\b(test plan|test design|validation method|acceptance criteria)\b"))
+                phase = "Validate";
+            else if (Match(text, @"\b(install|deploy|configure|migrate|upgrade|provision|build)\b")
+                && !Match(text, @"\b(installation approach|implementation approach|deployment approach|migration approach|upgrade approach|configuration design|build design)\b"))
+                phase = "Implement";
+            return string.Equals(phase, task.Phase, StringComparison.Ordinal) ? task : task with { Phase = phase };
+        }).ToArray();
+
+        var phaseOrder = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
+        var executable = phaseOrder.SelectMany(phase => tasks.Where(task => !task.IsSummary && string.Equals(task.Phase, phase, StringComparison.OrdinalIgnoreCase))).ToArray();
+        var summaries = phaseOrder.Select((phase, index) => tasks.First(task => task.IsSummary && string.Equals(task.Phase, phase, StringComparison.OrdinalIgnoreCase)) with { WbsNumber = (index + 1).ToString(), ParentWbsNumber = null }).ToArray();
+        var rebuilt = new List<ProjectFlowHiveTaskRequest>();
+        var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var phase in phaseOrder.Select((name, index) => new { name, wbs = (index + 1).ToString() }))
+        {
+            rebuilt.Add(summaries.First(task => string.Equals(task.Phase, phase.name, StringComparison.OrdinalIgnoreCase)));
+            var number = 0;
+            foreach (var task in executable.Where(task => string.Equals(task.Phase, phase.name, StringComparison.OrdinalIgnoreCase)))
+            {
+                number++;
+                var nextWbs = $"{phase.wbs}.{number}";
+                aliases[task.WbsNumber] = nextWbs;
+                rebuilt.Add(task with { WbsNumber = nextWbs, ParentWbsNumber = phase.wbs });
+            }
+        }
+        var dependencies = (plan.Dependencies ?? []).Select(item => item with
+        {
+            PredecessorWbs = aliases.GetValueOrDefault(item.PredecessorWbs, item.PredecessorWbs),
+            SuccessorWbs = aliases.GetValueOrDefault(item.SuccessorWbs, item.SuccessorWbs)
+        }).Where(item => !string.Equals(item.PredecessorWbs, item.SuccessorWbs, StringComparison.OrdinalIgnoreCase)).Distinct().ToArray();
+        var assignments = (plan.Assignments ?? []).Select(item => item with { TaskWbs = aliases.GetValueOrDefault(item.TaskWbs, item.TaskWbs) }).ToArray();
+        return plan with { Tasks = rebuilt, Dependencies = dependencies, Assignments = assignments };
     }
 
     private static bool IsGenericTechnicalPlaceholder(string? name)
