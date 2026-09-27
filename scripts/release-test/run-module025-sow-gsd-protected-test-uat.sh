@@ -644,15 +644,9 @@ jq -e --arg id "$VERSION_ID" '
   || fail 'Repeated retained downloads did not leave one first-issuance receipt for each artifact.'
 echo 'MODULE025_RETAINED_VERSION_API_LIFECYCLE=PASS'
 
-[[ -x "${RUNNER_TEMP:-}/flowhive-psa-browser/bin/python" ]] \
-  || fail 'The authenticated Module 025 browser verifier is not installed.'
-BASE="$BASE" TEST_LOGIN_PASSWORD="$TEST_LOGIN_PASSWORD" \
-  MODULE025_ENGAGEMENT_NUMBER="$ENGAGEMENT_NUMBER" MODULE025_CREATE_RESPONSE="$CREATE_RESPONSE" \
-  "${RUNNER_TEMP}/flowhive-psa-browser/bin/python" tests/module025-sow-register-browser.py \
-  > "$EVIDENCE_DIR/module025-register-browser.log"
-grep -Fq 'MODULE025_REGISTER_BROWSER_DISPLAY=PASS' "$EVIDENCE_DIR/module025-register-browser.log" \
-  || fail 'Authenticated retained SOW/GSD and CSV browser downloads were not verified.'
-echo 'MODULE025_RETAINED_VERSION_BROWSER_LIFECYCLE=PASS authenticatedClicks=true hashes=verified unauthorized=checked reload=verified'
+# This exact-run manager fixture authorizes API requests only. The deployment
+# workflow separately requires the normal Solution Architect browser lifecycle
+# after disabling this fixture; published navigation denials remain authoritative.
 
 ACTIVE_LIST="$EVIDENCE_DIR/module025-active-list-readback.json"
 ACTIVE_LIST_RESULT="$(auth_get_with_transient_retry "/api/module025/sow-gsd?state=active&ownerUserId=$SA_USER_ID" "$ACTIVE_LIST" "$SA_SESSION" 'active-list-readback')"

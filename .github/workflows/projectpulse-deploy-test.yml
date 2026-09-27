@@ -2014,6 +2014,7 @@ jobs:
           bash scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
 
       - name: Disable exact-run Module 025 protected-Test authorization fixture
+        id: module025_fixture_disabled
         if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always() && steps.module025_fixture.outputs.started == 'true') }}
         shell: bash
         working-directory: release
@@ -2039,6 +2040,35 @@ jobs:
             '{status:"disabled",revision:$revision,sourceCommit:$source,persistentRoleAssignmentMutation:false,productionMutation:false}' \
             > "$EVIDENCE_DIR/module025-protected-test-uat-fixture-disabled.json"
           echo "MODULE025_PROTECTED_TEST_UAT_FIXTURE=disabled revision=$API_REVISION"
+
+      - name: Verify normal Solution Architect browser and retained register
+        id: module025_normal_sa_browser
+        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && ((inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.psa_admission.outputs.authorized != 'true' && steps.module025_uat.outcome == 'success' && steps.module025_fixture_disabled.outcome == 'success') }}
+        timeout-minutes: 50
+        shell: bash
+        working-directory: release
+        env:
+          BASE: ${{ steps.contract.outputs.base }}
+          PROJECTPULSE_M025_SA_EMAIL: ${{ secrets.PROJECTPULSE_M025_SA_EMAIL }}
+          PROJECTPULSE_M025_SA_PASSWORD: ${{ secrets.PROJECTPULSE_M025_SA_PASSWORD }}
+          MODULE025_GENERATION_TIMEOUT_SECONDS: '2520'
+          MODULE025_REGISTER_MODE: retained-sa
+          MODULE025_SOURCE_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          jq -e --arg source "$TARGET_RELEASE_COMMIT" '.status == "disabled" and .sourceCommit == $source' "$EVIDENCE_DIR/module025-protected-test-uat-fixture-disabled.json" >/dev/null
+          # Scoped SOW acceptance already created this run's normal-SA record.
+          if [[ "$ACCEPTANCE_SCOPE" == full ]]; then
+            "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py
+          fi
+          jq -e --arg source "$TARGET_RELEASE_COMMIT" '.status == "passed" and .normalAuthorizedSolutionArchitect == true and .applicationSha == $source and .fixtureMutation == false' "$EVIDENCE_DIR/module025-installed-sa-uat.json" >/dev/null
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" tests/module025-sow-register-browser.py \
+            > "$EVIDENCE_DIR/module025-normal-sa-register-browser.log"
+          grep -Fq 'MODULE025_REGISTER_BROWSER_DISPLAY=PASS' "$EVIDENCE_DIR/module025-normal-sa-register-browser.log"
+          jq -n --arg source "$TARGET_RELEASE_COMMIT" --arg run "$GITHUB_RUN_ID" \
+            '{status:"passed",sourceCommit:$source,sourceRunId:$run,normalAuthorizedSolutionArchitect:true,fixtureEnabled:false,authenticatedClicks:true,retainedHashesVerified:true,unauthorizedDownloadsRejected:true,reloadVerified:true}' \
+            > "$EVIDENCE_DIR/module025-normal-sa-browser.json"
+          echo 'MODULE025_RETAINED_VERSION_BROWSER_LIFECYCLE=PASS authorization=normal-solution-architect authenticatedClicks=true hashes=verified unauthorized=checked reload=verified'
 
       - name: Restore exact prior Test images after application failure
         if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' && steps.sow_role_uat.outputs.deployment_health_verified != 'true') }}
@@ -2144,7 +2174,10 @@ jobs:
             fi
             [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, and 093 through 100: applied and verified' || echo '- Migrations 086, 088, and 093 through 100: not completed'
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: passed' || echo '- Authenticated FlowHive, Project Forge, Celar AI, and system-wide functional UAT: not completed'
-            [[ -f "$EVIDENCE_DIR/module025-sow-gsd-protected-test-uat.json" ]] && echo '- Module 025 authorized Solution Architect generation, review-ready P/D/I/V/R readback, and archive cleanup UAT: passed' || echo '- Module 025 SOW/GSD generation lifecycle UAT: not completed'
+            [[ -f "$EVIDENCE_DIR/module025-sow-gsd-protected-test-uat.json" ]] && echo '- Module 025 exact-run fixture API generation, review-ready P/D/I/V/R readback, and archive cleanup UAT: passed' || echo '- Module 025 SOW/GSD generation lifecycle UAT: not completed'
+            if [[ "$ACCEPTANCE_SCOPE" == full || "$ACCEPTANCE_SCOPE" == sow_role ]]; then
+              jq -e '.status == "passed"' "$EVIDENCE_DIR/module025-normal-sa-browser.json" >/dev/null 2>&1 && echo '- Normal Solution Architect browser lifecycle and retained register downloads: passed' || echo '- Normal Solution Architect browser lifecycle and retained register downloads: not completed'
+            fi
             [[ -f "$EVIDENCE_DIR/utilization-role-scoping-uat.json" ]] && echo '- Kevin utilization role-scoping UAT: passed' || echo '- Kevin utilization role-scoping UAT: not completed'
             [[ -f "$EVIDENCE_DIR/rollback.json" ]] && echo '- Application image rollback: completed'
             if [[ -f "$EVIDENCE_DIR/deployment-health-verified.json" && ! -f "$EVIDENCE_DIR/rollback.json" ]]; then
