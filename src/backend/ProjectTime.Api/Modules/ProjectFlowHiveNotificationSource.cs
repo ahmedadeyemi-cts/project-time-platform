@@ -257,4 +257,4 @@ internal static class ProjectFlowHiveNotificationSource
             Tasks = snapshot.Tasks.Select(t => t with { Assignees=t.Assignees.Where(active.Contains).ToArray() }).ToArray()
         };
     }
-}}
+}
