@@ -265,6 +265,7 @@ internal static class ProjectPlanningAiOrchestrator
         }
 
         generated = NormalizeAiPhaseSemantics(generated);
+        generated = QualifyGenericTechnicalTaskNames(generated);
 
         var genericTechnicalTasks = generated.Tasks
             .Where(task => !task.IsSummary && IsGenericTechnicalPlaceholder(task.Name))
@@ -328,6 +329,79 @@ internal static class ProjectPlanningAiOrchestrator
     internal static ProjectFlowHivePlanRequest NormalizeAiPhaseSemantics(ProjectFlowHivePlanRequest plan) =>
         ProjectFlowHiveScheduleEngine.NormalizeAiPhaseSemantics(plan);
 
+
+    internal static ProjectFlowHivePlanRequest QualifyGenericTechnicalTaskNames(ProjectFlowHivePlanRequest plan)
+    {
+        if (!string.Equals(plan.SourceKind, "celar_ai", StringComparison.OrdinalIgnoreCase) || plan.Tasks is null)
+            return plan;
+
+        static string CleanLabel(string? value)
+        {
+            var clean = string.Join(" ", (value ?? string.Empty)
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim();
+            return clean.Length <= 80 ? clean : clean[..80].TrimEnd();
+        }
+
+        static string ScopeLabel(ProjectFlowHivePlanTaskInput task, ProjectFlowHivePlanRequest plan)
+        {
+            var candidates = new[]
+            {
+                task.Products, task.Platforms, task.Systems, task.Manufacturers, task.Models,
+                task.IntegrationPoints, task.Interfaces, task.Tools
+            }.Where(values => values is not null)
+             .SelectMany(values => values!)
+             .Select(CleanLabel)
+             .Where(value => value.Length >= 3)
+             .Distinct(StringComparer.OrdinalIgnoreCase)
+             .ToArray();
+            if (candidates.Length > 0) return candidates[0];
+
+            var project = CleanLabel(plan.ProjectName);
+            if (project.Contains(" - ", StringComparison.Ordinal))
+                project = CleanLabel(project[(project.IndexOf(" - ", StringComparison.Ordinal) + 3)..]);
+            if (!string.IsNullOrWhiteSpace(plan.CustomerName)
+                && project.StartsWith(plan.CustomerName, StringComparison.OrdinalIgnoreCase))
+                project = CleanLabel(project[plan.CustomerName.Length..].Trim(' ', '-', '—', ':'));
+            return project;
+        }
+
+        static string QualifiedName(string normalized, string scope) => normalized switch
+        {
+            "implement solution components" => $"Implement {scope} solution components",
+            "conduct system testing" => $"Test {scope} system functions",
+            "execute unit and integration testing" => $"Execute {scope} integration validation",
+            "assess existing environment and constraints" => $"Assess the existing {scope} environment and constraints",
+            "design solution architecture" => $"Design the {scope} target architecture",
+            "conduct design review and approval" => $"Review and approve the {scope} technical design",
+            "validate assumptions and exclusions" => $"Validate {scope} assumptions and exclusions",
+            "set up staging and test environments" => $"Set up the {scope} staging and test environment",
+            "manage defects and fixes" => $"Remediate {scope} validation defects",
+            "conduct user acceptance testing" => $"Conduct {scope} user acceptance testing",
+            "develop training materials and documentation" => $"Develop {scope} runbooks and training documentation",
+            "deliver training sessions" => $"Deliver {scope} operational training",
+            "finalize implementation and prepare for go-live" => $"Prepare {scope} for production release",
+            "execute go-live and hypercare" => $"Execute {scope} go-live and hypercare",
+            "complete handover to operations" => $"Hand off {scope} to operations",
+            "conduct project closure and post-mortem" => $"Close the {scope} delivery and record lessons learned",
+            "develop project plan and schedule" => $"Develop the {scope} delivery plan and schedule",
+            "define project governance and communication plan" => $"Define {scope} project governance and communications",
+            _ => string.Empty
+        };
+
+        return plan with
+        {
+            Tasks = plan.Tasks.Select(task =>
+            {
+                if (task.IsSummary || !IsGenericTechnicalPlaceholder(task.Name)
+                    || task.CitationIds is null || task.CitationIds.Count == 0)
+                    return task;
+                var scope = ScopeLabel(task, plan);
+                if (scope.Length < 3) return task;
+                var qualified = QualifiedName((task.Name ?? string.Empty).Trim().ToLowerInvariant(), scope);
+                return qualified.Length == 0 ? task : task with { Name = qualified };
+            }).ToArray()
+        };
+    }
 
     private static bool IsGenericTechnicalPlaceholder(string? name)
     {
