@@ -342,7 +342,7 @@ public static partial class ProjectFlowHiveScheduleEngine
             {
                 Error(issues, "invalid_remaining_effort", $"{path}.remainingEffortHours", "Remaining effort cannot be negative.");
             }
-            if (!task.IsSummary)
+            if (!task.IsSummary && string.Equals(request.SourceKind, "celar_ai", StringComparison.OrdinalIgnoreCase))
             {
                 var phase = (Clean(task.Phase) ?? string.Empty).ToLowerInvariant();
                 var semanticText = string.Join(" ", new[] { task.Name, task.Description }.Concat(task.DetailedSteps ?? [])).ToLowerInvariant();
