@@ -695,11 +695,9 @@ internal static class ProjectPlanningAiOrchestrator
         catch { return default; }
     }
 
-    private static ProjectFlowHivePlanRequest ApplySchedule(
+    internal static ProjectFlowHivePlanRequest ApplyScheduleDates(
         ProjectFlowHivePlanRequest generated,
-        ProjectFlowHiveScheduleResult schedule,
-        CelarAiComposeResult composition,
-        ProjectPlanningDocumentResolution documents)
+        ProjectFlowHiveScheduleResult schedule)
     {
         var scheduledByWbs = schedule.Tasks
             .GroupBy(task => task.WbsNumber, StringComparer.OrdinalIgnoreCase)
@@ -721,7 +719,19 @@ internal static class ProjectPlanningAiOrchestrator
             Milestones = (generated.Milestones ?? []).Select(milestone =>
                 scheduledByWbs.TryGetValue(milestone.PredecessorWbs, out var predecessor)
                     ? milestone with { TargetDate = predecessor.EndDate }
-                    : milestone).ToArray(),
+                    : milestone).ToArray()
+        };
+    }
+
+    private static ProjectFlowHivePlanRequest ApplySchedule(
+        ProjectFlowHivePlanRequest generated,
+        ProjectFlowHiveScheduleResult schedule,
+        CelarAiComposeResult composition,
+        ProjectPlanningDocumentResolution documents)
+    {
+        generated = ApplyScheduleDates(generated, schedule);
+        return generated with
+        {
             SowVersion = documents.StatementOfWork?.ActiveVersionId?.ToString("D"),
             GsdVersion = documents.GeneralSolutionDesign?.ActiveVersionId?.ToString("D"),
             SourceKind = "celar_ai",
