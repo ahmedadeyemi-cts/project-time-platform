@@ -76,6 +76,10 @@ async System.Threading.Tasks.Task Database()
         CREATE TABLE project_flowhive_plans(plan_id UUID PRIMARY KEY,project_id UUID,baseline_version_number INTEGER,plan_status TEXT,baselined_at TIMESTAMPTZ);
         CREATE TABLE project_flowhive_plan_versions(plan_id UUID,version_number INTEGER,plan_payload JSONB,schedule_payload JSONB);
         CREATE TABLE project_flowhive_plan_reviews(plan_id UUID,version_number INTEGER,decision TEXT);
+        CREATE TABLE project_flowhive_working_copies(
+            project_id UUID PRIMARY KEY,plan_id UUID,working_payload JSONB NOT NULL,
+            working_revision INTEGER NOT NULL DEFAULT 1,row_version UUID NOT NULL DEFAULT gen_random_uuid(),
+            updated_by_user_id UUID,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW());
         """);
     await Sql(Table("database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql","project_flowhive_task_reminder_preferences"));
     var migration=File.ReadAllText("database/migrations/115_module_066_task_notifications.sql");
