@@ -215,6 +215,11 @@ public interface IProjectFlowHivePlanRepository
         ProjectFlowHivePlanRequest request,
         CancellationToken cancellationToken);
 
+    Task<ProjectFlowHivePersistenceResult> DeleteDraftAsync(
+        Guid actorUserId,
+        Guid planId,
+        CancellationToken cancellationToken);
+
     Task<ProjectFlowHivePersistenceResult> EstablishBaselineAsync(
         Guid actorUserId,
         Guid planId,
@@ -266,6 +271,8 @@ public sealed class LockedProjectFlowHivePlanRepository : IProjectFlowHivePlanRe
     {
         return Task.FromResult(Locked());
     }
+
+    public Task<ProjectFlowHivePersistenceResult> DeleteDraftAsync(Guid actorUserId, Guid planId, CancellationToken cancellationToken) => Task.FromResult(Locked());
 
     public Task<ProjectFlowHivePersistenceResult> EstablishBaselineAsync(
         Guid actorUserId,
