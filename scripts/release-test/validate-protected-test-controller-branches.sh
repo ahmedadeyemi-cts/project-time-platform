@@ -126,6 +126,7 @@ elif [[ "$HEAD_BRANCH" == feature/flowhive-enterprise-pm-ux-notifications-202609
     'src/frontend/project-time-web/src/project-flowhive-center.css' \
     'tests/FlowHiveNotificationTests/Program.cs' \
     'tests/flowhive-psa-react-browser.py' \
+    'tests/flowhive-team-calendar-browser.py' \
     | LC_ALL=C sort -u > "$CIT/pm-ux-notifications-expected"
   cmp -s "$CIT/diff" "$CIT/pm-ux-notifications-expected" || { diff -u "$CIT/pm-ux-notifications-expected" "$CIT/diff" >&2 || true; fail 'FlowHive PM UX and notification repair differs from its exact governed file set.'; }
   node tests/validate-systemwide-image-build-controller.mjs
