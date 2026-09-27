@@ -37,6 +37,9 @@ public static class ProjectFlowHiveModule
         app.MapPost(
             "/api/project-flowhive/plans/drafts",
             (Func<ProjectFlowHivePlanRequest, HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)SaveDraftAsync);
+        app.MapDelete(
+            "/api/project-flowhive/plans/{planId:guid}",
+            (Func<Guid, HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)DeleteDraftAsync);
         app.MapPost(
             "/api/project-flowhive/plans/{planId:guid}/baseline",
             (Func<Guid, ProjectFlowHiveBaselineRequest, HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)EstablishBaselineAsync);
@@ -180,6 +183,25 @@ public static class ProjectFlowHiveModule
         catch (Exception exception)
         {
             return PersistenceUnavailable(httpContext, exception, "save a draft");
+        }
+    }
+
+    private static async Task<IResult> DeleteDraftAsync(
+        Guid planId,
+        HttpContext httpContext,
+        IProjectFlowHivePlanRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var actor = WriteActor(httpContext);
+        if (actor is null) return WriteSessionRequired(httpContext);
+        try
+        {
+            var result = await repository.DeleteDraftAsync(actor.Value, planId, cancellationToken);
+            return PersistenceResponse(result);
+        }
+        catch (Exception exception)
+        {
+            return PersistenceUnavailable(httpContext, exception, "delete a draft");
         }
     }
 
