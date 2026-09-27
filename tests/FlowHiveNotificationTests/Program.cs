@@ -124,7 +124,9 @@ async System.Threading.Tasks.Task Database()
         await working.ExecuteNonQueryAsync();
     }
     var workingObserved=await ProjectFlowHiveNotificationSource.ScanAsync(db,"working-copy",default);
-    Check(workingObserved.Status=="healthy" && workingObserved.EventsCreated==3,"saved working WBS produces assignment and due-day events");
+    var workingEventCount=await Number("SELECT count(*) FROM enterprise_notification_events");
+    Console.WriteLine($"WORKING_WBS_NOTIFICATION status={workingObserved.Status} created={workingObserved.EventsCreated} eventCount={workingEventCount} diagnostic={workingObserved.DiagnosticCode}");
+    Check(workingObserved.Status=="healthy" && workingObserved.EventsCreated==3 && workingEventCount==3,"saved working WBS produces assignment and due-day events");
     await ProjectFlowHiveNotificationSource.ScanAsync(db,"working-repeat",default);
     Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3,"working-copy repeat scan idempotent");
     await Sql($"UPDATE project_flowhive_plans SET baseline_version_number=1; INSERT INTO project_flowhive_plan_reviews VALUES('{planId}',1,'approved_for_baseline');");
