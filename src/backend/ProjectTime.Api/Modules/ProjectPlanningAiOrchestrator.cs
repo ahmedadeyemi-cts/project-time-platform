@@ -336,15 +336,16 @@ internal static class ProjectPlanningAiOrchestrator
         var tasks = plan.Tasks.Select(task =>
         {
             if (task.IsSummary) return task;
+            var nameText = task.Name ?? string.Empty;
             var text = string.Join(" ", new[] { task.Name, task.Description }.Concat(task.DetailedSteps ?? []));
             var phase = task.Phase;
-            if (Match(text, @"\b(cutover|go-live|golive|runbook|as-built|as built|knowledge transfer|handoff|hand-off|hypercare|production transition)\b"))
+            if (Match(nameText, @"\b(cutover|go-live|golive|runbook|runbooks|as-built|as built|knowledge transfer|handoff|hand-off|handover|hypercare|production transition|train operations|training operations)\b"))
                 phase = "Release";
-            else if (Match(text, @"\b(test|testing|validate|validation|verify|verification|uat|failover|performance test|recovery test|security test|acceptance test|retest)\b")
-                && !Match(text, @"\b(test plan|test design|validation method|acceptance criteria)\b"))
+            else if (Match(nameText, @"\b(test|testing|backups?|restores?|validate|validation|verify|verification|uat|failover|performance|recovery|security review|acceptance testing|retest|drill)\b")
+                && !Match(nameText, @"\b(test plan|test design|validation method|acceptance criteria)\b"))
                 phase = "Validate";
-            else if (Match(text, @"\b(install|deploy|configure|migrate|upgrade|provision|build)\b")
-                && !Match(text, @"\b(installation approach|implementation approach|deployment approach|migration approach|upgrade approach|configuration design|build design)\b"))
+            else if (Match(nameText, @"\b(install|deploy|configure|migrate|upgrade|provision|build)\b")
+                && !Match(nameText, @"\b(installation approach|implementation approach|deployment approach|migration approach|upgrade approach|configuration design|build design)\b"))
                 phase = "Implement";
             return string.Equals(phase, task.Phase, StringComparison.Ordinal) ? task : task with { Phase = phase };
         }).ToArray();
