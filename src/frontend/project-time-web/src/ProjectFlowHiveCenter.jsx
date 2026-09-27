@@ -1411,7 +1411,7 @@ export default function ProjectFlowHiveCenter() {
         </div>
       ) : null}
 
-      {activeView === 'overview' ? <ProjectFlowHiveOverview key={selectedProjectId} plan={draftPlan} schedule={schedule} dirty={dirty} userId={portfolio?.access?.effectiveUserId} onOpenTask={(wbs) => { setActiveView('planner'); setCollapsedPhases(new Set()); setExpandedTaskWbs(wbs); }} /> : null}
+      {activeView === 'overview' ? <ProjectFlowHiveOverview key={selectedProjectId} plan={draftPlan} schedule={schedule} dirty={dirty} userId={portfolio?.access?.effectiveUserId} onNavigate={setActiveView} onOpenTask={(wbs) => { setActiveView('planner'); setCollapsedPhases(new Set()); setExpandedTaskWbs(wbs); }} /> : null}
 
       {activeView === 'planner' ? (
         <div className="flowhive-view-panel">
