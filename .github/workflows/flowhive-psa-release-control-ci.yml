@@ -122,6 +122,7 @@ jobs:
               'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' \
               'src/frontend/project-time-web/src/ProjectFlowHivePlannerReview.jsx' \
               'tests/flowhive-psa-react-browser.py' \
+              'tests/flowhive-psa-review-browser.py' \
               '.github/workflows/flowhive-psa-release-control-ci.yml' \
               | LC_ALL=C sort -u > "$RUNNER_TEMP/technical-wbs-files"
             git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/technical-wbs-actual"
