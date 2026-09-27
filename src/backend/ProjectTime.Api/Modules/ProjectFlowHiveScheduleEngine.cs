@@ -346,7 +346,7 @@ public static partial class ProjectFlowHiveScheduleEngine
             {
                 var phase = (Clean(task.Phase) ?? string.Empty).ToLowerInvariant();
                 var semanticText = string.Join(" ", new[] { task.Name, task.Description }.Concat(task.DetailedSteps ?? [])).ToLowerInvariant();
-                var installation = Regex.IsMatch(semanticText, @"\b(install|installation|deploy|deployment|configure|configuration|migrate|migration|upgrade|provision|build)\b", RegexOptions.CultureInvariant);
+                var installation = Regex.IsMatch(semanticText, @"\b(install|deploy|configure|migrate|upgrade|provision|build)\b", RegexOptions.CultureInvariant);
                 var testing = Regex.IsMatch(semanticText, @"\b(test|testing|validate|validation|verify|verification|uat|failover|performance test|recovery test|security test|acceptance test|retest)\b", RegexOptions.CultureInvariant);
                 var releaseWork = Regex.IsMatch(semanticText, @"\b(cutover|go-live|golive|runbook|as-built|as built|knowledge transfer|handoff|hand-off|hypercare|production transition)\b", RegexOptions.CultureInvariant);
                 if (installation && phase == "design")
