@@ -138,6 +138,7 @@ elif [[ "$HEAD_BRANCH" == fix/flowhive-live-normalize-and-replace-invalid-ai-dra
     '.github/workflows/pr1140-uat-recovery-ci.yml' \
     'scripts/release-test/validate-protected-test-controller-branches.sh' \
     'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' \
+    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs' \
     'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' \
     'tests/FlowHiveExecutablePlanTests/Program.cs' \
     | LC_ALL=C sort -u > "$CIT/live-normalize-expected"
