@@ -144,6 +144,19 @@ elif [[ "$HEAD_BRANCH" == fix/flowhive-live-normalize-and-replace-invalid-ai-dra
     | LC_ALL=C sort -u > "$CIT/live-normalize-expected"
   cmp -s "$CIT/diff" "$CIT/live-normalize-expected" || { diff -u "$CIT/live-normalize-expected" "$CIT/diff" >&2 || true; fail 'FlowHive live normalization repair differs from its exact governed file set.'; }
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/flowhive-unified-phase-contract-uat-20260927 ]]; then
+  printf '%s\n' \
+    '.github/workflows/flowhive-enterprise-psa-ci.yml' \
+    '.github/workflows/uat-migration-throttle-recovery-ci.yml' \
+    '.github/workflows/pr1151-uat-supersession-ci.yml' \
+    '.github/workflows/pr1140-uat-recovery-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' \
+    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs' \
+    'tests/FlowHiveExecutablePlanTests/Program.cs' \
+    | LC_ALL=C sort -u > "$CIT/unified-phase-contract-expected"
+  cmp -s "$CIT/diff" "$CIT/unified-phase-contract-expected" || { diff -u "$CIT/unified-phase-contract-expected" "$CIT/diff" >&2 || true; fail 'FlowHive unified phase-contract repair differs from its exact governed file set.'; }
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   node tests/validate-systemwide-image-build-controller.mjs

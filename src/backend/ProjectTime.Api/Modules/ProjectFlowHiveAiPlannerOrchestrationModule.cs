@@ -1158,9 +1158,29 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         }
 
         var validation = ProjectFlowHiveScheduleEngine.Validate(plan);
-        if (validation.Valid || validation.Issues.Count == 0) return false;
-        return validation.Issues.All(issue =>
-            issue.Code.StartsWith("phase_semantics_", StringComparison.OrdinalIgnoreCase));
+        if (validation.Valid || validation.Issues.Count == 0
+            || !validation.Issues.All(issue =>
+                issue.Code.StartsWith("phase_semantics_", StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        // Protect every PM-editable field. Automatic replacement is allowed only
+        // when the working payload is byte-for-byte equivalent at the JSONB level
+        // to a previously auto-persisted AI run. Any PM edit breaks this equality
+        // and falls back to the normal candidate-review path.
+        await using var provenance = new NpgsqlCommand($"""
+            SELECT EXISTS(
+                SELECT 1
+                FROM {RunTable}
+                WHERE project_id=@project
+                  AND phase='working_draft_ready'
+                  AND status IN ('completed','completed_with_schedule_overrun')
+                  AND generated_plan IS NOT NULL
+                  AND generated_plan=@payload::jsonb
+            );
+            """, connection, transaction);
+        provenance.Parameters.AddWithValue("project", projectId);
+        provenance.Parameters.AddWithValue("payload", payload);
+        return await provenance.ExecuteScalarAsync(cancellationToken) is true;
     }
 
     private static async Task<bool> IsReplaceableLegacyAiWorkingCopyAsync(

@@ -89,6 +89,14 @@ var retainedDesignTask = result.Tasks!.Single(task => task.WbsNumber == "2.1") w
     Name = "Target architecture and logical design",
     Phase = "Design"
 };
+var configureBackupsTask = retainedDesignTask with
+{
+    ClientTaskId = Guid.NewGuid(),
+    WbsNumber = "2.3",
+    Name = "Configure Backups",
+    Description = "Configure backup policy and destinations; validation and restore testing occur later.",
+    Phase = "Design"
+};
 var phaseRepairInput = result with
 {
     SourceKind = "celar_ai",
@@ -100,11 +108,13 @@ var phaseRepairInput = result with
             "4.1" => task with { Name = "Runbook and Documentation", Phase = "Validate" },
             _ => task
         }),
-        retainedDesignTask
+        retainedDesignTask,
+        configureBackupsTask
     ],
     Assignments = [
         .. result.Assignments!,
-        new ProjectFlowHivePlanAssignmentInput("2.2", null, "Unassigned — Solution Architect", 100m, retainedDesignTask.RemainingEffortHours)
+        new ProjectFlowHivePlanAssignmentInput("2.2", null, "Unassigned — Solution Architect", 100m, retainedDesignTask.RemainingEffortHours),
+        new ProjectFlowHivePlanAssignmentInput("2.3", null, "Unassigned — Engineer", 100m, configureBackupsTask.RemainingEffortHours)
     ]
 };
 var phaseRepair = ProjectFlowHiveScheduleEngine.NormalizeAiPhaseSemantics(phaseRepairInput);
@@ -114,6 +124,8 @@ Check(phaseRepair.Tasks!.Single(task => task.Name == "Backup Validation Testing"
     "testing task is normalized into Validate");
 Check(phaseRepair.Tasks!.Single(task => task.Name == "Runbook and Documentation").Phase == "Release",
     "runbook task is normalized into Release");
+Check(phaseRepair.Tasks!.Single(task => task.Name == "Configure Backups").Phase == "Implement",
+    "backup configuration remains implementation work despite testing language in its description");
 var phaseRepairValidation = ProjectFlowHiveScheduleEngine.Validate(phaseRepair);
 if (!phaseRepairValidation.Valid)
     Console.WriteLine("PHASE_REPAIR_ISSUES=" + string.Join(" | ", phaseRepairValidation.Issues.Select(issue => $"{issue.Code}:{issue.Path}:{issue.Message}")));
