@@ -382,7 +382,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
             return await Wait("needs_attention");
         if (!documents.ReadyForGeneration) return await Wait("waiting_documents");
         var run = await GetOrCreateRunInTransactionAsync(connection, transaction, project,
-            new ProjectFlowHiveAiPlannerRunRequest(plan, "Use the current SOW Service Overview and Scope of Services, supported by the GSD and attached project documents, to create the first detailed five-phase WBS for PM review.",
+            new ProjectFlowHiveAiPlannerRunRequest(plan, "Automatically create the complete engineering WBS from the authoritative SOW. Decompose every scoped technology, product, version, upgrade, migration, configuration, integration, quantity, dependency, cutover activity, rollback requirement, validation obligation, and technical deliverable into concrete executable steps. Generic project-management or lifecycle placeholders are not acceptable substitutes for technical scope. Reconcile untouched AI placeholder work automatically and surface only genuine conflicts or missing SOW facts to the PM.",
                 HasWorkingCopyExpectation: true), new PlannerAccess(actor, actor), $"auto-first-draft-{project:N}", token);
         await using (var update = new NpgsqlCommand("UPDATE project_flowhive_auto_plans SET run_id=@run,status='generating',checked_at=NOW(),updated_at=NOW() WHERE project_id=@project AND run_id IS NULL;", connection, transaction))
         {

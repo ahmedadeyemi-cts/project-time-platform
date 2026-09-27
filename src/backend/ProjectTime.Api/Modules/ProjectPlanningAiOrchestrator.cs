@@ -45,7 +45,7 @@ internal static class ProjectPlanningAiOrchestrator
             requestedOutcome,
             4_000,
             "Create a complete source-backed project planning draft. Return distinct, project-specific executable tasks in Plan, Design, Implement, Validate, and Release. Assign each task to its own phase exactly once; never repeat every work package across all five phases. Include detailed steps, products, platforms, versions, licensing, quantities, tools, systems, interfaces, access, inputs, outputs, responsibilities, acceptance, validation, rollback, risks, assumptions, open questions, roles, effort, duration, predecessors, and citations. Never fabricate missing information; convert it into open questions.");
-        outcome += "\nReturn at least one detailed child task in each of Plan, Design, Implement, Validate, and Release, with unique WBS references, at least two distinct execution steps, inputs, outputs, acceptance criteria, validation steps, required roles, positive effort/duration estimates, and current evidence citations. Use task-specific technical descriptions, not document titles, repeated phase boilerplate, or instructions to convert scope into work. Do not automatically create project milestones. The PM reviews proposed estimates and scope before baseline approval.";
+        outcome += "\nThe WBS exists to tell delivery engineers exactly what technical work must be performed from the authoritative SOW scope. Decompose every in-scope product, platform, version, migration, upgrade, configuration, integration, quantity, dependency, validation obligation, cutover requirement, and deliverable into concrete executable technical tasks. Name the actual technology and technical action whenever the SOW provides it. Generic placeholders such as implement solution components, conduct system testing, assess environment, design solution architecture, finalize implementation, or similar lifecycle boilerplate do not satisfy the contract and must not be returned as substitutes for scoped technical work. Project-management activities may supplement but never replace technical scope. Return at least one detailed child task in each of Plan, Design, Implement, Validate, and Release, with unique WBS references, at least two distinct execution steps, inputs, outputs, acceptance criteria, validation steps, required roles, positive effort/duration estimates, and current SOW evidence citations. Do not automatically create project milestones. The PM should review exceptions and business constraints, not reconstruct the technical plan.";
 
         // Project Forge is a review projection of the same governed planning graph,
         // not a reason to invoke the model a second time behind an HTTP gateway.
@@ -264,6 +264,28 @@ internal static class ProjectPlanningAiOrchestrator
                     .ToArray());
         }
 
+        var genericTechnicalTasks = generated.Tasks
+            .Where(task => !task.IsSummary && IsGenericTechnicalPlaceholder(task.Name))
+            .Select(task => $"{task.WbsNumber} {task.Name}")
+            .ToArray();
+        if (genericTechnicalTasks.Length > 0)
+        {
+            return new ProjectPlanningGenerationResult(
+                false,
+                "project_planning_technical_scope_insufficient",
+                "The generated WBS contained generic lifecycle placeholders instead of the technical work required by the SOW. No working draft was changed.",
+                composition,
+                null,
+                null,
+                null,
+                genericTechnicalTasks
+                    .Select(task => $"Replace generic task with SOW-specific technical work: {task}")
+                    .ToArray(),
+                composition.Warnings.Concat(documents.Warnings)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray());
+        }
+
         var validation = ProjectFlowHiveScheduleEngine.Validate(generated);
         var schedule = ProjectFlowHiveScheduleEngine.Calculate(generated);
         generated = ApplySchedule(generated, schedule, composition, documents);
@@ -299,6 +321,34 @@ internal static class ProjectPlanningAiOrchestrator
             schedule,
             composition.MissingEvidence,
             warnings);
+    }
+
+    private static bool IsGenericTechnicalPlaceholder(string? name)
+    {
+        var normalized = (name ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) return true;
+        string[] placeholders =
+        [
+            "implement solution components",
+            "conduct system testing",
+            "execute unit and integration testing",
+            "assess existing environment and constraints",
+            "design solution architecture",
+            "conduct design review and approval",
+            "validate assumptions and exclusions",
+            "set up staging and test environments",
+            "manage defects and fixes",
+            "conduct user acceptance testing",
+            "develop training materials and documentation",
+            "deliver training sessions",
+            "finalize implementation and prepare for go-live",
+            "execute go-live and hypercare",
+            "complete handover to operations",
+            "conduct project closure and post-mortem",
+            "develop project plan and schedule",
+            "define project governance and communication plan"
+        ];
+        return placeholders.Any(placeholder => normalized == placeholder);
     }
 
     internal static bool IsSourceGroundedFailSafePlan(PulseAiPrivateFlowHivePlan? plan)

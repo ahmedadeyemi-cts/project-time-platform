@@ -88,6 +88,7 @@ async def run_case(browser, mode='normal', width=1400, dark=False):
     if mode=='late':
         await page.wait_for_timeout(30)
         await page.evaluate('(id)=>window.remount({projectId:id})',OTHER)
+        await page.locator('details.flowhive-advanced-reconciliation > summary').click()
         await page.get_by_text('Existing scoped activity',exact=False).wait_for()
         await page.wait_for_timeout(300)
         await page.get_by_role('button',name='Retain all existing activities separately').click()
@@ -101,6 +102,7 @@ async def run_case(browser, mode='normal', width=1400, dark=False):
         check(await page.get_by_role('button',name='Preview merged work breakdown',exact=True).count()==0,'wrong-project review is rejected before choices or saving')
         check(not any(body for _,body in calls),'wrong-project read makes no write requests')
     else:
+        await page.locator('details.flowhive-advanced-reconciliation > summary').click()
         await page.get_by_text('Existing scoped activity',exact=False).wait_for()
         check(len(calls)==1 and calls[0][1] is None,'loading an existing proposal performs only a read')
         check(await page.get_by_text('Proposed Implement activity',exact=True).count()==1,'actual reviewer renders phase-specific proposed work')

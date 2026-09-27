@@ -86,7 +86,7 @@ export default function ProjectFlowHivePlannerReview({ projectId, runId, getJson
   const schedule = preview?.schedule || review?.candidateSchedule;
   return <section className="flowhive-planner-review" aria-label="Review generated work breakdown">
     <header><div><h3>AI Planner work breakdown — {preview ? 'reviewed merge preview' : 'saved proposal'}</h3>
-      <p>The AI proposal is stored separately. Your working tasks, milestones and assignments remain unchanged until you preview and apply a merge.</p></div>
+      <p>FlowHive prepared a technical plan from the SOW. Existing work is preserved automatically; use the detailed reconciliation controls below only when FlowHive identifies a genuine conflict.</p></div>
       {onRegenerate ? <button type="button" onClick={onRegenerate} disabled={Boolean(busy) || !canEdit || uncertain}>Generate another proposal</button> : null}</header>
     {busy === 'loading' ? <p role="status">Loading the saved proposal and current working plan…</p> : null}
     {error ? <div><p role="alert" className="flowhive-review-error">{error}</p>
@@ -103,7 +103,7 @@ export default function ProjectFlowHivePlannerReview({ projectId, runId, getJson
             <p>Acceptance: {(task.acceptanceCriteria || []).join(' ')}</p><small>Private citations: {(task.citationIds || []).join(', ') || 'Existing work'}</small>
           </details></td><td>{dates?.startDate || 'Not scheduled'}</td><td>{dates?.endDate || 'Not scheduled'}</td><td>{task.remainingEffortHours} h</td></tr>;
         })}</tbody></table></div>
-      <h4>Reconcile existing work</h4>
+      <details className="flowhive-advanced-reconciliation"><summary>Advanced reconciliation — only needed for conflicts or previously edited work</summary><h4>Reconcile existing work</h4>
       <p>Retain an existing activity as separate work, or map it to the corresponding AI activity. Mapped activities keep their identity, progress, scheduling constraints, notes and existing assignments. Every existing milestone and dependency is preserved with its reviewed task reference.</p>
       {existing.length ? <button type="button" disabled={Boolean(busy) || uncertain} onClick={() => {
         setChoices(Object.fromEntries(existing.map(task => [task.wbsNumber, '']))); invalidatesPreview();
@@ -121,6 +121,7 @@ export default function ProjectFlowHivePlannerReview({ projectId, runId, getJson
       <label className="flowhive-review-note">Review note<textarea aria-label="Regeneration review note" value={note} maxLength="4000" rows="3" disabled={Boolean(busy) || uncertain}
         onChange={event => { setNote(event.target.value); invalidatesPreview(); }} placeholder="Explain the task mappings and confirm that retained work is not duplicate scope." /></label>
       <button type="button" onClick={previewMerge} disabled={!ready || Boolean(busy) || uncertain || !canEdit || hasLocalEdits}>{busy === 'preview' ? 'Calculating reviewed schedule…' : 'Preview merged work breakdown'}</button>
+      </details>
       {preview ? <div className="flowhive-review-confirm">
         <p>{preview.reviewSummary.mappedTaskCount} mapped · {preview.reviewSummary.retainedTaskCount} retained separately · {preview.reviewSummary.preservedMilestoneCount} milestones preserved.
           Planned hours: {preview.reviewSummary.previousPlannedHours} → {preview.reviewSummary.plannedHours}. Calculated finish: {preview.schedule.projectFinishDate}.</p>
