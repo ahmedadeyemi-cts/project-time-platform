@@ -130,6 +130,19 @@ elif [[ "$HEAD_BRANCH" == feature/flowhive-enterprise-pm-ux-notifications-202609
     | LC_ALL=C sort -u > "$CIT/pm-ux-notifications-expected"
   cmp -s "$CIT/diff" "$CIT/pm-ux-notifications-expected" || { diff -u "$CIT/pm-ux-notifications-expected" "$CIT/diff" >&2 || true; fail 'FlowHive PM UX and notification repair differs from its exact governed file set.'; }
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/flowhive-live-normalize-and-replace-invalid-ai-draft-20260927 ]]; then
+  printf '%s\n' \
+    '.github/workflows/flowhive-enterprise-psa-ci.yml' \
+    '.github/workflows/uat-migration-throttle-recovery-ci.yml' \
+    '.github/workflows/pr1151-uat-supersession-ci.yml' \
+    '.github/workflows/pr1140-uat-recovery-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' \
+    'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' \
+    'tests/FlowHiveExecutablePlanTests/Program.cs' \
+    | LC_ALL=C sort -u > "$CIT/live-normalize-expected"
+  cmp -s "$CIT/diff" "$CIT/live-normalize-expected" || { diff -u "$CIT/live-normalize-expected" "$CIT/diff" >&2 || true; fail 'FlowHive live normalization repair differs from its exact governed file set.'; }
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/module064-authoritative-model-catalog-20260920 ]]; then
   python3 tests/module064-authoritative-model-catalog-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
