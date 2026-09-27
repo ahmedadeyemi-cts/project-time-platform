@@ -76,6 +76,10 @@ async System.Threading.Tasks.Task Database()
         CREATE TABLE project_flowhive_plans(plan_id UUID PRIMARY KEY,project_id UUID,baseline_version_number INTEGER,plan_status TEXT,baselined_at TIMESTAMPTZ);
         CREATE TABLE project_flowhive_plan_versions(plan_id UUID,version_number INTEGER,plan_payload JSONB,schedule_payload JSONB);
         CREATE TABLE project_flowhive_plan_reviews(plan_id UUID,version_number INTEGER,decision TEXT);
+        CREATE TABLE project_flowhive_working_copies(
+            project_id UUID PRIMARY KEY,plan_id UUID,working_payload JSONB NOT NULL,
+            working_revision INTEGER NOT NULL DEFAULT 1,row_version UUID NOT NULL DEFAULT gen_random_uuid(),
+            updated_by_user_id UUID,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW());
         """);
     await Sql(Table("database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql","project_flowhive_task_reminder_preferences"));
     var migration=File.ReadAllText("database/migrations/115_module_066_task_notifications.sql");
@@ -91,12 +95,12 @@ async System.Threading.Tasks.Task Database()
     await Sql("UPDATE enterprise_notification_policies SET delivery_boundary='test_only' WHERE policy_code='FLOWHIVE_TASK_DUE';");
     var planId=Guid.NewGuid();
     await Sql($"INSERT INTO app_users VALUES('{owner}','Fixture engineer','engineer@example.invalid',TRUE),('{pm}','Fixture PM','pm@example.invalid',TRUE); INSERT INTO projects VALUES('{project}','NOTIFY-FIXTURE','active','{pm}');");
-    await Sql($"INSERT INTO project_flowhive_task_reminder_preferences(project_id,enabled,lead_days,timezone_name,quiet_hours_start,quiet_hours_end,updated_by_user_id) VALUES('{project}',TRUE,ARRAY[3,0]::SMALLINT[],'UTC',NULL,NULL,'{pm}');");
+    await Sql($"INSERT INTO project_flowhive_task_reminder_preferences(project_id,enabled,lead_days,timezone_name,quiet_hours_start,quiet_hours_end,updated_by_user_id) VALUES('{project}',TRUE,ARRAY[3,2,1,0]::SMALLINT[],'UTC',NULL,NULL,'{pm}');");
     var today=DateOnly.FromDateTime(DateTime.UtcNow);
     var plan=new ProjectFlowHivePlanRequest(project,"NOTIFY-FIXTURE","Fixture",null,"Fixture","1",today,today.AddDays(20),
-        [new(task.Id,null,"1.1",null,task.Name,"Fixture",1,false,null,null,0,8,"not_started")],[],[new("1.1",owner,"Fixture engineer",100,8)],null,null,null);
+        [new(task.Id,null,"1",null,task.Name,"Fixture",1,false,null,null,0,8,"not_started")],[],[new("1",owner,"Fixture engineer",100,8)],null,null,null);
     var schedule=new ProjectFlowHiveScheduleResult(true,"scheduled",today,today.AddDays(20),today,1,1,8,
-        [new("1.1",null,task.Name,today,today,1,0,0,0,0,true,false,0,8,"not_started")],[],"weekdays","test");
+        [new("1",null,task.Name,today,today,1,0,0,0,0,true,false,0,8,"not_started")],[],"weekdays","test");
     var json=new JsonSerializerOptions(JsonSerializerDefaults.Web);
     async System.Threading.Tasks.Task Save(int version,ProjectFlowHivePlanRequest value)
     {
@@ -105,14 +109,37 @@ async System.Threading.Tasks.Task Database()
         cmd.Parameters.AddWithValue("payload",JsonSerializer.Serialize(value,json));cmd.Parameters.AddWithValue("schedule",JsonSerializer.Serialize(schedule,json));
         await cmd.ExecuteNonQueryAsync();
     }
+    async System.Threading.Tasks.Task SaveWorking(ProjectFlowHivePlanRequest value)
+    {
+        await using var cmd=new NpgsqlCommand("""
+            INSERT INTO project_flowhive_working_copies(project_id,plan_id,working_payload,updated_by_user_id)
+            VALUES(@project,@plan,@payload::jsonb,@actor)
+            ON CONFLICT(project_id) DO UPDATE
+            SET working_payload=EXCLUDED.working_payload,
+                working_revision=project_flowhive_working_copies.working_revision+1,
+                row_version=gen_random_uuid(),
+                updated_by_user_id=EXCLUDED.updated_by_user_id,
+                updated_at=NOW();
+            """,db);
+        cmd.Parameters.AddWithValue("project",project);
+        cmd.Parameters.AddWithValue("plan",planId);
+        cmd.Parameters.AddWithValue("payload",JsonSerializer.Serialize(value,json));
+        cmd.Parameters.AddWithValue("actor",pm);
+        await cmd.ExecuteNonQueryAsync();
+    }
     await Sql($"INSERT INTO project_flowhive_plans VALUES('{planId}','{project}',NULL,'draft',NOW());");await Save(1,plan);
     await ProjectFlowHiveNotificationSource.ScanAsync(db,"fixture",default);
-    Check(await Number("SELECT count(*) FROM enterprise_notification_events")==0,"draft emits no messages");
+    Check(await Number("SELECT count(*) FROM enterprise_notification_events")==0,"unsaved draft emits no messages");
+    await SaveWorking(plan);
+    var workingObserved=await ProjectFlowHiveNotificationSource.ScanAsync(db,"working-copy",default);
+    var workingEventCount=await Number("SELECT count(*) FROM enterprise_notification_events");
+    Console.WriteLine($"WORKING_WBS_NOTIFICATION status={workingObserved.Status} created={workingObserved.EventsCreated} eventCount={workingEventCount} diagnostic={workingObserved.DiagnosticCode}");
+    Check(workingObserved.Status=="healthy" && workingObserved.EventsCreated==3 && workingEventCount==3,"saved working WBS produces assignment and scheduled due reminders");
+    await ProjectFlowHiveNotificationSource.ScanAsync(db,"working-repeat",default);
+    Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3,"working-copy repeat scan idempotent");
     await Sql($"UPDATE project_flowhive_plans SET baseline_version_number=1; INSERT INTO project_flowhive_plan_reviews VALUES('{planId}',1,'approved_for_baseline');");
     var observed=await ProjectFlowHiveNotificationSource.ScanAsync(db,"fixture",default);
-    Check(observed.Status=="healthy" && observed.EventsCreated==3,"approved WBS produces assignment and due-day events");
-    await ProjectFlowHiveNotificationSource.ScanAsync(db,"fixture",default);
-    Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3,"repeat scan idempotent");
+    Check(observed.Status=="healthy" && observed.EventsCreated==0,"baseline adoption does not duplicate working-copy notifications");
     await Sql("DELETE FROM project_flowhive_notification_state;");
     await ProjectFlowHiveNotificationSource.ScanAsync(db,"crash-retry",default);
     Check(await Number("SELECT count(*) FROM enterprise_notification_events")==3,"crash before checkpoint replays without loss or duplicates");
@@ -150,10 +177,14 @@ async System.Threading.Tasks.Task Database()
     Check(!(await ProjectFlowHiveNotificationSource.ValidateAsync(db,events[0],default)).Current,"disabled before dispatch suppresses");
     await Sql("UPDATE project_flowhive_task_reminder_preferences SET enabled=TRUE,delivery_boundary='production_governed';");
     Check((await ProjectFlowHiveNotificationSource.ValidateAsync(db,events[0],default)).Boundary=="test_only","test events cannot later become live");
-    await Save(2,plan with { Assignments=[] });
+    var unassignedPlan=plan with { Assignments=[] };
+    await Save(2,unassignedPlan);
+    await SaveWorking(unassignedPlan);
     await Sql($"UPDATE project_flowhive_plans SET baseline_version_number=2; INSERT INTO project_flowhive_plan_reviews VALUES('{planId}',2,'approved_for_baseline');");
     Check(!(await ProjectFlowHiveNotificationSource.ValidateAsync(db,ownerEvent,default)).Current,"removed assignee suppressed before delivery");
-    await Save(3,plan with { Tasks=[plan.Tasks![0] with { PercentComplete=100,Status="complete" }] });
+    var completedPlan=plan with { Tasks=[plan.Tasks![0] with { PercentComplete=100,Status="complete" }] };
+    await Save(3,completedPlan);
+    await SaveWorking(completedPlan);
     await Sql($"UPDATE project_flowhive_plans SET baseline_version_number=3; INSERT INTO project_flowhive_plan_reviews VALUES('{planId}',3,'approved_for_baseline');");
     Check(!(await ProjectFlowHiveNotificationSource.ValidateAsync(db,events[0],default)).Current,"completed before dispatch suppresses");
     var suppressed=await EnterpriseNotificationOrchestrationService.ProcessEventAsync(db,ownerEvent,null,null,"fixture-stale",default);

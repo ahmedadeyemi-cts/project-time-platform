@@ -73,7 +73,7 @@ async def main():
                   assignments:[{taskWbs:'1.1',resourceUserId:'engineer',resourceDisplayName:'Fixture engineer'}]},
             schedule:{valid:true,projectFinishDate:today,tasks:[{wbsNumber:'1.1',endDate:today,isCritical:true}]}});
         }""")
-        await page.get_by_role('heading',name='What needs attention').wait_for()
+        await page.get_by_role('heading',name='Project command center').wait_for()
         await page.get_by_role('button',name='My work 1',exact=True).click()
         assert await page.locator('tbody tr').count()==1
         await page.get_by_role('button',name='1.1 · Configure test service',exact=True).click()

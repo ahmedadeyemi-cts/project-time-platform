@@ -20,6 +20,7 @@ internal static class ProjectFlowHiveNotificationSource
             SELECT to_regclass('public.project_flowhive_notification_state') IS NOT NULL
                 AND to_regclass('public.project_flowhive_plan_versions') IS NOT NULL
                 AND to_regclass('public.project_flowhive_plan_reviews') IS NOT NULL
+                AND to_regclass('public.project_flowhive_working_copies') IS NOT NULL
                 AND to_regclass('public.enterprise_notification_policies') IS NOT NULL;
             """, connection);
         if (await tables.ExecuteScalarAsync(token) is not true) return false;
@@ -38,7 +39,12 @@ internal static class ProjectFlowHiveNotificationSource
             return EnterpriseNotificationSourceObservation.Unavailable(source, "066", "MIGRATION_115_REQUIRED",
                 "FlowHive task notification migration 115 is required.");
         var projects = new List<Guid>();
-        await using (var query = new NpgsqlCommand("SELECT DISTINCT project_id FROM project_flowhive_plans WHERE baseline_version_number IS NOT NULL AND plan_status <> 'archived';", connection))
+        await using (var query = new NpgsqlCommand("""
+            SELECT DISTINCT project_id FROM project_flowhive_working_copies
+            UNION
+            SELECT DISTINCT project_id FROM project_flowhive_plans
+            WHERE baseline_version_number IS NOT NULL AND plan_status <> 'archived';
+            """, connection))
         await using (var reader = await query.ExecuteReaderAsync(token))
             while (await reader.ReadAsync(token)) projects.Add(reader.GetGuid(0));
         var created = 0;
@@ -161,20 +167,26 @@ internal static class ProjectFlowHiveNotificationSource
     private static async System.Threading.Tasks.Task<Snapshot?> LoadAsync(NpgsqlConnection connection, Guid project, CancellationToken token)
     {
         const string sql = """
-            SELECT plan.plan_id,plan.baseline_version_number,p.project_code,p.project_manager_user_id,
-                   v.plan_payload::text,v.schedule_payload::text,to_jsonb(pref)::text,
-                   COALESCE(s.state,'{}'::jsonb)::text
+            SELECT p.project_code,p.project_manager_user_id,
+                   wc.working_revision,wc.row_version,wc.working_payload::text,
+                   plan.plan_id,plan.baseline_version_number,v.plan_payload::text,v.schedule_payload::text,
+                   to_jsonb(pref)::text,COALESCE(s.state,'{}'::jsonb)::text
             FROM projects p
-            JOIN LATERAL (
+            LEFT JOIN project_flowhive_working_copies wc ON wc.project_id=p.project_id
+            LEFT JOIN LATERAL (
                 SELECT f.* FROM project_flowhive_plans f
                 WHERE f.project_id=p.project_id AND f.baseline_version_number IS NOT NULL AND f.plan_status <> 'archived'
                 ORDER BY f.baselined_at DESC,f.plan_id LIMIT 1
             ) plan ON TRUE
-            JOIN project_flowhive_plan_versions v ON v.plan_id=plan.plan_id AND v.version_number=plan.baseline_version_number
-            JOIN project_flowhive_plan_reviews r ON r.plan_id=plan.plan_id AND r.version_number=plan.baseline_version_number AND r.decision='approved_for_baseline'
+            LEFT JOIN project_flowhive_plan_versions v
+              ON v.plan_id=plan.plan_id AND v.version_number=plan.baseline_version_number
+            LEFT JOIN project_flowhive_plan_reviews r
+              ON r.plan_id=plan.plan_id AND r.version_number=plan.baseline_version_number AND r.decision='approved_for_baseline'
             LEFT JOIN project_flowhive_task_reminder_preferences pref ON pref.project_id=p.project_id
             LEFT JOIN project_flowhive_notification_state s ON s.project_id=p.project_id
-            WHERE p.project_id=@project AND lower(p.status) NOT IN ('closed','completed','cancelled','canceled','archived');
+            WHERE p.project_id=@project
+              AND lower(p.status) NOT IN ('closed','completed','cancelled','canceled','archived')
+              AND (wc.project_id IS NOT NULL OR r.plan_id IS NOT NULL);
             """;
         Snapshot? snapshot;
         await using (var command = new NpgsqlCommand(sql, connection))
@@ -182,24 +194,54 @@ internal static class ProjectFlowHiveNotificationSource
             command.Parameters.AddWithValue("project", project);
             await using var reader = await command.ExecuteReaderAsync(token);
             if (!await reader.ReadAsync(token)) return null;
+
             var settings = Default;
-            if (!reader.IsDBNull(6))
+            if (!reader.IsDBNull(9))
             {
-                using var doc = JsonDocument.Parse(reader.GetString(6));
+                using var doc = JsonDocument.Parse(reader.GetString(9));
                 var pref = doc.RootElement;
-                TimeSpan? Time(string key) => pref.GetProperty(key).ValueKind == JsonValueKind.Null ? null : TimeSpan.Parse(pref.GetProperty(key).GetString()!, System.Globalization.CultureInfo.InvariantCulture);
-                settings = new(pref.GetProperty("enabled").GetBoolean(),
+                TimeSpan? Time(string key) => pref.GetProperty(key).ValueKind == JsonValueKind.Null
+                    ? null
+                    : TimeSpan.Parse(pref.GetProperty(key).GetString()!, System.Globalization.CultureInfo.InvariantCulture);
+                settings = new(
+                    pref.GetProperty("enabled").GetBoolean(),
                     pref.GetProperty("lead_days").EnumerateArray().Select(v => v.GetInt16()).ToArray(),
-                    pref.GetProperty("include_project_manager").GetBoolean(), pref.GetProperty("include_assigned_team_members").GetBoolean(),
-                    pref.GetProperty("include_overdue").GetBoolean(),pref.GetProperty("timezone_name").GetString()!,
-                    pref.GetProperty("delivery_boundary").GetString()!,Time("quiet_hours_start"),Time("quiet_hours_end"));
+                    pref.GetProperty("include_project_manager").GetBoolean(),
+                    pref.GetProperty("include_assigned_team_members").GetBoolean(),
+                    pref.GetProperty("include_overdue").GetBoolean(),
+                    pref.GetProperty("timezone_name").GetString()!,
+                    pref.GetProperty("delivery_boundary").GetString()!,
+                    Time("quiet_hours_start"),
+                    Time("quiet_hours_end"));
             }
-            snapshot = new(project, $"{reader.GetGuid(0):N}-{reader.GetInt32(1)}", reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetGuid(3), settings,
-                Tasks(JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(4), Json)!,
-                    JsonSerializer.Deserialize<ProjectFlowHiveScheduleResult>(reader.GetString(5), Json)!),
-                JsonSerializer.Deserialize<Dictionary<Guid,State>>(reader.GetString(7), Json)!);
+
+            ProjectFlowHivePlanRequest plan;
+            ProjectFlowHiveScheduleResult schedule;
+            string revision;
+            if (!reader.IsDBNull(4))
+            {
+                plan = JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(4), Json)!;
+                schedule = ProjectFlowHiveScheduleEngine.Calculate(plan);
+                revision = $"working:{reader.GetInt32(2)}:{reader.GetGuid(3):N}";
+            }
+            else
+            {
+                if (reader.IsDBNull(7) || reader.IsDBNull(8)) return null;
+                plan = JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(7), Json)!;
+                schedule = JsonSerializer.Deserialize<ProjectFlowHiveScheduleResult>(reader.GetString(8), Json)!;
+                revision = $"baseline:{reader.GetGuid(5):N}:{reader.GetInt32(6)}";
+            }
+
+            snapshot = new(
+                project,
+                revision,
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetGuid(1),
+                settings,
+                Tasks(plan, schedule),
+                JsonSerializer.Deserialize<Dictionary<Guid,State>>(reader.GetString(10), Json)!);
         }
+
         // Canonical, active internal identities only. Never derive recipients from display names or emails in WBS JSON.
         var ids = snapshot.Tasks.SelectMany(t => t.Assignees).Append(snapshot.Pm ?? Guid.Empty).Distinct().ToArray();
         var active = new HashSet<Guid>();
@@ -209,7 +251,10 @@ internal static class ProjectFlowHiveNotificationSource
             await using var reader = await command.ExecuteReaderAsync(token);
             while (await reader.ReadAsync(token)) active.Add(reader.GetGuid(0));
         }
-        return snapshot with { Pm = snapshot.Pm.HasValue && active.Contains(snapshot.Pm.Value) ? snapshot.Pm : null,
-            Tasks = snapshot.Tasks.Select(t => t with { Assignees=t.Assignees.Where(active.Contains).ToArray() }).ToArray() };
+        return snapshot with
+        {
+            Pm = snapshot.Pm.HasValue && active.Contains(snapshot.Pm.Value) ? snapshot.Pm : null,
+            Tasks = snapshot.Tasks.Select(t => t with { Assignees=t.Assignees.Where(active.Contains).ToArray() }).ToArray()
+        };
     }
 }

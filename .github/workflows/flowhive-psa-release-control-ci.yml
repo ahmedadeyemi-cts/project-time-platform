@@ -116,6 +116,27 @@ jobs:
             python3 tests/flowhive-frontend-convergence-marker-scope.py
           elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-protected-uat-idempotent-20260927 ]]; then
             python3 tests/flowhive-protected-uat-idempotent-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == feature/flowhive-enterprise-pm-ux-notifications-20260927 ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-enterprise-psa-ci.yml' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/pr1140-uat-recovery-ci.yml' \
+              '.github/workflows/pr1151-uat-supersession-ci.yml' \
+              '.github/workflows/uat-migration-throttle-recovery-ci.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveNotificationSource.cs' \
+              'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx' \
+              'src/frontend/project-time-web/src/ProjectFlowHiveOverview.jsx' \
+              'src/frontend/project-time-web/src/ProjectFlowHivePsaWorkspace.jsx' \
+              'src/frontend/project-time-web/src/project-flowhive-center.css' \
+              'tests/FlowHiveNotificationTests/Program.cs' \
+              'tests/flowhive-psa-react-browser.py' \
+              'tests/flowhive-team-calendar-browser.py' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/pm-ux-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/pm-ux-actual"
+            cmp -s "$RUNNER_TEMP/pm-ux-files" "$RUNNER_TEMP/pm-ux-actual" || { diff -u "$RUNNER_TEMP/pm-ux-files" "$RUNNER_TEMP/pm-ux-actual" >&2 || true; exit 1; }
+            dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore 2>/dev/null || dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+            exit 0
           elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-sow-technical-wbs-automation-20260927 ]]; then
             printf '%s\n' \
               'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAutomation.cs' \
