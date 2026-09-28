@@ -48,6 +48,11 @@ jobs:
           git diff --name-only origin/main...HEAD | LC_ALL=C sort -u > "$RUNNER_TEMP/module-management-actual.txt"
 
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == 'codex/module060-approval-contract-funding' ]]; then
+            python3 tests/contracts-release/scope.py
+            python3 tests/contracts-release/test_scope.py
+            exit 0
+          fi
           if [[ "$HEAD_BRANCH" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then
             python3 tests/notification-parity/release_scope.py
             python3 tests/notification-parity/test_release_scope.py

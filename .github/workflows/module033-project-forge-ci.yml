@@ -71,6 +71,13 @@ jobs:
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
           PROTECTED_DEPLOYMENT="$(grep -E '^(deployment/|src/frontend/project-time-web/Dockerfile)' <<<"$CHANGED" || true)"
+          if [[ "$HEAD_BRANCH" == 'codex/module060-approval-contract-funding' ]]; then
+            python3 tests/contracts-release/scope.py
+            PROTECTED_DEPLOYMENT="$(grep -Fvx \
+              -e 'deployment/database/060c-contract-approval-funding.sql' \
+              -e 'deployment/database/060c-contract-approval-funding-rollback.sql' \
+              <<<"$PROTECTED_DEPLOYMENT" || true)"
+          fi
           if [[ "$HEAD_BRANCH" == 'fix/flowhive-sow-private-generation-20260921' ]]; then
             python3 tests/flowhive-sow-private-generation-scope.py
             PROTECTED_DEPLOYMENT="$(grep -Fvx \

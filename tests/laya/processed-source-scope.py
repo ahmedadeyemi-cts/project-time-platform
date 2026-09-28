@@ -12,6 +12,18 @@ def current_branch():
     return os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
         ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
 
+# Contracts reuse the private migration package; Laya code and migration are unchanged.
+if current_branch() == 'codex/module060-approval-contract-funding':
+    subprocess.run([sys.executable, str(ROOT/'tests/contracts-release/scope.py')], cwd=ROOT, check=True)
+    for path in ['database/migrations/125_automatic_document_admission_laya.sql',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs']:
+        expected = subprocess.check_output(['git','-C',str(ROOT),'show','6c70385d:'+path])
+        if (ROOT/path).read_bytes() != expected:
+            raise SystemExit('Contracts changed inherited Laya authority: '+path)
+    print('LAYA_CONTRACTS_INHERITED_SOURCE=PASS')
+    raise SystemExit(0)
+
 # Only the exact reviewed notification migration packaging changes; Laya source stays frozen.
 if current_branch() == 'feature/module065-email-teams-notification-parity-20260928':
     subprocess.run([sys.executable, str(ROOT/'tests/notification-parity/release_scope.py')], cwd=ROOT, check=True)

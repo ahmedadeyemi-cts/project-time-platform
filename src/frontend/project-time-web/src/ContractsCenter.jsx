@@ -570,14 +570,17 @@ export default function ContractsCenter() {
       {error ? <div className="prepaid-alert error">{error}</div> : null}
       {message ? <div className="prepaid-alert">{message}</div> : null}
 
+      <p role="note">Pending Approval is submitted time awaiting required approval. Approved time has manager approval and, when a PM is assigned, PM approval. A coordinator assignment does not require PM approval. Draft, declined, and returned time are excluded. Currency balances also include imported opening amounts; these are not hours.</p>
       <div className="prepaid-summary-grid">
         {[
           ['Contracts', summary.contractCount || 0],
           ['FF Amount', money(summary.fixedFeeAmount)],
           ['Credit Awarded', money(summary.creditAwarded)],
           ['Total Available', money(summary.totalAvailable)],
-          ['Pending', money(summary.pendingAmount)],
-          ['Approved', money(summary.approvedAmount)],
+          ['Total Pending Approval (hours)', Number(summary.pendingHours || 0).toFixed(2)],
+          ['Total Approved (hours)', Number(summary.approvedHours || 0).toFixed(2)],
+          ['Pending Value', money(summary.pendingAmount)],
+          ['Approved Value', money(summary.approvedAmount)],
           ['Total Used', money(summary.totalUsed)],
           ['Remaining Balance', money(summary.remainingBalance)]
         ].map(([label, value]) => (
@@ -662,9 +665,9 @@ export default function ContractsCenter() {
                       <th>Credit Awarded</th>
                       <th>Credit Date</th>
                       <th>Credit Awarded By</th>
-                      <th>Pending</th>
-                      <th>Approved</th>
-                      <th>Total Hours</th>
+                      <th>Pending Approval (hours)</th><th>Pending Value</th>
+                      <th>Approved (hours)</th><th>Approved Value</th>
+                      <th>Total Labor Value</th>
                       <th>Total Expenses</th>
                       <th>Adjustments</th>
                       <th>Total Used</th>
@@ -698,8 +701,8 @@ export default function ContractsCenter() {
                         <td>{money(row.creditAwarded)}</td>
                         <td>{date(row.latestCreditAwardedOn)}</td>
                         <td>{row.latestCreditAwardedBy || '—'}</td>
-                        <td>{money(row.pendingAmount)}</td>
-                        <td>{money(row.approvedAmount)}</td>
+                        <td>{Number(row.pendingHours || 0).toFixed(2)}</td><td>{money(row.pendingAmount)}</td>
+                        <td>{Number(row.approvedHours || 0).toFixed(2)}</td><td>{money(row.approvedAmount)}</td>
                         <td>{money(row.totalHoursAmount)}</td>
                         <td>{money(row.totalExpenses)}</td>
                         <td>{money(row.adjustments)}</td>
@@ -853,8 +856,8 @@ export default function ContractsCenter() {
               ['latestTimeText', 'Latest Time Text', 'text', false],
               ['billingDate', 'Billing Date', 'date', false],
               ['fixedFeeAmount', 'FF Amount', 'number', true],
-              ['pendingAmount', 'Pending Hours', 'number', false],
-              ['approvedAmount', 'Approved Hours', 'number', false],
+              ['pendingAmount', 'Imported pending value ($)', 'number', false],
+              ['approvedAmount', 'Imported approved value ($)', 'number', false],
               ['totalExpenses', 'Total Expenses', 'number', false],
               ['adjustments', 'Adjustments', 'number', false]
             ].map(([name, label, type, required]) => (
@@ -909,6 +912,8 @@ export default function ContractsCenter() {
           wide
         >
           <div className="prepaid-detail-grid">
+            <article><span>Total Pending Approval</span><strong>{Number(details.contract.pendingHours || 0).toFixed(2)} hours</strong><small>{money(details.contract.pendingAmount)} pending value</small></article>
+            <article><span>Total Approved</span><strong>{Number(details.contract.approvedHours || 0).toFixed(2)} hours</strong><small>{money(details.contract.approvedAmount)} approved value</small></article>
             <article>
               <span>Total Available</span>
               <strong>{money(details.contract.totalAvailable)}</strong>
@@ -926,6 +931,16 @@ export default function ContractsCenter() {
               <strong>{percent(details.contract.balancePercent)}</strong>
             </article>
           </div>
+
+          <section className="prepaid-detail-section">
+            <h3>Projects funded by this contract</h3>
+            {(details.fundedProjects || []).length ? (details.fundedProjects || []).map((project) => (
+              <article className="prepaid-history-item" key={project.projectId}>
+                <strong>{project.projectName}</strong>
+                <span>{project.contractType} · {money(project.drawdownHourlyRate)} per hour contract drawdown</span>
+              </article>
+            )) : <p>No projects have selected this contract as their funding source in Module 055D.</p>}
+          </section>
 
           <section className="prepaid-detail-section">
             <h3>Credit history</h3>

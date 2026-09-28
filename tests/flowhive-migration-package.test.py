@@ -20,12 +20,14 @@ assert inside.index('/121_flowhive_') < inside.index('/122_flowhive_')
 with tempfile.TemporaryDirectory(prefix='flowhive-package-') as directory:
     fixture = Path(directory); release = fixture/'release'; commands = fixture/'bin'; commands.mkdir()
     (release/'database').mkdir(parents=True)
+    (release/'deployment').mkdir()
+    (release/'deployment/database').symlink_to(ROOT/'deployment/database', target_is_directory=True)
     (release/'database/migrations').symlink_to(ROOT/'database/migrations', target_is_directory=True)
     scripts = release/'scripts/release-test'; scripts.mkdir(parents=True)
     for name in ('reconcile-module-catalog.mjs', 'verify-flowhive-task-notifications.sql',
                  'verify-flowhive-sequential-checkpoints.sql', 'verify-flowhive-automatic-first-draft.sql',
                  'verify-module064-external-generation-approval.sql', 'verify-module025-service-scope.sql',
-                 'verify-module065-notification-parity.sql'):
+                 'verify-module065-notification-parity.sql', 'verify-module060-contract-funding.sql'):
         (scripts/name).symlink_to(ROOT/'scripts/release-test'/name)
     runner = scripts/'run-project-planning-document-authority-migration-job.sh'
     runner.write_text('#!/bin/bash\nset -euo pipefail\n[[ "$RELIABILITY_MIGRATION_IMAGE" == *"@sha256:"* ]]\n[[ "${FAIL_PRIVATE_JOB:-0}" != 1 ]]\necho PRIVATE_JOB_VERIFIED\n')
@@ -55,9 +57,12 @@ else: raise SystemExit('Unexpected Azure call in offline fixture')
         assert marker in passed.stdout and passed.stdout.index('PRIVATE_JOB_VERIFIED')<passed.stdout.index(marker)
     for label in ('notifications','sequential','automatic'):
         subprocess.run(['sha256sum','--check','--status',f'database/flowhive-{label}.sha256'],cwd=captured,check=True)
-    for manifest in ('module064-approval.sha256', 'module025-service-scope.sha256', 'module065-notification-parity.sha256'):
+    for manifest in ('module064-approval.sha256', 'module025-service-scope.sha256', 'module065-notification-parity.sha256', 'module060-contract-funding.sha256'):
         subprocess.run(['sha256sum','--check','--status',f'database/{manifest}'],cwd=captured,check=True)
     assert (captured/'entrypoint.sh').read_text()==inside+'\n'
+    assert inside.index('/060-module-') < inside.index('/060b-module-') < inside.index('/060c-contract-')
+    assert passed.stdout.index('PRIVATE_JOB_VERIFIED') < passed.stdout.index('MODULE060_CONTRACT_FUNDING=APPLIED_AND_VERIFIED')
+    assert json.loads((fixture/'evidence/module060-contract-funding.json').read_text())['customerDataCreated'] is False
     parity_marker = 'MIGRATIONS_126_128_129_NOTIFICATION_PARITY=APPLIED_AND_VERIFIED'
     assert passed.stdout.index('PRIVATE_JOB_VERIFIED') < passed.stdout.index(parity_marker)
     receipt = fixture / 'evidence/migration-128-129-notification-parity.json'
