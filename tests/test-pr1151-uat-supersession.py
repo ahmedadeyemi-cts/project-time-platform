@@ -141,6 +141,17 @@ class SupersessionTests(unittest.TestCase):
             api = Api(); api.main = 'c' * 40
             with self.assertRaises(RuntimeError): r.verify_context(api)
 
+    def test_reviewed_normal_sa_controller_is_allowed(self):
+        def reviewed(*args):
+            if args == ('rev-parse', f'{NEW}:{r.DEPLOYMENT}'):
+                return r.NORMAL_SA_DEPLOYMENT_BLOB
+            return self.fake_git(*args)
+        with patch.dict(os.environ, self.environment(), clear=True), patch.object(r, 'git', side_effect=reviewed):
+            self.assertEqual(r.verify_context(Api()), NEW)
+        data = (ROOT / r.DEPLOYMENT).read_bytes()
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        self.assertEqual(blob, r.NORMAL_SA_DEPLOYMENT_BLOB)
+
     def test_changed_deploy_controller_or_unrelated_ancestry_fails(self):
         with patch.dict(os.environ, self.environment(), clear=True):
             def changed(*args):

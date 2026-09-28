@@ -155,6 +155,10 @@ public static class ProjectFlowHiveExecutablePlanBuilder
 
         return seed with
         {
+            // Provenance belongs to the generated candidate, not the caller's
+            // scheduling seed (which may omit SourceKind or be a manual plan).
+            // Phase normalization and technical naming both depend on this tag.
+            SourceKind = "celar_ai",
             Tasks = tasks,
             Dependencies = dependencies,
             // One unassigned estimate row per task preserves the existing schedule
