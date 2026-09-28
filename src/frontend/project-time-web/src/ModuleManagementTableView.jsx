@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import IdentityAvatar from './identity/IdentityAvatar.jsx';
+import { WORKSPACE_BY_NUMBER, workspaceSearchText } from './workspace-registry.js';
 import module006CustomerBrands from './assets/module-006-customer-brands.svg';
 
 const TABLE_EXPERIENCE = 'table';
@@ -630,6 +631,8 @@ export default function ModuleManagementTableView({
       if (recentDays && !isRecentlyChanged(module.updatedAt, recentDays)) return false;
       if (!term) return true;
       const searchable = [
+        WORKSPACE_BY_NUMBER.has(module.moduleNumber)
+          ? workspaceSearchText(WORKSPACE_BY_NUMBER.get(module.moduleNumber)) : '',
         module.moduleNumber,
         moduleDisplayName(module),
         moduleDescription(module),

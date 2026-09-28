@@ -83,11 +83,10 @@ public static class ApprovalCenterModule
             });
         });
 
-        app.MapGet("/api/manager/approval-summary", async (HttpContext context) =>
-            await BuildSummaryResultAsync(context));
-
-        app.MapGet("/api/manager/approval-count", async (HttpContext context) =>
-            await BuildSummaryResultAsync(context));
+        // Select the route-handler overload so its IResult is written to the
+        // response instead of being discarded by a RequestDelegate.
+        app.MapGet("/api/manager/approval-summary", (Delegate)BuildSummaryResultAsync);
+        app.MapGet("/api/manager/approval-count", (Delegate)BuildSummaryResultAsync);
 
         app.MapPost("/api/manager/approvals/approve", async (
             ApprovalActionRequest request,
