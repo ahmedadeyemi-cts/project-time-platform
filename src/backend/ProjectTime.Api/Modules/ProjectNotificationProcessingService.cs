@@ -247,13 +247,6 @@ internal static class ProjectNotificationProcessingService
                 dispatch.AttemptCount);
         }
 
-        var source = await Module065NotificationSourceGuard.ValidateAsync(connection, dispatch, cancellationToken);
-        if (!source.Current || source.Defer)
-            return new(false, source.Defer ? "queued" : "suppressed", dispatch.ProviderSource, source.Boundary,
-                dispatch.ProviderMessageId, source.Code, "The current source policy, recipient, approval stage or reminder window prevented delivery.",
-                dispatch.DispatchId, dispatch.AttemptCount);
-        dispatch = dispatch with { DeliveryBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(dispatch.DeliveryBoundary, source.Boundary) };
-
         var claimed = await ProjectNotificationRepository.TryClaimDispatchDeliveryAsync(
             connection,
             dispatchId,
@@ -293,8 +286,17 @@ internal static class ProjectNotificationProcessingService
         }
         dispatch = dispatch with { DeliveryStatus = "sending" };
 
+        // Finalize source suppression through the same owned claim and delivery ledger.
+        // An early return would leave the persisted row queued/sending and invite stale retries.
+        Module065NotificationSourceGuard.State source;
+        try { source = await Module065NotificationSourceGuard.ValidateAsync(connection, dispatch, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception)
+        { source = new(false, false, "locked", "NOTIFICATION_SOURCE_VALIDATION_UNAVAILABLE"); }
+        dispatch = dispatch with { DeliveryBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(dispatch.DeliveryBoundary, source.Boundary) };
+
         var handoff = await Module025SowGsdModule.ValidateHandoffDispatchAsync(connection, dispatch, cancellationToken);
-        var readiness = handoff.Current
+        var readiness = source.Current && !source.Defer && handoff.Current
             ? await Module065ProjectNotificationDelivery.GetReadinessAsync(context, cancellationToken)
             : Module065MailReadiness.Locked("The current SOW/GSD handoff recipients or policy could not be verified.");
         var effectiveBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(
@@ -303,11 +305,15 @@ internal static class ProjectNotificationProcessingService
         effectiveBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(effectiveBoundary, handoff.Boundary);
         // Queue the independent Teams channel before email transport or email-result persistence.
         // The queue captures its own boundary and durable event/recipient identity.
-        if (handoff.Current)
+        if (source.Current && !source.Defer && handoff.Current)
             await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection,
                 dispatch with { DeliveryBoundary = effectiveBoundary }, context, cancellationToken);
 
-        var delivery = !handoff.Current
+        var delivery = !source.Current || source.Defer
+            ? new Module065MailDeliveryResult(false, source.Defer ? "queued" : "suppressed", readiness.ConfiguredProvider, effectiveBoundary,
+                string.Empty, source.Code,
+                "The current source, recipient, approval stage or reminder window prevented delivery. No provider was invoked.")
+            : !handoff.Current
             ? new Module065MailDeliveryResult(false,"suppressed",readiness.ConfiguredProvider,effectiveBoundary,
                 string.Empty,handoff.DiagnosticCode,
                 "SOW/GSD handoff delivery was suppressed because its current recipients or policy could not be verified. No provider was invoked.")
