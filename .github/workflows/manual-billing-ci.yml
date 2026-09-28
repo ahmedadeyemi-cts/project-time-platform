@@ -1,0 +1,63 @@
+name: Manual partial and full billing
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/manual-billing-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/*Billing*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ManualBillingPolicy.cs'
+      - 'src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs'
+      - 'src/frontend/project-time-web/src/ManualInvoicePanel.jsx'
+      - 'src/frontend/project-time-web/src/BillingReconciliationPanel.jsx'
+      - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleCompletionWorkflow.cs'
+      - 'src/frontend/project-time-web/src/manual-invoice-model.mjs'
+      - 'src/frontend/project-time-web/tests/manual-invoice.test.mjs'
+      - 'src/frontend/project-time-web/scripts/test-manual-billing-browser.mjs'
+      - 'tests/ManualBillingTests/**'
+permissions:
+  contents: read
+concurrency:
+  group: manual-billing-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  billing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Start disposable database
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PGPASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$PGPASSWORD"
+          echo "PGPASSWORD=$PGPASSWORD" >> "$GITHUB_ENV"
+          echo 'PGPORT=55432' >> "$GITHUB_ENV"
+          export POSTGRES_PASSWORD="$PGPASSWORD"
+          docker run --detach --name manual-billing-db -e POSTGRES_PASSWORD -p 127.0.0.1:55432:5432 postgres:16
+          for attempt in $(seq 1 30); do
+            if docker exec manual-billing-db pg_isready -U postgres; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Exercise real billing handlers and ledger
+        run: dotnet run --project tests/ManualBillingTests/ManualBillingTests.csproj --configuration Release
+      - name: Check frontend billing behavior
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci
+          node --test tests/manual-invoice.test.mjs tests/completion-checklist.test.mjs
+          node scripts/validate-work-to-cash-lifecycle.mjs
+          npm install --prefix "$RUNNER_TEMP/manual-billing-browser" --no-audit --no-fund playwright@1.57.0 esbuild@0.25.12
+          "$RUNNER_TEMP/manual-billing-browser/node_modules/.bin/playwright" install --with-deps chromium
+          BILLING_BROWSER_TOOLS="$RUNNER_TEMP/manual-billing-browser/node_modules" node scripts/test-manual-billing-browser.mjs
+      - name: Remove disposable database
+        if: always()
+        run: docker rm --force manual-billing-db || true

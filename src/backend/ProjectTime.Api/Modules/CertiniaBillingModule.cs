@@ -2643,6 +2643,7 @@ public static partial class CertiniaBillingModule
     {
         var laborCategory = Clean(line.LaborCategory).ToLowerInvariant();
         if (laborCategory == "expense") return "Reimbursable Expense";
+        if (laborCategory == "manual_amount") return "Project billing";
         if (laborCategory == "fixed_price_milestone") return "Fixed Price Milestone";
 
         if (includeResourceNames)

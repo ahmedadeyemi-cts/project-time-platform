@@ -9,7 +9,7 @@ using NpgsqlTypes;
 
 namespace ProjectTime.Api.Modules;
 
-public static class InvoiceBillingModule
+public static partial class InvoiceBillingModule
 {
     private static readonly string[] InvoiceEligibleStatuses =
     [
@@ -24,6 +24,7 @@ public static class InvoiceBillingModule
 
     public static WebApplication MapInvoiceBillingEndpoints(this WebApplication app)
     {
+        MapManualBillingEndpoints(app);
         app.MapGet(
             "/api/billing/candidates",
             (Func<HttpContext, Task<IResult>>)GetCandidatesAsync);
@@ -270,6 +271,7 @@ public static class InvoiceBillingModule
     {
         var sessionUserId = GetSessionUserId(httpContext);
         if (sessionUserId is null) return SessionRequired();
+        if (BillingViewAs(httpContext)) return Results.Forbid();
 
         var invoiceType = Clean(request.InvoiceType).ToLowerInvariant();
 
@@ -372,6 +374,15 @@ public static class InvoiceBillingModule
                     message = "The requested project was not found."
                 });
             }
+
+            var manualBasis = await LoadManualBillingBasisAsync(connection, transaction, projectId);
+            if (manualBasis.ManualInvoicesExist)
+            {
+                return Results.Conflict(new { status = "manual_billing_reconciliation_required",
+                    message = "This project uses manual amount invoices. Continue through Manual partial / full invoice so prior charges are deducted instead of billing the same work again." });
+            }
+            if (manualBasis.Closed || manualBasis.FinalInvoiceExists)
+                return Results.Conflict(new { message = "This project is closed or already has a final invoice. Review its billing history before creating additional charges." });
 
             var projectBlockers = BuildProjectStructuralBlockers(project);
 
