@@ -1331,9 +1331,20 @@ export default function ProjectFlowHiveCenter() {
         <span>{selectedProject ? `PM: ${selectedProject.projectManagerName || 'Unassigned'} · AE: ${selectedProject.accountExecutiveName || 'Unassigned'}` : 'Select a project to see its delivery team.'}</span>
       </div>
 
+      <nav className="flowhive-view-tabs" aria-label="Project FlowHive views">
+        {views.map((view) => (
+          <button type="button" key={view.id} aria-pressed={activeView === view.id} className={activeView === view.id ? 'active' : ''} onClick={() => setActiveView(view.id)}>
+            {view.label}
+          </button>
+        ))}
+      </nav>
+
+      <details className="flowhive-planning-setup"><summary>Planning settings and document readiness</summary>
       {selectedProjectId ? <ProjectFlowHiveAutomation key={`automation-${selectedProjectId}`}
         projectId={selectedProjectId} getJson={getJson} putJson={putJson} onLoadDraft={loadWorkingCopy}
         onState={setAutomaticPlan} /> : null}
+      {selectedProjectId ? <ProjectFlowHiveDocumentReadiness key={selectedProjectId} projectId={selectedProjectId} getJson={getJson} onState={updateDocumentReadiness} /> : null}
+      </details>
 
       {activeView === 'kanban' ? <ProjectFlowHivePsaWorkspace
         mode="kanban" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
@@ -1357,6 +1368,7 @@ export default function ProjectFlowHiveCenter() {
       {error ? <div className="flowhive-error" role="alert"><strong>Project FlowHive needs attention.</strong><span>{error}</span></div> : null}
       {notice ? <div className="flowhive-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice('')}>Dismiss</button></div> : null}
 
+      <details className="flowhive-planner-history" open={busy === 'ai-planner' || (Boolean(aiPreview?.runId) && !aiPreview.terminal)}><summary>AI planning activity{aiPreview?.phase ? ` · ${labelFrom(aiPreview.phase)}` : ''}</summary>
       {(busy === 'ai-planner' || aiPreview?.runId) ? <AiOperationProgress
         key={aiPreview?.runId || plannerRequestStartedAt}
         title="AI Planner"
@@ -1373,16 +1385,11 @@ export default function ProjectFlowHiveCenter() {
       {(busy === 'ai-planner' || aiPreview?.runId) && <AiPhaseProgress phases={aiPreview?.phases}
         terminal={Boolean(aiPreview?.terminal)} completedAt={aiPreview?.completedAt}
         showDiagnostics={isFlowHiveAdministrator} />}
+      </details>
 
-      <nav className="flowhive-view-tabs" aria-label="Project FlowHive views">
-        {views.map((view) => (
-          <button type="button" key={view.id} aria-pressed={activeView === view.id} className={activeView === view.id ? 'active' : ''} onClick={() => setActiveView(view.id)}>
-            {view.label}
-          </button>
-        ))}
-      </nav>
 
-      {selectedProjectId ? <ProjectFlowHiveDocumentReadiness key={selectedProjectId} projectId={selectedProjectId} getJson={getJson} onState={updateDocumentReadiness} /> : null}
+
+
       {activeView === 'portfolio' || activeView === 'archive' ? (
         <div className="flowhive-view-panel">
           {activeView === 'archive' ? <header><h3>Archived project plans</h3><p>Closed, completed and cancelled projects appear here automatically. Open a plan to view its work breakdown, saved versions and history. Reopening a project in Work Register returns it to the active portfolio.</p></header> : <p>Active projects. Closed projects and their plans are available in Archive.</p>}
@@ -1425,9 +1432,10 @@ export default function ProjectFlowHiveCenter() {
           </div>
           <FlowHiveSaveBar dirty={dirty} workingCopy={enterprise?.workingCopy} canManage={canEditPlanner} busy={busy} onSaveWorkingCopy={saveWorkingCopy} onSaveVersion={saveDraft} />
           <div className="flowhive-plan-metadata">
-            <label>Saved FlowHive plan<select value={draftPlan?.planId || ''} onChange={(event) => loadSavedPlan(event.target.value)}><option value="">New unsaved plan</option>{savedPlans.filter((plan) => !selectedProjectId || plan.projectId === selectedProjectId).map((plan) => <option key={plan.planId} value={plan.planId}>{plan.planName} · v{plan.currentVersion}{plan.baselineVersion ? ` · baseline v${plan.baselineVersion}` : ''}</option>)}</select></label>
+            <label>Saved FlowHive plan<select value={draftPlan?.planId || ''} onChange={(event) => loadSavedPlan(event.target.value)}><option value="">{enterprise?.workingCopy ? 'Current working copy — not yet versioned' : 'New unsaved plan'}</option>{savedPlans.filter((plan) => !selectedProjectId || plan.projectId === selectedProjectId).map((plan) => <option key={plan.planId} value={plan.planId}>{plan.planName} · v{plan.currentVersion}{plan.baselineVersion ? ` · baseline v${plan.baselineVersion}` : ''}</option>)}</select></label>
             <label>Baseline review note<input value={baselineNote} onChange={(event) => setBaselineNote(event.target.value)} placeholder="Required reviewer decision note" /></label>
           </div>
+          <section className="flowhive-current-plan-label" aria-label="Active working plan"><h3>Current working plan</h3><p>{dirty ? 'Unsaved changes' : enterprise?.workingCopy ? `Saved working-copy revision ${enterprise.workingCopy.workingRevision || enterprise.workingCopy.revision || 'loaded'}` : 'No saved working copy'}. The task grid below is the active plan. AI proposals are separate until explicitly reviewed and applied.</p></section>
           {aiPreview?.candidateAvailable && aiPreview?.projectId === selectedProjectId ? <ProjectFlowHivePlannerReview
             key={`${selectedProjectId}:${aiPreview.runId}:${enterprise?.workingCopy?.rowVersion || ''}`}
             projectId={selectedProjectId} runId={aiPreview.runId} getJson={getJson} postJson={postJson}
@@ -1541,7 +1549,7 @@ export default function ProjectFlowHiveCenter() {
 
       {activeView === 'timeline' ? (
         <div className="flowhive-view-panel">
-          <div className="flowhive-table-heading"><div><h3>Schedule, critical path, and float</h3><p>Deterministic weekday preview. Company holidays and individual calendars require Module 057 authority.</p></div>{schedule ? <span>{formatDate(schedule.projectStartDate)} – {formatDate(schedule.projectFinishDate)}</span> : null}</div>
+          <div className="flowhive-table-heading"><div><h3>Schedule, critical path, and float</h3><p>Weekday schedule preview, not a staffing commitment. Company holidays, PTO, individual calendars, and competing assignments are not applied. Confirm resource availability before committing this finish date.</p></div>{schedule ? <span>{formatDate(schedule.projectStartDate)} – {formatDate(schedule.projectFinishDate)}</span> : null}</div>
           {!schedule ? <EmptyState>Calculate a valid local draft to create the timeline.</EmptyState> : (
             <>
               <div className="flowhive-summary-grid"><article><span>Scheduled working days</span><strong>{schedule.scheduledWorkingDays}</strong></article><article><span>Critical tasks</span><strong>{schedule.criticalTaskCount}</strong></article><article><span>Planned hours</span><strong>{formatHours(schedule.plannedHours)}</strong></article><article><span>Calendar authority</span><strong>Preview</strong><small>Module 057 not applied</small></article></div>

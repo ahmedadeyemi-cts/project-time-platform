@@ -21,8 +21,8 @@ function LinesEditor({ label: title, value, onChange, rows = 4, placeholder = ''
 }
 
 export function FlowHiveSaveBar({ dirty, workingCopy, canManage, busy, onSaveWorkingCopy, onSaveVersion }) {
-  return <div className={`flowhive-save-bar ${dirty ? 'dirty' : 'saved'}`} role="status">
-    <div><strong>{dirty ? 'Unsaved changes' : 'Working copy saved'}</strong><span>{workingCopy?.updatedAt ? `Last saved ${new Date(workingCopy.updatedAt).toLocaleString()} · revision ${workingCopy.workingRevision}` : 'No working copy has been saved for this project.'}</span></div>
+  return <div className={`flowhive-save-bar ${dirty ? 'dirty' : workingCopy ? 'saved' : 'unsaved'}`} role="status">
+    <div><strong>{dirty ? 'Unsaved changes' : workingCopy ? 'Working copy saved' : 'No saved working copy'}</strong><span>{workingCopy?.updatedAt ? `Last saved ${new Date(workingCopy.updatedAt).toLocaleString()} · revision ${workingCopy.workingRevision}` : 'No working copy has been saved for this project.'}</span></div>
     <div className="flowhive-save-bar-actions">
       <button type="button" className="primary" disabled={!canManage || !dirty || busy} onClick={onSaveWorkingCopy}>{busy === 'working-copy' ? 'Saving…' : 'Save working copy'}</button>
       <button type="button" disabled={!canManage || busy} onClick={onSaveVersion}>{busy === 'save' ? 'Saving version…' : 'Save immutable version'}</button>

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import './work-register-center.css';
+import { workRegisterPeople } from './work-register-filters.js';
 
 function readSession() {
   try {
@@ -665,14 +666,7 @@ const updateIntakeForm = (field, value) => {
     intakes: 0
   };
 
-  const peopleOptions = useMemo(() => uniqueValues(workItems, (item) => [
-    item.projectManager,
-    item.projectCoordinator,
-    item.accountExecutive,
-    item.solutionArchitect,
-    item.insideSales,
-    ...(item.assignedEngineers ?? [])
-  ].filter(Boolean).join('|')).flatMap((group) => group.split('|')).filter(Boolean).sort(), [workItems]);
+  const peopleOptions = useMemo(() => workRegisterPeople(workItems), [workItems]);
 
   const filteredItems = useMemo(() => {
     const search = normalize(searchTerm);

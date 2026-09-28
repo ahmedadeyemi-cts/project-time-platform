@@ -110,7 +110,7 @@ export default function ApprovalMailbox() {
 
           <div className="approval-mailbox-breakdown">
             {summary.access.canViewTimeApprovals ? (
-              <div><span>Time approvals</span><strong>{time}</strong></div>
+              <div><span>Time approvals · all weeks</span><strong>{time}</strong></div>
             ) : null}
             {summary.access.canViewPasswordResetApprovals ? (
               <>

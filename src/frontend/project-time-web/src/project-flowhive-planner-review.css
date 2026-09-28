@@ -15,3 +15,7 @@
 .flowhive-review-confirm input { width: auto; }
 .flowhive-review-error { font-weight: 600; }
 @media (max-width: 720px) { .flowhive-planner-review { padding: 12px; } .flowhive-planner-review > header { flex-direction: column; } }
+
+.flowhive-planner-review:not([open]) { padding: .75rem 1rem; margin: .5rem 0; }
+.flowhive-planner-review > summary { cursor: pointer; font-weight: 600; }
+.flowhive-planner-review[open] > summary { margin-bottom: 1rem; }

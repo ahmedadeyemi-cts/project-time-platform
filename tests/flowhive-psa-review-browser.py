@@ -85,6 +85,10 @@ async def run_case(browser, mode='normal', width=1400, dark=False):
       window.remount=changes=>{Object.assign(window.props,changes);window.mountFlowHiveReview({...window.props});};
       window.remount({});
     }''',[PROJECT,RUN])
+    proposal = page.locator('details.flowhive-planner-review')
+    await proposal.wait_for()
+    check(not await proposal.evaluate('(el)=>el.open'), 'saved proposals are collapsed separately from active work')
+    await proposal.locator(':scope > summary').click()
     if mode=='late':
         await page.wait_for_timeout(30)
         await page.evaluate('(id)=>window.remount({projectId:id})',OTHER)
