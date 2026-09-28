@@ -703,7 +703,7 @@
     },
     {
       "path": "tests/security-release/admission_fixture.py",
-      "sha256": "1a31b20b51142075f3b7550e7d59097536605d9cc1d29742ab5e424fee38901a"
+      "sha256": "db3573a29fcc7f2aa5402bb63ed30fe7dd4616a9188723614fb439da1c4f4911"
     },
     {
       "path": "tests/security-release/controller_registration.json",

@@ -15,7 +15,7 @@ SOURCE = ROOT / 'tests/flowhive-psa-admission.test.mjs'
 TARGET = ROOT / 'tests/security-admission.generated.test.mjs'
 SOURCE_BLOB = 'bef62ea96a938107be17c2a83cbbaf7549bdd7ba'
 # Pin the security implementation's artifact minimization; candidate/approval stay frozen.
-FIXTURE_REF = '1c0f5a392384df5ef9c6f0895cfd716ef4e3ac05'
+FIXTURE_REF = 'c107f17195db6aaed16daff596d123d7a31c8a67'
 BRANCHES = {'fix/security-team-findings-20260928'}
 
 
