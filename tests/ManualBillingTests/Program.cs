@@ -84,6 +84,13 @@ try {
  // A stored time invoice is included in the same balance even if created before manual billing existed.
  await Sql(c,$"UPDATE billing_invoices SET immutable_snapshot_json='{{}}' WHERE billing_invoice_id='{InvoiceId(priorInvoice)}'");
  Check(Amount(await Create(prior,final with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(prior,billing)},billing))==6000m,"existing non-manual invoices deducted from full billing");
+ var voidProject=await Project(c);
+ var voidRequest=first with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(voidProject,billing)};
+ var voidInvoice=await Create(voidProject,voidRequest,billing);
+ await Sql(c,$"UPDATE billing_invoices SET invoice_status='void' WHERE billing_invoice_id='{InvoiceId(voidInvoice)}'");
+ Check(Status(await Create(voidProject,voidRequest with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(voidProject,billing),PreviouslyBilledOutsidePulse=0},billing))==400,"voiding a Pulse invoice cannot erase recorded external charges");
+ var voidBasis=Value(await Invoke("GetManualBillingAsync",voidProject,Context(billing))).GetProperty("basis");
+ Check(voidBasis.GetProperty("manualInvoicesExist").GetBoolean(),"voiding retains manual reconciliation mode");
  var closed=await Project(c);await Sql(c,$"INSERT INTO work_register_project_lifecycle VALUES('{closed}',true)");
  Check(Status(await Create(closed,first with {ExpectedFingerprint=await Basis(closed,billing),OperationId=Guid.NewGuid()},billing))==409,"archived project denied");
  Console.WriteLine($"MANUAL_BILLING_DATABASE=PASS checks={passed}");
@@ -100,4 +107,4 @@ async Task<string> Basis(Guid p,Guid actor)=>Value(await Invoke("GetManualBillin
 async Task<NpgsqlConnection> Open(){var c=new NpgsqlConnection(settings.ConnectionString);await c.OpenAsync();return c;}
 async Task Sql(NpgsqlConnection c,string sql){await using var cmd=new NpgsqlCommand(sql,c);await cmd.ExecuteNonQueryAsync();}
 async Task<string> Text(NpgsqlConnection c,string sql){await using var cmd=new NpgsqlCommand(sql,c);return Convert.ToString(await cmd.ExecuteScalarAsync())!;}
-async Task<Guid> Project(NpgsqlConnection c){var id=Guid.NewGuid();var client=Guid.NewGuid();await Sql(c,$"INSERT INTO clients(client_id,client_name) VALUES('{client}','Synthetic customer'); INSERT INTO projects(project_id,client_id,project_code,project_name,project_manager_user_id) VALUES('{id}','{client}','{id}','Synthetic manual billing','{pm}')");return id;}
+async Task<Guid> Project(NpgsqlConnection c){var id=Guid.NewGuid();var client=Guid.NewGuid();await Sql(c,$"INSERT INTO clients(client_id,client_name) VALUES('{client}','Synthetic customer {client}'); INSERT INTO projects(project_id,client_id,project_code,project_name,project_manager_user_id) VALUES('{id}','{client}','{id}','Synthetic manual billing','{pm}')");return id;}

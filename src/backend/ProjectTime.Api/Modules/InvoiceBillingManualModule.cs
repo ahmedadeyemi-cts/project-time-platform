@@ -54,10 +54,10 @@ public static partial class InvoiceBillingModule
             )::text,
             COALESCE((SELECT sum(total_amount) FROM billing_invoices WHERE project_id=@project AND invoice_status NOT IN ('void','voided')),0),
             COALESCE((SELECT max((immutable_snapshot_json->>'previouslyBilledOutsidePulse')::numeric)
-                FROM billing_invoices WHERE project_id=@project AND invoice_status NOT IN ('void','voided')
+                FROM billing_invoices WHERE project_id=@project
                 AND immutable_snapshot_json->>'contract'=@contract),0),
             EXISTS(SELECT 1 FROM billing_invoices WHERE project_id=@project AND invoice_type='final' AND invoice_status NOT IN ('void','voided')),
-            EXISTS(SELECT 1 FROM billing_invoices WHERE project_id=@project AND invoice_status NOT IN ('void','voided') AND immutable_snapshot_json->>'contract'=@contract),
+            EXISTS(SELECT 1 FROM billing_invoices WHERE project_id=@project AND immutable_snapshot_json->>'contract'=@contract),
             EXISTS(SELECT 1 FROM external_integration_outbox o JOIN billing_invoices i ON i.billing_invoice_id=o.local_entity_id
                 WHERE i.project_id=@project AND o.system_code='CERTINIA' AND o.local_entity='billing_invoice' AND o.delivery_status IN ('pending','processing','failed')),
             EXISTS(SELECT 1 FROM work_register_project_lifecycle WHERE project_id=@project AND is_archived=TRUE)
