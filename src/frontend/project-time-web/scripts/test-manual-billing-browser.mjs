@@ -32,7 +32,7 @@ try {
   });
   let recoveryHistory=[],recoveryFault=true;const recoveryPosts=[];
   await page.route('**/api/billing/invoices/**/reconciliation',async route=>{
-   if(route.request().method()==='GET'){await route.fulfill({json:{canRecord,originalEvidence:{},history:recoveryHistory}});return;}
+   if(route.request().method()==='GET'){await route.fulfill({json:{canRecord:canCreate,originalEvidence:{},history:recoveryHistory}});return;}
    const body=route.request().postDataJSON();recoveryPosts.push(body);
    if(recoveryFault){recoveryFault=false;await route.abort();return;}
    recoveryHistory.push({action:'billing_recovery_'+body.action,reference:body.reference,reason:body.reason,recordedAt:new Date().toISOString()});
