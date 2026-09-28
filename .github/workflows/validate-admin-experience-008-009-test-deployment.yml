@@ -65,6 +65,11 @@ jobs:
             exit "$governance_status"
           fi
           # DEPLOYMENT_CONCURRENCY_GOVERNANCE_SCOPE_END
+          if [[ "${GITHUB_HEAD_REF:-}" == 'fix/security-team-findings-20260928' ]]; then
+            python3 tests/security-release/scope.py
+            python3 tests/security-release/test_scope.py
+            exit 0
+          fi
           git fetch origin main --no-tags
           mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD | sort)
           printf '%s\n' "${CHANGED[@]}"

@@ -252,3 +252,21 @@ scan is still reproducible on main. Details remain in the restricted report.
 | 147 | Low | Partial | Session lifetime and password-change checks implemented; database regressions pending CI. |
 | 148 | Low | Open | Verify against current main; security review required. |
 | 149 | Low | Partial | Time-export download blocked in View-As; full stateful-read review remains. |
+
+### CI registration for the consolidated change
+
+PR1209 uses `tests/security-release/manifest.json` to inventory every changed
+file and bind its content to SHA-256. Negative tests reject added/missing files,
+altered content, symlinks, wrong repository/branch/PR identity, and rehashed
+changes to deployment controls. The existing security implementation is pinned
+to `1c0f5a392384df5ef9c6f0895cfd716ef4e3ac05`; this CI repair cannot add further
+deployment-control changes. Source registration does not grant deployment
+authority. Native review, environment protection, exact merged commit checks,
+and authenticated acceptance remain required.
+
+Historical module-isolation checks select this inventory for PR1209 and retain
+their subsequent functional tests and builds. Historical admission assertions
+use their pinned historical fixture without modifying the live candidate or
+approval. The origin validator now expects configured-host authority, and the
+migration validator recognizes the exact inherited main runner while retaining
+its negative mutations and private-execution checks.

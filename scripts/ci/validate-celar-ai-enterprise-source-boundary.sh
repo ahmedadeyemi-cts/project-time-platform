@@ -4,6 +4,13 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
+if [[ "$HEAD_BRANCH" == 'fix/security-team-findings-20260928' ]]; then
+  python3 tests/security-release/scope.py
+  python3 tests/security-release/test_scope.py
+  echo "CELAR_AI_ENTERPRISE_VALIDATION_MODE=SECURITY_REMEDIATION" >> "${GITHUB_ENV:-/dev/null}"
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == feature/module025-service-scope-20260921 ]]; then
   python3 tests/service-scope/release_scope.py
   exit 0

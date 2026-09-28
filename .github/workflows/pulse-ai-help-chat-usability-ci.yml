@@ -65,6 +65,10 @@ jobs:
           done
 
           case "$HEAD_BRANCH" in
+            fix/security-team-findings-20260928)
+              python3 tests/security-release/scope.py
+              echo "PULSE_AI_HELP_CHAT_VALIDATION_MODE=SECURITY_REMEDIATION" >> "$GITHUB_ENV"
+              ;;
             fix/flowhive-sow-private-generation-20260921)
               python3 tests/flowhive-sow-private-generation-scope.py
               echo "PULSE_AI_HELP_CHAT_VALIDATION_MODE=CONNECTWISE_REGRESSION" >> "$GITHUB_ENV"

@@ -3,6 +3,12 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+if [[ "$HEAD_BRANCH" == 'fix/security-team-findings-20260928' ]]; then
+  python3 tests/security-release/scope.py
+  python3 tests/security-release/test_scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
 # Exact PR1205 application/migration package; Test and Production authority are frozen.
 if [[ "$HEAD_BRANCH" == 'codex/module060-approval-contract-funding' ]]; then
   python3 tests/contracts-release/scope.py

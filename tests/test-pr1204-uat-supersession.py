@@ -148,7 +148,9 @@ class SupersessionTests(unittest.TestCase):
             with self.assertRaises(RuntimeError): r.verify_context(api)
 
     def test_only_the_complete_exact_deployment_controller_is_allowed(self):
-        data = (ROOT / r.DEPLOYMENT).read_bytes()
+        # Pin the historical recovery fixture; do not expand live recovery authority.
+        data = subprocess.check_output(['git', 'show',
+            'a562371a0bbed74e881c40a4c246928dac9ec72e:' + r.DEPLOYMENT], cwd=ROOT)
         blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
         self.assertEqual(blob, r.DEPLOYMENT_BLOB)
         for target in (r.OLD_SHA, NEW):

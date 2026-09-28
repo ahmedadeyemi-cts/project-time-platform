@@ -1,0 +1,709 @@
+{
+  "base": "a562371a0bbed74e881c40a4c246928dac9ec72e",
+  "implementation": "1c0f5a392384df5ef9c6f0895cfd716ef4e3ac05",
+  "files": [
+    ".github/workflows/admin-runtime-stability-ci.yml",
+    ".github/workflows/enterprise-ui-polish-ci.yml",
+    ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/flowhive-psa-installed-acceptance.yml",
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/group5-financial-operations-recovery-ci.yml",
+    ".github/workflows/module-management-owner-drawer-ci.yml",
+    ".github/workflows/module033-project-forge-ci.yml",
+    ".github/workflows/modules010065-microsoft-runtime-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/projectpulse-deploy-approval-access-hotfix-test.yml",
+    ".github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml",
+    ".github/workflows/projectpulse-deploy-combined-modules-test.yml",
+    ".github/workflows/projectpulse-deploy-dashboard-calendar-test.yml",
+    ".github/workflows/projectpulse-deploy-dashboard-hotfix-test.yml",
+    ".github/workflows/projectpulse-deploy-direct-runtime-verified-test.yml",
+    ".github/workflows/projectpulse-deploy-intuitive-permissions-ptc-test.yml",
+    ".github/workflows/projectpulse-deploy-module-001-blank-page-hotfix-test.yml",
+    ".github/workflows/projectpulse-deploy-module-001-simplified-timer-test.yml",
+    ".github/workflows/projectpulse-deploy-module-001-test.yml",
+    ".github/workflows/projectpulse-deploy-module-001-timer-hotfix-test.yml",
+    ".github/workflows/projectpulse-deploy-module-001-view-sync-test.yml",
+    ".github/workflows/projectpulse-deploy-module-005-project-expense-test.yml",
+    ".github/workflows/projectpulse-deploy-module-012-037-permissions-test.yml",
+    ".github/workflows/projectpulse-deploy-modules-card-numbers-test.yml",
+    ".github/workflows/projectpulse-deploy-modules-page-test.yml",
+    ".github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml",
+    ".github/workflows/projectpulse-deploy-pr55-test.yml",
+    ".github/workflows/projectpulse-deploy-runtime-data-hotfix-test.yml",
+    ".github/workflows/projectpulse-deploy-scoped-rbac-catalog-hotfix-test.yml",
+    ".github/workflows/projectpulse-deploy-scoped-rbac-test.yml",
+    ".github/workflows/projectpulse-deploy-stabilized-role-permission-timesheet-test.yml",
+    ".github/workflows/projectpulse-deploy-test.yml",
+    ".github/workflows/pulse-ai-help-chat-usability-ci.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/security-posture-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    ".github/workflows/validate-admin-experience-008-009-test-deployment.yml",
+    ".verity/deploy.compose.yml",
+    ".verity/deploy.env.example",
+    "deploy.sh",
+    "deployment/rocky-linux/serve-frontend-local.py",
+    "docs/security/SECURITY-REMEDIATION-20260928.md",
+    "ops/projectpulse/scripts/projectpulse-backup.sh",
+    "scripts/apply-admin-experience-008-009-test-migration.sh",
+    "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
+    "scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh",
+    "scripts/ci/validate-module030-source-boundary.sh",
+    "scripts/release-test/run-flowhive-my-role-browser.py",
+    "scripts/release-test/validate-module025-governed-release.sh",
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "scripts/security/publish-safe-uat-evidence.py",
+    "scripts/verity/build-local.sh",
+    "scripts/verity/pin-digests.sh",
+    "scripts/verity/release-config.py",
+    "src/backend/ProjectTime.Api/Ai/CelarAiEnterpriseEvidenceCatalog.cs",
+    "src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePeriod.cs",
+    "src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs",
+    "src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs",
+    "src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs",
+    "src/backend/ProjectTime.Api/BoundedOfficeInput.cs",
+    "src/backend/ProjectTime.Api/EnterpriseReportingModule.g.cs",
+    "src/backend/ProjectTime.Api/Module001TimesheetContracts.g.cs",
+    "src/backend/ProjectTime.Api/Modules/AdminExperienceCommon.cs",
+    "src/backend/ProjectTime.Api/Modules/AnalyticsBrandedExportBuilder.cs",
+    "src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleService.cs",
+    "src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduler.cs",
+    "src/backend/ProjectTime.Api/Modules/BackupConfigurationSafety.cs",
+    "src/backend/ProjectTime.Api/Modules/CanonicalApiPaths.cs",
+    "src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs",
+    "src/backend/ProjectTime.Api/Modules/CiCdPipelineModule.cs",
+    "src/backend/ProjectTime.Api/Modules/EnterpriseNotificationSourceScanner.cs",
+    "src/backend/ProjectTime.Api/Modules/EnterpriseReminderPolicy.cs",
+    "src/backend/ProjectTime.Api/Modules/EnterpriseReportingModule.cs",
+    "src/backend/ProjectTime.Api/Modules/FinancialOperationsRecoveryModule.cs",
+    "src/backend/ProjectTime.Api/Modules/LabEquipmentImportService.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftDirectorySyncModule.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftEnvironmentRuntimeResolver.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationModule.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationSecurityCompatibility.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftServicesRuntimeCompatibility.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftSsoRuntimeCompatibility.cs",
+    "src/backend/ProjectTime.Api/Modules/Module001TimesheetContracts.cs",
+    "src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseCommands.cs",
+    "src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseParsing.cs",
+    "src/backend/ProjectTime.Api/Modules/OnCallSchedulingModule.cs",
+    "src/backend/ProjectTime.Api/Modules/OneAssistRoutingDirectoryModule.cs",
+    "src/backend/ProjectTime.Api/Modules/PlatformOperationsContracts.cs",
+    "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveNotificationPolicy.cs",
+    "src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs",
+    "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs",
+    "src/backend/ProjectTime.Api/Modules/ProjectNotificationEvaluator.cs",
+    "src/backend/ProjectTime.Api/Modules/ProjectNotificationScheduler.cs",
+    "src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs",
+    "src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs",
+    "src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs",
+    "src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs",
+    "src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs",
+    "src/backend/ProjectTime.Api/Program.cs",
+    "src/backend/ProjectTime.Api/SafeExportText.cs",
+    "src/backend/ProjectTime.Api/SafeTimeZones.cs",
+    "src/backend/ProjectTime.Api/ScopedRolePolicyModule.g.cs",
+    "src/backend/ProjectTime.Api/ScopedRolePolicyPersistence.g.cs",
+    "src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs",
+    "src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs",
+    "src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs",
+    "src/frontend/project-time-web/scripts/validate-module-067-global-mail.mjs",
+    "src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs",
+    "src/frontend/project-time-web/scripts/validate-security-role-policy-public-origin.mjs",
+    "src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs",
+    "src/frontend/project-time-web/src/BillingReadinessCenter.jsx",
+    "src/frontend/project-time-web/src/CloseoutEmailAutomationCenter.jsx",
+    "src/frontend/project-time-web/src/HelpAssistant.jsx",
+    "src/frontend/project-time-web/src/OneAssistRoutingDirectoryCenter.jsx",
+    "src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx",
+    "src/frontend/project-time-web/src/security-output.mjs",
+    "tests/FlowHiveExecutablePlanTests/Program.cs",
+    "tests/MicrosoftTeamsDeliveryTests/MicrosoftTeamsDeliveryTests.csproj",
+    "tests/ProjectTime.Api.AuthorizationTests/Program.cs",
+    "tests/ProjectTime.Api.AuthorizationTests/SecurityConsolidationTests.cs",
+    "tests/ProjectTime.Api.AuthorizationTests/SecurityDatabaseTests.cs",
+    "tests/SecurityBoundaryTests/Program.cs",
+    "tests/SecurityBoundaryTests/SecurityBoundaryTests.csproj",
+    "tests/flowhive-psa-installed-acceptance.test.py",
+    "tests/laya/processed-source-scope.py",
+    "tests/module064-migration-rollout.test.py",
+    "tests/security-deployment-boundaries.test.py",
+    "tests/security-frontend-proxy.test.py",
+    "tests/security-output.test.mjs",
+    "tests/security-release/admission_fixture.py",
+    "tests/security-release/manifest.json",
+    "tests/security-release/scope.py",
+    "tests/security-release/test_scope.py",
+    "tests/test-pr1151-uat-supersession.py",
+    "tests/test-pr1204-uat-supersession.py",
+    "tests/validate-celar-ai-pr630-consolidated-legacy.mjs",
+    "tests/validate-celar-ai-pr630-consolidated.mjs",
+    "tests/validate-module-management-owner-drawer.mjs",
+    "tests/validate-systemwide-enterprise-reliability.mjs"
+  ],
+  "contentHashes": [
+    {
+      "path": ".github/workflows/admin-runtime-stability-ci.yml",
+      "sha256": "0eff2fc016041e599f4ce18ca12d2c410e5575cb1eaf2d03850791817f12f85f"
+    },
+    {
+      "path": ".github/workflows/enterprise-ui-polish-ci.yml",
+      "sha256": "8ec11252d95635bae0dace71a29ed8eb78871d318924eca754be28390ff41389"
+    },
+    {
+      "path": ".github/workflows/flowhive-enterprise-psa-ci.yml",
+      "sha256": "c2da71fe423954bdaec18ff5622588513c1ad17f1b6cc87be92de2ef0525a3fe"
+    },
+    {
+      "path": ".github/workflows/flowhive-psa-installed-acceptance.yml",
+      "sha256": "8bf768c5c34213fbbb7546542ead7a8480ad0d3a0f83b86082d7fd57c1f07c6b"
+    },
+    {
+      "path": ".github/workflows/flowhive-psa-release-control-ci.yml",
+      "sha256": "31fb1ad533727567e88747ce2addb276a6407d9d4b9072ee9a22ff7e9bbd91f5"
+    },
+    {
+      "path": ".github/workflows/group5-financial-operations-recovery-ci.yml",
+      "sha256": "e4ef59f2e0b9b53cb7855647db49c84dc27abaddbe52e172020e7c5a7a47937e"
+    },
+    {
+      "path": ".github/workflows/module-management-owner-drawer-ci.yml",
+      "sha256": "d1829be2ff2dc5fd08301252d52a721147b4840cfdf575d40b471dc6c9a30eed"
+    },
+    {
+      "path": ".github/workflows/module033-project-forge-ci.yml",
+      "sha256": "b5a832852a13c07c991b9466d3602e71fedaa3f5df12776fb8a5c4a13d215845"
+    },
+    {
+      "path": ".github/workflows/modules010065-microsoft-runtime-ci.yml",
+      "sha256": "703a30aa9d37b70af500d0f8c7befc7f4f8c356873ef97cca2acaeef6f925e3b"
+    },
+    {
+      "path": ".github/workflows/pr1140-uat-recovery-ci.yml",
+      "sha256": "78ab5a40fcef49684d00f2cbf9cd627bd2d9eede2c76aca4d0db6bce02d6d15b"
+    },
+    {
+      "path": ".github/workflows/pr1151-uat-supersession-ci.yml",
+      "sha256": "d05e88258a26dd2ff73919f5e59a6da52d5c6d3b5f2810163103bf0f601bfae2"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-approval-access-hotfix-test.yml",
+      "sha256": "36cc6fc98947844c5380170010ee1c7eb45c54d22432300b34434943b2984adb"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml",
+      "sha256": "3dc2c5ce06fea7c97ee7cc2b4ebe00e10b429bb7dc967d01f8ae71737407fd93"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-combined-modules-test.yml",
+      "sha256": "a5ee1288d008dfac892c08441a86b04fb9e0ddf1bc622257131f32e8a8ffe44d"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-dashboard-calendar-test.yml",
+      "sha256": "eb6e0320ab617ded94f1274fb57a98ab7e5781d33050a992f30c95b0400cafad"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-dashboard-hotfix-test.yml",
+      "sha256": "44ad03071524ba1e38fe180ed779556998ba5394669bbad015dde5b533dbefa5"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-direct-runtime-verified-test.yml",
+      "sha256": "4b110d0ec482f60790b1fd489974c6b0ec556d6a4df9611a9b291f309228b658"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-intuitive-permissions-ptc-test.yml",
+      "sha256": "ca1c7971f1f40d6eec012e92a20a850e8e31d394988fce5b316a5a5d3b51a920"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-module-001-blank-page-hotfix-test.yml",
+      "sha256": "fc17b18d430795363ca669aeefef91b468a7af33e1fbcd6880e65bbd036e593e"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-module-001-simplified-timer-test.yml",
+      "sha256": "17787cc7a393e37c48c057c426379a44c0bbff501cb5fb2a2ccd6af78b96cf6f"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-module-001-test.yml",
+      "sha256": "2d5d44c6390cb22409d592f0ac77e6e80f9064b08579a75128525b24da3e3374"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-module-001-timer-hotfix-test.yml",
+      "sha256": "1c6c79e281b24f50d8119fd56742e81654053a63b4fca187574ebb71f602fd70"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-module-001-view-sync-test.yml",
+      "sha256": "8655fada2cc5b960dc47b28c0f10024e7966bfa3e4324e7c3e3d94703b72b1dd"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-module-005-project-expense-test.yml",
+      "sha256": "ff8cd9d4fa5aef3b4b032f582eb841f720c2207cd21db2c85a1deb7a628c6653"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-module-012-037-permissions-test.yml",
+      "sha256": "9bd59b7a758c816ce5512479289c652fe38d28a4a7df8963c9b2f54e16645b48"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-modules-card-numbers-test.yml",
+      "sha256": "2de9aee825e30b044aede6e2de5fef4e3e258e0c20df0d2d4db7047eeea58be5"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-modules-page-test.yml",
+      "sha256": "3e53376b703cdc15cb48fa7b550bbf1f70691c81cb37731279181970276d6d8c"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml",
+      "sha256": "35f2d0d2ff898647417466b1df75841d8ae342937a282aaf7f76cbaa7d770dd0"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-pr55-test.yml",
+      "sha256": "bc2cdcd7d74a25f3f4d474d88f8dbc5bf1a70a7bca6d8edafa4bcd874367e4de"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-runtime-data-hotfix-test.yml",
+      "sha256": "4833a1af3eb2b2ac7c2c25ae3d863c3bad0e9d5f13b8dd00c4aad8b60affd8a7"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-scoped-rbac-catalog-hotfix-test.yml",
+      "sha256": "f342b9d704ee6388cd14f2557fe28889f657ce93c5d3bf65a5ee580de3295224"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-scoped-rbac-test.yml",
+      "sha256": "52450a83d56e94f0933f312bfa6abf6336625c08053d970060dda1a8de8fa32d"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-stabilized-role-permission-timesheet-test.yml",
+      "sha256": "bd40c8244659ad4563ad8d75f0d2a076b3b0101d1b15ef060076dac2e5a236fe"
+    },
+    {
+      "path": ".github/workflows/projectpulse-deploy-test.yml",
+      "sha256": "f6cbd581b2b0de655a07cf23e6148e8a11c8976f4146b89294be6985c1507faf"
+    },
+    {
+      "path": ".github/workflows/pulse-ai-help-chat-usability-ci.yml",
+      "sha256": "55ca80943667d6033dafb582645cad0d91ac51caba2700239809edc95eb062b6"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "sha256": "56edd93efd64ed7d94cd227f28097aa81cf3716ea3e0e220fd8e41d092509660"
+    },
+    {
+      "path": ".github/workflows/security-posture-ci.yml",
+      "sha256": "5d7dd88c1c862c551c1ca78521fcb216739bf83842bbc05c6aae3df10b2e72ba"
+    },
+    {
+      "path": ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+      "sha256": "f74466d9691e6e4257de2fb0b0d2bb49959ef1b9e436a05949d9fcc5b75a0b5c"
+    },
+    {
+      "path": ".github/workflows/validate-admin-experience-008-009-test-deployment.yml",
+      "sha256": "2a2d950ec52ce3a49794f64e3c1bf3ebf07747637db54ab990df340dd245944f"
+    },
+    {
+      "path": ".verity/deploy.compose.yml",
+      "sha256": "64c7ad8a1ff27578a928b0ef56421a1fb3c2c6caaefb6c17c8a35803978b2d92"
+    },
+    {
+      "path": ".verity/deploy.env.example",
+      "sha256": "07dd50db87ef408d13a0c8371ada1a9c0dc64a8cd2390bf3d58923ab441ef2a3"
+    },
+    {
+      "path": "deploy.sh",
+      "sha256": "e6aec36e71cca83ff35f7e32eec242a3fcba882e1b3e367c425f86f1be3b19ca"
+    },
+    {
+      "path": "deployment/rocky-linux/serve-frontend-local.py",
+      "sha256": "754b6730eabab52d1f335dc940e2f50b7d3be1f28a7ce3753c63f67772b0f24e"
+    },
+    {
+      "path": "docs/security/SECURITY-REMEDIATION-20260928.md",
+      "sha256": "dd6ebc22d05a9d38a29770ec7b808bc0393e638fd57dafb969de79adb855fb3e"
+    },
+    {
+      "path": "ops/projectpulse/scripts/projectpulse-backup.sh",
+      "sha256": "54481f0140061e4f22d8a9c9e4e062a743da2adbd6aebd224aa665ca675ff6e8"
+    },
+    {
+      "path": "scripts/apply-admin-experience-008-009-test-migration.sh",
+      "sha256": "9dfc7c863c808578df60bf76c5afd882641a00c1b592d80a619d5bf0a29eaa11"
+    },
+    {
+      "path": "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
+      "sha256": "0f938670aa372d21404f78cf045930f5d91c68eca89b2179a1f1e999941a88ac"
+    },
+    {
+      "path": "scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh",
+      "sha256": "2155362b5336881938f0f9de20cba6d0b35627d425d8283290827c3a8f74e257"
+    },
+    {
+      "path": "scripts/ci/validate-module030-source-boundary.sh",
+      "sha256": "b804f820c6144450688ebc9331978539ba66ed43f63402b5ab0b03a1e887765a"
+    },
+    {
+      "path": "scripts/release-test/run-flowhive-my-role-browser.py",
+      "sha256": "5672c19eacf7299d014328de3e33bec22790278a61b344c04b27602bd75dc362"
+    },
+    {
+      "path": "scripts/release-test/validate-module025-governed-release.sh",
+      "sha256": "85ce9a9527e6dfb450f4308ae71a5e5b783a519e19fe44e3bfe7a1468638a617"
+    },
+    {
+      "path": "scripts/release-test/validate-protected-test-controller-branches.sh",
+      "sha256": "bf756a3360b5bc44a65d04691f98beee644913b638b6199d7a9e1161c500b844"
+    },
+    {
+      "path": "scripts/security/publish-safe-uat-evidence.py",
+      "sha256": "951de5af7b255641951069af0463005d38bde30744f4330c77af377decb4a859"
+    },
+    {
+      "path": "scripts/verity/build-local.sh",
+      "sha256": "f7dbabed852459f61a7a30ad049f913b553b347c203d41a1aca4af9891237492"
+    },
+    {
+      "path": "scripts/verity/pin-digests.sh",
+      "sha256": "402b5a2afeab01884ee059f2fe9340f1be2a6837f9eb7a79263d4e2527a278fd"
+    },
+    {
+      "path": "scripts/verity/release-config.py",
+      "sha256": "12a1bc982e9833529331eb636c738bdbf1e99fb840bc0c3cd53f18f9eea90c92"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Ai/CelarAiEnterpriseEvidenceCatalog.cs",
+      "sha256": "e09098bffa4bbc1c82327b6818fbfa8f7ad14e230be32da6dac73a12fe509e73"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePeriod.cs",
+      "sha256": "8688b21672f9d7bcac0c97369564338e25056a9287f68f6a011f556fb6b135a1"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs",
+      "sha256": "ef66df994adcabe9ec4c34ee898b0c2e4c11b3f9fb65b3e495c9d8a52db77c1f"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs",
+      "sha256": "6456b4fca2a1fb666e0d225db270af5cca763e10520b76d14a8ca83a8ea56acf"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs",
+      "sha256": "d289be3e23540dfc186ec7afcae68be83f12acb1213350e304340f62ffd8a20f"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/BoundedOfficeInput.cs",
+      "sha256": "b2e1b11d56e763e9fab41a95ac07969e9863de1c1793f0b92722e4d37619f742"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/EnterpriseReportingModule.g.cs",
+      "sha256": "500baf888ac7a17d7c407a29913c6910a1fecf74010a46ad633d0742128e3701"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Module001TimesheetContracts.g.cs",
+      "sha256": "f7e8b80993dcaf8dd5fd27cd60b8b5a92d1dba96263ef3c0bcb0b397028e7d36"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/AdminExperienceCommon.cs",
+      "sha256": "6c0f2c7b5d52a723dbac2cfce3302ec9b45fc938f66bba70951d6d11c3fdbb40"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/AnalyticsBrandedExportBuilder.cs",
+      "sha256": "ad1d6226157cde1e618a2304adc7728ff2342bcf16d1c5069a2ef8f7993e7d2c"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleService.cs",
+      "sha256": "8d52d18143078a2ef7008a8c7253e0fb8e717850211265300732c67a800580ad"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduler.cs",
+      "sha256": "a35b75f34608a0cc7fb96ac4177e89b73b3c22e2f2a2b9205efea708f59c068c"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/BackupConfigurationSafety.cs",
+      "sha256": "a7b1fa5483f093834f77e000874bdf49eb1c2b7953397838b9c3e0e7bd77823b"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/CanonicalApiPaths.cs",
+      "sha256": "08b19e086c65533d57efd246b2bebc39aef185fe7b7a95520f48934370360af8"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs",
+      "sha256": "1009cee02157ce1644eb31aee1a45db80d417f3f1f0b381856b0a2559573e850"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/CiCdPipelineModule.cs",
+      "sha256": "9b9e425093f601194933f7ef2c3dcb823bced44dadab92d9d71d4d93822270aa"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/EnterpriseNotificationSourceScanner.cs",
+      "sha256": "3e56d5aeda0f97fc70130e172e8327cc3ed5f7c1988a7ebcd89edceb428554f6"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/EnterpriseReminderPolicy.cs",
+      "sha256": "7a5bd287e95ef3a99f536a0f2d65afdf273f9581418ed342d241b0f8e625a689"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/EnterpriseReportingModule.cs",
+      "sha256": "06e7884335ec3ee2640825dca6c68e0faaae4ff7d3cce3ebb410fa91d179d81c"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/FinancialOperationsRecoveryModule.cs",
+      "sha256": "f6f88e6bf861f1d100b838df1a75e8c106f4886a3b108b94be30c3e6af1de879"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/LabEquipmentImportService.cs",
+      "sha256": "051e79f8da015c621ce3bde8e92d41483ba4a90450b4ecec23b466475d81d555"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/MicrosoftDirectorySyncModule.cs",
+      "sha256": "84b8a5f0928741ef935c2b31028c3b2b3ac2dc58f19a2fea7e274c4300274462"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/MicrosoftEnvironmentRuntimeResolver.cs",
+      "sha256": "c9cb9dc13ffa2587cbfba9905c2568965954718af27959d1863d49bba89b6837"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationModule.cs",
+      "sha256": "de59521ef6aa1c887b1dde17236d80fe5f556be096b181ae289347cc7a07b5ce"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationSecurityCompatibility.cs",
+      "sha256": "c4f602d1c498c5b8527945de59764936ea3cb44fc308d46118257f0b1b7dc9c8"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/MicrosoftMailRuntimeConfigurationModule.cs",
+      "sha256": "f080cf196613c5ea15501196bc31f59bd6b9f13ec53bf3bdf24b98f44bee33df"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/MicrosoftServicesRuntimeCompatibility.cs",
+      "sha256": "7f859da533b75de9ac53eb725cc112b5c2e4ed5f40abce62764d125b6f1d972b"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/MicrosoftSsoRuntimeCompatibility.cs",
+      "sha256": "6fe890f316cb6f7458f5f5124652b27cc03005598a1bfd7d7317d67dd43ffd9d"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/Module001TimesheetContracts.cs",
+      "sha256": "556c0ee8feb6ffb637da12d3d6ef134b5751ec18b52392d5651eae9b3d80cab1"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseCommands.cs",
+      "sha256": "24261b126a429b599ba773b2faa1cddbc9186b1884c80762c1154432b00e4c93"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseParsing.cs",
+      "sha256": "ce4945645c006c96b7eb31425c9336de6066f301239f0e6bbfd2e4e65afaa11b"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/OnCallSchedulingModule.cs",
+      "sha256": "33eb0813e3f92bb2a8111e66f0a969c15385ccf7452bf52b287a27b7e80dddc7"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/OneAssistRoutingDirectoryModule.cs",
+      "sha256": "51ae994d1473efe66121e19874a1828bb7d81e31c41873dbb72b56159b1ca719"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/PlatformOperationsContracts.cs",
+      "sha256": "2060b2c8065f0b3ce2e9858282f3f1188e0156be03b8f314e9275e428bd5bf98"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveNotificationPolicy.cs",
+      "sha256": "2bd5d20c7ab504968563b6719459693bf7eae24ae570ccf7feba6033be0b2b83"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/ProjectFlowHivePsaModule.cs",
+      "sha256": "f48aaaf60cdd4a91426613b55e7e2f957294582bf908000147611dc82477063d"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs",
+      "sha256": "337bfe65a59a060f9b55754b895b1b665d2e9cdbfa1f75a074bb0f3d74ea7659"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/ProjectNotificationEvaluator.cs",
+      "sha256": "d1080e4d582a467b28e3912cfa3d2c8e47d71f37bb66bb4f1086bfd28ad3b200"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/ProjectNotificationScheduler.cs",
+      "sha256": "b640ee9d36c8a0114a40d493508a7db21c1b8bdd6635227d55be2412734ad4aa"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs",
+      "sha256": "f4223a2771a88ded5c8c87741edf4c1a1bae892a56881dcf4fb0cfd0a7d797bc"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs",
+      "sha256": "f3b5e7349188c30b22a17a097a28770b4106207064989f55579733f16e0515dd"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/ScopedRolePolicyModule.cs",
+      "sha256": "11f740ba9d172bd45728c89b4f9318694391b210c29db0f8ab04c3cb3303dd0b"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs",
+      "sha256": "1cb74875226c17b3682207df9b5f6cf4713c76ac2242cf7ca902157cd1189c51"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs",
+      "sha256": "1d65169d5a01a6c012fdaa26946ab3f7b838d6928290b18ca072b5725e47fc96"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/Program.cs",
+      "sha256": "1e9afa4314e6c380fd76119f7dbd2ee0a6e18936fda10e691ae6e895039ebe0c"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/SafeExportText.cs",
+      "sha256": "2bf7afdf9a0c8644a9f351a07b68cbb2638759c377bc9a2b4f84c30de50e9eae"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/SafeTimeZones.cs",
+      "sha256": "0d5d083a3050e3bc6d9e0b5233d8001a25e50f296f0c12dc464bb377ab93147f"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/ScopedRolePolicyModule.g.cs",
+      "sha256": "6bd41937023103bd72646ab5e01e83700cc344e6bc8e9736e936a1b3bddc519b"
+    },
+    {
+      "path": "src/backend/ProjectTime.Api/ScopedRolePolicyPersistence.g.cs",
+      "sha256": "71f0616691e82044a372a311f1b4eeb102015729cea04155830282411856aa99"
+    },
+    {
+      "path": "src/frontend/project-time-web/scripts/validate-admin-runtime-stability.mjs",
+      "sha256": "1794b0050fcf3cfde31b55ac607ce02b728b17ad61c0f9780193b48147ad8dce"
+    },
+    {
+      "path": "src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs",
+      "sha256": "8b00408e72799e1f6c18d2007318d1bb375f6907ef2f5c11d40aaeb0bd26d1cc"
+    },
+    {
+      "path": "src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs",
+      "sha256": "38891876abff499dd65978126618b8ef625ae4c809db0e09c0d6645d2c04cb93"
+    },
+    {
+      "path": "src/frontend/project-time-web/scripts/validate-module-067-global-mail.mjs",
+      "sha256": "8bfb5209004d834cb67a179536a3e214a0fe2dc69f291a4aadd7efdf0ee1f7ce"
+    },
+    {
+      "path": "src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs",
+      "sha256": "88551b4f4aed8d7775d71ea7029b9e5a358ae7e1b79a57f56c6e5b9f139459ad"
+    },
+    {
+      "path": "src/frontend/project-time-web/scripts/validate-security-role-policy-public-origin.mjs",
+      "sha256": "368faf9371ce707ed6e9fe2882db0761ac01805ab0c4a6bf231ad8835d6f0628"
+    },
+    {
+      "path": "src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs",
+      "sha256": "462477aaa1fe090a7fed4e3410ac31bd90a6e2b04feab3e70a924e77f2062526"
+    },
+    {
+      "path": "src/frontend/project-time-web/src/BillingReadinessCenter.jsx",
+      "sha256": "7a4ab1670c192097a68673cc1cbcb38449b21a1b0a323f2edd9c1d2aae22bcc3"
+    },
+    {
+      "path": "src/frontend/project-time-web/src/CloseoutEmailAutomationCenter.jsx",
+      "sha256": "6bb4bb113790def649fd377f3e1781b43e2287c965ea769ad38f448f642a25f7"
+    },
+    {
+      "path": "src/frontend/project-time-web/src/HelpAssistant.jsx",
+      "sha256": "1769d01c4877d6dcbef185a7acc0c840e7f446d9d51652a6e286ba94c725cae9"
+    },
+    {
+      "path": "src/frontend/project-time-web/src/OneAssistRoutingDirectoryCenter.jsx",
+      "sha256": "68cfc818e49791681a4229912dfe2b62365d4fe2b68fb92aaab5a18ad6a4839e"
+    },
+    {
+      "path": "src/frontend/project-time-web/src/ProjectAllocationInfoPanel.jsx",
+      "sha256": "bb17d9c62a16f478fb2c74ebb3cb56a95332662bdd3c2443aeca6dd3422203e5"
+    },
+    {
+      "path": "src/frontend/project-time-web/src/security-output.mjs",
+      "sha256": "d1cc4571d95e2e68d432f1f9898a6e71e512d9dedcfaee9ddb7a2d9b11714f2b"
+    },
+    {
+      "path": "tests/FlowHiveExecutablePlanTests/Program.cs",
+      "sha256": "e633f5022251ee627259613e401249aa87d65e17ae073487e654c65c1b15858b"
+    },
+    {
+      "path": "tests/MicrosoftTeamsDeliveryTests/MicrosoftTeamsDeliveryTests.csproj",
+      "sha256": "c678017a0e077c25e0ae89749909fe9e1ef4311a5b3297658e950e9949e3899f"
+    },
+    {
+      "path": "tests/ProjectTime.Api.AuthorizationTests/Program.cs",
+      "sha256": "27880e95c352fc1abae7fdcbd2d122639192541ad0111eb7c04ccf76a89a5352"
+    },
+    {
+      "path": "tests/ProjectTime.Api.AuthorizationTests/SecurityConsolidationTests.cs",
+      "sha256": "7a769e6be69e004003b08f31876452e269cd16ef956937819d2f034954ab6039"
+    },
+    {
+      "path": "tests/ProjectTime.Api.AuthorizationTests/SecurityDatabaseTests.cs",
+      "sha256": "4621c6888528500f207b8c289e3497808a57246747a0033175bb2c1abab8b157"
+    },
+    {
+      "path": "tests/SecurityBoundaryTests/Program.cs",
+      "sha256": "2590d7a5b7bb02c19da93f141096d1c93a58394d0cd749e74de1d29b5855fad3"
+    },
+    {
+      "path": "tests/SecurityBoundaryTests/SecurityBoundaryTests.csproj",
+      "sha256": "551706a3d9c5c754291ab9ed10e60e42618224ac5cbadb67d951cdde6850462f"
+    },
+    {
+      "path": "tests/flowhive-psa-installed-acceptance.test.py",
+      "sha256": "61e91825151e00819e444e815fb6af4497548fe9e0100df8594dcdf66154860d"
+    },
+    {
+      "path": "tests/laya/processed-source-scope.py",
+      "sha256": "58cd4b903eca1d66d2e53346c8e4318270dfc8fec1d3ce11afb81e33912e7ed1"
+    },
+    {
+      "path": "tests/module064-migration-rollout.test.py",
+      "sha256": "49192a232dc930863b51a61f3079eb1c975edc289080f90ea2b4deb7813900e1"
+    },
+    {
+      "path": "tests/security-deployment-boundaries.test.py",
+      "sha256": "d4442efb134d8b166db868fe828e3eda3cf398735aa388ff02d885141143d3cd"
+    },
+    {
+      "path": "tests/security-frontend-proxy.test.py",
+      "sha256": "636d955b4b2fe511e1a629de3425e957cc73de7d3c069da58d9d25bbed25341e"
+    },
+    {
+      "path": "tests/security-output.test.mjs",
+      "sha256": "7d9917813ae192ce0289bf1cbd18066a62cbdaeaa622a203d09d6765ceb18636"
+    },
+    {
+      "path": "tests/security-release/admission_fixture.py",
+      "sha256": "1a31b20b51142075f3b7550e7d59097536605d9cc1d29742ab5e424fee38901a"
+    },
+    {
+      "path": "tests/security-release/scope.py",
+      "sha256": "240c549ea9e44a605de274355ee9d9838dcd0a9bd8cca66433c06362aba4fc66"
+    },
+    {
+      "path": "tests/security-release/test_scope.py",
+      "sha256": "d788a7d616e4b35f26c57eaa1c60ebde04e7372e191bf6f7110e4180b3210122"
+    },
+    {
+      "path": "tests/test-pr1151-uat-supersession.py",
+      "sha256": "6ff0b08cb13961e859567174c0f9523ada65cc07f78c1aa3325879018a899856"
+    },
+    {
+      "path": "tests/test-pr1204-uat-supersession.py",
+      "sha256": "a1dee7f80a5797d8afee0841992d552bdca882717c67fcb0232e8e1a3572dd09"
+    },
+    {
+      "path": "tests/validate-celar-ai-pr630-consolidated-legacy.mjs",
+      "sha256": "a17da2c69a075b25904c4694ca06aa7e40b89a9bac9f3863a2aebc69f21b21be"
+    },
+    {
+      "path": "tests/validate-celar-ai-pr630-consolidated.mjs",
+      "sha256": "bdf248e5efd4c92e0c8c909b0fa7a96ae0dfd5447606d43b2e2a2662a17094ac"
+    },
+    {
+      "path": "tests/validate-module-management-owner-drawer.mjs",
+      "sha256": "3f16c893e339b6b323d5973f59c7a121e77992cf7eff96760209f30b27b5ca87"
+    },
+    {
+      "path": "tests/validate-systemwide-enterprise-reliability.mjs",
+      "sha256": "0942dbcf9d11b9479ad0e7ea297bb38f8e56520781993c15e445322310c09e22"
+    }
+  ]
+}

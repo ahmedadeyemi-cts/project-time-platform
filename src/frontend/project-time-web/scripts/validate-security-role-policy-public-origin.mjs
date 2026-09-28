@@ -64,7 +64,10 @@ requireText(globalMail, 'TryResolveProxyOrConfiguredOrigin', 'Module 065 trusted
 requireText(globalMail, 'TryBrowserOrigin', 'Module 065 browser-origin compatibility');
 rejectText(globalMail, 'invalid_forwarded_public_origin', 'obsolete forwarded-origin hard failure');
 
-requireText(publicOrigin, 'trusted_forwarded_origin', 'trusted forwarded origin source');
+requireText(publicOrigin, 'configured:{name}', 'deployment-configured origin source');
+requireText(publicOrigin, 'host.Equals(configuredUri.Host, StringComparison.OrdinalIgnoreCase)', 'exact configured host trust');
+rejectText(publicOrigin, 'trusted_forwarded_origin', 'request-selected forwarded origin');
+rejectText(publicOrigin, 'request.Headers["X-Forwarded-Host"]', 'forwarded host authority');
 requireText(publicOrigin, 'Public ProjectPulse environments are HTTPS-only', 'TLS termination compatibility');
 requireText(publicOrigin, '.onenecklab.com', 'test-domain allowlist');
 requireText(publicOrigin, '.ussignal.com', 'production-domain allowlist');
