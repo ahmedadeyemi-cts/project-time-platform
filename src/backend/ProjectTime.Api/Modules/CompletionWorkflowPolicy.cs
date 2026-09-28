@@ -99,7 +99,7 @@ public static class CompletionWorkflowPolicy
             var manualFinal = state.Sent is not null && state.Sent.Scope == "final"
                 && state.Sent.BasisFingerprint == basis.Fingerprint;
             if (!manualFinal && !(basis.AutomatedFinalDelivered && basis.AllInvoicesDelivered))
-                return "Record the current final package sent to Certinia, or complete connected delivery of all invoices, before confirming fully billed. A partial package is not final billing.";
+                return "Record the current final billing handoff, or complete connected delivery of all invoices, before confirming fully billed. A partial package is not final billing.";
             if (manualFinal && request.OccurredOn < state.Sent!.OccurredOn)
                 return "Billing completion cannot precede the final package's sent date.";
         }

@@ -216,8 +216,8 @@ internal static class BrandedInvoiceArtifactRenderer
         var descriptionTop = top + 9d + taskLines.Count * 10d;
         PdfMultiline(page, x[2] + 5d, descriptionTop, 7.3d, descriptionLines, 8.5d, false, "0.31 0.39 0.49");
 
-        PdfTextRight(page, x[4] - 5d, top + 9d, 8d, line.Hours.ToString("0.00", CultureInfo.InvariantCulture), color: "0.14 0.20 0.29");
-        PdfTextRight(page, x[5] - 5d, top + 9d, 8d, Money(line.UnitRate), color: "0.14 0.20 0.29");
+        PdfTextRight(page, x[4] - 5d, top + 9d, 8d, line.LaborCategory == "manual_amount" ? "—" : line.Hours.ToString("0.00", CultureInfo.InvariantCulture), color: "0.14 0.20 0.29");
+        PdfTextRight(page, x[5] - 5d, top + 9d, 8d, line.LaborCategory == "manual_amount" ? "—" : Money(line.UnitRate), color: "0.14 0.20 0.29");
         PdfTextRight(page, x[6] - 5d, top + 9d, 8d, Money(line.Amount), bold: true, color: "0.08 0.15 0.25");
     }
 
@@ -575,8 +575,10 @@ internal static class BrandedInvoiceArtifactRenderer
             XlsxDate(xml, $"A{row}", line.WorkDate, dateStyle);
             XlsxInline(xml, $"B{row}", line.Resource, baseStyle);
             XlsxInline(xml, $"D{row}", $"{line.TaskCode} {line.TaskName}\n{line.Description}", baseStyle);
-            XlsxNumber(xml, $"H{row}", line.Hours, numberStyle);
-            XlsxNumber(xml, $"I{row}", line.UnitRate, moneyStyle);
+            if (line.LaborCategory == "manual_amount") XlsxInline(xml, $"H{row}", "—", baseStyle);
+            else XlsxNumber(xml, $"H{row}", line.Hours, numberStyle);
+            if (line.LaborCategory == "manual_amount") XlsxInline(xml, $"I{row}", "—", baseStyle);
+            else XlsxNumber(xml, $"I{row}", line.UnitRate, moneyStyle);
             XlsxNumber(xml, $"J{row}", line.Amount, moneyStyle);
             XlsxRowEnd(xml);
             merges.AddRange(new[] { $"B{row}:C{row}", $"D{row}:G{row}", $"J{row}:K{row}" });
@@ -672,10 +674,12 @@ internal static class BrandedInvoiceArtifactRenderer
             XlsxInline(xml, $"D{row}", line.TaskCode, baseStyle);
             XlsxInline(xml, $"E{row}", line.TaskName, baseStyle);
             XlsxInline(xml, $"F{row}", line.Description, baseStyle);
-            XlsxNumber(xml, $"G{row}", line.Hours, numberStyle);
+            if (line.LaborCategory == "manual_amount") XlsxInline(xml, $"G{row}", "—", baseStyle);
+            else XlsxNumber(xml, $"G{row}", line.Hours, numberStyle);
             XlsxInline(xml, $"H{row}", line.RateCode, baseStyle);
             XlsxInline(xml, $"I{row}", line.RateDescription, baseStyle);
-            XlsxNumber(xml, $"J{row}", line.UnitRate, moneyStyle);
+            if (line.LaborCategory == "manual_amount") XlsxInline(xml, $"J{row}", "—", baseStyle);
+            else XlsxNumber(xml, $"J{row}", line.UnitRate, moneyStyle);
             XlsxNumber(xml, $"K{row}", line.Amount, moneyStyle);
             XlsxRowEnd(xml);
         }

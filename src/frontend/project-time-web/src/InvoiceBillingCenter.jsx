@@ -1,3 +1,4 @@
+import ManualInvoicePanel from './ManualInvoicePanel.jsx';
 import ProjectCompletionChecklist from './ProjectCompletionChecklist.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import CertiniaInvoiceDeliveryPanel from './CertiniaInvoiceDeliveryPanel';
@@ -524,6 +525,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
   function customerResourceLabel(line) {
     const labor = text(line?.laborCategory).toLowerCase();
+    if (labor === 'manual_amount') return 'Project billing';
     if (labor === 'expense') return 'Reimbursable Expense';
     if (labor === 'fixed_price_milestone') return 'Fixed Price Milestone';
 
@@ -596,8 +598,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
           <p className="eyebrow">MODULE 042 • Invoice operations</p>
           <h1>Invoice &amp; Billing Center</h1>
           <p>
-            Review approved uninvoiced time, explicitly select effective stored rates, and create immutable partial or final invoices.
-            No customer, project, rate, hour, purchase order, amount, or invoice number is fabricated.
+            Create partial or full invoices using an authorized project amount, or invoice approved time and billing packages. Download the saved PDF or Excel invoice for manual delivery.
           </p>
         </div>
         <div className="m042-actions">
@@ -614,7 +615,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         <ol><li>Find and select the customer project below.</li><li>Review approved billing lines, rates, expenses, and external references.</li><li>Use Generate Partial Invoice for eligible work, or Generate Final Invoice for final reconciliation before closing the project. Download the saved invoice from invoice history.</li></ol>
       </section>
 
-      <p className="m042-live-mode">Choose the path that matches your work: create an invoice in Pulse using the commercial setup below, or record billing already handled outside Pulse in the selected project’s completion checklist. SELL/rate readiness applies to invoice creation, not manual evidence recording. The same checklist is also available in PM Delivery &amp; closeout and Project Closeout.</p>
+      <p className="m042-live-mode">Manual invoicing works without Certinia or SELL and does not depend on time-entry billing status. Review prior invoices before charging the remaining amount. Record delivery and completed external billing in the project completion checklist. The same checklist is also available in PM Delivery &amp; closeout and Project Closeout.</p>
       <details className="m042-preview-mode m042-live-mode" aria-label="Module 042 live data status"><summary>Commercial source details</summary>
         <strong>Commercial source guard</strong>
         <span>
@@ -718,6 +719,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
             <div className="m042-column-count"><strong>{visibleColumns.length}</strong><small>columns shown</small></div>
           </section>
 
+          {selected ? <ManualInvoicePanel key={`${userKey}:${selected.projectId}`} projectId={selected.projectId} projectName={selected.projectName}
+            onSaved={async () => { await loadLiveData(selected.projectId); }} /> : null}
           {selected ? <ProjectCompletionChecklist projectId={selected.projectId} /> : null}
           <section className="m042-workspace">
             <div className="m042-card">
@@ -1111,8 +1114,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                                       <small>{text(line.timeType)} · {text(line.managerApprovalSnapshot)}</small>
                                     </span>
                                   </td>
-                                  <td>{formatHours(line.approvedHours)}</td>
-                                  <td>{formatMoney(line.unitRate)}</td>
+                                  <td>{line.laborCategory === 'manual_amount' ? '—' : formatHours(line.approvedHours)}</td>
+                                  <td>{line.laborCategory === 'manual_amount' ? '—' : formatMoney(line.unitRate)}</td>
                                   <td>{formatMoney(line.lineAmount)}</td>
                                 </tr>
                               ))}

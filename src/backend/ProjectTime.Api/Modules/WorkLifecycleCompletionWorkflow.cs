@@ -31,7 +31,7 @@ public static partial class WorkLifecycleModule
             ? access.CanEditAll || project.ProjectManagerUserId == access.ActualUserId
             : action is "billed" or "reopen_billing"
                 ? access.CanEditAll || access.RoleCodes.Any(BillingRoles.Contains)
-                : action == "sent" && access.CanEditAll);
+                : action == "sent" && (access.CanEditAll || access.RoleCodes.Any(BillingRoles.Contains)));
 
     private static async Task<IResult> GetCompletionChecklistAsync(Guid projectId, HttpContext context)
     {
@@ -165,7 +165,7 @@ public static partial class WorkLifecycleModule
             {
                 status = "completion_evidence_recorded", stateChanged = true, revision = next.Revision,
                 message = action == "delivery" ? "Delivery recorded and closeout started. Billing and acceptance can now be completed separately."
-                    : action == "sent" ? "Sent-to-Certinia confirmation recorded. No external transmission was performed; billing is not yet marked complete."
+                    : action == "sent" ? "Billing handoff confirmation recorded. No external transmission was performed; billing is not yet marked complete."
                     : action == "billed" ? "Fully billed confirmation recorded for the current charge evidence. Finish the remaining closeout checks before closing."
                     : "Evidence recorded with its author, date and audit history."
             });
