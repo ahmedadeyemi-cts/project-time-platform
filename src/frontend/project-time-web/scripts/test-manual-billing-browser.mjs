@@ -51,7 +51,7 @@ try {
   await page.getByRole('button',{name:'Retry same invoice request',exact:true}).waitFor();
   await page.getByRole('button',{name:'Retry same invoice request',exact:true}).click();
   await page.getByText(/PULSE-000001-2 saved/).waitFor();assert.deepEqual(posts[0],posts[1]);checks++;
-  await page.getByLabel('Invoice type',{exact:true}).selectOption('final');
+  await page.getByRole('combobox',{name:'Invoice type',exact:true}).selectOption('final');
   await page.getByLabel('Customer-facing description',{exact:true}).fill('Final authorized project balance');
   await page.getByLabel('Internal audit reason',{exact:true}).fill('Reconciled final project billing');
   assert.match(await page.locator('dl').innerText(),/\$3,000\.00/);checks++;

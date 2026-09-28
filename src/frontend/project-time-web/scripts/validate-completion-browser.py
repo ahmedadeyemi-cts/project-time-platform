@@ -86,7 +86,7 @@ def main():
           form.get_by_role('button',name='Save confirmation',exact=True).click();ready()
           expect(page.get_by_text('Partial manual handoff recorded',exact=True)).to_be_visible()
           expect(page.get_by_text('Not confirmed',exact=True)).to_be_visible()
-          open_step('Update sent to certinia')
+          open_step('Update billing handoff')
           form=fill();form.get_by_label('Package type').select_option('final');fault['abort']=True
           form.get_by_role('button',name='Save confirmation',exact=True).click()
           expect(page.locator('.completion-form').get_by_role('button',name='Retry the same confirmation',exact=True)).to_be_visible()
