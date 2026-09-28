@@ -1721,7 +1721,7 @@
 .project-flowhive-center .flowhive-foundation-notice > * { min-width: 0; overflow-wrap: anywhere; }
 .project-flowhive-center .flowhive-hero { padding: .85rem 1rem; box-shadow: none; }
 .project-flowhive-center .flowhive-hero h2 { font-size: 1.5rem; }
-.project-flowhive-center .flowhive-view-tabs { position: sticky; top: 0; z-index: 20; flex-wrap: wrap; overflow: visible; }
+.project-flowhive-center .flowhive-view-tabs { position: sticky; top: 0; z-index: 20; flex-wrap: wrap; overflow-x: auto; }
 .project-flowhive-center .flowhive-view-tabs button { flex: 0 1 auto; min-width: 0; }
 .project-flowhive-center .flowhive-planning-setup,
 .project-flowhive-center .flowhive-planner-history { border: 1px solid var(--flowhive-line); border-radius: .6rem; padding: .65rem .85rem; background: var(--flowhive-surface); }
