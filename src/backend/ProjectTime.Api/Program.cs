@@ -8183,6 +8183,9 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
             }
         }
 
+        using var fundingRequest = httpContext.Request.ContentLength == 0
+            ? System.Text.Json.JsonDocument.Parse("{}")
+            : await System.Text.Json.JsonDocument.ParseAsync(httpContext.Request.Body, cancellationToken: httpContext.RequestAborted);
         await using var transaction = await connection.BeginTransactionAsync(httpContext.RequestAborted);
         await using var command = new NpgsqlCommand("""
             SELECT projectpulse055d4d_commit_intake_package(@intake_package_id, @actor_user_id)::text;
@@ -8210,6 +8213,13 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
                 || !Guid.TryParse(projectIdProperty.GetString(), out var createdProjectId))
             {
                 throw new InvalidOperationException("The committed Work Register response did not include a project ID.");
+            }
+
+            if (status == "committed")
+            {
+                await ProjectTime.Api.Modules.ContractProjectFunding.AttachAsync(
+                    connection, transaction, createdProjectId, sessionUserId.Value,
+                    fundingRequest.RootElement, httpContext.RequestAborted);
             }
 
             await using var auditCommand = new NpgsqlCommand("""
@@ -8273,6 +8283,14 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
         }
 
         return Results.Content(jsonText, "application/json");
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { status = "validation_error", message = ex.Message });
+    }
+    catch (System.Text.Json.JsonException)
+    {
+        return Results.BadRequest(new { status = "validation_error", message = "Invalid project funding request." });
     }
     catch (Exception ex)
     {

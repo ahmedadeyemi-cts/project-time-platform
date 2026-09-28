@@ -74,6 +74,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
+          if [[ "$GITHUB_HEAD_REF" == 'codex/module060-approval-contract-funding' ]]; then
+            python3 tests/contracts-release/scope.py
+            python3 tests/contracts-release/test_scope.py
+            python3 tests/contracts-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then
             python3 tests/notification-parity/release_scope.py
             python3 tests/notification-parity/test_release_scope.py

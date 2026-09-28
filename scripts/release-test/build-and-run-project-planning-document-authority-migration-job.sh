@@ -88,6 +88,13 @@ done
 install -m 0444 "$ROOT/scripts/release-test/verify-module065-notification-parity.sql" "$CONTEXT/database/verify-module065-notification-parity.sql"
 (cd "$CONTEXT" && sha256sum database/migrations/126_module065_power_automate_teams_delivery.sql database/migrations/128_module065_email_teams_notification_parity.sql database/migrations/129_enterprise_reminder_delivery_sources.sql database/verify-module065-notification-parity.sql > database/module065-notification-parity.sha256)
 # MODULE065_PARITY_PACKAGE_END
+# MODULE060_CONTRACT_PACKAGE_BEGIN
+for name in 060-module-contracts-boh-foundation 060b-module-contracts-prepaid-financial-xlsx 060c-contract-approval-funding; do
+  install -m 0444 "$ROOT/deployment/database/$name.sql" "$CONTEXT/database/migrations/$name.sql"
+done
+install -m 0444 "$ROOT/scripts/release-test/verify-module060-contract-funding.sql" "$CONTEXT/database/verify-module060-contract-funding.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/060*.sql database/verify-module060-contract-funding.sql > database/module060-contract-funding.sha256)
+# MODULE060_CONTRACT_PACKAGE_END
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -171,6 +178,14 @@ psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/129_enterprise_remi
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-module065-notification-parity.sql"
 echo 'MIGRATIONS_126_128_129_NOTIFICATION_PARITY=APPLIED_AND_VERIFIED'
 # MODULE065_PARITY_APPLY_END
+# MODULE060_CONTRACT_APPLY_BEGIN
+(cd "$ROOT" && sha256sum --check --status database/module060-contract-funding.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/060-module-contracts-boh-foundation.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/060b-module-contracts-prepaid-financial-xlsx.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/060c-contract-approval-funding.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-module060-contract-funding.sql"
+echo 'MODULE060_CONTRACT_FUNDING=APPLIED_AND_VERIFIED'
+# MODULE060_CONTRACT_APPLY_END
 
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
@@ -369,6 +384,12 @@ if [[ -n "$EVIDENCE_ROOT" ]]; then
 fi
 echo 'MIGRATIONS_126_128_129_NOTIFICATION_PARITY=APPLIED_AND_VERIFIED'
 # MODULE065_PARITY_EVIDENCE_END
+if [[ -n "$EVIDENCE_ROOT" ]]; then
+  jq -n --arg release "$RELEASE_COMMIT" --arg image "$RELIABILITY_MIGRATION_IMAGE" \
+    '{releaseCommit:$release,migrationImage:$image,status:"APPLIED_AND_VERIFIED",module:"060",customerDataCreated:false}' \
+    > "$EVIDENCE_ROOT/module060-contract-funding.json"
+fi
+echo 'MODULE060_CONTRACT_FUNDING=APPLIED_AND_VERIFIED'
 # The private-network entrypoint already applied and verified these migrations.
 # The host reports success only after that job succeeds; it must never run SQL.
 echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'

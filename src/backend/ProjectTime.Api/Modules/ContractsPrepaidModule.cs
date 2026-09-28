@@ -45,9 +45,9 @@ public static class ContractsPrepaidModule
         "Credit Awarded",
         "Date Credit Awarded",
         "Credit Awarded By",
-        "Pending Hours",
-        "Approved Hours",
-        "Total Hours",
+        "Pending Value",
+        "Approved Value",
+        "Total Labor Value",
         "Total Expenses",
         "Adjustments",
         "Total Used",
@@ -56,7 +56,9 @@ public static class ContractsPrepaidModule
         "Certinia ID",
         "ConnectWise SELL Quote",
         "Salesforce ID",
-        "Notes"
+        "Notes",
+        "Live Pending Approval Hours",
+        "Live Approved Hours"
     };
 
     public static WebApplication MapContractsPrepaidModule(
@@ -171,6 +173,8 @@ public static class ContractsPrepaidModule
                     rows.Sum(item => item.CreditAwarded),
                 totalAvailable =
                     rows.Sum(item => item.TotalAvailable),
+                pendingHours = rows.Sum(item => item.PendingHours),
+                approvedHours = rows.Sum(item => item.ApprovedHours),
                 pendingAmount =
                     rows.Sum(item => item.PendingAmount),
                 approvedAmount =
@@ -466,8 +470,10 @@ public static class ContractsPrepaidModule
                     sell_quote,
                     salesforce_id,
                     note_count,
-                    latest_note
-                FROM vw_boh_prepaid_balance_rows
+                    latest_note,
+                    (SELECT pending_hours FROM vw_boh_contract_time_totals t WHERE t.boh_contract_id = b.boh_contract_id),
+                    (SELECT approved_hours FROM vw_boh_contract_time_totals t WHERE t.boh_contract_id = b.boh_contract_id)
+                FROM vw_boh_prepaid_balance_rows b
                 ORDER BY
                     account_executive_name,
                     customer_name,
@@ -520,7 +526,7 @@ public static class ContractsPrepaidModule
                 reader.GetString(29),
                 reader.GetString(30),
                 reader.GetInt32(31),
-                reader.GetString(32)));
+                reader.GetString(32)) { PendingHours = reader.GetDecimal(33), ApprovedHours = reader.GetDecimal(34) });
         }
 
         return rows;
@@ -624,7 +630,9 @@ public static class ContractsPrepaidModule
                         item.CertiniaId,
                         item.SellQuote,
                         item.SalesforceId,
-                        item.LatestNote
+                        item.LatestNote,
+                        item.PendingHours,
+                        item.ApprovedHours
                     };
 
                     for (var index = 0;
@@ -865,5 +873,9 @@ public static class ContractsPrepaidModule
         string SellQuote,
         string SalesforceId,
         int NoteCount,
-        string LatestNote);
+        string LatestNote)
+    {
+        public decimal PendingHours { get; init; }
+        public decimal ApprovedHours { get; init; }
+    }
 }
