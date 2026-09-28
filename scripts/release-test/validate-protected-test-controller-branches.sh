@@ -3,6 +3,12 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+# The SOW readback repair shares one exact file-set check across both gates.
+if [[ "$HEAD_BRANCH" == fix/module025-readback-contract-20260928 ]]; then
+  BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" \
+    bash scripts/release-test/validate-module025-governed-release.sh
+  return
+fi
 # Exact enterprise UX repair; deployment authority remains frozen.
 if [[ "$HEAD_BRANCH" == fix/enterprise-ux-consistency-20260928 ]]; then
   python3 tests/enterprise-ux-release-scope.py
