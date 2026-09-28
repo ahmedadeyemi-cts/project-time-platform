@@ -1,0 +1,26 @@
+name: Contract approval and funding regression
+on:
+  pull_request:
+    paths:
+      - 'deployment/database/060c-*'
+      - 'src/backend/ProjectTime.Api/Modules/Contract*'
+      - 'src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkModule.cs'
+      - 'src/frontend/project-time-web/src/Contract*'
+      - 'tests/contracts-approval-funding.test.mjs'
+      - '.github/workflows/contracts-approval-funding-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  database-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/contract-test-runtime @electric-sql/pglite@0.5.8 --no-audit --no-fund
+      - run: node tests/contracts-approval-funding.test.mjs
+        env:
+          PGLITE_MODULE: /tmp/contract-test-runtime/node_modules/@electric-sql/pglite/dist/index.js

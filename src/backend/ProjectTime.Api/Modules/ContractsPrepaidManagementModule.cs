@@ -429,8 +429,12 @@ public static class ContractsPrepaidManagementModule
                     certinia_id,
                     sell_quote,
                     salesforce_id,
-                    contract_status
-                FROM vw_boh_prepaid_balance_rows
+                    contract_status,
+                    pending_amount,
+                    approved_amount,
+                    (SELECT pending_hours FROM vw_boh_contract_time_totals t WHERE t.boh_contract_id = b.boh_contract_id),
+                    (SELECT approved_hours FROM vw_boh_contract_time_totals t WHERE t.boh_contract_id = b.boh_contract_id)
+                FROM vw_boh_prepaid_balance_rows b
                 WHERE boh_contract_id = @contract_id;
                 """,
                 connection))
@@ -467,7 +471,11 @@ public static class ContractsPrepaidManagementModule
                     certiniaId = reader.GetString(14),
                     sellQuote = reader.GetString(15),
                     salesforceId = reader.GetString(16),
-                    contractStatus = reader.GetString(17)
+                    contractStatus = reader.GetString(17),
+                    pendingAmount = reader.GetDecimal(18),
+                    approvedAmount = reader.GetDecimal(19),
+                    pendingHours = reader.GetDecimal(20),
+                    approvedHours = reader.GetDecimal(21)
                 };
             }
         }
@@ -572,10 +580,25 @@ public static class ContractsPrepaidManagementModule
             }
         }
 
+        var fundedProjects = new List<object>();
+        await using (var funding = new NpgsqlCommand("""
+            SELECT p.project_id, p.project_name, p.contract_type, f.drawdown_hourly_rate
+            FROM contract_project_funding f JOIN projects p ON p.project_id = f.project_id
+            WHERE f.boh_contract_id = @contract_id ORDER BY p.project_name;
+            """, connection))
+        {
+            funding.Parameters.AddWithValue("contract_id", contractId);
+            await using var reader = await funding.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                fundedProjects.Add(new { projectId = reader.GetGuid(0), projectName = reader.GetString(1),
+                    contractType = reader.GetString(2), drawdownHourlyRate = reader.GetDecimal(3) });
+        }
+
         return Results.Ok(new
         {
             status = "prepaid_contract_loaded",
             contract,
+            fundedProjects,
             credits,
             notes,
             permissions = new
@@ -1348,6 +1371,10 @@ public static class ContractsPrepaidManagementModule
 
         await connection.OpenAsync();
 
+        if (!await WorkRegisterAuthorization.HasCreateAuthorityAsync(connection, context,
+                cancellationToken: context.RequestAborted))
+            return Forbidden("Funding contracts are available to authorized project creators.");
+
         var rows = new List<object>();
 
         await using var command =
@@ -1356,17 +1383,22 @@ public static class ContractsPrepaidManagementModule
                     boh_contract_id,
                     engagement_name,
                     po_quote,
-                    certinia_id,
-                    sell_quote,
-                    salesforce_id,
+                    b.certinia_id,
+                    b.sell_quote,
+                    b.salesforce_id,
                     contract_end_date,
                     total_available,
                     total_used,
                     remaining_balance,
-                    balance_percent
-                FROM vw_boh_prepaid_balance_rows
+                    balance_percent,
+                    c.eligible_tm,
+                    c.eligible_fixed_price
+                FROM vw_boh_prepaid_balance_rows b
+                JOIN boh_contracts c USING (boh_contract_id, client_id, contract_status)
                 WHERE client_id = @client_id
-                  AND contract_status NOT IN ('cancelled', 'closed')
+                  AND c.balance_unit = 'currency'
+                  AND remaining_balance > 0
+                  AND contract_status IN ('active', 'low_balance', 'expiring')
                   AND contract_start_date <= @work_date
                   AND contract_end_date >= @work_date
                 ORDER BY remaining_balance DESC, engagement_name;
@@ -1396,7 +1428,9 @@ public static class ContractsPrepaidManagementModule
                 remainingBalance = reader.GetDecimal(9),
                 balancePercent = reader.IsDBNull(10)
                     ? (decimal?)null
-                    : reader.GetDecimal(10)
+                    : reader.GetDecimal(10),
+                eligibleTm = reader.GetBoolean(11),
+                eligibleFixedPrice = reader.GetBoolean(12)
             });
         }
 
@@ -1445,6 +1479,40 @@ public static class ContractsPrepaidManagementModule
             new NpgsqlConnection(ConnectionString());
 
         await connection.OpenAsync();
+
+        if (!(await AccessAsync(connection, actor.Value)).CanManage)
+            return Forbidden("Only contract managers may map existing time to a funding contract.");
+
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using (var validate = new NpgsqlCommand("""
+            SELECT CASE contract_time_approval_bucket(e.status, p.project_manager_user_id IS NOT NULL)
+                WHEN 'pending' THEN 'submitted' WHEN 'approved' THEN 'consumed'
+                ELSE CASE WHEN e.status = 'draft' THEN 'entered' ELSE 'rejected' END END
+                FROM time_entries e
+                JOIN projects p ON p.project_id = e.project_id
+                JOIN boh_contracts c ON c.client_id = p.client_id
+                WHERE e.time_entry_id = @entry AND c.boh_contract_id = @contract
+                  AND e.project_id = @project AND e.user_id = @user
+                  AND e.work_date = @date AND e.hours = @hours
+                  AND c.contract_status NOT IN ('closed', 'cancelled')
+                  AND e.work_date BETWEEN c.start_date AND c.effective_expiration_date
+                  AND NOT EXISTS (SELECT 1 FROM contract_project_funding f
+                      WHERE f.project_id = e.project_id AND f.boh_contract_id <> c.boh_contract_id)
+                FOR UPDATE OF e, p, c;
+
+            """, connection, transaction))
+        {
+            validate.Parameters.AddWithValue("entry", request.TimeEntryId);
+            validate.Parameters.AddWithValue("contract", request.ContractId);
+            validate.Parameters.AddWithValue("project", (object?)request.ProjectId ?? DBNull.Value);
+            validate.Parameters.AddWithValue("user", request.UserId ?? actor.Value);
+            validate.Parameters.AddWithValue("date", request.WorkDate);
+            validate.Parameters.AddWithValue("hours", request.Hours);
+            var canonicalUsageStatus = await validate.ExecuteScalarAsync();
+            if (canonicalUsageStatus is null || canonicalUsageStatus is DBNull)
+                return Results.BadRequest(new { status = "validation_failed", message = "Usage must match an existing time entry and an eligible contract for the same customer." });
+            usageStatus = Convert.ToString(canonicalUsageStatus)!;
+        }
 
         await using var command =
             new NpgsqlCommand("""
@@ -1505,7 +1573,7 @@ public static class ContractsPrepaidManagementModule
                     updated_at = NOW()
                 RETURNING boh_usage_ledger_id;
                 """,
-                connection);
+                connection, transaction);
 
         command.Parameters.AddWithValue(
             "contract_id",
@@ -1534,7 +1602,7 @@ public static class ContractsPrepaidManagementModule
             request.BillingClassification?.Trim() ?? "");
         command.Parameters.AddWithValue(
             "source_status",
-            request.SourceStatus?.Trim() ?? "");
+            usageStatus);
         command.Parameters.AddWithValue(
             "source_reference",
             request.SourceReference?.Trim() ?? "");
@@ -1550,6 +1618,7 @@ public static class ContractsPrepaidManagementModule
                 ?? throw new InvalidOperationException(
                     "Unable to record contract usage."));
 
+        await transaction.CommitAsync();
         return Results.Ok(new
         {
             status = "time_usage_recorded",
@@ -1557,8 +1626,7 @@ public static class ContractsPrepaidManagementModule
             usageStatus,
             usageAmount,
             immediateBalanceImpact =
-                usageStatus is "entered"
-                    or "submitted"
+                usageStatus is "submitted"
                     or "consumed"
                     or "overage"
         });
@@ -1586,6 +1654,11 @@ public static class ContractsPrepaidManagementModule
             }
         }
 
+        // Keep legacy workbook imports compatible while labeling currency honestly.
+        foreach (var (current, legacy) in new[] { ("Pending Value", "Pending Hours"),
+            ("Approved Value", "Approved Hours"), ("Total Labor Value", "Total Hours") })
+            if (map.TryGetValue(NormalizeHeader(current), out var column))
+                map[NormalizeHeader(legacy)] = column;
         return map;
     }
 

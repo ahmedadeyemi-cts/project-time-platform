@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import './work-register-center.css';
+import ContractFundingSelector from './ContractFundingSelector.jsx';
 import { workRegisterPeople } from './work-register-filters.js';
 
 function readSession() {
@@ -297,6 +298,7 @@ export default function WorkRegisterCenter({ mode = 'edit' }) {
   // 055D_3B_ROLE_BASED_ASSIGNMENT_POOLS
   // 055D_3A_ASSIGNMENT_POOL_REPAIR
 
+  const [contractFunding, setContractFunding] = useState({ contractId: '', rate: '' });
   const [intakeForm, setIntakeForm] = useState({
     sourceMode: 'gsd',
     sellRecordId: '',
@@ -2920,6 +2922,13 @@ async function createWorkRegisterFromReviewedIntake() {
   }
 
   const finalFields = projectPulseCreateWorkFinalFieldSnapshot();
+  if (contractFunding.contractId && (
+      contractFunding.customerId !== finalFields.customerId ||
+      contractFunding.contractType !== finalFields.contractType ||
+      !Number.isFinite(Number(contractFunding.rate)) || Number(contractFunding.rate) <= 0)) {
+    setIntakeReviewStatus('Review the funding contract and enter a positive contract drawdown rate before saving.');
+    return;
+  }
 
   try {
     setIntakeSaveBanner('');
@@ -2931,6 +2940,8 @@ async function createWorkRegisterFromReviewedIntake() {
       intakeReason: intakeReviewForm.intakeReason || intakeForm.reason || intakeForm.intakeReason || projectPulseCreateWorkReason(),
       requestedWorkType: finalFields.requestedWorkType,
       contractType: finalFields.contractType,
+      fundingContractId: contractFunding.contractId || null,
+      fundingDrawdownRate: contractFunding.contractId ? Number(contractFunding.rate) : null,
       sellQuoteNumber: finalFields.sellQuoteNumber,
       salesforceIdNumber: finalFields.salesforceIdNumber,
       certiniaIdNumber: finalFields.certiniaIdNumber,
@@ -4501,6 +4512,12 @@ async function createWorkRegisterFromReviewedIntake() {
                           ))}
                         </select>
                       </label>
+
+                      <ContractFundingSelector
+                        customerId={intakeReviewForm.customerId || intakeForm.customerId}
+                        contractType={projectPulseCanonicalContractType(intakeReviewForm.contractType || intakeForm.contractType)}
+                        value={contractFunding} onChange={setContractFunding} load={fetchJson}
+                      />
 
                       <label>
                         SOW Signed Date

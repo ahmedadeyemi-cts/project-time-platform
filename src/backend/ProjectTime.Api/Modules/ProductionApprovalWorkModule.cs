@@ -835,6 +835,7 @@ public static class ProductionApprovalWorkModule
                   AND pending.user_id <> @effective_user_id
                   AND @can_project_approve
                   AND entry.status = 'manager_approved'
+                  AND project.project_manager_user_id IS NOT NULL
                   AND (
                         @organization_scope
                         OR (
@@ -911,7 +912,10 @@ public static class ProductionApprovalWorkModule
                                 FROM time_entries project_entry
                                 WHERE project_entry.timesheet_id = pending.timesheet_id
                                   AND project_entry.work_date = pending.work_date
-                                  AND project_entry.project_id IS NOT NULL
+                                  AND project_entry.status = 'manager_approved'
+                                  AND EXISTS (SELECT 1 FROM projects required_project
+                                      WHERE required_project.project_id = project_entry.project_id
+                                        AND required_project.project_manager_user_id IS NOT NULL)
                             )
                         )
                   )
@@ -1126,6 +1130,7 @@ public static class ProductionApprovalWorkModule
               AND entry.work_date = @work_date
               AND entry.project_id = @project_id
               AND entry.status = 'manager_approved'
+              AND project.project_manager_user_id IS NOT NULL
               AND (
                     @organization_scope
                     OR project.project_manager_user_id = @effective_user_id
@@ -1186,7 +1191,9 @@ public static class ProductionApprovalWorkModule
                 FROM time_entries entry
                 WHERE entry.timesheet_id = @timesheet_id
                   AND entry.work_date = @work_date
-                  AND entry.project_id IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM projects required_project
+                      WHERE required_project.project_id = entry.project_id
+                        AND required_project.project_manager_user_id IS NOT NULL)
                   AND entry.status = 'manager_approved'
             );
             """, connection, transaction))
@@ -1248,7 +1255,7 @@ public static class ProductionApprovalWorkModule
             connection, transaction, item.TimesheetId, item.WorkDate, cancellationToken);
         if (currentStatus is not ("pm_approved" or "manager_approved")) return false;
         if (currentStatus == "manager_approved"
-            && !await IsNonProjectOnlyDayAsync(
+            && !await HasNoOutstandingPmApprovalAsync(
                 connection, transaction, item.TimesheetId, item.WorkDate, cancellationToken))
         {
             return false;
@@ -1541,7 +1548,7 @@ public static class ProductionApprovalWorkModule
         return (await command.ExecuteScalarAsync(cancellationToken))?.ToString();
     }
 
-    private static async Task<bool> IsNonProjectOnlyDayAsync(
+    private static async Task<bool> HasNoOutstandingPmApprovalAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid timesheetId,
@@ -1551,7 +1558,9 @@ public static class ProductionApprovalWorkModule
         await using var command = new NpgsqlCommand("""
             SELECT
                 COUNT(*) > 0
-                AND COUNT(*) FILTER (WHERE project_id IS NOT NULL) = 0
+                AND COUNT(*) FILTER (WHERE status = 'manager_approved' AND EXISTS (
+                    SELECT 1 FROM projects p WHERE p.project_id = time_entries.project_id
+                      AND p.project_manager_user_id IS NOT NULL)) = 0
             FROM time_entries
             WHERE timesheet_id = @timesheet_id
               AND work_date = @work_date;
