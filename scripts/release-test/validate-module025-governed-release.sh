@@ -9,7 +9,23 @@ HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
   [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
 fi
-if [[ "$HEAD_BRANCH" == feat/module025-phase-progress-20260920 ]]; then
+if [[ "$HEAD_BRANCH" == fix/module025-readback-contract-20260928 ]]; then
+  # This acceptance-only repair has its own exact scope. It must not inherit
+  # the historical six-file Module 025 feature-release manifest below.
+  printf '%s\n' \
+    'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh' \
+    'scripts/release-test/validate-module025-governed-release.sh' \
+    'tests/validate-systemwide-image-build-controller.mjs' \
+    | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-readback-expected"
+  git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-readback-actual"
+  cmp -s "$RUNNER_TEMP/module025-readback-expected" "$RUNNER_TEMP/module025-readback-actual" \
+    || fail 'Module 025 readback repair differs from its exact acceptance-only scope.'
+  git diff --check "$BASE_SHA...HEAD"
+  bash -n scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh
+  node tests/validate-systemwide-image-build-controller.mjs
+  echo 'MODULE025_READBACK_EXACT_SCOPE=PASSED'
+  exit 0
+elif [[ "$HEAD_BRANCH" == feat/module025-phase-progress-20260920 ]]; then
   node tests/module025-phase-progress-scope.mjs
   node tests/validate-systemwide-image-build-controller.mjs
   exit 0
