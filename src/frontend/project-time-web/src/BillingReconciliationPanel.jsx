@@ -35,7 +35,7 @@ export default function BillingReconciliationPanel({ invoiceId }) {
     {evidence?.request ? <p>Original basis: {evidence.request.billingBasis || 'Legacy manual amount'}. Commercial reference: {evidence.request.commercialReference || evidence.request.authorizationReference}. {evidence.commercialReconciliationRequired ? 'Created using fallback information; review against SELL when available.' : 'Commercial snapshot retained.'} {evidence.exceptionApprovedBy ? `Exception approved by user ${evidence.exceptionApprovedBy}.` : ''}</p> : null}
     {data?.canRecord ? <form onSubmit={save}>
       <fieldset disabled={busy || uncertain}><legend>Record verified billing evidence</legend><div className="m042-manual-fields">
-        <label>Reconciliation action<select value={action} onChange={event => { setAction(event.target.value); setConfirmed(false); }}>
+        <label>Reconciliation action<select aria-label="Reconciliation action" value={action} onChange={event => { setAction(event.target.value); setConfirmed(false); }}>
           <option value="hold_delivery">Hold automatic delivery for review</option>
           <option value="resume_delivery">Release a delivery hold after verifying no external invoice exists</option>
           <option value="manual_handoff">Record an already completed manual handoff</option>
