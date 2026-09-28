@@ -13,6 +13,7 @@ if [[ "$HEAD_BRANCH" == fix/module025-readback-contract-20260928 ]]; then
   # This acceptance-only repair has its own exact scope. It must not inherit
   # the historical six-file Module 025 feature-release manifest below.
   printf '%s\n' \
+    '.github/workflows/pr1140-uat-recovery-ci.yml' \
     'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh' \
     'scripts/release-test/validate-module025-governed-release.sh' \
     'scripts/release-test/validate-protected-test-controller-branches.sh' \
