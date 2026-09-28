@@ -15,6 +15,7 @@ internal static class EnterpriseNotificationSourceScanner
     {
         var observations = new List<EnterpriseNotificationSourceObservation>();
         observations.Add(await ScanTimesheetsAsync(connection, correlationId, cancellationToken));
+        observations.Add(await EnterpriseReminderNotificationSource.ScanAsync(connection, correlationId, cancellationToken));
         observations.Add(await ScanProjectExpensesAsync(connection, correlationId, cancellationToken));
         observations.Add(await ScanQualificationsAsync(connection, correlationId, cancellationToken));
         observations.Add(await ProjectFlowHiveNotificationSource.ScanAsync(connection, correlationId, cancellationToken));

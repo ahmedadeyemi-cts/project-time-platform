@@ -190,6 +190,73 @@ using (var http = new HttpClient(new FakeHttp((_, _) => throw new Exception("net
     Check(result.Diagnostic.Code == "teams_workflow_recipient_count_invalid", "workflow recipient bound enforced");
 }
 
+// Actual shared parity policy: channel independence, privacy, boundaries and schedule determinism.
+Check(Module065NotificationParityPolicy.MailBoundary("production_governed","locked",true,true)=="production_governed", "quiet-hours pause retains source boundary so the queued event can resume");
+Check(Module065NotificationParityPolicy.MailBoundary("test_only","locked",true,true)=="test_only", "deferred Test-only event never gains live delivery");
+Check(Module065NotificationParityPolicy.MailBoundary("locked","production_governed",true,true)=="locked", "defer cannot unlock a source policy");
+Check(Module065NotificationParityPolicy.MailBoundary("production_governed","locked",true,false)=="locked", "actual locked transport still prevents non-deferred delivery");
+Check(Module065NotificationParityPolicy.MailBoundary("production_governed","production_governed",false,true)=="locked", "revoked source cannot resume through deferred path");
+var emailCalls = 0;
+var emailResult = await Module065NotificationParityPolicy.IndependentChannelsAsync(
+    () => Task.FromException(new IOException("synthetic queue failure")),
+    () => { emailCalls++; return Task.FromResult("email-accepted"); });
+Check(emailCalls == 1 && emailResult == "email-accepted", "Teams queue failure cannot suppress or replay email");
+var teamQueues = 0;
+try
+{
+    await Module065NotificationParityPolicy.IndependentChannelsAsync(
+        () => { teamQueues++; return Task.CompletedTask; },
+        () => Task.FromException<string>(new IOException("synthetic email failure")));
+}
+catch (IOException) { }
+Check(teamQueues == 1, "email failure cannot undo independent Teams queue");
+foreach (var boundary in new[] { "locked", "test_only", "", "unknown" })
+{
+    Check(!Module065NotificationParityPolicy.MaySend(boundary,"production_governed","production","production",true,false), "source boundary must authorize live delivery");
+    Check(!Module065NotificationParityPolicy.MaySend("production_governed",boundary,"production","production",true,false), "services boundary must authorize live delivery");
+}
+Check(Module065NotificationParityPolicy.MaySend("production_governed","production_governed","production","production",true,false), "matching authorized live environment");
+Check(!Module065NotificationParityPolicy.MaySend("production_governed","production_governed","test","production",true,false), "cross-environment delivery blocked");
+Check(!Module065NotificationParityPolicy.MaySend("production_governed","production_governed","production","production",false,false), "disabled Teams blocked");
+Check(!Module065NotificationParityPolicy.MaySend("production_governed","production_governed","production","production",true,true), "View-As cannot enqueue live Teams");
+Check(Module065NotificationParityPolicy.Recipients([" A@EXAMPLE.INVALID ","a@example.invalid","bad-address",""]).SequenceEqual(["a@example.invalid"]), "same person To/CC/BCC is deduplicated without expanding recipients");
+Check(Module065NotificationParityPolicy.Recipients(Enumerable.Range(1,500).Select(i=>$"u{i}@example.invalid")).Length==500, "company audience is not dropped by a 100-recipient envelope bound");
+var eventKey = Module065NotificationParityPolicy.EventId("sow_sell",tenant);
+Check(eventKey == Module065NotificationParityPolicy.EventId("sow_sell",tenant), "native event identity deterministic");
+Check(eventKey != Module065NotificationParityPolicy.EventId("analytics_schedule",tenant), "native source namespaces do not collide");
+Check(Module065NotificationParityPolicy.RecipientKey(eventKey," A@example.invalid ")==Module065NotificationParityPolicy.RecipientKey(eventKey,"a@example.invalid"), "recipient-specific idempotency stable");
+Check(Module065NotificationParityPolicy.HtmlText("<script>x</script>&\nnext")=="&lt;script&gt;x&lt;/script&gt;&amp;<br />next", "plain email text escaped for HTML Compose");
+Check(Encoding.UTF8.GetByteCount(Module065NotificationParityPolicy.HtmlText(string.Concat(Enumerable.Repeat("<🙂>",30000))))<12500, "encoded message remains bounded for Teams");
+Check(Module065NotificationParityPolicy.Link(null,"#time-entry","production")=="", "production never falls back to Test URL");
+Check(Module065NotificationParityPolicy.Link("https://pulse.example.invalid/path?token=ignored","#time-entry","production")=="https://pulse.example.invalid/#time-entry", "links strip base query and stay same origin");
+Check(Module065NotificationParityPolicy.Link("https://pulse.example.invalid","#\"><img src=x>","production")=="https://pulse.example.invalid/#dashboard", "link attribute injection rejected");
+Check(Module065NotificationParityPolicy.TerminalStatus("sent","teams_workflow_accepted",1)=="accepted", "workflow acceptance is not claimed as final Teams delivery");
+Check(Module065NotificationParityPolicy.TerminalStatus("failed","teams_workflow_rate_limited",1)=="retry_wait", "definite rate limit can retry Teams only");
+Check(Module065NotificationParityPolicy.TerminalStatus("failed","teams_workflow_rate_limited",5)=="failed", "rate-limit retry budget finite");
+Check(Module065NotificationParityPolicy.TerminalStatus("outcome_unknown","teams_workflow_http_503",1)=="outcome_unknown", "ambiguous provider outcome never auto-replayed");
+var monday = JsonSerializer.SerializeToElement(new { timezone="America/Chicago",dayOfWeek=1,localTime="06:00" });
+Check(!EnterpriseReminderPolicy.DueToday("TIME_NOT_SUBMITTED",new DateTime(2026,9,28,5,59,0),monday), "Monday reminder not early");
+Check(EnterpriseReminderPolicy.DueToday("TIME_NOT_SUBMITTED",new DateTime(2026,9,28,6,0,0),monday), "Monday reminder due at configured time");
+Check(!EnterpriseReminderPolicy.DueToday("TIME_NOT_SUBMITTED",new DateTime(2026,9,29,6,0,0),monday), "weekly reminder not daily spam");
+Check(EnterpriseReminderPolicy.CompletedWeek(new DateOnly(2026,9,28))==new DateOnly(2026,9,20), "completed Sunday-to-Saturday week, not current unfinished week");
+Check(EnterpriseReminderPolicy.LocalTime(new DateTimeOffset(2026,7,6,11,0,0,TimeSpan.Zero),monday).Hour==6, "Central daylight-saving time supported");
+Check(EnterpriseReminderPolicy.LocalTime(new DateTimeOffset(2026,1,5,12,0,0,TimeSpan.Zero),monday).Hour==6, "Central standard time supported");
+var monthEnd = JsonSerializer.SerializeToElement(new { dayOfWeek=5,localTime="08:00" });
+Check(EnterpriseReminderPolicy.DueToday("PM_MONTH_END_REMINDER",new DateTime(2026,10,30,8,0,0),monthEnd), "selected last Friday month-end");
+Check(!EnterpriseReminderPolicy.DueToday("PM_MONTH_END_REMINDER",new DateTime(2026,10,23,8,0,0),monthEnd), "not every Friday month-end");
+Check(EnterpriseReminderPolicy.HolidayOffsets(JsonSerializer.SerializeToElement(new {})).SequenceEqual([7,1]), "holiday lead times seven and one day");
+foreach(var status in new[]{"submitted","manager_approved","pm_approved","accounting_ready","reconciled","locked"})
+    Check(EnterpriseReminderPolicy.IsSubmitted(status),"submitted/approved time is not a non-submission violation");
+var authorityHandler = new FakeHttp((_, index) => index==0
+    ? Task.FromResult(Response(200,"{\"access_token\":\"synthetic\"}"))
+    : throw new Exception("revoked source must never POST to Power Automate"));
+using(var authorityClient=new HttpClient(authorityHandler))
+{
+    var denied=await MicrosoftTeamsWorkflowProtocol.ExecuteAsync(authorityClient,tenant,clientId,"synthetic-secret",
+        "https://service.flow.microsoft.com/",workflowUrl,workflowEnvelope,CancellationToken.None,authorizeBeforeSend:_=>Task.FromResult(false));
+    Check(denied.Diagnostic.Code=="teams_workflow_authority_changed" && authorityHandler.Requests.Count==1,"recheck authorization after token acquisition and before external send");
+}
+
 Console.WriteLine($"TEAMS_PROTOCOL_ASSERTIONS={count}; LIVE_MICROSOFT_CALLS=0; RESULT=PASS");
 sealed class FakeHttp(Func<HttpRequestMessage,int,Task<HttpResponseMessage>> respond):HttpMessageHandler {
  internal List<(Uri Uri,string? Authorization)> Requests {get;}=[];

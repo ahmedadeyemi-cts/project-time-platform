@@ -272,6 +272,23 @@ public static class TimeComplianceModule
         });
     }
 
+    internal static async Task<bool> ValidateTeamsNotificationAsync(NpgsqlConnection connection,Guid runId,Guid userId,
+        DateOnly weekStart,string scenario,string recipient,CancellationToken token)
+    {
+        await using var gate=new NpgsqlCommand("""
+            SELECT EXISTS(SELECT 1 FROM time_compliance_notification_runs WHERE time_compliance_notification_run_id=@run
+                AND scenario=@scenario AND delivery_mode<>'outbox_only')
+              AND EXISTS(SELECT 1 FROM system_email_recipient_safety_reviews WHERE consumer_key='TIME_COMPLIANCE_ENGINEER_NOTIFICATIONS'
+                AND scenario=@scenario AND review_status='approved' AND blocked_count=0 AND approved_at IS NOT NULL AND expires_at>now());
+            """,connection);
+        gate.Parameters.AddWithValue("run",runId);gate.Parameters.AddWithValue("scenario",scenario);
+        if(await gate.ExecuteScalarAsync(token) is not true) return false;
+        // Reuse the actual current preview resolver: missing status, manager and PTC scope stay identical to email.
+        var preview=await BuildPreviewPayloadAsync(connection,weekStart,scenario);
+        return preview.MissingSubmissions.Any(row=>row.UserId==userId &&
+            (row.Email.Equals(recipient,StringComparison.OrdinalIgnoreCase) || row.CcEmails.Contains(recipient,StringComparer.OrdinalIgnoreCase)));
+    }
+
     private static async Task<TimeCompliancePreviewPayload> BuildPreviewPayloadAsync(NpgsqlConnection connection, DateOnly weekStart, string scenario)
     {
         var weekEnd = weekStart.AddDays(6);

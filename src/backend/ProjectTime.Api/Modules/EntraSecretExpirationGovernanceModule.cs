@@ -730,13 +730,13 @@ public static class EntraSecretExpirationGovernanceModule
                 },
                 cancellationToken);
 
-            var delivery = await Module065ProjectNotificationDelivery.DeliverAsync(
-                subject,
-                textBody,
-                htmlBody,
-                new[] { notificationRecipient },
-                context,
-                cancellationToken);
+            var delivery = await Module065NotificationParityPolicy.IndependentChannelsAsync(async () =>
+            {
+                var teamsDispatch = await ProjectNotificationRepository.LoadDispatchAsync(connection, dispatchId, cancellationToken);
+                if (teamsDispatch is not null)
+                    await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection, teamsDispatch, context, cancellationToken);
+            }, () => Module065ProjectNotificationDelivery.DeliverAsync(subject,textBody,htmlBody,
+                new[] { notificationRecipient },context,cancellationToken));
             var dispatch = await ProjectNotificationRepository.LoadDispatchAsync(
                 connection,
                 dispatchId,

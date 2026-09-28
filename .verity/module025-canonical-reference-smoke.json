@@ -1,0 +1,103 @@
+{
+  "feature": "Module 025 — admin UI for SOW canonical-reference (content) templates (Stage 4)",
+  "killSwitch": {
+    "env": "PROJECTPULSE_MODULE025_REFERENCE_SOURCES_ENABLED",
+    "default": "false",
+    "note": "The canonical-reference endpoints 404 and neither the Canonical references library entry nor the author selection control renders unless this is set to true. Run the flag-ON flows against an environment where it is true."
+  },
+  "baseUrl": "http://localhost:8080",
+  "preconditions": [
+    "PROJECTPULSE_MODULE025_REFERENCE_SOURCES_ENABLED=true in the app environment for the flag-ON flows.",
+    "Migration 125_module025_canonical_references applied.",
+    "Signed in as an Administrator (not in View-As) to exercise create/edit/replace/delete.",
+    "A separate Solution Architect account with generation authority to confirm author selection is read-only for non-admins.",
+    "A clean SOW template .docx (no customer data) available to upload."
+  ],
+  "flows": [
+    {
+      "name": "flag OFF — no library entry and endpoints 404",
+      "requiresFlag": false,
+      "steps": [
+        { "goto": "/", "note": "Sign in and open Module 025 SOW & GSD Workspace with the flag OFF." },
+        { "click": "button:has-text('Templates')" },
+        { "expectAbsent": "button:has-text('Canonical references')", "note": "No Canonical references sub-tab; the immutable Template candidates view is unchanged." },
+        { "openEngagement": "any editable engagement" },
+        { "expectAbsent": "text=Canonical reference (optional)", "note": "No author selection control renders in the Service Scope / generate step." },
+        { "expectStatus": { "path": "/api/module025/canonical-references?active=true", "status": 404 } },
+        { "expectStatus": { "path": "/api/module025/canonical-references", "method": "POST", "status": 404 } }
+      ]
+    },
+    {
+      "name": "flag ON — admin creates a canonical reference",
+      "requiresFlag": true,
+      "steps": [
+        { "goto": "/" },
+        { "click": "button:has-text('Templates')" },
+        { "click": "button:has-text('Canonical references')" },
+        { "expectSelector": ".m025-canonical" },
+        { "fill": { "selector": ".m025-canonical-create input[type=text], .m025-canonical-fields input:not([type=file])", "value": "Managed Services SOW reference (smoke)" }, "note": "Set the Label (and optionally Project name)." },
+        { "setInputFile": { "selector": ".m025-canonical-fields input[type=file]", "file": "clean-sow-template.docx" } },
+        { "click": "button:has-text('Create canonical reference')" },
+        { "expectText": "created and active", "within": ".m025-canonical-message" },
+        { "expectText": "Managed Services SOW reference (smoke)", "within": ".m025-canonical-list" }
+      ]
+    },
+    {
+      "name": "flag ON — admin edits label and reference text",
+      "requiresFlag": true,
+      "steps": [
+        { "click": ".m025-canonical-card:has-text('Managed Services SOW reference (smoke)')" },
+        { "expectSelector": ".m025-canonical-edit" },
+        { "fill": { "selector": ".m025-canonical-edit textarea", "value": "Edited canonical reference text used to steer the generated SOW citation." } },
+        { "click": "button:has-text('Save changes')" },
+        { "expectText": "Canonical reference updated", "within": ".m025-canonical-message" }
+      ]
+    },
+    {
+      "name": "flag ON — deactivating removes it from author selection",
+      "requiresFlag": true,
+      "steps": [
+        { "click": ".m025-canonical-card:has-text('Managed Services SOW reference (smoke)')" },
+        { "uncheck": ".m025-canonical-active-toggle input[type=checkbox]", "note": "Clear Active (author-selectable)." },
+        { "click": "button:has-text('Save changes')" },
+        { "expectText": "Inactive", "within": ".m025-canonical-card:has-text('Managed Services SOW reference (smoke)')" },
+        { "click": "button:has-text('My Work')" },
+        { "openEngagement": "an editable engagement" },
+        { "expectAbsent": ".m025-canonical-select option:has-text('Managed Services SOW reference (smoke)')", "note": "A deactivated reference is NOT author-selectable; only active references appear." }
+      ]
+    },
+    {
+      "name": "flag ON — author selection sends the identifier only",
+      "requiresFlag": true,
+      "steps": [
+        { "openEngagement": "an editable engagement with a meaningful Service Scope" },
+        { "selectOption": { "selector": ".m025-canonical-select", "label": "any active reference" } },
+        { "click": "button:has-text('Generate detailed scope')" },
+        { "expectRequest": { "path": "/api/module025/sow-gsd/*/generate", "method": "POST", "bodyIncludes": "canonicalReferenceId", "bodyExcludes": "sourceText", "note": "Only the identifier is sent; reference text never leaves the server." } }
+      ]
+    },
+    {
+      "name": "flag ON — non-admin (SA) sees active references read-only",
+      "requiresFlag": true,
+      "steps": [
+        { "goto": "/", "note": "Sign in as a Solution Architect with generation authority (not an administrator)." },
+        { "click": "button:has-text('Templates')" },
+        { "click": "button:has-text('Canonical references')" },
+        { "expectSelector": ".m025-canonical" },
+        { "expectAbsent": "button:has-text('Create canonical reference')", "note": "No create/edit/replace/delete controls for non-admins." },
+        { "expectText": "administrator-only", "within": ".m025-canonical-readonly" }
+      ]
+    },
+    {
+      "name": "flag ON — administrator View-As is read-only",
+      "requiresFlag": true,
+      "steps": [
+        { "goto": "/", "note": "Sign in as an administrator, then enter View-As for another user." },
+        { "click": "button:has-text('Templates')" },
+        { "click": "button:has-text('Canonical references')" },
+        { "expectAbsent": "button:has-text('Create canonical reference')" },
+        { "expectText": "View-As is read-only", "within": ".m025-canonical-readonly" }
+      ]
+    }
+  ]
+}

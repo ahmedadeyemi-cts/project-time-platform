@@ -10,6 +10,7 @@ import { withTasks, exportChecks, phaseTaskIssues } from './task-estimates.js';
 import PhaseTaskReview from './PhaseTaskReview.jsx';
 import OwnershipTransfer from './OwnershipTransfer.jsx';
 import TemplateCatalog from './TemplateCatalog.jsx';
+import CanonicalReferenceLibrary from './CanonicalReferenceLibrary.jsx';
 import WorkTrackingPanel from './WorkTrackingPanel.jsx';
 import { calendarDate, queueFlags, selectQueue } from './work-queue.js';
 import './sa-workspace-redesign.css';
@@ -411,6 +412,15 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   const [queueSort, setQueueSort] = useState('updated');
   const [generationNow, setGenerationNow] = useState(Date.now());
   const [preview, setPreview] = useState({ open: false, kind: '', variant: 'draft', loading: false, error: '', data: null, sheetId: '' });
+  // Canonical reference sources (Phase 1). Dark-launched behind
+  // PROJECTPULSE_MODULE025_REFERENCE_SOURCES_ENABLED. The workspace bootstrap
+  // reports the kill-switch state as a server-driven capability (mirroring the
+  // Stage 3 preview flag), so the client reads enablement instead of probing an
+  // endpoint that 404s (OFF) — a failing probe on every load is both bad UX and
+  // pollutes the strict Module 025 browser contract with unexpected responses.
+  const [activeCanonicalReferences, setActiveCanonicalReferences] = useState([]);
+  const [selectedCanonicalReferenceId, setSelectedCanonicalReferenceId] = useState('');
+  const [templatesTab, setTemplatesTab] = useState('candidates');
   const dirtyRef = useRef(false);
   const editVersion = useRef(0);
   const saveInFlight = useRef(false);
@@ -437,6 +447,35 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   useEffect(() => {
     onWorkspaceReady?.(Boolean(bootstrap));
   }, [bootstrap, onWorkspaceReady]);
+
+  // Server-driven enablement: the bootstrap capability reflects the dark-launch
+  // kill-switch. When OFF the entry, author selection, and any canonical request
+  // stay absent (today's behavior); the client never computes this itself.
+  const referenceSourcesEnabled = Boolean(bootstrap?.capabilities?.referenceSources);
+
+  // Load the active canonical references (author-selectable) only when the feature
+  // is enabled. When OFF no request is made, so the standard SOW flow issues zero
+  // canonical traffic; when ON the endpoint returns 200 (not a failing probe).
+  useEffect(() => {
+    if (!referenceSourcesEnabled) {
+      setActiveCanonicalReferences([]);
+      setSelectedCanonicalReferenceId('');
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const payload = await requestJson('/api/module025/canonical-references?active=true');
+        if (cancelled) return;
+        setActiveCanonicalReferences(Array.isArray(payload?.references) ? payload.references.filter((item) => item.active) : []);
+      } catch {
+        if (cancelled) return;
+        setActiveCanonicalReferences([]);
+        setSelectedCanonicalReferenceId('');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [referenceSourcesEnabled]);
 
   const loadList = useCallback(async () => {
     if (!ownerUserId || workspaceView === 'templates') return;
@@ -680,7 +719,13 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
         throw new Error('Save the latest Service Scope and overview edits before continuing. If autosave is running, wait for Saved and try again.');
       }
       if (selectedEngagementRef.current !== actionRecordId) return;
-      const payload = await requestJson(`/api/module025/sow-gsd/${actionRecordId}/${action}`, { method: 'POST' });
+      // Author selection is additive and identifier-only: attach the chosen active
+      // canonical reference id (never its text) to generate. Absent selection keeps
+      // the empty-body request identical to today's behavior.
+      const generateBody = action === 'generate' && referenceSourcesEnabled && selectedCanonicalReferenceId
+        ? { method: 'POST', body: JSON.stringify({ canonicalReferenceId: selectedCanonicalReferenceId }) }
+        : { method: 'POST' };
+      const payload = await requestJson(`/api/module025/sow-gsd/${actionRecordId}/${action}`, generateBody);
       if (selectedEngagementRef.current !== actionRecordId) return;
       if (action === 'generate') {
         if (payload?.status !== 'module025_detailed_scope_generation_queued' || !payload?.generationId) {
@@ -894,7 +939,19 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
         {(bootstrap.access.isManager || bootstrap.access.isAdministrator) && <button type="button" disabled={navigationBlocked} aria-pressed={workspaceView === 'team'} onClick={() => { setWorkspaceView('team'); setOwnerUserId('__team__'); }}>Team Work</button>}
         <button type="button" disabled={navigationBlocked} aria-pressed={workspaceView === 'templates'} onClick={() => setWorkspaceView('templates')}>Templates</button>
       </nav>
-      {workspaceView === 'templates' && <TemplateCatalog identityKey={`${bootstrap.currentUser.userId}:${Boolean(bootstrap.access.isViewAs)}`} />}
+      {workspaceView === 'templates' && (
+        <div className="m025-templates-area">
+          {referenceSourcesEnabled ? (
+            <nav className="m025-tabs" aria-label="Template libraries">
+              <button type="button" className={templatesTab === 'candidates' ? 'is-active' : ''} aria-pressed={templatesTab === 'candidates'} onClick={() => setTemplatesTab('candidates')}>Template candidates</button>
+              <button type="button" className={templatesTab === 'canonical' ? 'is-active' : ''} aria-pressed={templatesTab === 'canonical'} onClick={() => setTemplatesTab('canonical')}>Canonical references</button>
+            </nav>
+          ) : null}
+          {referenceSourcesEnabled && templatesTab === 'canonical'
+            ? <CanonicalReferenceLibrary access={bootstrap.access} identityKey={`${bootstrap.currentUser.userId}:${Boolean(bootstrap.access.isViewAs)}`} />
+            : <TemplateCatalog identityKey={`${bootstrap.currentUser.userId}:${Boolean(bootstrap.access.isViewAs)}`} />}
+        </div>
+      )}
       <div hidden={workspaceView === 'templates'}>
       <section id="m025-documents" className="m025-section m025-document-actions" aria-label="Documents and ConnectWise SELL">
         <div className="m025-section-heading"><div><h2>Documents &amp; ConnectWise SELL handoff</h2></div></div>
@@ -1138,6 +1195,22 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
                 </> : null}
                 {!generationInputReady ? (
                   <p className="m025-generation-input-help">To generate scope, select a customer and enter a meaningful multi-word Service Scope describing the technical work, expected outcome, and known platform/version details.</p>
+                ) : null}
+                {referenceSourcesEnabled ? (
+                  <Field label="Canonical reference (optional)"
+                    hint="Attach an active canonical SOW reference to steer the generated SOW's citation. Only the reference identifier is sent to generate; the reference text stays server-side.">
+                    <select
+                      className="m025-canonical-select"
+                      value={selectedCanonicalReferenceId}
+                      disabled={readOnly}
+                      onChange={(event) => setSelectedCanonicalReferenceId(event.target.value)}
+                    >
+                      <option value="">No canonical reference</option>
+                      {activeCanonicalReferences.filter((item) => item.active).map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}{item.projectName ? ` — ${item.projectName}` : ''}</option>
+                      ))}
+                    </select>
+                  </Field>
                 ) : null}
                 <GenerationProgress monitor={generationMonitor} now={generationNow}
                   canGenerate={!readOnly && !actionState.busy && !trackingDirty && generationInputReady}

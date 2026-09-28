@@ -435,14 +435,17 @@ internal static class AnalyticsCenterScheduleService
                         ? $"Your scheduled US Signal Analytics Center report, {report.Definition.Name}, is attached. The report was generated under your current ProjectPulse access scope."
                         : schedule.EmailMessage;
                     var html = $"<p>{Web(text)}</p><p><strong>Report:</strong> {Web(report.Definition.Name)}<br/><strong>Generated:</strong> {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC<br/><strong>Rows:</strong> {report.Result.RowCount}</p><p>This individualized report was generated under the recipient's current ProjectPulse authorization scope.</p>";
-                    delivery = await Module065AnalyticsAttachmentDelivery.DeliverAsync(
-                        subject,
-                        text,
-                        html,
-                        mailRecipient,
-                        [new Module065MailAttachment(export.FileName, export.ContentType, export.Content)],
-                        null,
-                        cancellationToken);
+                    // Failure to queue Teams cannot prevent the independently authorized email attachment.
+                    delivery = await Module065NotificationParityPolicy.IndependentChannelsAsync(async () =>
+                    {
+                        await using var teamsConnection = await AnalyticsCenterScheduleRepository.OpenAsync(cancellationToken);
+                        await Module065NotificationFanout.QueueNativeAsync(teamsConnection, report.ReportRunId, "analytics_schedule", "030",
+                            "analytics_report_ready", subject,
+                            $"Your scheduled Analytics Center report, {report.Definition.Name}, is ready. Open Pulse to access it under your current permissions. Email delivery is tracked separately.",
+                            [mailRecipient], schedule.DeliveryBoundary,
+                            new { scheduleId=schedule.ScheduleId, reportRunId=report.ReportRunId, deepLink="#analytics-center" }, null, cancellationToken);
+                    }, () => Module065AnalyticsAttachmentDelivery.DeliverAsync(subject,text,html,mailRecipient,
+                        [new Module065MailAttachment(export.FileName,export.ContentType,export.Content)],null,cancellationToken));
                 }
             }
             catch (Exception exception)

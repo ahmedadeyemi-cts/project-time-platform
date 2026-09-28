@@ -217,14 +217,19 @@ if (externalAvailable) {
     'DeliverExpenseNotificationAsync(connection, uploadId, actor.ActualUserId)'
   ], 'Notification retry authorization');
 
-  requireAll(mail, [
-    'PROJECTPULSE_MAIL_PROVIDER', 'PROJECTPULSE_EMAIL_PROVIDER',
-    'PROJECTPULSE_M365_SENDER_MAILBOX', 'PROJECTPULSE_BREVO_API_KEY',
-    'PROJECTPULSE_SMTP_FROM',
-    'Module 067 Global Mail Configuration',
-    'Expense summary sent through Module 067',
-    'cc_addresses'
-  ], 'Global mail delivery');
+  // Expenses have one notification owner, not a second ungoverned SMTP/Brevo/Graph sender.
+  requireAll(mail, ['EnterpriseNotificationOrchestrationService.QueueExpenseUploadAsync', 'cc_addresses'], 'Governed expense notification bridge');
+  rejectAll(mail, ['new SmtpClient', 'api.brevo.com/v3/smtp/email', '/sendMail', 'PROJECTPULSE_BREVO_API_KEY'], 'Retired direct expense transports');
+  const enterpriseMail = await text('src/backend/ProjectTime.Api/Modules/EnterpriseNotificationOrchestrationService.cs');
+  const governedDelivery = await text('src/backend/ProjectTime.Api/Modules/Module065ProjectNotificationDelivery.cs');
+  const guardedDispatch = await text('src/backend/ProjectTime.Api/Modules/ProjectNotificationProcessingService.cs');
+  requireAll(enterpriseMail, ['QueueExpenseUploadAsync', 'EXPENSE_UPLOAD_CONFIRMATION', 'EXPENSE_PM_REVIEW_REQUEST',
+    'RefreshExpenseEmailStatusAsync', 'upload.is_current=TRUE AND upload.deleted_at IS NULL',
+    'ProjectNotificationProcessingService.DeliverDispatchAsync'], 'Single expense event delivery owner');
+  requireAll(governedDelivery, ['PROJECTPULSE_MAIL_RECIPIENT_BOUNDARY', 'PROJECTPULSE_M365_SENDER_MAILBOX',
+    'LiveDeliveryEnabled', 'DeliverGraphAsync', 'DeliverSmtpAsync'], 'Module 065 mail authority');
+  requireAll(guardedDispatch, ['TryClaimDispatchDeliveryAsync', 'MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync',
+    'Module065ProjectNotificationDelivery.DeliverAsync'], 'Independent email and Teams dispatch');
 
   requireAll(certify, [
     'DefaultCertifyBaseUrl',

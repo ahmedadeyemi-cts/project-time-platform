@@ -244,7 +244,9 @@ jobs:
       - name: Test resumable observation, identity fencing and bounded network requests
         run: |
           set -Eeuo pipefail
-          if [[ "${GITHUB_HEAD_REF:-}" == 'fix/enterprise-ux-consistency-20260928' ]]; then
+          if [[ "${GITHUB_HEAD_REF:-}" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then
+            python3 tests/notification-parity/admission_fixture.py --run-all
+          elif [[ "${GITHUB_HEAD_REF:-}" == 'fix/enterprise-ux-consistency-20260928' ]]; then
             python3 tests/enterprise-ux-admission-fixture.py --run-all
           elif [[ "${GITHUB_HEAD_REF:-}" == 'control/pr1153-source-registration-20260923' || "${GITHUB_HEAD_REF:-}" == 'fix/automatic-document-admission-laya-20260923' ]]; then
             python3 tests/laya/release-admission-fixture.py --run-all

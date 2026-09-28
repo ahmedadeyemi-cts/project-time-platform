@@ -156,6 +156,12 @@ internal static class EnterpriseNotificationRecipientResolver
                 await AddProjectEngineersAsync(connection, recipients, notificationEvent.ProjectId, "to", cancellationToken);
                 break;
 
+            case "time_non_submission_escalation":
+                await AddComplianceManagerAsync(connection, recipients, notificationEvent.SubjectUserId, cancellationToken);
+                await AddRoleGroupAsync(connection, recipients, PtcRoles, "to", "compliance.ptc", cancellationToken);
+                await AddSubjectUserAsync(connection, recipients, notificationEvent.SubjectUserId, "cc", "compliance.engineer", cancellationToken);
+                break;
+
             case "manager_and_ptc":
                 await AddSubjectUserAsync(connection, recipients, notificationEvent.SubjectUserId, "to", "compliance.subject_user", cancellationToken);
                 await AddManagerForUserAsync(connection, recipients, notificationEvent.SubjectUserId, "cc", "compliance.manager", cancellationToken);
@@ -378,6 +384,30 @@ internal static class EnterpriseNotificationRecipientResolver
         if (!userId.HasValue) return;
         var user = await LoadUserAsync(connection, userId.Value, derivationSource, recipientType, cancellationToken);
         if (user is not null) recipients.Add(user);
+    }
+
+    private static async Task AddComplianceManagerAsync(NpgsqlConnection connection,List<ProjectNotificationUser> recipients,Guid? userId,CancellationToken token)
+    {
+        if (!userId.HasValue) return;
+        await using var query=new NpgsqlCommand("""
+            WITH candidates AS (
+              SELECT relationship.manager_user_id AS user_id,0 AS priority FROM reporting_relationships relationship
+                JOIN app_users eligible_manager ON eligible_manager.user_id=relationship.manager_user_id
+                  AND eligible_manager.is_active=TRUE AND eligible_manager.login_enabled=TRUE
+                WHERE employee_user_id=@id AND effective_start_date<=CURRENT_DATE
+                  AND (effective_end_date IS NULL OR effective_end_date>=CURRENT_DATE)
+              UNION ALL
+              SELECT manager.user_id,1 FROM app_users subject JOIN app_users manager ON lower(manager.email)=lower(subject.manager_email)
+                WHERE subject.user_id=@id
+            )
+            SELECT u.user_id,COALESCE(NULLIF(u.display_name,''),u.email),u.email
+            FROM candidates c JOIN app_users u USING(user_id) WHERE u.is_active=TRUE AND u.login_enabled=TRUE
+              AND c.priority=(SELECT min(priority) FROM candidates)
+            GROUP BY u.user_id,u.display_name,u.email;
+            """,connection);
+        query.Parameters.AddWithValue("id",userId.Value);
+        await using var reader=await query.ExecuteReaderAsync(token);
+        while(await reader.ReadAsync(token)) recipients.Add(new(reader.GetGuid(0),reader.GetString(1),reader.GetString(2),"MANAGER","compliance.current_reporting_relationship","to"));
     }
 
     private static async Task AddManagerForUserAsync(

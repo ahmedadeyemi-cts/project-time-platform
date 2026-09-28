@@ -7,6 +7,8 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkModule.cs'
       - 'src/frontend/project-time-web/src/Contract*'
       - 'tests/contracts-approval-funding.test.mjs'
+      - 'tests/contracts-release/**'
+      - 'scripts/release-test/verify-module060-contract-funding.sql'
       - '.github/workflows/contracts-approval-funding-ci.yml'
   workflow_dispatch:
 permissions:
@@ -17,9 +19,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python3 tests/contracts-release/scope.py && python3 tests/contracts-release/test_scope.py
+      - run: python3 tests/flowhive-migration-package.test.py
       - run: npm install --prefix /tmp/contract-test-runtime @electric-sql/pglite@0.5.8 --no-audit --no-fund
       - run: node tests/contracts-approval-funding.test.mjs
         env:

@@ -52,7 +52,8 @@ internal static class MicrosoftTeamsWorkflowProtocol
         string triggerUrl,
         Envelope envelope,
         CancellationToken cancellationToken,
-        bool captureTokenIdentity = false)
+        bool captureTokenIdentity = false,
+        Func<CancellationToken, Task<bool>>? authorizeBeforeSend = null)
     {
         if (tenantId == Guid.Empty || clientId == Guid.Empty || string.IsNullOrWhiteSpace(clientSecret))
             return Failed("teams_workflow_services_configuration_incomplete", "Save the matching Module 065 Microsoft services connection first.");
@@ -92,6 +93,9 @@ internal static class MicrosoftTeamsWorkflowProtocol
             return Failed("teams_workflow_token_missing", "Microsoft did not return a usable Power Automate token.");
 
         var tokenIdentity = captureTokenIdentity ? ReadTokenIdentity(token) : null;
+
+        if (authorizeBeforeSend is not null && !await authorizeBeforeSend(ct))
+            return Failed("teams_workflow_authority_changed", "The source, recipient, or Teams configuration changed before delivery.");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);

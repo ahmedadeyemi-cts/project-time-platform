@@ -82,4 +82,5 @@ await db.exec(await file('deployment/database/060c-contract-approval-funding-rol
 await db.exec(await file('deployment/database/060c-contract-approval-funding.sql'));
 assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM contract_project_funding')).rows[0].n, 1); checks++;
 console.log(`PASS ${checks} contract approval/funding database cases; migration reapplies cleanly.`);
+await db.exec(await file('scripts/release-test/verify-module060-contract-funding.sql'));
 await db.close();

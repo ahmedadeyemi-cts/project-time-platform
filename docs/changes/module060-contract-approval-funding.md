@@ -10,7 +10,7 @@ The server validates customer, dates, balance and eligibility when committing. T
 
 ## Deployment
 
-1. Apply `deployment/database/060c-contract-approval-funding.sql` after 060 and 060b, before deploying the new API/UI. It creates the funding table and replaces the balance view. It can be reapplied.
+1. The existing Protected Test private-network migration job now packages and applies 060, 060b and 060c in order, verifies their checksums, and runs `verify-module060-contract-funding.sql` before application deployment. Its receipt identifies the exact release and image. No separate manual SQL step is needed. All three migrations can be reapplied.
 2. Deploy the reviewed source through the normal protected-UAT process.
 3. Check a new T&M and a new Fixed Price project against the same customer's contract. Validate draft → submitted → manager approval → PM approval; also test no PM, coordinator only, rejection, edit and deletion. Verify rates and balances against the customer's agreement.
 4. If reverting, restore the old API/UI, then apply `060c-contract-approval-funding-rollback.sql`. Funding links and audit data are retained for recovery.

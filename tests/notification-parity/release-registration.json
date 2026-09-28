@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "base": "3f30bf1c6b56a5fe49116834e16b4ec2c1e13ea3",
+  "branch": "feature/module065-email-teams-notification-parity-20260928",
+  "prNumber": 1204,
+  "files": [
+    ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/module-management-owner-drawer-ci.yml",
+    ".github/workflows/module065-notification-parity-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    "database/migrations/128_module065_email_teams_notification_parity.sql",
+    "database/migrations/129_enterprise_reminder_delivery_sources.sql",
+    "database/rollback/128_module065_email_teams_notification_parity_rollback.sql",
+    "database/rollback/129_enterprise_reminder_delivery_sources_rollback.sql",
+    "docs/module065-email-teams-notification-parity.md",
+    "docs/production-readiness/foundation/initialization-review.json",
+    "scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh",
+    "scripts/ci/validate-module030-source-boundary.sh",
+    "scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh",
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "scripts/release-test/verify-module065-notification-parity.sql",
+    "scripts/teams/validate-landing.py",
+    "src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleService.cs",
+    "src/backend/ProjectTime.Api/Modules/EnterpriseNotificationOrchestrationService.cs",
+    "src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRecipientResolver.cs",
+    "src/backend/ProjectTime.Api/Modules/EnterpriseNotificationSourceScanner.cs",
+    "src/backend/ProjectTime.Api/Modules/EnterpriseReminderNotificationSource.cs",
+    "src/backend/ProjectTime.Api/Modules/EnterpriseReminderPolicy.cs",
+    "src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftTeamsNotificationModule.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftTeamsNotificationOutbox.cs",
+    "src/backend/ProjectTime.Api/Modules/MicrosoftTeamsWorkflowProtocol.cs",
+    "src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseMail.cs",
+    "src/backend/ProjectTime.Api/Modules/Module025SowSellWorker.cs",
+    "src/backend/ProjectTime.Api/Modules/Module065LegacyTimeNotificationBridge.cs",
+    "src/backend/ProjectTime.Api/Modules/Module065NotificationFanout.cs",
+    "src/backend/ProjectTime.Api/Modules/Module065NotificationParityAuthorization.cs",
+    "src/backend/ProjectTime.Api/Modules/Module065NotificationParityPolicy.cs",
+    "src/backend/ProjectTime.Api/Modules/Module065NotificationSourceGuard.cs",
+    "src/backend/ProjectTime.Api/Modules/Module065WorkRegisterNotificationBridge.cs",
+    "src/backend/ProjectTime.Api/Modules/ProjectNotificationProcessingService.cs",
+    "src/backend/ProjectTime.Api/Modules/TimeComplianceModule.cs",
+    "src/backend/ProjectTime.Api/Program.cs",
+    "src/frontend/project-time-web/scripts/validate-module-005-project-expense-upload.mjs",
+    "src/frontend/project-time-web/src/MicrosoftTeamsNotificationPanel.jsx",
+    "tests/MicrosoftTeamsDeliveryTests/MicrosoftTeamsDeliveryTests.csproj",
+    "tests/MicrosoftTeamsDeliveryTests/Program.cs",
+    "tests/NotificationParityDatabaseTests/NotificationParityDatabaseTests.csproj",
+    "tests/NotificationParityDatabaseTests/Program.cs",
+    "tests/flowhive-migration-package.test.py",
+    "tests/laya/processed-source-scope.py",
+    "tests/notification-parity/admission_fixture.py",
+    "tests/notification-parity/check-coverage.py",
+    "tests/notification-parity/coverage.json",
+    "tests/notification-parity/release-registration.json",
+    "tests/notification-parity/release_scope.py",
+    "tests/notification-parity/test_release_scope.py"
+  ],
+  "frozen": [
+    ".github/workflows/projectpulse-deploy-test.yml",
+    ".github/workflows/projectpulse-deploy-production.yml",
+    ".github/workflows/module025-protected-uat-control.yml",
+    ".github/flowhive-psa-protected-test-candidate.json",
+    ".github/flowhive-psa-release-control-files.txt",
+    ".github/workflows/flowhive-psa-installed-acceptance.yml",
+    "scripts/release-test/flowhive-psa-admission.mjs",
+    "scripts/release-test/run-project-planning-document-authority-migration-job.sh"
+  ],
+  "amendments": {
+    "scripts/ci/validate-module030-source-boundary.sh": [
+      {
+        "anchor": "HEAD_BRANCH=\"${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}\"\n",
+        "replacement": "HEAD_BRANCH=\"${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}\"\n\n# PR1204: validate the exact cross-module sender delta; all workflow regressions still run.\nif [[ \"$HEAD_BRANCH\" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then\n  python3 tests/notification-parity/release_scope.py\n  python3 tests/notification-parity/test_release_scope.py\n  echo 'ANALYTICS_CENTER_VALIDATION_MODE=MODULE065_NOTIFICATION_PARITY' >> \"${GITHUB_ENV:-/dev/null}\"\n  exit 0\nfi\n"
+      }
+    ],
+    "scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh": [
+      {
+        "anchor": "HEAD_BRANCH=\"${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}\"\n",
+        "replacement": "HEAD_BRANCH=\"${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}\"\n\n# PR1204: validate the exact cross-module sender delta; all workflow regressions still run.\nif [[ \"$HEAD_BRANCH\" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then\n  python3 tests/notification-parity/release_scope.py\n  python3 tests/notification-parity/test_release_scope.py\n  echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=MODULE065_NOTIFICATION_PARITY' >> \"${GITHUB_ENV:-/dev/null}\"\n  exit 0\nfi\n"
+      }
+    ],
+    "scripts/release-test/validate-protected-test-controller-branches.sh": [
+      {
+        "anchor": "# The SOW readback repair shares one exact file-set check across both gates.\n",
+        "replacement": "# PR1204 exact application/migration scope; the deployed controller is unchanged.\nif [[ \"$HEAD_BRANCH\" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then\n  python3 tests/notification-parity/release_scope.py\n  python3 tests/notification-parity/test_release_scope.py\n  python3 tests/notification-parity/check-coverage.py\n  node tests/validate-systemwide-image-build-controller.mjs\n  return\nfi\n# The SOW readback repair shares one exact file-set check across both gates.\n"
+      }
+    ],
+    ".github/workflows/flowhive-psa-release-control-ci.yml": [
+      {
+        "anchor": "          if [[ \"$GITHUB_HEAD_REF\" == fix/enterprise-ux-consistency-20260928 ]]; then\n",
+        "replacement": "          if [[ \"$GITHUB_HEAD_REF\" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then\n            python3 tests/notification-parity/release_scope.py\n            python3 tests/notification-parity/test_release_scope.py\n            python3 tests/notification-parity/admission_fixture.py --run-all\n            node tests/validate-systemwide-image-build-controller.mjs\n            exit 0\n          fi\n          if [[ \"$GITHUB_HEAD_REF\" == fix/enterprise-ux-consistency-20260928 ]]; then\n"
+      }
+    ],
+    ".github/workflows/flowhive-enterprise-psa-ci.yml": [
+      {
+        "anchor": "          if [[ \"${GITHUB_HEAD_REF:-}\" == 'fix/enterprise-ux-consistency-20260928' ]]; then\n",
+        "replacement": "          if [[ \"${GITHUB_HEAD_REF:-}\" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then\n            python3 tests/notification-parity/admission_fixture.py --run-all\n          elif [[ \"${GITHUB_HEAD_REF:-}\" == 'fix/enterprise-ux-consistency-20260928' ]]; then\n"
+      }
+    ],
+    ".github/workflows/pr1140-uat-recovery-ci.yml": [
+      {
+        "anchor": "          if [[ \"$GITHUB_HEAD_REF\" == 'fix/module025-readback-contract-20260928' ]]; then\n",
+        "replacement": "          if [[ \"$GITHUB_HEAD_REF\" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then\n            python3 tests/notification-parity/release_scope.py\n            python3 tests/notification-parity/test_release_scope.py\n          elif [[ \"$GITHUB_HEAD_REF\" == 'fix/module025-readback-contract-20260928' ]]; then\n"
+      }
+    ],
+    ".github/workflows/pr1151-uat-supersession-ci.yml": [
+      {
+        "anchor": "          if [[ \"$GITHUB_HEAD_REF\" == 'fix/enterprise-ux-consistency-20260928' ]]; then\n",
+        "replacement": "          if [[ \"$GITHUB_HEAD_REF\" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then\n            python3 tests/notification-parity/release_scope.py\n            python3 tests/notification-parity/test_release_scope.py\n          elif [[ \"$GITHUB_HEAD_REF\" == 'fix/enterprise-ux-consistency-20260928' ]]; then\n"
+      }
+    ],
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": [
+      {
+        "anchor": "          if [[ \"$GITHUB_HEAD_REF\" == 'fix/enterprise-ux-consistency-20260928' ]]; then\n",
+        "replacement": "          if [[ \"$GITHUB_HEAD_REF\" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then\n            python3 tests/notification-parity/release_scope.py\n            python3 tests/notification-parity/test_release_scope.py\n          elif [[ \"$GITHUB_HEAD_REF\" == 'fix/enterprise-ux-consistency-20260928' ]]; then\n"
+      }
+    ],
+    "scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh": [
+      {
+        "anchor": "printf '%s\\n' \"$RELEASE_COMMIT\" > \"$CONTEXT/release-commit\"\n",
+        "replacement": "# MODULE065_PARITY_PACKAGE_BEGIN\nfor name in 126_module065_power_automate_teams_delivery 128_module065_email_teams_notification_parity 129_enterprise_reminder_delivery_sources; do\n  install -m 0444 \"$ROOT/database/migrations/$name.sql\" \"$CONTEXT/database/migrations/$name.sql\"\ndone\ninstall -m 0444 \"$ROOT/scripts/release-test/verify-module065-notification-parity.sql\" \"$CONTEXT/database/verify-module065-notification-parity.sql\"\n(cd \"$CONTEXT\" && sha256sum database/migrations/126_module065_power_automate_teams_delivery.sql database/migrations/128_module065_email_teams_notification_parity.sql database/migrations/129_enterprise_reminder_delivery_sources.sql database/verify-module065-notification-parity.sql > database/module065-notification-parity.sha256)\n# MODULE065_PARITY_PACKAGE_END\nprintf '%s\\n' \"$RELEASE_COMMIT\" > \"$CONTEXT/release-commit\"\n"
+      },
+      {
+        "anchor": "psql -X -v ON_ERROR_STOP=1 --file \"$ROOT/database/migrations/127_flowhive_pm_automatic_planning_defaults.sql\"\n",
+        "replacement": "psql -X -v ON_ERROR_STOP=1 --file \"$ROOT/database/migrations/127_flowhive_pm_automatic_planning_defaults.sql\"\n\n# MODULE065_PARITY_APPLY_BEGIN\n(cd \"$ROOT\" && sha256sum --check --status database/module065-notification-parity.sha256)\npsql -X -v ON_ERROR_STOP=1 --file \"$ROOT/database/migrations/126_module065_power_automate_teams_delivery.sql\"\npsql -X -v ON_ERROR_STOP=1 --file \"$ROOT/database/migrations/128_module065_email_teams_notification_parity.sql\"\npsql -X -v ON_ERROR_STOP=1 --file \"$ROOT/database/migrations/129_enterprise_reminder_delivery_sources.sql\"\npsql -X -v ON_ERROR_STOP=1 --file \"$ROOT/database/verify-module065-notification-parity.sql\"\necho 'MIGRATIONS_126_128_129_NOTIFICATION_PARITY=APPLIED_AND_VERIFIED'\n# MODULE065_PARITY_APPLY_END\n"
+      },
+      {
+        "anchor": "bash \"$MIGRATION_RUNNER\"\n",
+        "replacement": "bash \"$MIGRATION_RUNNER\"\n# MODULE065_PARITY_EVIDENCE_BEGIN\nif [[ -n \"$EVIDENCE_ROOT\" ]]; then\n  install -d -m 0700 \"$EVIDENCE_ROOT\"\n  parity_hash=\"$(sha256sum \"$ROOT/database/migrations/128_module065_email_teams_notification_parity.sql\" | cut -d ' ' -f 1)\"\n  reminder_hash=\"$(sha256sum \"$ROOT/database/migrations/129_enterprise_reminder_delivery_sources.sql\" | cut -d ' ' -f 1)\"\n  jq -n --arg releaseCommit \"$RELEASE_COMMIT\" --arg image \"$RELIABILITY_MIGRATION_IMAGE\" --arg paritySha256 \"$parity_hash\" --arg reminderSha256 \"$reminder_hash\" \\\n    '{status:\"applied_and_verified\",migrations:[\"126_module065_power_automate_teams_delivery\",\"128_module065_email_teams_notification_parity\",\"129_enterprise_reminder_delivery_sources\"],releaseCommit:$releaseCommit,image:$image,paritySha256:$paritySha256,reminderSha256:$reminderSha256,environment:\"protected-test\",privateNetworkJob:true,liveNotificationActivation:false,productionMutation:false}' \\\n    > \"$EVIDENCE_ROOT/migration-128-129-notification-parity.json\"\nfi\necho 'MIGRATIONS_126_128_129_NOTIFICATION_PARITY=APPLIED_AND_VERIFIED'\n# MODULE065_PARITY_EVIDENCE_END\n"
+      }
+    ],
+    ".github/workflows/module-management-owner-drawer-ci.yml": [
+      {
+        "anchor": "          HEAD_BRANCH=\"${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}\"\n",
+        "replacement": "          HEAD_BRANCH=\"${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}\"\n          if [[ \"$HEAD_BRANCH\" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then\n            python3 tests/notification-parity/release_scope.py\n            python3 tests/notification-parity/test_release_scope.py\n            exit 0\n          fi\n"
+      }
+    ],
+    "tests/laya/processed-source-scope.py": [
+      {
+        "anchor": "if current_branch() == CURRENT_FLOWHIVE_REPAIR:\n",
+        "replacement": "# Only the exact reviewed notification migration packaging changes; Laya source stays frozen.\nif current_branch() == 'feature/module065-email-teams-notification-parity-20260928':\n    subprocess.run([sys.executable, str(ROOT/'tests/notification-parity/release_scope.py')], cwd=ROOT, check=True)\n    for path in ['database/migrations/125_automatic_document_admission_laya.sql',\n                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',\n                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs']:\n        expected = subprocess.check_output(['git','-C',str(ROOT),'show','3f30bf1c6b56a5fe49116834e16b4ec2c1e13ea3:'+path])\n        if (ROOT/path).read_bytes() != expected:\n            raise SystemExit('Notification parity changed inherited Laya authority: '+path)\n    print('LAYA_NOTIFICATION_PARITY_INHERITED_SOURCE=PASS')\n    raise SystemExit(0)\n\nif current_branch() == CURRENT_FLOWHIVE_REPAIR:\n"
+      }
+    ]
+  },
+  "contentSha256": {
+    "src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleService.cs": "089bb36424b55f18c4b4d1b5672a19653b64ca271c6edd6b09071930ae7a8fd8",
+    "scripts/release-test/verify-module065-notification-parity.sql": "09a6308b39ce18698f0e24f8eeda6d57fdf6e9353e57ef94d3d3cd7c83c93709"
+  }
+}

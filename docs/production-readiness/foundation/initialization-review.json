@@ -2166,6 +2166,26 @@
       "signals": [],
       "decision": "review_required",
       "rationale": ""
+    },
+    {
+      "path": "database/migrations/128_module065_email_teams_notification_parity.sql",
+      "sha256": "ff02407eba5116946e6573542125e9ce8d01eb5ef2779b6e766ffed3a1e8bcc4",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "Notification parity candidate. Requires explicit migration/release review and controlled UAT; no live execution or production activation authorized by this inventory entry."
+    },
+    {
+      "path": "database/migrations/129_enterprise_reminder_delivery_sources.sql",
+      "sha256": "72c4946a87ad7e3e3d93c356a354162031c226b316698d518199888d4b3ff623",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "Notification parity candidate. Requires explicit migration/release review and controlled UAT; no live execution or production activation authorized by this inventory entry."
     }
   ]
 }

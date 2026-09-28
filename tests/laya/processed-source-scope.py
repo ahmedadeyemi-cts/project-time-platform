@@ -12,6 +12,18 @@ def current_branch():
     return os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
         ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
 
+# Only the exact reviewed notification migration packaging changes; Laya source stays frozen.
+if current_branch() == 'feature/module065-email-teams-notification-parity-20260928':
+    subprocess.run([sys.executable, str(ROOT/'tests/notification-parity/release_scope.py')], cwd=ROOT, check=True)
+    for path in ['database/migrations/125_automatic_document_admission_laya.sql',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs']:
+        expected = subprocess.check_output(['git','-C',str(ROOT),'show','3f30bf1c6b56a5fe49116834e16b4ec2c1e13ea3:'+path])
+        if (ROOT/path).read_bytes() != expected:
+            raise SystemExit('Notification parity changed inherited Laya authority: '+path)
+    print('LAYA_NOTIFICATION_PARITY_INHERITED_SOURCE=PASS')
+    raise SystemExit(0)
+
 if current_branch() == CURRENT_FLOWHIVE_REPAIR:
     base = subprocess.check_output(['git','-C',str(ROOT),'merge-base','origin/main','HEAD'], text=True).strip()
     inherited = [

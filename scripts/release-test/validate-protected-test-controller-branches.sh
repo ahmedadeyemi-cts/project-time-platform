@@ -3,6 +3,21 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+# Exact PR1205 application/migration package; Test and Production authority are frozen.
+if [[ "$HEAD_BRANCH" == 'codex/module060-approval-contract-funding' ]]; then
+  python3 tests/contracts-release/scope.py
+  python3 tests/contracts-release/test_scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
+# PR1204 exact application/migration scope; the deployed controller is unchanged.
+if [[ "$HEAD_BRANCH" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then
+  python3 tests/notification-parity/release_scope.py
+  python3 tests/notification-parity/test_release_scope.py
+  python3 tests/notification-parity/check-coverage.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
 # The SOW readback repair shares one exact file-set check across both gates.
 if [[ "$HEAD_BRANCH" == fix/module025-readback-contract-20260928 ]]; then
   BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" \
@@ -36,6 +51,14 @@ if [[ "$HEAD_BRANCH" == fix/uat-migration-throttle-recovery-20260922 ]]; then
   node tests/validate-systemwide-image-build-controller.mjs
   return
 fi
+# PR1204_UAT_SUPERSESSION_SCOPE_BEGIN
+if [[ "$HEAD_BRANCH" == fix/pr1204-uat-supersession-20260928 ]]; then
+  python3 tests/pr1204-uat-supersession-scope.py
+  python3 tests/test-pr1204-uat-supersession.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
+# PR1204_UAT_SUPERSESSION_SCOPE_END
 # PR1151_UAT_SUPERSESSION_SCOPE_BEGIN
 if [[ "$HEAD_BRANCH" == fix/pr1151-uat-orphan-20260923 ]]; then
   python3 tests/pr1151-uat-supersession-scope.py
