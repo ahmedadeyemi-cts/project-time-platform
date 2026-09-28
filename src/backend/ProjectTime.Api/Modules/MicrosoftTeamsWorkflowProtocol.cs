@@ -29,7 +29,30 @@ internal static class MicrosoftTeamsWorkflowProtocol
         string NotificationType,
         string SourceModule,
         string PulseUrl,
-        string IdempotencyKey);
+        string IdempotencyKey)
+    {
+        // Additive presentation metadata; SourceModule remains the originating module ID.
+        public string SourceModuleLabel => FormatSourceModuleLabel(SourceModule);
+    }
+
+    internal static string FormatSourceModuleLabel(string? sourceModule)
+    {
+        if (string.IsNullOrWhiteSpace(sourceModule)) return "Pulse";
+        // Keep unknown named sources useful without allowing unbounded or multiline labels.
+        // This is plain text: the Power Automate HTML message must escape its display value.
+        var source = new string(sourceModule.Trim().Take(128).Where(c => !char.IsControl(c)).ToArray()).Trim();
+        if (source.Length == 0) return "Pulse";
+        if (source.Length > 3 || !source.All(c => c is >= '0' and <= '9')) return source;
+        var code = source.PadLeft(3, '0');
+        // Only explicitly named notification sources are mapped here. Unknown IDs retain
+        // their identity instead of being mislabeled as the Module 065 delivery adapter.
+        return code switch
+        {
+            "025" => "Module 025 - SOW & GSD Workspace",
+            "065" => "Module 065 - Teams Integration",
+            _ => $"Module {code}"
+        };
+    }
 
     internal static bool ValidTriggerUrl(string? value, out Uri? uri)
     {
