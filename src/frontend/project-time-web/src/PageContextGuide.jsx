@@ -12,6 +12,7 @@ const API_INVENTORY_ROLES = new Set([
 ]);
 
 const routeContext = {
+  'my-role-in-pulse': { page: 'My Role in Pulse', purpose: 'Understand your assigned responsibilities and follow the relevant workflow.', backend: 'Effective role assignments and role playbooks', check: 'Confirm the playbook matches your effective role.' },
   // PR467_MODULE_006_PAGE_CONTEXT
   'toyota-hyundai-pipelines': { page: 'Toyota & Hyundai Pipelines — Module 006', purpose: 'Standalone Toyota and Hyundai pipeline management for project rows, tasks, status updates, notes, review dates, history, and exports.', backend: '/api/module-006/pipeline and /api/module-006/tasks', check: 'Create or open a project, save a status note, create a standalone task, and confirm no other project module is opened or modified.' },
   'production-data-readiness': {
@@ -301,7 +302,7 @@ export default function PageContextGuide({ activeRoute }) {
         <summary>
           <span>
             <strong>{context.page}</strong>
-            <small>What this page does and what backend process supports it</small>
+            <small>Help and workflow details</small>
           </span>
         </summary>
 

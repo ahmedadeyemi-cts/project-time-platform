@@ -323,7 +323,7 @@ export default function DashboardPersonalCalendarPortal() {
       );
 
       if (!currentUserId || !resource) {
-        throw new Error('Calendar capacity is not available for this account profile.');
+        throw new Error('No Microsoft calendar is connected to this account profile. Local test accounts do not have an Exchange mailbox.');
       }
 
       const start = new Date(weekStart);
@@ -401,6 +401,7 @@ export default function DashboardPersonalCalendarPortal() {
     ));
     const calendarTimer = window.setTimeout(() => void loadCalendar(), 100);
 
+    window.addEventListener('projectpulse:permission-navigation-updated', refreshDashboard);
     window.addEventListener('projectpulse:view-as-changed', refreshDashboard);
     window.addEventListener('projectpulse:approval-queue-changed', refreshDashboard);
 
@@ -409,6 +410,7 @@ export default function DashboardPersonalCalendarPortal() {
       initialApprovalTimers.forEach((timer) => window.clearTimeout(timer));
       window.clearTimeout(calendarTimer);
       window.clearTimeout(approvalSyncTimer.current);
+      window.removeEventListener('projectpulse:permission-navigation-updated', refreshDashboard);
       window.removeEventListener('projectpulse:view-as-changed', refreshDashboard);
       window.removeEventListener('projectpulse:approval-queue-changed', refreshDashboard);
       requestId.current += 1;

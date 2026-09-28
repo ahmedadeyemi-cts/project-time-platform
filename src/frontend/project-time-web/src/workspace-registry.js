@@ -50,6 +50,9 @@ const WORKSPACE_METADATA_OVERRIDES = Object.freeze({
   '008': Object.freeze({ searchAliases: ['audit', 'history', 'change history'] }),
   '011': Object.freeze({ searchAliases: ['Celar AI', 'AI assistant', 'Ask Celar AI', 'workbench'] }),
   '013': Object.freeze({ searchAliases: ['system health', 'API diagnostics', 'troubleshooting'] }),
+  '055C': Object.freeze({ searchAliases: ['work register', 'existing projects', 'manage projects'] }),
+  '055D': Object.freeze({ searchAliases: ['create project', 'new project', 'create work register'] }),
+  '066': Object.freeze({ searchAliases: ['FlowHive', 'WBS', 'project plan', 'task board'] }),
   '071': Object.freeze({ searchAliases: ['on call', 'on-call', 'schedule', 'rotation'] }),
   '072': Object.freeze({ searchAliases: ['OneAssist', 'PIN', 'routing directory'] })
 });
@@ -127,6 +130,7 @@ export function workspaceSearchText(workspace) {
     workspace.workspaceName,
     workspace.description,
     workspace.route,
+    workspace.route?.replaceAll('-', ' '),
     workspace.category,
     ...workspace.searchAliases,
     ...workspace.customerBrands

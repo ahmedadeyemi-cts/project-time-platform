@@ -133,7 +133,6 @@
   background: #fff8e8;
 }
 
-.flowhive-foundation-notice strong,
 .flowhive-error strong {
   flex: 0 0 auto;
 }
@@ -1716,3 +1715,20 @@
 .flowhive-project-home-actions { display:flex; flex-wrap:wrap; gap:.55rem; align-items:center; }
 @media (max-width:900px) { .flowhive-project-home-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:600px) { .flowhive-project-home-summary { grid-template-columns:1fr; } .flowhive-project-home-actions button { flex:1 1 100%; } }
+
+/* Keep navigation and current work ahead of guidance and historical AI output. */
+.project-flowhive-center .flowhive-foundation-notice { display: grid; gap: .35rem; }
+.project-flowhive-center .flowhive-foundation-notice > * { min-width: 0; overflow-wrap: anywhere; }
+.project-flowhive-center .flowhive-hero { padding: .85rem 1rem; box-shadow: none; }
+.project-flowhive-center .flowhive-hero h2 { font-size: 1.5rem; }
+.project-flowhive-center .flowhive-view-tabs { position: sticky; top: 0; z-index: 20; flex-wrap: wrap; overflow-x: auto; }
+.project-flowhive-center .flowhive-view-tabs button { flex: 0 1 auto; min-width: 0; }
+.project-flowhive-center .flowhive-planning-setup,
+.project-flowhive-center .flowhive-planner-history { border: 1px solid var(--flowhive-line); border-radius: .6rem; padding: .65rem .85rem; background: var(--flowhive-surface); }
+.project-flowhive-center details > summary { cursor: pointer; font-weight: 600; }
+.project-flowhive-center .flowhive-current-plan-label h3 { margin: 0 0 .3rem; }
+.project-flowhive-center .flowhive-current-plan-label p { margin: 0; color: var(--flowhive-muted); }
+@media (max-width: 720px) {
+  .project-flowhive-center .flowhive-view-tabs { flex-wrap: nowrap; overflow-x: auto; }
+  .project-flowhive-center .flowhive-view-tabs button { flex: 0 0 auto; }
+}

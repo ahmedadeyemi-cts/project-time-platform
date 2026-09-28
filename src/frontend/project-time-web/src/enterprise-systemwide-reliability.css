@@ -314,3 +314,12 @@
   color: inherit;
 }
 .billing-source-warning li + li { margin-top: 0.22rem; }
+
+/* Focused workspaces already supply their own primary heading and controls. */
+:root[data-pulse-experience='enterprise'] .pulse-enterprise-page-chrome--compact { padding: .5rem 1rem; min-height: 0; box-shadow: none; }
+:root[data-pulse-experience='enterprise'] .pulse-enterprise-page-chrome--compact .pulse-enterprise-page-chrome__icon,
+:root[data-pulse-experience='enterprise'] .pulse-enterprise-page-chrome--compact .pulse-enterprise-page-chrome__description,
+:root[data-pulse-experience='enterprise'] .pulse-enterprise-page-chrome--compact .pulse-enterprise-page-chrome__eyebrow { display: none; }
+:root[data-pulse-experience='enterprise'] .pulse-enterprise-page-chrome--compact h1 { margin: 0; font-size: 1rem; }
+:root[data-pulse-experience='enterprise'] .page-context-guide { margin-block: .25rem; }
+:root[data-pulse-experience='enterprise'] .page-context-guide summary { padding-block: .4rem; }

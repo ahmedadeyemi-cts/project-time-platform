@@ -3,6 +3,13 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+# Exact enterprise UX repair; deployment authority remains frozen.
+if [[ "$HEAD_BRANCH" == fix/enterprise-ux-consistency-20260928 ]]; then
+  python3 tests/enterprise-ux-release-scope.py
+  node --test tests/enterprise-ux-consistency.test.mjs
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
 # Exact reviewed AI provenance and automated full-UAT repair.
 if [[ "$HEAD_BRANCH" == fix/flowhive-provenance-auto-uat-20260928 ]]; then
   python3 tests/flowhive-provenance-auto-uat-scope.py

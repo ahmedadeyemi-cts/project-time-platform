@@ -85,6 +85,15 @@ public static class ProductionApprovalWorkModule
         return app;
     }
 
+    internal static async Task<int> CountPendingAsync(NpgsqlConnection connection, HttpContext context)
+    {
+        var access = await LoadAccessAsync(connection, context, context.RequestAborted);
+        if (access is null || !access.CanViewAnyApprovalWork) return 0;
+        var items = await LoadCandidatesAsync(connection, transaction: null, access,
+            stage: null, weekStart: null, context.RequestAborted);
+        return items.Count;
+    }
+
     public static async Task<IResult> GetPendingAsync(HttpContext context)
     {
         await using var connection = new NpgsqlConnection(ConnectionString());

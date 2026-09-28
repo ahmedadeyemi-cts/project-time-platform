@@ -19,6 +19,10 @@ const STATIC_ROUTE_METADATA = Object.freeze({
     title: 'Dashboard',
     description: 'Your role-aware starting point for delivery, approvals, workload, notifications, and operational priorities.'
   }),
+  'my-role-in-pulse': Object.freeze({
+    group: 'Help & Documentation', title: 'My Role in Pulse',
+    description: 'Your responsibilities, workflows, and next handoffs.'
+  }),
   modules: Object.freeze({
     group: 'Administration',
     title: 'Module Management',
@@ -398,7 +402,7 @@ function EnterprisePageChrome({ metadata, experience }) {
       ? 'Classic view'
       : 'Enterprise view';
   return (
-    <header className="pulse-enterprise-page-chrome" aria-label={`${metadata.title} page context`}>
+    <header className={`pulse-enterprise-page-chrome${['dashboard', 'modules', 'project-flowhive', 'manager-approval', 'work-register', 'my-role-in-pulse'].includes(metadata.route) ? ' pulse-enterprise-page-chrome--compact' : ''}`} aria-label={`${metadata.title} page context`}>
       <div className="pulse-enterprise-page-chrome__identity">
         <span className="pulse-enterprise-page-chrome__icon" aria-hidden="true">
           <WorkspaceIcon route={metadata.route} />

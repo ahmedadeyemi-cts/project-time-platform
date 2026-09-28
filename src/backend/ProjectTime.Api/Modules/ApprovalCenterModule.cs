@@ -245,7 +245,7 @@ public static class ApprovalCenterModule
         var access = accessResult.Access!;
 
         var submittedTimePending = access.CanViewTimeApprovals
-            ? await CountTimeApprovalsAsync(connection, access)
+            ? await ProductionApprovalWorkModule.CountPendingAsync(connection, context)
             : 0;
 
         var localResetPendingApproval = 0;

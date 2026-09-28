@@ -286,7 +286,7 @@ export default function ApprovalCenter() {
           <article>
             <span>Time requiring action</span>
             <strong>{timeCount}</strong>
-            <small>Submitted days only</small>
+            <small>All weeks · authorized Manager, PM and PTC work</small>
           </article>
         ) : null}
 
@@ -311,7 +311,7 @@ export default function ApprovalCenter() {
         <article>
           <span>Total requiring action</span>
           <strong>{total}</strong>
-          <small>Role-specific actionable work</small>
+          <small>All weeks · your authorized approval scope</small>
         </article>
       </section>
 

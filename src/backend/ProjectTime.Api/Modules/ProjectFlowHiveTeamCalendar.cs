@@ -51,8 +51,11 @@ internal static partial class ProjectFlowHivePsaModule
                 members.Add(new(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
         }
         var rows = members.ToDictionary(m => m.UserId, m => new FlowHiveCalendarRow(
-            m.UserId, m.DisplayName, m.Role, "unknown", [], null));
-        var queryable = members.Where(m => !string.IsNullOrWhiteSpace(m.Email)).ToArray();
+            m.UserId, m.DisplayName, m.Role, "unknown", [], null,
+            string.IsNullOrWhiteSpace(m.Email) ? "mailbox_not_configured" :
+            m.Email.EndsWith(".local", StringComparison.OrdinalIgnoreCase) ? "local_account_no_mailbox" : "calendar_unavailable"));
+        var queryable = members.Where(m => !string.IsNullOrWhiteSpace(m.Email)
+            && !m.Email.EndsWith(".local", StringComparison.OrdinalIgnoreCase)).ToArray();
         if (queryable.Length > 0)
         {
             try
@@ -92,7 +95,7 @@ internal static partial class ProjectFlowHivePsaModule
                                 intervals.Add(new(from, to, status));
                             }
                             foreach (var member in batch.Where(m => m.Email.Equals(email, StringComparison.OrdinalIgnoreCase)))
-                                rows[member.UserId] = new(member.UserId, member.DisplayName, member.Role, "available", intervals, DateTimeOffset.UtcNow);
+                                rows[member.UserId] = new(member.UserId, member.DisplayName, member.Role, "available", intervals, DateTimeOffset.UtcNow, null);
                         }
                     }
                     catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException
@@ -129,5 +132,5 @@ internal static partial class ProjectFlowHivePsaModule
     private sealed record FlowHiveCalendarMember(Guid UserId, string DisplayName, string Email, string Role);
     private sealed record FlowHiveBusyInterval(DateTimeOffset Start, DateTimeOffset End, string Status);
     private sealed record FlowHiveCalendarRow(Guid UserId, string DisplayName, string Role, string Status,
-        IReadOnlyList<FlowHiveBusyInterval> Intervals, DateTimeOffset? RetrievedAt);
+        IReadOnlyList<FlowHiveBusyInterval> Intervals, DateTimeOffset? RetrievedAt, string? ReasonCode);
 }

@@ -244,7 +244,10 @@ async def main(readback_mode=None):
             print('PASSED: actual React start posts edited dates and exact working-copy revision',flush=True)
             state['complete']=True
             if readback_mode=='review_proposal':
-                review=page.get_by_role('region',name='Review generated work breakdown',exact=True)
+                review=page.locator('details.flowhive-planner-review')
+                await review.wait_for()
+                assert not await review.evaluate('(el)=>el.open'), 'saved proposal should start collapsed'
+                await review.locator(':scope > summary').click()
                 await review.get_by_text('Generated unique task Plan',exact=True).wait_for()
                 assert state['versions'][A]==V1 and len(state['plans'][A]['milestones'])==1
                 assert state['posts'][0]['plan']['milestones'][0]['milestoneId']==SAVED
@@ -257,7 +260,11 @@ async def main(readback_mode=None):
                 assert len(state['posts'])==1
                 print('PASSED: reopening a saved proposal does not start another AI operation',flush=True)
                 await reload_page();await page.get_by_role('button',name='WBS plan',exact=True).click()
-                await page.get_by_role('region',name='Review generated work breakdown',exact=True).get_by_text('Generated unique task Plan',exact=True).wait_for()
+                review=page.locator('details.flowhive-planner-review')
+                await review.wait_for()
+                assert not await review.evaluate('(el)=>el.open'), 'reloaded proposal should remain distinct from active work'
+                await review.locator(':scope > summary').click()
+                await review.get_by_text('Generated unique task Plan',exact=True).wait_for()
                 assert await page.locator('input[value="Stored project task Plan"]').count()==1
                 assert len(state['posts'])==1 and state['versions'][A]==V1
                 assert not state['errors'],state['errors']

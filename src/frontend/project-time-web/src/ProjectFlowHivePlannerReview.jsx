@@ -84,7 +84,8 @@ export default function ProjectFlowHivePlannerReview({ projectId, runId, getJson
   }
   const display = preview?.plan || review?.candidatePlan;
   const schedule = preview?.schedule || review?.candidateSchedule;
-  return <section className="flowhive-planner-review" aria-label="Review generated work breakdown">
+  return <details className="flowhive-planner-review" aria-label="Review generated work breakdown">
+    <summary>{review?.workingCopyChangedSinceGeneration ? 'Earlier AI proposal — working plan has changed' : 'Saved AI proposal — separate from the current working plan'}</summary>
     <header><div><h3>AI Planner work breakdown — {preview ? 'reviewed merge preview' : 'saved proposal'}</h3>
       <p>FlowHive prepared a technical plan from the SOW. Existing work is preserved automatically; use the detailed reconciliation controls below only when FlowHive identifies a genuine conflict.</p></div>
       {onRegenerate ? <button type="button" onClick={onRegenerate} disabled={Boolean(busy) || !canEdit || uncertain}>Generate another proposal</button> : null}</header>
@@ -93,7 +94,7 @@ export default function ProjectFlowHivePlannerReview({ projectId, runId, getJson
       {!uncertain ? <button type="button" disabled={Boolean(busy)} onClick={() => setReload(value => value + 1)}>Reload review without regenerating</button> : null}</div> : null}
     {hasLocalEdits ? <p role="status">Save or discard your unsaved working-plan edits before previewing this merge. No local edits will be replaced.</p> : null}
     {review ? <>
-      {review.workingCopyChangedSinceGeneration ? <p>The working plan changed after generation. Review against the current revision shown here; older edits will not overwrite it.</p> : null}
+      {review.workingCopyChangedSinceGeneration ? <p>This proposal predates changes to the working plan. It is historical proposal content, not the active task grid. Review and reconcile it before applying; the current working copy remains unchanged.</p> : null}
       <div className="flowhive-review-grid" role="region" aria-label="Proposed AI work breakdown" tabIndex="0"><table>
         <thead><tr><th>Phase / WBS</th><th>Work package</th><th>Start</th><th>Finish</th><th>Effort</th></tr></thead>
         <tbody>{(display?.tasks || []).filter(task => !task.isSummary).map(task => {
@@ -131,5 +132,5 @@ export default function ProjectFlowHivePlannerReview({ projectId, runId, getJson
           {busy === 'apply' ? 'Saving reviewed work breakdown…' : 'Apply reviewed work breakdown'}</button>
       </div> : null}
     </> : null}
-  </section>;
+  </details>;
 }
