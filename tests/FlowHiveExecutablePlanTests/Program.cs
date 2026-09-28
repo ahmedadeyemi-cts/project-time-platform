@@ -28,7 +28,7 @@ var seed = new ProjectFlowHivePlanRequest(
     ProjectStartDate: new DateOnly(2026, 9, 8), ProjectEndDate: new DateOnly(2026, 10, 30),
     Tasks: [], Dependencies: [], Assignments: [], GsdVersion: null, SowVersion: "sow-v1", Notes: "PM note");
 var sources = phases.Select((phase, index) => new PulseAiPrivateFlowHiveTask(
-    Wbs: $"source-{index + 1}", Name: $"{phase}: CUCM migration activity {index + 1}",
+    Wbs: $"source-{index + 1}", Name: phase == "Release" ? "CUCM operational handoff" : $"{phase}: CUCM migration activity {index + 1}",
     Description: $"Produce the CUCM {phase.ToLowerInvariant()} deliverable for the migration and record the specific completion evidence for review.",
     EstimatedDurationDays: 1.5m, RequiredRoles: ["Collaboration Engineer", "Project Manager"],
     Predecessors: index == 0 ? [] : [$"source-{index}"], CitationIds: [1], IsAssumption: true,
@@ -54,6 +54,11 @@ var authorized = new HashSet<int> { 1, 2 };
 ProjectFlowHivePlanRequest Build(PulseAiPrivateFlowHivePlan value) => ProjectFlowHiveExecutablePlanBuilder.Build(seed, value, authorized);
 var before = JsonSerializer.Serialize(new { seed, plan });
 var result = Build(plan);
+Check(result.SourceKind == "celar_ai", "AI candidate sets provenance when client seed omits SourceKind");
+var manualSeed = seed with { SourceKind = "manual" };
+Check(ProjectFlowHiveExecutablePlanBuilder.BuildCandidate(manualSeed, plan, authorized).SourceKind == "celar_ai",
+    "AI regeneration of a manual seed still applies AI quality normalization");
+Check(manualSeed.SourceKind == "manual", "AI candidate does not mutate the caller's manual seed");
 var tasks = result.Tasks!.Where(task => !task.IsSummary).ToArray();
 Check(tasks.Length == 5, "five native tasks are not multiplied into twenty-five");
 Check(result.Tasks!.Count(task => task.IsSummary) == 5, "exactly five phase summary rows");
@@ -99,7 +104,6 @@ var configureBackupsTask = retainedDesignTask with
 };
 var phaseRepairInput = result with
 {
-    SourceKind = "celar_ai",
     Tasks = [
         .. result.Tasks!.Select(task => task.WbsNumber switch
         {

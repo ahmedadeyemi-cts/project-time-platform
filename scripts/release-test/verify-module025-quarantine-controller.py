@@ -29,7 +29,14 @@ ENTERPRISE_SHA256 = "3cbd088ab607eb3f3399ab254332adb818c946c7287c33e7a4a52f7e04a
 DOCUMENT_ADMISSION_SHA256 = "b886247b63b313b2038202461a1f370b72b93bd03823edbd8d74cf3ce679728a"
 
 
+# Exact PR1192 controller; no other future controller inherits this registration.
+NORMAL_SA_SHA256 = "53e9ae43fb8eeee5efefdc28e56c6ac3c90883b815cb65288d7b948a38837d7e"
+
+
 def permitted(original, current):
+    if (hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256)
+            and hashlib.sha256(current).hexdigest() == NORMAL_SA_SHA256):
+        return True
     if (hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256)
             and hashlib.sha256(current).hexdigest() == DOCUMENT_ADMISSION_SHA256):
         return True

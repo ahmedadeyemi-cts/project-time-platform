@@ -14,6 +14,10 @@ on:
       - 'database/migrations/109_module025_project_name.sql'
       - 'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh'
       - 'src/backend/ProjectTime.Api/Modules/Module025*'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHive*'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanning*'
+      - 'scripts/release-test/wait-protected-uat-main-ci.py'
+      - 'scripts/release-test/verify-pr1151-uat-supersession.py'
       - 'src/frontend/project-time-web/src/module025/**'
 
 run-name: >-
@@ -62,6 +66,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Wait for exact merged-main build and security checks
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 tests/test-protected-uat-main-ci.py
+          python3 tests/test-pr1151-uat-supersession.py
+          python3 scripts/release-test/wait-protected-uat-main-ci.py
 
       - name: Authorize exact Module 025 Protected-Test release
         id: authorize
@@ -344,7 +357,7 @@ jobs:
             '{ref:$ref,inputs:{
               release_sha:$release_sha,
               release_branch:$release_branch,
-              acceptance_scope:"sow_exports",
+              acceptance_scope:"full",
               qualification_provider:"none",
               recover_private_runtime:"false",
               admission_controller_sha:""
@@ -436,7 +449,7 @@ jobs:
 
           - Release SHA: \`$RELEASE_SHA\`
           - Deployment run: $DEPLOYMENT_RUN_URL
-          - Required live gate: authorized Solution Architect → synthetic task save/readback → draft SOW/GSD downloads → archive cleanup; no generation
+          - Required live gate: full authenticated FlowHive generation, assigned-work, utilization, Module 025 API generation, normal Solution Architect browser lifecycle and retained register downloads
           - Deployment workflow admissions: \`disabled_manually\`
           - Production mutation: none"
 
@@ -506,7 +519,7 @@ jobs:
           - Release SHA: \`${RELEASE_SHA:-unavailable}\`
           - Deployment run: $run_reference
           - Conclusion: \`$conclusion\`
-          - Required live gate: authorized Solution Architect → synthetic task save/readback → draft SOW/GSD downloads → archive cleanup; no generation
+          - Required live gate: full authenticated FlowHive generation, assigned-work, utilization, Module 025 API generation, normal Solution Architect browser lifecycle and retained register downloads
           - Deployment workflow: \`disabled_manually\`
           - Production mutation: none"
 
