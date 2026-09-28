@@ -123,7 +123,11 @@ public static class Module025SowGsdModule
                 serviceScope = await Module025ServiceScopePolicy.SchemaReadyAsync(connection, cancellationToken),
                 // Read-only in-app preview (Stage 3). Behind a default-OFF kill-switch;
                 // when disabled the preview endpoints 404 and the UI shows no control.
-                preview = Module025PreviewPolicy.Enabled },
+                preview = Module025PreviewPolicy.Enabled,
+                // Canonical-reference admin UI + author selection (Stage 4). Behind the
+                // same default-OFF kill-switch; when disabled the canonical endpoints 404
+                // and the UI surfaces no library entry or author selection.
+                referenceSources = Module025ReferenceSourcePolicy.Enabled },
             currentUser = new
             {
                 userId = access.EffectiveUserId,

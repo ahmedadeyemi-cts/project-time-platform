@@ -1,0 +1,233 @@
+/* Canonical SOW reference library. Uses the module's theme tokens
+   (--m025-* and --uss-* defined on .m025-workspace) so both light and dark
+   ownership modes satisfy the Module surfaces WCAG contrast gate. */
+.m025-canonical {
+  color: var(--m025-text);
+  display: grid;
+  gap: 16px;
+}
+
+.m025-canonical-head {
+  display: grid;
+  gap: 8px;
+  max-width: 80rem;
+}
+
+.m025-canonical-head h2,
+.m025-canonical-head h3,
+.m025-canonical-head p {
+  margin: 0;
+}
+
+.m025-canonical-kicker {
+  /* Theme text token, not --m025-blue: the brand blue (#1769aa) drops to a 2.83:1
+     ratio on the dark workspace background and fails the Module surfaces gate; no
+     single fixed blue clears 4.5:1 in both light and dark. */
+  color: var(--m025-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.m025-canonical-readonly {
+  color: var(--m025-text);
+  background: var(--m025-soft);
+  border: 1px solid var(--m025-border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.m025-canonical-message {
+  color: var(--m025-text);
+  background: var(--m025-soft);
+  border: 1px solid var(--m025-border);
+  border-radius: 8px;
+  padding: 0.9rem;
+}
+
+.m025-canonical-message--error {
+  border-color: color-mix(in srgb, #b42318 45%, var(--m025-border));
+  background: color-mix(in srgb, #b42318 10%, var(--m025-surface));
+}
+
+.m025-canonical-create {
+  display: grid;
+  gap: 0.9rem;
+  border: 1px solid var(--m025-border);
+  background: var(--m025-soft);
+  border-radius: 12px;
+  padding: 1.2rem;
+}
+
+.m025-canonical-create h3,
+.m025-canonical-create p {
+  margin: 0;
+}
+
+.m025-canonical-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.m025-canonical-create label,
+.m025-canonical-active-toggle {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.m025-canonical-active-toggle {
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.m025-canonical-create input,
+.m025-canonical-edit input,
+.m025-canonical-edit textarea {
+  font: inherit;
+  color: var(--m025-text);
+  border: 1px solid var(--m025-border);
+  border-radius: 7px;
+  background: var(--m025-surface);
+  padding: 0.6rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.m025-canonical-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 60rem) {
+  .m025-canonical-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.m025-canonical-list-panel h3,
+.m025-canonical-detail-panel h3 {
+  margin: 0 0 0.6rem;
+}
+
+.m025-canonical-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.m025-canonical-card {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 0.3rem;
+  cursor: pointer;
+  color: var(--m025-text);
+  background: var(--m025-surface);
+  border: 1px solid var(--m025-border);
+  border-radius: 10px;
+  padding: 0.85rem;
+}
+
+.m025-canonical-card.is-selected {
+  border-color: var(--m025-blue);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--m025-blue) 35%, transparent);
+}
+
+.m025-canonical-card:focus-visible,
+.m025-canonical-preview:focus-visible {
+  outline: 3px solid var(--m025-blue);
+  outline-offset: 2px;
+}
+
+.m025-canonical-card small {
+  color: color-mix(in srgb, var(--m025-text) 80%, var(--m025-surface));
+}
+
+.m025-canonical-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.m025-canonical-pill {
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid var(--m025-border);
+}
+
+.m025-canonical-pill--active {
+  /* White on navy, mirroring .m025-button--primary: guaranteed contrast in both
+     ownership modes (surface-on-blue goes dark-on-blue in dark mode). */
+  color: #fff;
+  background: var(--m025-navy);
+  border-color: var(--m025-navy);
+}
+
+.m025-canonical-pill--inactive {
+  color: var(--m025-text);
+  background: var(--m025-soft);
+}
+
+.m025-canonical-detail,
+.m025-canonical-edit {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.m025-canonical-detail-panel {
+  border: 1px solid var(--m025-border);
+  border-radius: 12px;
+  padding: 1.1rem;
+  background: var(--m025-surface);
+}
+
+.m025-canonical-preview {
+  max-height: 30rem;
+  overflow: auto;
+  border: 1px solid var(--m025-border);
+  border-radius: 8px;
+  background: var(--m025-soft);
+  padding: 1rem;
+}
+
+.m025-canonical-preview p {
+  white-space: pre-wrap;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.m025-canonical-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+}
+
+.m025-canonical-replace {
+  cursor: pointer;
+}
+
+.m025-canonical-empty {
+  color: color-mix(in srgb, var(--m025-text) 80%, var(--m025-surface));
+}
+
+.m025-canonical-empty--detail {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px dashed var(--m025-border);
+  border-radius: 10px;
+  padding: 1.5rem;
+}
