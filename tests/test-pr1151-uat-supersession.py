@@ -148,9 +148,24 @@ class SupersessionTests(unittest.TestCase):
             return self.fake_git(*args)
         with patch.dict(os.environ, self.environment(), clear=True), patch.object(r, 'git', side_effect=reviewed):
             self.assertEqual(r.verify_context(Api()), NEW)
-        data = (ROOT / r.DEPLOYMENT).read_bytes()
+        # This one-use recovery authority describes a historical controller.
+        # A security update must not expand its allowed deployment blob.
+        data = subprocess.check_output(['git', 'show',
+            'a562371a0bbed74e881c40a4c246928dac9ec72e:' + r.DEPLOYMENT], cwd=ROOT)
         blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
         self.assertEqual(blob, r.NORMAL_SA_DEPLOYMENT_BLOB)
+
+    def test_unregistered_controller_cannot_reuse_historical_recovery_authority(self):
+        data = subprocess.check_output(['git', 'show',
+            '1c0f5a392384df5ef9c6f0895cfd716ef4e3ac05:' + r.DEPLOYMENT], cwd=ROOT)
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        self.assertNotIn(blob, (r.DEPLOYMENT_BLOB, r.NORMAL_SA_DEPLOYMENT_BLOB))
+        def current(*args):
+            if args == ('rev-parse', f'{NEW}:{r.DEPLOYMENT}'):
+                return blob
+            return self.fake_git(*args)
+        with patch.dict(os.environ, self.environment(), clear=True), patch.object(r, 'git', side_effect=current):
+            with self.assertRaises(RuntimeError): r.verify_context(Api())
 
     def test_changed_deploy_controller_or_unrelated_ancestry_fails(self):
         with patch.dict(os.environ, self.environment(), clear=True):

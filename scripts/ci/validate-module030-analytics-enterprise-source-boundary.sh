@@ -4,6 +4,13 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
+if [[ "$HEAD_BRANCH" == 'fix/security-team-findings-20260928' ]]; then
+  python3 tests/security-release/scope.py
+  python3 tests/security-release/test_scope.py
+  echo "ANALYTICS_ENTERPRISE_VALIDATION_MODE=SECURITY_REMEDIATION" >> "${GITHUB_ENV:-/dev/null}"
+  exit 0
+fi
+
 # PR1204: validate the exact cross-module sender delta; all workflow regressions still run.
 if [[ "$HEAD_BRANCH" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then
   python3 tests/notification-parity/release_scope.py

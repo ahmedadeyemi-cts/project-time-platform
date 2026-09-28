@@ -256,4 +256,30 @@ Check(ProjectFlowHivePlannerReview.MatchesAppliedReview(fp,replayNote,row,decisi
 foreach(var changedRequest in new[]{replayRequest with {PreviewFingerprint="different"}, replayRequest with {ReviewNote="Different review note."},
     replayRequest with {ExpectedWorkingRowVersion=Guid.NewGuid()},replayRequest with {Decisions=decisions[..^1]}, replayRequest with {Decisions=null}})
     Check(!ProjectFlowHivePlannerReview.MatchesAppliedReview(fp,replayNote,row,decisions,changedRequest),"changed review request cannot reuse a receipt");
+DateOnly SlowWorkingDays(DateOnly start, int offset)
+{
+    int direction = offset >= 0 ? 1 : -1;
+    bool Working(DateOnly d) => d.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday;
+    while (!Working(start)) start = start.AddDays(direction);
+    for (int remaining = Math.Abs(offset); remaining > 0;)
+    {
+        start = start.AddDays(direction);
+        if (Working(start)) remaining--;
+    }
+    return start;
+}
+for (int day = 0; day < 7; day++)
+    for (int offset = -31; offset <= 31; offset++)
+    {
+        var start = new DateOnly(2026, 9, 21).AddDays(day);
+        Check(ProjectFlowHiveScheduleEngine.AddWorkingDays(start, offset) == SlowWorkingDays(start, offset), "Calendar optimization preserves weekday/weekend semantics");
+    }
+foreach (var offset in new[] { int.MinValue, int.MaxValue })
+{
+    try { ProjectFlowHiveScheduleEngine.AddWorkingDays(new DateOnly(2026, 9, 21), offset); throw new Exception("Extreme offset accepted"); }
+    catch (ArgumentOutOfRangeException) { assertions++; }
+}
+var tooMany = result with { Tasks = Enumerable.Range(1, 501).Select(i => tasks[0] with { WbsNumber = i.ToString() }).ToArray() };
+Check(!ProjectFlowHiveScheduleEngine.Calculate(tooMany).Valid, "Oversized task graph rejected before scheduling");
+Check(!ProjectFlowHiveScheduleEngine.Validate(tooMany).Valid, "Oversized task graph rejected by validation");
 Console.WriteLine($"FLOWHIVE_EXECUTABLE_WBS_ASSERTIONS_PASSED={assertions}");

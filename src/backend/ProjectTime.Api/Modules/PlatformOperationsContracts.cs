@@ -62,8 +62,9 @@ public static partial class PlatformOperationsModule
                 stopwatch.Stop();
                 var endpoint = context.GetEndpoint() as RouteEndpoint;
                 var route = endpoint?.RoutePattern.RawText
-                    ?? SanitizeRequestPath(context.Request.Path.Value);
-                var method = context.Request.Method.ToUpperInvariant();
+                    ?? "/api/{unmatched}";
+                var suppliedMethod = context.Request.Method.ToUpperInvariant();
+                var method = suppliedMethod is "GET" or "POST" or "PUT" or "PATCH" or "DELETE" or "HEAD" or "OPTIONS" ? suppliedMethod : "OTHER";
                 var statusCode = failure is null
                     ? context.Response.StatusCode
                     : StatusCodes.Status500InternalServerError;

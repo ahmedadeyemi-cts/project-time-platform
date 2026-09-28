@@ -60,41 +60,9 @@ public static class ProjectPulsePublicOriginCompatibility
             return true;
         }
 
+        // Forwarded and Host headers are request data. The canonical origin is
+        // a deployment setting, not a request-selected environment.
         var request = context.Request;
-        var hosts = ForwardedValues(request.Headers["X-Forwarded-Host"].ToString());
-        var protocols = ForwardedValues(request.Headers["X-Forwarded-Proto"].ToString());
-        for (var index = 0; index < hosts.Length; index++)
-        {
-            var candidateHost = hosts[index];
-            var candidateProto = protocols.Length > index
-                ? protocols[index]
-                : protocols.FirstOrDefault() ?? string.Empty;
-            if (!TryApprovedAuthority(candidateHost, context, out var approvedAuthority)) continue;
-            foreach (var scheme in CandidateSchemes(candidateProto, approvedAuthority.Host))
-            {
-                if (TryOrigin($"{scheme}://{approvedAuthority.Authority}", context, out publicOrigin))
-                {
-                    source = "trusted_forwarded_origin";
-                    return true;
-                }
-            }
-        }
-
-        foreach (var forwarded in ForwardedValues(request.Headers["Forwarded"].ToString()))
-        {
-            ReadForwardedHeader(forwarded, out var forwardedHost, out var forwardedProto);
-            if (string.IsNullOrWhiteSpace(forwardedHost)
-                || !TryApprovedAuthority(forwardedHost, context, out var approvedAuthority)) continue;
-            foreach (var scheme in CandidateSchemes(forwardedProto, approvedAuthority.Host))
-            {
-                if (TryOrigin($"{scheme}://{approvedAuthority.Authority}", context, out publicOrigin))
-                {
-                    source = "trusted_forwarded_header";
-                    return true;
-                }
-            }
-        }
-
         foreach (var name in PublicUrlEnvironmentNames)
         {
             var configured = Environment.GetEnvironmentVariable(name);
@@ -170,7 +138,6 @@ public static class ProjectPulsePublicOriginCompatibility
 
     internal static bool TrustedHost(string host, HttpContext context)
     {
-        if (IsApprovedEnvironmentHost(host)) return true;
 
         foreach (var name in PublicUrlEnvironmentNames)
         {
@@ -183,8 +150,9 @@ public static class ProjectPulsePublicOriginCompatibility
         }
 
         var requestHost = context.Request.Host.Host;
-        return IsApprovedEnvironmentHost(requestHost)
-            && host.Equals(requestHost, StringComparison.OrdinalIgnoreCase);
+        return (requestHost.Equals("localhost", StringComparison.OrdinalIgnoreCase) || requestHost == "127.0.0.1")
+            && host.Equals(requestHost, StringComparison.OrdinalIgnoreCase)
+            && context.Connection.RemoteIpAddress is { } remote && System.Net.IPAddress.IsLoopback(remote);
     }
 
     internal static bool IsApprovedEnvironmentHost(string? host)

@@ -33,7 +33,7 @@ public static partial class ScopedRolePolicyModule
             ["PROJECT_MANAGEMENT_TEAM_LEAD"] = "PROJECT_MANAGEMENT_LEAD",
             ["PM_TEAM_LEAD"] = "PROJECT_MANAGEMENT_LEAD",
             ["PROJECT_MANAGEMENT_LEAD"] = "PROJECT_MANAGEMENT_LEAD",
-            ["ADMINISTRATOR"] = "SUPER_ADMINISTRATOR",
+            ["ADMINISTRATOR"] = "ADMINISTRATOR",
             ["SUPER_ADMINISTRATOR"] = "SUPER_ADMINISTRATOR"
         };
 

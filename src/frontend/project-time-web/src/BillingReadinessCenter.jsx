@@ -1,3 +1,4 @@
+import { safeCsvCell } from './security-output.mjs';
 import { useEffect, useMemo, useState } from 'react';
 import './billing-readiness-center.css';
 
@@ -173,10 +174,7 @@ function lastDayOfCurrentMonth() {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0)).toISOString().slice(0, 10);
 }
 
-function csvEscape(value) {
-  const text = String(value ?? '');
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
+const csvEscape = safeCsvCell;
 
 function downloadTextFile(filename, content, type = 'text/plain') {
   const blob = new Blob([content], { type });

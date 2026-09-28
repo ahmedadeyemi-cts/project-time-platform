@@ -110,7 +110,8 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn("EVIDENCE_DIR: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
         self.assertIn("PSA_VERIFICATION_APPROVAL_FILE: ${{ github.workspace }}/flowhive-installed-acceptance/installed-approval.json", self.workflow)
 
-        self.assertIn("path: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
+        self.assertIn("path: ${{ runner.temp }}/publish-safe-installed-uat/*.json", self.workflow)
+        self.assertNotIn("path: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
 
     def test_independent_business_checks_keep_identity_and_cancellation_gates(self):
         identity_gate = "!cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.identity.outcome == 'success'"
@@ -301,7 +302,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn('parsed.method not in ("GET", "HEAD", "OPTIONS")', self.role)
         self.assertIn('await page.goto(ORIGIN + "/#my-role-in-pulse"', self.role)
         self.assertIn('browserDiagnostics', self.role)
-        self.assertIn('my-role-failure.png', self.role)
+        self.assertNotIn('page.screenshot(', self.role)
         self.assertNotIn("heather.schrock@ussignal.local", self.role)
         self.assertNotIn("TEST_LOGIN_PASSWORD", self.role)
 

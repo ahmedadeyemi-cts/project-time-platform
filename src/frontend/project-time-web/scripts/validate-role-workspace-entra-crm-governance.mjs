@@ -209,13 +209,13 @@ const test063PmBilling = optional('tests/test-project-management-billing-role-ac
 if (permanentAuthority) {
   requireIncludes(permanentAuthority, [
     '"SUPER_ADMINISTRATOR"',
-    '"ADMINISTRATOR"',
-    'ReadActualEmail(context)',
-    'lower(app_user.email) = lower(@email)',
+    'ResolveByUserIdAsync(connection, transaction, sessionUserId, cancellationToken)',
+    'WHERE app_user.user_id = @user_id',
     'ProjectPulsePermanentFullControl',
     'actual_session_super_administrator',
     'if (IsViewAs(context)) return false;',
   ], 'permanent actual-session authority');
+  requireExcludes(permanentAuthority, ['ResolveByEmailAsync', 'ResolveByExternalIdentityAsync', 'context.Items["ProjectPulseActualUserId"] ='], 'non-transferable session identity');
 }
 
 if (permanentCompatibility) {

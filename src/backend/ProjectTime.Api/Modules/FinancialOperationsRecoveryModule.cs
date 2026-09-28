@@ -815,13 +815,7 @@ public static class FinancialOperationsRecoveryModule
         _ => value.ToString()
     };
 
-    private static string Csv(string? value)
-    {
-        var text = value ?? string.Empty;
-        return text.Contains(',') || text.Contains('"') || text.Contains('\n')
-            ? $"\"{text.Replace("\"", "\"\"")}\""
-            : text;
-    }
+    private static string Csv(string? value) => global::ProjectTime.Api.SafeExportText.Csv(value);
 
     private static string SafeFile(string value)
     {

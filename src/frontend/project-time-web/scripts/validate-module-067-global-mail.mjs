@@ -77,12 +77,13 @@ assert('REGISTRATION_ORDER',
 
 assert('TRUSTED_ENVIRONMENT_RESOLUTION',
   environment.includes('PROJECTPULSE_MICROSOFT_ENVIRONMENT')
-    && environment.includes('var hostMode = FromHost')
+    && environment.includes('var configuredMode = FromHost(uri.Host)')
     && environment.includes('.onenecklab.com')
     && environment.includes('.ussignal.com')
     && environment.includes('ASPNETCORE_ENVIRONMENT')
-    && environment.indexOf('var hostMode = FromHost') < environment.indexOf('"PROJECTPULSE_ENVIRONMENT"'),
-  'trusted Test/Production host outranks generic runtime mode');
+    && !environment.includes('Environment.SetEnvironmentVariable(')
+    && !environment.includes('context?.Request.Host'),
+  'deployment configuration selects the Microsoft environment without request-header authority');
 
 assert('INTERACTIVE_SSO_START',
   ssoInteractive.includes('StartPath = "/api/auth/sso/start"')

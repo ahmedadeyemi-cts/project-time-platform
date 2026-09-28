@@ -1444,7 +1444,7 @@ public sealed class PulseAiSystemIntelligenceService
             Limitations = Merge(answer.Limitations, deterministic.Limitations, 100, 2_000),
             RisksAndImplications = Merge(answer.RisksAndImplications, deterministic.RisksAndImplications, 120, 3_000),
             RecommendedActions = Merge(answer.RecommendedActions, deterministic.RecommendedActions, 120, 3_000),
-            NavigationTargets = Merge(answer.NavigationTargets, deterministic.NavigationTargets, 60, 500),
+            NavigationTargets = Merge(answer.NavigationTargets, deterministic.NavigationTargets, 60, 500).Where(global::ProjectTime.Api.SafeExportText.IsInternalNavigation).ToArray(),
             CitationIds = answer.CitationIds,
             Confidence = Math.Clamp(answer.Confidence, 0m, 0.95m),
             ConfidenceExplanation = First(answer.ConfidenceExplanation, deterministic.ConfidenceExplanation, 3_000),
@@ -1654,7 +1654,7 @@ public sealed class PulseAiSystemIntelligenceService
                 Limitations = Merge(dto.Limitations, deterministic.Limitations, 80, 2_000),
                 RisksAndImplications = Merge(dto.RisksAndImplications, deterministic.RisksAndImplications, 100, 3_000),
                 RecommendedActions = Merge(dto.RecommendedActions, deterministic.RecommendedActions, 100, 3_000),
-                NavigationTargets = Merge(dto.NavigationTargets, deterministic.NavigationTargets, 40, 500),
+                NavigationTargets = Merge(dto.NavigationTargets, deterministic.NavigationTargets, 40, 500).Where(global::ProjectTime.Api.SafeExportText.IsInternalNavigation).ToArray(),
                 CitationIds = citationIds.Length > 0 ? citationIds : deterministic.CitationIds,
                 Confidence = Math.Clamp(dto.Confidence ?? deterministic.Confidence, 0m, 1m),
                 ConfidenceExplanation = First(dto.ConfidenceExplanation, deterministic.ConfidenceExplanation, 3_000)

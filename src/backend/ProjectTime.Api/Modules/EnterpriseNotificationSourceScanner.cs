@@ -688,7 +688,7 @@ internal static class EnterpriseNotificationSourceScanner
     {
         try
         {
-            var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
+            var zone = global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById("America/Chicago");
             return TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone);
         }
         catch

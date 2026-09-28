@@ -7,7 +7,7 @@ internal static class EnterpriseReminderPolicy
 {
     internal static readonly string[] Codes = ["TIME_NOT_SUBMITTED", "TIME_NOT_SUBMITTED_ESCALATION", "COMPANY_HOLIDAY_UPCOMING", "PM_MONTH_END_REMINDER"];
     internal static DateTime LocalTime(DateTimeOffset now, JsonElement configuration) =>
-        TimeZoneInfo.ConvertTime(now,TimeZoneInfo.FindSystemTimeZoneById(Text(configuration,"timezone","America/Chicago"))).DateTime;
+        TimeZoneInfo.ConvertTime(now,global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(Text(configuration,"timezone","America/Chicago"))).DateTime;
     internal static bool DueToday(string code, DateTime local, JsonElement configuration)
     {
         if (!TimeOnly.TryParse(Text(configuration,"localTime","06:00"),CultureInfo.InvariantCulture,DateTimeStyles.None,out var time)) return false;

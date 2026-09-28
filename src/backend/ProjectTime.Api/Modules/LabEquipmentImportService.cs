@@ -295,6 +295,7 @@ internal static class LabEquipmentImportService
     {
         var text = new UTF8Encoding(false, true).GetString(bytes); var records = ParseCsvRecords(text);
         if (records.Count < 2) return new ParsedImport(records.FirstOrDefault() ?? [], []);
+        if (records.Count > 5001 || records[0].Length > 256) throw new InvalidDataException("Import row or column limit exceeded.");
         var headers = records[0].Select(CleanHeader).ToArray(); var rows = new List<SourceRow>();
         for (var index = 1; index < records.Count; index++) rows.Add(new SourceRow("CSV", index + 1, RowDictionary(headers, records[index])));
         return new ParsedImport(headers, rows);
@@ -302,7 +303,8 @@ internal static class LabEquipmentImportService
 
     private static ParsedImport ParseWorkbook(byte[] bytes)
     {
-        using var stream = new MemoryStream(bytes, writable: false); using var workbook = new XLWorkbook(stream);
+        using var stream = new MemoryStream(bytes, writable: false); global::ProjectTime.Api.BoundedOfficeInput.Validate(stream);
+            using var workbook = new XLWorkbook(stream);
         var allRows = new List<SourceRow>(); var allHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var sheet in workbook.Worksheets)
         {
@@ -322,6 +324,7 @@ internal static class LabEquipmentImportService
         var rows = new List<string[]>(); var row = new List<string>(); var field = new StringBuilder(); var quoted = false;
         for (var index = 0; index < text.Length; index++)
         {
+            if (rows.Count > 5000 || row.Count > 256 || field.Length > 32768) throw new InvalidDataException("CSV work budget exceeded.");
             var ch = text[index];
             if (ch == '"') { if (quoted && index + 1 < text.Length && text[index + 1] == '"') { field.Append('"'); index++; } else quoted = !quoted; }
             else if (ch == ',' && !quoted) { row.Add(field.ToString()); field.Clear(); }

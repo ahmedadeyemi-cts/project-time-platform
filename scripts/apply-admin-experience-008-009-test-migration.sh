@@ -6,13 +6,13 @@ RELEASE_ROOT="${1:-}"
 DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
-mask_value() { local value="$1"; value="${value//%/%25}"; printf '::add-mask::%s\n' "$value"; }
 
 [[ -n "$RELEASE_ROOT" ]] || fail "Usage: $0 <release-root>"
 [[ -n "$DATABASE_URL" ]] || fail "PROJECTPULSE_TEST_DATABASE_URL is not configured."
 command -v psql >/dev/null || fail "psql is required."
 command -v sha256sum >/dev/null || fail "sha256sum is required."
-mask_value "$DATABASE_URL"
+# This also runs inside Azure jobs, where GitHub masking commands are plain
+# log text. Never emit database credentials, even as an add-mask command.
 
 if [[ -d "$RELEASE_ROOT/.git" ]]; then
   ACTUAL_RELEASE_COMMIT="$(git -C "$RELEASE_ROOT" rev-parse HEAD)"

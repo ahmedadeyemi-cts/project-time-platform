@@ -35,7 +35,8 @@ async function api(path, options = {}) {
 
 function money(value, currency = 'USD') {
   const amount = Number(value || 0);
-  return amount.toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' });
+  const code = /^[A-Za-z]{3}$/.test(String(currency)) ? String(currency).toUpperCase() : 'USD';
+  return amount.toLocaleString(undefined, { style: 'currency', currency: code });
 }
 
 function dateTime(value) {

@@ -1,3 +1,4 @@
+import { safeCsvCell } from './security-output.mjs';
 import { useEffect, useMemo, useState } from 'react';
 import './closeout-email-automation-center.css';
 
@@ -76,10 +77,7 @@ async function postJson(path, body) {
 }
 /* 041A_CLOSEOUT_AUTOMATIC_SEND_END */
 
-function csvEscape(value) {
-  const text = String(value ?? '');
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
+const csvEscape = safeCsvCell;
 
 function downloadTextFile(filename, content, type = 'text/plain') {
   const blob = new Blob([content], { type });

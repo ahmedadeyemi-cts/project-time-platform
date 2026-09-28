@@ -163,7 +163,7 @@ public static partial class ScopedRolePolicyModule
     private static TimeZoneInfo Module001TimeZone(string? timeZoneId)
     {
         var candidate = string.IsNullOrWhiteSpace(timeZoneId) ? "UTC" : timeZoneId.Trim();
-        try { return TimeZoneInfo.FindSystemTimeZoneById(candidate); }
+        try { return global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(candidate); }
         catch { return TimeZoneInfo.Utc; }
     }
 

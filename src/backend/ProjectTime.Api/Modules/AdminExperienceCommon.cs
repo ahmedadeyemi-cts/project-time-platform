@@ -97,8 +97,6 @@ internal static class AdminExperienceCommon
 
             var allowed = roles.Contains("SUPER_ADMINISTRATOR")
                 || roles.Contains("ADMINISTRATOR")
-                || permissions.Contains("SYSTEM_ADMINISTRATION")
-                || permissions.Contains("MANAGE_ALL")
                 || (allowAuditViewer && permissions.Contains("VIEW_AUDIT_TRAIL"));
 
             if (!allowed)

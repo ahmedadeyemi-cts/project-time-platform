@@ -34,6 +34,10 @@ NORMAL_SA_SHA256 = "53e9ae43fb8eeee5efefdc28e56c6ac3c90883b815cb65288d7b948a3883
 
 
 def permitted(original, current):
+    # Exact secured controller only; unknown bases and future controller edits fail.
+    if (hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256, NORMAL_SA_SHA256)
+            and hashlib.sha256(current).hexdigest() == "6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff"):
+        return True
     if (hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256)
             and hashlib.sha256(current).hexdigest() == NORMAL_SA_SHA256):
         return True

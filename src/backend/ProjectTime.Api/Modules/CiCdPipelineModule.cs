@@ -265,7 +265,7 @@ public static class CiCdPipelineModule
             context,
             "058",
             ["SUPER_ADMINISTRATOR", "ADMINISTRATOR"],
-            ["SYSTEM_ADMINISTRATION", "MANAGE_ALL"]);
+            []);
     }
 
     private static async Task<object[]> ReadRecentRunsAsync()

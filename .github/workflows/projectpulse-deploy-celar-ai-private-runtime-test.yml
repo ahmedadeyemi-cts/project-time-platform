@@ -28,9 +28,11 @@ jobs:
 
       - name: Confirm OpenCloud remains deferred and non-mutating
         shell: bash
+        env:
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -Eeuo pipefail
-          [[ '${{ inputs.confirmation }}' == VALIDATE-OPEN-CLOUD-DEFERRAL ]]
+          [[ "$DISPATCH_CONFIRMATION" == VALIDATE-OPEN-CLOUD-DEFERRAL ]]
           node tests/validate-celar-ai-opencloud-deferred-runtime.mjs
           test -f deployment/environments/opencloud-template.yml
           test -f deployment/podman/compose.yml

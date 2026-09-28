@@ -364,6 +364,7 @@ public static class OneAssistRoutingDirectoryModule
 
     private static List<Dictionary<string, string>> ReadXlsxRows(Stream stream)
     {
+        global::ProjectTime.Api.BoundedOfficeInput.Validate(stream);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
         var sharedStrings = new List<string>();
         var sharedEntry = archive.GetEntry("xl/sharedStrings.xml");

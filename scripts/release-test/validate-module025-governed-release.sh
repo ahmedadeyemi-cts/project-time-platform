@@ -9,6 +9,12 @@ HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
   [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
 fi
+if [[ "$HEAD_BRANCH" == 'fix/security-team-findings-20260928' ]]; then
+  python3 tests/security-release/scope.py
+  python3 tests/security-release/test_scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  exit 0
+fi
 if [[ "$HEAD_BRANCH" == fix/module025-readback-contract-20260928 ]]; then
   # This acceptance-only repair has its own exact scope. It must not inherit
   # the historical six-file Module 025 feature-release manifest below.

@@ -22,13 +22,7 @@ public static class MicrosoftServicesRuntimeCompatibility
 
     private static readonly HashSet<string> WritePermissions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "SYSTEM_ADMINISTRATION",
-        "MANAGE_ALL",
-        "MANAGE_ENTRA_SECRET",
-        "MANAGE_AZURE_AD",
-        "MANAGE_AZURE_SYNC",
-        "MANAGE_GLOBAL_MAIL_CONFIGURATION",
-        "MANAGE_GLOBAL_MAIL"
+        "MANAGE_ENTRA_SECRET"
     };
 
     public static WebApplication MapMicrosoftServicesRuntimeProfileEndpoints(this WebApplication app)

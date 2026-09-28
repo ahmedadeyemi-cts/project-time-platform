@@ -113,7 +113,7 @@ public static class CelarAiEnterpriseEvidenceCatalog
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             if (!string.IsNullOrWhiteSpace(clientTimeZone))
             {
-                try { today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, clientTimeZone)); }
+                try { today = DateOnly.FromDateTime(global::ProjectTime.Api.SafeTimeZones.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, clientTimeZone)); }
                 catch (TimeZoneNotFoundException) { }
                 catch (InvalidTimeZoneException) { }
             }

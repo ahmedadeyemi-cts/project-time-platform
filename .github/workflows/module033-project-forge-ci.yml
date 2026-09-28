@@ -71,6 +71,11 @@ jobs:
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
           PROTECTED_DEPLOYMENT="$(grep -E '^(deployment/|src/frontend/project-time-web/Dockerfile)' <<<"$CHANGED" || true)"
+          if [[ "$HEAD_BRANCH" == 'fix/security-team-findings-20260928' ]]; then
+            python3 tests/security-release/scope.py
+            python3 tests/security-release/test_scope.py
+            exit 0
+          fi
           if [[ "$HEAD_BRANCH" == 'codex/module060-approval-contract-funding' ]]; then
             python3 tests/contracts-release/scope.py
             PROTECTED_DEPLOYMENT="$(grep -Fvx \

@@ -109,17 +109,15 @@ requireMarkers('Enterprise Module Management styles', css, [
 
 requireMarkers('Actual-session authority resolver', authority, [
   'ResolveByUserIdAsync',
-  'ResolveByApplicationEmailAsync',
-  'ResolveByExternalIdentityAsync',
-  "to_regclass('public.auth_external_identity_links') IS NOT NULL",
-  'auth_external_identity_links external_identity',
   'actual_session_user_id',
-  'actual_session_application_email',
-  'actual_session_external_identity',
   'IsAdministratorRoleCode(roleCode)',
   'ProjectPulsePermanentFullControl',
   'if (IsViewAs(context)) return false'
 ]);
+
+for (const marker of ['ResolveByApplicationEmailAsync', 'ResolveByExternalIdentityAsync', 'context.Items["ProjectPulseActualUserId"] =']) {
+  if (authority.includes(marker)) throw new Error('Mutable aliases must not transfer session authority');
+}
 
 requireMarkers('Module ownership API', ownership, [
   '/api/module-catalog/owners',

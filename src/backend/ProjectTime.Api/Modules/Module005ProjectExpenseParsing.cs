@@ -24,6 +24,7 @@ public static partial class Module005ProjectExpenseUploadModule
         else if (extension is ".xlsx" or ".xlsm")
         {
             using var stream = new MemoryStream(bytes);
+            global::ProjectTime.Api.BoundedOfficeInput.Validate(stream);
             using var workbook = new XLWorkbook(stream);
             var sheet = workbook.Worksheets.FirstOrDefault()
                 ?? throw new InvalidOperationException("The workbook does not contain a worksheet.");
@@ -314,7 +315,14 @@ public static partial class Module005ProjectExpenseUploadModule
         return value.Split(' ', ',', ';').FirstOrDefault(part => part.Contains('@'))?.Trim('(', ')') ?? string.Empty;
     }
 
-    private static string NormalizeCurrency(string? text) => string.IsNullOrWhiteSpace(text) ? "USD" : text.Trim().ToUpperInvariant();
+    private static string NormalizeCurrency(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "USD";
+        var code = text.Trim().ToUpperInvariant();
+        if (code.Length != 3 || code.Any(ch => ch is < 'A' or > 'Z'))
+            throw new InvalidDataException("Currency must be a three-letter ISO currency code.");
+        return code;
+    }
 
     private static IEnumerable<JsonElement> FindExpenseObjects(JsonElement element)
     {

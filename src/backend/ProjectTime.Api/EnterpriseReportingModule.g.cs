@@ -584,13 +584,7 @@ public static class EnterpriseReportingModule
         return null;
     }
 
-    private static string Csv(string value)
-    {
-        var safe = value.Replace('\0', ' ');
-        return safe.Contains(',') || safe.Contains('"') || safe.Contains('\n')
-            ? $"\"{safe.Replace("\"", "\"\"")}\""
-            : safe;
-    }
+    private static string Csv(string value) => global::ProjectTime.Api.SafeExportText.Csv(value);
 
     private static string Safe(string value)
     {

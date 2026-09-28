@@ -14,11 +14,11 @@ public sealed class PulseAiPrivateDocumentExtractionService
 {
     private static readonly Regex HtmlScriptStyle = new(
         "<(script|style)[^>]*>.*?</\\1>",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, TimeSpan.FromMilliseconds(250));
 
     private static readonly Regex HtmlTags = new(
         "<[^>]+>",
-        RegexOptions.Singleline | RegexOptions.Compiled);
+        RegexOptions.Singleline | RegexOptions.Compiled, TimeSpan.FromMilliseconds(250));
 
     private static readonly Regex MultiSpace = new(
         "[ \\t]+",
@@ -66,6 +66,8 @@ public sealed class PulseAiPrivateDocumentExtractionService
         try
         {
             var extension = Path.GetExtension(source.OriginalFileName).ToLowerInvariant();
+            if (extension is ".docx" or ".pptx" or ".xlsx")
+                global::ProjectTime.Api.BoundedOfficeInput.Validate(source.StoragePath);
             var result = extension switch
             {
                 ".pdf" => ExtractPdf(source, options, safety, cancellationToken),
@@ -435,7 +437,7 @@ public sealed class PulseAiPrivateDocumentExtractionService
             totalCharacters += text.Length;
         }
 
-        foreach (var paragraph in xml.Descendants(w + "p"))
+        foreach (var paragraph in xml.Descendants(w + "p").Where(node => !node.Ancestors(w + "p").Any()))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (totalCharacters >= options.MaximumCharacters || sections.Count >= options.MaximumSections) break;

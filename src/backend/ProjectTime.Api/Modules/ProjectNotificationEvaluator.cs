@@ -362,7 +362,7 @@ internal static class ProjectNotificationEvaluator
         var candidate = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
         try
         {
-            _ = TimeZoneInfo.FindSystemTimeZoneById(candidate);
+            _ = global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(candidate);
             return candidate;
         }
         catch

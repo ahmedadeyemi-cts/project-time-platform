@@ -522,7 +522,11 @@ public static class MicrosoftIntegrationModule
             }
 
             var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
-            if (!administrator && !permissions.Any(AcceptedPermissions.Contains))
+            var write = !HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method);
+            var allowed = write
+                ? !ProjectPulseActualSessionAuthority.IsViewAs(context) && (administrator || roles.Contains("ADMINISTRATOR") || permissions.Contains("MANAGE_ENTRA_SECRET"))
+                : administrator || permissions.Any(AcceptedPermissions.Contains);
+            if (!allowed)
             {
                 return new(null, Results.Json(new
                 {

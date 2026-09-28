@@ -1,0 +1,62 @@
+{
+  "controllerBlob": "94fe4bf498c3d89347db62749279f566d0c26ce7",
+  "controllerSha256": "6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff",
+  "patches": {
+    "scripts/release-test/recover-pr1139-uat-orphan.py": [
+      [
+        "ROOT = ",
+        "# PR1209 changes only publication of sanitized evidence; all admission gates remain.\nSECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\nROOT = "
+      ],
+      [
+        "(DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB),",
+        "(DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-uat-orphan.py": [
+      [
+        "ROOT = ",
+        "# PR1209 changes only publication of sanitized evidence; all admission gates remain.\nSECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\nROOT = "
+      ],
+      [
+        "(DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB),",
+        "(DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-migration-retry-orphan.py": [
+      [
+        "ROOT = ",
+        "# PR1209 changes only publication of sanitized evidence; all admission gates remain.\nSECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\nROOT = "
+      ],
+      [
+        "(DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB),",
+        "(DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1151-uat-supersession.py": [
+      [
+        "ROOT = ",
+        "# PR1209 changes only publication of sanitized evidence; all admission gates remain.\nSECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\nROOT = "
+      ],
+      [
+        "(DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB),",
+        "(DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1204-uat-supersession.py": [
+      [
+        "ROOT = ",
+        "# PR1209 changes only publication of sanitized evidence; all admission gates remain.\nSECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\nROOT = "
+      ],
+      [
+        "require(git(\"rev-parse\", f\"{current}:{DEPLOYMENT}\") == DEPLOYMENT_BLOB,",
+        "require(git(\"rev-parse\", f\"{current}:{DEPLOYMENT}\") in (DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-module025-quarantine-controller.py": [
+      [
+        "def permitted(original, current):\n",
+        "def permitted(original, current):\n    # Exact secured controller only; unknown bases and future controller edits fail.\n    if (hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256, NORMAL_SA_SHA256)\n            and hashlib.sha256(current).hexdigest() == \"6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff\"):\n        return True\n"
+      ]
+    ]
+  }
+}

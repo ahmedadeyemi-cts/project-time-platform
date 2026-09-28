@@ -45,7 +45,11 @@ jobs:
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
-          if [[ "$HEAD_BRANCH" == fix/reconcile-module-repairs-20260920 ]]; then
+          if [[ "$HEAD_BRANCH" == 'fix/security-team-findings-20260928' ]]; then
+            python3 tests/security-release/scope.py
+            RESERVED=""
+            echo "MODULES_010_065_VALIDATION_MODE=SECURITY_REMEDIATION" >> "$GITHUB_ENV"
+          elif [[ "$HEAD_BRANCH" == fix/reconcile-module-repairs-20260920 ]]; then
             python3 tests/reconciled-module-repairs-scope.py
             RESERVED=""
             echo "MODULES_010_065_VALIDATION_MODE=RECONCILED_REPAIR_REGRESSION" >> "$GITHUB_ENV"

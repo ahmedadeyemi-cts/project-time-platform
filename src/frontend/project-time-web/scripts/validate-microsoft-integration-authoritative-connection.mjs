@@ -172,20 +172,22 @@ if (fullRepositoryContext) {
     && registrar.includes('trusted_public_origin_unavailable')
     && registrar.indexOf('UseProjectPulsePublicOriginCompatibility') < registrar.indexOf('UseMicrosoftEnvironmentRuntimeCompatibility')
     && registrar.indexOf('UseMicrosoftEnvironmentRuntimeCompatibility') < registrar.indexOf('UseMicrosoftSsoInteractiveStartActivation')
-    && publicOrigin.includes('X-Forwarded-Host')
-    && publicOrigin.includes('X-Forwarded-Proto')
+    && publicOrigin.includes('PublicUrlEnvironmentNames')
+    && !publicOrigin.includes('request.Headers["X-Forwarded-Host"]')
     && publicOrigin.includes('/api/auth/sso/')
     && publicOrigin.includes('.onenecklab.com')
     && publicOrigin.includes('.ussignal.com')
-    && publicOrigin.includes('trusted_forwarded_origin'),
+    && publicOrigin.includes('host.Equals(configuredUri.Host, StringComparison.OrdinalIgnoreCase)'),
   'Module 065 resolves an approved public origin and environment before interactive SSO');
 
   assert('TRUSTED_HOST_ENVIRONMENT', environmentResolver.includes('PROJECTPULSE_MICROSOFT_ENVIRONMENT')
-    && environmentResolver.indexOf('var hostMode = FromHost') < environmentResolver.indexOf('"PROJECTPULSE_ENVIRONMENT"')
+    && environmentResolver.includes('var configuredMode = FromHost(uri.Host)')
+    && !environmentResolver.includes('Environment.SetEnvironmentVariable(')
+    && !environmentResolver.includes('context?.Request.Host')
     && environmentResolver.includes('.onenecklab.com')
     && environmentResolver.includes('.ussignal.com')
     && environmentResolver.includes('ASPNETCORE_ENVIRONMENT'),
-  'trusted Test/Production host outranks generic application and ASP.NET runtime modes');
+  'deployment configuration selects the Microsoft environment without request-header authority');
 
   assert('INTERACTIVE_SSO_ACTIVATION', ssoInteractive.includes('StartPath = "/api/auth/sso/start"')
     && ssoInteractive.includes('ReadStoredProfileAsync(environmentMode)')

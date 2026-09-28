@@ -24,6 +24,7 @@ var app = builder.Build();
 // This must remain the first middleware. Candidate revisions are closed before
 // authentication, View-As, module middleware, or any application endpoint can run.
 app.UseProjectPulseAiCandidateRequestFence();
+app.UseCanonicalApiPaths();
 
 /* 050_CRITICAL_LAUNCH_BLOCKER_PRODUCTION_GUARD_START */
 var projectPulse050BlockedDevRouteTokens = new[]
@@ -355,6 +356,10 @@ static string? ProjectPulse043BJsonString(System.Text.Json.JsonElement element, 
 
 static (bool Valid, string Message) ProjectPulse043BValidateProfilePhotoDataUrl(string? value)
 {
+    // Bound the encoded input before scanning, slicing or base64 allocation.
+    if (value is { Length: > 2796240 })
+        return (false, "Profile picture must be smaller than 2 MB.");
+
     if (string.IsNullOrWhiteSpace(value))
     {
         return (true, "Profile picture removal is valid.");
@@ -598,16 +603,7 @@ async Task<Guid> ProjectPulseEnsureEntraUserAsync(
             NOW(),
             NOW()
         )
-        ON CONFLICT (email) DO UPDATE
-        SET display_name = EXCLUDED.display_name,
-            is_active = TRUE,
-            login_enabled = TRUE,
-            source_provider = EXCLUDED.source_provider,
-            entra_tenant_id = EXCLUDED.entra_tenant_id,
-            entra_object_id = EXCLUDED.entra_object_id,
-            entra_user_principal_name = EXCLUDED.entra_user_principal_name,
-            last_sso_login_at = NOW(),
-            updated_at = NOW()
+        ON CONFLICT (email) DO NOTHING
         RETURNING user_id;
         """, connection);
 
@@ -618,7 +614,7 @@ async Task<Guid> ProjectPulseEnsureEntraUserAsync(
     command.Parameters.AddWithValue("entra_object_id", objectId);
     command.Parameters.AddWithValue("user_principal_name", (object?)userPrincipalName ?? DBNull.Value);
 
-    return (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to upsert Entra user."));
+    return await command.ExecuteScalarAsync() is Guid insertedUserId ? insertedUserId : Guid.Empty;
 }
 
 async Task ProjectPulseAssignDefaultEngineerRoleAsync(NpgsqlConnection connection, Guid userId, string reason)
@@ -5992,6 +5988,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/extract",
 
     static Dictionary<string, Dictionary<(int Row, int Col), string>> ReadXlsxSheets(string filePath)
     {
+        global::ProjectTime.Api.BoundedOfficeInput.Validate(filePath);
         var sheets = new Dictionary<string, Dictionary<(int Row, int Col), string>>(StringComparer.OrdinalIgnoreCase);
 
         using var archive = System.IO.Compression.ZipFile.OpenRead(filePath);
@@ -7635,6 +7632,8 @@ static string ProjectPulse055D4CSafeFolderName(string value)
 {
     var cleaned = System.Text.RegularExpressions.Regex.Replace(value ?? "", @"[^A-Za-z0-9._ -]+", " ").Trim();
     cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\s+", " ");
+    cleaned = cleaned.Trim('.', ' ');
+    if (cleaned.Length > 120) cleaned = cleaned[..120].TrimEnd('.', ' ');
     return string.IsNullOrWhiteSpace(cleaned) ? "Unknown" : cleaned;
 }
 
@@ -7668,11 +7667,14 @@ static async Task ProjectPulse055D4CCopyIntakeDocumentsToCustomerFolderAsync(Npg
         customerName = Convert.ToString(await customerCommand.ExecuteScalarAsync()) ?? "Unknown Customer";
     }
 
-    var targetFolder = System.IO.Path.Combine(
-        "/opt/project-time-platform/app/customer-documents",
+    const string customerDocumentRoot = "/opt/project-time-platform/app/customer-documents/";
+    var targetFolder = System.IO.Path.GetFullPath(System.IO.Path.Combine(
+        customerDocumentRoot,
         ProjectPulse055D4CSafeFolderName(customerName),
         projectCode
-    );
+    ));
+    if (!targetFolder.StartsWith(customerDocumentRoot, StringComparison.Ordinal))
+        throw new InvalidDataException("Customer document destination is outside its storage root.");
 
     System.IO.Directory.CreateDirectory(targetFolder);
 
@@ -17890,6 +17892,11 @@ async Task<ProjectPulseSessionValidation> ValidateProjectPulseSessionAsync(HttpC
             WHERE s.session_token_hash = @session_token_hash
               AND s.revoked_at IS NULL
               AND s.expires_at > NOW()
+              AND s.created_at > NOW() - INTERVAL '12 hours'
+              AND NOT EXISTS (
+                  SELECT 1 FROM auth_local_accounts la
+                  WHERE la.user_id = s.user_id AND la.password_hash_updated_at > s.created_at
+              )
               AND u.is_active = TRUE
               AND COALESCE(u.login_enabled, TRUE) = TRUE
               AND EXISTS (
@@ -18946,6 +18953,21 @@ app.MapPost("/api/auth/password-reset/complete", async (PasswordResetCompletionR
             accountDisplayName = reader.GetString(2);
         }
 
+        if (accountEmail.Equals(Environment.GetEnvironmentVariable("PROJECTPULSE_BREAK_GLASS_ACCOUNT") ?? "ahmed.adeyemi@ussignal.local", StringComparison.OrdinalIgnoreCase))
+            return Results.Json(new { status = "break_glass_password_protected" }, statusCode: StatusCodes.Status403Forbidden);
+        if (!await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(httpContext, connection, transaction))
+        {
+            await using var targetAuthority = new NpgsqlCommand("""
+                SELECT EXISTS (SELECT 1 FROM app_user_role_assignments a JOIN app_roles r ON r.app_role_id=a.app_role_id
+                WHERE a.user_id=@user_id AND a.is_active AND r.is_active
+                  AND trim(both '_' from regexp_replace(upper(btrim(r.role_code)), '[^A-Z0-9]+', '_', 'g'))
+                      IN ('SUPER_ADMINISTRATOR', 'SUPERADMINISTRATOR', 'GLOBAL_ADMINISTRATOR', 'GLOBALADMINISTRATOR'));
+                """, connection, transaction);
+            targetAuthority.Parameters.AddWithValue("user_id", userId);
+            if (await targetAuthority.ExecuteScalarAsync() is true)
+                return Results.Json(new { status = "super_administrator_target_protected" }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var passwordHash = HashProjectPulsePassword(request.TemporaryPassword);
 
         await using (var updatePasswordCommand = new NpgsqlCommand("""
@@ -19169,16 +19191,21 @@ app.MapPost("/api/auth/session/extend", async (HttpRequest httpRequest) =>
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
+    var validation = await ValidateProjectPulseSessionAsync(httpRequest.HttpContext);
+    if (!validation.IsValid) return Results.Unauthorized();
     var newExpiresAt = DateTimeOffset.UtcNow.AddMinutes(ProjectPulseSessionMinutes);
 
     await using var command = new NpgsqlCommand("""
         UPDATE auth_sessions
-        SET expires_at = @expires_at,
+        SET expires_at = LEAST(@expires_at, created_at + INTERVAL '12 hours'),
             last_seen_at = NOW()
         WHERE session_token_hash = @session_token_hash
           AND revoked_at IS NULL
           AND expires_at > NOW()
-        RETURNING auth_session_id;
+          AND created_at > NOW() - INTERVAL '12 hours'
+          AND EXISTS (SELECT 1 FROM app_users u WHERE u.user_id = auth_sessions.user_id AND u.is_active = TRUE AND COALESCE(u.login_enabled, TRUE) = TRUE)
+          AND NOT EXISTS (SELECT 1 FROM auth_local_accounts la WHERE la.user_id = auth_sessions.user_id AND la.password_hash_updated_at > auth_sessions.created_at)
+        RETURNING expires_at;
         """, connection);
 
     command.Parameters.AddWithValue("expires_at", newExpiresAt);
@@ -19186,7 +19213,7 @@ app.MapPost("/api/auth/session/extend", async (HttpRequest httpRequest) =>
 
     var result = await command.ExecuteScalarAsync();
 
-    if (result is not Guid)
+    if (result is not DateTime && result is not DateTimeOffset)
     {
         return Results.Json(new
         {
@@ -19198,7 +19225,7 @@ app.MapPost("/api/auth/session/extend", async (HttpRequest httpRequest) =>
     return Results.Ok(new
     {
         status = "session_extended",
-        expiresAt = newExpiresAt,
+        expiresAt = result,
         sessionMinutes = ProjectPulseSessionMinutes,
         warningMinutes = ProjectPulseSessionWarningMinutes,
         message = "Your Project Pulse session has been extended."
@@ -22635,6 +22662,10 @@ app.MapPost("/api/system/backup-dr/settings", async (JsonElement request, HttpCo
         return fallback;
     }
 
+    if (!BackupConfigurationSafety.Valid(request))
+        return Results.BadRequest(new { status = "invalid_backup_configuration",
+            message = "Backup settings contain an invalid host, port, path, or control character." });
+
     var sftpPath = "/opt/project-time-platform/config/backup-sftp.env";
     var azurePath = "/opt/project-time-platform/config/backup-azure.env";
     var notificationPath = "/opt/project-time-platform/config/backup-notifications.env";
@@ -22655,7 +22686,7 @@ app.MapPost("/api/system/backup-dr/settings", async (JsonElement request, HttpCo
         ? existingAzure.GetValueOrDefault("PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL") ?? ""
         : submittedAzureSas;
 
-    await File.WriteAllLinesAsync(sftpPath, new[]
+    await BackupConfigurationSafety.WritePrivateLinesAsync(sftpPath, new[]
     {
         $"PROJECTPULSE_BACKUP_SFTP_ENABLED={GetBool("sftpEnabled").ToString().ToLowerInvariant()}",
         $"PROJECTPULSE_BACKUP_SFTP_AUTH_MODE={QuoteProjectPulseEnvValue(GetString("sftpAuthMode", "private_key"))}",
@@ -22667,14 +22698,14 @@ app.MapPost("/api/system/backup-dr/settings", async (JsonElement request, HttpCo
         $"PROJECTPULSE_BACKUP_SFTP_PASSWORD={QuoteProjectPulseEnvValue(effectiveSftpPassword)}"
     });
 
-    await File.WriteAllLinesAsync(azurePath, new[]
+    await BackupConfigurationSafety.WritePrivateLinesAsync(azurePath, new[]
     {
         $"PROJECTPULSE_BACKUP_AZURE_ENABLED={GetBool("azureEnabled").ToString().ToLowerInvariant()}",
         $"PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL={QuoteProjectPulseEnvValue(effectiveAzureSas)}",
         $"PROJECTPULSE_BACKUP_AZURE_BLOB_PREFIX={QuoteProjectPulseEnvValue(GetString("azureBlobPrefix", "projectpulse-backups"))}"
     });
 
-    await File.WriteAllLinesAsync(notificationPath, new[]
+    await BackupConfigurationSafety.WritePrivateLinesAsync(notificationPath, new[]
     {
         $"PROJECTPULSE_BACKUP_NOTIFY_ON_SUCCESS={GetBool("notifyOnSuccess").ToString().ToLowerInvariant()}",
         $"PROJECTPULSE_BACKUP_NOTIFY_ON_FAILURE={GetBool("notifyOnFailure", true).ToString().ToLowerInvariant()}",
@@ -22683,7 +22714,7 @@ app.MapPost("/api/system/backup-dr/settings", async (JsonElement request, HttpCo
         $"PROJECTPULSE_BACKUP_CC_RECIPIENTS={QuoteProjectPulseEnvValue(GetString("ccRecipients"))}"
     });
 
-    await File.WriteAllLinesAsync(schedulePath, new[]
+    await BackupConfigurationSafety.WritePrivateLinesAsync(schedulePath, new[]
     {
         $"PROJECTPULSE_BACKUP_SCHEDULE_ENABLED={GetBool("scheduleEnabled").ToString().ToLowerInvariant()}",
         $"PROJECTPULSE_BACKUP_SCHEDULE_MODE={QuoteProjectPulseEnvValue(GetString("scheduleMode", "daily"))}",
@@ -26955,13 +26986,17 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
     await using (var lookupCommand = new NpgsqlCommand("""
         SELECT user_id
         FROM app_users
-        WHERE entra_object_id = @entra_object_id
-           OR lower(email) = @email
+        WHERE is_active = TRUE AND COALESCE(login_enabled, TRUE) = TRUE
+          AND ((entra_object_id = @entra_object_id AND entra_tenant_id = @tenant_id)
+            OR (lower(email) = @email AND NULLIF(btrim(entra_object_id), '') IS NULL
+                AND (NULLIF(btrim(entra_tenant_id), '') IS NULL OR entra_tenant_id = @tenant_id)))
+        ORDER BY CASE WHEN entra_object_id = @entra_object_id THEN 0 ELSE 1 END, user_id
         LIMIT 1;
         """, connection))
     {
         lookupCommand.Parameters.AddWithValue("entra_object_id", objectId);
         lookupCommand.Parameters.AddWithValue("email", email);
+        lookupCommand.Parameters.AddWithValue("tenant_id", tenantId);
 
         var existing = await lookupCommand.ExecuteScalarAsync();
 
@@ -26981,7 +27016,10 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
                     END,
                     last_sso_login_at = NOW(),
                     updated_at = NOW()
-                WHERE user_id = @user_id;
+                WHERE user_id = @user_id
+                  AND is_active = TRUE AND COALESCE(login_enabled, TRUE) = TRUE
+                  AND (NULLIF(btrim(entra_object_id), '') IS NULL OR entra_object_id = @entra_object_id)
+                  AND (NULLIF(btrim(entra_tenant_id), '') IS NULL OR entra_tenant_id = @tenant_id);
                 """, connection);
 
             updateCommand.Parameters.AddWithValue("display_name", displayName);
@@ -26991,7 +27029,8 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
             updateCommand.Parameters.AddWithValue("mode", mode);
             updateCommand.Parameters.AddWithValue("user_id", userId);
 
-            await updateCommand.ExecuteNonQueryAsync();
+            if (await updateCommand.ExecuteNonQueryAsync() != 1)
+                return Results.Redirect("/#login?ssoError=identity_binding_conflict");
         }
         else if (allowTestJit && mode.Equals("test", StringComparison.OrdinalIgnoreCase))
         {
@@ -27003,6 +27042,8 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
                 displayName,
                 preferredUsername,
                 "ENTRA_ID_TEST");
+            if (userId == Guid.Empty)
+                return Results.Redirect("/#login?ssoError=identity_binding_conflict");
 
             await ProjectPulseAssignDefaultEngineerRoleAsync(
                 connection,
@@ -28963,6 +29004,8 @@ app.MapPost("/api/workflow/approval-items/action", async (ApprovalExportWorkflow
     }
 
     var normalizedAction = (request.Action ?? string.Empty).Trim().ToLowerInvariant();
+    if (normalizedAction is "pm_approve" or "accounting_ready")
+        return Results.Json(new { status = "legacy_approval_action_retired", message = "Use Approval Center for this approval action." }, statusCode: StatusCodes.Status409Conflict);
     if (normalizedAction == "pm_reject" && string.IsNullOrWhiteSpace(request.Comment))
     {
         return Results.BadRequest(new
@@ -29406,6 +29449,8 @@ app.MapGet("/api/time-exports", async (HttpContext httpContext) =>
 // 019M-AW Export Package Generation + Download Readiness
 app.MapGet("/api/time-exports/{exportId:guid}/download", async (Guid exportId, HttpContext httpContext) =>
 {
+    if (ProjectPulseActualSessionAuthority.IsViewAs(httpContext))
+        return Results.Json(new { status = "view_as_read_only" }, statusCode: StatusCodes.Status403Forbidden);
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
     if (sessionUserId is null)
     {

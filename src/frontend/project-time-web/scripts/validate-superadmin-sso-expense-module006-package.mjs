@@ -60,15 +60,14 @@ const fullBackendContext = [
 if (fullBackendContext) {
   requireAll(actualAuthority, [
     '"SUPER_ADMINISTRATOR"',
-    '"ADMINISTRATOR"',
     'IsAdministratorRoleCode',
     'ProjectPulseActualUserId',
     'ProjectPulseSessionUserId',
     'ProjectPulseEffectiveUserId',
     'X-ProjectPulse-View-As-User',
     'if (IsViewAs(context)) return false;',
-    'ReadActualEmail(context)',
-    'lower(app_user.email) = lower(@email)',
+    'ResolveByUserIdAsync(connection, transaction, sessionUserId, cancellationToken)',
+    'WHERE app_user.user_id = @user_id',
     'assignment.is_active = TRUE',
     'role.is_active = TRUE',
     'app_user.is_active = TRUE',
@@ -78,9 +77,13 @@ if (fullBackendContext) {
     'return true;'
   ], 'Actual-session Super Administrator invariant');
   rejectAll(actualAuthority, [
-    "upper(COALESCE(role.role_code, '')) = 'SUPER_ADMINISTRATOR'",
-    'return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false);'
-  ], 'obsolete exact-role-only administrator resolver');
+    '"ADMINISTRATOR",',
+    'ResolveByEmailAsync',
+    'ResolveByExternalIdentityAsync',
+    'lower(app_user.email) = lower(@email)',
+    'context.Items["ProjectPulseActualUserId"] =',
+    'context.Items["ProjectPulseEffectiveUserId"] ='
+  ], 'administrator identity must not transfer through mutable aliases');
 
   requireAll(scopedBridge, [
     'ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync',
@@ -125,16 +128,16 @@ if (fullBackendContext) {
 
   requireAll(publicOrigin, [
     'path.StartsWith("/api/auth/sso/"',
-    'ForwardedValues(request.Headers["X-Forwarded-Host"].ToString())',
-    'ForwardedValues(request.Headers["X-Forwarded-Proto"].ToString())',
-    'trusted_forwarded_origin',
+    'PublicUrlEnvironmentNames',
+    'host.Equals(configuredUri.Host, StringComparison.OrdinalIgnoreCase)',
     'browser_referer',
     '.EndsWith(".onenecklab.com"',
     '.EndsWith(".ussignal.com"'
   ], 'Trusted public-origin resolver');
   rejectAll(publicOrigin, [
     '.azurecontainerapps.io',
-    'source = "untrusted_forwarded_origin"'
+    'source = "untrusted_forwarded_origin"',
+    'request.Headers["X-Forwarded-Host"]'
   ], 'Public SSO origin resolver');
 
   requireAll(ssoActivation, [

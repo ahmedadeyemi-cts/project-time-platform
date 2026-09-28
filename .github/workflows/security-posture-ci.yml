@@ -34,6 +34,53 @@ jobs:
       - name: Validate repository security posture
         run: python3 scripts/security/validate-repository-security-posture.py
 
+      - name: Install offline regression dependencies
+        run: python3 -m pip install PyYAML==6.0.3
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Exercise security deployment and runtime boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 tests/security-deployment-boundaries.test.py
+          python3 tests/security-release/test_controller_registration.py
+          python3 tests/security-frontend-proxy.test.py
+          python3 tests/flowhive-installed-resolution.test.py
+          python3 tests/flowhive-psa-installed-acceptance.test.py
+          node tests/security-output.test.mjs
+          dotnet run --project tests/SecurityBoundaryTests/SecurityBoundaryTests.csproj
+          dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
+          dotnet run --project tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj
+          bash -n deploy.sh scripts/verity/pin-digests.sh ops/projectpulse/scripts/projectpulse-backup.sh scripts/apply-admin-experience-008-009-test-migration.sh
+
+      - name: Start isolated authorization database
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$PASSWORD"
+          CONNECTION="Host=127.0.0.1;Port=5432;Username=postgres;Password=$PASSWORD;Database=security_ci"
+          echo "::add-mask::$CONNECTION"
+          printf 'SECURITY_TEST_DB=%s\n' "$CONNECTION" >> "$GITHUB_ENV"
+          export POSTGRES_PASSWORD="$PASSWORD"
+          docker run -d --name security-ci --publish 127.0.0.1:5432:5432 --env POSTGRES_PASSWORD --env POSTGRES_DB=security_ci postgres:16
+          for attempt in {1..30}; do
+            if docker exec security-ci pg_isready -U postgres -d security_ci >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Exercise database identity and session boundaries
+        run: dotnet run --no-build --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
+
+      - name: Remove isolated authorization database
+        if: always()
+        run: docker rm -f security-ci >/dev/null 2>&1 || true
+
       - name: Confirm no tracked private-key or credential containers
         shell: bash
         run: |

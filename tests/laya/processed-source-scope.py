@@ -12,6 +12,18 @@ def current_branch():
     return os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
         ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
 
+# The security inventory includes no Laya authority or schema changes.
+if current_branch() == 'fix/security-team-findings-20260928':
+    subprocess.run([sys.executable, str(ROOT/'tests/security-release/scope.py')], cwd=ROOT, check=True)
+    for path in ['database/migrations/125_automatic_document_admission_laya.sql',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs']:
+        expected = subprocess.check_output(['git','-C',str(ROOT),'show','a562371a0bbed74e881c40a4c246928dac9ec72e:'+path])
+        if (ROOT/path).read_bytes() != expected:
+            raise SystemExit('Security repair changed inherited Laya authority: '+path)
+    print('LAYA_SECURITY_INHERITED_SOURCE=PASS')
+    raise SystemExit(0)
+
 # Contracts reuse the private migration package; Laya code and migration are unchanged.
 if current_branch() == 'codex/module060-approval-contract-funding':
     subprocess.run([sys.executable, str(ROOT/'tests/contracts-release/scope.py')], cwd=ROOT, check=True)

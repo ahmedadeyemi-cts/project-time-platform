@@ -10,9 +10,8 @@ namespace ProjectTime.Api.Modules;
 /// an administrator's own session, but it is never transferred into View-As.
 ///
 /// The resolver accepts the canonical SUPER_ADMINISTRATOR code and retained
-/// compatibility aliases. It resolves the signed-in identity by stable user ID,
-/// application email, or an active external-identity link so duplicate or legacy
-/// identity mappings cannot make one governed endpoint disagree with another.
+/// compatibility aliases, excluding ADMINISTRATOR. It resolves the signed-in identity by stable user ID
+/// and never changes that identity based on email or external-identity aliases.
 /// </summary>
 internal static class ProjectPulseActualSessionAuthority
 {
@@ -21,8 +20,7 @@ internal static class ProjectPulseActualSessionAuthority
         "SUPER_ADMINISTRATOR",
         "SUPERADMINISTRATOR",
         "GLOBAL_ADMINISTRATOR",
-        "GLOBALADMINISTRATOR",
-        "ADMINISTRATOR"
+        "GLOBALADMINISTRATOR"
     ];
 
     private sealed record AdministratorResolution(
@@ -46,11 +44,6 @@ internal static class ProjectPulseActualSessionAuthority
         IEnumerable<string> roleCodes)
     {
         if (IsViewAs(context)) return false;
-        if (context.Items.TryGetValue("ProjectPulsePermanentFullControl", out var permanent)
-            && permanent is true)
-        {
-            return true;
-        }
 
         return roleCodes.Any(IsAdministratorRoleCode);
     }
@@ -77,18 +70,12 @@ internal static class ProjectPulseActualSessionAuthority
         CancellationToken cancellationToken = default)
     {
         if (IsViewAs(context)) return false;
-        if (context.Items.TryGetValue("ProjectPulsePermanentFullControl", out var permanent)
-            && permanent is true)
-        {
-            return true;
-        }
 
         var sessionUserId = ReadUserId(
             context,
-            "ProjectPulseActualUserId",
-            "ProjectPulseSessionUserId");
-        var actualEmail = ReadActualEmail(context);
-        if (!sessionUserId.HasValue && string.IsNullOrWhiteSpace(actualEmail)) return false;
+            "ProjectPulseSessionUserId",
+            "ProjectPulseActualUserId");
+        if (!sessionUserId.HasValue) return false;
 
         var ownsConnection = existingConnection is null;
         var connectionString = ownsConnection ? BuildConnectionString() : string.Empty;
@@ -101,23 +88,9 @@ internal static class ProjectPulseActualSessionAuthority
         if (connection.State != System.Data.ConnectionState.Open)
             await connection.OpenAsync(cancellationToken);
 
-        // Resolve in the same order the platform trusts identities: stable
-        // session user, canonical app-user email, then active external identity.
-        var resolution = await ResolveByUserIdAsync(
-                connection,
-                transaction,
-                sessionUserId,
-                cancellationToken)
-            ?? await ResolveByApplicationEmailAsync(
-                connection,
-                transaction,
-                actualEmail,
-                cancellationToken)
-            ?? await ResolveByExternalIdentityAsync(
-                connection,
-                transaction,
-                actualEmail,
-                cancellationToken);
+        // Authority is bound only to the validated session's stable user ID.
+        // Mutable email addresses and external-link aliases cannot transfer it.
+        var resolution = await ResolveByUserIdAsync(connection, transaction, sessionUserId, cancellationToken);
 
         var resolved = resolution?.UserId;
         if (resolved is not Guid administratorUserId || administratorUserId == Guid.Empty)
@@ -125,11 +98,7 @@ internal static class ProjectPulseActualSessionAuthority
         if (resolution is null || !IsAdministratorRoleCode(resolution.RoleCode))
             return false;
 
-        // Repair request-local identity only. No session token, cookie, role
-        // assignment, or database row is changed by this compatibility step.
-        context.Items["ProjectPulseActualUserId"] = administratorUserId;
-        if (!IsViewAs(context))
-            context.Items["ProjectPulseEffectiveUserId"] = administratorUserId;
+        // Record verified authority without changing the session identity.
         context.Items["ProjectPulsePermanentFullControl"] = true;
         context.Items["ProjectPulseAuthorizationSource"] = "actual_session_super_administrator";
         context.Items["ProjectPulseIdentityResolutionSource"] = resolution.AuthoritySource;
@@ -168,89 +137,6 @@ internal static class ProjectPulseActualSessionAuthority
         return await ReadAdministratorResolutionAsync(
             command,
             "actual_session_user_id",
-            cancellationToken);
-    }
-
-    private static async Task<AdministratorResolution?> ResolveByApplicationEmailAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction? transaction,
-        string email,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(email)) return null;
-
-        await using var command = new NpgsqlCommand("""
-            SELECT app_user.user_id, role.role_code
-            FROM app_users app_user
-            JOIN app_user_role_assignments assignment
-              ON assignment.user_id = app_user.user_id
-             AND assignment.is_active = TRUE
-            JOIN app_roles role
-              ON role.app_role_id = assignment.app_role_id
-             AND role.is_active = TRUE
-            WHERE app_user.is_active = TRUE
-              AND lower(app_user.email) = lower(@email)
-              AND trim(both '_' from regexp_replace(
-                    upper(btrim(COALESCE(role.role_code, ''))),
-                    '[^A-Z0-9]+',
-                    '_',
-                    'g')) = ANY(@admin_role_codes)
-            ORDER BY app_user.user_id, role.role_code;
-            """, connection, transaction);
-        command.Parameters.AddWithValue("email", email);
-        AddAdministratorRoleCodes(command);
-        return await ReadAdministratorResolutionAsync(
-            command,
-            "actual_session_application_email",
-            cancellationToken);
-    }
-
-    private static async Task<AdministratorResolution?> ResolveByExternalIdentityAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction? transaction,
-        string email,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(email)) return null;
-
-        await using (var readiness = new NpgsqlCommand(
-                         "SELECT to_regclass('public.auth_external_identity_links') IS NOT NULL;",
-                         connection,
-                         transaction))
-        {
-            var installed = await readiness.ExecuteScalarAsync(cancellationToken);
-            if (installed is not true) return null;
-        }
-
-        await using var command = new NpgsqlCommand("""
-            SELECT app_user.user_id, role.role_code
-            FROM auth_external_identity_links external_identity
-            JOIN app_users app_user
-              ON app_user.user_id = external_identity.user_id
-             AND app_user.is_active = TRUE
-            JOIN app_user_role_assignments assignment
-              ON assignment.user_id = app_user.user_id
-             AND assignment.is_active = TRUE
-            JOIN app_roles role
-              ON role.app_role_id = assignment.app_role_id
-             AND role.is_active = TRUE
-            WHERE external_identity.is_active = TRUE
-              AND lower(COALESCE(
-                    NULLIF(external_identity.email, ''),
-                    NULLIF(external_identity.user_principal_name, ''),
-                    '')) = lower(@email)
-              AND trim(both '_' from regexp_replace(
-                    upper(btrim(COALESCE(role.role_code, ''))),
-                    '[^A-Z0-9]+',
-                    '_',
-                    'g')) = ANY(@admin_role_codes)
-            ORDER BY app_user.user_id, role.role_code;
-            """, connection, transaction);
-        command.Parameters.AddWithValue("email", email);
-        AddAdministratorRoleCodes(command);
-        return await ReadAdministratorResolutionAsync(
-            command,
-            "actual_session_external_identity",
             cancellationToken);
     }
 
