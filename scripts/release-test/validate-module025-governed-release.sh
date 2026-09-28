@@ -15,6 +15,7 @@ if [[ "$HEAD_BRANCH" == fix/module025-readback-contract-20260928 ]]; then
   printf '%s\n' \
     'scripts/release-test/run-module025-sow-gsd-protected-test-uat.sh' \
     'scripts/release-test/validate-module025-governed-release.sh' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
     'tests/validate-systemwide-image-build-controller.mjs' \
     | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-readback-expected"
   git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-readback-actual"
