@@ -1188,7 +1188,7 @@ public static class MicrosoftDirectorySyncModule
             }
 
             var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
-            if (!administrator && !permissions.Any(AcceptedPermissions.Contains))
+            if (!administrator && !roles.Contains("ADMINISTRATOR"))
             {
                 return new(null, Results.Json(new
                 {

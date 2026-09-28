@@ -464,13 +464,7 @@ internal static class AnalyticsBrandedExportBuilder
             : char.ToUpperInvariant(text[0]) + text[1..];
     }
 
-    private static string Csv(string value)
-    {
-        var safe = (value ?? string.Empty).Replace('\0', ' ');
-        return safe.Contains(',') || safe.Contains('"') || safe.Contains('\n')
-            ? $"\"{safe.Replace("\"", "\"\"")}\""
-            : safe;
-    }
+    private static string Csv(string value) => global::ProjectTime.Api.SafeExportText.Csv(value);
 
     private static string Truncate(string value, int maximum)
     {

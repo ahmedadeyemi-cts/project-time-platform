@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.IO.Compression;
+using System.Text;
+using System.Xml;
 using ProjectTime.Api;
 using ProjectTime.Api.Modules;
 
@@ -41,4 +44,50 @@ try
     Check((await File.ReadAllTextAsync(file)).Trim() == "KEY='secret'", "Rejected update preserves previous settings");
 }
 finally { Directory.Delete(directory, true); }
+foreach (var formula in new[] { "=1+1", " +SUM(A1:A2)", "\t@SUM(A1)", "-cmd|' /C test'!A0", "\uFEFF=2+2", "\uFEFF \uFEFF=2+2" })
+    Check(SafeExportText.Csv(formula).TrimStart('"').StartsWith("'"), "CSV formulas neutralized");
+Check(SafeExportText.Csv("-12.50") == "-12.50", "Negative financial amounts preserved");
+Check(SafeExportText.Csv("ordinary") == "ordinary", "Plain CSV text preserved");
+Check(SafeExportText.Csv("a,\"b\"\r\nc") == "\"a,\"\"b\"\"\r\nc\"", "CSV quoting round trip");
+foreach (var target in new[] { "javascript:alert(1)", "data:text/html,bad", "https://other.invalid", "//other.invalid", "/\\other.invalid", "\n/projects", "" })
+    Check(!SafeExportText.IsInternalNavigation(target), "External and executable navigation denied");
+foreach (var target in new[] { "#module066", "/projects/123", "/projects?tab=billing" })
+    Check(SafeExportText.IsInternalNavigation(target), "Internal navigation preserved");
+var routeId = Guid.NewGuid();
+foreach (var format in new[] { "N", "D", "B", "P" })
+    Check(CanonicalApiPaths.Normalize($"/api/admin/users/{routeId.ToString(format)}/") == $"/api/admin/users/{routeId:D}", "Equivalent GUID route spelling canonicalized");
+Check(CanonicalApiPaths.Normalize("/api/auth/microsoft/callback///") == "/api/auth/microsoft/callback", "Trailing slashes canonicalized");
+Check(CanonicalApiPaths.Normalize("/assets/resource/") == "/assets/resource/", "Non-API paths preserved");
+
+MemoryStream Office(string name, string xml, int extraEntries = 0)
+{
+    var output = new MemoryStream();
+    using (var zip = new ZipArchive(output, ZipArchiveMode.Create, true))
+    {
+        using (var writer = new StreamWriter(zip.CreateEntry(name).Open(), Encoding.UTF8)) writer.Write(xml);
+        for (int i = 0; i < extraEntries; i++) zip.CreateEntry($"extra/{i}");
+    }
+    output.Position = 0;
+    return output;
+}
+void RejectOffice(string name, string xml, string label, int extra = 0)
+{
+    using var input = Office(name, xml, extra);
+    try { BoundedOfficeInput.Validate(input); throw new Exception("Unsafe Office input accepted: " + label); }
+    catch (Exception e) when (e is InvalidDataException or XmlException) { count++; }
+    Check(input.Position == 0, "Rejected Office input restores stream position");
+}
+using (var input = Office("xl/worksheets/sheet1.xml", "<worksheet><dimension ref='A1:C10'/><sheetData><row r='1'><c r='A1'><v>12</v></c></row></sheetData></worksheet>"))
+{
+    BoundedOfficeInput.Validate(input);
+    Check(input.CanRead && input.Position == 0, "Ordinary workbook admitted without consuming or closing stream");
+}
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><dimension ref='A1:XFD1048576'/></worksheet>", "sparse maximum rectangle");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><c r='ZZ9999'/></worksheet>", "far cell without dimension");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><row r='10001'/></worksheet>", "oversized row");
+RejectOffice("word/document.xml", string.Concat(Enumerable.Repeat("<p>", 66)) + string.Concat(Enumerable.Repeat("</p>", 66)), "nested document");
+foreach (var name in new[] { "word/document.xml", "xl/_rels/workbook.xml.rels" })
+    RejectOffice(name, "<!DOCTYPE x [<!ENTITY ext SYSTEM 'file:///etc/passwd'>]><x>&ext;</x>", "external entity");
+RejectOffice("word/document.xml", "<p/>", "entry count", 2048);
+RejectOffice("word/document.xml", "<p>" + new string('a', 2 * 1024 * 1024) + "</p>", "compressed expansion");
 Console.WriteLine($"SECURITY_BOUNDARY_TESTS=PASS assertions={count}");

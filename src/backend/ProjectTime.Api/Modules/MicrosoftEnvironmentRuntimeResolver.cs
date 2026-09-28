@@ -25,8 +25,6 @@ public static class MicrosoftEnvironmentRuntimeResolver
                 var mode = Resolve(context);
                 if (!string.IsNullOrWhiteSpace(mode))
                 {
-                    Environment.SetEnvironmentVariable(ApplicationEnvironmentVariable, mode);
-                    Environment.SetEnvironmentVariable("PROJECTPULSE_MICROSOFT_ENVIRONMENT", mode);
                     context.Items["ProjectPulseMicrosoftEnvironment"] = mode;
                 }
             }
@@ -42,9 +40,8 @@ public static class MicrosoftEnvironmentRuntimeResolver
             Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_ENVIRONMENT"));
         if (!string.IsNullOrWhiteSpace(explicitMicrosoftMode)) return explicitMicrosoftMode;
 
-        var trustedHost = ResolveHost(context, host);
-        var hostMode = FromHost(trustedHost);
-        if (!string.IsNullOrWhiteSpace(hostMode)) return hostMode;
+        var explicitApplicationMode = Normalize(Environment.GetEnvironmentVariable(ApplicationEnvironmentVariable));
+        if (!string.IsNullOrWhiteSpace(explicitApplicationMode)) return explicitApplicationMode;
 
         // Background workers do not have an HttpContext. Resolve the same
         // approved public host from deployment configuration before considering
@@ -115,20 +112,4 @@ public static class MicrosoftEnvironmentRuntimeResolver
     public static string Display(string? value) =>
         Normalize(value) == "production" ? "Production" : Normalize(value) == "test" ? "Test" : "Unknown";
 
-    private static string ResolveHost(HttpContext? context, string? host)
-    {
-        if (context?.Items.TryGetValue(ProjectPulsePublicOriginCompatibility.PublicOriginItem, out var originValue) == true
-            && originValue is Uri publicOrigin)
-            return publicOrigin.Host;
-
-        if (context is not null
-            && ProjectPulsePublicOriginCompatibility.TryResolveProxyOrConfiguredOrigin(
-                context,
-                out var resolvedOrigin,
-                out _))
-            return resolvedOrigin.Host;
-
-        if (!string.IsNullOrWhiteSpace(host)) return host.Trim();
-        return context?.Request.Host.Host ?? string.Empty;
-    }
 }

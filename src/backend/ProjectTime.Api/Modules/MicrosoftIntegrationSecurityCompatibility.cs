@@ -27,11 +27,7 @@ public static class MicrosoftIntegrationSecurityCompatibility
 
     private static readonly HashSet<string> WritePermissions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "SYSTEM_ADMINISTRATION",
-        "MANAGE_ALL",
-        "MANAGE_ENTRA_SECRET",
-        "MANAGE_GLOBAL_MAIL_CONFIGURATION",
-        "MANAGE_GLOBAL_MAIL"
+        "MANAGE_ENTRA_SECRET"
     };
 
     private static readonly HashSet<string> AllowedGovernedImportRoles = new(StringComparer.OrdinalIgnoreCase)

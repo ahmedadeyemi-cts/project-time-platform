@@ -376,6 +376,7 @@ public static partial class ProjectFlowHiveScheduleEngine
         if (tasks.Length > MaximumTasks)
         {
             Error(issues, "task_limit", "tasks", $"No more than {MaximumTasks} tasks can be validated at once.");
+            return issues;
         }
 
         for (var index = 0; index < tasks.Length; index++)
@@ -492,6 +493,7 @@ public static partial class ProjectFlowHiveScheduleEngine
         if (dependencies.Length > MaximumDependencies)
         {
             Error(issues, "dependency_limit", "dependencies", $"No more than {MaximumDependencies} dependencies can be validated at once.");
+            return issues;
         }
 
         var dependencyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -547,6 +549,7 @@ public static partial class ProjectFlowHiveScheduleEngine
         if (assignments.Length > MaximumAssignments)
         {
             Error(issues, "assignment_limit", "assignments", $"No more than {MaximumAssignments} assignments can be validated at once.");
+            return issues;
         }
         for (var index = 0; index < assignments.Length; index++)
         {
@@ -668,8 +671,14 @@ public static partial class ProjectFlowHiveScheduleEngine
     public static DateOnly AddWorkingDays(DateOnly date, int offset)
     {
         var current = NormalizeToWorkingDay(date, offset >= 0 ? 1 : -1);
-        var remaining = Math.Abs(offset);
+        var remaining = Math.Abs((long)offset);
         var direction = offset >= 0 ? 1 : -1;
+        var wholeWeekDays = remaining / 5 * 7 * direction;
+        if (wholeWeekDays > DateOnly.MaxValue.DayNumber - current.DayNumber ||
+            wholeWeekDays < DateOnly.MinValue.DayNumber - current.DayNumber)
+            throw new ArgumentOutOfRangeException(nameof(offset), "Working-day offset exceeds the supported calendar.");
+        current = current.AddDays((int)wholeWeekDays);
+        remaining %= 5;
 
         while (remaining > 0)
         {
@@ -685,8 +694,9 @@ public static partial class ProjectFlowHiveScheduleEngine
         var normalizedEnd = NormalizeToWorkingDay(end, end >= normalizedStart ? 1 : -1);
         if (normalizedEnd == normalizedStart) return 0;
         var direction = normalizedEnd > normalizedStart ? 1 : -1;
-        var distance = 0;
-        var current = normalizedStart;
+        var calendarDays = Math.Abs(normalizedEnd.DayNumber - normalizedStart.DayNumber);
+        var distance = calendarDays / 7 * 5 * direction;
+        var current = normalizedStart.AddDays(calendarDays / 7 * 7 * direction);
         while (current != normalizedEnd)
         {
             current = current.AddDays(direction);

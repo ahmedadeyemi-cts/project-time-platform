@@ -52,13 +52,13 @@ const publicOriginRegistration = registrar.includes('UseProjectPulsePublicOrigin
   && registrar.indexOf('UseProjectPulsePublicOriginCompatibility') < registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility')
   && registrar.indexOf('UseMicrosoftPublicSsoOriginCompatibility') < registrar.indexOf('UseMicrosoftSsoRuntimeCompatibility');
 const publicOriginImplementation = !publicOriginAvailable || (
-  publicOrigin.includes('X-Forwarded-Host')
-  && publicOrigin.includes('X-Forwarded-Proto')
+  publicOrigin.includes('PublicUrlEnvironmentNames')
+  && !publicOrigin.includes('request.Headers["X-Forwarded-Host"]')
   && publicOrigin.includes('request.Headers["Origin"]')
   && publicOrigin.includes('request.Headers["Referer"]')
   && publicOrigin.includes('.onenecklab.com')
   && publicOrigin.includes('.ussignal.com')
-  && publicOrigin.includes('trusted_forwarded_origin')
+  && publicOrigin.includes('host.Equals(configuredUri.Host, StringComparison.OrdinalIgnoreCase)')
 );
 assert('FORWARDED_PUBLIC_ORIGIN', publicOriginRegistration && publicOriginImplementation,
 'Module 065 resolves a trusted HTTPS public proxy/browser origin before callback validation');

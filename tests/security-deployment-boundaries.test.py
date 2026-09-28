@@ -21,6 +21,17 @@ evidence = module('evidence', 'scripts/security/publish-safe-uat-evidence.py')
 resolution = module('resolution', 'tests/flowhive-installed-resolution.test.py')
 
 class ReleaseBoundaryTests(unittest.TestCase):
+    def test_release_actions_are_pinned_and_checkout_does_not_persist_credentials(self):
+        data = yaml.safe_load((ROOT / '.github/workflows/release.yml').read_text())
+        steps = data['jobs']['build-scan-publish']['steps']
+        for step in steps:
+            if 'uses' in step:
+                self.assertRegex(step['uses'], r'^[^@]+@[0-9a-f]{40}$')
+            if step.get('uses', '').startswith('actions/checkout@'):
+                self.assertIs(step['with']['persist-credentials'], False)
+        scans = [step['uses'] for step in steps if step.get('uses', '').startswith('aquasecurity/trivy-action@')]
+        self.assertEqual(scans, ['aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2'] * 2)
+
     def values(self):
         return dict(RELEASE_TAG='v1.2.3', RELEASE_VERSION='1.2.3',
                     WEB_IMAGE='registry.invalid/web@sha256:' + 'a' * 64,

@@ -485,6 +485,8 @@ await ExpectResolutionAsync(
         JsonIds(("projectId", assignedProjectId))),
     WorkRegisterProjectIdResolutionStatus.Unsupported);
 
+await SecurityConsolidationTests.RunAsync();
+await SecurityDatabaseTests.RunAsync();
 Console.WriteLine($"WORK_REGISTER_AUTHORIZATION_CHECKS={checks}");
 Console.WriteLine("WORK_REGISTER_AUTHORIZATION_CONTRACT=PASSED");
 return 0;

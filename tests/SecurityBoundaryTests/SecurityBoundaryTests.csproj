@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Http" />
     <Compile Include="../../src/backend/ProjectTime.Api/SafeTimeZones.cs" Link="SafeTimeZones.cs" />
+    <Compile Include="../../src/backend/ProjectTime.Api/SafeExportText.cs" Link="SafeExportText.cs" />
+    <Compile Include="../../src/backend/ProjectTime.Api/BoundedOfficeInput.cs" Link="BoundedOfficeInput.cs" />
+    <Compile Include="../../src/backend/ProjectTime.Api/Modules/CanonicalApiPaths.cs" Link="CanonicalApiPaths.cs" />
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/BackupConfigurationSafety.cs" Link="BackupConfigurationSafety.cs" />
   </ItemGroup>
 </Project>

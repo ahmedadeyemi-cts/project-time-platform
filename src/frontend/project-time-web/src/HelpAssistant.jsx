@@ -1,3 +1,4 @@
+import { isInternalNavigation } from './security-output.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './help.css';
 import './help-assistant.css';
@@ -196,7 +197,7 @@ async function loadLegacyPlan(question) {
 }
 
 function navigateTo(target, close) {
-  if (!target) return;
+  if (!isInternalNavigation(target)) return;
   close();
   if (target.startsWith('#')) {
     window.location.hash = target.slice(1);
@@ -206,7 +207,7 @@ function navigateTo(target, close) {
 }
 
 function NavigationTargets({ targets, close }) {
-  const values = unique(targets);
+  const values = unique(targets).filter(isInternalNavigation);
   if (!values.length) return null;
   return (
     <div className="help-answer-navigation" aria-label="Relevant Pulse pages">

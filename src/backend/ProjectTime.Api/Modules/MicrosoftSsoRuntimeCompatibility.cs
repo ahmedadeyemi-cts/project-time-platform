@@ -317,7 +317,7 @@ public static class MicrosoftSsoRuntimeCompatibility
             }
 
             var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
-            if (!administrator && !permissions.Any(WritePermissions.Contains))
+            if (!administrator)
             {
                 return new(null, Results.Json(new
                 {

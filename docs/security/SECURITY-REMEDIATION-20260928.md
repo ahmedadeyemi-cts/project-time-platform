@@ -1,30 +1,52 @@
 # Security remediation tracker — 2026-09-28
 
-This draft PR is the first remediation set for the security team's 149-finding report.
+This draft PR consolidates the security remediation work and tracks all 149 findings.
 It is **not a report-wide security clearance** and must not be presented as one.
 The report evaluated mirror commit `8947f0294c75c7012a626b5b0cf49dc8497e36f3`;
-this change starts from source main `6c70385ddc1085522e310b89b156ee770e154855`.
+this change started from source main `6c70385ddc1085522e310b89b156ee770e154855`
+and includes main through `a562371a0bbed74e881c40a4c246928dac9ec72e` (PR #1205).
 The source repository is public. Keep the original report, unresolved exploit
 narratives, customer information and operational evidence in the restricted
 security review channel. Finding numbers below map to that report in order.
 
 ## Scope and validation
 
-- 13 findings have a source fix in this PR; 2 have partial remediation; 134 remain
-  open for verification against current main. No finding is closed by this PR.
+- 37 findings have a source fix in this PR; 25 have partial remediation;
+  87 remain open. No finding is closed by this PR.
 - All three Critical findings have source changes and offline exploit regressions.
 - Backend build: passed, zero errors; 517 existing-style compiler/analyzer warnings
   remain and are not waived or treated as a clean static-analysis result.
-- New Python boundary suite: 12 tests, including hostile release fields, dispatch
+- Frontend source-contract checks and Vite production bundle: passed. The initial
+  build lacked Vite; dependencies were installed from the lockfile, then the
+  production bundle was built successfully.
+- New Python boundary suite: 13 tests, including hostile release fields, dispatch
   inputs, backup batch commands, secret logging and artifact privacy.
-- Runtime helper suite: 28 assertions, including IANA/Windows time-zone aliases,
+- Runtime helper suite: 70 assertions, including IANA/Windows time-zone aliases,
   DST, malicious device paths, private file permissions and symlink replacement.
+- Added CSV/navigation, Office archive/XML budget and real HTTP GET/HEAD tests.
+- FlowHive executable WBS suite: 539 assertions, including calendar equivalence and
+  task limits. Existing authorization suite: 58 checks plus 14 authority/origin checks.
+- Isolated PostgreSQL identity/session tests are wired into CI; they have not run
+  locally because an isolated database is unavailable.
 - Existing installed-release resolver: 35 tests; installed acceptance: 31 tests;
   Teams delivery protocol: 304 assertions. No live cloud or Microsoft calls.
 - Repository security posture, system-wide release contract, shell syntax and
   whitespace validation pass locally. GitHub checks must pass on the PR commit.
 - Protected Test has not received these changes. Live acceptance is still required
   after review and any separately authorized merge/deployment.
+
+## Consolidation and CI status
+
+The contract/billing changes already merged as PR #1205 are retained through a
+normal merge from main. The Trivy reference repair proposed in PR #1207 is included
+using the verified v0.28.0 commit, and every Release action now has an immutable
+commit reference. This does not close the remaining release-provenance finding.
+
+The initial PR commit passed the repository security job and GitGuardian, but
+several historical branch/file-scope checks rejected the combined source set.
+Those authorization and deployment checks have not been disabled or marked as
+approved. The PR remains a draft pending those checks, complete finding review
+and installed verification. Consolidation is not deployment approval.
 
 ## Review boundaries
 
@@ -69,12 +91,13 @@ These items cannot be completed by a source-only PR:
   artifact against the allowlist before declaring the evidence issue resolved.
 - Continue review and remediation of every open finding below. No authorization,
   identity, data-scope, parser, integration or remaining deployment finding is
-  implicitly waived by this first set of fixes.
+  implicitly waived by consolidation into this PR.
 
 ## Finding ledger
 
-“Source fix” means implemented and locally tested, pending review, CI and installed
-verification. “Partial” means the source change covers only part of the finding.
+“Source fix” means a source repair is implemented, with local regression coverage
+where available; review, complete CI, database and installed verification remain.
+Validation above states exactly which suites ran. “Partial” means the source change covers only part of the finding.
 “Open” means not resolved or cleared by this PR; it does not assert that the older
 scan is still reproducible on main. Details remain in the restricted report.
 
@@ -86,8 +109,8 @@ scan is still reproducible on main. Details remain in the restricted report.
 | 004 | High | Open | Verify against current main; security review required. |
 | 005 | High | Open | Verify against current main; security review required. |
 | 006 | High | Partial | Container entrypoint no longer emits credentials; historical exposure and log relay review remain. |
-| 007 | High | Open | Verify against current main; security review required. |
-| 008 | High | Open | Verify against current main; security review required. |
+| 007 | High | Partial | Release actions pinned to verified commit SHAs, including PR #1207 Trivy repair; release provenance and permission separation remain. |
+| 008 | High | Partial | SSO binding hardened; remaining import paths require separate verification. |
 | 009 | High | Open | Verify against current main; security review required. |
 | 010 | High | Source fix | Installed time-zone catalog lookup. |
 | 011 | High | Source fix | Installed time-zone catalog lookup. |
@@ -100,52 +123,52 @@ scan is still reproducible on main. Details remain in the restricted report.
 | 018 | High | Open | Verify against current main; security review required. |
 | 019 | High | Partial | Maintained deploy and installed-acceptance artifacts use projected evidence; historical artifacts and access review remain. |
 | 020 | High | Source fix | Installed time-zone catalog lookup. |
-| 021 | High | Open | Verify against current main; security review required. |
-| 022 | High | Open | Verify against current main; security review required. |
-| 023 | High | Open | Verify against current main; security review required. |
-| 024 | High | Open | Verify against current main; security review required. |
-| 025 | High | Open | Verify against current main; security review required. |
-| 026 | High | Open | Verify against current main; security review required. |
+| 021 | High | Source fix | Office archive, XML, cell and rectangle budgets before rich parsing. |
+| 022 | High | Source fix | Bounded XML depth and a single traversal of document paragraphs. |
+| 023 | High | Source fix | Internal-only navigation validation at response and browser boundaries. |
+| 024 | High | Source fix | Office and CSV work budgets before lab import expansion. |
+| 025 | High | Source fix | Bounded weekday arithmetic with exhaustive weekday/weekend regression comparisons. |
+| 026 | High | Source fix | Authority bound to the validated session user ID; mutable identity fallbacks removed. |
 | 027 | High | Open | Verify against current main; security review required. |
-| 028 | High | Open | Verify against current main; security review required. |
-| 029 | High | Open | Verify against current main; security review required. |
-| 030 | High | Open | Verify against current main; security review required. |
+| 028 | High | Source fix | Oversized task graphs rejected before traversal and scheduling. |
+| 029 | High | Partial | Privileged-write authority narrowed; full persisted-profile verification remains. |
+| 030 | High | Partial | Secret writes require explicit authority; full integration review remains. |
 | 031 | High | Open | Verify against current main; security review required. |
 | 032 | High | Open | Verify against current main; security review required. |
 | 033 | High | Open | Verify against current main; security review required. |
-| 034 | High | Open | Verify against current main; security review required. |
+| 034 | High | Source fix | Unmatched routes and unknown methods use bounded metric keys. |
 | 035 | High | Open | Verify against current main; security review required. |
-| 036 | High | Open | Verify against current main; security review required. |
+| 036 | High | Partial | Directory-sync authority narrowed; state-transition review remains. |
 | 037 | High | Open | Verify against current main; security review required. |
 | 038 | High | Open | Verify against current main; security review required. |
-| 039 | High | Open | Verify against current main; security review required. |
+| 039 | High | Source fix | Existing project upload authorization runs before expense extraction. |
 | 040 | High | Open | Verify against current main; security review required. |
 | 041 | High | Open | Verify against current main; security review required. |
 | 042 | High | Open | Verify against current main; security review required. |
 | 043 | High | Open | Verify against current main; security review required. |
 | 044 | High | Open | Verify against current main; security review required. |
-| 045 | High | Open | Verify against current main; security review required. |
+| 045 | High | Partial | SSO lookup and linking hardened; import-path review remains. |
 | 046 | High | Open | Verify against current main; security review required. |
 | 047 | High | Open | Verify against current main; security review required. |
 | 048 | High | Open | Verify against current main; security review required. |
 | 049 | High | Open | Verify against current main; security review required. |
-| 050 | High | Open | Verify against current main; security review required. |
+| 050 | High | Partial | Shared API path canonicalization added; full route integration verification remains. |
 | 051 | High | Open | Verify against current main; security review required. |
-| 052 | High | Open | Verify against current main; security review required. |
+| 052 | High | Source fix | Office intake preflight bounds archive expansion, XML and spreadsheet ranges. |
 | 053 | High | Open | Verify against current main; security review required. |
-| 054 | High | Open | Verify against current main; security review required. |
-| 055 | High | Open | Verify against current main; security review required. |
+| 054 | High | Partial | HTML regex timeouts added; complete parser timing verification remains. |
+| 055 | High | Partial | Shared API path canonicalization added; full import-route verification remains. |
 | 056 | High | Source fix | Atomic 0600 writes for newly saved backup settings. |
-| 057 | High | Open | Verify against current main; security review required. |
+| 057 | High | Source fix | Microsoft environment and public origin resolved from deployment configuration. |
 | 058 | High | Open | Verify against current main; security review required. |
-| 059 | High | Open | Verify against current main; security review required. |
-| 060 | High | Open | Verify against current main; security review required. |
-| 061 | High | Open | Verify against current main; security review required. |
-| 062 | High | Open | Verify against current main; security review required. |
-| 063 | High | Open | Verify against current main; security review required. |
+| 059 | High | Source fix | Ordinary Administrator no longer aliases permanent Super Administrator authority. |
+| 060 | High | Source fix | Office archive and XML limits applied before routing-directory extraction. |
+| 061 | High | Partial | Completion target protection added; full password lifecycle review remains. |
+| 062 | High | Partial | User mutation target protection expanded; database and route verification remain. |
+| 063 | High | Partial | Password target protection expanded; database and route verification remain. |
 | 064 | High | Open | Verify against current main; security review required. |
-| 065 | High | Open | Verify against current main; security review required. |
-| 066 | High | Open | Verify against current main; security review required. |
+| 065 | High | Partial | User mutation target protection expanded; database and route verification remain. |
+| 066 | High | Partial | SSO runtime writes narrowed; full identity-provider lifecycle review remains. |
 | 067 | High | Open | Verify against current main; security review required. |
 | 068 | High | Open | Verify against current main; security review required. |
 | 069 | Medium | Open | Verify against current main; security review required. |
@@ -153,7 +176,7 @@ scan is still reproducible on main. Details remain in the restricted report.
 | 071 | Medium | Open | Verify against current main; security review required. |
 | 072 | Medium | Open | Verify against current main; security review required. |
 | 073 | Medium | Open | Verify against current main; security review required. |
-| 074 | Medium | Open | Verify against current main; security review required. |
+| 074 | Medium | Source fix | HEAD uses the same confined static-file/proxy path as GET; real HTTP regression. |
 | 075 | Medium | Open | Verify against current main; security review required. |
 | 076 | Medium | Open | Verify against current main; security review required. |
 | 077 | Medium | Open | Verify against current main; security review required. |
@@ -176,13 +199,13 @@ scan is still reproducible on main. Details remain in the restricted report.
 | 094 | Medium | Open | Verify against current main; security review required. |
 | 095 | Medium | Open | Verify against current main; security review required. |
 | 096 | Medium | Open | Verify against current main; security review required. |
-| 097 | Medium | Open | Verify against current main; security review required. |
+| 097 | Medium | Partial | Mail runtime writes narrowed; complete transport and credential review remains. |
 | 098 | Medium | Open | Verify against current main; security review required. |
 | 099 | Medium | Open | Verify against current main; security review required. |
 | 100 | Medium | Open | Verify against current main; security review required. |
-| 101 | Medium | Open | Verify against current main; security review required. |
+| 101 | Medium | Source fix | Handler rejects retired approval actions after model binding. |
 | 102 | Medium | Open | Verify against current main; security review required. |
-| 103 | Medium | Open | Verify against current main; security review required. |
+| 103 | Medium | Source fix | Encoded photo input bounded before scanning, slicing and base64 allocation. |
 | 104 | Medium | Open | Verify against current main; security review required. |
 | 105 | Medium | Open | Verify against current main; security review required. |
 | 106 | Medium | Open | Verify against current main; security review required. |
@@ -193,9 +216,9 @@ scan is still reproducible on main. Details remain in the restricted report.
 | 111 | Medium | Open | Verify against current main; security review required. |
 | 112 | Medium | Open | Verify against current main; security review required. |
 | 113 | Medium | Open | Verify against current main; security review required. |
-| 114 | Medium | Open | Verify against current main; security review required. |
+| 114 | Medium | Partial | Shared API path canonicalization added; full route verification remains. |
 | 115 | Medium | Open | Verify against current main; security review required. |
-| 116 | Medium | Open | Verify against current main; security review required. |
+| 116 | Medium | Partial | Shared API path canonicalization added; full route verification remains. |
 | 117 | Medium | Open | Verify against current main; security review required. |
 | 118 | Medium | Open | Verify against current main; security review required. |
 | 119 | Medium | Open | Verify against current main; security review required. |
@@ -203,29 +226,29 @@ scan is still reproducible on main. Details remain in the restricted report.
 | 121 | Low | Open | Verify against current main; security review required. |
 | 122 | Low | Source fix | Authenticated failure screenshot capture removed; maintained uploads projected. |
 | 123 | Low | Open | Verify against current main; security review required. |
-| 124 | Low | Open | Verify against current main; security review required. |
-| 125 | Low | Open | Verify against current main; security review required. |
-| 126 | Low | Open | Verify against current main; security review required. |
+| 124 | Low | Source fix | Currency validation on intake and defensive UI formatting. |
+| 125 | Low | Source fix | Shared formula-safe CSV serialization. |
+| 126 | Low | Source fix | Shared formula-safe CSV serialization. |
 | 127 | Low | Open | Verify against current main; security review required. |
 | 128 | Low | Open | Verify against current main; security review required. |
 | 129 | Low | Open | Verify against current main; security review required. |
-| 130 | Low | Open | Verify against current main; security review required. |
+| 130 | Low | Partial | Shared administrator checks narrowed; full operations review remains. |
 | 131 | Low | Open | Verify against current main; security review required. |
 | 132 | Low | Open | Verify against current main; security review required. |
 | 133 | Low | Open | Verify against current main; security review required. |
-| 134 | Low | Open | Verify against current main; security review required. |
-| 135 | Low | Open | Verify against current main; security review required. |
+| 134 | Low | Source fix | Shared formula-safe CSV serialization. |
+| 135 | Low | Partial | CI/CD operations require administrator roles; remaining release controls require review. |
 | 136 | Low | Open | Verify against current main; security review required. |
-| 137 | Low | Open | Verify against current main; security review required. |
+| 137 | Low | Source fix | Shared formula-safe CSV serialization. |
 | 138 | Low | Open | Verify against current main; security review required. |
-| 139 | Low | Open | Verify against current main; security review required. |
+| 139 | Low | Source fix | Shared formula-safe CSV serialization. |
 | 140 | Low | Open | Verify against current main; security review required. |
-| 141 | Low | Open | Verify against current main; security review required. |
+| 141 | Low | Partial | Shared API path canonicalization added; full browser callback verification remains. |
 | 142 | Low | Open | Verify against current main; security review required. |
-| 143 | Low | Open | Verify against current main; security review required. |
+| 143 | Low | Source fix | Storage components reject dot-only names; destination constrained to its root. |
 | 144 | Low | Open | Verify against current main; security review required. |
-| 145 | Low | Open | Verify against current main; security review required. |
-| 146 | Low | Open | Verify against current main; security review required. |
-| 147 | Low | Open | Verify against current main; security review required. |
+| 145 | Low | Partial | Shared API path canonicalization added; full endpoint verification remains. |
+| 146 | Low | Source fix | Shared formula-safe CSV serialization. |
+| 147 | Low | Partial | Session lifetime and password-change checks implemented; database regressions pending CI. |
 | 148 | Low | Open | Verify against current main; security review required. |
-| 149 | Low | Open | Verify against current main; security review required. |
+| 149 | Low | Partial | Time-export download blocked in View-As; full stateful-read review remains. |

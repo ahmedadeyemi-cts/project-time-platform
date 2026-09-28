@@ -23,10 +23,10 @@ public static class PulseAiLegacyBinaryWordExtraction
     private static readonly Regex ExcessBlankLines = new("(?:\\r?\\n){3,}", RegexOptions.Compiled);
     private static readonly Regex HtmlScriptStyle = new(
         "<(script|style)[^>]*>.*?</\\1>",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, TimeSpan.FromMilliseconds(250));
     private static readonly Regex HtmlTags = new(
         "<[^>]+>",
-        RegexOptions.Singleline | RegexOptions.Compiled);
+        RegexOptions.Singleline | RegexOptions.Compiled, TimeSpan.FromMilliseconds(250));
     private static readonly Regex RtfParagraph = new(
         @"\\(?:par[d]?|line)\b ?",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);

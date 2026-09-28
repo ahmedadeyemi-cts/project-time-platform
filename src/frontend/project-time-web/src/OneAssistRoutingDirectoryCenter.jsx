@@ -1,3 +1,4 @@
+import { safeCsvCell } from './security-output.mjs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './oneassist-routing-directory-center.css';
@@ -43,7 +44,7 @@ function downloadCsv(filename, rows, columns = [
   ['name', 'name'],
   ['pin', 'pin']
 ]) {
-  const quote = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const quote = safeCsvCell;
   const content = [
     columns.map(([header]) => header).join(','),
     ...rows.map((row) => columns.map(([, field]) => quote(row[field])).join(','))

@@ -24,6 +24,15 @@ public static partial class Module005ProjectExpenseUploadModule
         if (file is null || file.Length == 0) return Results.BadRequest(new { status = "file_required", message = "Select an Excel or CSV file." });
         if (file.Length > MaximumUploadBytes) return Results.BadRequest(new { status = "file_too_large", message = "Expense files are limited to 15 MB." });
 
+        await using var connection = await OpenConnectionAsync();
+        var actor = await LoadActorAsync(connection, context);
+        if (actor is null) return SessionRequired();
+        var project = await LoadProjectAsync(connection, projectId);
+        if (project is null) return Results.NotFound(new { status = "project_not_found", message = "The selected project no longer exists." });
+        var authorization = await AuthorizeUploadAsync(connection, null, actor, project, ownerId);
+        if (authorization is not null) return authorization;
+
+
         byte[] bytes;
         await using (var memory = new MemoryStream())
         {
@@ -35,13 +44,6 @@ public static partial class Module005ProjectExpenseUploadModule
         try { parsed = ParseExpenseFile(file.FileName, bytes); }
         catch (Exception exception) { return Results.BadRequest(new { status = "expense_file_invalid", message = exception.Message }); }
 
-        await using var connection = await OpenConnectionAsync();
-        var actor = await LoadActorAsync(connection, context);
-        if (actor is null) return SessionRequired();
-        var project = await LoadProjectAsync(connection, projectId);
-        if (project is null) return Results.NotFound(new { status = "project_not_found", message = "The selected project no longer exists." });
-        var authorization = await AuthorizeUploadAsync(connection, null, actor, project, ownerId);
-        if (authorization is not null) return authorization;
 
         var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         Guid uploadId;

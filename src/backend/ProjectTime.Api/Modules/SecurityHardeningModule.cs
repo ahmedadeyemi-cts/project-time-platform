@@ -62,7 +62,7 @@ public static class SecurityHardeningModule
     {
         RegisterSecurityHeaders(context);
 
-        var path = context.Request.Path.Value ?? string.Empty;
+        var path = CanonicalApiPaths.Normalize(context.Request.Path.Value ?? string.Empty);
         var method = context.Request.Method.ToUpperInvariant();
 
         if (await TryHandleGenericLocalLoginRouteAsync(context, path, method))
@@ -859,7 +859,8 @@ public static class SecurityHardeningModule
         return path.Equals("/api/admin/users/roles", StringComparison.OrdinalIgnoreCase)
                || path.Equals("/api/admin/user-admin/users/roles", StringComparison.OrdinalIgnoreCase)
                || path.Equals("/api/admin/user-admin/users/bulk-update", StringComparison.OrdinalIgnoreCase)
-               || path.Equals("/api/admin/user-admin/users/local", StringComparison.OrdinalIgnoreCase);
+               || path.StartsWith("/api/admin/user-admin/users/", StringComparison.OrdinalIgnoreCase)
+               || path.Equals("/api/admin/user-admin/local-password", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsBreakGlassPasswordPath(string path, string method)
@@ -923,11 +924,11 @@ public static class SecurityHardeningModule
                 context,
                 StatusCodes.Status403Forbidden,
                 "super_administrator_target_protected",
-                "Only a Super Administrator can change roles for an existing Super Administrator.");
+                "Only a Super Administrator can modify an existing Super Administrator.");
             return false;
         }
 
-        if (roleCodes.Contains("SUPER_ADMINISTRATOR") && !access.IsSuperAdministrator)
+        if (roleCodes.Any(ProjectPulseActualSessionAuthority.IsAdministratorRoleCode) && !access.IsSuperAdministrator)
         {
             await WriteErrorAsync(
                 context,
@@ -973,7 +974,8 @@ public static class SecurityHardeningModule
                 JOIN app_roles r
                   ON r.app_role_id = ura.app_role_id
                  AND r.is_active = TRUE
-                WHERE r.role_code = 'SUPER_ADMINISTRATOR'
+                WHERE trim(both '_' from regexp_replace(upper(btrim(r.role_code)), '[^A-Z0-9]+', '_', 'g'))
+                      IN ('SUPER_ADMINISTRATOR', 'SUPERADMINISTRATOR', 'GLOBAL_ADMINISTRATOR', 'GLOBALADMINISTRATOR')
                   AND (
                         (cardinality(@target_user_ids) > 0 AND u.user_id = ANY(@target_user_ids))
                      OR (NULLIF(@target_email, '') IS NOT NULL AND lower(u.email) = lower(@target_email))

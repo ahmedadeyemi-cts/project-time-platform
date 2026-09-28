@@ -225,15 +225,15 @@ if (fullRepositoryContext) {
     && registrar.includes('TryResolveProxyOrConfiguredOrigin')
     && registrar.includes('TryBrowserOrigin')
     && registrar.includes('trusted_public_origin_unavailable')
-    && publicOrigin.includes('X-Forwarded-Host')
-    && publicOrigin.includes('X-Forwarded-Proto')
-    && publicOrigin.includes('.onenecklab.com')
-    && publicOrigin.includes('.ussignal.com')
+    && publicOrigin.includes('PublicUrlEnvironmentNames')
+    && publicOrigin.includes('host.Equals(configuredUri.Host, StringComparison.OrdinalIgnoreCase)')
+    && !publicOrigin.includes('request.Headers["X-Forwarded-Host"]')
+    && !publicOrigin.includes('host.EndsWith(".onenecklab.com"')
     && publicOrigin.includes('TrustedHost')
     && publicOrigin.includes('Public ProjectPulse environments are HTTPS-only');
 
   check('SSO_PUBLIC_ORIGIN', legacyOriginResolver || sharedOriginResolver,
-  'Module 065 resolves a trusted browser-facing SSO callback origin through the legacy or shared fail-closed resolver');
+  'Module 065 resolves SSO callback origins from deployment configuration and rejects request-selected environment hosts');
 
   check('MAIL_TEST_NON_DELIVERY', registrar.includes('MapMicrosoftMailTransportTestEndpoints')
     && mailTest.includes('TestPath = "/api/microsoft-integration/mail-runtime/test"')

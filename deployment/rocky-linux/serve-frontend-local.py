@@ -34,6 +34,9 @@ class FrontendProxyHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
+    def do_HEAD(self):
+        self.do_GET()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
 
@@ -127,11 +130,13 @@ class FrontendProxyHandler(SimpleHTTPRequestHandler):
 
                 self.send_header(header_name, header_value)
 
-            self.send_header("Content-Length", str(len(response_body)))
+            content_length = response.getheader("Content-Length") if self.command == "HEAD" else str(len(response_body))
+            if content_length is not None:
+                self.send_header("Content-Length", content_length)
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
 
-            if response_body:
+            if response_body and self.command != "HEAD":
                 self.wfile.write(response_body)
 
         except Exception as exc:
@@ -145,7 +150,8 @@ class FrontendProxyHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(payload)
+            if self.command != "HEAD":
+                self.wfile.write(payload)
 
         finally:
             try:
@@ -160,7 +166,8 @@ class FrontendProxyHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
-            self.wfile.write(payload)
+            if self.command != "HEAD":
+                self.wfile.write(payload)
             return
 
         parsed = urllib.parse.urlparse(self.path)
@@ -188,7 +195,8 @@ class FrontendProxyHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store" if candidate.name == "index.html" else "public, max-age=3600")
         self.end_headers()
-        self.wfile.write(data)
+        if self.command != "HEAD":
+            self.wfile.write(data)
 
 
 def main():

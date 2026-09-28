@@ -128,7 +128,7 @@ public static partial class ScopedRolePolicyModule
             JOIN app_roles r
               ON r.app_role_id = ura.app_role_id AND r.is_active = TRUE
             WHERE u.is_active = TRUE
-              AND upper(r.role_code) IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR');
+              AND upper(r.role_code) = 'SUPER_ADMINISTRATOR';
             """, connection, transaction);
         return Convert.ToInt32(await command.ExecuteScalarAsync() ?? 0);
     }
