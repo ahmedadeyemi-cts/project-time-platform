@@ -310,14 +310,20 @@ public static partial class WorkLifecycleModule
             SELECT EXISTS(SELECT 1 FROM work_lifecycle_audit_events
                 WHERE project_id=@project_id AND process_area='closeout' AND event_type=@event_type
                   AND event_json->>'contract'=@contract
-                  AND (event_json#>'{state,sent,coveredInvoiceIds}') @> @invoice_id::jsonb);
+                  AND (event_json#>'{state,sent,coveredInvoiceIds}') @> @invoice_id::jsonb)
+            OR EXISTS(SELECT 1 FROM billing_invoice_events WHERE billing_invoice_id=@billing_invoice
+                AND event_type IN ('billing_recovery_manual_handoff','billing_recovery_certinia_match'))
+            OR COALESCE((SELECT event_type='billing_recovery_hold_delivery' FROM billing_invoice_events
+                WHERE billing_invoice_id=@billing_invoice AND event_type IN ('billing_recovery_hold_delivery','billing_recovery_resume_delivery')
+                ORDER BY created_at DESC,billing_invoice_event_id DESC LIMIT 1),false);
             """, connection, transaction);
         command.Parameters.AddWithValue("project_id", projectId);
         command.Parameters.AddWithValue("event_type", CompletionEvent);
         command.Parameters.AddWithValue("contract", CompletionContract);
         command.Parameters.AddWithValue("invoice_id", JsonSerializer.Serialize(new[] { invoiceId }));
+        command.Parameters.AddWithValue("billing_invoice", invoiceId);
         if (Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken)))
-            throw new ManualCertiniaDuplicateException("This invoice has a recorded manual Certinia handoff. Its immutable receipt prevents an automatic duplicate send.");
+            throw new ManualCertiniaDuplicateException("This invoice has a recorded manual Certinia handoff. A recorded reconciliation hold or receipt prevents an automatic duplicate send.");
     }
 
     private sealed record CompletionEnvelope(string Contract, long Revision, Guid OperationId,

@@ -7,6 +7,8 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/ManualBillingPolicy.cs'
       - 'src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs'
       - 'src/frontend/project-time-web/src/ManualInvoicePanel.jsx'
+      - 'src/frontend/project-time-web/src/BillingReconciliationPanel.jsx'
+      - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleCompletionWorkflow.cs'
       - 'src/frontend/project-time-web/src/manual-invoice-model.mjs'
       - 'src/frontend/project-time-web/tests/manual-invoice.test.mjs'
       - 'src/frontend/project-time-web/scripts/test-manual-billing-browser.mjs'

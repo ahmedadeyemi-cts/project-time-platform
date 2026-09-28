@@ -11,7 +11,7 @@ while (!File.Exists(Path.Combine(root,"database/migrations/001_initial_schema.sq
 var today = DateOnly.FromDateTime(DateTime.UtcNow);
 var passed = 0;
 var q = new ManualInvoiceRequest(Guid.NewGuid(), "basis", "partial", 10000m, 6000m, 1000m, today, today,
-    "Authorized implementation milestone", "Approved SOW 123", "External invoice 001", "Approved partial billing", true);
+    "Authorized implementation milestone", "Approved SOW 123", "External invoice 001", "Approved partial billing", true, "exception", "Approved fixed-price advance invoice instruction", "Finance authorizes billing before delivery and time completion", "Approved SOW 123 version 2", "Verified signed SOW while SELL is unavailable");
 Check(ManualBillingPolicy.Validate(q, 4000m, 1000m, false, today) is null, "partial permits only new 1000 charge");
 Check(ManualBillingPolicy.Validate(q with {InvoiceType="final",BillToDate=10000m},4000m,1000m,false,today) is null,"full invoice deducts prior internal and external billing");
 Check(ManualBillingPolicy.Validate(q with {BillToDate=5000m},4000m,1000m,false,today) is not null,"already billed amount cannot be charged again");
@@ -20,6 +20,14 @@ Check(ManualBillingPolicy.Validate(q with {Confirmed=false},0,0,false,today) is 
 Check(ManualBillingPolicy.Validate(q with {PreviouslyBilledOutsidePulse=0},0,1000,false,today) is not null,"external billing cannot be erased");
 Check(ManualBillingPolicy.Validate(q with {ExternalBillingReference=""},0,0,false,today) is not null,"prior external billing requires evidence");
 Check(ManualBillingPolicy.Validate(q with {InvoiceType="final"},0,0,false,today) is not null,"final must reconcile full agreed amount");
+Check(ManualBillingPolicy.ValidateEligibility(q,false,0,0,false,true,false) is not null,"T&M cannot bypass time eligibility");
+Check(ManualBillingPolicy.ValidateEligibility(q with { BillingBasis="progress" },true,0,0,false,true,false) is not null,"zero submissions require exception");
+Check(ManualBillingPolicy.ValidateEligibility(q,true,0,0,false,false,false) is not null,"PM cannot self-authorize exception");
+Check(ManualBillingPolicy.ValidateEligibility(q,true,0,0,false,true,false) is null,"Billing can explicitly authorize fixed-price advance");
+Check(ManualBillingPolicy.ValidateEligibility(q with { BillingBasis="progress" },true,1,1,false,false,false) is null,"incomplete time permits supported partial progress");
+Check(ManualBillingPolicy.ValidateEligibility(q with { BillingBasis="completion", InvoiceType="final" },true,1,0,true,false,false) is null,"completed delivery and time permit normal final");
+Check(ManualBillingPolicy.ValidateEligibility(q with { BillingBasis="completion", InvoiceType="final" },true,1,1,true,true,false) is not null,"pending time requires explicit final exception");
+Check(ManualBillingPolicy.ValidateEligibility(q with { CommercialFallbackReason="" },true,1,0,true,true,false) is not null,"unavailable SELL requires documented fallback");
 if(args.Contains("--policy-only")) { Console.WriteLine($"MANUAL_BILLING_POLICY=PASS checks={passed}"); return; }
 var settings=new NpgsqlConnectionStringBuilder { Host="127.0.0.1", Port=int.Parse(Environment.GetEnvironmentVariable("PGPORT")??"55432"), Username="postgres", Database="postgres", Pooling=false, Password=Environment.GetEnvironmentVariable("PGPASSWORD")??throw new Exception("Disposable PGPASSWORD required") };
 await using var admin=new NpgsqlConnection(settings.ConnectionString); await admin.OpenAsync();
@@ -37,9 +45,13 @@ try {
  Check(Status(await Invoke("GetManualBillingAsync",p,Context(unrelated)))==404,"unassigned PM denied");
  Check(Status(await Create(p,q with {ExpectedFingerprint=initial},readerId))==403,"read-only role cannot invoice");
  Check(Status(await Invoke("CreateManualInvoiceAsync",p,q with {ExpectedFingerprint=initial},Context(billing,true)))==403,"View-As cannot invoice");
+ Check(Status(await Create(p,q with {ExpectedFingerprint=initial,BillingBasis="progress"},billing))==400,"handler blocks missing submissions without exception");
+ Check(Status(await Create(p,q with {ExpectedFingerprint=initial},pm))==400,"handler rejects PM exception approval");
+ var tm=await Project(c);await Sql(c,$"UPDATE projects SET contract_type='Time and Materials' WHERE project_id='{tm}'");
+ Check(Status(await Create(tm,q with {ExpectedFingerprint=await Basis(tm,billing)},billing))==400,"handler restricts manual amounts to fixed price");
  var first=q with {ExpectedFingerprint=initial,BillToDate=3000m};
  var result=await Create(p,first,billing);
- Check(Status(result)==201,"manual partial works with no time, rates, Certinia or SELL");
+ Check(Status(result)==201,"documented Billing exception permits fixed-price partial with no time or connectors");
  Check(Amount(result)==2000m,"external 1000 deducted from first cumulative 3000");
  var retry=await Create(p,first,billing);
  Check(Status(retry)==200 && InvoiceId(result)==InvoiceId(retry),"identical retry reuses invoice and number");
@@ -78,7 +90,7 @@ try {
  var results=await Task.WhenAll(Create(concurrent,common with {OperationId=Guid.NewGuid()},billing),Create(concurrent,common with {OperationId=Guid.NewGuid()},billing));
  Check(results.Count(r=>Status(r)==201)==1 && results.Count(r=>Status(r)==409)==1,"concurrent submissions produce only one charge");
  var po=await Project(c);await Sql(c,$"INSERT INTO project_purchase_orders(project_id,po_number,is_primary,authorized_amount) VALUES('{po}','SYNTHETIC-PO',true,2000);");
- Check(Status(await Create(po,first with {ExpectedFingerprint=await Basis(po,billing),OperationId=Guid.NewGuid()},pm))==409,"PO amount enforced for assigned PM");
+ Check(Status(await Create(po,first with {ExpectedFingerprint=await Basis(po,billing),OperationId=Guid.NewGuid()},billing))==409,"PO amount enforced even for Billing exception");
  var prior=await Project(c);var priorFirst=first with {ExpectedFingerprint=await Basis(prior,billing),OperationId=Guid.NewGuid(),PreviouslyBilledOutsidePulse=0};
  var priorInvoice=await Create(prior,priorFirst,billing);
  // A stored time invoice is included in the same balance even if created before manual billing existed.
@@ -93,6 +105,46 @@ try {
  Check(voidBasis.GetProperty("manualInvoicesExist").GetBoolean(),"voiding retains manual reconciliation mode");
  var closed=await Project(c);await Sql(c,$"INSERT INTO work_register_project_lifecycle VALUES('{closed}',true)");
  Check(Status(await Create(closed,first with {ExpectedFingerprint=await Basis(closed,billing),OperationId=Guid.NewGuid()},billing))==409,"archived project denied");
+ var queued=await Project(c);
+ var queuedFirst=await Create(queued,first with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(queued,billing)},billing);
+ await Sql(c,$"INSERT INTO external_integration_outbox(system_code,operation_type,local_entity,local_entity_id,idempotency_key,payload_json,delivery_status) VALUES('CERTINIA','create','billing_invoice','{InvoiceId(queuedFirst)}','synthetic-queued','{{}}','pending')");
+ Check(Status(await Create(queued,second with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(queued,billing)},billing))==201,"pending Certinia delivery does not block next local invoice");
+ Check(await Text(c,$"SELECT immutable_snapshot_json#>>'{{request,billingBasis}}' FROM billing_invoices WHERE billing_invoice_id='{InvoiceId(queuedFirst)}'")=="exception","immutable invoice retains billing basis");
+ Check(await Text(c,$"SELECT immutable_snapshot_json->>'exceptionApprovedBy' FROM billing_invoices WHERE billing_invoice_id='{InvoiceId(queuedFirst)}'")==billing.ToString(),"exception approver is verified session identity");
+ Check(await Text(c,$"SELECT immutable_snapshot_json->>'commercialReconciliationRequired' FROM billing_invoices WHERE billing_invoice_id='{InvoiceId(queuedFirst)}'")=="true","SELL outage remains explicit in immutable evidence");
+ var recovery=new BillingRecoveryRequest(Guid.NewGuid(),"hold_delivery","INC-123","Verified connector outage; hold for Billing review",true);
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),recovery,Context(pm)))==403,"PM cannot reconcile external billing");
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),recovery,Context(billing,true)))==403,"View-As cannot reconcile billing");
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),recovery,Context(billing)))==200,"Billing can hold pending delivery");
+ Check(await Text(c,$"SELECT delivery_status FROM external_integration_outbox WHERE local_entity_id='{InvoiceId(queuedFirst)}'")=="cancelled","hold atomically cancels pending retries");
+ Check(await DuplicateBlocked(queued,InvoiceId(queuedFirst)),"held invoice cannot be queued or claimed for send");
+ var resume=recovery with {OperationId=Guid.NewGuid(),Action="resume_delivery"};
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),resume,Context(billing)))==200,"Billing can release unconsumed hold");
+ Check(!await DuplicateBlocked(queued,InvoiceId(queuedFirst)),"released hold permits existing delivery");
+ Check(await Text(c,$"SELECT delivery_status FROM external_integration_outbox WHERE local_entity_id='{InvoiceId(queuedFirst)}'")=="pending","release restores existing queue without duplicating invoice");
+ var handoff=recovery with {OperationId=Guid.NewGuid(),Action="manual_handoff",Reference="MANUAL-SENT-001"};
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff,Context(billing)))==200,"manual handoff records evidence and cancels retry");
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff,Context(billing)))==200,"reconciliation retry is idempotent");
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff with {Reference="changed"},Context(billing)))==409,"altered reconciliation replay rejected");
+ Check(await DuplicateBlocked(queued,InvoiceId(queuedFirst)),"manual handoff prevents queue and worker duplicate send");
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),resume with {OperationId=Guid.NewGuid()},Context(billing)))==409,"manual handoff cannot be resumed into duplicate billing");
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff with {OperationId=Guid.NewGuid(),Action="certinia_match",Reference="CERTINIA-001"},Context(billing)))==200,"existing Certinia invoice match records without transmission");
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff with {OperationId=Guid.NewGuid(),Action="sell_verified"},Context(billing)))==409,"cannot claim SELL reconciliation before synchronized quote exists");
+ await Sql(c,$"UPDATE projects SET sell_quote_number='SELL-Q-123' WHERE project_id='{queued}'; INSERT INTO external_integration_connections(system_code,display_name,connection_status,inbound_enabled,last_successful_sync_at) VALUES('SELL','ConnectWise SELL','connected',true,now()) ON CONFLICT(system_code) DO UPDATE SET connection_status='connected',inbound_enabled=true,last_successful_sync_at=now();");
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff with {OperationId=Guid.NewGuid(),Action="sell_verified",Reference="SELL-Q-123 approved revision 2"},Context(billing)))==200,"restored synchronized SELL information can be reconciled without rewriting invoice");
+ var recoveryView=Value(await Invoke("GetBillingRecoveryAsync",InvoiceId(queuedFirst),Context(billing)));
+ Check(recoveryView.GetProperty("history").GetArrayLength()==5,"history retains hold, release, handoff, match and SELL verification once each");
+ await Sql(c,$"UPDATE external_integration_outbox SET delivery_status='processing' WHERE local_entity_id='{InvoiceId(queuedFirst)}'");
+ Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff with {OperationId=Guid.NewGuid()},Context(billing)))==409,"in-flight transmission cannot be overridden");
+ // Partial progress needs submitted evidence, but does not require all time approved.
+ var progress=await Project(c);var progressSheet=Guid.NewGuid();
+ await Sql(c,$"INSERT INTO timesheets(timesheet_id,user_id,week_start_date,week_end_date) VALUES('{progressSheet}','{pm}',current_date,current_date+6); INSERT INTO time_entries(timesheet_id,user_id,project_id,work_date,hours,status) VALUES('{progressSheet}','{pm}','{progress}',current_date,2,'submitted')");
+ var progressRequest=first with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(progress,billing),BillingBasis="progress"};
+ Check(Status(await Create(progress,progressRequest,pm))==201,"assigned PM can invoice supported partial progress with incomplete time");
+ Check(Status(await Create(progress,progressRequest with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(progress,billing),InvoiceType="final",BillToDate=10000},pm))==400,"incomplete time and delivery cannot use ordinary final billing");
+ var timeFingerprint=await Basis(progress,billing);
+ await Sql(c,$"UPDATE time_entries SET hours=3 WHERE project_id='{progress}'");
+ Check(Status(await Create(progress,progressRequest with {OperationId=Guid.NewGuid(),ExpectedFingerprint=timeFingerprint,BillToDate=6000},pm))==409,"time changes invalidate reviewed evidence");
  Console.WriteLine($"MANUAL_BILLING_DATABASE=PASS checks={passed}");
 } finally { NpgsqlConnection.ClearAllPools();await Sql(admin,$"DROP DATABASE {db} WITH (FORCE)"); }
 void Check(bool condition,string name){if(!condition)throw new Exception(name);passed++;Console.WriteLine($"PASS {name}");}
@@ -108,3 +160,10 @@ async Task<NpgsqlConnection> Open(){var c=new NpgsqlConnection(settings.Connecti
 async Task Sql(NpgsqlConnection c,string sql){await using var cmd=new NpgsqlCommand(sql,c);await cmd.ExecuteNonQueryAsync();}
 async Task<string> Text(NpgsqlConnection c,string sql){await using var cmd=new NpgsqlCommand(sql,c);return Convert.ToString(await cmd.ExecuteScalarAsync())!;}
 async Task<Guid> Project(NpgsqlConnection c){var id=Guid.NewGuid();var client=Guid.NewGuid();await Sql(c,$"INSERT INTO clients(client_id,client_name) VALUES('{client}','Synthetic customer {client}'); INSERT INTO projects(project_id,client_id,project_code,project_name,project_manager_user_id) VALUES('{id}','{client}','{id}','Synthetic manual billing','{pm}')");return id;}
+
+async Task<bool> DuplicateBlocked(Guid projectId,Guid invoiceId){
+ await using var c=await Open();await using var tx=await c.BeginTransactionAsync();
+ var method=typeof(WorkLifecycleModule).GetMethod("GuardManualCertiniaDuplicateAsync",BindingFlags.NonPublic|BindingFlags.Static)!;
+ try{await (Task)method.Invoke(null,[c,tx,projectId,invoiceId,CancellationToken.None])!;return false;}
+ catch(ManualCertiniaDuplicateException){return true;}
+}

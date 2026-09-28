@@ -19,7 +19,7 @@ function ManualInvoiceForm({ projectId, projectName, onSaved, onBasis }) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
   const [revision, setRevision] = useState(0);
   const [form, setForm] = useState({ invoiceType: 'partial', agreedTotal: '', billToDate: '', previouslyBilledOutsidePulse: '0',
-    periodStart: today(), periodEnd: today(), description: '', authorizationReference: '', externalBillingReference: '', reason: '', confirmed: false });
+    periodStart: today(), periodEnd: today(), description: '', authorizationReference: '', externalBillingReference: '', reason: '', confirmed: false, billingBasis: 'progress', progressReference: '', exceptionReason: '', commercialReference: '', commercialFallbackReason: '' });
   const [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(false), [message, setMessage] = useState('');
   const flight = useRef(false), operation = useRef(null), alive = useRef(true), saveAbort = useRef(null);
   const endpoint = `/api/billing/projects/${encodeURIComponent(projectId)}`;
@@ -42,7 +42,7 @@ function ManualInvoiceForm({ projectId, projectName, onSaved, onBasis }) {
   }, [endpoint, projectId, revision]);
   const basis = state.data?.basis;
   const charge = basis ? manualCharge(form.agreedTotal, form.billToDate, form.previouslyBilledOutsidePulse, basis.pulseInvoiced, form.invoiceType) : null;
-  const blocked = !state.data?.canCreate || basis?.closed || basis?.finalInvoiceExists || basis?.openTransmission;
+  const blocked = !state.data?.canCreate || basis?.closed || basis?.finalInvoiceExists || state.data?.fixedPrice !== true;
   function update(key, value) { if (flight.current || uncertain) return; operation.current = null; setForm(current => ({ ...current, [key]: value, ...(key === 'confirmed' ? {} : { confirmed: false }) })); }
   function reload() { if (flight.current) return; operation.current = null; setUncertain(false); setRevision(value => value + 1); }
   async function save(event) {
@@ -77,13 +77,22 @@ function ManualInvoiceForm({ projectId, projectName, onSaved, onBasis }) {
   }
   return <details className="m042-manual-panel"><summary>Manual partial / full invoice</summary>
     <h2>Manual invoice · {projectName}</h2>
-    <p>Create an invoice without Certinia, SELL, or approved time entries. Enter the cumulative amount to bill for the project; prior invoices are deducted automatically. A full invoice covers the remaining agreed balance.</p>
+    <p>Create an authorized fixed-price invoice using verified commercial terms and progress evidence, including when SELL or Certinia is unavailable. Enter the cumulative amount to bill for the project; prior invoices are deducted automatically. A full invoice covers the remaining agreed balance.</p>
     {state.loading ? <p role="status">Loading prior billing…</p> : state.error ? <p role="alert">{state.error}</p> : <>
       <dl className="m042-reference-summary"><div><dt>Already invoiced in Pulse</dt><dd>{money(basis.pulseInvoiced)}</dd></div><div><dt>Previously recorded outside Pulse</dt><dd>{money(basis.previouslyBilledOutsidePulse)}</dd></div><div><dt>New invoice amount</dt><dd>{charge === null ? 'Enter billing amounts' : money(charge)}</dd></div></dl>
+      <p>Time evidence: {basis.submittedTimeCount} submitted entries; {basis.pendingTimeCount} entries awaiting approval. Delivery: {basis.deliveryComplete ? 'completion recorded' : 'still in progress'}.</p>
+      {basis.submittedTimeCount === 0 ? <p role="alert">No time has been submitted for this project. Follow up on missing submissions. Billing requires an explicit exception approved by Billing, Finance, Accounting or an administrator.</p> : null}
+      {basis.openTransmission ? <p>Certinia deliveries are pending. You can continue local billing; these invoices are already included in the Pulse balance. Do not count them again as external charges.</p> : null}
+      <p>Commercial information: {state.data.commercial?.connectorReady ? 'SELL synchronized information available' : 'SELL unavailable; verify saved or manual information'}. Quote: {state.data.commercial?.sellQuoteNumber || 'Not linked'}. Last successful sync: {state.data.commercial?.lastSuccessfulSyncAt ? new Date(state.data.commercial.lastSuccessfulSyncAt).toLocaleString() : 'Not available'}. Verify the fixed-price total against the referenced approved document; synchronized rates alone do not establish it.</p>
       {basis.manualInvoicesExist ? <p>This project uses manual amount billing. Continue here for later invoices so the same time is not charged again through the time-based path.</p> : null}
-      {blocked ? <p role="status">{basis.closed ? 'Reopen this project before additional billing.' : basis.finalInvoiceExists ? 'A final invoice is already recorded. Review the invoice history below.' : basis.openTransmission ? 'Resolve queued or retryable Certinia deliveries before manual reconciliation.' : 'Your current role can view billing but cannot create invoices.'}</p> : <form onSubmit={save}>
+      {blocked ? <p role="status">{basis.closed ? 'Reopen this project before additional billing.' : basis.finalInvoiceExists ? 'A final invoice is already recorded. Review the invoice history below.' : !state.data.canCreate ? 'Your current role can view billing but cannot create invoices.' : 'Manual project-amount invoices require a fixed-price contract. Use approved time or governed billing packages for other contracts.'}</p> : <form onSubmit={save}>
         <fieldset disabled={busy || uncertain}><legend>Amounts and authorization (USD)</legend><div className="m042-manual-fields">
           <label>Invoice type<select aria-label="Invoice type" value={form.invoiceType} onChange={event => update('invoiceType', event.target.value)}><option value="partial">Partial invoice</option><option value="final">Full / final invoice</option></select></label>
+          <label>Billing basis<select value={form.billingBasis} onChange={event => update('billingBasis', event.target.value)}><option value="progress">Authorized partial progress / milestone</option><option value="completion">Recorded delivery completion</option>{state.data.canApproveException ? <option value="exception">Explicit billing exception</option> : null}</select></label>
+          <label>Progress / milestone / billing instruction reference<textarea required minLength={5} maxLength={1000} value={form.progressReference} onChange={event => update('progressReference', event.target.value)} /></label>
+          {form.billingBasis === 'exception' ? <label>Exception reason<textarea aria-label="Exception reason" required minLength={10} maxLength={1000} value={form.exceptionReason} onChange={event => update('exceptionReason', event.target.value)} /><small>Your signed-in identity will be recorded as the exception approver. The authorization must explicitly cover billing before time or delivery is complete.</small></label> : null}
+          <label>Commercial document and version<input required minLength={2} maxLength={500} value={form.commercialReference} onChange={event => update('commercialReference', event.target.value)} /></label>
+          {!(state.data.commercial?.connectorReady && state.data.commercial?.sellQuoteNumber) ? <label>SELL fallback verification<textarea aria-label="SELL fallback verification" required minLength={5} maxLength={500} value={form.commercialFallbackReason} onChange={event => update('commercialFallbackReason', event.target.value)} /><small>Identify the saved or manually verified terms. Retain this reference for reconciliation when SELL returns.</small></label> : null}
           <label>Agreed project total<input type="number" min="0.01" step="0.01" required value={form.agreedTotal} onChange={event => update('agreedTotal', event.target.value)} /></label>
           {form.invoiceType === 'partial' ? <label>Cumulative amount to bill through this invoice<input type="number" min="0.01" step="0.01" required value={form.billToDate} onChange={event => update('billToDate', event.target.value)} /></label> : null}
           <label>Already billed outside Pulse<input type="number" min={basis.previouslyBilledOutsidePulse} step="0.01" required value={form.previouslyBilledOutsidePulse} onChange={event => update('previouslyBilledOutsidePulse', event.target.value)} /><small>Exclude invoices already listed in Pulse. Include all prior external charges for this project.</small></label>

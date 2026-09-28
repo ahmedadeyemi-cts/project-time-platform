@@ -22,10 +22,13 @@ const amountInvoice = {
   title: 'Create a manual partial or full invoice without connectors',
   steps: [
     'Select the customer project in Invoice & Billing Center and open Manual partial / full invoice.',
+    'For fixed-price projects, choose the billing basis and enter progress evidence. Missing time submissions or full billing before delivery/time review require an explicit Billing, Finance, Accounting or administrator exception with the signed-in approver recorded. T&M retains approved-time billing.',
+    'Verify commercial information from SELL when available. Record the approved document/version and, during an outage, the saved or manual information used. Reconcile when SELL returns.',
     'Enter the authorized project total. Choose Partial and enter the cumulative amount to bill so far, or Full / final to bill the remaining project balance.',
     'Review prior Pulse invoices. Enter documented amounts already billed outside Pulse, excluding the invoices already in Pulse. Prior amounts are deducted from the new charge.',
     'Record the billing period, customer-facing description, approved SOW/PO or billing authorization, external invoice references, and internal audit reason.',
     'Verify the new invoice amount, confirm the reconciliation, and create the invoice. Select the saved invoice in history to download PDF or Excel for manual delivery.',
+    'Use Billing reconciliation and offline tracking on the saved invoice to hold automatic retries, record an actual manual handoff, match an existing Certinia invoice, or record verification against restored SELL information. Inspect delivery history before handling an invoice outside Pulse.',
     'Continue subsequent billing through this amount-based path. It does not alter time entries, send an invoice, confirm payment, or close the project. A fully billed balance produces no duplicate invoice.'
   ],
   outcome: 'A saved invoice charges only the newly authorized amount after prior billing is deducted.',

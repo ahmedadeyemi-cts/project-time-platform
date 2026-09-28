@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import './certinia-invoice-delivery.css';
+import BillingReconciliationPanel from './BillingReconciliationPanel.jsx';
 
 function text(value, fallback = '') {
   const normalized = String(value ?? '').trim();
@@ -109,7 +110,7 @@ export default function CertiniaInvoiceDeliveryPanel({
   const deliveries = Array.isArray(status?.deliveries) ? status.deliveries : [];
   const events = Array.isArray(status?.events) ? status.events : [];
   const canTransmit = configuration?.canTransmit === true;
-  const selectedExtension = documentFormat === 'excel' ? 'xls' : 'pdf';
+  const selectedExtension = documentFormat === 'excel' ? 'xlsx' : 'pdf';
 
   const documentUrl = useMemo(() => {
     if (!invoiceId) return '';
@@ -212,7 +213,7 @@ export default function CertiniaInvoiceDeliveryPanel({
           <span>Delivery document</span>
           <select value={documentFormat} onChange={(event) => setDocumentFormat(event.target.value)}>
             <option value="pdf">PDF invoice</option>
-            <option value="excel">Excel-compatible .xls invoice</option>
+            <option value="excel">Excel .xlsx invoice</option>
           </select>
         </label>
         <fieldset className="certinia-delivery__privacy-grid">
@@ -233,6 +234,7 @@ export default function CertiniaInvoiceDeliveryPanel({
 
       {!canTransmit ? <div className="certinia-delivery__safety"><strong>Safe foundation mode</strong><span>PROJECTPULSE_CERTINIA_ENABLED remains false. Queue records are idempotent, and no transmission occurs until configuration is complete.</span></div> : null}
 
+      <BillingReconciliationPanel key={invoiceId} invoiceId={invoiceId} />
       {deliveries.length ? <details className="certinia-delivery__history"><summary>Delivery history ({deliveries.length})</summary><div className="certinia-delivery__table-wrap"><table><thead><tr><th>Queued</th><th>Format</th><th>Names</th><th>Status</th><th>Attempts</th><th>Certinia</th></tr></thead><tbody>{deliveries.map((delivery) => <tr key={delivery.outboxId}><td>{formatDateTime(delivery.createdAt)}</td><td>{text(delivery.documentFormat).toUpperCase()}</td><td>{delivery.resourceNamesIncluded ? 'Selected names included' : 'All hidden'}</td><td>{text(delivery.deliveryStatus)}</td><td>{delivery.attemptCount}</td><td>{text(delivery.externalId, text(delivery.certiniaStatus, 'Not sent'))}</td></tr>)}</tbody></table></div></details> : null}
       {events.length ? <details className="certinia-delivery__history"><summary>Immutable Certinia events ({events.length})</summary><ol>{events.map((event) => <li key={event.eventId}><strong>{text(event.eventType).replaceAll('_', ' ')}</strong><span>{event.reason}</span><small>{formatDateTime(event.createdAt)}</small></li>)}</ol></details> : null}
     </section>

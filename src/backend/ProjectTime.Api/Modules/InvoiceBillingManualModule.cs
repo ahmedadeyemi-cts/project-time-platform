@@ -12,6 +12,7 @@ public static partial class InvoiceBillingModule
     private static readonly JsonSerializerOptions ManualJson = new(JsonSerializerDefaults.Web);
     private static void MapManualBillingEndpoints(WebApplication app)
     {
+        MapBillingRecoveryEndpoints(app);
         app.MapGet("/api/billing/projects/{projectId:guid}/manual",
             (Func<Guid, HttpContext, Task<IResult>>)GetManualBillingAsync);
         app.MapPost("/api/billing/projects/{projectId:guid}/manual-invoices",
@@ -20,6 +21,8 @@ public static partial class InvoiceBillingModule
 
     private static bool BillingViewAs(HttpContext context) =>
         context.Items.TryGetValue("ProjectPulseIsViewAs", out var value) && value is true;
+    private static bool CanApproveBillingException(InvoiceBillingAccessContext access) => access.RoleCodes.Any(role =>
+        role.ToUpperInvariant() is "BILLING" or "FINANCE" or "ACCOUNTING" or "ACCOUNTING_BILLING" or "ADMINISTRATOR" or "SUPER_ADMINISTRATOR");
     private static string BillingHash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
     private static async Task<IResult> GetManualBillingAsync(Guid projectId, HttpContext context)
@@ -34,8 +37,11 @@ public static partial class InvoiceBillingModule
         var access = await LoadAccessContextAsync(connection, userId.Value);
         if (!access.CanViewBilling || !await CanAccessProjectAsync(connection, access, projectId)) return Results.NotFound();
         var basis = await LoadManualBillingBasisAsync(connection, null, projectId);
+        var commercial = await SellCommercialReadModelModule.LoadProjectCommercialSummaryAsync(connection, projectId);
+        basis = basis with { Fingerprint = BillingHash(basis.Fingerprint + JsonSerializer.Serialize(commercial, ManualJson)) };
         return Results.Ok(new { status = "manual_billing_loaded", projectId, canCreate = access.CanCreateInvoices,
-            basis, currency = "USD", connectorRequired = false });
+            canApproveException = CanApproveBillingException(access), fixedPrice = IsFixedPrice(commercial.ContractType),
+            commercial, basis, currency = "USD", connectorRequired = false });
     }
 
     private static async Task<ManualBillingBasis> LoadManualBillingBasisAsync(NpgsqlConnection connection,
@@ -46,6 +52,7 @@ public static partial class InvoiceBillingModule
         await using var command = new NpgsqlCommand("""
             SELECT jsonb_build_object(
                 'project', (SELECT to_jsonb(p) FROM projects p WHERE project_id=@project),
+                'time', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY time_entry_id) FROM time_entries t WHERE project_id=@project),'[]'),
                 'lifecycle', (SELECT to_jsonb(l) FROM work_register_project_lifecycle l WHERE project_id=@project),
                 'po', COALESCE((SELECT jsonb_agg(to_jsonb(p) ORDER BY project_purchase_order_id) FROM project_purchase_orders p WHERE project_id=@project),'[]'),
                 'invoices', COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY billing_invoice_id) FROM billing_invoices i WHERE project_id=@project),'[]'),
@@ -57,18 +64,29 @@ public static partial class InvoiceBillingModule
                 FROM billing_invoices WHERE project_id=@project
                 AND immutable_snapshot_json->>'contract'=@contract),0),
             EXISTS(SELECT 1 FROM billing_invoices WHERE project_id=@project AND invoice_type='final' AND invoice_status NOT IN ('void','voided')),
-            EXISTS(SELECT 1 FROM billing_invoices WHERE project_id=@project AND immutable_snapshot_json->>'contract'=@contract),
+            EXISTS(SELECT 1 FROM billing_invoices WHERE project_id=@project AND immutable_snapshot_json->>'contract'=@contract
+                AND (invoice_status NOT IN ('void','voided') OR COALESCE((immutable_snapshot_json->>'previouslyBilledOutsidePulse')::numeric,0)>0)),
             EXISTS(SELECT 1 FROM external_integration_outbox o JOIN billing_invoices i ON i.billing_invoice_id=o.local_entity_id
                 WHERE i.project_id=@project AND o.system_code='CERTINIA' AND o.local_entity='billing_invoice' AND o.delivery_status IN ('pending','processing','failed')),
             EXISTS(SELECT 1 FROM work_register_project_lifecycle WHERE project_id=@project AND is_archived=TRUE)
-            OR EXISTS(SELECT 1 FROM projects WHERE project_id=@project AND lower(status) IN ('completed','closed','cancelled','canceled'));
+            OR EXISTS(SELECT 1 FROM projects WHERE project_id=@project AND lower(status) IN ('completed','closed','cancelled','canceled')),
+            (SELECT count(*) FROM time_entries WHERE project_id=@project AND hours>0
+                AND status IN ('submitted','manager_approved','project_approved','project_validated','pm_approved','accounting_ready','reconciled','locked')),
+            (SELECT count(*) FROM time_entries WHERE project_id=@project AND hours>0
+                AND status NOT IN ('manager_approved','project_approved','project_validated','pm_approved','accounting_ready','reconciled','locked')),
+            COALESCE((SELECT event_json#>'{state,delivery}' IS NOT NULL AND event_json#>'{state,delivery}' <> 'null'::jsonb
+                FROM work_lifecycle_audit_events WHERE project_id=@project AND process_area='closeout'
+                AND event_type='completion_checklist_recorded' AND event_json->>'contract'='project-completion-evidence-v1'
+                ORDER BY (event_json->>'revision')::bigint DESC LIMIT 1),false);
+
             """, connection, transaction);
         command.Parameters.AddWithValue("project", projectId);
         command.Parameters.AddWithValue("contract", ManualContract);
         await using var reader = await command.ExecuteReaderAsync();
         await reader.ReadAsync();
         return new ManualBillingBasis(BillingHash(reader.GetString(0)), reader.GetDecimal(1), reader.GetDecimal(2),
-            reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5), reader.GetBoolean(6));
+            reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5), reader.GetBoolean(6),
+            reader.GetInt64(7), reader.GetInt64(8), reader.GetBoolean(9));
     }
 
     private static async Task<IResult> CreateManualInvoiceAsync(Guid projectId, ManualInvoiceRequest request, HttpContext context)
@@ -110,11 +128,16 @@ public static partial class InvoiceBillingModule
             }
             var basis = await LoadManualBillingBasisAsync(connection, transaction, projectId);
             if (basis.Closed) return Results.Conflict(new { message = "Reopen the closed or archived project before creating another invoice." });
-            if (basis.OpenTransmission) return Results.Conflict(new { message = "Resolve queued or retryable Certinia deliveries before reconciling manual billing." });
+            var commercial = await SellCommercialReadModelModule.LoadProjectCommercialSummaryAsync(connection, projectId, transaction);
+            basis = basis with { Fingerprint = BillingHash(basis.Fingerprint + JsonSerializer.Serialize(commercial, ManualJson)) };
             if (request.ExpectedFingerprint != basis.Fingerprint) return Results.Conflict(new { message = "The billing balance changed. Reload and review prior invoices before continuing." });
             var validation = ManualBillingPolicy.Validate(request, basis.PulseInvoiced, basis.PreviouslyBilledOutsidePulse,
                 basis.FinalInvoiceExists, DateOnly.FromDateTime(DateTime.UtcNow));
             if (validation is not null) return Results.BadRequest(new { message = validation });
+            var eligibility = ManualBillingPolicy.ValidateEligibility(request, IsFixedPrice(project.ContractType),
+                basis.SubmittedTimeCount, basis.PendingTimeCount, basis.DeliveryComplete,
+                CanApproveBillingException(access), commercial.ConnectorReady && !string.IsNullOrWhiteSpace(commercial.SellQuoteNumber));
+            if (eligibility is not null) return Results.BadRequest(new { message = eligibility });
             var blockers = BuildProjectStructuralBlockers(project);
             if (blockers.Count > 0) return Results.Conflict(new { message = "Complete the project billing details before invoicing.", blockers });
             if (project.PurchaseOrder?.AuthorizedAmount is decimal limit && request.BillToDate > limit)
@@ -125,7 +148,11 @@ public static partial class InvoiceBillingModule
             var snapshot = JsonSerializer.Serialize(new {
                 contract = ManualContract, operationId = request.OperationId, requestHash,
                 previouslyBilledOutsidePulse = request.PreviouslyBilledOutsidePulse,
-                priorPulseInvoiced = basis.PulseInvoiced, request, newCharge = amount, actor = userId.Value
+                priorPulseInvoiced = basis.PulseInvoiced, request, newCharge = amount, actor = userId.Value,
+                recordedAt = DateTimeOffset.UtcNow, commercialSnapshot = commercial,
+                commercialReconciliationRequired = !commercial.ConnectorReady || string.IsNullOrWhiteSpace(commercial.SellQuoteNumber),
+                timeEvidence = new { basis.SubmittedTimeCount, basis.PendingTimeCount, basis.DeliveryComplete },
+                exceptionApprovedBy = request.BillingBasis == "exception" ? userId : null
             }, ManualJson);
             var notes = $"Manual amount invoice. Agreed total: USD {request.AgreedTotal:0.00}; cumulative billed: USD {request.BillToDate:0.00}; prior Pulse invoices: USD {basis.PulseInvoiced:0.00}; prior external billing: USD {request.PreviouslyBilledOutsidePulse:0.00}. This invoice charges only USD {amount:0.00}. Authorization: {Clean(request.AuthorizationReference)}.";
             await InsertInvoiceHeaderAsync(connection, transaction, invoiceId, identity, project, request.InvoiceType,
@@ -163,5 +190,6 @@ public static partial class InvoiceBillingModule
         }
     }
     private sealed record ManualBillingBasis(string Fingerprint, decimal PulseInvoiced,
-        decimal PreviouslyBilledOutsidePulse, bool FinalInvoiceExists, bool ManualInvoicesExist, bool OpenTransmission, bool Closed);
+        decimal PreviouslyBilledOutsidePulse, bool FinalInvoiceExists, bool ManualInvoicesExist, bool OpenTransmission, bool Closed,
+        long SubmittedTimeCount, long PendingTimeCount, bool DeliveryComplete);
 }
