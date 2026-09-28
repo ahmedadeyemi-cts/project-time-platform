@@ -51,9 +51,15 @@
     "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
     "scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh",
     "scripts/ci/validate-module030-source-boundary.sh",
+    "scripts/release-test/recover-pr1139-uat-orphan.py",
+    "scripts/release-test/recover-pr1140-migration-retry-orphan.py",
+    "scripts/release-test/recover-pr1140-uat-orphan.py",
     "scripts/release-test/run-flowhive-my-role-browser.py",
     "scripts/release-test/validate-module025-governed-release.sh",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "scripts/release-test/verify-module025-quarantine-controller.py",
+    "scripts/release-test/verify-pr1151-uat-supersession.py",
+    "scripts/release-test/verify-pr1204-uat-supersession.py",
     "scripts/security/publish-safe-uat-evidence.py",
     "scripts/verity/build-local.sh",
     "scripts/verity/pin-digests.sh",
@@ -134,8 +140,10 @@
     "tests/security-frontend-proxy.test.py",
     "tests/security-output.test.mjs",
     "tests/security-release/admission_fixture.py",
+    "tests/security-release/controller_registration.json",
     "tests/security-release/manifest.json",
     "tests/security-release/scope.py",
+    "tests/security-release/test_controller_registration.py",
     "tests/security-release/test_scope.py",
     "tests/test-pr1151-uat-supersession.py",
     "tests/test-pr1204-uat-supersession.py",
@@ -279,7 +287,7 @@
     },
     {
       "path": ".github/workflows/projectpulse-deploy-test.yml",
-      "sha256": "f6cbd581b2b0de655a07cf23e6148e8a11c8976f4146b89294be6985c1507faf"
+      "sha256": "6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff"
     },
     {
       "path": ".github/workflows/pulse-ai-help-chat-usability-ci.yml",
@@ -291,7 +299,7 @@
     },
     {
       "path": ".github/workflows/security-posture-ci.yml",
-      "sha256": "5d7dd88c1c862c551c1ca78521fcb216739bf83842bbc05c6aae3df10b2e72ba"
+      "sha256": "0e178497b609e370bfd42c9f85a3175c72decdf40ccc2a234cb59a8806e72a41"
     },
     {
       "path": ".github/workflows/uat-migration-throttle-recovery-ci.yml",
@@ -319,7 +327,7 @@
     },
     {
       "path": "docs/security/SECURITY-REMEDIATION-20260928.md",
-      "sha256": "dd6ebc22d05a9d38a29770ec7b808bc0393e638fd57dafb969de79adb855fb3e"
+      "sha256": "ab4a66f352ceaa88a5245fe481e803d5ef1c3338ada474589c7b974baef6fd1f"
     },
     {
       "path": "ops/projectpulse/scripts/projectpulse-backup.sh",
@@ -342,6 +350,18 @@
       "sha256": "b804f820c6144450688ebc9331978539ba66ed43f63402b5ab0b03a1e887765a"
     },
     {
+      "path": "scripts/release-test/recover-pr1139-uat-orphan.py",
+      "sha256": "166b67ee61d6d4789d38fc9d4edd5cf27bdd4cef51ea347571af6ff512fa76bb"
+    },
+    {
+      "path": "scripts/release-test/recover-pr1140-migration-retry-orphan.py",
+      "sha256": "3f2f9c63a338b72111b56541b52935de4813d9285f7b4305bbc52aece857b261"
+    },
+    {
+      "path": "scripts/release-test/recover-pr1140-uat-orphan.py",
+      "sha256": "691102372d3abb873ae76d8f41ebbb2c464fdfc0e830edb212cfd8d7bc4fb822"
+    },
+    {
       "path": "scripts/release-test/run-flowhive-my-role-browser.py",
       "sha256": "5672c19eacf7299d014328de3e33bec22790278a61b344c04b27602bd75dc362"
     },
@@ -352,6 +372,18 @@
     {
       "path": "scripts/release-test/validate-protected-test-controller-branches.sh",
       "sha256": "bf756a3360b5bc44a65d04691f98beee644913b638b6199d7a9e1161c500b844"
+    },
+    {
+      "path": "scripts/release-test/verify-module025-quarantine-controller.py",
+      "sha256": "53c507114a74bea3d62a0d13ede69e7473de63a0ac352b2ea1cc00816d555815"
+    },
+    {
+      "path": "scripts/release-test/verify-pr1151-uat-supersession.py",
+      "sha256": "4de2407b386cbc19f74fb8ff618fd3ce23dbd8d2f939b05b97dd0e1f26bdc046"
+    },
+    {
+      "path": "scripts/release-test/verify-pr1204-uat-supersession.py",
+      "sha256": "2eb49d8ef5cdcaf190da41475fccf22a8c3ae1348d919a01732db040e31b3884"
     },
     {
       "path": "scripts/security/publish-safe-uat-evidence.py",
@@ -674,8 +706,16 @@
       "sha256": "1a31b20b51142075f3b7550e7d59097536605d9cc1d29742ab5e424fee38901a"
     },
     {
+      "path": "tests/security-release/controller_registration.json",
+      "sha256": "851f18ad48e850fbafeaa1c51157dd6142cd92e931a66e1c5e38a086bdab9cfd"
+    },
+    {
       "path": "tests/security-release/scope.py",
-      "sha256": "240c549ea9e44a605de274355ee9d9838dcd0a9bd8cca66433c06362aba4fc66"
+      "sha256": "2c440dc4a45a89e17e6921499cb559f6f098cd193410015c199bbdc83789b945"
+    },
+    {
+      "path": "tests/security-release/test_controller_registration.py",
+      "sha256": "3cc0b079e8848e93c3a52c89a68d5a3c3224d1789c41744bc21c423a7744b5a3"
     },
     {
       "path": "tests/security-release/test_scope.py",
@@ -683,7 +723,7 @@
     },
     {
       "path": "tests/test-pr1151-uat-supersession.py",
-      "sha256": "6ff0b08cb13961e859567174c0f9523ada65cc07f78c1aa3325879018a899856"
+      "sha256": "163ccf6791d8cdf4e360e73173f063a40a947155cfe8d0be9134d4e8b75c8c98"
     },
     {
       "path": "tests/test-pr1204-uat-supersession.py",

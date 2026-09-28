@@ -47,6 +47,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 tests/security-deployment-boundaries.test.py
+          python3 tests/security-release/test_controller_registration.py
           python3 tests/security-frontend-proxy.test.py
           python3 tests/flowhive-installed-resolution.test.py
           python3 tests/flowhive-psa-installed-acceptance.test.py

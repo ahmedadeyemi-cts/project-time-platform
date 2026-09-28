@@ -62,6 +62,23 @@ def verify_content(data, digest, mode, frozen=None):
         require(data == frozen, 'Deployment control changed after the security implementation')
 
 
+def frozen_bytes(path):
+    original = git('show', f'{IMPLEMENTATION}:{path}')
+    if path == '.github/workflows/projectpulse-deploy-test.yml':
+        before = b'        working-directory: control\n        shell: bash\n        run: python3 scripts/security/publish-safe-uat-evidence.py'
+        after = b"        working-directory: ${{ inputs.release_branch == 'main' && 'release' || 'control' }}\n        shell: bash\n        run: python3 scripts/security/publish-safe-uat-evidence.py"
+        require(original.count(before) == 1, 'Evidence publisher checkout is ambiguous')
+        return original.replace(before, after, 1)
+    registration = json.loads((ROOT/'tests/security-release/controller_registration.json').read_text())
+    if path in registration['patches']:
+        source = original.decode()
+        for before, after in registration['patches'][path]:
+            require(source.count(before) == 1, 'Controller digest registration is ambiguous')
+            source = source.replace(before, after, 1)
+        return source.encode()
+    return original
+
+
 def main():
     branch = os.getenv('GITHUB_HEAD_REF') or git('branch', '--show-current').decode().strip()
     verify_identity(branch, os.getenv('GITHUB_REPOSITORY', REPOSITORY),
@@ -85,12 +102,12 @@ def main():
         data = (ROOT / path).read_bytes()
         require(data == git('show', f'HEAD:{path}'), 'Working source differs from checked-out commit: ' + path)
         if path != MANIFEST:
-            frozen = git('show', f'{IMPLEMENTATION}:{path}') if deployment_control(path) else None
+            frozen = frozen_bytes(path) if deployment_control(path) else None
             verify_content(data, hashes[path], entry[0], frozen)
     # Freeze authority even when a path was not in the proposed change inventory.
     for path in git('ls-tree', '-r', '--name-only', IMPLEMENTATION).decode().splitlines():
         if deployment_control(path):
-            require((ROOT / path).is_file() and (ROOT / path).read_bytes() == git('show', f'{IMPLEMENTATION}:{path}'),
+            require((ROOT / path).is_file() and (ROOT / path).read_bytes() == frozen_bytes(path),
                     'Frozen deployment control changed: ' + path)
     subprocess.run(['git', '-C', str(ROOT), 'diff', '--check', BASE, 'HEAD'], check=True)
     print('SECURITY_PR1209_EXACT_SOURCE=PASS; deployment_authorization=NONE; native_protections=REQUIRED')

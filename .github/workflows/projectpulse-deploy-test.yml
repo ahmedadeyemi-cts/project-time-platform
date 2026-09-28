@@ -2132,7 +2132,7 @@ jobs:
       - name: Prepare content-free protected-Test evidence
         id: safe_uat_evidence
         if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always()) }}
-        working-directory: control
+        working-directory: ${{ inputs.release_branch == 'main' && 'release' || 'control' }}
         shell: bash
         run: python3 scripts/security/publish-safe-uat-evidence.py "$EVIDENCE_DIR" "$RUNNER_TEMP/publish-safe-uat"
 

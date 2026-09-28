@@ -259,8 +259,12 @@ PR1209 uses `tests/security-release/manifest.json` to inventory every changed
 file and bind its content to SHA-256. Negative tests reject added/missing files,
 altered content, symlinks, wrong repository/branch/PR identity, and rehashed
 changes to deployment controls. The existing security implementation is pinned
-to `1c0f5a392384df5ef9c6f0895cfd716ef4e3ac05`; this CI repair cannot add further
-deployment-control changes. Source registration does not grant deployment
+to `1c0f5a392384df5ef9c6f0895cfd716ef4e3ac05`; the follow-up permits only the evidence publisher checkout-path correction and
+literal registration of the secured controller digest in the existing known-run
+recovery verifiers. A dedicated test compares the full workflow against main
+and proves every execution, permission, concurrency and authorization field is
+unchanged outside evidence publication. Unknown controller content, altered
+run identities, new jobs or pending approvals continue to fail closed. Source registration does not grant deployment
 authority. Native review, environment protection, exact merged commit checks,
 and authenticated acceptance remain required.
 

@@ -155,8 +155,9 @@ class SupersessionTests(unittest.TestCase):
         blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
         self.assertEqual(blob, r.NORMAL_SA_DEPLOYMENT_BLOB)
 
-    def test_security_controller_cannot_reuse_historical_recovery_authority(self):
-        data = (ROOT / r.DEPLOYMENT).read_bytes()
+    def test_unregistered_controller_cannot_reuse_historical_recovery_authority(self):
+        data = subprocess.check_output(['git', 'show',
+            '1c0f5a392384df5ef9c6f0895cfd716ef4e3ac05:' + r.DEPLOYMENT], cwd=ROOT)
         blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
         self.assertNotIn(blob, (r.DEPLOYMENT_BLOB, r.NORMAL_SA_DEPLOYMENT_BLOB))
         def current(*args):

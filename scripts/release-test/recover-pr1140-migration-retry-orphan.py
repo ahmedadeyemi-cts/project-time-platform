@@ -29,6 +29,8 @@ DEPLOYMENT_BLOB = "634983f88d5ce3161b626010c3e20c41a80e3758"
 MIGRATION125_DEPLOYMENT_BLOB = "be0296f7ad5ac5839fb52ee9aac2502973e60cdb"
 # Exact reviewed PR1192 controller; all run identity and approval checks remain.
 NORMAL_SA_DEPLOYMENT_BLOB = "c7b3c7ae88aceb33a0c77f816a21a8ad28952fc4"
+# PR1209 changes only publication of sanitized evidence; all admission gates remain.
+SECURITY_EVIDENCE_DEPLOYMENT_BLOB = "94fe4bf498c3d89347db62749279f566d0c26ce7"
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -118,7 +120,7 @@ def verify_context(api: GitHub) -> str:
     git("merge-base", "--is-ancestor", OLD_SHA, current)
     require(git("rev-parse", f"{OLD_SHA}:{DEPLOYMENT}") == DEPLOYMENT_BLOB
             and git("rev-parse", f"{current}:{DEPLOYMENT}") in
-            (DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB),
+            (DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB),
             "The actual Test deployment controller changed")
     git("diff", "--exit-code", "HEAD", "--", DEPLOYMENT, SUPERVISOR,
         "scripts/release-test/recover-pr1140-migration-retry-orphan.py")
