@@ -139,6 +139,12 @@ try {
  Check(recoveryView.GetProperty("history").GetArrayLength()==5,"history retains hold, release, handoff, match and SELL verification once each");
  await Sql(c,$"UPDATE external_integration_outbox SET delivery_status='processing' WHERE local_entity_id='{InvoiceId(queuedFirst)}'");
  Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff with {OperationId=Guid.NewGuid()},Context(billing)))==409,"in-flight transmission cannot be overridden");
+ Check(await Text(c,$"SELECT count(DISTINCT event_json->>'revision')::text FROM billing_invoice_events WHERE billing_invoice_id='{InvoiceId(queuedFirst)}' AND event_type LIKE 'billing_recovery_%'")=="5","recovery decisions have an explicit distinct sequence");
+ // Concurrent decisions must serialize or return conflict, never share a state revision.
+ await Sql(c,$"UPDATE external_integration_outbox SET delivery_status='cancelled' WHERE local_entity_id='{InvoiceId(queuedFirst)}'");
+ var decisions=await Task.WhenAll(Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),recovery with {OperationId=Guid.NewGuid()},Context(billing)),Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),recovery with {OperationId=Guid.NewGuid()},Context(billing)));
+ Check(decisions.All(r=>Status(r) is 200 or 409) && decisions.Any(r=>Status(r)==200),"concurrent reconciliation serializes or requests a safe retry");
+ Check(await Text(c,$"SELECT (count(*)=count(DISTINCT event_json->>'revision'))::text FROM billing_invoice_events WHERE billing_invoice_id='{InvoiceId(queuedFirst)}' AND event_type LIKE 'billing_recovery_%'")=="true","concurrent reconciliation cannot reuse a state revision");
  // Partial progress needs submitted evidence, but does not require all time approved.
  var progress=await Project(c);var progressSheet=timesheet;
  await Sql(c,$"INSERT INTO time_entries(timesheet_id,user_id,project_id,work_date,hours,status) VALUES('{progressSheet}','{pm}','{progress}',current_date,2,'submitted')");

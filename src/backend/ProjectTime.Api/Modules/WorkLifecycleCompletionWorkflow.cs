@@ -315,7 +315,7 @@ public static partial class WorkLifecycleModule
                 AND event_type IN ('billing_recovery_manual_handoff','billing_recovery_certinia_match'))
             OR COALESCE((SELECT event_type='billing_recovery_hold_delivery' FROM billing_invoice_events
                 WHERE billing_invoice_id=@billing_invoice AND event_type IN ('billing_recovery_hold_delivery','billing_recovery_resume_delivery')
-                ORDER BY created_at DESC,billing_invoice_event_id DESC LIMIT 1),false);
+                ORDER BY COALESCE((event_json->>'revision')::bigint,0) DESC,created_at DESC,billing_invoice_event_id DESC LIMIT 1),false);
             """, connection, transaction);
         command.Parameters.AddWithValue("project_id", projectId);
         command.Parameters.AddWithValue("event_type", CompletionEvent);

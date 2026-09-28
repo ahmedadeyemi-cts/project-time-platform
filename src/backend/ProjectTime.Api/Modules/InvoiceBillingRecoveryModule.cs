@@ -29,7 +29,7 @@ public static partial class InvoiceBillingModule
         await using var command = new NpgsqlCommand("""
             SELECT immutable_snapshot_json::text,
                 COALESCE((SELECT jsonb_agg(jsonb_build_object('action',event_type,'reference',event_json->>'reference',
-                    'reason',event_reason,'actorUserId',actor_user_id,'recordedAt',created_at) ORDER BY created_at)
+                    'reason',event_reason,'actorUserId',actor_user_id,'recordedAt',created_at) ORDER BY COALESCE((event_json->>'revision')::bigint,0),created_at)
                     FROM billing_invoice_events WHERE billing_invoice_id=@invoice AND event_type LIKE 'billing_recovery_%'),'[]')::text
             FROM billing_invoices WHERE billing_invoice_id=@invoice;
             """, connection);
@@ -138,8 +138,10 @@ public static partial class InvoiceBillingModule
             if (request.Action == "sell_verified" && (commercial is null || !IsSellAvailable(commercial)))
                 return Results.Conflict(new { message = "SELL has no synchronized quote for this project yet. Retain the fallback evidence and reconcile after it becomes available." });
             await using var audit = new NpgsqlCommand("""
-                INSERT INTO billing_invoice_events(billing_invoice_id,event_type,prior_status,new_status,actor_user_id,event_reason,event_json)
-                VALUES(@invoice,@event,'','',@actor,@reason,@evidence::jsonb);
+                INSERT INTO billing_invoice_events(billing_invoice_id,event_type,prior_status,new_status,actor_user_id,event_reason,event_json,created_at)
+                SELECT @invoice,@event,'','',@actor,@reason,
+                    @evidence::jsonb || jsonb_build_object('revision',COALESCE(max((event_json->>'revision')::bigint),0)+1),clock_timestamp()
+                FROM billing_invoice_events WHERE billing_invoice_id=@invoice AND event_type LIKE 'billing_recovery_%';
                 """, connection, transaction);
             audit.Parameters.AddWithValue("invoice", invoiceId); audit.Parameters.AddWithValue("event", "billing_recovery_" + request.Action);
             audit.Parameters.AddWithValue("actor", userId.Value); audit.Parameters.AddWithValue("reason", request.Reason.Trim());
