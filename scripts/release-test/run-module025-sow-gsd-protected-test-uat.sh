@@ -490,6 +490,7 @@ READBACK_RESULT="$(auth_get_with_transient_retry "/api/module025/sow-gsd/$ENGAGE
 IFS='|' read -r READBACK_CURL_EXIT READBACK_STATUS <<<"$READBACK_RESULT"
 [[ "$READBACK_CURL_EXIT" == 0 && "$READBACK_STATUS" == 200 ]] \
   || fail "Module 025 generated-scope readback returned curl exit $READBACK_CURL_EXIT and HTTP $READBACK_STATUS."
+# BEGIN MODULE025_READBACK_CONTRACT
 jq -e --arg id "$ENGAGEMENT_ID" --arg owner "$SA_USER_ID" --argjson revision "$GENERATED_REVISION" '
   .status == "module025_engagement_loaded"
   and .stateChanged == false
@@ -506,7 +507,11 @@ jq -e --arg id "$ENGAGEMENT_ID" --arg owner "$SA_USER_ID" --argjson revision "$G
   and ([.engagement.phases | sort_by(.sortOrder)[] | .phaseCode] == ["plan","design","implement","validate","release"])
   and all(.engagement.phases[];
     (.objective | type == "string" and length >= 120)
-    and ((.objective | ascii_downcase) | test("cisco|callmanager|cucm|unified communications manager"))
+    # Scope specificity belongs to the whole persisted phase. A substantive
+    # objective may describe outcomes while technical tasks name the product.
+    # Keep this inside all(phases): another phase cannot supply its scope.
+    and (([.objective, .detailedActivities[]?, .technicalTasks[]?] | join(" ") | ascii_downcase)
+      | test("cisco|callmanager|cucm|unified communications manager"))
     and (((.objective | ascii_downcase) | contains("cited scope")) | not)
     and (((.objective | ascii_downcase) | contains("source-backed scope")) | not)
     and (.detailedActivities | type == "array" and length >= 2)
@@ -526,6 +531,7 @@ jq -e --arg id "$ENGAGEMENT_ID" --arg owner "$SA_USER_ID" --argjson revision "$G
   and ([.engagement.phases[].suggestedHours] | add) > 0
 ' "$READBACK_RESPONSE" >/dev/null \
   || fail 'Module 025 persisted readback did not contain the exhaustive Cisco CallManager 14-to-15 P/D/I/V/R contract.'
+# END MODULE025_READBACK_CONTRACT
 
 # Exercise the real saved-edit → confirmation → migration-106 retained-version
 # lifecycle against this same temporary authorized SOW. The edit changes only
