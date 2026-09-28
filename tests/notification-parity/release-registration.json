@@ -49,6 +49,7 @@
     "tests/MicrosoftTeamsDeliveryTests/Program.cs",
     "tests/NotificationParityDatabaseTests/NotificationParityDatabaseTests.csproj",
     "tests/NotificationParityDatabaseTests/Program.cs",
+    "tests/flowhive-migration-package.test.py",
     "tests/laya/processed-source-scope.py",
     "tests/notification-parity/admission_fixture.py",
     "tests/notification-parity/check-coverage.py",
