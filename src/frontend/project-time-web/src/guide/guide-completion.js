@@ -18,10 +18,23 @@ const delivery = {
   outcome: 'Delivery and the customer decision have separate auditable records; unfinished billing remains visible.',
   handoff: 'Assigned PM → PTC and Billing for financial reconciliation.'
 };
-const manual = {
-  title: 'Record a manual Certinia handoff without sending it twice',
+const amountInvoice = {
+  title: 'Create a manual partial or full invoice without connectors',
   steps: [
-    'PTC selects the correct project and opens Sent to Certinia in the completion checklist. Use this only after the package was actually handed over outside Pulse.',
+    'Select the customer project in Invoice & Billing Center and open Manual partial / full invoice.',
+    'Enter the authorized project total. Choose Partial and enter the cumulative amount to bill so far, or Full / final to bill the remaining project balance.',
+    'Review prior Pulse invoices. Enter documented amounts already billed outside Pulse, excluding the invoices already in Pulse. Prior amounts are deducted from the new charge.',
+    'Record the billing period, customer-facing description, approved SOW/PO or billing authorization, external invoice references, and internal audit reason.',
+    'Verify the new invoice amount, confirm the reconciliation, and create the invoice. Select the saved invoice in history to download PDF or Excel for manual delivery.',
+    'Continue subsequent billing through this amount-based path. It does not alter time entries, send an invoice, confirm payment, or close the project. A fully billed balance produces no duplicate invoice.'
+  ],
+  outcome: 'A saved invoice charges only the newly authorized amount after prior billing is deducted.',
+  handoff: 'Authorized invoice creator → PTC / Billing for delivery and processing.'
+};
+const manual = {
+  title: 'Record a manual billing handoff without sending it twice',
+  steps: [
+    'PTC or Billing selects the correct project and opens Billing handoff in the completion checklist. Use this only after the package was actually handed over outside Pulse.',
     'Record the actual sent date, package/reference, supporting evidence and audit reason. Choose Partial billing for a month-end package, or Final handoff only after reconciling prior partial invoices.',
     'For a partial handoff, identify the existing Pulse invoices it covered. A final handoff covers the current project reconciliation. Do not invent a local invoice to represent an external package.',
     'Select the confirmation that the package was already sent, then save. This action records evidence only; it performs no Certinia transmission and requires no SELL rate setup.',
@@ -29,7 +42,7 @@ const manual = {
     'After a timeout, refresh to verify the outcome or Retry the same confirmation. Never send the financial package again because an evidence save timed out.'
   ],
   outcome: 'An auditable manual handoff exists without an external send or a fabricated invoice.',
-  handoff: 'PTC → Billing to process the package in Certinia.'
+  handoff: 'PTC → Billing to process the package through the approved billing process.'
 };
 const final = {
   title: 'Confirm fully billed and finish governed closeout',
@@ -47,11 +60,11 @@ const final = {
 };
 export function withCompletionGuide(guide) {
   if (!['project-workload','project-closeout','invoice-billing-center'].includes(guide.route)) return guide;
-  const additions = guide.route === 'project-workload' ? [delivery] : guide.route === 'project-closeout' ? [delivery,manual,final] : [manual,final];
+  const additions = guide.route === 'project-workload' ? [delivery] : guide.route === 'project-closeout' ? [delivery,manual,final] : [amountInvoice,manual,final];
   return {
     ...guide,
     responsibility: guide.route === 'invoice-billing-center'
-      ? 'PTC authorizes Certinia billing handoffs; Billing processes them. The shared checklist distinguishes manual transmission evidence, fully billed confirmation and final project closeout.'
+      ? 'PTC and Billing record manual handoffs and completed billing. The shared checklist distinguishes manual transmission evidence, fully billed confirmation and final project closeout.'
       : guide.responsibility,
     procedures: guide.route === 'project-closeout' ? additions : [...guide.procedures,...additions],
     limitations: [...guide.limitations,

@@ -269,6 +269,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   const [outputPrivacy, setOutputPrivacy] = useState(() => ({ ...hiddenOutputPrivacy }));
   const [certiniaPreview, setCertiniaPreview] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
+  const [manualBasis, setManualBasis] = useState(null);
 
   async function loadLiveData(preferredProjectId = '') {
     setPayload((current) => ({ ...current, loading: true, error: '' }));
@@ -376,7 +377,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   const allEligibleLinesSelected = (fixedPrice || selectedRows.every((item) => item.selected && item.rate))
     && selectedEvidenceRows.every((item) => item.selected)
     && (selectedRows.length > 0 || selectedEvidenceRows.length > 0);
-  const projectAllowsInvoice = selected?.canCreateInvoice === true;
+  const manualBillingActive = manualBasis?.projectId === selected?.projectId && (manualBasis.manualInvoicesExist || manualBasis.finalInvoiceExists || manualBasis.closed);
+  const projectAllowsInvoice = selected?.canCreateInvoice === true && !manualBillingActive;
   const userAllowsInvoice = payload.canCreateInvoices === true && selected?.currentUserCanCreateInvoices === true;
   const selectedSourceCount = selectedReadyRows.length + selectedReadyEvidenceRows.length;
   const partialReady = projectAllowsInvoice && userAllowsInvoice && selectedSourceCount > 0 && selectedIncompleteRows.length === 0;
@@ -719,7 +721,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
             <div className="m042-column-count"><strong>{visibleColumns.length}</strong><small>columns shown</small></div>
           </section>
 
-          {selected ? <ManualInvoicePanel key={`${userKey}:${selected.projectId}`} projectId={selected.projectId} projectName={selected.projectName}
+          {selected ? <ManualInvoicePanel key={`${userKey}:${selected.projectId}`} projectId={selected.projectId} projectName={selected.projectName} onBasis={setManualBasis}
             onSaved={async () => { await loadLiveData(selected.projectId); }} /> : null}
           {selected ? <ProjectCompletionChecklist projectId={selected.projectId} /> : null}
           <section className="m042-workspace">
@@ -853,6 +855,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
                     </div>
                   </section>
 
+                  {manualBillingActive ? <p className="m042-notice">Review the Manual partial / full invoice panel above for this project’s billing balance. Time entries below remain available for review; new charges must follow the manual reconciliation path.</p> : null}
                   <div className="m042-lines">
                     <table className="m042-candidate-lines">
                       <thead>

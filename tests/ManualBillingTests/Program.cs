@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Npgsql;
@@ -53,6 +55,20 @@ try {
  Check(await Text(c,$"SELECT status FROM projects WHERE project_id='{p}'")=="active","full invoice does not close project");
  Check(await Text(c,"SELECT count(*)::text FROM external_integration_outbox")=="0","creation does not queue or send external invoices");
  Check(await Text(c,$"SELECT sum(total_amount)::text FROM billing_invoices WHERE project_id='{p}'")=="9000.00","cumulative local invoices plus external total reconcile to 10000");
+ foreach(var format in new[]{"pdf","excel"}) {
+  var ctx=Context(billing);ctx.Request.QueryString=new QueryString("?format="+format);
+  var methodDoc=typeof(CertiniaBillingModule).GetMethod("GetDocumentAsync",BindingFlags.NonPublic|BindingFlags.Static)!;
+  var taskDoc=(Task)methodDoc.Invoke(null,[InvoiceId(full),ctx])!;await taskDoc;
+  var file=(Microsoft.AspNetCore.Http.HttpResults.FileContentHttpResult)taskDoc.GetType().GetProperty("Result")!.GetValue(taskDoc)!;
+  var bytes=file.FileContents.ToArray();
+  Check(bytes.Length>1000 && (format=="pdf" ? Encoding.ASCII.GetString(bytes,0,5)=="%PDF-" : bytes[0]==80 && bytes[1]==75),"manual "+format+" download is a real document");
+  if(format=="excel") {
+   using var zip=new ZipArchive(new MemoryStream(bytes));
+   var xml=string.Join("",zip.Entries.Where(e=>e.FullName.StartsWith("xl/worksheets/")).Select(e=>new StreamReader(e.Open()).ReadToEnd()));
+   Check(xml.Contains("Project billing") && xml.Contains("4000"),"Excel presents project amount with correct remaining charge");
+   Check(!xml.Contains("Approved partial billing") && !xml.Contains("Synthetic billing tester"),"customer output excludes audit reason and resource names");
+  }
+ }
  Check(Status(await Create(p,final with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(p,billing),AgreedTotal=11000,BillToDate=11000},billing))==400,"second final cannot duplicate charges");
  // Existing time-based invoice handler must reject another path after manual amount billing.
  var method=typeof(InvoiceBillingModule).GetMethod("CreateInvoiceAsync",BindingFlags.NonPublic|BindingFlags.Static)!;

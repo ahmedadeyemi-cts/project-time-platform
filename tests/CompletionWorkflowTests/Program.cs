@@ -82,6 +82,8 @@ try {
     try { await Sql(c,$"UPDATE work_lifecycle_audit_events SET reason='tamper' WHERE project_id='{project}'"); throw new Exception("Audit mutation accepted"); }
     catch(PostgresException) { Check(true,"real migration-038 trigger prevents audit edits"); }
 
+    var billingHandoffProject = await Project(c);
+    Check(Status(await Save(billingHandoffProject,"sent",Request(Value(await Get(billingHandoffProject,billing)),"partial"),billing)) == 200, "Billing can record a manual handoff without Certinia");
     var queued = await Project(c); var invoice = await Invoice(c,queued,"final");
     await Sql(c,$"INSERT INTO external_integration_outbox VALUES(gen_random_uuid(),'CERTINIA','billing_invoice','{invoice}','pending','{{}}')");
     Check(Status(await Save(queued,"sent",Request(Value(await Get(queued,ptc)),"final"),ptc)) == 400, "queued automatic send prevents manual duplication");

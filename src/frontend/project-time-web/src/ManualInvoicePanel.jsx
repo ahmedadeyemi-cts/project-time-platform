@@ -15,7 +15,7 @@ export default function ManualInvoicePanel(props) {
   }, []);
   return <ManualInvoiceForm key={generation} {...props} />;
 }
-function ManualInvoiceForm({ projectId, projectName, onSaved }) {
+function ManualInvoiceForm({ projectId, projectName, onSaved, onBasis }) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
   const [revision, setRevision] = useState(0);
   const [form, setForm] = useState({ invoiceType: 'partial', agreedTotal: '', billToDate: '', previouslyBilledOutsidePulse: '0',
@@ -34,6 +34,7 @@ function ManualInvoiceForm({ projectId, projectName, onSaved }) {
         if (!data.basis?.fingerprint || data.projectId !== projectId) throw new Error('Billing balance could not be verified.');
         if (!abort.signal.aborted) {
           setState({ loading: false, data, error: '' });
+          onBasis?.({ projectId, ...data.basis });
           setForm(value => ({ ...value, previouslyBilledOutsidePulse: String(data.basis.previouslyBilledOutsidePulse), confirmed: false }));
         }
       }).catch(error => { if (!abort.signal.aborted) setState({ loading: false, data: null, error: error.message }); });

@@ -9,3 +9,5 @@ CREATE TABLE app_user_role_assignments(user_id uuid, app_role_id uuid, is_active
 CREATE TABLE work_register_project_lifecycle(project_id uuid PRIMARY KEY, is_archived boolean NOT NULL DEFAULT false);
 CREATE TABLE work_rate_cards(rate_card_id uuid PRIMARY KEY);
 CREATE TABLE work_rate_card_lines(rate_line_id uuid PRIMARY KEY,rate_card_id uuid REFERENCES work_rate_cards);
+CREATE TABLE work_register_change_history(work_register_change_history_id uuid PRIMARY KEY,work_id uuid,action text,
+    change_summary text,changed_fields_csv text,changed_by_user_id uuid,old_value_json jsonb,new_value_json jsonb,changed_at timestamptz);

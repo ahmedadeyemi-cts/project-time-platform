@@ -41,7 +41,7 @@ public static partial class InvoiceBillingModule
     private static async Task<ManualBillingBasis> LoadManualBillingBasisAsync(NpgsqlConnection connection,
         NpgsqlTransaction? transaction, Guid projectId)
     {
-        // Snapshot includes prior invoices, project, PO, completion evidence, and active outbox work.
+        // Snapshot includes prior invoices, project, PO, and completion evidence.
         // A concurrent change invalidates the form instead of silently changing its charge.
         await using var command = new NpgsqlCommand("""
             SELECT jsonb_build_object(
