@@ -13,7 +13,7 @@ The server validates customer, dates, balance and eligibility when committing. T
 1. The existing Protected Test private-network migration job now packages and applies 060, 060b and 060c in order, verifies their checksums, and runs `verify-module060-contract-funding.sql` before application deployment. Its receipt identifies the exact release and image. No separate manual SQL step is needed. All three migrations can be reapplied.
 2. Deploy the reviewed source through the normal protected-UAT process.
 3. Check a new T&M and a new Fixed Price project against the same customer's contract. Validate draft → submitted → manager approval → PM approval; also test no PM, coordinator only, rejection, edit and deletion. Verify rates and balances against the customer's agreement.
-4. If reverting, restore the old API/UI, then apply `060c-contract-approval-funding-rollback.sql`. Funding links and audit data are retained for recovery.
+4. If reverting, restore the old API/UI, then apply `060c-contract-approval-funding-rollback.sql`. This is an application rollback: the additive funding schema, authoritative balance views, and audit data remain installed. The old API uses the same balance columns, so existing funded-project usage and subsequent approvals/edits continue to affect balances. Never restore the ledger-only 060b view after funded projects accrue time.
 
 Contract funding does not reserve the full estimated project value at creation or block legitimate time entry when funds run out. Balances can therefore become negative as work exceeds available funds; existing low-balance monitoring remains relevant. Fixed-price invoice/milestone drawdown is not implemented by this labor-funding change.
 

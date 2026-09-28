@@ -78,8 +78,18 @@ for (const change of ["contract_status='closed'", "contract_status='draft'", "ef
   assert.equal((await db.query(guard.replaceAll('@contract',`'${contract}'`))).rows.length,0,change);
   await db.exec('ROLLBACK'); checks++;
 }
+// Rollback must retain live automatic funding usage even without ledger rows.
+await db.exec(`DELETE FROM boh_usage_ledger;
+UPDATE boh_contracts SET import_snapshot_at=NULL, imported_approved_amount=0 WHERE boh_contract_id='${contract}';
+INSERT INTO time_entries (time_entry_id,project_id,user_id,work_date,hours,status) VALUES ('${entry}','${project}','${user}',CURRENT_DATE,2,'submitted');`);
+assert.deepEqual(await totals(), {ph:2,ah:0,pa:200,aa:0,balance:800}); checks++;
 await db.exec(await file('deployment/database/060c-contract-approval-funding-rollback.sql'));
+assert.deepEqual(await totals(), {ph:2,ah:0,pa:200,aa:0,balance:800}); checks++;
+await db.exec(`UPDATE time_entries SET hours=3, status='manager_approved'`);
+assert.deepEqual(await totals(), {ph:0,ah:3,pa:0,aa:300,balance:700}); checks++;
+
 await db.exec(await file('deployment/database/060c-contract-approval-funding.sql'));
+assert.deepEqual(await totals(), {ph:0,ah:3,pa:0,aa:300,balance:700}); checks++;
 assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM contract_project_funding')).rows[0].n, 1); checks++;
 console.log(`PASS ${checks} contract approval/funding database cases; migration reapplies cleanly.`);
 await db.exec(await file('scripts/release-test/verify-module060-contract-funding.sql'));
