@@ -212,6 +212,65 @@ try {
 assert.match(module025Uat, /draftProvider:\(\$draftProviders \| first\)/);
 assert.match(module025Uat, /draftProviders:\$draftProviders/);
 console.log(`MODULE025_TERMINAL_CONTRACT=PASS scenarios=${terminalScenarios}`);
+// Exercise the exact persisted-phase gate, including the live failure shape:
+// a substantive validation objective with CUCM named in its technical tasks.
+const readbackGate = module025Uat.split('# BEGIN MODULE025_READBACK_CONTRACT\n')[1]
+  ?.split('# END MODULE025_READBACK_CONTRACT')[0];
+assert.ok(readbackGate, 'The executable readback gate must be present');
+const readbackDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'module025-readback-'));
+const readback = () => ({
+  status:'module025_engagement_loaded', stateChanged:false,
+  engagement:{engagementId:generationId, ownerUserId:generationId, status:'review_ready',
+    isActive:true, revision:2, lastGeneratedAt:'2026-09-28T00:00:00Z',
+    sowSections:{reviewRequired:true, contractuallyBinding:false},
+    aiMetadata:{CorrelationId:'synthetic-correlation'},
+    phases:phaseNames.map((name, i) => ({phaseCode:name.toLowerCase(), sortOrder:i + 1,
+      objective:'Verify cluster health, database replication and core services after the upgrade; record functional call testing results and review operational readiness with customer stakeholders.',
+      detailedActivities:['Cluster health and replication verification', 'Operational readiness review'],
+      technicalTasks:['Verify Cisco Unified Communications Manager services across publisher and subscriber nodes.',
+        'Query replication health across the cluster.', 'Record call testing results.', 'Review post-upgrade backup readiness.'],
+      deliverables:['Health report', 'Acceptance record'], customerResponsibilities:['Review evidence'],
+      usSignalResponsibilities:['Execute verification'], prerequisites:['Upgrade completed'],
+      acceptanceCriteria:['Tests passed'], validationSteps:['Review logs'], risks:['Service disruption'],
+      aiGenerated:true, suggestedHours:24, finalHours:24
+    }))}
+});
+let readbackScenarios = 0;
+try {
+  function verifyReadback(response, expectedPass) {
+    const responsePath = path.join(readbackDirectory, 'readback.json');
+    fs.writeFileSync(responsePath, JSON.stringify(response));
+    const result = spawnSync('bash', ['-c', 'set -Eeuo pipefail\nfail() { echo "ERROR: $*" >&2; exit 1; }\n' + readbackGate], {
+      encoding:'utf8', timeout:5000,
+      env:{PATH:process.env.PATH, ENGAGEMENT_ID:generationId, SA_USER_ID:generationId,
+        GENERATED_REVISION:'2', READBACK_RESPONSE:responsePath}
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status === 0, expectedPass, result.stderr);
+    readbackScenarios++;
+  }
+  verifyReadback(readback(), true);
+  for (const mutate of [
+    r => {r.engagement.phases[3].technicalTasks[0] = 'Conduct user acceptance testing';},
+    r => {r.engagement.phases[3].objective = 'Validate CUCM';},
+    r => {r.engagement.phases[3].technicalTasks.pop();},
+    r => {r.engagement.phases[3].detailedActivities.pop();},
+    r => {r.engagement.phases[3].deliverables.pop();},
+    r => {r.engagement.phases[3].acceptanceCriteria = [];},
+    r => {r.engagement.phases[3].suggestedHours = 0;},
+    r => {r.engagement.phases[3].aiGenerated = false;},
+    r => {r.engagement.phases[3].objective += ' cited scope';},
+    r => {r.engagement.phases[3].objective += ' source-backed scope';},
+    r => {r.engagement.phases.pop();},
+    r => {r.engagement.revision = 1;},
+    r => {r.engagement.ownerUserId = 'different-owner';},
+    r => {r.engagement.status = 'draft';},
+    r => {r.engagement.sowSections.reviewRequired = false;}
+  ]) {
+    const response = readback(); mutate(response); verifyReadback(response, false);
+  }
+} finally { fs.rmSync(readbackDirectory, {recursive:true, force:true}); }
+console.log(`MODULE025_READBACK_CONTRACT=PASS scenarios=${readbackScenarios}`);
 assert.match(module025Uat, /seq 1 780/);
 assert.match(module025Uat, /terminal state within 42 minutes/);
 assert.match(module025Uat, /Cisco Unified Communications Manager \(Cisco CallManager \/ CUCM\) from version 14\.0 to version 15\.0/);
