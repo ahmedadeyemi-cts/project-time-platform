@@ -87,6 +87,8 @@ public static class Module025SowGsdModule
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/gsd.xlsx", (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)DownloadGsdAsync);
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/draft-sow.docx", (Guid engagementId, HttpContext context, CancellationToken cancellationToken) => DownloadDraftAsync(engagementId, true, context, cancellationToken));
         app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/draft-gsd.xlsx", (Guid engagementId, HttpContext context, CancellationToken cancellationToken) => DownloadDraftAsync(engagementId, false, context, cancellationToken));
+        app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/preview/sow", (Guid engagementId, string? variant, string? sheetId, HttpContext context, CancellationToken cancellationToken) => PreviewDocumentAsync(engagementId, true, variant, sheetId, context, cancellationToken));
+        app.MapGet("/api/module025/sow-gsd/{engagementId:guid}/preview/gsd", (Guid engagementId, string? variant, string? sheetId, HttpContext context, CancellationToken cancellationToken) => PreviewDocumentAsync(engagementId, false, variant, sheetId, context, cancellationToken));
         return app;
     }
 
@@ -118,7 +120,10 @@ public static class Module025SowGsdModule
             migration = MigrationId,
             contract = WorkspaceContract,
             capabilities = new { workTracking = true, temporaryCoverage = true, handoffNotifications = true,
-                serviceScope = await Module025ServiceScopePolicy.SchemaReadyAsync(connection, cancellationToken) },
+                serviceScope = await Module025ServiceScopePolicy.SchemaReadyAsync(connection, cancellationToken),
+                // Read-only in-app preview (Stage 3). Behind a default-OFF kill-switch;
+                // when disabled the preview endpoints 404 and the UI shows no control.
+                preview = Module025PreviewPolicy.Enabled },
             currentUser = new
             {
                 userId = access.EffectiveUserId,
@@ -1531,6 +1536,76 @@ public static class Module025SowGsdModule
             sow ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             DocumentFileName(engagement, sow ? "DRAFT_SOW" : "DRAFT_GSD", sow ? ".docx" : ".xlsx"));
     }
+
+    // Stage 3 read-only preview. Derived from the SAME exporter bytes the download
+    // serves (no divergent second renderer): it generates the identical .docx/.xlsx
+    // and then runs the module's existing structured-preview parser
+    // (Module025TemplatePackage.Preview) over those bytes — the same parser the
+    // template-candidate preview uses. Auth/scope is IDENTICAL to the downloads
+    // because it goes through the same LoadReadableStateAsync gate; state-gating
+    // mirrors the matching download handler exactly. The whole feature is behind a
+    // default-OFF kill-switch: OFF ⇒ 404 (before any work), no download impact.
+    private static async Task<IResult> PreviewDocumentAsync(Guid engagementId, bool sow, string? variant, string? sheetId, HttpContext context, CancellationToken cancellationToken)
+    {
+        if (!Module025PreviewPolicy.Enabled) return Results.NotFound();
+        var readable = await LoadReadableStateAsync(engagementId, context, cancellationToken);
+        if (readable.Error is not null) return readable.Error;
+        await using var connection = readable.Connection!;
+        var engagement = readable.Engagement!;
+
+        // "confirmed" mirrors DownloadSow/DownloadGsd; anything else mirrors the
+        // draft download (active, not confirmed/archived, no-store).
+        var confirmedVariant = string.Equals(variant, "confirmed", StringComparison.OrdinalIgnoreCase);
+        bool draft;
+        if (confirmedVariant)
+        {
+            if (!PreviewConfirmedAllowed(engagement.Status))
+                return StateConflict("confirmation_required", "Confirm the reviewed SOW/GSD before previewing customer documents.");
+            draft = false;
+        }
+        else
+        {
+            if (!PreviewDraftAllowed(engagement.Status, engagement.IsActive))
+                return StateConflict("draft_required", "Use the confirmed preview for confirmed or archived records.");
+            draft = true;
+            context.Response.Headers.CacheControl = "no-store";
+        }
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+
+        var model = BuildDocumentModel(engagement);
+        var bytes = sow
+            ? Module025SowGsdDocumentExporter.CreateSowDocx(model, draft)
+            : Module025SowGsdDocumentExporter.CreateGsdXlsx(model, draft);
+        var kind = sow ? "sow" : "gsd";
+        var preview = Module025TemplatePackage.PreviewTrusted(kind, bytes, string.IsNullOrEmpty(sheetId) ? null : sheetId);
+        if (!preview.Valid)
+            return Results.UnprocessableEntity(new { status = "module025_preview_unavailable", message = preview.Message });
+
+        return Results.Ok(new
+        {
+            status = "module025_document_preview",
+            engagementId,
+            documentKind = kind,
+            variant = confirmedVariant ? "confirmed" : "draft",
+            // DRAFT badge signal for the UI: true for the draft preview (the exporter
+            // embeds the visible "DRAFT - Not approved" / Summary!E1 marker), false for
+            // the confirmed preview. Matches the module025-output-standards guarantee.
+            draft,
+            engagementStatus = engagement.Status,
+            // Format facts the preview cannot render but the file guarantees
+            // (module025-output-standards): SOW letterhead + footer are present.
+            letterheadPresent = sow,
+            footerPresent = sow,
+            fileName = DocumentFileName(engagement, sow ? (draft ? "DRAFT_SOW" : "SOW") : (draft ? "DRAFT_GSD" : "GSD"), sow ? ".docx" : ".xlsx"),
+            preview,
+            stateChanged = false
+        });
+    }
+
+    // Pure state-gate predicates shared with the matching download handlers so the
+    // preview can never widen access relative to the download it mirrors.
+    internal static bool PreviewConfirmedAllowed(string status) => status == "confirmed";
+    internal static bool PreviewDraftAllowed(string status, bool isActive) => isActive && status is not ("confirmed" or "archived");
 
     internal static string DocumentFileName(Module025EngagementRow engagement, string artifact, string extension)
     {

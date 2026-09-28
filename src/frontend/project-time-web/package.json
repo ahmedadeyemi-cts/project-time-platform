@@ -16,6 +16,7 @@
     "validate:module001a": "node ./scripts/validate-module-001a-engineer-request-closeout.mjs",
     "validate:module001-ai-task-grounding": "node ./scripts/validate-module-001-ai-task-grounding.mjs",
     "validate:module025-sow-register": "node ./scripts/validate-module025-sow-register.mjs",
+    "validate:module025-preview": "node ./scripts/validate-module025-preview.mjs",
     "validate:celar-ai-external-deidentification": "node ./scripts/validate-celar-ai-external-deidentification.mjs",
     "validate:celar-ai-unified-chat": "node ./scripts/validate-celar-ai-unified-chat-attachments.mjs",
     "validate:celar-ai-context-private-rag-ux": "node ./scripts/validate-celar-ai-context-private-rag-ux.mjs",

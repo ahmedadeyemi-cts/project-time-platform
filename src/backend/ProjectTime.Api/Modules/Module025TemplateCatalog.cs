@@ -271,9 +271,23 @@ internal static class Module025TemplatePackage
 
     internal static Module025TemplatePreview Preview(string kind, string? fileName, byte[] content, string? sheetId = null)
     {
-        Module025TemplatePreview Unavailable(string message) => new(false, message, kind, [], null, [], [], false, []);
         var validated = Validate(kind, fileName, content);
-        if (!validated.Valid) return Unavailable(validated.Message);
+        if (!validated.Valid) return new(false, validated.Message, kind, [], null, [], [], false, []);
+        return Render(kind, content, sheetId);
+    }
+
+    // Trusted structured preview for artifacts THIS application generated (e.g. the
+    // Module 025 exporter output the download serves). It reuses the identical parser
+    // as the uploaded-template preview but skips the upload-only security gate
+    // (Validate), which legitimately rejects the internal hyperlink/data
+    // relationships our own generated GSD workbook carries. No second rendering
+    // engine — the same bytes, the same parser.
+    internal static Module025TemplatePreview PreviewTrusted(string kind, byte[] content, string? sheetId = null)
+        => Render(kind, content, sheetId);
+
+    private static Module025TemplatePreview Render(string kind, byte[] content, string? sheetId)
+    {
+        Module025TemplatePreview Unavailable(string message) => new(false, message, kind, [], null, [], [], false, []);
         try
         {
             using var stream = new MemoryStream(content, writable: false);

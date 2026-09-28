@@ -1,0 +1,76 @@
+{
+  "feature": "Module 025 — in-app preview of the generated SOW/GSD (Stage 3)",
+  "killSwitch": {
+    "env": "PROJECTPULSE_MODULE025_PREVIEW_ENABLED",
+    "default": "false",
+    "note": "Preview endpoints 404 and no preview control renders unless this is set to true. Run this smoke against an environment where it is true."
+  },
+  "baseUrl": "http://localhost:8080",
+  "preconditions": [
+    "PROJECTPULSE_MODULE025_PREVIEW_ENABLED=true in the app environment.",
+    "Signed in as a Solution Architect who owns at least one engagement.",
+    "One active (non-confirmed) engagement with a generated draft, and one confirmed engagement, both owned by the signed-in user."
+  ],
+  "flows": [
+    {
+      "name": "preview control is hidden when the kill-switch is OFF",
+      "requiresFlag": false,
+      "steps": [
+        { "goto": "/", "note": "Sign in and open Module 025 SOW & GSD Workspace with the flag OFF." },
+        { "openEngagement": "any active engagement" },
+        { "expectAbsent": "button:has-text('Preview draft SOW')", "note": "No preview control renders; download buttons unchanged." },
+        { "expectStatus": { "path": "/api/module025/sow-gsd/{engagementId}/preview/sow?variant=draft", "status": 404 } }
+      ]
+    },
+    {
+      "name": "draft preview renders SOW sections and the DRAFT badge",
+      "requiresFlag": true,
+      "steps": [
+        { "goto": "/" },
+        { "openEngagement": "active engagement with a generated draft" },
+        { "click": "button:has-text('Preview draft SOW')" },
+        { "expectSelector": ".m025-preview-modal" },
+        { "expectSelector": ".m025-preview-badge--draft", "note": "DRAFT — not approved badge is shown." },
+        { "expectText": "Plan", "within": ".m025-preview-doc", "note": "Phase headings render in order Plan → Design → Implement → Validate → Release." },
+        { "expectText": "DRAFT - Not approved", "within": ".m025-preview-doc" },
+        { "click": "button:has-text('Close')" }
+      ]
+    },
+    {
+      "name": "draft GSD preview shows sheet tabs and a cell grid",
+      "requiresFlag": true,
+      "steps": [
+        { "click": "button:has-text('Preview draft GSD')" },
+        { "expectSelector": ".m025-preview-tabs" },
+        { "expectText": "Summary", "within": ".m025-preview-tabs" },
+        { "expectText": "Assumptions Responsibilities", "within": ".m025-preview-tabs", "note": "Standard 12-sheet set present." },
+        { "expectSelector": ".m025-preview-grid", "note": "Selected sheet renders as a cell grid." },
+        { "click": "button:has-text('Plan')", "within": ".m025-preview-tabs", "note": "Switching tabs re-fetches that sheet's cells." },
+        { "expectSelector": ".m025-preview-grid" },
+        { "click": "button:has-text('Close')" }
+      ]
+    },
+    {
+      "name": "confirmed preview badges Confirmed",
+      "requiresFlag": true,
+      "steps": [
+        { "openEngagement": "confirmed engagement" },
+        { "click": "button:has-text('Preview SOW')" },
+        { "expectSelector": ".m025-preview-badge--confirmed" },
+        { "expectAbsent": ".m025-preview-doc:has-text('DRAFT - Not approved')" },
+        { "click": "button:has-text('Close')" }
+      ]
+    },
+    {
+      "name": "download path is unchanged",
+      "requiresFlag": true,
+      "steps": [
+        { "openEngagement": "confirmed engagement" },
+        { "click": "button:has-text('Download SOW (.docx)')" },
+        { "expectDownload": "SOW#*_*_SOW.docx", "note": "The confirmed .docx download still works and is byte-for-byte unchanged by this feature." },
+        { "click": "button:has-text('Download GSD (.xlsx)')" },
+        { "expectDownload": "SOW#*_*_GSD.xlsx" }
+      ]
+    }
+  ]
+}

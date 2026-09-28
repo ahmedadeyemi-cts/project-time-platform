@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import USSignalLogo from '../enterprise/USSignalLogo.jsx';
-import { downloadProtected } from './protected-download.js';
+import { downloadProtected, sessionHeaders } from './protected-download.js';
 import { generationConfidence } from './generation-feedback.js';
 import GenerationProgress from './GenerationProgress.jsx';
 import useGenerationMonitor from './useGenerationMonitor.js';
@@ -131,6 +131,143 @@ function Notice({ tone = 'info', title, children }) {
     <div className={`m025-notice m025-notice--${tone}`}>
       <strong>{title}</strong>
       <div>{children}</div>
+    </div>
+  );
+}
+
+// Stage 3 read-only preview. The backend derives this JSON from the SAME exporter
+// bytes the download serves (no second renderer); this component only renders it.
+function parseCellAddress(address) {
+  const match = /^([A-Z]+)(\d+)$/.exec(String(address || ''));
+  if (!match) return null;
+  let column = 0;
+  for (const character of match[1]) column = column * 26 + (character.charCodeAt(0) - 64);
+  return { column, row: Number.parseInt(match[2], 10), columnLabel: match[1] };
+}
+
+function columnLabel(index) {
+  let label = '';
+  let value = index;
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    label = String.fromCharCode(65 + remainder) + label;
+    value = Math.floor((value - 1) / 26);
+  }
+  return label;
+}
+
+function SowPreviewBody({ preview }) {
+  const blocks = Array.isArray(preview?.blocks) ? preview.blocks : [];
+  if (!blocks.length) return <p className="m025-preview-empty">No document content to preview yet.</p>;
+  return (
+    <div className="m025-preview-doc">
+      {blocks.map((block, index) => {
+        if (block.kind === 'table') {
+          const rows = Array.isArray(block.rows) ? block.rows : [];
+          return (
+            <table key={index} className="m025-preview-table">
+              <tbody>
+                {rows.map((row, rowIndex) => (
+                  <tr key={rowIndex}>{(row || []).map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        }
+        const style = String(block.style || '');
+        const heading = /^Heading1$|^Title$/.test(style) ? 'h3' : /^Heading2$|^Subtitle$/.test(style) ? 'h4' : null;
+        const isMarker = /^Strong$/.test(style) || /DRAFT - Not approved/.test(block.text || '');
+        const Tag = heading || 'p';
+        return <Tag key={index} className={`m025-preview-p${isMarker ? ' m025-preview-p--marker' : ''}`}>{block.text}</Tag>;
+      })}
+    </div>
+  );
+}
+
+function GsdPreviewBody({ preview, selectedSheetId, onSelectSheet }) {
+  const sheets = Array.isArray(preview?.sheets) ? preview.sheets : [];
+  const cells = Array.isArray(preview?.cells) ? preview.cells : [];
+  const active = selectedSheetId || preview?.selectedSheetId || (sheets[0]?.id ?? '');
+  const parsed = cells.map((cell) => ({ ...cell, ref: parseCellAddress(cell.address) })).filter((cell) => cell.ref);
+  const maxRow = parsed.reduce((max, cell) => Math.max(max, cell.ref.row), 0);
+  const maxColumn = parsed.reduce((max, cell) => Math.max(max, cell.ref.column), 0);
+  const byAddress = new Map(parsed.map((cell) => [`${cell.ref.column}:${cell.ref.row}`, cell]));
+  return (
+    <div className="m025-preview-gsd">
+      <div className="m025-preview-tabs" role="tablist" aria-label="Worksheet tabs">
+        {sheets.map((sheet) => (
+          <button
+            key={sheet.id}
+            type="button"
+            role="tab"
+            aria-selected={sheet.id === active}
+            className={sheet.id === active ? 'is-active' : ''}
+            onClick={() => onSelectSheet(sheet.id)}
+          >
+            {sheet.name}{sheet.visibility && sheet.visibility !== 'visible' ? ' (hidden)' : ''}
+          </button>
+        ))}
+      </div>
+      {maxRow === 0 ? <p className="m025-preview-empty">This sheet has no populated cells or formulas to preview.</p> : (
+        <div className="m025-preview-grid-scroll">
+          <table className="m025-preview-grid">
+            <thead>
+              <tr>
+                <th className="m025-preview-grid__corner" />
+                {Array.from({ length: maxColumn }, (_, index) => <th key={index}>{columnLabel(index + 1)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: maxRow }, (_, rowIndex) => {
+                const row = rowIndex + 1;
+                return (
+                  <tr key={row}>
+                    <th scope="row">{row}</th>
+                    {Array.from({ length: maxColumn }, (_, columnIndex) => {
+                      const cell = byAddress.get(`${columnIndex + 1}:${row}`);
+                      return (
+                        <td key={columnIndex} title={cell?.formula ? `=${cell.formula}` : undefined}>
+                          {cell ? cell.value : ''}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PreviewModal({ state, onClose, onSelectSheet }) {
+  if (!state.open) return null;
+  const isDraft = state.data?.draft ?? state.variant === 'draft';
+  const title = `${state.kind === 'sow' ? 'SOW' : 'GSD'} preview`;
+  return (
+    <div className="m025-preview-overlay" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
+      <div className="m025-preview-modal" onClick={(event) => event.stopPropagation()}>
+        <header className="m025-preview-modal__head">
+          <div>
+            <h2>{title}</h2>
+            <span className={`m025-preview-badge m025-preview-badge--${isDraft ? 'draft' : 'confirmed'}`}>
+              {isDraft ? 'DRAFT — not approved' : 'Confirmed'}
+            </span>
+          </div>
+          <Button onClick={onClose} aria-label="Close preview">Close</Button>
+        </header>
+        {state.kind === 'sow' && state.data?.letterheadPresent ? (
+          <p className="m025-preview-note">The downloaded .docx includes the US Signal letterhead and footer, which are not shown in this text preview.</p>
+        ) : null}
+        <div className="m025-preview-body" aria-busy={state.loading}>
+          {state.loading ? <p className="m025-preview-empty">Loading preview…</p>
+            : state.error ? <Notice tone="critical" title="Preview unavailable"><p>{state.error}</p></Notice>
+              : state.kind === 'sow' ? <SowPreviewBody preview={state.data?.preview} />
+                : <GsdPreviewBody preview={state.data?.preview} selectedSheetId={state.sheetId} onSelectSheet={onSelectSheet} />}
+        </div>
+      </div>
     </div>
   );
 }
@@ -273,6 +410,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
   const [queueFilter, setQueueFilter] = useState('all');
   const [queueSort, setQueueSort] = useState('updated');
   const [generationNow, setGenerationNow] = useState(Date.now());
+  const [preview, setPreview] = useState({ open: false, kind: '', variant: 'draft', loading: false, error: '', data: null, sheetId: '' });
   const dirtyRef = useRef(false);
   const editVersion = useRef(0);
   const saveInFlight = useRef(false);
@@ -673,6 +811,40 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
     return `SOW#${number}_${project}_${artifact.startsWith('draft-') ? 'DRAFT_' : ''}${artifact.endsWith('sow.docx') ? 'SOW.docx' : 'GSD.xlsx'}`;
   }
 
+  const previewEnabled = Boolean(bootstrap?.capabilities?.preview);
+
+  async function loadPreview(kind, variant, sheetId = '') {
+    if (!engagement) return;
+    const query = new URLSearchParams({ variant });
+    if (sheetId) query.set('sheetId', sheetId);
+    try {
+      const data = await requestJson(
+        `/api/module025/sow-gsd/${engagement.engagementId}/preview/${kind}?${query.toString()}`,
+        { headers: sessionHeaders() }
+      );
+      setPreview((current) => ({ ...current, open: true, kind, variant, loading: false, error: '', data,
+        sheetId: sheetId || data?.preview?.selectedSheetId || '' }));
+    } catch (error) {
+      setPreview((current) => ({ ...current, open: true, kind, variant, loading: false,
+        error: error.status === 404 ? 'In-app preview is not enabled.' : error.message, data: null }));
+    }
+  }
+
+  function openPreview(kind, variant) {
+    if (!previewEnabled || !engagement) return;
+    setPreview({ open: true, kind, variant, loading: true, error: '', data: null, sheetId: '' });
+    void loadPreview(kind, variant);
+  }
+
+  function selectPreviewSheet(sheetId) {
+    setPreview((current) => ({ ...current, sheetId, loading: true, error: '' }));
+    void loadPreview('gsd', preview.variant, sheetId);
+  }
+
+  function closePreview() {
+    setPreview({ open: false, kind: '', variant: 'draft', loading: false, error: '', data: null, sheetId: '' });
+  }
+
   async function downloadDocument(artifact) {
     if (artifact.startsWith('draft-') ? !draftDownloadReady : !downloadReady) return;
     setActionState({ busy: 'download', message: '', error: '' });
@@ -700,6 +872,7 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
 
   return (
     <section className="m025-workspace" data-module025-sow-gsd-workspace="true">
+      {previewEnabled ? <PreviewModal state={preview} onClose={closePreview} onSelectSheet={selectPreviewSheet} /> : null}
       <header className="m025-header">
         <div className="m025-header__identity">
           <USSignalLogo size="large" />
@@ -734,9 +907,17 @@ export default function SowGsdWorkspace({ onOpenRegister, onWorkspaceReady }) {
           {engagement && !['confirmed', 'archived'].includes(engagement.status) ? <>
             <Button disabled={!draftDownloadReady} onClick={() => downloadDocument('draft-sow.docx')}>Download draft SOW</Button>
             <Button disabled={!draftDownloadReady} onClick={() => downloadDocument('draft-gsd.xlsx')}>Download draft GSD</Button>
+            {previewEnabled ? <>
+              <Button disabled={!draftDownloadReady} onClick={() => openPreview('sow', 'draft')}>Preview draft SOW</Button>
+              <Button disabled={!draftDownloadReady} onClick={() => openPreview('gsd', 'draft')}>Preview draft GSD</Button>
+            </> : null}
           </> : null}
           <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('sow.docx')}>Download SOW (.docx)</Button>
           <Button kind="primary" disabled={!downloadReady} onClick={() => downloadDocument('gsd.xlsx')}>Download GSD (.xlsx)</Button>
+          {previewEnabled && engagement?.status === 'confirmed' ? <>
+            <Button disabled={!downloadReady} onClick={() => openPreview('sow', 'confirmed')}>Preview SOW</Button>
+            <Button disabled={!downloadReady} onClick={() => openPreview('gsd', 'confirmed')}>Preview GSD</Button>
+          </> : null}
           <Button disabled={!engagement || detailLoading || navigationBlocked || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Send to ConnectWise SELL</Button>
           <Button disabled={!engagement || detailLoading || navigationBlocked || !onOpenRegister} onClick={() => onOpenRegister(engagement.engagementId)}>Version history</Button>
         </div>
