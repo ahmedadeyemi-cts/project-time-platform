@@ -16,6 +16,16 @@ internal static class Module065NotificationParityPolicy
         && environment == configuredEnvironment && dispatchBoundary == "production_governed"
         && servicesBoundary == "production_governed";
 
+    // A quiet-hours pause is not a revoked delivery boundary. No transport is invoked
+    // while deferred; a later attempt still reloads the real provider configuration.
+    internal static string MailBoundary(string source, string transport, bool current, bool deferred)
+    {
+        if (!current || source is not ("production_governed" or "test_only")) return "locked";
+        if (deferred) return source;
+        if (transport == "locked") return "locked";
+        return source == "production_governed" && transport == "production_governed" ? "production_governed" : "test_only";
+    }
+
     internal static string[] Recipients(IEnumerable<string> addresses) => addresses
         .Where(value => !string.IsNullOrWhiteSpace(value) && value.Length <= 320
             && System.Net.Mail.MailAddress.TryCreate(value.Trim(), out var address)

@@ -299,9 +299,8 @@ internal static class ProjectNotificationProcessingService
         var readiness = source.Current && !source.Defer && handoff.Current
             ? await Module065ProjectNotificationDelivery.GetReadinessAsync(context, cancellationToken)
             : Module065MailReadiness.Locked("The current SOW/GSD handoff recipients or policy could not be verified.");
-        var effectiveBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(
-            dispatch.DeliveryBoundary,
-            readiness.RecipientBoundary);
+        var effectiveBoundary = Module065NotificationParityPolicy.MailBoundary(
+            dispatch.DeliveryBoundary, readiness.RecipientBoundary, source.Current, source.Defer);
         effectiveBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(effectiveBoundary, handoff.Boundary);
         // Queue the independent Teams channel before email transport or email-result persistence.
         // The queue captures its own boundary and durable event/recipient identity.

@@ -191,6 +191,11 @@ using (var http = new HttpClient(new FakeHttp((_, _) => throw new Exception("net
 }
 
 // Actual shared parity policy: channel independence, privacy, boundaries and schedule determinism.
+Check(Module065NotificationParityPolicy.MailBoundary("production_governed","locked",true,true)=="production_governed", "quiet-hours pause retains source boundary so the queued event can resume");
+Check(Module065NotificationParityPolicy.MailBoundary("test_only","locked",true,true)=="test_only", "deferred Test-only event never gains live delivery");
+Check(Module065NotificationParityPolicy.MailBoundary("locked","production_governed",true,true)=="locked", "defer cannot unlock a source policy");
+Check(Module065NotificationParityPolicy.MailBoundary("production_governed","locked",true,false)=="locked", "actual locked transport still prevents non-deferred delivery");
+Check(Module065NotificationParityPolicy.MailBoundary("production_governed","production_governed",false,true)=="locked", "revoked source cannot resume through deferred path");
 var emailCalls = 0;
 var emailResult = await Module065NotificationParityPolicy.IndependentChannelsAsync(
     () => Task.FromException(new IOException("synthetic queue failure")),
