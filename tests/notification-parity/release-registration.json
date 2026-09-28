@@ -22,6 +22,7 @@
     "scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
     "scripts/release-test/verify-module065-notification-parity.sql",
+    "scripts/teams/validate-landing.py",
     "src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleService.cs",
     "src/backend/ProjectTime.Api/Modules/EnterpriseNotificationOrchestrationService.cs",
     "src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRecipientResolver.cs",

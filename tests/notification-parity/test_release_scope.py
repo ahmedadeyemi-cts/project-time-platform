@@ -42,6 +42,31 @@ class ReleaseScopeTests(unittest.TestCase):
         self.assertNotRegex(sql,r'(?i)\b(INSERT|UPDATE|DELETE|TRUNCATE)\s+(INTO|FROM|enterprise_notification|module065)')
         self.assertIn("delivery_boundary IN ('test_only','locked')",sql)
         self.assertIn('RAISE EXCEPTION',sql)
+    def test_nginx_startup_reset_is_bounded_and_does_not_skip_validation(self):
+        from types import SimpleNamespace
+        from urllib.error import URLError
+        source=(ROOT/'scripts/teams/validate-landing.py').read_text()
+        probe=source.split('for attempt in range(30):',1)[1].split('assert status==200',1)[0]
+        executable='for attempt in range(30):'+probe+'assert status==200\n'
+        calls=[]; waits=[]
+        def fetch(path):
+            calls.append(path)
+            if len(calls)<3: raise ConnectionResetError('synthetic Nginx startup')
+            return 200, {}, b'fixture'
+        scope={'fetch':fetch,'URLError':URLError,'time':SimpleNamespace(sleep=waits.append)}
+        exec(executable,scope)
+        self.assertEqual(len(calls),3);self.assertEqual(waits,[1,1])
+        calls.clear();waits.clear()
+        def never_ready(path):
+            calls.append(path);raise ConnectionResetError('synthetic startup never completed')
+        scope['fetch']=never_ready
+        with self.assertRaises(RuntimeError): exec(executable,scope)
+        self.assertEqual(len(calls),30);self.assertEqual(len(waits),30)
+        scope['fetch']=lambda path:(403,{},b'denied')
+        with self.assertRaises(AssertionError): exec(executable,scope)
+        self.assertIn("assert 'x-frame-options' not in lower",source)
+        self.assertIn("assert normal['x-frame-options']=='SAMEORIGIN'",source)
+
     def test_new_reminders_default_to_no_live_delivery(self):
         sql=(ROOT/'database/migrations/129_enterprise_reminder_delivery_sources.sql').read_text()
         self.assertEqual(sql.count("'enterprise-reminder-v1','scanner',FALSE)"),4)
