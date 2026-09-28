@@ -5,5 +5,7 @@
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/MicrosoftTeamsNotificationProtocol.cs" Link="MicrosoftTeamsNotificationProtocol.cs" />
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/MicrosoftTeamsWorkflowProtocol.cs" Link="MicrosoftTeamsWorkflowProtocol.cs" />
     <Compile Include="../../src/backend/ProjectTime.Api/Modules/MicrosoftTeamsServicesSnapshot.cs" Link="MicrosoftTeamsServicesSnapshot.cs" />
+    <Compile Include="../../src/backend/ProjectTime.Api/Modules/Module065NotificationParityPolicy.cs" Link="Module065NotificationParityPolicy.cs" />
+    <Compile Include="../../src/backend/ProjectTime.Api/Modules/EnterpriseReminderPolicy.cs" Link="EnterpriseReminderPolicy.cs" />
   </ItemGroup>
 </Project>

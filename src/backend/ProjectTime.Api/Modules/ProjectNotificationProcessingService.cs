@@ -247,6 +247,13 @@ internal static class ProjectNotificationProcessingService
                 dispatch.AttemptCount);
         }
 
+        var source = await Module065NotificationSourceGuard.ValidateAsync(connection, dispatch, cancellationToken);
+        if (!source.Current || source.Defer)
+            return new(false, source.Defer ? "queued" : "suppressed", dispatch.ProviderSource, source.Boundary,
+                dispatch.ProviderMessageId, source.Code, "The current source policy, recipient, approval stage or reminder window prevented delivery.",
+                dispatch.DispatchId, dispatch.AttemptCount);
+        dispatch = dispatch with { DeliveryBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(dispatch.DeliveryBoundary, source.Boundary) };
+
         var claimed = await ProjectNotificationRepository.TryClaimDispatchDeliveryAsync(
             connection,
             dispatchId,
@@ -294,6 +301,12 @@ internal static class ProjectNotificationProcessingService
             dispatch.DeliveryBoundary,
             readiness.RecipientBoundary);
         effectiveBoundary = ProjectNotificationEvaluator.MoreRestrictiveBoundary(effectiveBoundary, handoff.Boundary);
+        // Queue the independent Teams channel before email transport or email-result persistence.
+        // The queue captures its own boundary and durable event/recipient identity.
+        if (handoff.Current)
+            await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection,
+                dispatch with { DeliveryBoundary = effectiveBoundary }, context, cancellationToken);
+
         var delivery = !handoff.Current
             ? new Module065MailDeliveryResult(false,"suppressed",readiness.ConfiguredProvider,effectiveBoundary,
                 string.Empty,handoff.DiagnosticCode,
@@ -357,10 +370,6 @@ internal static class ProjectNotificationProcessingService
                 dispatch.DispatchId,
                 dispatch.AttemptCount);
         }
-
-        if (handoff.Current)
-            await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection,
-                dispatch with { DeliveryBoundary = effectiveBoundary }, context, cancellationToken);
 
         return new(
             delivery.Sent,

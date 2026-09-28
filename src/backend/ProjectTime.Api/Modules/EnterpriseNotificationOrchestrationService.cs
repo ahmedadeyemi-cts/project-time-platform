@@ -322,6 +322,7 @@ internal static class EnterpriseNotificationOrchestrationService
                 recipientResolution.DiagnosticCode,
                 payloadContainsCredential = false,
                 deliveryAuthority = "module_065",
+                deepLink = EnterpriseNotificationRecipientResolver.PayloadString(notificationEvent.Payload, "deepLink"),
                 directSmtpAuthorized = false,
                 directBrevoAuthorized = false
             },
@@ -347,34 +348,13 @@ internal static class EnterpriseNotificationOrchestrationService
                 recipientResolution.Recipients.Length, outcome.DiagnosticCode, outcome.Message);
         }
 
-        var delivery = DeliveryDecision(
-            policy,
-            readiness,
-            boundary,
-            recipientResolution,
-            template,
-            notificationEvent,
-            context,
-            cancellationToken);
-        var deliveryResult = await delivery;
-        var dispatch = await ProjectNotificationRepository.LoadDispatchAsync(
-            connection,
-            dispatchId,
-            cancellationToken);
-        if (dispatch is not null)
-        {
-            await ProjectNotificationRepository.RecordDeliveryAsync(
-                connection,
-                dispatch,
-                deliveryResult,
-                releasedByUserId,
-                $"Enterprise policy {policy.PolicyCode} processed through Module 065.",
-                correlationId,
-                cancellationToken);
-        }
-
-        if (dispatch is not null && deliveryResult.Sent)
-            await MicrosoftTeamsNotificationModule.TryDeliverDispatchAsync(connection, dispatch, context, cancellationToken);
+        // One durable email claim plus a separate Teams outbox; an event replay never
+        // resends successful email simply because Teams is queued, failed, or unknown.
+        var delivered = await ProjectNotificationProcessingService.DeliverDispatchAsync(
+            connection, dispatchId, releasedByUserId, $"Enterprise policy {policy.PolicyCode} processed through Module 065.",
+            context, cancellationToken);
+        var deliveryResult = new Module065MailDeliveryResult(delivered.Sent, delivered.Status, delivered.Provider,
+            delivered.RecipientBoundary, delivered.ProviderMessageId, delivered.DiagnosticCode, delivered.Message);
 
         var eventStatus = deliveryResult.Status == "failed"
             ? "failed"
@@ -402,6 +382,9 @@ internal static class EnterpriseNotificationOrchestrationService
             },
             correlationId,
             cancellationToken);
+
+        if (notificationEvent.EntityId.HasValue && (notificationEvent.PolicyCode is "EXPENSE_UPLOAD_CONFIRMATION" or "EXPENSE_PM_REVIEW_REQUEST"))
+            await RefreshExpenseEmailStatusAsync(connection, notificationEvent.EntityId.Value, cancellationToken);
 
         var summaryStatus = deliveryResult.Sent
             ? "sent"
@@ -457,7 +440,7 @@ internal static class EnterpriseNotificationOrchestrationService
                 COALESCE(owner.display_name, owner.email, 'Expense owner')
             FROM project_expense_uploads upload
             JOIN app_users owner ON owner.user_id = upload.expense_owner_user_id
-            WHERE upload.project_expense_upload_id = @upload_id;
+            WHERE upload.project_expense_upload_id = @upload_id AND upload.is_current=TRUE AND upload.deleted_at IS NULL;
             """, connection))
         {
             command.Parameters.AddWithValue("upload_id", uploadId);
@@ -564,61 +547,6 @@ internal static class EnterpriseNotificationOrchestrationService
         };
     }
 
-    private static async Task<Module065MailDeliveryResult> DeliveryDecision(
-        EnterpriseNotificationPolicyRow policy,
-        Module065MailReadiness readiness,
-        string effectiveBoundary,
-        EnterpriseNotificationRecipientResolution recipientResolution,
-        EnterpriseNotificationTemplate template,
-        EnterpriseNotificationEventRow notificationEvent,
-        HttpContext? context,
-        CancellationToken cancellationToken)
-    {
-        if (recipientResolution.Recipients.Length == 0)
-        {
-            return new(
-                false,
-                "suppressed",
-                readiness.ConfiguredProvider,
-                effectiveBoundary,
-                string.Empty,
-                recipientResolution.DiagnosticCode,
-                recipientResolution.Message);
-        }
-
-        if (policy.DeliveryBoundary == "locked" || effectiveBoundary == "locked")
-        {
-            return new(
-                false,
-                "suppressed",
-                readiness.ConfiguredProvider,
-                "locked",
-                string.Empty,
-                "POLICY_DELIVERY_LOCKED",
-                "The enterprise notification policy or Module 065 delivery boundary is locked. The dispatch remains recorded inside ProjectPulse.");
-        }
-
-        if (policy.DeliveryBoundary == "test_only")
-        {
-            return new(
-                false,
-                "queued",
-                readiness.ConfiguredProvider,
-                "test_only",
-                string.Empty,
-                "POLICY_TEST_ONLY",
-                "The enterprise notification policy is Test-only. The dispatch is recorded in Module 032 and cannot leave ProjectPulse.");
-        }
-
-        return await Module065ProjectNotificationDelivery.DeliverAsync(
-            template.Subject,
-            template.TextBody,
-            template.HtmlBody,
-            recipientResolution.Recipients,
-            context,
-            cancellationToken);
-    }
-
     private static async Task<ProjectNotificationFinancialSnapshot?> LoadMinimalProjectSnapshotAsync(
         NpgsqlConnection connection,
         Guid? projectId,
@@ -665,6 +593,27 @@ internal static class EnterpriseNotificationOrchestrationService
             "not_evaluated",
             Array.Empty<string>(),
             DateTimeOffset.UtcNow);
+    }
+
+    private static async Task RefreshExpenseEmailStatusAsync(NpgsqlConnection connection, Guid uploadId, CancellationToken token)
+    {
+        var states=new List<(string Status,string Code)>();
+        await using(var query=new NpgsqlCommand("""
+            SELECT COALESCE(dispatch.delivery_status,'queued'),COALESCE(dispatch.last_error_code,'')
+            FROM enterprise_notification_events event
+              JOIN enterprise_notification_policies policy ON policy.policy_code=event.policy_code AND policy.enabled=TRUE
+              LEFT JOIN project_notification_dispatches dispatch ON dispatch.project_notification_dispatch_id=event.dispatch_id
+            WHERE event.entity_id=@id AND event.policy_code IN ('EXPENSE_UPLOAD_CONFIRMATION','EXPENSE_PM_REVIEW_REQUEST');
+            """,connection))
+        {
+            query.Parameters.AddWithValue("id",uploadId);await using var reader=await query.ExecuteReaderAsync(token);
+            while(await reader.ReadAsync(token)) states.Add((reader.GetString(0),reader.GetString(1)));
+        }
+        var status=states.Any(x=>x.Status is "failed" or "outcome_unknown") ? "failed"
+            : states.Any(x=>x.Status=="sent") && states.All(x=>x.Status=="sent" || (x.Status=="suppressed" && x.Code=="NO_VALID_RECIPIENTS")) ? "sent"
+            : states.Any(x=>x.Code.Contains("BOUNDARY",StringComparison.Ordinal) || x.Code.Contains("CONFIGURATION",StringComparison.Ordinal)) ? "configuration_pending" : "queued";
+        await UpdateExpenseCompatibilityAsync(connection,uploadId,status,
+            $"Email notifications: {status}. Teams delivery is tracked independently in Module 065.",token);
     }
 
     private static async Task UpdateExpenseCompatibilityAsync(

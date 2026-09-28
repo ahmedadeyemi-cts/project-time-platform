@@ -38,6 +38,7 @@ export default function MicrosoftTeamsNotificationPanel({ environment }) {
 function TeamsNotificationWorkspace({ environment }) {
   const id = useId();
   const [state, setState] = useState(null);
+  const [outbox, setOutbox] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState('load');
   const [notice, setNotice] = useState(null);
@@ -54,9 +55,11 @@ function TeamsNotificationWorkspace({ environment }) {
   const latest = allRows[0] ? deliveryPresentation(allRows[0]) : null;
   const environmentName = environment === 'test' ? 'Test' : environment === 'production' ? 'Production' : 'Unknown';
 
-  async function perform(mode) {
+  async function perform(mode, retryRow = null) {
     // Synchronous guard prevents a double click before React rerenders.
     if (!active.current || operation.current) return;
+    if (mode === 'retry' && (!outbox?.canRetry || retryRow?.status !== 'failed' || retryRow?.attempts >= 5)) return;
+    if (mode === 'retry' && !window.confirm(`Retry only the Teams notification to ${retryRow.recipient}? Email will not be resent.`)) return;
     if (mode === 'save' && !access.canSave) return;
     if (mode === 'test' && (!access.canTest || !validRecipient(recipient) || confirmation !== 'SEND TEAMS TEST')) return;
     if (mode === 'check' && (!access.canTest || !validRecipient(recipient))) return;
@@ -69,6 +72,11 @@ function TeamsNotificationWorkspace({ environment }) {
     let resultNotice = null;
     let mutationFailed = false;
     try {
+      if (mode === 'retry') {
+        const result = await request(`${path}/outbox/retry`, { method: 'POST', signal: token.controller.signal, headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dispatchId: retryRow.dispatchId, recipient: retryRow.recipient, expectedAttemptCount: retryRow.attempts, confirmation: 'RETRY TEAMS ONLY' }) });
+        resultNotice = { tone: 'neutral', text: result.message };
+      }
       if (mode === 'check') {
         const result = await request(`${path}/check-installation`, {
           method: 'POST', signal: token.controller.signal, headers: { 'Content-Type': 'application/json' },
@@ -109,6 +117,11 @@ function TeamsNotificationWorkspace({ environment }) {
       if (!current()) return;
       if (!next || typeof next !== 'object' || !next.configuration || typeof next.configuration !== 'object')
         throw new Error('The configuration response is incomplete. No delivery readiness was established.');
+      let mirror;
+      try { mirror = await request(`${path}/outbox`, { signal: token.controller.signal }); }
+      catch (error) { mirror = { ready: false, message: `Email-and-Teams queue status could not be loaded. ${error.message}` }; }
+      if (!current()) return;
+      setOutbox(mirror);
       setState(next);
       // Keep edits after failed saves and ordinary refresh; retain their original revision.
       if (mode === 'load' || (mode === 'save' && !mutationFailed) || !access.dirty) setDraft(next.configuration);
@@ -118,7 +131,7 @@ function TeamsNotificationWorkspace({ environment }) {
       if (!current()) return;
       setFresh(false);
       if (error.httpStatus === 401 || error.httpStatus === 403) {
-        setState(null); setDraft(null); setRecipient(''); setConfirmation('');
+        setState(null); setOutbox(null); setDraft(null); setRecipient(''); setConfirmation('');
       }
       setNotice({ tone: 'danger', text: [resultNotice?.text, `Current configuration and history could not be refreshed. ${error.message}`].filter(Boolean).join(' ') });
     } finally {
@@ -229,6 +242,25 @@ function TeamsNotificationWorkspace({ environment }) {
       <p className="teams-notifications-help">Pulse sends one authenticated workflow envelope containing the approved recipients, subject, message, severity and Pulse link. The centrally owned flow posts individual reminders as Flow bot chats and can post cost-risk events to an approved group-chat or channel branch.</p>
       <p className="teams-notifications-help">Email and Teams are recorded as separate channels. A failure in one channel must not replay a successful delivery in the other.</p>
     </details>
+
+    <section className="teams-notifications-section" aria-labelledby={`${id}-mirror`}>
+      <h3 id={`${id}-mirror`}>Email and Teams notification delivery</h3>
+      <p>Email and Teams are tracked independently. Teams mirrors go individually to the authorized email recipients. Accepted means Microsoft accepted the request; the flow run confirms final delivery.</p>
+      {outbox?.ready ? <>
+        <p role="status">Waiting: {(outbox.totals?.queued || 0) + (outbox.totals?.retry_wait || 0)}; accepted: {outbox.totals?.accepted || 0}; needs attention: {(outbox.totals?.failed || 0) + (outbox.totals?.outcome_unknown || 0)}; not sent by policy: {outbox.totals?.suppressed || 0}.</p>
+        <p className="teams-notifications-help">Large recipient lists are queued to respect Microsoft limits. Teams-only retries never resend email. Unknown outcomes require reconciliation, not another send.</p>
+        {Array.isArray(outbox.recent) && outbox.recent.length > 0 && <div className="teams-notifications-table" role="region" aria-label="Email notification Teams mirrors" tabIndex={0}>
+          <table><caption className="teams-notifications-visually-hidden">Recent per-recipient Teams mirror status</caption><thead><tr><th scope="col">Recipient</th><th scope="col">Teams result</th><th scope="col">Updated</th><th scope="col">Action</th></tr></thead>
+            <tbody>{outbox.recent.map((row) => <tr key={`${row.dispatchId}:${row.recipient}`}><td>{row.recipient}</td><td>
+              {({ queued: 'Waiting', retry_wait: 'Waiting to retry', sending: 'Submitting', accepted: 'Accepted by Microsoft', suppressed: 'Not sent by policy', failed: 'Needs attention', outcome_unknown: 'Needs reconciliation' })[row.status] || 'Unknown'}
+              {row.diagnosticCode && <details><summary>Technical details</summary><code>{row.diagnosticCode}</code></details>}
+            </td><td>{localTimestamp(row.updatedAt)}</td><td>{outbox.canRetry && row.status === 'failed' && row.attempts < 5
+              ? <button className="secondary-action" type="button" disabled={Boolean(busy)} onClick={() => void perform('retry', row)}>Retry Teams only</button>
+              : row.status === 'outcome_unknown' ? 'Review the workflow run before any resend.' : row.status === 'failed' ? 'Review configuration and recipient eligibility.' : row.status === 'suppressed' ? 'Review policy when delivery was expected.' : row.status === 'accepted' ? 'Confirm the message in the workflow run.' : 'The worker will process this notification.'}</td></tr>)}</tbody>
+          </table>
+        </div>}
+      </> : <p role="status">{outbox?.message || 'Email-and-Teams queue status has not loaded yet.'}</p>}
+    </section>
 
     <section className="teams-notifications-history" aria-labelledby={`${id}-history`}>
       <div className="microsoft-integration-card-heading"><div><h3 id={`${id}-history`}>Recent delivery results</h3><p className="teams-notifications-help">{allRows.length} recent records loaded. Results are not a complete delivery audit.</p></div>
