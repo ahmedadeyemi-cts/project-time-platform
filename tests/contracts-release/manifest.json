@@ -4,6 +4,13 @@
   "pr": 1205,
   "files": [
     ".github/workflows/contracts-approval-funding-ci.yml",
+    ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/module-management-owner-drawer-ci.yml",
+    ".github/workflows/module033-project-forge-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
     "deployment/database/060c-contract-approval-funding-rollback.sql",
     "deployment/database/060c-contract-approval-funding.sql",
     "docs/changes/module060-contract-approval-funding.md",
@@ -20,13 +27,22 @@
     "src/frontend/project-time-web/src/ContractsCenter.jsx",
     "src/frontend/project-time-web/src/WorkRegisterCenter.jsx",
     "tests/contracts-approval-funding.test.mjs",
+    "tests/contracts-release/admission_fixture.py",
     "tests/contracts-release/manifest.json",
     "tests/contracts-release/scope.py",
     "tests/contracts-release/test_scope.py",
-    "tests/flowhive-migration-package.test.py"
+    "tests/flowhive-migration-package.test.py",
+    "tests/laya/processed-source-scope.py"
   ],
   "sha256": {
     ".github/workflows/contracts-approval-funding-ci.yml": "11ace0f28f13d4135e8de4762c57ccecb0910eb501ad47949f4abb52061ad0df",
+    ".github/workflows/flowhive-enterprise-psa-ci.yml": "074e6fa89eda18a1a4fbadc9783c1636e7572c02d350209aee0d85ee852b1efd",
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "ab74caf3a4acf51f1f2784c766ffb6a383ea0819b3b743761c672b4cde9b614b",
+    ".github/workflows/module-management-owner-drawer-ci.yml": "9efb5905fe3c14f1611e31900d5b2a75c1a5e6a2f08915176821adf6a44f4c36",
+    ".github/workflows/module033-project-forge-ci.yml": "91f5d43b2100eeeae9ad91f82be82f6ec40a22439c0a5b3d2e6515b6fde2b87d",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "566ebf7cbe2acfe0cc0006c0ae55eec0df94fb96f847f6ae3dd1d58644875684",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "34c6d3872342e3078a9e0cc856e5573d3944e6a0ed6d6edbefdb32cb5da4d37f",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "03e354d1bed2b162a6de664e401db91e265ff69deb2b93aa86114670fae70c76",
     "deployment/database/060c-contract-approval-funding-rollback.sql": "96ff6d9cad810c885d9cf592727c8c5b0a3ae97ece4aad66fdef632d6cc432e6",
     "deployment/database/060c-contract-approval-funding.sql": "7e24a27ae7165c0b27954719d7d3a8f2153cb44828ad0d14fa203bf89f9a9a9e",
     "docs/changes/module060-contract-approval-funding.md": "debc6417c71bea21cd1a7a182479063a0e5263b336030813a175289c337194a9",
@@ -43,8 +59,10 @@
     "src/frontend/project-time-web/src/ContractsCenter.jsx": "0052f45f9a411cbda621bd91f1a86aa45ba9f0a876638743d3d8124dd7c00bad",
     "src/frontend/project-time-web/src/WorkRegisterCenter.jsx": "942a76c1830afa95ff95738bc16fae8b6a4ef7797beba3f38acc5ad683a14a1c",
     "tests/contracts-approval-funding.test.mjs": "a4d19d73ed56f97eeed2e097817b14fe21612b606b6aa62eb709e975ca0805ea",
+    "tests/contracts-release/admission_fixture.py": "cf0a5f7b2fd7885580cebf897f29673a7fcb0f3518c8a5720c79374aee775e20",
     "tests/contracts-release/scope.py": "8ca08fc64eb6e98449a510a6869e7682658ed056f5b48bdec8fb9e67fc0cd509",
     "tests/contracts-release/test_scope.py": "3abaf43842b7cc2bc5f5a21c6bbf645e761449ef24c8129b9d186ef17b1460a0",
-    "tests/flowhive-migration-package.test.py": "25ea0084f6f56442951284d9b463e8809cd90fc7bc1a516ef586a1c82f8db53d"
+    "tests/flowhive-migration-package.test.py": "25ea0084f6f56442951284d9b463e8809cd90fc7bc1a516ef586a1c82f8db53d",
+    "tests/laya/processed-source-scope.py": "c045f058f97580be2dbcab710dbe4f7f93fe8dfc6d2ef9c353bfd1b60181edbd"
   }
 }
