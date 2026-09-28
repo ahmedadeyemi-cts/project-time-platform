@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'tests/flowhive-psa-admission.test.mjs'
 TARGET = ROOT / 'tests/enterprise-ux-admission.generated.test.mjs'
 SOURCE_BLOB = 'bef62ea96a938107be17c2a83cbbaf7549bdd7ba'
-FIXTURE_REF = 'e2315413b61cc0893c3771b40f428b6fc61bd53f'
+FIXTURE_REF = 'a18e3cb7c635c308d49dab9d66e4bc58027ca9ee'
 BRANCHES = {'fix/enterprise-ux-consistency-20260928'}
 
 
