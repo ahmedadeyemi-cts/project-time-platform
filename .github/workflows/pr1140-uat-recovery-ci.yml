@@ -39,7 +39,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
-          if [[ "$GITHUB_HEAD_REF" == 'fix/module025-readback-contract-20260928' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then
+            python3 tests/notification-parity/release_scope.py
+            python3 tests/notification-parity/test_release_scope.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-readback-contract-20260928' ]]; then
             bash scripts/release-test/validate-module025-governed-release.sh
             git diff --exit-code "$BASE_SHA" HEAD -- src database .github/workflows/projectpulse-deploy-test.yml .github/workflows/projectpulse-deploy-production.yml
           elif [[ "$GITHUB_HEAD_REF" == 'fix/enterprise-ux-consistency-20260928' ]]; then

@@ -88,3 +88,9 @@ node --test tests/teams-workspace/state.test.mjs
 ```
 
 Microsoft reference: https://learn.microsoft.com/en-us/connectors/teams/ and https://learn.microsoft.com/en-us/power-automate/teams/send-a-message-in-teams.
+
+## Protected UAT release registration (PR1204)
+
+The candidate is reconciled with main `3f30bf1c6b56a5fe49116834e16b4ec2c1e13ea3`. A shared exact-file scope verifier registers the narrow Analytics sender integration and the cross-module notification implementation. The Test/Production deployment workflows, native Test environment approval, current-main identity gate, supervisor and old admission authority are byte-identical to that baseline. The complete original FlowHive admission suite runs against its explicit historical fixture; no assertions are removed and no old approval is treated as authorizing new application code.
+
+The existing immutable private-network document-authority migration image now packages prerequisite 126 and migrations 128/129, with checksum verification and a read-only postcondition script. It refuses missing queue schema/indexes, missing workflow columns or a reminder policy that permits live recipients in UAT. The host emits `migration-128-129-notification-parity.json` only after the owned private job succeeds. Existing email/Teams settings are retained and the new reminder policies are not activated. The unchanged main supervisor remains responsible for exact merged-main deployment and full UAT; this source registration is not a deployment receipt.

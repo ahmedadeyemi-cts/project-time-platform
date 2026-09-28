@@ -44,9 +44,18 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: '10.0.x'
+      - name: Validate exact release registration and negative scope cases
+        if: github.head_ref == 'feature/module065-email-teams-notification-parity-20260928'
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python3 tests/notification-parity/release_scope.py
+          python3 tests/notification-parity/test_release_scope.py
       - name: Audit every email transport and parity call site
         run: python3 tests/notification-parity/check-coverage.py
       - name: Exercise real protocol and pure policy without Microsoft calls

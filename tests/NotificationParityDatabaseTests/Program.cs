@@ -47,6 +47,8 @@ try
     }
     foreach(Match match in Regex.Matches(schema064,@"CREATE UNIQUE INDEX IF NOT EXISTS [\s\S]*?;"))
         if(match.Value.Contains("ON enterprise_notification_events")) await Sql(db,match.Value);
+    await Sql(db,await File.ReadAllTextAsync(Path.Combine(root,"database/migrations/113_module065_teams_notifications.sql")));
+    await Sql(db,await File.ReadAllTextAsync(Path.Combine(root,"database/migrations/126_module065_power_automate_teams_delivery.sql")));
     var migration128=await File.ReadAllTextAsync(Path.Combine(root,"database/migrations/128_module065_email_teams_notification_parity.sql"));
     await Sql(db,migration128);await Sql(db,migration128);
     Check(await Scalar<long>(db,"SELECT count(*) FROM module065_teams_outbox;")==0,"migration never queues or sends historical notifications");
@@ -84,6 +86,15 @@ try
 
     var migration129=await File.ReadAllTextAsync(Path.Combine(root,"database/migrations/129_enterprise_reminder_delivery_sources.sql"));
     await Sql(db,migration129);await Sql(db,migration129);
+    var parityVerification=await File.ReadAllTextAsync(Path.Combine(root,"scripts/release-test/verify-module065-notification-parity.sql"));
+    await Sql(db,parityVerification);
+    Check(true,"actual packaged Protected UAT parity SQL accepts complete safe schema");
+    await Sql(db,"ALTER INDEX ix_module065_teams_outbox_due RENAME TO fixture_missing_queue_index;");
+    var missingIndexRejected=false;
+    try { await Sql(db,parityVerification); } catch(PostgresException) { missingIndexRejected=true; }
+    await Sql(db,"ALTER INDEX fixture_missing_queue_index RENAME TO ix_module065_teams_outbox_due;");
+    Check(missingIndexRejected,"packaged UAT verifier fails closed on missing durable queue index");
+
     Check(await Scalar<long>(db,"SELECT count(*) FROM enterprise_notification_policies WHERE producer_contract='enterprise-reminder-v1' AND enabled=FALSE AND delivery_boundary='test_only';")==4,"new sources are opt-in and Test-only");
     for(var i=1;i<=5;i++) await Sql(db,$"INSERT INTO app_users(user_id,email,display_name,is_active,login_enabled) VALUES('{User(i)}','u{i}@example.invalid','User {i}',{(i!=5 ? "TRUE" : "FALSE")},TRUE);");
     await Sql(db,$$"""
