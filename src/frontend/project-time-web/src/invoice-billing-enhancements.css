@@ -48,3 +48,4 @@ details.m042-output-commandbar > summary, details.m042-preview-mode > summary { 
 .m042-manual-panel button { margin: .5rem .5rem .5rem 0; }
 [data-theme="dark"] .m042-manual-panel, [data-theme="dark"] .m042-manual-fields input, [data-theme="dark"] .m042-manual-fields textarea, [data-theme="dark"] .m042-manual-fields select { background: #152235; color: #eef4ff; border-color: #536780; }
 @media (max-width: 700px) { .m042-manual-fields { grid-template-columns: 1fr; } }
+.m042-manual-panel .m042-reference-summary dt { color: inherit; }

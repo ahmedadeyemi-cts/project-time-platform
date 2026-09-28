@@ -39,6 +39,14 @@ try {
   await page.getByLabel('Customer-facing description',{exact:true}).fill('Approved project milestone');
   await page.getByLabel('Internal audit reason',{exact:true}).fill('Approved partial invoice request');
   assert.match(await page.locator('dl').innerText(),/\$2,000\.00/);checks++;
+  const contrast = await page.locator('dt').first().evaluate(element => {
+    const rgb = value => value.match(/[\d.]+/g).slice(0,3).map(Number).map(v => {v/=255;return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4;});
+    const lum = values => values[0]*0.2126+values[1]*0.7152+values[2]*0.0722;
+    const foreground=lum(rgb(getComputedStyle(element).color));
+    const background=lum(rgb(getComputedStyle(element.closest('.m042-manual-panel')).backgroundColor));
+    return (Math.max(foreground,background)+0.05)/(Math.min(foreground,background)+0.05);
+  });
+  assert.ok(contrast>=4.5,`Billing balance labels contrast: ${contrast}`);checks++;
   await page.getByRole('checkbox').check();await page.getByRole('button',{name:'Create partial invoice',exact:true}).click();
   await page.getByRole('button',{name:'Retry same invoice request',exact:true}).waitFor();
   await page.getByRole('button',{name:'Retry same invoice request',exact:true}).click();
