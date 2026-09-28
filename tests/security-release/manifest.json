@@ -3,6 +3,7 @@
   "implementation": "1c0f5a392384df5ef9c6f0895cfd716ef4e3ac05",
   "files": [
     ".github/workflows/admin-runtime-stability-ci.yml",
+    ".github/workflows/celar-ai-production-platform-ci.yml",
     ".github/workflows/enterprise-ui-polish-ci.yml",
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
     ".github/workflows/flowhive-psa-installed-acceptance.yml",
@@ -11,6 +12,7 @@
     ".github/workflows/module-management-owner-drawer-ci.yml",
     ".github/workflows/module033-project-forge-ci.yml",
     ".github/workflows/modules010065-microsoft-runtime-ci.yml",
+    ".github/workflows/pr1139-uat-recovery-ci.yml",
     ".github/workflows/pr1140-uat-recovery-ci.yml",
     ".github/workflows/pr1151-uat-supersession-ci.yml",
     ".github/workflows/projectpulse-deploy-approval-access-hotfix-test.yml",
@@ -158,6 +160,10 @@
       "sha256": "0eff2fc016041e599f4ce18ca12d2c410e5575cb1eaf2d03850791817f12f85f"
     },
     {
+      "path": ".github/workflows/celar-ai-production-platform-ci.yml",
+      "sha256": "8baae0f44feaea4b148792fbc0600ca86aa657ae312d8c838ed6aefb629150a6"
+    },
+    {
       "path": ".github/workflows/enterprise-ui-polish-ci.yml",
       "sha256": "8ec11252d95635bae0dace71a29ed8eb78871d318924eca754be28390ff41389"
     },
@@ -188,6 +194,10 @@
     {
       "path": ".github/workflows/modules010065-microsoft-runtime-ci.yml",
       "sha256": "703a30aa9d37b70af500d0f8c7befc7f4f8c356873ef97cca2acaeef6f925e3b"
+    },
+    {
+      "path": ".github/workflows/pr1139-uat-recovery-ci.yml",
+      "sha256": "695dbdd45387e9ea575674e83121c52dc630c76e53229cb85506f1164be8ee58"
     },
     {
       "path": ".github/workflows/pr1140-uat-recovery-ci.yml",
