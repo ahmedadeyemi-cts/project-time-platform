@@ -135,7 +135,7 @@ public static partial class InvoiceBillingModule
             // Retain the current commercial snapshot alongside the original immutable invoice.
             var commercial = request.Action == "sell_verified"
                 ? await SellCommercialReadModelModule.LoadProjectCommercialSummaryAsync(connection, projectId, transaction) : null;
-            if (request.Action == "sell_verified" && (commercial?.ConnectorReady != true || string.IsNullOrWhiteSpace(commercial.SellQuoteNumber)))
+            if (request.Action == "sell_verified" && (commercial is null || !IsSellAvailable(commercial)))
                 return Results.Conflict(new { message = "SELL has no synchronized quote for this project yet. Retain the fallback evidence and reconcile after it becomes available." });
             await using var audit = new NpgsqlCommand("""
                 INSERT INTO billing_invoice_events(billing_invoice_id,event_type,prior_status,new_status,actor_user_id,event_reason,event_json)

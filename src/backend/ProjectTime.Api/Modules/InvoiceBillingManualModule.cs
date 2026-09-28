@@ -23,6 +23,9 @@ public static partial class InvoiceBillingModule
         context.Items.TryGetValue("ProjectPulseIsViewAs", out var value) && value is true;
     private static bool CanApproveBillingException(InvoiceBillingAccessContext access) => access.RoleCodes.Any(role =>
         role.ToUpperInvariant() is "BILLING" or "FINANCE" or "ACCOUNTING" or "ACCOUNTING_BILLING" or "ADMINISTRATOR" or "SUPER_ADMINISTRATOR");
+    private static bool IsSellAvailable(SellCommercialProjectSummary commercial) => commercial.ConnectorReady
+        && commercial.CommercialSource is "SELL" or "current_stored_rates"
+        && commercial.LastSuccessfulSyncAt is not null && !string.IsNullOrWhiteSpace(commercial.SellQuoteNumber);
     private static string BillingHash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
     private static async Task<IResult> GetManualBillingAsync(Guid projectId, HttpContext context)
@@ -41,7 +44,7 @@ public static partial class InvoiceBillingModule
         basis = basis with { Fingerprint = BillingHash(basis.Fingerprint + JsonSerializer.Serialize(commercial, ManualJson)) };
         return Results.Ok(new { status = "manual_billing_loaded", projectId, canCreate = access.CanCreateInvoices,
             canApproveException = CanApproveBillingException(access), fixedPrice = IsFixedPrice(commercial.ContractType),
-            commercial, basis, currency = "USD", connectorRequired = false });
+            commercial, sellAvailable = IsSellAvailable(commercial), basis, currency = "USD", connectorRequired = false });
     }
 
     private static async Task<ManualBillingBasis> LoadManualBillingBasisAsync(NpgsqlConnection connection,
@@ -136,7 +139,7 @@ public static partial class InvoiceBillingModule
             if (validation is not null) return Results.BadRequest(new { message = validation });
             var eligibility = ManualBillingPolicy.ValidateEligibility(request, IsFixedPrice(project.ContractType),
                 basis.SubmittedTimeCount, basis.PendingTimeCount, basis.DeliveryComplete,
-                CanApproveBillingException(access), commercial.ConnectorReady && !string.IsNullOrWhiteSpace(commercial.SellQuoteNumber));
+                CanApproveBillingException(access), IsSellAvailable(commercial));
             if (eligibility is not null) return Results.BadRequest(new { message = eligibility });
             var blockers = BuildProjectStructuralBlockers(project);
             if (blockers.Count > 0) return Results.Conflict(new { message = "Complete the project billing details before invoicing.", blockers });
@@ -150,7 +153,7 @@ public static partial class InvoiceBillingModule
                 previouslyBilledOutsidePulse = request.PreviouslyBilledOutsidePulse,
                 priorPulseInvoiced = basis.PulseInvoiced, request, newCharge = amount, actor = userId.Value,
                 recordedAt = DateTimeOffset.UtcNow, commercialSnapshot = commercial,
-                commercialReconciliationRequired = !commercial.ConnectorReady || string.IsNullOrWhiteSpace(commercial.SellQuoteNumber),
+                commercialReconciliationRequired = !IsSellAvailable(commercial),
                 timeEvidence = new { basis.SubmittedTimeCount, basis.PendingTimeCount, basis.DeliveryComplete },
                 exceptionApprovedBy = request.BillingBasis == "exception" ? userId : null
             }, ManualJson);

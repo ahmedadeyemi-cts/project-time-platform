@@ -132,13 +132,16 @@ try {
  Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff with {OperationId=Guid.NewGuid(),Action="sell_verified"},Context(billing)))==409,"cannot claim SELL reconciliation before synchronized quote exists");
  await Sql(c,$"UPDATE projects SET sell_quote_number='SELL-Q-123' WHERE project_id='{queued}'; INSERT INTO external_integration_connections(system_code,display_name,connection_status,inbound_enabled,last_successful_sync_at) VALUES('SELL','ConnectWise SELL','connected',true,now()) ON CONFLICT(system_code) DO UPDATE SET connection_status='connected',inbound_enabled=true,last_successful_sync_at=now();");
  Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff with {OperationId=Guid.NewGuid(),Action="sell_verified",Reference="SELL-Q-123 approved revision 2"},Context(billing)))==200,"restored synchronized SELL information can be reconciled without rewriting invoice");
+ await Sql(c,"UPDATE customer_directory_source_authority SET source_mode='manual',provider_key=NULL WHERE customer_source_authority_id=1");
+ Check(!Value(await Invoke("GetManualBillingAsync",queued,Context(billing))).GetProperty("sellAvailable").GetBoolean(),"manual customer directory is not misrepresented as a live SELL source");
+ await Sql(c,"UPDATE customer_directory_source_authority SET source_mode='sell',provider_key='connectwise_sell' WHERE customer_source_authority_id=1");
  var recoveryView=Value(await Invoke("GetBillingRecoveryAsync",InvoiceId(queuedFirst),Context(billing)));
  Check(recoveryView.GetProperty("history").GetArrayLength()==5,"history retains hold, release, handoff, match and SELL verification once each");
  await Sql(c,$"UPDATE external_integration_outbox SET delivery_status='processing' WHERE local_entity_id='{InvoiceId(queuedFirst)}'");
  Check(Status(await Invoke("SaveBillingRecoveryAsync",InvoiceId(queuedFirst),handoff with {OperationId=Guid.NewGuid()},Context(billing)))==409,"in-flight transmission cannot be overridden");
  // Partial progress needs submitted evidence, but does not require all time approved.
- var progress=await Project(c);var progressSheet=Guid.NewGuid();
- await Sql(c,$"INSERT INTO timesheets(timesheet_id,user_id,week_start_date,week_end_date) VALUES('{progressSheet}','{pm}',current_date,current_date+6); INSERT INTO time_entries(timesheet_id,user_id,project_id,work_date,hours,status) VALUES('{progressSheet}','{pm}','{progress}',current_date,2,'submitted')");
+ var progress=await Project(c);var progressSheet=timesheet;
+ await Sql(c,$"INSERT INTO time_entries(timesheet_id,user_id,project_id,work_date,hours,status) VALUES('{progressSheet}','{pm}','{progress}',current_date,2,'submitted')");
  var progressRequest=first with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(progress,billing),BillingBasis="progress"};
  Check(Status(await Create(progress,progressRequest,pm))==201,"assigned PM can invoice supported partial progress with incomplete time");
  Check(Status(await Create(progress,progressRequest with {OperationId=Guid.NewGuid(),ExpectedFingerprint=await Basis(progress,billing),InvoiceType="final",BillToDate=10000},pm))==400,"incomplete time and delivery cannot use ordinary final billing");
