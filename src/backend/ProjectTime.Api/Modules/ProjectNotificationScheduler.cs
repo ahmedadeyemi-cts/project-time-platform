@@ -212,7 +212,7 @@ internal static class ProjectNotificationScheduler
     {
         try
         {
-            return TimeZoneInfo.FindSystemTimeZoneById(timezoneName);
+            return global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(timezoneName);
         }
         catch
         {

@@ -46,17 +46,20 @@ jobs:
       - name: Guard workflow source and Approval Center hotfix commit
         id: release
         shell: bash
+        env:
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
         run: |
           set -Eeuo pipefail
           [[ '${{ github.ref }}' == 'refs/heads/main' ]] || {
             echo 'This workflow must be dispatched from main.' >&2
             exit 1
           }
-          [[ '${{ inputs.confirmation }}' == 'DEPLOY-APPROVAL-ACCESS-HOTFIX-TO-TEST' ]] || {
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-APPROVAL-ACCESS-HOTFIX-TO-TEST' ]] || {
             echo 'The deployment confirmation text does not match.' >&2
             exit 1
           }
-          [[ '${{ inputs.release_commit }}' =~ ^[0-9a-f]{40}$ ]] || {
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
             echo 'release_commit must be a complete 40-character SHA.' >&2
             exit 1
           }
@@ -67,7 +70,7 @@ jobs:
             echo 'The checked-out control commit does not match this workflow run.' >&2
             exit 1
           }
-          [[ "$TARGET_COMMIT" == '${{ inputs.release_commit }}' ]] || {
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]] || {
             echo 'The checked-out release does not match the requested commit.' >&2
             exit 1
           }

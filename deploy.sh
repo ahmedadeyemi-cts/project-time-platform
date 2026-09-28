@@ -11,6 +11,7 @@
 #   scripts/verity/pin-digests.sh vX.Y.Z   # writes .verity/release.env
 #   ./deploy.sh                            # deploy the pinned release
 set -Eeuo pipefail
+umask 077
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
@@ -20,7 +21,15 @@ COMPOSE="docker compose -f .verity/deploy.compose.yml --env-file .verity/deploy.
 # --- config ---
 [ -f .verity/deploy.env ]  || { echo "Missing .verity/deploy.env (copy .verity/deploy.env.example)"; exit 1; }
 [ -f .verity/release.env ] || { echo "Missing .verity/release.env — run scripts/verity/pin-digests.sh first"; exit 1; }
-set -a; . .verity/deploy.env; . .verity/release.env; set +a
+# Operator-owned configuration is trusted. Downloaded release metadata is not.
+set -a; . .verity/deploy.env; set +a
+RELEASE_DATA="$(python3 scripts/verity/release-config.py env .verity/release.env)"
+while IFS='=' read -r key value; do
+  case "$key" in
+    RELEASE_TAG|RELEASE_VERSION|WEB_IMAGE|API_IMAGE) export "$key=$value" ;;
+    *) echo 'Unsupported release configuration key' >&2; exit 1 ;;
+  esac
+done <<< "$RELEASE_DATA"
 
 VERIFY_BASE_URL="${VERIFY_BASE_URL:-http://localhost:${WEB_PORT:-8080}}"
 echo "== Deploying ${RELEASE_TAG:-?} =="
@@ -38,6 +47,7 @@ $COMPOSE pull --ignore-pull-failures
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="${PROJECTPULSE_BACKUP_ROOT:-.verity/backups}/${STAMP}"
 mkdir -p "$BACKUP_DIR"
+chmod 0700 "$BACKUP_DIR"
 if $COMPOSE ps db --status running >/dev/null 2>&1; then
   echo "== Backup DB -> ${BACKUP_DIR}/ProjectPulse.dump =="
   $COMPOSE exec -T db pg_dump -Fc -U "${POSTGRES_USER:-projectpulse}" "${POSTGRES_DB:-ProjectPulse}" \

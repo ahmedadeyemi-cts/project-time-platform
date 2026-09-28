@@ -439,7 +439,7 @@ internal static partial class ProjectFlowHivePsaModule
             return Results.BadRequest(new { message = "Choose up to eight lead days between 0 and 60." });
         var timezone = Clean(request.TimezoneName, 100);
         if (timezone.Length == 0) timezone = "America/Chicago";
-        try { TimeZoneInfo.FindSystemTimeZoneById(timezone); }
+        try { global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(timezone); }
         catch (TimeZoneNotFoundException) { return Results.BadRequest(new { message = "Select a valid timezone." }); }
         catch (InvalidTimeZoneException) { return Results.BadRequest(new { message = "Select a valid timezone." }); }
         if (request.DeliveryBoundary is not ("test_only" or "production_governed" or "locked"))

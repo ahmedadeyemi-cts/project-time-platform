@@ -234,10 +234,8 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
                 "failedResponses": failed_responses,
                 "pageErrors": len(page_errors),
             }
-            try:
-                await page.screenshot(path=str(evidence_dir / "my-role-failure.png"), full_page=True)
-            except Exception:
-                report["browserDiagnostics"]["screenshot"] = "unavailable"
+            # Authenticated pages may contain customer data. Fixed diagnostics
+            # suffice; never retain screenshots in publishable evidence.
             raise
         finally:
             await context.close()

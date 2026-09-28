@@ -28,9 +28,11 @@ jobs:
 
       - name: Validate historical migration and module contracts without deployment
         shell: bash
+        env:
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -Eeuo pipefail
-          [[ '${{ inputs.confirmation }}' == VALIDATE-PR552-HISTORICAL-CONTRACT ]]
+          [[ "$DISPATCH_CONFIRMATION" == VALIDATE-PR552-HISTORICAL-CONTRACT ]]
           test -f database/migrations/079_coordinated_runtime_ai_document_rbac_repair.sql
           test -f scripts/release-test/apply-079.sh
           bash -n scripts/release-test/apply-079.sh

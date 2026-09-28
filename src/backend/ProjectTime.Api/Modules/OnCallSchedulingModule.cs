@@ -667,7 +667,7 @@ public static class OnCallSchedulingModule
                 out var local)) return false;
         try
         {
-            var zone = TimeZoneInfo.FindSystemTimeZoneById(DefaultTimeZone);
+            var zone = global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(DefaultTimeZone);
             local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
             if (zone.IsInvalidTime(local)) return false;
             instant = new DateTimeOffset(local, zone.GetUtcOffset(local)).ToUniversalTime();

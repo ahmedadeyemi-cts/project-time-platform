@@ -188,7 +188,7 @@ internal static class AnalyticsCenterScheduler
 
     private static TimeZoneInfo ResolveTimezone(string timezoneName)
     {
-        try { return TimeZoneInfo.FindSystemTimeZoneById(timezoneName); }
+        try { return global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(timezoneName); }
         catch { return TimeZoneInfo.Utc; }
     }
 

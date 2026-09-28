@@ -2129,14 +2129,21 @@ jobs:
           bash scripts/wait-containerapp-ready-revision.sh "$RESOURCE_GROUP" "$API_APP" "$RESTORED_REVISION" "$OLD_IMAGE" 60 10
           az containerapp secret remove -g "$RESOURCE_GROUP" -n "$API_APP" --secret-names "$TOKEN_SECRET_NAME" --output none --only-show-errors || true
 
-      - name: Upload protected-Test deployment evidence
+      - name: Prepare content-free protected-Test evidence
+        id: safe_uat_evidence
         if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always()) }}
+        working-directory: control
+        shell: bash
+        run: python3 scripts/security/publish-safe-uat-evidence.py "$EVIDENCE_DIR" "$RUNNER_TEMP/publish-safe-uat"
+
+      - name: Upload protected-Test deployment evidence
+        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always() && steps.safe_uat_evidence.outcome == 'success') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: systemwide-enterprise-reliability-test-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: /tmp/systemwide-enterprise-reliability-test-evidence
+          path: ${{ runner.temp }}/publish-safe-uat/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
       - name: Publish protected-Test release summary
         if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always()) }}

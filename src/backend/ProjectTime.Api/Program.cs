@@ -22617,6 +22617,10 @@ app.MapPost("/api/system/backup-dr/settings", async (JsonElement request, HttpCo
         return fallback;
     }
 
+    if (!BackupConfigurationSafety.Valid(request))
+        return Results.BadRequest(new { status = "invalid_backup_configuration",
+            message = "Backup settings contain an invalid host, port, path, or control character." });
+
     var sftpPath = "/opt/project-time-platform/config/backup-sftp.env";
     var azurePath = "/opt/project-time-platform/config/backup-azure.env";
     var notificationPath = "/opt/project-time-platform/config/backup-notifications.env";
@@ -22637,7 +22641,7 @@ app.MapPost("/api/system/backup-dr/settings", async (JsonElement request, HttpCo
         ? existingAzure.GetValueOrDefault("PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL") ?? ""
         : submittedAzureSas;
 
-    await File.WriteAllLinesAsync(sftpPath, new[]
+    await BackupConfigurationSafety.WritePrivateLinesAsync(sftpPath, new[]
     {
         $"PROJECTPULSE_BACKUP_SFTP_ENABLED={GetBool("sftpEnabled").ToString().ToLowerInvariant()}",
         $"PROJECTPULSE_BACKUP_SFTP_AUTH_MODE={QuoteProjectPulseEnvValue(GetString("sftpAuthMode", "private_key"))}",
@@ -22649,14 +22653,14 @@ app.MapPost("/api/system/backup-dr/settings", async (JsonElement request, HttpCo
         $"PROJECTPULSE_BACKUP_SFTP_PASSWORD={QuoteProjectPulseEnvValue(effectiveSftpPassword)}"
     });
 
-    await File.WriteAllLinesAsync(azurePath, new[]
+    await BackupConfigurationSafety.WritePrivateLinesAsync(azurePath, new[]
     {
         $"PROJECTPULSE_BACKUP_AZURE_ENABLED={GetBool("azureEnabled").ToString().ToLowerInvariant()}",
         $"PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL={QuoteProjectPulseEnvValue(effectiveAzureSas)}",
         $"PROJECTPULSE_BACKUP_AZURE_BLOB_PREFIX={QuoteProjectPulseEnvValue(GetString("azureBlobPrefix", "projectpulse-backups"))}"
     });
 
-    await File.WriteAllLinesAsync(notificationPath, new[]
+    await BackupConfigurationSafety.WritePrivateLinesAsync(notificationPath, new[]
     {
         $"PROJECTPULSE_BACKUP_NOTIFY_ON_SUCCESS={GetBool("notifyOnSuccess").ToString().ToLowerInvariant()}",
         $"PROJECTPULSE_BACKUP_NOTIFY_ON_FAILURE={GetBool("notifyOnFailure", true).ToString().ToLowerInvariant()}",
@@ -22665,7 +22669,7 @@ app.MapPost("/api/system/backup-dr/settings", async (JsonElement request, HttpCo
         $"PROJECTPULSE_BACKUP_CC_RECIPIENTS={QuoteProjectPulseEnvValue(GetString("ccRecipients"))}"
     });
 
-    await File.WriteAllLinesAsync(schedulePath, new[]
+    await BackupConfigurationSafety.WritePrivateLinesAsync(schedulePath, new[]
     {
         $"PROJECTPULSE_BACKUP_SCHEDULE_ENABLED={GetBool("scheduleEnabled").ToString().ToLowerInvariant()}",
         $"PROJECTPULSE_BACKUP_SCHEDULE_MODE={QuoteProjectPulseEnvValue(GetString("scheduleMode", "daily"))}",

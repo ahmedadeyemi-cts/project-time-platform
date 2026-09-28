@@ -15,12 +15,12 @@ internal static class ProjectFlowHiveNotificationPolicy
         "America/Chicago", "test_only", TimeSpan.FromHours(20), TimeSpan.FromHours(6));
 
     internal static DateOnly LocalDate(DateTimeOffset now, Settings settings) =>
-        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById(settings.Timezone)).DateTime);
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(settings.Timezone)).DateTime);
 
     internal static bool IsQuiet(DateTimeOffset now, Settings settings)
     {
         if (settings.QuietStart is not { } start || settings.QuietEnd is not { } end || start == end) return false;
-        var local = TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById(settings.Timezone)).TimeOfDay;
+        var local = TimeZoneInfo.ConvertTime(now, global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(settings.Timezone)).TimeOfDay;
         return start < end ? local >= start && local < end : local >= start || local < end;
     }
 

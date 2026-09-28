@@ -18,7 +18,7 @@ public sealed record CelarAiEnterprisePeriod(DateOnly Start, DateOnly End)
         var instant = now ?? DateTimeOffset.UtcNow;
         if (!string.IsNullOrWhiteSpace(timeZone))
         {
-            try { instant = TimeZoneInfo.ConvertTime(instant, TimeZoneInfo.FindSystemTimeZoneById(timeZone)); }
+            try { instant = TimeZoneInfo.ConvertTime(instant, global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(timeZone)); }
             catch (TimeZoneNotFoundException) { return null; }
             catch (InvalidTimeZoneException) { return null; }
         }

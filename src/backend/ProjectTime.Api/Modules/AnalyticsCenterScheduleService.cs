@@ -607,7 +607,7 @@ internal static class AnalyticsCenterScheduleService
     private static string NormalizeTimezone(string? value)
     {
         var timezone = string.IsNullOrWhiteSpace(value) ? "America/New_York" : value.Trim();
-        try { _ = TimeZoneInfo.FindSystemTimeZoneById(timezone); return timezone; }
+        try { _ = global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(timezone); return timezone; }
         catch { return "UTC"; }
     }
 

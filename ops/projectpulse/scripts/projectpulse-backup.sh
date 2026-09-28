@@ -115,6 +115,64 @@ echo "Creating final backup bundle..."
 tar -C "$BACKUP_ROOT" -czf "$BUNDLE" "$BACKUP_LABEL"
 sha256sum "$BUNDLE" > "$BUNDLE.sha256"
 
+# Read API-authored settings as literal data. Root must never source these files.
+load_backup_data() {
+  local input_file="$1" kind="$2" parsed key value
+  parsed="$(mktemp)"
+  if ! python3 - "$input_file" "$kind" > "$parsed" <<'BACKUP_DATA_PY'
+import pathlib, re, shlex, sys
+path, kind = pathlib.Path(sys.argv[1]), sys.argv[2]
+fields = {
+    'SFTP': {'ENABLED','AUTH_MODE','HOST','PORT','USER','REMOTE_PATH','KEY_PATH','PASSWORD'},
+    'AZURE': {'ENABLED','CONTAINER_SAS_URL','BLOB_PREFIX'},
+}
+if path.stat().st_size > 32768:
+    raise SystemExit('Backup configuration exceeds its size limit')
+values = {}
+for line in path.read_text().splitlines():
+    if not line.strip() or line.lstrip().startswith('#'):
+        continue
+    key, sep, raw = line.partition('=')
+    prefix = 'PROJECTPULSE_BACKUP_' + kind + '_'
+    if not sep or not key.startswith(prefix) or key[len(prefix):] not in fields[kind] or key in values:
+        raise SystemExit('Invalid backup configuration key')
+    parts = shlex.split(raw, comments=False, posix=True)
+    if len(parts) != 1 or any(ord(c) < 32 or ord(c) == 127 for c in parts[0]):
+        raise SystemExit('Invalid backup configuration value')
+    values[key] = parts[0]
+if kind == 'SFTP':
+    def field(name, default=''): return values.get('PROJECTPULSE_BACKUP_SFTP_' + name, default)
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]{0,252}', field('HOST')):
+        raise SystemExit('Invalid SFTP host')
+    if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}', field('USER')):
+        raise SystemExit('Invalid SFTP user')
+    if not field('PORT','22').isdigit() or not 1 <= int(field('PORT','22')) <= 65535:
+        raise SystemExit('Invalid SFTP port')
+    remote = field('REMOTE_PATH')
+    if not remote.startswith('/') or len(remote) > 1024 or '..' in remote.split('/'):
+        raise SystemExit('Invalid SFTP remote path')
+    if field('AUTH_MODE','private_key') not in ('private_key','password'):
+        raise SystemExit('Invalid SFTP authentication mode')
+for key, value in values.items():
+    sys.stdout.write(key + '=' + value + '\0')
+BACKUP_DATA_PY
+  then
+    rm -f "$parsed"
+    return 1
+  fi
+  while IFS='=' read -r -d '' key value; do export "$key=$value"; done < "$parsed"
+  rm -f "$parsed"
+}
+
+# Quote a single SFTP batch argument; controls have already been rejected.
+sftp_argument() {
+  local value="$1"
+  [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || return 1
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '\"%s\"' "$value"
+}
+
 SFTP_UPLOAD_STATUS="not_requested"
 AZURE_UPLOAD_STATUS="not_requested"
 
@@ -124,9 +182,7 @@ if [ "$UPLOAD_TO_SFTP" = true ]; then
     exit 20
   fi
 
-  set -a
-  source "$SFTP_ENV"
-  set +a
+  load_backup_data "$SFTP_ENV" SFTP
 
   : "${PROJECTPULSE_BACKUP_SFTP_HOST:?Missing PROJECTPULSE_BACKUP_SFTP_HOST}"
   : "${PROJECTPULSE_BACKUP_SFTP_PORT:=22}"
@@ -136,9 +192,9 @@ if [ "$UPLOAD_TO_SFTP" = true ]; then
 
   SFTP_BATCH="$(mktemp)"
   {
-    echo "cd $PROJECTPULSE_BACKUP_SFTP_REMOTE_PATH"
-    echo "put $BUNDLE"
-    echo "put $BUNDLE.sha256"
+    printf 'cd %s\n' "$(sftp_argument "$PROJECTPULSE_BACKUP_SFTP_REMOTE_PATH")"
+    printf 'put %s\n' "$(sftp_argument "$BUNDLE")"
+    printf 'put %s\n' "$(sftp_argument "$BUNDLE.sha256")"
   } > "$SFTP_BATCH"
 
   echo "Uploading backup bundle to SFTP using auth mode: $PROJECTPULSE_BACKUP_SFTP_AUTH_MODE"
@@ -186,9 +242,7 @@ if [ "$UPLOAD_TO_AZURE" = true ]; then
     exit 30
   fi
 
-  set -a
-  source "$AZURE_ENV"
-  set +a
+  load_backup_data "$AZURE_ENV" AZURE
 
   : "${PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL:?Missing PROJECTPULSE_BACKUP_AZURE_CONTAINER_SAS_URL}"
   : "${PROJECTPULSE_BACKUP_AZURE_BLOB_PREFIX:=projectpulse-backups}"

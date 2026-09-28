@@ -1,7 +1,7 @@
 # Verity Shipyard deploy topology.
 #
 # Images are pinned by DIGEST (WEB_IMAGE / API_IMAGE) — never by mutable tag —
-# so staging and prod run byte-identical artifacts. deploy.sh sources the pinned
+# so staging and prod run byte-identical artifacts. deploy.sh validates the pinned
 # values from .verity/release.env (written by scripts/verity/pin-digests.sh) and
 # operator config from .verity/deploy.env.
 name: projectpulse

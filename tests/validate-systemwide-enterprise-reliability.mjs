@@ -266,3 +266,9 @@ if (fs.existsSync('.github/workflows/temporary-source-snapshot-20260814.yml')) {
 }
 
 console.log('SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASS governedController=projectpulse-deploy-test');
+
+// Public artifacts must contain only projected summaries and installation receipts.
+requireText(deployment, 'publish-safe-uat-evidence.py', 'evidence projection');
+requireText(deployment, 'steps.safe_uat_evidence.outcome == \'success\'', 'fail-closed artifact publication');
+requireText(deployment, 'path: ${{ runner.temp }}/publish-safe-uat/*.json', 'sanitized artifact allowlist');
+rejectText(deployment, 'path: ${{ env.EVIDENCE_DIR }}', 'raw response artifact upload');

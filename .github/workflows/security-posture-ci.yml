@@ -34,6 +34,24 @@ jobs:
       - name: Validate repository security posture
         run: python3 scripts/security/validate-repository-security-posture.py
 
+      - name: Install offline regression dependencies
+        run: python3 -m pip install PyYAML==6.0.3
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Exercise security deployment and runtime boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 tests/security-deployment-boundaries.test.py
+          python3 tests/flowhive-installed-resolution.test.py
+          python3 tests/flowhive-psa-installed-acceptance.test.py
+          dotnet run --project tests/SecurityBoundaryTests/SecurityBoundaryTests.csproj
+          bash -n deploy.sh scripts/verity/pin-digests.sh ops/projectpulse/scripts/projectpulse-backup.sh scripts/apply-admin-experience-008-009-test-migration.sh
+
       - name: Confirm no tracked private-key or credential containers
         shell: bash
         run: |
