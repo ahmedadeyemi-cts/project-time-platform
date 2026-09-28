@@ -337,35 +337,41 @@ public static partial class Module025SowGsdModule
             mailStatus = "failed";
             diagnostic = "RECIPIENT_ASSIGNMENT_REVIEW_REQUIRED";
         }
-        else if (!readiness.LiveDeliveryEnabled || readiness.RuntimeEnvironment != environment || readiness.ConfiguredEnvironment != environment)
-        {
-            // Especially important in Protected Test: do not bypass test_only,
-            // and do not replay suppressed UAT mail after a profile change.
-            mailStatus = "suppressed";
-            diagnostic = "MODULE065_BOUNDARY_OR_TRANSPORT_BLOCKED";
-        }
         else
         {
-            try
+            var recipients = work.Package.Recipients.GroupBy(r => r.Email, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.OrderBy(r => r.RecipientType == "to" ? 0 : 1).First())
+                .Select(r => new ProjectNotificationUser(r.UserId, r.DisplayName, r.Email, r.Role,
+                    $"module025:{work.Package.SubmissionId:D}", r.RecipientType)).ToArray();
+            var boundary = readiness.RuntimeEnvironment == environment && readiness.ConfiguredEnvironment == environment
+                ? readiness.RecipientBoundary : "locked";
+            await Module065NotificationFanout.QueueNativeAsync(connection, work.Package.SubmissionId, "sow_sell", "025",
+                "sow_sell_published", subject, body, recipients, boundary,
+                new { engagementId=work.Package.EngagementId, submissionId=work.Package.SubmissionId }, null, cancellationToken);
+            if (!readiness.LiveDeliveryEnabled || boundary != "production_governed")
             {
-                var recipients = work.Package.Recipients.GroupBy(r => r.Email, StringComparer.OrdinalIgnoreCase)
-                    .Select(group => group.OrderBy(r => r.RecipientType == "to" ? 0 : 1).First())
-                    .Select(r => new ProjectNotificationUser(r.UserId, r.DisplayName, r.Email, r.Role,
-                        $"module025:{work.Package.SubmissionId:D}", r.RecipientType)).ToArray();
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(45));
-                delivery = await Module065ProjectNotificationDelivery.DeliverAsync(subject, body,
-                    "<p>" + WebUtility.HtmlEncode(body).Replace("\n", "<br />", StringComparison.Ordinal) + "</p>",
-                    recipients, null, timeout.Token).WaitAsync(timeout.Token);
-                mailStatus = delivery.Sent ? "provider_accepted"
-                    : delivery.Status is "queued" or "suppressed" ? "suppressed" : "needs_reconciliation";
-                diagnostic = SowSellDiagnostic(delivery.DiagnosticCode);
+                mailStatus = "suppressed";
+                diagnostic = "MODULE065_BOUNDARY_OR_TRANSPORT_BLOCKED";
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch
+            else
             {
-                mailStatus = "needs_reconciliation";
-                diagnostic = "MAIL_OUTCOME_UNKNOWN";
+                try
+                {
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(45));
+                    delivery = await Module065ProjectNotificationDelivery.DeliverAsync(subject, body,
+                        "<p>" + WebUtility.HtmlEncode(body).Replace("\n", "<br />", StringComparison.Ordinal) + "</p>",
+                        recipients, null, timeout.Token).WaitAsync(timeout.Token);
+                    mailStatus = delivery.Sent ? "provider_accepted"
+                        : delivery.Status is "queued" or "suppressed" ? "suppressed" : "needs_reconciliation";
+                    diagnostic = SowSellDiagnostic(delivery.DiagnosticCode);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch
+                {
+                    mailStatus = "needs_reconciliation";
+                    diagnostic = "MAIL_OUTCOME_UNKNOWN";
+                }
             }
         }
         await using var completed = await connection.BeginTransactionAsync(cancellationToken);
@@ -384,6 +390,22 @@ public static partial class Module025SowGsdModule
                     recipientBoundary = delivery?.RecipientBoundary ?? readiness.RecipientBoundary }, cancellationToken);
         await completed.CommitAsync(cancellationToken);
         return true;
+    }
+
+    internal static async Task<bool> ValidateSowSellTeamsNotificationAsync(NpgsqlConnection connection,
+        Guid submissionId, string email, string environment, CancellationToken token)
+    {
+        await using var source = new NpgsqlCommand("""
+            SELECT EXISTS(SELECT 1 FROM module025_sow_sell_dispatch d
+              JOIN module025_sow_sell_submissions s USING(submission_id)
+              JOIN module025_sow_sell_receipts r USING(submission_id)
+              WHERE d.submission_id=@id AND d.sell_status='published' AND s.runtime_environment=@environment);
+            """,connection);
+        source.Parameters.AddWithValue("id",submissionId); source.Parameters.AddWithValue("environment",environment);
+        if (await source.ExecuteScalarAsync(token) is not true) return false;
+        var work = await LoadSowSellWorkAsync(connection,submissionId,token);
+        return work.Package.Recipients.Any(r=>r.Email.Trim().Equals(email,StringComparison.OrdinalIgnoreCase))
+            && await SowRecipientsStillValidAsync(connection,work.Package.EngagementId,work.Package.Recipients,token);
     }
 
     private static string SowSellDiagnostic(string value) => value.Length is > 0 and <= 160

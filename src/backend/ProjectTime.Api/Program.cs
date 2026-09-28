@@ -7444,20 +7444,6 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/review/sa
 
 
 /* 055D_4J_TEMP_CLOUD_EMAIL_NOTIFICATION_START */
-static string ProjectPulse055D4JEnv(params string[] names)
-{
-    foreach (var name in names)
-    {
-        var value = Environment.GetEnvironmentVariable(name);
-        if (!string.IsNullOrWhiteSpace(value))
-        {
-            return value.Trim();
-        }
-    }
-
-    return "";
-}
-
 static async Task ProjectPulse055D4JNotifyProjectTeamCoordinatorsAsync(NpgsqlConnection connection, Guid intakePackageId, string commitJsonText, Guid actorUserId)
 {
     using var parsed = System.Text.Json.JsonDocument.Parse(commitJsonText);
@@ -7639,78 +7625,8 @@ The @ussignal.cloud placeholder accounts are created with login_enabled = false 
         return;
     }
 
-    var smtpHost = ProjectPulse055D4JEnv("PTP_SMTP_HOST", "SMTP_HOST");
-    var smtpFrom = ProjectPulse055D4JEnv("PTP_SMTP_FROM", "SMTP_FROM", "EMAIL_FROM");
-    var smtpPortText = ProjectPulse055D4JEnv("PTP_SMTP_PORT", "SMTP_PORT");
-    var smtpUser = ProjectPulse055D4JEnv("PTP_SMTP_USER", "SMTP_USER");
-    var smtpPassword = ProjectPulse055D4JEnv("PTP_SMTP_PASSWORD", "SMTP_PASSWORD");
-    var smtpEnableSslText = ProjectPulse055D4JEnv("PTP_SMTP_ENABLE_SSL", "SMTP_ENABLE_SSL");
-
-    if (string.IsNullOrWhiteSpace(smtpHost) || string.IsNullOrWhiteSpace(smtpFrom))
-    {
-        await using var noSmtpCommand = new NpgsqlCommand("""
-            UPDATE work_register_temp_cloud_user_notifications
-            SET notification_status = 'pending_no_smtp_configuration',
-                notification_error = 'SMTP host/from environment variables are not configured.'
-            WHERE work_register_temp_cloud_user_notification_id = @notification_id;
-            """, connection);
-
-        noSmtpCommand.Parameters.AddWithValue("notification_id", notificationId);
-        await noSmtpCommand.ExecuteNonQueryAsync();
-        return;
-    }
-
-    try
-    {
-        var smtpPort = int.TryParse(smtpPortText, out var parsedPort) ? parsedPort : 25;
-        var enableSsl = bool.TryParse(smtpEnableSslText, out var parsedSsl) && parsedSsl;
-
-        using var message = new System.Net.Mail.MailMessage();
-        message.From = new System.Net.Mail.MailAddress(smtpFrom);
-        foreach (var recipient in recipients)
-        {
-            message.To.Add(recipient);
-        }
-
-        message.Subject = subject;
-        message.Body = body;
-        message.IsBodyHtml = false;
-
-        using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
-        {
-            EnableSsl = enableSsl
-        };
-
-        if (!string.IsNullOrWhiteSpace(smtpUser))
-        {
-            client.Credentials = new System.Net.NetworkCredential(smtpUser, smtpPassword);
-        }
-
-        await client.SendMailAsync(message);
-
-        await using var sentCommand = new NpgsqlCommand("""
-            UPDATE work_register_temp_cloud_user_notifications
-            SET notification_status = 'sent',
-                sent_at = NOW()
-            WHERE work_register_temp_cloud_user_notification_id = @notification_id;
-            """, connection);
-
-        sentCommand.Parameters.AddWithValue("notification_id", notificationId);
-        await sentCommand.ExecuteNonQueryAsync();
-    }
-    catch (Exception ex)
-    {
-        await using var errorCommand = new NpgsqlCommand("""
-            UPDATE work_register_temp_cloud_user_notifications
-            SET notification_status = 'pending_email_send_failed',
-                notification_error = @error
-            WHERE work_register_temp_cloud_user_notification_id = @notification_id;
-            """, connection);
-
-        errorCommand.Parameters.AddWithValue("notification_id", notificationId);
-        errorCommand.Parameters.AddWithValue("error", ex.Message);
-        await errorCommand.ExecuteNonQueryAsync();
-    }
+    // Use the same governed email transport and independent Teams queue as other notifications.
+    await Module065WorkRegisterNotificationBridge.DeliverAsync(connection, notificationId, recipients.ToArray(), subject, body);
 }
 /* 055D_4J_TEMP_CLOUD_EMAIL_NOTIFICATION_END */
 
@@ -32883,14 +32799,17 @@ app.MapPost("/api/time-compliance/email-notifications/send", async (HttpContext 
         }
         else
         {
-            var deliveryResult = await SendProjectPulseEmailThroughSharedProviderAsync(
-                deliveryMode,
-                recipientEmail,
-                recipientName,
-                ccEmails,
-                subject,
-                body
-            );
+            var deliveryResult = await Module065NotificationParityPolicy.IndependentChannelsAsync(async () =>
+            {
+                if (!ProjectPulseEmailRecipientShouldBeSkipped(recipientEmail))
+                {
+                    var sourceWeek = weekStart;
+                    if (!sourceWeek.HasValue && previewRoot.TryGetProperty("weekStart",out var previewWeek)
+                        && DateOnly.TryParse(previewWeek.GetString(),out var resolvedWeek)) sourceWeek=resolvedWeek;
+                    await Module065LegacyTimeNotificationBridge.QueueAsync(connection,runId,userId,sourceWeek,scenario,
+                        recipientEmail,recipientName,ccEmails.Where(value=>!ProjectPulseEmailRecipientShouldBeSkipped(value)).ToArray(),subject,body,httpContext);
+                }
+            }, () => SendProjectPulseEmailThroughSharedProviderAsync(deliveryMode,recipientEmail,recipientName,ccEmails,subject,body));
 
             status = deliveryResult.Status;
             failureMessage = deliveryResult.FailureMessage;
@@ -37457,96 +37376,9 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
     string customerName,
     string brevoApiKey)
 {
-    var apiUrl = System.Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_API_URL");
-
-    if (string.IsNullOrWhiteSpace(apiUrl))
-    {
-        apiUrl = "https://api.brevo.com/v3/smtp/email";
-    }
-
-    var senderEmail = System.Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_SENDER_EMAIL")
-        ?? System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_FROM")
-        ?? System.Environment.GetEnvironmentVariable("SMTP_FROM")
-        ?? "project-health-dashboard@localhost";
-
-    var senderName = System.Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_SENDER_NAME")
-        ?? "Pulse";
-
-    /* 041L_BREVO_OMIT_EMPTY_CC_START */
-    var brevoToRecipients = new System.Text.Json.Nodes.JsonArray();
-
-    foreach (var recipient in recipients.Where(recipient => ProjectPulse041AIsEmail(recipient.Email)))
-    {
-        brevoToRecipients.Add(new System.Text.Json.Nodes.JsonObject
-        {
-            ["email"] = recipient.Email,
-            ["name"] = string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name
-        });
-    }
-
-    var payload = new System.Text.Json.Nodes.JsonObject
-    {
-        ["sender"] = new System.Text.Json.Nodes.JsonObject
-        {
-            ["email"] = senderEmail,
-            ["name"] = senderName
-        },
-        ["to"] = brevoToRecipients,
-        ["subject"] = subject,
-        ["textContent"] = body
-    };
-
-    var brevoCcRecipients = new System.Text.Json.Nodes.JsonArray();
-
-    foreach (var recipient in ccRecipients.Where(recipient => ProjectPulse041AIsEmail(recipient.Email)))
-    {
-        brevoCcRecipients.Add(new System.Text.Json.Nodes.JsonObject
-        {
-            ["email"] = recipient.Email,
-            ["name"] = string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name
-        });
-    }
-
-    if (brevoCcRecipients.Count > 0)
-    {
-        payload["cc"] = brevoCcRecipients;
-    }
-    /* 041L_BREVO_OMIT_EMPTY_CC_END */
-
-    if (brevoToRecipients.Count == 0)
-    {
-        return (false, "no_recipients", "No email-ready recipients were available for Brevo API delivery.", null);
-    }
-
-    var json = System.Text.Json.JsonSerializer.Serialize(payload);
-
-    using var httpClient = new System.Net.Http.HttpClient();
-    using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, apiUrl);
-
-    request.Headers.TryAddWithoutValidation("api-key", brevoApiKey);
-    request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-    request.Content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-    try
-    {
-        using var response = await httpClient.SendAsync(request);
-        var responseText = await response.Content.ReadAsStringAsync();
-
-        if (response.IsSuccessStatusCode)
-        {
-            return (true, "sent_brevo_api", $"Automatic closeout email sent through Brevo API. Response: {responseText}", null);
-        }
-
-        var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "brevo-api-failed");
-        return (false, "queued_brevo_api_failed", $"Brevo API returned HTTP {(int)response.StatusCode}: {responseText}", fallback);
-    }
-    catch (System.Exception ex)
-    {
-        var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "brevo-api-exception");
-        return (false, "queued_brevo_api_exception", $"Brevo API delivery failed and the message was written to outbox: {ex.Message}", fallback);
-    }
+    await System.Threading.Tasks.Task.CompletedTask;
+    return (false, "governed_dispatch_required", "Use the Module 065 governed closeout notification workflow.", null);
 }
-/* 041B_BREVO_API_HELPERS_END */
 
 static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detail, string? OutboxPath)> ProjectPulse041ASendCloseoutEmailAsync(
     System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
@@ -37556,124 +37388,10 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
     string projectCode,
     string customerName)
 {
-    /* 041B_BREVO_API_EMAIL_DELIVERY_START */
-    var brevoApiKey = System.Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_API_KEY")
-        ?? System.Environment.GetEnvironmentVariable("BREVO_API_KEY");
-
-    if (!string.IsNullOrWhiteSpace(brevoApiKey))
-    {
-        return await ProjectPulse041BSendBrevoApiEmailAsync(recipients, ccRecipients, subject, body, projectCode, customerName, brevoApiKey);
-    }
-    /* 041B_BREVO_API_EMAIL_DELIVERY_END */
-
-    var smtpHost = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_HOST")
-        ?? System.Environment.GetEnvironmentVariable("SMTP_HOST");
-
-    var smtpFrom = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_FROM")
-        ?? System.Environment.GetEnvironmentVariable("SMTP_FROM")
-        ?? "project-health-dashboard@localhost";
-
-    if (!string.IsNullOrWhiteSpace(smtpHost))
-    {
-        var smtpPortText = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PORT")
-            ?? System.Environment.GetEnvironmentVariable("SMTP_PORT")
-            ?? "25";
-
-        var smtpPort = int.TryParse(smtpPortText, out var parsedPort) ? parsedPort : 25;
-        var smtpUser = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_USER")
-            ?? System.Environment.GetEnvironmentVariable("SMTP_USER");
-        var smtpPassword = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_PASSWORD")
-            ?? System.Environment.GetEnvironmentVariable("SMTP_PASSWORD");
-        var smtpSslText = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SMTP_SSL")
-            ?? System.Environment.GetEnvironmentVariable("SMTP_SSL")
-            ?? "false";
-
-        using var message = new System.Net.Mail.MailMessage
-        {
-            From = new System.Net.Mail.MailAddress(smtpFrom),
-            Subject = subject,
-            Body = body,
-            IsBodyHtml = false
-        };
-
-        foreach (var recipient in recipients)
-        {
-            message.To.Add(new System.Net.Mail.MailAddress(recipient.Email, string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name));
-        }
-
-        foreach (var recipient in ccRecipients)
-        {
-            message.CC.Add(new System.Net.Mail.MailAddress(recipient.Email, string.IsNullOrWhiteSpace(recipient.Name) ? recipient.Email : recipient.Name));
-        }
-
-        using var smtp = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
-        {
-            EnableSsl = string.Equals(smtpSslText, "true", System.StringComparison.OrdinalIgnoreCase)
-                || string.Equals(smtpSslText, "1", System.StringComparison.OrdinalIgnoreCase)
-                || string.Equals(smtpSslText, "yes", System.StringComparison.OrdinalIgnoreCase)
-        };
-
-        if (!string.IsNullOrWhiteSpace(smtpUser))
-        {
-            smtp.Credentials = new System.Net.NetworkCredential(smtpUser, smtpPassword ?? string.Empty);
-        }
-
-        try
-        {
-            await smtp.SendMailAsync(message);
-            return (true, "sent", "Automatic closeout email sent through configured SMTP.", null);
-        }
-        catch (System.Exception ex)
-        {
-            var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "smtp-failed");
-            return (false, "queued_smtp_failed", $"SMTP send failed and the message was written to outbox: {ex.Message}", fallback);
-        }
-    }
-
-    var sendmailPath = System.Environment.GetEnvironmentVariable("PROJECTPULSE_SENDMAIL_PATH") ?? "/usr/sbin/sendmail";
-
-    if (System.IO.File.Exists(sendmailPath))
-    {
-        var rawEmail = ProjectPulse041ABuildRawEmail(recipients, ccRecipients, smtpFrom, subject, body);
-
-        try
-        {
-            var processInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = sendmailPath,
-                Arguments = "-t -oi",
-                RedirectStandardInput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-
-            using var process = System.Diagnostics.Process.Start(processInfo);
-
-            if (process is not null)
-            {
-                await process.StandardInput.WriteAsync(rawEmail);
-                process.StandardInput.Close();
-                var error = await process.StandardError.ReadToEndAsync();
-                await process.WaitForExitAsync();
-
-                if (process.ExitCode == 0)
-                {
-                    return (true, "sent", "Automatic closeout email sent through local sendmail.", null);
-                }
-
-                var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "sendmail-failed");
-                return (false, "queued_sendmail_failed", $"sendmail exited with code {process.ExitCode}: {error}", fallback);
-            }
-        }
-        catch (System.Exception ex)
-        {
-            var fallback = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "sendmail-exception");
-            return (false, "queued_sendmail_exception", $"sendmail failed and the message was written to outbox: {ex.Message}", fallback);
-        }
-    }
-
-    var outboxPath = await ProjectPulse041AWriteOutboxEmailAsync(recipients, ccRecipients, subject, body, projectCode, "missing-mailer");
-    return (false, "queued_not_sent_missing_mailer", "No SMTP host or sendmail binary is configured. Message was written to the closeout email outbox.", outboxPath);
+    // The governed /api/project-closeout/email/send compatibility middleware owns recipient
+    // authorization and both channels. Never fall back to browser-supplied recipients/raw SMTP.
+    await System.Threading.Tasks.Task.CompletedTask;
+    return (false, "governed_dispatch_required", "Use the Module 065 governed closeout notification workflow.", null);
 }
 
 static string ProjectPulse041ASanitizeHeaderValue(string? value)

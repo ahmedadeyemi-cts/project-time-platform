@@ -81,6 +81,13 @@ install -m 0444 "$AUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE" "$CONTEXT/database/mi
 (cd "$CONTEXT" && sha256sum database/migrations/125_automatic_document_admission_laya.sql > database/automatic-admission-laya.sha256)
 install -m 0444 "$ROOT/database/migrations/127_flowhive_pm_automatic_planning_defaults.sql" "$CONTEXT/database/migrations/127_flowhive_pm_automatic_planning_defaults.sql"
 (cd "$CONTEXT" && sha256sum database/migrations/127_flowhive_pm_automatic_planning_defaults.sql > database/flowhive-pm-defaults.sha256)
+# MODULE065_PARITY_PACKAGE_BEGIN
+for name in 126_module065_power_automate_teams_delivery 128_module065_email_teams_notification_parity 129_enterprise_reminder_delivery_sources; do
+  install -m 0444 "$ROOT/database/migrations/$name.sql" "$CONTEXT/database/migrations/$name.sql"
+done
+install -m 0444 "$ROOT/scripts/release-test/verify-module065-notification-parity.sql" "$CONTEXT/database/verify-module065-notification-parity.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/126_module065_power_automate_teams_delivery.sql database/migrations/128_module065_email_teams_notification_parity.sql database/migrations/129_enterprise_reminder_delivery_sources.sql database/verify-module065-notification-parity.sql > database/module065-notification-parity.sha256)
+# MODULE065_PARITY_PACKAGE_END
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -155,6 +162,15 @@ psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/125_automatic_docum
 
 (cd "$ROOT" && sha256sum --check --status database/flowhive-pm-defaults.sha256)
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/127_flowhive_pm_automatic_planning_defaults.sql"
+
+# MODULE065_PARITY_APPLY_BEGIN
+(cd "$ROOT" && sha256sum --check --status database/module065-notification-parity.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/126_module065_power_automate_teams_delivery.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/128_module065_email_teams_notification_parity.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/129_enterprise_reminder_delivery_sources.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-module065-notification-parity.sql"
+echo 'MIGRATIONS_126_128_129_NOTIFICATION_PARITY=APPLIED_AND_VERIFIED'
+# MODULE065_PARITY_APPLY_END
 
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
@@ -342,6 +358,17 @@ export RELIABILITY_MIGRATION_IMAGE="$ACR_NAME.azurecr.io/$REPOSITORY@$DIGEST"
 export RELIABILITY_MIGRATION_JOB_NAME="pp096-${RUN_ID}-${RUN_ATTEMPT}"
 export RELIABILITY_MIGRATION_SCOPE="project-planning-document-authority-test"
 bash "$MIGRATION_RUNNER"
+# MODULE065_PARITY_EVIDENCE_BEGIN
+if [[ -n "$EVIDENCE_ROOT" ]]; then
+  install -d -m 0700 "$EVIDENCE_ROOT"
+  parity_hash="$(sha256sum "$ROOT/database/migrations/128_module065_email_teams_notification_parity.sql" | cut -d ' ' -f 1)"
+  reminder_hash="$(sha256sum "$ROOT/database/migrations/129_enterprise_reminder_delivery_sources.sql" | cut -d ' ' -f 1)"
+  jq -n --arg releaseCommit "$RELEASE_COMMIT" --arg image "$RELIABILITY_MIGRATION_IMAGE" --arg paritySha256 "$parity_hash" --arg reminderSha256 "$reminder_hash" \
+    '{status:"applied_and_verified",migrations:["126_module065_power_automate_teams_delivery","128_module065_email_teams_notification_parity","129_enterprise_reminder_delivery_sources"],releaseCommit:$releaseCommit,image:$image,paritySha256:$paritySha256,reminderSha256:$reminderSha256,environment:"protected-test",privateNetworkJob:true,liveNotificationActivation:false,productionMutation:false}' \
+    > "$EVIDENCE_ROOT/migration-128-129-notification-parity.json"
+fi
+echo 'MIGRATIONS_126_128_129_NOTIFICATION_PARITY=APPLIED_AND_VERIFIED'
+# MODULE065_PARITY_EVIDENCE_END
 # The private-network entrypoint already applied and verified these migrations.
 # The host reports success only after that job succeeds; it must never run SQL.
 echo 'MIGRATION_115_FLOWHIVE_TASK_NOTIFICATIONS=APPLIED_AND_VERIFIED'

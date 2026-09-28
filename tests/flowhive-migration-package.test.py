@@ -1,6 +1,7 @@
 """Execute the real packaging wrapper offline; all Azure/SQL boundaries are synthetic."""
 from pathlib import Path
 import os
+import json
 import shutil
 import subprocess
 import tempfile
@@ -23,7 +24,8 @@ with tempfile.TemporaryDirectory(prefix='flowhive-package-') as directory:
     scripts = release/'scripts/release-test'; scripts.mkdir(parents=True)
     for name in ('reconcile-module-catalog.mjs', 'verify-flowhive-task-notifications.sql',
                  'verify-flowhive-sequential-checkpoints.sql', 'verify-flowhive-automatic-first-draft.sql',
-                 'verify-module064-external-generation-approval.sql', 'verify-module025-service-scope.sql'):
+                 'verify-module064-external-generation-approval.sql', 'verify-module025-service-scope.sql',
+                 'verify-module065-notification-parity.sql'):
         (scripts/name).symlink_to(ROOT/'scripts/release-test'/name)
     runner = scripts/'run-project-planning-document-authority-migration-job.sh'
     runner.write_text('#!/bin/bash\nset -euo pipefail\n[[ "$RELIABILITY_MIGRATION_IMAGE" == *"@sha256:"* ]]\n[[ "${FAIL_PRIVATE_JOB:-0}" != 1 ]]\necho PRIVATE_JOB_VERIFIED\n')
@@ -53,15 +55,24 @@ else: raise SystemExit('Unexpected Azure call in offline fixture')
         assert marker in passed.stdout and passed.stdout.index('PRIVATE_JOB_VERIFIED')<passed.stdout.index(marker)
     for label in ('notifications','sequential','automatic'):
         subprocess.run(['sha256sum','--check','--status',f'database/flowhive-{label}.sha256'],cwd=captured,check=True)
-    for manifest in ('module064-approval.sha256', 'module025-service-scope.sha256'):
+    for manifest in ('module064-approval.sha256', 'module025-service-scope.sha256', 'module065-notification-parity.sha256'):
         subprocess.run(['sha256sum','--check','--status',f'database/{manifest}'],cwd=captured,check=True)
     assert (captured/'entrypoint.sh').read_text()==inside+'\n'
+    parity_marker = 'MIGRATIONS_126_128_129_NOTIFICATION_PARITY=APPLIED_AND_VERIFIED'
+    assert passed.stdout.index('PRIVATE_JOB_VERIFIED') < passed.stdout.index(parity_marker)
+    receipt = fixture / 'evidence/migration-128-129-notification-parity.json'
+    evidence = json.loads(receipt.read_text())
+    assert evidence['releaseCommit'] == 'a' * 40
+    assert evidence['productionMutation'] is False and evidence['liveNotificationActivation'] is False
+    assert len(evidence['migrations']) == 3
+    receipt.unlink()
     failed=run(True); assert failed.returncode!=0
+    assert parity_marker not in failed.stdout and not receipt.exists()
     assert 'MIGRATION_121_FLOWHIVE_SEQUENTIAL_CHECKPOINTS=APPLIED_AND_VERIFIED' not in failed.stdout
     assert 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED' not in failed.stdout
     assert 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED' not in failed.stdout
     assert 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED' not in failed.stdout
-    for name in ('flowhive-sequential', 'flowhive-automatic', 'module064-approval', 'module025-service-scope'):
+    for name in ('flowhive-sequential', 'flowhive-automatic', 'module064-approval', 'module025-service-scope', 'module065-notification-parity'):
         manifest=captured/f'database/{name}.sha256'
         target=captured/manifest.read_text().splitlines()[0].split()[-1]
         original=target.read_bytes(); target.chmod(0o644); target.write_bytes(original+b'\n-- changed package\n')

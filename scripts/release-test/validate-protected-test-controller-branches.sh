@@ -3,6 +3,14 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+# PR1204 exact application/migration scope; the deployed controller is unchanged.
+if [[ "$HEAD_BRANCH" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then
+  python3 tests/notification-parity/release_scope.py
+  python3 tests/notification-parity/test_release_scope.py
+  python3 tests/notification-parity/check-coverage.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
 # The SOW readback repair shares one exact file-set check across both gates.
 if [[ "$HEAD_BRANCH" == fix/module025-readback-contract-20260928 ]]; then
   BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$HEAD_BRANCH" \

@@ -1,0 +1,68 @@
+name: Module 065 email and Teams notification parity
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/*Notification*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseReminder*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/TimeComplianceModule.cs'
+      - 'src/frontend/project-time-web/src/MicrosoftTeamsNotificationPanel.jsx'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftTeams*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseMail.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleService.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module025SowSellWorker.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs'
+      - 'src/backend/ProjectTime.Api/Program.cs'
+      - 'database/migrations/128_module065_email_teams_notification_parity.sql'
+      - 'database/migrations/129_enterprise_reminder_delivery_sources.sql'
+      - 'database/rollback/12*notification*'
+      - 'tests/NotificationParityDatabaseTests/**'
+      - 'tests/MicrosoftTeamsDeliveryTests/**'
+      - 'tests/notification-parity/**'
+      - '.github/workflows/module065-notification-parity-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: notification-parity-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: parity_fixture
+          POSTGRES_DB: pulse_notification_parity_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U parity_fixture -d pulse_notification_parity_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate exact release registration and negative scope cases
+        if: github.head_ref == 'feature/module065-email-teams-notification-parity-20260928'
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python3 tests/notification-parity/release_scope.py
+          python3 tests/notification-parity/test_release_scope.py
+      - name: Audit every email transport and parity call site
+        run: python3 tests/notification-parity/check-coverage.py
+      - name: Exercise real protocol and pure policy without Microsoft calls
+        run: dotnet run --project tests/MicrosoftTeamsDeliveryTests -c Release
+      - name: Test real outbox storage, replicas, migrations and reminder producers in disposable PostgreSQL
+        env:
+          PARITY_POSTGRES_FIXTURE: 'YES'
+        run: dotnet run --project tests/NotificationParityDatabaseTests -c Release
+      - name: Verify no tracked source mutation
+        run: git diff --exit-code

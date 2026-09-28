@@ -8,7 +8,7 @@ using NpgsqlTypes;
 namespace ProjectTime.Api.Modules;
 
 /// <summary>Module 065 owns Teams configuration and delivery. No credentials enter the browser.</summary>
-public static class MicrosoftTeamsNotificationModule
+public static partial class MicrosoftTeamsNotificationModule
 {
     internal sealed record Configuration(string Environment, bool Enabled, string DeliveryMode, Guid? TeamsAppId,
         string? WorkflowTriggerUrl, string WorkflowAudience, int Revision);
@@ -22,6 +22,9 @@ public static class MicrosoftTeamsNotificationModule
         app.MapPut("/api/microsoft-integration/teams", (Func<HttpContext, Task<IResult>>)SaveAsync);
         app.MapPost("/api/microsoft-integration/teams/test-delivery", (Func<HttpContext, Task<IResult>>)TestAsync);
         app.MapPost("/api/microsoft-integration/teams/check-installation", (Func<HttpContext, Task<IResult>>)CheckInstallationAsync);
+        app.MapGet("/api/microsoft-integration/teams/outbox", (Func<HttpContext, Task<IResult>>)GetOutboxAsync);
+        app.MapPost("/api/microsoft-integration/teams/outbox/retry", (Func<HttpContext, Task<IResult>>)RetryOutboxAsync);
+        StartOutboxWorker(app);
         return app;
     }
 
@@ -131,31 +134,12 @@ public static class MicrosoftTeamsNotificationModule
 
     internal static async Task TryDeliverDispatchAsync(NpgsqlConnection connection, ProjectNotificationDispatchRow dispatch, HttpContext? context, CancellationToken cancellationToken)
     {
-        try { await DeliverDispatchAsync(connection, dispatch, context, cancellationToken); }
+        try { await QueueMirrorAsync(connection, dispatch, context, cancellationToken); }
         catch (Exception exception)
         {
-            // Email has already been finalized. Never replay it due to an independent Teams failure.
+            // Queueing and delivery are independent of email. A Teams error never changes email state.
             System.Diagnostics.Trace.TraceError("Module 065 Teams delivery persistence failed for dispatch {0}: {1}", dispatch.DispatchId, exception.GetType().Name);
         }
-    }
-
-    private static async Task DeliverDispatchAsync(NpgsqlConnection connection, ProjectNotificationDispatchRow dispatch, HttpContext? context, CancellationToken cancellationToken)
-    {
-        // Same server-derived recipients and stricter boundary as email; never send from a Test-only scheduler.
-        var readiness = await Module065ProjectNotificationDelivery.GetReadinessAsync(context, cancellationToken);
-        if (ProjectNotificationEvaluator.MoreRestrictiveBoundary(dispatch.DeliveryBoundary, readiness.RecipientBoundary) != "production_governed"
-            || readiness.RuntimeEnvironment != readiness.ConfiguredEnvironment) return;
-        if (!await AdminExperienceCommon.TableExistsAsync(connection, "module065_teams_configuration", cancellationToken: cancellationToken)) return;
-        var configuration = await LoadAsync(connection, readiness.RuntimeEnvironment, cancellationToken);
-        if (!configuration.Enabled) return;
-        if (configuration.DeliveryMode == "power_automate")
-        {
-            await DeliverWorkflowDispatchAsync(connection, configuration, dispatch, context, cancellationToken);
-            return;
-        }
-        if (configuration.TeamsAppId is null) return;
-        foreach (var recipient in dispatch.Recipients.Where(r => ValidEmail(r.Email)).DistinctBy(r => r.Email.ToLowerInvariant()))
-            await DeliverOneAsync(connection, configuration, dispatch.DispatchId, recipient.Email, context, cancellationToken);
     }
 
     private static async Task<Configuration> LoadAsync(NpgsqlConnection connection, string environment, CancellationToken ct)
@@ -255,35 +239,6 @@ public static class MicrosoftTeamsNotificationModule
             "information", "manual_test", "065", PublicPulseUrl(), dispatchId.ToString("D"));
         return await DeliverWorkflowEnvelopeAsync(connection, configuration, dispatchId, "workflow-test:" + recipient,
             envelope, context, ct, manualTest: true);
-    }
-
-    private static async Task DeliverWorkflowDispatchAsync(NpgsqlConnection connection, Configuration configuration,
-        ProjectNotificationDispatchRow dispatch, HttpContext? context, CancellationToken ct)
-    {
-        var recipients = dispatch.Recipients.Where(r => ValidEmail(r.Email))
-            .Select(r => r.Email.Trim().ToLowerInvariant()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (recipients.Length == 0) return;
-        var group = recipients.Length > 1 && (
-            dispatch.NotificationType.Contains("cost", StringComparison.OrdinalIgnoreCase)
-            || dispatch.Subject.Contains("cost", StringComparison.OrdinalIgnoreCase)
-            || dispatch.EventKey.Contains("cost", StringComparison.OrdinalIgnoreCase));
-        var conversationId = dispatch.Metadata.ValueKind == JsonValueKind.Object
-            && dispatch.Metadata.TryGetProperty("teamsConversationId", out var conversationValue)
-            && conversationValue.ValueKind == JsonValueKind.String ? conversationValue.GetString() : null;
-        var teamId = dispatch.Metadata.ValueKind == JsonValueKind.Object
-            && dispatch.Metadata.TryGetProperty("teamsTeamId", out var teamValue)
-            && teamValue.ValueKind == JsonValueKind.String ? teamValue.GetString() : null;
-        var channelId = dispatch.Metadata.ValueKind == JsonValueKind.Object
-            && dispatch.Metadata.TryGetProperty("teamsChannelId", out var channelValue)
-            && channelValue.ValueKind == JsonValueKind.String ? channelValue.GetString() : null;
-        var destinationType = !string.IsNullOrWhiteSpace(teamId) && !string.IsNullOrWhiteSpace(channelId)
-            ? "channel" : group ? "group_chat" : "individual";
-        var envelope = new MicrosoftTeamsWorkflowProtocol.Envelope(
-            dispatch.DispatchId.ToString("D"), destinationType, recipients, conversationId, teamId, channelId,
-            dispatch.Subject, dispatch.TextBody, dispatch.AlertSeverity, dispatch.NotificationType,
-            dispatch.SourceModule, PublicPulseUrl(), dispatch.DispatchId.ToString("D"));
-        await DeliverWorkflowEnvelopeAsync(connection, configuration, dispatch.DispatchId,
-            group ? "workflow-group" : "workflow-individual", envelope, context, ct, manualTest: false);
     }
 
     private static async Task<string> DeliverWorkflowEnvelopeAsync(NpgsqlConnection connection, Configuration configuration,

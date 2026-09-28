@@ -16,7 +16,7 @@ def fetch(path):
     except HTTPError as error: return error.code,dict(error.headers),error.read()
 for attempt in range(30):
     try: status, headers, content=fetch('/teams-notifications/index.html'); break
-    except URLError: time.sleep(1)
+    except (URLError, ConnectionResetError): time.sleep(1)
 else: raise RuntimeError('Isolated Nginx did not start')
 assert status==200
 lower={k.lower():v for k,v in headers.items()}
