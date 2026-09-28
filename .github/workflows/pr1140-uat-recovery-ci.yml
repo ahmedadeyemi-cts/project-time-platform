@@ -65,7 +65,7 @@ jobs:
             git diff --exit-code
           else
             set -Eeuo pipefail
-            [[ "$(git rev-parse HEAD:.github/workflows/projectpulse-deploy-test.yml)" =~ ^(634983f88d5ce3161b626010c3e20c41a80e3758|be0296f7ad5ac5839fb52ee9aac2502973e60cdb)$ ]]
+            [[ "$(git rev-parse HEAD:.github/workflows/projectpulse-deploy-test.yml)" =~ ^(634983f88d5ce3161b626010c3e20c41a80e3758|be0296f7ad5ac5839fb52ee9aac2502973e60cdb|c7b3c7ae88aceb33a0c77f816a21a8ad28952fc4)$ ]]
             git diff --exit-code "$BASE_SHA" HEAD -- .github/workflows/projectpulse-deploy-test.yml .github/workflows/projectpulse-deploy-production.yml src database
             git diff --check "$BASE_SHA"...HEAD
           fi

@@ -14,6 +14,8 @@ Native Test environment protection, exact-SHA CI, deployment concurrency, the 18
 
 ## Procedure and success criteria
 
-Review and merge the seven-file recovery through ordinary exact-head CI. The existing main supervisor then verifies the pinned old run and dispatches exactly the merged current-main release, which contains PR1204 and subsequent reviewed main changes. A successful recovery requires a real execution job and final Protected UAT acceptance; a newly created run record alone is not success. If the replacement also has no jobs or any other executable run is present, stop without broadening this exception or creating repeated deployments.
+Review and merge the nine-file recovery through ordinary exact-head CI. The existing main supervisor then verifies the pinned old run and dispatches exactly the merged current-main release, which contains PR1204 and subsequent reviewed main changes. A successful recovery requires a real execution job and final Protected UAT acceptance; a newly created run record alone is not success. If the replacement also has no jobs or any other executable run is present, stop without broadening this exception or creating repeated deployments.
 
 The old record may continue displaying Queued in GitHub. The receipt explicitly reports verified_non_executable_orphan, not Cancelled or Deployed. New scheduled notification policies remain disabled/Test-only unless separately approved. No production deployment or company-wide notification activation is part of this recovery.
+
+Two inherited CI digest allowlists are updated to recognize only the exact normal-SA deployment workflow already on main. Their actual-workflow/source-diff checks and all offline tests remain intact; no live deployment code is changed.

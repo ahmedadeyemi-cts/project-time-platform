@@ -12,7 +12,8 @@ WORKFLOW = ".github/workflows/pr1204-uat-supersession-ci.yml"
 EXPECTED = {SUPERVISOR, REGISTRY, WORKFLOW,
             "scripts/release-test/verify-pr1204-uat-supersession.py",
             "tests/test-pr1204-uat-supersession.py", "tests/pr1204-uat-supersession-scope.py",
-            "docs/pr1204-protected-uat-supersession.md"}
+            "docs/pr1204-protected-uat-supersession.md",
+            ".github/workflows/pr1139-uat-recovery-ci.yml", ".github/workflows/pr1140-uat-recovery-ci.yml"}
 SUPERVISOR_ANCHOR = '            # PR1151_UAT_SUPERSESSION_END\n'
 SUPERVISOR_ADDITION = """            # PR1204_UAT_SUPERSESSION_BEGIN
             if [[ "$run_id" == '36463469253' ]]; then
@@ -37,6 +38,10 @@ PATCHES = {SUPERVISOR: (SUPERVISOR_ANCHOR, SUPERVISOR_ADDITION),
            REGISTRY: (REGISTRY_ANCHOR, REGISTRY_ADDITION)}
 
 
+# The inherited CI allowlists predated the already-merged normal-SA controller.
+# Register only its exact blob; source-diff and all existing tests remain mandatory.
+CI_REPLACEMENTS = {'.github/workflows/pr1139-uat-recovery-ci.yml': ('634983f88d5ce3161b626010c3e20c41a80e3758|be0296f7ad5ac5839fb52ee9aac2502973e60cdb', '634983f88d5ce3161b626010c3e20c41a80e3758|be0296f7ad5ac5839fb52ee9aac2502973e60cdb|c7b3c7ae88aceb33a0c77f816a21a8ad28952fc4'), '.github/workflows/pr1140-uat-recovery-ci.yml': ('634983f88d5ce3161b626010c3e20c41a80e3758|be0296f7ad5ac5839fb52ee9aac2502973e60cdb', '634983f88d5ce3161b626010c3e20c41a80e3758|be0296f7ad5ac5839fb52ee9aac2502973e60cdb|c7b3c7ae88aceb33a0c77f816a21a8ad28952fc4')}
+
 def git(*args):
     return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True, timeout=30)
 
@@ -47,7 +52,7 @@ def require(condition, message):
 
 
 def verify_paths(paths):
-    require(set(paths) == EXPECTED, "Recovery must contain exactly the seven reviewed paths")
+    require(set(paths) == EXPECTED, "Recovery must contain exactly the nine reviewed paths")
 
 
 def verify_insertion(before, after, anchor, addition):
@@ -58,6 +63,10 @@ def verify_insertion(before, after, anchor, addition):
 def verify_sources():
     for path, (anchor, addition) in PATCHES.items():
         verify_insertion(git("show", BASE + ":" + path), (ROOT/path).read_text(), anchor, addition)
+    for path, (old, new) in CI_REPLACEMENTS.items():
+        before=git("show", BASE+":"+path)
+        require(before.count(old)==1 and (ROOT/path).read_text()==before.replace(old,new,1),
+                "Unreviewed inherited CI change: "+path)
     require(git("rev-parse", "HEAD:.github/workflows/projectpulse-deploy-test.yml").strip()
             == "c7b3c7ae88aceb33a0c77f816a21a8ad28952fc4", "Actual deployment workflow changed")
     require(not git("diff", "--name-only", BASE, "HEAD", "--", "src", "database",
@@ -82,7 +91,7 @@ def main():
         "No deletion or rename permitted")
     verify_sources()
     subprocess.run(["git", "-C", str(ROOT), "diff", "--check", BASE, "HEAD"], check=True, timeout=30)
-    print("PR1204_UAT_SUPERSESSION_SCOPE=PASS files=7 actual_deployment_controller=unchanged application=unchanged")
+    print("PR1204_UAT_SUPERSESSION_SCOPE=PASS files=9 actual_deployment_controller=unchanged application=unchanged")
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - name: Verify exact seven-file source boundary
+      - name: Verify exact nine-file source boundary
         if: github.head_ref == 'fix/pr1204-uat-supersession-20260928'
         run: python3 tests/pr1204-uat-supersession-scope.py
       - name: Execute new and retained offline negative recovery cases
